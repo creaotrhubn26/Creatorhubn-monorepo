@@ -1,0 +1,67 @@
+import { useState, useCallback } from 'react';
+import { CameraTemplate } from'../data/camera-templates';
+
+export interface UseCameraTemplateSidebarReturn {
+  isOpen: boolean;
+  openSidebar: () => void;
+  closeSidebar: () => void;
+  toggleSidebar: () => void;
+  selectedTemplate: CameraTemplate | null;
+  setSelectedTemplate: (template: CameraTemplate | null) => void;
+  onTemplateSelect: (template: CameraTemplate) => void;
+  onTemplateSave: (template: CameraTemplate) => void;
+}
+
+export const useCameraTemplateSidebar = (
+  onTemplateSelect?: (template: CameraTemplate) => void,
+  onTemplateSave?: (template: CameraTemplate) => void
+): UseCameraTemplateSidebarReturn => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [selectedTemplate, setSelectedTemplate] = useState<CameraTemplate | null>(null);
+
+  const openSidebar = useCallback(() => {
+    setIsOpen(true);
+}, []);
+
+  const closeSidebar = useCallback(() => {
+    setIsOpen(false);
+}, []);
+
+  const toggleSidebar = useCallback(() => {
+    setIsOpen(prev => !prev);
+}, []);
+
+  const handleTemplateSelect = useCallback((template: CameraTemplate) => {
+    setSelectedTemplate(template);
+    onTemplateSelect?.(template);
+}, [onTemplateSelect]);
+
+  const handleTemplateSave = useCallback((template: CameraTemplate) => {
+    onTemplateSave?.(template);
+}, [onTemplateSave]);
+
+  return {
+    isOpen,
+    openSidebar,
+    closeSidebar,
+    toggleSidebar,
+    selectedTemplate,
+    setSelectedTemplate,
+    onTemplateSelect: handleTemplateSelect,
+    onTemplateSave: handleTemplateSave
+};
+};
+
+
+
+
+
+
+
+
+
+
+
+
+
+

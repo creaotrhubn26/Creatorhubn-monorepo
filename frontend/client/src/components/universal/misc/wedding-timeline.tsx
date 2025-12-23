@@ -1,0 +1,721 @@
+import { useTheming } from '../../../utils/theming-helper';
+import React, { useState, useEffect } from 'react';
+import { 
+  Box, 
+  Typography, 
+  Card as MuiCard, 
+  CardContent, 
+  List, 
+  ListItem, 
+  ListItemText, 
+  ListItemIcon,
+  Chip, 
+  Button, 
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Avatar,
+  Alert,
+  Divider,
+  CircularProgress,
+  Fab,
+  Tabs,
+  Tab,
+  Paper
+} from '@mui/material';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { 
+  Schedule, 
+  Person, 
+  PersonAdd, 
+  Email, 
+  Phone,
+  CheckCircle,
+  Warning,
+  VolumeUpUp,
+  Chat,
+  PriorityHigh,
+  AddCircle as Add,
+  Save,
+  Sync,
+  Share,
+  EventNote,
+  People,
+  LocationOn,
+  Lightbulb
+} from '@mui/icons-material';
+import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
+import { apiRequest } from '@/lib/queryClient';
+// Toast removed - Zero Toast Compliance Policy
+// Backend API compatible interfaces
+interface TimelineEvent {
+  id: string;
+  eventId: string;
+  activity: string;
+  location?: string;
+  creatorType: string;
+  activityType?: string;
+  hasPhoto: boolean;
+  hasVideo?: boolean;
+  iconName?: string;
+  color?: string;
+  sortOrder: number;
+  // VIP system extensions
+  persons_involved?: VIPContact[];
+  created_by?: string
+}
+interface WeddingTimeline {
+  id: number;
+  weddingId: string;
+  coupleId: string;
+  projectId?: string;
+  clientEmail?: string;
+  creatorEmail: string;
+  creatorId: string;
+  creatorType: string;
+  weddingDate?: string;
+  venue?: string;
+  brideNames?: string[];
+  groomNames?: string[];
+  locations?: any[];
+  isClientAccessEnabled: boolean;
+  isPublished: boolean;
+  createdAt: string;
+  updatedAt: string;
+  events?: TimelineEvent[]
+}
+interface VIPContact {
+  id: string;
+  name: string;
+  role: string;
+  email: string;
+  phone: string;
+  priority: 'critical' | 'high' | 'medium';
+  notify_first: boolean;
+  is_vip: boolean
+}
+interface WeddingTimelineProps {
+  weddingId?: string;
+  mode?: 'full' | 'embedded';
+}
+export default function WeddingTimeline({ 
+  weddingId = 'demo-wedding-2025,', 
+  mode = 'full' 
+}: WeddingTimelineProps) {
+  const { profession, professionColors } = useProfessionAdapter();
+  
+  // Theming system
+  const theming = useTheming('photographer,');
+  const color = professionColors[profession];
+  // Toast functionality removed for Material UI compliance
+  const queryClient = useQueryClient();
+  // Glassmorphism effect for professional design
+  const glassEffect = `
+    linear-gradient(135deg, 
+      rgba(2, 5, 5, 255, 255, 0.1) 0%, 
+      rgba(2, 5, 5, 255, 255, 0.05) 50%, 
+      rgba(2, 5, 5, 255, 255, 0.02) 100%
+    )
+  `;
+  // State management - Original 4 Tab Structure
+  const [activeTab, setActiveTab] = useState(0);
+  const [openAddPersonDialog, setOpenAddPersonDialog] = useState(false);
+  const [selectedEventId, setSelectedEventId] = useState<string>('');
+  const [newPerson, setNewPerson] = useState({
+    role: '',
+    email: '',
+    phone: '',
+    priority: 'medium' as 'critical' | 'high' | 'medium',
+    is_vip: false
+});
+  const [openAddEventDialog, setOpenAddEventDialog] = useState(false);
+  const [newEvent, setNewEvent] = useState({
+    activity: '',
+    location: '',
+    activityType: 'photo' as string,
+    hasPhoto: true,
+    hasVideo: false
+});
+  // Tab change handler
+  const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
+    setActiveTab(newValue);
+};
+  // API queries
+  const { 
+    data: timeline, 
+    isLoading: timelineLoading, 
+    error: timelineError 
+} = useQuery({
+    queryKey: ['/api/wedding-timeline/timelines', weddingId],
+    retry: false
+});
+  // Mutations
+  const updateEventsMutation = useMutation({
+    mutationFn: async (events: TimelineEvent[]) => {
+      return apiRequest(`/api/wedding-timeline/timelines/${weddingId}/events`, {
+        method: 'PU',
+        body: { events }
+    });
+  },
+      onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/component", ],});
+  }
+});
+    // Toast notification removed for Zero Toast Policy
+  },
+    // Toast notification removed for Zero Toast Policy
+  }
+});
+  const addEventMutation = useMutation({
+    mutationFn: async (eventData: any) => {
+      return apiRequest(`/api/wedding-timeline/timelines/${weddingId}/events`, {
+        method: 'POS',
+        body: {
+          ...eventData,
+          id: `event-${Date.now()}`,
+          eventId: `event-${Date.now()}`,
+          creatorType: profession
+    }
+    });
+  },
+      onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/component", ],});
+  }
+});
+      setOpenAddEventDialog(false);
+      setNewEvent({
+        activity: '',
+        location: ', ',
+        activityType: 'photo',
+        hasPhoto: true,
+        hasVideo: false
+  });
+    // Toast notification removed for Zero Toast Policy
+  }
+});
+  const syncGoogleDriveMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest(`/api/wedding-timeline/timelines/${weddingId}/sync-google-drive`, {
+        method: 'POST'
+  });
+  },
+    // Toast notification removed for Zero Toast Policy
+  }
+});
+  // Get events with VIP system integration
+  const events: TimelineEvent[] = timeline?.events || [];
+  // VIP contact management
+  const handleAddPersonToEvent = (eventId: string) => {
+    setSelectedEventId(eventId);
+    setOpenAddPersonDialog(true);
+};
+  const handleSavePerson = () => {
+    if (!newPerson.name || !newPerson.email || !newPerson.phone) return;
+    const personToAdd: VIPContact = {
+      id: Date.now().toString(),
+  };
+    // Update local events with new person
+    const updatedEvents = events.map(event => {
+      if (event.id === selectedEventId || event.eventId === selectedEventId) {
+        const updatedEvent = {
+          ...event,
+          persons_involved: [...(event.persons_involved || []), personToAdd],
+      };
+        // Trigger VIP notification workflow
+        if (personToAdd.is_vip || personToAdd.priority === 'critical') {
+      }
+        return updatedEvent;
+    }
+      return event;
+  });
+    // Update backend
+    updateEventsMutation.mutate(updatedEvents);
+    // Reset form
+    setNewPerson({
+      role: ', ',
+      email: ', ',
+      phone: ', ',
+      priority: 'medium',
+      is_vip: false
+});
+    setOpenAddPersonDialog(false);
+};
+  const handleAddEvent = () => {
+    if (!newEvent.time || !newEvent.activity) return;
+    addEventMutation.mutate(newEvent);
+};
+  const triggerVIPNotification = (event: TimelineEvent, newPerson: VIPContact) => {
+    console.log('🚨 VIP NOTIFICATION TRIGGERED, :', {
+      event: event.activity,
+      priority: newPerson.priority,
+      vipContacts: event.persons_involved?.filter(p => p.is_vip || p.priority === 'critical')
+});
+    createAutoCorrespondence(event, newPerson);
+    // Show toast for VIP notification
+    // Toast notification removed for Zero Toast Policy
+};
+  const createAutoCorrespondence = (event: TimelineEvent, newPerson: VIPContact) => {
+    const vipContacts = event.persons_involved?.filter(p => p.is_vip || p.priority === 'critical') || [];
+    vipContacts.forEach(vip => {
+      if (vip.notify_first) {
+        console.log(`📧 VIP Email sent to: ${vip.name} (${vip.email})`);
+        console.log(`📱 Chat message created for: ${vip.name}`);
+        console.log(`🤝 Collaboration workflow activated for ${event.activity}`);
+    }
+  });
+};
+  if (timelineLoading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', p:  4 }}>
+        <CircularProgress sx={{ color }} />
+        <Typography variant="body2" sx={{ ml:  2 }}>
+          Laster wedding timeline...
+        </Typography>
+      </Box>
+    );
+}
+  if (timelineError) {
+    return (
+      <Alert severity="warning" sx={{ m:  2 }}>
+        <Typography variant="body2">
+          Timeline ikke funnet. Dette kan være en demo eller ny timeline.
+        </Typography>
+      </Alert>
+    );
+}
+  // Render functions for the 4 tabs
+  const renderPersonsAndRoles = () => (
+    <MuiCard sx={{ mb:  3, background: glassEffect, backdropFilter: 'blur(20px)'}}>
+      <CardContent sx={theming.getThemedCardSx()}>
+        <Box sx={{ display: 'flex', alignItems: 'center', mb:  3 }}>
+          <People sx={{ color, mr: 2, fontSize: 28}} />
+          <Typography variant="h5" sx={{  fontWeight: 7, color: theming.colors.primary }}>
+            Personer & Roller
+          </Typography>
+          <Box sx={{ ml: 'auto'}}>
+            <Button variant="contained"
+              startIcon={theming.getThemedIcon('add')}
+              sx={{ bgcolor: color }}
+             sx={theming.getThemedButtonSx()}>
+              Legg til person
+            </Button>
+          </Box>
+        </Box>
+        <Alert severity="info" sx={{ mb:  3 }}>
+          <Typography variant="body2">
+            <strong>VIP-prioritering: </strong> Når personer legges til i timeline opprettes automatisk korrespondanse. 
+            VIP-personer og kritiske kontakter varsles FØRST via chat og email.
+          </Typography>
+        </Alert>
+        {events.length === 0 ? (
+          <Box sx={{ textAlign: 'center', py:  4 }}>
+            <Typography variant="h6" color="text.secondary" sx={{ color: theming.colors.primary }}>
+              Ingen personer registrert ennå
+            </Typography>
+          </Box>
+        ) : (
+          events
+            .sort((a, b) => a.sortOrder - b.sortOrder)
+            .map((event, index) => (
+              <MuiCard key={event.id || event.eventId} sx={{ mb: 2, bgcolor: '#fafafa'}}>
+                <CardContent sx={theming.getThemedCardSx()}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb:  2 }}>
+                    <Box>
+                      <Typography variant="h6" sx={{  fontWeight: 600}}>
+                        {event.time} - {event.activity}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        {event.location && `📍 ${event.location}`}
+                        <Chip 
+                          label={event.creatorType}
+                          size="small"
+                          sx={{ ml: 1, height: 20}}
+                        />
+                        {event.hasPhoto && <Chip label="📸 Foto" size="small" sx={{ ml: 0, .height: 20}} />}
+                        {event.hasVideo && <Chip label="🎥 Video" size="small" sx={{ ml: 0, .height: 20}} />}
+                      </Typography>
+                    </Box>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
+                      {event.notifications_sent ? (
+                        <Chip 
+                          label="Varslet"
+                          color="success"
+                          size="small"
+                          icon={theming.getThemedIcon('checkCircle')}}
+                        />
+                      ) : (
+                        <Chip 
+                          label="Venter varsling"
+                          color="warning"
+                          size="small"
+                          icon={theming.getThemedIcon('warning')}}
+                        />
+                      )}
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        startIcon={theming.getThemedIcon('add')}
+                          setSelectedEventId(event.id || event.eventId);
+                          setOpenAddPersonDialog(true);
+                      }}
+                      >
+                        Legg til person
+                      </Button>
+                    </Box>
+                  </Box>
+                  {event.persons_involved && event.persons_involved.length > 0 && (
+                    <>
+                      <Divider sx={{ my:  2 }} />
+                      <List dense>
+                        {event.persons_involved
+                          .sort((a, b) => {
+                            if (a.priority === 'critical' && b.priority !== 'critical') return -1;
+                            if (a.priority !== 'critical' && b.priority === 'critical') return 1;
+                            if (a.is_vip && !b.is_vip) return -1;
+                            if (!a.is_vip && b.is_vip) return 1;
+                            return 0;
+                        })
+                          .map((person, idx) => (
+                            <ListItem key={idx} sx={{ py:  1 }}>
+                              <ListItemIcon>
+                                <Avatar sx={{ bgcolor: color, width:  32, height:  32, fontSize: '0.9rem'}}>
+                                  {person.name.charAt(0)}
+                                </Avatar>
+                              </ListItemIcon>
+                              <ListItemText
+                                primary={
+                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap'}}>
+                                    <Typography variant="subtitle2" fontWeight={600}>
+                                      {person.name}
+                                    </Typography>
+                                    <Chip 
+                                      label={person.role}
+                                      size="small"
+                                      variant="outlined"
+                                      sx={{ height:  20, fontSize: '0.7rem'}}
+                                    />
+                                    <Chip 
+                                      label={person.priority.toUpperCase()}
+                                      size="small"
+                                      color={person.priority === 'critical' ? 'error' : person.priority === 'high' ? 'warning' : 'primary'}
+                                      sx={{ height:  20, fontSize: '0.7rem'}}
+                                    />
+                                    {person.is_vip && (
+                                      <Chip 
+                                        label="VIP"
+                                        size="small"
+                                        color="secondary"
+                                        sx={{ height:  20, fontSize: '0.7rem'}}
+                                      />
+                                    )}
+                                    {person.notify_first && (
+                                      <VolumeUp sx={{ fontSize:  16, color: '#f57c00'}} />
+                                    )}
+                                  </Box>
+                              }
+                                secondary={
+                                  <Box>
+                                    <Typography variant="caption" color="text.secondary">
+                                      📧 {person.email} • 📱 {person.phone}
+                                    </Typography>
+                                    {person.notify_first && (
+                                      <Typography variant="caption" sx={{ color: '#f57c00', fontWeight: 600, display: 'block'}}>
+                                        ⚠️ Varsles FØRST ved endringer
+                                      </Typography>
+                                    )}
+                                  </Box>
+                              }
+                              />
+                              <Box sx={{ display: 'flex', gap:  1 }}>
+                                <Button
+                                  size="small"
+                                  variant="outlined"
+                                  startIcon={theming.getThemedIcon('chat')}
+                                  sx={{ minWidth: 'auto', px:  1 }}
+                                >
+                                  Chat
+                                </Button>
+                                <Button
+                                  size="small"
+                                  variant="outlined"
+                                  startIcon={theming.getThemedIcon('email')}
+                                  sx={{ minWidth: 'auto', px:  1 }}
+                                >
+                                  Email
+                                </Button>
+                              </Box>
+                            </ListItem>
+                          ))}
+                      </List>
+                    </>
+                  )}
+                </CardContent>
+              </MuiCard>
+            ))
+        )}
+        <Box sx={{ mt:  3, p: 2, bgcolor: `${color}10`, borderRadius:  1 }}>
+          <Typography variant="body2" sx={{ fontWeight: 600, mb:  1 }}>
+            VIP-Varsling og Automatisk Korrespondanse
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            • VIP-personer og kritiske kontakter varsles FØRST ved alle timeline-endringer<br/>
+            • Automatisk opprettelse av chat-korrespondanse når personer legges til<br/>
+            • Email-varsling til koordinerende personer (toastmaster, wedding planner)<br/>  
+            • Korrekt kontaktinformasjon (telefon + email) sikrer ingen mister beskjed<br/>
+            • Sømløs integrasjon med ekstern samarbeids-UI for fotografer/videografer<br/>
+          </Typography>
+        </Box>
+      </CardContent>
+    </MuiCard>
+  );
+  const renderLocations = () => (
+    <MuiCard sx={{ mb:  3, background: glassEffect, backdropFilter: 'blur(20px)'}}>
+      <CardContent sx={theming.getThemedCardSx()}>
+        <Box sx={{ display: 'flex', alignItems: 'center', mb:  3 }}>
+          <LocationOn sx={{ color, mr: 2, fontSize: 28}} />
+          <Typography variant="h5" sx={{  fontWeight: 7, color: theming.colors.primary }}>
+            Lokasjoner
+          </Typography>
+        </Box>
+        <Typography variant="body1" color="text.secondary">
+          Her kan du administrere alle lokasjoner for bryllupsdagen.
+        </Typography>
+      </CardContent>
+    </MuiCard>
+  );
+  const renderTimeline = () => (
+    <MuiCard sx={{ mb:  3, background: glassEffect, backdropFilter: 'blur(20px)'}}>
+      <CardContent sx={theming.getThemedCardSx()}>
+        <Box sx={{ display: 'flex', alignItems: 'center', mb:  3 }}>
+          <Schedule sx={{ color, mr: 2, fontSize: 28}} />
+          <Typography variant="h5" sx={{  fontWeight: 7, color: theming.colors.primary }}>
+            Kjøreplan
+          </Typography>
+          <Box sx={{ ml: 'auto', display: 'flex', gap:  1 }}>
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={theming.getThemedIcon('sync')}
+              disabled={syncGoogleDriveMutation.isPending}
+            >
+              Sync Drive
+            </Button>
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={theming.getThemedIcon('add')}
+            >
+              Nytt Event  
+            </Button>
+          </Box>
+        </Box>
+        {events.length === 0 ? (
+          <Box sx={{ textAlign: 'center', py:  4 }}>
+            <Typography variant="h6" color="text.secondary" sx={{ color: theming.colors.primary }}>
+              Ingen timeline-events funnet
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb:  2 }}>
+              Legg til ditt første event for å starte wedding timeline
+            </Typography>
+            <Button variant="contained"
+              startIcon={theming.getThemedIcon('add')}
+              sx={{ bgcolor: color }}
+             sx={theming.getThemedButtonSx()}>
+              Legg til første event
+            </Button>
+          </Box>
+        ) : (
+          <Typography variant="body1" color="text.secondary">
+            Kjøreplan med {events.length} events er koblet til backend API.
+          </Typography>
+        )}
+      </CardContent>
+    </MuiCard>
+  );
+  const renderPracticalInformation = () => (
+    <MuiCard sx={{ mb:  3, background: glassEffect, backdropFilter: 'blur(20px)'}}>
+      <CardContent sx={theming.getThemedCardSx()}>
+        <Box sx={{ display: 'flex', alignItems: 'center', mb:  3 }}>
+          <Lightbulb sx={{ color, mr: 2, fontSize: 28}} />
+          <Typography variant="h5" sx={{  fontWeight: 7, color: theming.colors.primary }}>
+            Praktisk Info
+          </Typography>
+        </Box>
+        <Typography variant="body1" color="text.secondary">
+          Praktisk informasjon og tips for bryllupsdagen.
+        </Typography>
+      </CardContent>
+    </MuiCard>
+  );
+  return (
+    <Box sx={{ position: 'relative'}}>
+      <MuiCard sx={{ mb:  3, background: glassEffect, backdropFilter: 'blur(20px)'}}>
+        <CardContent sx={theming.getThemedCardSx()}>
+          <Box sx={{ display: 'flex', alignItems: 'center', mb:  3 }}>
+            <EventNote sx={{ color, mr: 2, fontSize: 28}} />
+            <Typography variant="h5" sx={{  fontWeight: 7, color: theming.colors.primary }}>
+              Wedding Timeline Dashboard
+            </Typography>
+            <Chip 
+              label="VIP-system aktivt"
+              color="warning"
+              size="small"
+              icon={theming.getThemedIcon('priorityHigh')}}
+            />
+          </Box>
+          {/* Navigation Tabs - Original 4 Tab Structure */}
+          <Paper sx={{ 
+            mb:  3, 
+            background: 'rgba(25, 255, 255, 0.08)',
+            backdropFilter: 'blur(10px)',
+            borderRadius: '12px'
+      ,  ...theming.getThemedCardSx() }}>
+            <Tabs 
+              value={activeTab} 
+              variant="fullWidth"
+              sx={{
+                '& .MuiTab-root': {
+                  fontWeight: 7,
+                  fontSize: '1.1rem',
+                  color: 'rgba(25, 255, 255, 0.7)',
+                  padding: '16px 24px', '&:hover': {
+                    color: color,
+                    background: `rgba(${color === '#ff8c00' ? '25, 140, 0' : '33, 150, 243'}, 0.1)`
+                }
+              }, '& .Mui-selected': {
+                  color: `${color} !important`,
+                  background: `rgba(${color === '#ff8c00' ? '25, 140, 0' : '33, 150, 243'}, 0.15)`,
+                  borderRadius: '12px 12px 0 0'
+            }, '& .MuiTabs-indicator': {
+                  background: `linear-gradient(90deg, ${color}, ${color}aa)`,
+                  height:  4,
+                  borderRadius: '2px'
+            }
+            }}
+            >
+              <Tab 
+                icon={theming.getThemedIcon('people')}} 
+                label="Personer & Roller"
+                iconPosition="start"
+                sx={{
+                  '& .MuiTab-iconWrapper': {
+                    marginRight: '8px',
+                    marginBottom: '0px'
+              }
+              }}
+              />
+              <Tab 
+                icon={theming.getThemedIcon('location')}} 
+                label="Lokasjoner"
+                iconPosition="start"
+                sx={{
+                  '& .MuiTab-iconWrapper': {
+                    marginRight: '8px',
+                    marginBottom: '0px'
+              }
+              }}
+              />
+              <Tab 
+                icon={theming.getThemedIcon('schedule')}} 
+                label="Kjøreplan"
+                iconPosition="start"
+                sx={{
+                  '& .MuiTab-iconWrapper': {
+                    marginRight: '8px',
+                    marginBottom: '0px'
+              }
+              }}
+              />
+              <Tab 
+                icon={<Lightbulb />} 
+                label="Praktisk Info"
+                iconPosition="start"
+                sx={{
+                  '& .MuiTab-iconWrapper': {
+                    marginRight: '8px',
+                    marginBottom: '0px'
+              }
+              }}
+              />
+            </Tabs>
+          </Paper>
+        {/* Tab Content */}
+        {activeTab === 0 && renderPersonsAndRoles()}
+        {activeTab === 1 && renderLocations()}
+        {activeTab === 2 && renderTimeline()}
+        {activeTab === 3 && renderPracticalInformation()}
+        </CardContent>
+      </MuiCard>
+      {/* Add Person Dialog */}
+      <Dialog open={openAddPersonDialog} onClose={() => setOpenAddPersonDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Legg til person i timeline</DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
+            <TextField
+              label="Navn"
+              value={newPerson.name}
+              fullWidth
+              required
+            />
+            <TextField
+              label="Rolle"
+              value={newPerson.role}
+              fullWidth
+              required
+            />
+            <TextField
+              label="Email"
+              value={newPerson.email}
+              fullWidth
+              required
+            />
+            <TextField
+              label="Telefon"
+              value={newPerson.phone}
+              fullWidth
+              required
+              placeholder="+47 xxx xx xxx"
+            />
+            <FormControl fullWidth>
+              <InputLabel>Prioritet</InputLabel>
+              <Select
+                value={newPerson.priority}
+                label="Prioritet"
+              >
+                <MenuItem value="medium">Medium</MenuItem>
+                <MenuItem value="high">Høy</MenuItem>
+                <MenuItem value="critical">Kritisk</MenuItem>
+              </Select>
+            </FormControl>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
+              <input
+                id="vip-checkbox"
+                checked={newPerson.is_vip}
+              />
+              <label htmlFor="vip-checkbox">
+                <Typography variant="body2">
+                  VIP-person (varsles FØRST ved endringer)
+                </Typography>
+              </label>
+            </Box>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenAddPersonDialog(false)}>Avbryt</Button>
+          <Button variant="contained"
+            sx={{ bgcolor: color }}
+            disabled={!newPerson.name || !newPerson.email || !newPerson.phone}
+           sx={theming.getThemedButtonSx()}>
+            Legg til og varsle
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
+  );
+}

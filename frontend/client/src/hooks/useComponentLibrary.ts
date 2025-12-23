@@ -1,0 +1,318 @@
+/**
+ * useComponentLibrary Hook
+ * React hook for component library functionality
+ */
+
+import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
+import { 
+  componentLibraryManager, 
+  ComponentLibraryConfig, 
+  ComponentLibraryState, 
+  ComponentLibraryItem
+} from'../utils/componentLibraryManager';
+
+export interface UseComponentLibraryOptions {
+  config?: Partial<ComponentLibraryConfig>;
+  onComponentAdded?: (data: { component: ComponentLibraryItem }) => void;
+  onComponentUpdated?: (data: { component: ComponentLibraryItem }) => void;
+  onComponentDeleted?: (data: { component: ComponentLibraryItem }) => void;
+  onSearchCompleted?: (data: { query: string; results: ComponentLibraryItem[] }) => void;
+  onSearchFailed?: (data: { query: string; error: string }) => void;
+  onError?: (error: string) => void;
+  onInitialized?: () => void
+}
+
+export interface UseComponentLibraryReturn {
+  addComponent: (componentData: Partial<ComponentLibraryItem>) => Promise<ComponentLibraryItem>;
+  updateComponent: (id: string, updates: Partial<ComponentLibraryItem>) => Promise<ComponentLibraryItem>;
+  deleteComponent: (id: string) => Promise<void>;
+  searchComponents: (query: string, filters?: {
+    category?: string;
+    tags?: string[];
+    author?: string;
+    version?: string;
+}) => Promise<ComponentLibraryItem[]>;
+  getComponent: (id: string) => ComponentLibraryItem | null;
+  getComponentsByCategory: (category: string) => ComponentLibraryItem[];
+  getComponentsByTag: (tag: string) => ComponentLibraryItem[];
+  state: ComponentLibraryState;
+  config: ComponentLibraryConfig;
+  updateConfig: (config: Partial<ComponentLibraryConfig>) => void;
+  isEnabled: boolean;
+  isInitialized: boolean;
+  hasError: boolean;
+  error: string | null;
+  items: ComponentLibraryItem[];
+  categories: string[];
+  tags: string[];
+  searchResults: ComponentLibraryItem[];
+  totalItems: number;
+  totalCategories: number;
+  totalTags: number;
+  totalDownloads: number;
+  totalUsage: number;
+  averageRating: number;
+  totalReviews: number;
+  totalErrors: number;
+  totalConflicts: number;
+  totalOverrides: number;
+  getAllComponents: () => ComponentLibraryItem[];
+  getCategories: () => string[];
+  getTags: () => string[]
+}
+
+/**
+ * Hook for component library functionality
+ */
+export const useComponentLibrary = (options: UseComponentLibraryOptions = {}): UseComponentLibraryReturn => {
+  const {
+    config = {},
+    onComponentAdded,
+    onComponentUpdated,
+    onComponentDeleted,
+    onSearchCompleted,
+    onSearchFailed,
+    onError,
+    onInitialized
+  } = options;
+
+  const [state, setState] = useState<ComponentLibraryState>({
+    isEnabled: false,
+    isInitialized: false,
+    hasError: false,
+    error: null,
+    items: new Map(),
+    categories: new Map(),
+    tags: new Map(),
+    searchResults:  [],
+    lastUpdate:  0,
+    totalItems:  0,
+    totalCategories:  0,
+    totalTags:  0,
+    totalDownloads:  0,
+    totalUsage:  0,
+    averageRating:  0,
+    totalReviews:  0,
+    totalErrors:  0,
+    totalConflicts:  0,
+    totalOverrides: 0
+});
+
+  const stateIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const eventHandlersRef = useRef<Map<string, Function>>(new Map());
+
+  // Initialize component library manager
+  useEffect(() => {
+    // Update configuration
+    if (Object.keys(config).length > 0) {
+      componentLibraryManager.updateConfig(config);
+  }
+
+    // Setup event handlers
+    const handleComponentAdded = (data: { component: ComponentLibraryItem }) => {
+      if (onComponentAdded) {
+        onComponentAdded(data);
+    }
+  };
+
+    const handleComponentUpdated = (data: { component: ComponentLibraryItem }) => {
+      if (onComponentUpdated) {
+        onComponentUpdated(data);
+    }
+  };
+
+    const handleComponentDeleted = (data: { component: ComponentLibraryItem }) => {
+      if (onComponentDeleted) {
+        onComponentDeleted(data);
+    }
+  };
+
+    const handleSearchCompleted = (data: { query: string; results: ComponentLibraryItem[] }) => {
+      if (onSearchCompleted) {
+        onSearchCompleted(data);
+    }
+  };
+
+    const handleSearchFailed = (data: { query: string; error: string }) => {
+      if (onSearchFailed) {
+        onSearchFailed(data);
+    }
+  };
+
+    const handleError = (data: { error: string }) => {
+      if (onError) {
+        onError(data.error);
+    }
+  };
+
+    const handleInitialized = () => {
+      if (onInitialized) {
+        onInitialized();
+    }
+  };
+
+    // Store event handlers
+    eventHandlersRef.current.set('component_added', handleComponentAdded);
+    eventHandlersRef.current.set('component_updated', handleComponentUpdated);
+    eventHandlersRef.current.set('component_deleted', handleComponentDeleted);
+    eventHandlersRef.current.set('search_completed', handleSearchCompleted);
+    eventHandlersRef.current.set('search_failed', handleSearchFailed);
+    eventHandlersRef.current.set('error', handleError);
+    eventHandlersRef.current.set('initialized', handleInitialized);
+
+    // Add event listeners
+    componentLibraryManager.on('component_added', handleComponentAdded);
+    componentLibraryManager.on('component_updated', handleComponentUpdated);
+    componentLibraryManager.on('component_deleted', handleComponentDeleted);
+    componentLibraryManager.on('search_completed', handleSearchCompleted);
+    componentLibraryManager.on('search_failed', handleSearchFailed);
+    componentLibraryManager.on('error', handleError);
+    componentLibraryManager.on('initialized', handleInitialized);
+
+    // Update initial state
+    setState(componentLibraryManager.getState());
+
+    return () => {
+      // Remove event listeners
+      eventHandlersRef.current.forEach((handler, event) => {
+        componentLibraryManager.off(event, handler);
+    });
+      eventHandlersRef.current.clear();
+  };
+}, [config, onComponentAdded, onComponentUpdated, onComponentDeleted, onSearchCompleted, onSearchFailed, onError, onInitialized]);
+
+  // Setup state monitoring
+  useEffect(() => {
+    stateIntervalRef.current = setInterval(() => {
+      const currentState = componentLibraryManager.getState();
+      setState(currentState);
+  }, 100);
+
+    return () => {
+      if (stateIntervalRef.current) {
+        clearInterval(stateIntervalRef.current);
+    }
+  };
+}, []);
+
+  // Add component
+  const addComponent = useCallback(async (componentData: Partial<ComponentLibraryItem>) => {
+    return await componentLibraryManager.addComponent(componentData);
+}, []);
+
+  // Update component
+  const updateComponent = useCallback(async (id: string, updates: Partial<ComponentLibraryItem>) => {
+    return await componentLibraryManager.updateComponent(id, updates);
+}, []);
+
+  // Delete component
+  const deleteComponent = useCallback(async (id: string) => {
+    await componentLibraryManager.deleteComponent(id);
+}, []);
+
+  // Search components
+  const searchComponents = useCallback(async (query: string, filters?: {
+    category?: string;
+    tags?: string[];
+    author?: string;
+    version?: string;
+}) => {
+    return await componentLibraryManager.searchComponents(query, filters);
+}, []);
+
+  // Get component by ID
+  const getComponent = useCallback((id: string) => {
+    return componentLibraryManager.getComponent(id);
+}, []);
+
+  // Get components by category
+  const getComponentsByCategory = useCallback((category: string) => {
+    return componentLibraryManager.getComponentsByCategory(category);
+}, []);
+
+  // Get components by tag
+  const getComponentsByTag = useCallback((tag: string) => {
+    return componentLibraryManager.getComponentsByTag(tag);
+}, []);
+
+  // Update configuration
+  const updateConfig = useCallback((newConfig: Partial<ComponentLibraryConfig>) => {
+    componentLibraryManager.updateConfig(newConfig);
+}, []);
+
+  // Get configuration
+  const currentConfig = useMemo(() => {
+    return componentLibraryManager.getConfig();
+}, []);
+
+  // Get all components
+  const getAllComponents = useCallback(() => {
+    return componentLibraryManager.getAllComponents();
+}, []);
+
+  // Get categories
+  const getCategories = useCallback(() => {
+    return componentLibraryManager.getCategories();
+}, []);
+
+  // Get tags
+  const getTags = useCallback(() => {
+    return componentLibraryManager.getTags();
+}, []);
+
+  // Memoized return value
+  const returnValue = useMemo(() => ({
+    addComponent,
+    updateComponent,
+    deleteComponent,
+    searchComponents,
+    getComponent,
+    getComponentsByCategory,
+    getComponentsByTag,
+    state,
+    currentConfig,
+    updateConfig,
+    isEnabled: state.isEnabled,
+    isInitialized: state.isInitialized,
+    hasError: state.hasError,
+    error: state.error,
+    items: Array.from(state.items.values()),
+    categories: Array.from(state.categories.keys()),
+    tags: Array.from(state.tags.keys()),
+    searchResults: state.searchResults,
+    totalItems: state.totalItems,
+    totalCategories: state.totalCategories,
+    totalTags: state.totalTags,
+    totalDownloads: state.totalDownloads,
+    totalUsage: state.totalUsage,
+    averageRating: state.averageRating,
+    totalReviews: state.totalReviews,
+    totalErrors: state.totalErrors,
+    totalConflicts: state.totalConflicts,
+    totalOverrides: state.totalOverrides,
+    getAllComponents,
+    getCategories,
+    getTags
+}), [
+    addComponent,
+    updateComponent,
+    deleteComponent,
+    searchComponents,
+    getComponent,
+    getComponentsByCategory,
+    getComponentsByTag,
+    state,
+    currentConfig,
+    updateConfig,
+    getAllComponents,
+    getCategories,
+    getTags
+  ]);
+
+  return returnValue;
+};
+
+export default useComponentLibrary;
+
+
+

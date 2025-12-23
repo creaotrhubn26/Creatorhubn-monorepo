@@ -1,0 +1,260 @@
+import React, { useState, useEffect } from 'react';
+import {
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Button,
+  Typography,
+  Box,
+  Card,
+  CardContent,
+  Radio,
+  RadioGroup,
+  FormControlLabel,
+  Chip,
+  Alert,
+  CircularProgress,
+} from '@mui/material';
+import {
+  CheckCircle,
+  CreditCard,
+  Smartphone,
+  AccountBalance,
+} from '@mui/icons-material';
+import { trialToPaymentBridge, type TrialConversionOptions } from '../../services/TrialToPaymentBridge';
+import { type TrialStatus } from '../../services/TrialFeatureManager';
+
+interface TrialUpgradePromptProps {
+  open: boolean;
+  onClose: () => void;
+  featureId: string;
+  featureName: string;
+  userId: string;
+  trialStatus: TrialStatus | null;
+  onUpgradeSuccess?: () => void;
+}
+
+export function TrialUpgradePrompt({
+  open,
+  onClose,
+  featureId,
+  featureName,
+  userId,
+  trialStatus,
+  onUpgradeSuccess,
+}: TrialUpgradePromptProps) {
+  const [selectedPlan, setSelectedPlan] = useState<'monthly' | 'annual'>('monthly');
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<'google-pay' | 'stripe' | 'vipps'>('stripe');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [conversionOptions, setConversionOptions] = useState<any>(null);
+
+  useEffect(() => {
+    if (open && featureId) {
+      loadConversionOptions();
+    }
+  }, [open, featureId]);
+
+  const loadConversionOptions = async () => {
+    try {
+      const options = await trialToPaymentBridge.getConversionOptions(featureId);
+      setConversionOptions(options);
+    } catch (error) {
+      console.error('Error loading conversion options:', error);
+    }
+  };
+
+  const handleUpgrade = async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const options: TrialConversionOptions = {
+        featureId,
+        userId,
+        selectedPlan,
+        paymentMethod: selectedPaymentMethod,
+      };
+
+      const result = await trialToPaymentBridge.convertTrialToSubscription(options);
+
+      if (result.success) {
+        onUpgradeSuccess?.();
+        onClose();
+      } else {
+        setError(result.error || 'Oppgradering feilet');
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'En feil oppstod');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getPaymentMethodIcon = (method: string) => {
+    switch (method) {
+      case 'google-pay':
+        return <Smartphone />;
+      case 'stripe':
+        return <CreditCard />;
+      case 'vipps':
+        return <AccountBalance />;
+      default:
+        return <CreditCard />;
+    }
+  };
+
+  const daysUsed = trialStatus
+    ? Math.ceil(
+        (new Date().getTime() - new Date(trialStatus.startDate).getTime()) / (1000 * 60 * 60 * 24)
+      )
+    : 0;
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+      <DialogTitle>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <CheckCircle sx={{ color: 'primary.main', fontSize: 32 }} />
+          <Box>
+            <Typography variant="h5">Prøveperioden er over</Typography>
+            <Typography variant="body2" color="text.secondary">
+              Du har brukt {daysUsed} dager av {featureName}
+            </Typography>
+          </Box>
+        </Box>
+      </DialogTitle>
+
+      <DialogContent>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+          {/* Trial Summary */}
+          <Alert severity="info">
+            Din {daysUsed}-dagers prøveperiode er fullført. Oppgrader nå for å fortsette å bruke alle funksjonene.
+          </Alert>
+
+          {/* Plan Selection */}
+          <Box>
+            <Typography variant="h6" gutterBottom>
+              Velg abonnement
+            </Typography>
+            <RadioGroup
+              value={selectedPlan}
+              onChange={(e) => setSelectedPlan(e.target.value as 'monthly' | 'annual')}
+            >
+              {conversionOptions?.plans.map((plan: any) => (
+                <Card
+                  key={plan.type}
+                  sx={{
+                    mb: 2,
+                    border: selectedPlan === plan.type ? 2 : 1,
+                    borderColor: selectedPlan === plan.type ? 'primary.main' : 'divider',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s',
+                    '&:hover': {
+                      borderColor: 'primary.main',
+                      boxShadow: 2,
+                    },
+                  }}
+                  onClick={() => setSelectedPlan(plan.type)}
+                >
+                  <CardContent>
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                        <FormControlLabel
+                          value={plan.type}
+                          control={<Radio />}
+                          label={
+                            <Box>
+                              <Typography variant="subtitle1">
+                                {plan.type === 'monthly' ? 'Månedlig' : 'Årlig'}
+                              </Typography>
+                              <Typography variant="body2" color="text.secondary">
+                                {plan.price} {plan.currency}/{plan.type === 'monthly' ? 'måned' : 'år'}
+                              </Typography>
+                            </Box>
+                          }
+                        />
+                      </Box>
+                      {plan.savings && (
+                        <Chip
+                          label={plan.savings}
+                          color="success"
+                          size="small"
+                          sx={{ fontWeight: 600 }}
+                        />
+                      )}
+                    </Box>
+                  </CardContent>
+                </Card>
+              ))}
+            </RadioGroup>
+          </Box>
+
+          {/* Payment Method Selection */}
+          <Box>
+            <Typography variant="h6" gutterBottom>
+              Velg betalingsmetode
+            </Typography>
+            <RadioGroup
+              value={selectedPaymentMethod}
+              onChange={(e) => setSelectedPaymentMethod(e.target.value as any)}
+            >
+              {conversionOptions?.paymentMethods
+                .filter((method: any) => method.available)
+                .map((method: any) => (
+                  <Card
+                    key={method.type}
+                    sx={{
+                      mb: 2,
+                      border: selectedPaymentMethod === method.type ? 2 : 1,
+                      borderColor: selectedPaymentMethod === method.type ? 'primary.main' : 'divider',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s',
+                      '&:hover': {
+                        borderColor: 'primary.main',
+                        boxShadow: 2,
+                      },
+                    }}
+                    onClick={() => setSelectedPaymentMethod(method.type)}
+                  >
+                    <CardContent>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                        {getPaymentMethodIcon(method.type)}
+                        <FormControlLabel
+                          value={method.type}
+                          control={<Radio />}
+                          label={method.name}
+                        />
+                      </Box>
+                    </CardContent>
+                  </Card>
+                ))}
+            </RadioGroup>
+          </Box>
+
+          {error && (
+            <Alert severity="error" onClose={() => setError(null)}>
+              {error}
+            </Alert>
+          )}
+        </Box>
+      </DialogContent>
+
+      <DialogActions sx={{ px: 3, pb: 3 }}>
+        <Button onClick={onClose} disabled={loading}>
+          Avbryt
+        </Button>
+        <Button
+          variant="contained"
+          onClick={handleUpgrade}
+          disabled={loading}
+          startIcon={loading ? <CircularProgress size={20} /> : <CheckCircle />}
+          sx={{ minWidth: 150 }}
+        >
+          {loading ? 'Behandler...' : 'Oppgrader nå'}
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+

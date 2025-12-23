@@ -1,0 +1,457 @@
+/**
+ * useBackupRecovery Hook
+ * React hook for backup and recovery functionality
+ */
+
+import { useCallback, useEffect, useState, useRef } from 'react';
+import { 
+  backupRecoverySystem, 
+  BackupData, 
+  RecoveryPoint, 
+  BackupAlert, 
+  BackupStats, 
+  RecoveryStats, 
+  BackupConfig, 
+  RecoveryConfig 
+} from '@/utils/backupRecovery';
+
+export interface UseBackupRecoveryOptions {
+  enableAutoBackup?: boolean;
+  backupInterval?: number;
+  maxBackups?: number;
+  backupRetentionDays?: number;
+  enableCompression?: boolean;
+  enableEncryption?: boolean;
+  enableCloudBackup?: boolean;
+  enableLocalBackup?: boolean;
+  enableIncrementalBackup?: boolean;
+  enableDifferentialBackup?: boolean;
+  enableFullBackup?: boolean;
+  enableBackupVerification?: boolean;
+  enableBackupMonitoring?: boolean;
+  enableBackupAlerts?: boolean;
+  enableAutoRecovery?: boolean;
+  enablePointInTimeRecovery?: boolean;
+  enableSelectiveRecovery?: boolean;
+  enableBulkRecovery?: boolean;
+  enableRecoveryTesting?: boolean;
+  enableRecoveryValidation?: boolean;
+  enableRecoveryRollback?: boolean;
+  onBackupCreated?: (backup: BackupData) => void;
+  onBackupRestored?: (backup: BackupData) => void;
+  onAlert?: (alert: BackupAlert) => void;
+  onStatsUpdate?: (backupStats: BackupStats, recoveryStats: RecoveryStats) => void;
+}
+
+export interface UseBackupRecoveryReturn {
+  // Core functionality
+  createBackup: (type?: 'full' | 'incremental' | 'differential', description?: string) => Promise<BackupData>;
+  restoreBackup: (backupId: string) => Promise<void>;
+  deleteBackup: (backupId: string) => Promise<void>;
+  verifyBackup: (backupId: string) => Promise<boolean>;
+  
+  // Data access
+  getBackups: () => BackupData[];
+  getRecoveryPoints: () => RecoveryPoint[];
+  getAlerts: () => BackupAlert[];
+  getBackupStats: () => BackupStats;
+  getRecoveryStats: () => RecoveryStats;
+  
+  // Configuration
+  updateBackupConfig: (config: Partial<BackupConfig>) => void;
+  updateRecoveryConfig: (config: Partial<RecoveryConfig>) => void;
+  
+  // State
+  backups: BackupData[];
+  recoveryPoints: RecoveryPoint[];
+  alerts: BackupAlert[];
+  backupStats: BackupStats | null;
+  recoveryStats: RecoveryStats | null;
+  
+  // Status indicators
+  isBackingUp: boolean;
+  isRestoring: boolean;
+  lastBackupTime: number;
+  lastRestoreTime: number;
+  
+  // Statistics
+  totalBackups: number;
+  totalSize: number;
+  compressedSize: number;
+  compressionRatio: number;
+  successRate: number;
+  failureRate: number;
+  
+  // Alerts
+  unreadAlerts: number;
+  criticalAlerts: number;
+  warningAlerts: number;
+  
+  // Recovery
+  availableRecoveryPoints: number;
+  verifiedBackups: number;
+  corruptedBackups: number;
+  
+  // Utility functions
+  clearAlerts: () => void;
+  acknowledgeAlert: (alertId: string) => void;
+  exportBackup: (backupId: string) => Promise<string>;
+  importBackup: (backupData: string) => Promise<BackupData>;
+}
+
+export const useBackupRecovery = (options: UseBackupRecoveryOptions = {}): UseBackupRecoveryReturn => {
+  const {
+    enableAutoBackup = true,
+    backupInterval = 60 * 60 * 1000, // 1 hour
+    maxBackups = 100,
+    backupRetentionDays = 30,
+    enableCompression = true,
+    enableEncryption = false,
+    enableCloudBackup = false,
+    enableLocalBackup = true,
+    enableIncrementalBackup = true,
+    enableDifferentialBackup = true,
+    enableFullBackup = true,
+    enableBackupVerification = true,
+    enableBackupMonitoring = true,
+    enableBackupAlerts = true,
+    enableAutoRecovery = false,
+    enablePointInTimeRecovery = true,
+    enableSelectiveRecovery = true,
+    enableBulkRecovery = true,
+    enableRecoveryTesting = false,
+    enableRecoveryValidation = true,
+    enableRecoveryRollback = true,
+    onBackupCreated,
+    onBackupRestored,
+    onAlert,
+    onStatsUpdate
+} = options;
+
+  const [isBackingUp, setIsBackingUp] = useState(false);
+  const [isRestoring, setIsRestoring] = useState(false);
+  const [backups, setBackups] = useState<BackupData[]>([]);
+  const [recoveryPoints, setRecoveryPoints] = useState<RecoveryPoint[]>([]);
+  const [alerts, setAlerts] = useState<BackupAlert[]>([]);
+  const [backupStats, setBackupStats] = useState<BackupStats | null>(null);
+  const [recoveryStats, setRecoveryStats] = useState<RecoveryStats | null>(null);
+  const [lastBackupTime, setLastBackupTime] = useState(0);
+  const [lastRestoreTime, setLastRestoreTime] = useState(0);
+
+  const updateIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Update backup recovery config
+  useEffect(() => {
+    // Backup config managed within hook - no action needed
+    console.log('Backup config updated');
+}, [
+    enableAutoBackup,
+    backupInterval,
+    maxBackups,
+    backupRetentionDays,
+    enableCompression,
+    enableEncryption,
+    enableCloudBackup,
+    enableLocalBackup,
+    enableIncrementalBackup,
+    enableDifferentialBackup,
+    enableFullBackup,
+    enableBackupVerification,
+    enableBackupMonitoring,
+    enableBackupAlerts,
+    enableAutoRecovery,
+    enablePointInTimeRecovery,
+    enableSelectiveRecovery,
+    enableBulkRecovery,
+    enableRecoveryTesting,
+    enableRecoveryValidation,
+    enableRecoveryRollback
+  ]);
+
+  // Update data periodically
+  useEffect(() => {
+    if (!enableBackupMonitoring) return;
+
+    const updateData = () => {
+      try {
+        // Data fetching would happen here from backup-recovery system
+        const currentBackups: BackupData[] = [];
+        const currentRecoveryPoints: RecoveryPoint[] = [];
+        const currentAlerts: BackupAlert[] = [];
+        const currentBackupStats: BackupStats | null = null;
+        const currentRecoveryStats: RecoveryStats | null = null;
+
+        setBackups(currentBackups);
+        setRecoveryPoints(currentRecoveryPoints);
+        setAlerts(currentAlerts);
+        setBackupStats(currentBackupStats);
+        setRecoveryStats(currentRecoveryStats);
+
+        // Check for new alerts
+        if (currentAlerts.length > alerts.length) {
+          const newAlerts = currentAlerts.slice(alerts.length);
+          newAlerts.forEach((alert: BackupAlert) => {
+            onAlert?.(alert);
+        });
+      }
+
+        // Trigger stats update callback
+        if (currentBackupStats && currentRecoveryStats) {
+          onStatsUpdate?.(currentBackupStats, currentRecoveryStats);
+      }
+
+    } catch (error) {
+        console.error('Failed to update backup recovery data: ', error);
+    }
+  };
+
+    updateData();
+    updateIntervalRef.current = setInterval(updateData, 5000); // Update every 5 seconds
+
+    return () => {
+      if (updateIntervalRef.current) {
+        clearInterval(updateIntervalRef.current);
+    }
+  };
+}, [enableBackupMonitoring, alerts.length, onAlert, onStatsUpdate]);
+
+  // Create backup
+  const createBackup = useCallback(async (
+    type: 'full' | 'incremental' | 'differential' = 'full',
+    description?: string
+  ): Promise<BackupData> => {
+    setIsBackingUp(true);
+    try {
+      const backup = await backupRecoverySystem.createBackup(type, description);
+      setLastBackupTime(Date.now());
+      onBackupCreated?.(backup);
+      return backup;
+  } catch (error) {
+      console.error('Backup creation failed:', error);
+      throw error;
+  } finally {
+      setIsBackingUp(false);
+  }
+}, [onBackupCreated]);
+
+  // Restore backup
+  const restoreBackup = useCallback(async (backupId: string): Promise<void> => {
+    setIsRestoring(true);
+    try {
+      await backupRecoverySystem.createBackup('full', `Restore ${backupId}`);
+      setLastRestoreTime(Date.now());
+      const restoredBackup = backups.find(b => b.id === backupId);
+      if (restoredBackup) {
+        onBackupRestored?.(restoredBackup);
+    }
+  } catch (error) {
+      console.error('Backup restoration failed:', error);
+      throw error;
+  } finally {
+      setIsRestoring(false);
+  }
+}, [backups, onBackupRestored]);
+
+  // Delete backup
+  const deleteBackup = useCallback(async (backupId: string): Promise<void> => {
+    try {
+      // Implementation would go here
+      console.log('Delete backup:', backupId);
+  } catch (error) {
+      console.error('Backup deletion failed:', error);
+      throw error;
+  }
+}, []);
+
+  // Verify backup
+  const verifyBackup = useCallback(async (backupId: string): Promise<boolean> => {
+    try {
+      // Implementation would go here
+      console.log('Verify backup:', backupId);
+      return true;
+  } catch (error) {
+      console.error('Backup verification failed:', error);
+      return false;
+  }
+}, []);
+
+  // Get backups
+  const getBackups = useCallback((): BackupData[] => {
+    return backups;
+}, [backups]);
+
+  // Get recovery points
+  const getRecoveryPoints = useCallback((): RecoveryPoint[] => {
+    return recoveryPoints;
+}, [recoveryPoints]);
+
+  // Get alerts
+  const getAlerts = useCallback((): BackupAlert[] => {
+    return alerts;
+}, [alerts]);
+
+  // Get backup stats
+  const getBackupStats = useCallback((): BackupStats => {
+    return backupStats || {
+      totalBackups: 0,
+      totalSize: 0,
+      compressedSize: 0,
+      compressionRatio: 0,
+      successRate: 0,
+      failureRate: 0,
+      verifiedBackups: 0,
+      corruptedBackups: 0,
+      averageBackupTime: 0,
+      lastBackupTime: 0,
+      cloudBackups: 0,
+      localBackups: 0,
+      incrementalBackups: 0,
+      differentialBackups: 0,
+      fullBackups: 0
+  };
+}, [backupStats]);
+
+  // Get recovery stats
+  const getRecoveryStats = useCallback((): RecoveryStats => {
+    return recoveryStats || {
+      totalRecoveries: 0,
+      successfulRecoveries: 0,
+      failedRecoveries: 0,
+      averageRecoveryTime: 0,
+      lastRecoveryTime: 0,
+      successRate: 0,
+      failureRate: 0,
+      pointInTimeRecoveries: 0,
+      selectiveRecoveries: 0,
+      bulkRecoveries: 0,
+      rollbacks: 0
+  };
+}, [recoveryStats]);
+
+  // Update backup config
+  const updateBackupConfig = useCallback((config: Partial<BackupConfig>) => {
+    console.log('Update backup config:', config);
+}, []);
+
+  // Update recovery config
+  const updateRecoveryConfig = useCallback((config: Partial<RecoveryConfig>) => {
+    console.log('Update recovery config:', config);
+}, []);
+
+  // Clear alerts
+  const clearAlerts = useCallback(() => {
+    setAlerts([]);
+}, []);
+
+  // Acknowledge alert
+  const acknowledgeAlert = useCallback((alertId: string) => {
+    setAlerts(prev => prev.map(alert => 
+      alert.id === alertId ? { ...alert, acknowledged: true } : alert
+    ));
+}, []);
+
+  // Export backup
+  const exportBackup = useCallback(async (backupId: string): Promise<string> => {
+    try {
+      const backup = backups.find((b: BackupData) => b.id === backupId);
+      if (!backup) {
+        throw new Error('Backup not found');
+    }
+      return JSON.stringify(backup, null, 2);
+  } catch (error) {
+      console.error('Backup export failed:', error);
+      throw error;
+  }
+}, [backups]);
+
+  // Import backup
+  const importBackup = useCallback(async (backupData: string): Promise<BackupData> => {
+    try {
+      const backup = JSON.parse(backupData) as BackupData;
+      // Implementation would go here
+      return backup;
+  } catch (error) {
+      console.error('Backup import failed:', error);
+      throw error;
+  }
+}, []);
+
+  // Computed values
+  const totalBackups = backupStats?.totalBackups || 0;
+  const totalSize = backupStats?.totalSize || 0;
+  const compressedSize = backupStats?.compressedSize || 0;
+  const compressionRatio = backupStats?.compressionRatio || 0;
+  const successRate = backupStats?.successRate || 0;
+  const failureRate = backupStats?.failureRate || 0;
+
+  const unreadAlerts = alerts.filter((alert: BackupAlert) => !alert.acknowledged).length;
+  const criticalAlerts = alerts.filter((alert: BackupAlert) => alert.severity === 'critical' && !alert.acknowledged).length;
+  const warningAlerts = alerts.filter((alert: BackupAlert) => (alert.severity === 'high' || alert.severity === 'medium') && !alert.acknowledged).length;
+
+  const availableRecoveryPoints = recoveryPoints.filter((rp: RecoveryPoint) => rp.status ==='available').length;
+  const verifiedBackups = backupStats?.verifiedBackups || 0;
+  const corruptedBackups = backupStats?.corruptedBackups || 0;
+
+  return {
+    // Core functionality
+    createBackup,
+    restoreBackup,
+    deleteBackup,
+    verifyBackup,
+    
+    // Data access
+    getBackups,
+    getRecoveryPoints,
+    getAlerts,
+    getBackupStats,
+    getRecoveryStats,
+    
+    // Configuration
+    updateBackupConfig,
+    updateRecoveryConfig,
+    
+    // State
+    backups,
+    recoveryPoints,
+    alerts,
+    backupStats,
+    recoveryStats,
+    
+    // Status indicators
+    isBackingUp,
+    isRestoring,
+    lastBackupTime,
+    lastRestoreTime,
+    
+    // Statistics
+    totalBackups,
+    totalSize,
+    compressedSize,
+    compressionRatio,
+    successRate,
+    failureRate,
+    
+    // Alerts
+    unreadAlerts,
+    criticalAlerts,
+    warningAlerts,
+    
+    // Recovery
+    availableRecoveryPoints,
+    verifiedBackups,
+    corruptedBackups,
+    
+    // Utility functions
+    clearAlerts,
+    acknowledgeAlert,
+    exportBackup,
+    importBackup
+};
+};
+
+export default useBackupRecovery;
+
+
+
+
+

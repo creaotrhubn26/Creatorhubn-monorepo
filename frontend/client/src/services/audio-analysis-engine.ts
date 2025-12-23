@@ -1,0 +1,223 @@
+/**
+ * AUDIO ANALYSIS ENGINE
+ * Using Meyda for professional audio feature extraction
+ * RMS, spectral features, loudness, onset detection
+ */
+
+import Meyda from 'meyda';
+
+export interface AudioFeatures {
+  rms: number;
+  energy: number;
+  zcr: number; // Zero crossing rate
+  spectralCentroid: number;
+  spectralFlatness: number;
+  spectralRolloff: number;
+  loudness: { total: number; specific: number[] };
+  mfcc: number[]; // Mel-frequency cepstral coefficients
+  chroma: number[];
+}
+
+export interface BeatDetection {
+  isBeat: boolean;
+  confidence: number;
+  energy: number;
+}
+
+/**
+ * Audio Analysis Engine with Meyda
+ */
+export class AudioAnalysisEngine {
+  private audioContext: AudioContext;
+  private analyzer: any = null;
+  private sourceNode: MediaElementAudioSourceNode | null = null;
+  private features: AudioFeatures | null = null;
+  private beatThreshold: number = 0.8;
+  private energyHistory: number[] = [];
+  private readonly HISTORY_SIZE = 43; // ~1 second at 44.1kHz / 1024 buffer
+  
+  constructor() {
+    this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+  }
+  
+  /**
+   * Connect audio source for analysis
+   */
+  connectSource(audioElement: HTMLAudioElement | HTMLVideoElement) {
+    // Create source node if needed
+    if (!this.sourceNode) {
+      this.sourceNode = this.audioContext.createMediaElementSource(audioElement as HTMLMediaElement);
+      this.sourceNode.connect(this.audioContext.destination);
+    }
+    
+    // Create Meyda analyzer
+    this.analyzer = Meyda.createMeydaAnalyzer({
+      audioContext: this.audioContext,
+      source: this.sourceNode,
+      bufferSize: 1024,
+      featureExtractors: [
+        'rms','energy','zcr','spectralCentroid','spectralFlatness','spectralRolloff','loudness','mfcc','chroma'
+      ],
+      callback: (features: any) => {
+        this.features = features as AudioFeatures;
+        this.updateEnergyHistory(features.energy);
+      }
+    });
+    
+    console.log('✅ Audio analysis connected');
+  }
+  
+  /**
+   * Start analysis
+   */
+  start() {
+    if (this.analyzer) {
+      this.analyzer.start();
+      console.log('▶️  Audio analysis started');
+    }
+  }
+  
+  /**
+   * Stop analysis
+   */
+  stop() {
+    if (this.analyzer) {
+      this.analyzer.stop();
+      console.log('⏹️  Audio analysis stopped');
+    }
+  }
+  
+  /**
+   * Get current audio features
+   */
+  getFeatures(): AudioFeatures | null {
+    return this.features;
+  }
+  
+  /**
+   * Detect beat in current frame
+   */
+  detectBeat(): BeatDetection {
+    if (!this.features || this.energyHistory.length < this.HISTORY_SIZE) {
+      return { isBeat: false, confidence: 0, energy: 0 };
+    }
+    
+    const currentEnergy = this.features.energy;
+    const avgEnergy = this.energyHistory.reduce((a, b) => a + b, 0) / this.energyHistory.length;
+    const variance = this.energyHistory.reduce((sum, e) => sum + Math.pow(e - avgEnergy, 2), 0) / this.energyHistory.length;
+    const threshold = avgEnergy + (Math.sqrt(variance) * this.beatThreshold);
+    
+    const isBeat = currentEnergy > threshold;
+    const confidence = isBeat ? Math.min((currentEnergy - threshold) / threshold, 1.0) : 0;
+    
+    return {
+      isBeat,
+      confidence,
+      energy: currentEnergy
+    };
+  }
+  
+  /**
+   * Update energy history for beat detection
+   */
+  private updateEnergyHistory(energy: number) {
+    this.energyHistory.push(energy);
+    
+    if (this.energyHistory.length > this.HISTORY_SIZE) {
+      this.energyHistory.shift();
+    }
+  }
+  
+  /**
+   * Get RMS level (for meters)
+   */
+  getRMS(): number {
+    return this.features?.rms || 0;
+  }
+  
+  /**
+   * Get spectral centroid (brightness)
+   */
+  getSpectralCentroid(): number {
+    return this.features?.spectralCentroid || 0;
+  }
+  
+  /**
+   * Get loudness
+   */
+  getLoudness(): { total: number; specific: number[] } {
+    return this.features?.loudness || { total: 0, specific: [] };
+  }
+  
+  /**
+   * Get MFCC (timbre analysis)
+   */
+  getMFCC(): number[] {
+    return this.features?.mfcc || [];
+  }
+  
+  /**
+   * Analyze audio buffer for full file analysis
+   */
+  static async analyzeAudioBuffer(audioBuffer: AudioBuffer): Promise<{
+    beats: number[];
+    bpm: number;
+    energy: number[];
+    loudness: number[];
+  }> {
+    const channelData = audioBuffer.getChannelData(0);
+    const sampleRate = audioBuffer.sampleRate;
+    const bufferSize = 1024;
+    
+    const beats: number[] = [];
+    const energy: number[] = [];
+    const loudness: number[] = [];
+    
+    // Analyze in chunks
+    for (let i = 0; i < channelData.length; i += bufferSize) {
+      const chunk = channelData.slice(i, i + bufferSize);
+      
+      // Calculate energy (simple RMS)
+      const rms = Math.sqrt(
+        chunk.reduce((sum, sample) => sum + sample * sample, 0) / chunk.length
+      );
+      
+      energy.push(rms);
+      loudness.push(rms); // Simplified
+      
+      // Beat detection (simple threshold)
+      const avgEnergy = energy.reduce((a, b) => a + b, 0) / energy.length;
+      if (rms > avgEnergy * 1.5) {
+        beats.push((i / sampleRate) * 1000); // Time in ms
+      }
+    }
+    
+    // Calculate BPM
+    const intervals: number[] = [];
+    for (let i = 1; i < beats.length; i++) {
+      intervals.push(beats[i] - beats[i - 1]);
+    }
+    const avgInterval = intervals.reduce((a, b) => a + b, 0) / intervals.length;
+    const bpm = Math.round(60000 / avgInterval);
+    
+    console.log(`✅ Audio analysis complete: ${beats.length} beats, ${bpm} BPM`);
+    
+    return {
+      beats,
+      bpm,
+      energy,
+      loudness
+    };
+  }
+  
+  /**
+   * Cleanup
+   */
+  dispose() {
+    this.stop();
+  }
+}
+
+export const audioAnalysisEngine = new AudioAnalysisEngine();
+
+

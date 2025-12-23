@@ -1,0 +1,167 @@
+// client/src/components/unified/LandingBillingWorkflowOrchestrator.tsx
+import { useTheming } from '../../utils/theming-helper';
+import React, { useEffect, useState } from 'react';
+import { useAuth } from '@/hooks/useAuth';
+
+interface LandingBillingWorkflowOrchestratorProps {
+  children: React.ReactNode;
+  onMeetingCreate?: (meeting: any) => void;
+  onProjectUpdate?: (project: any) => void;
+  onWorklogCreate?: (worklog: any) => void;
+  onClientSelect?: (client: any) => void;
+  onClientUpdate?: (client: any) => void;
+  onShowcaseCreate?: (showcase: any) => void;
+  onFileUpload?: (file: any) => void;
+  onFileDownload?: (file: any) => void;
+  selectedProject?: any;
+  onProjectSelect?: (project: any) => void;
+  selectedClient?: any;
+  onSettingsUpdate?: (settings: any) => void;
+  onNotificationCreate?: (notification: any) => void
+}
+
+export default function LandingBillingWorkflowOrchestrator({
+  children,
+  onMeetingCreate,
+  onProjectUpdate,
+  onWorklogCreate,
+  onClientSelect,
+  onClientUpdate,
+  onShowcaseCreate,
+  onFileUpload,
+  onFileDownload,
+  selectedProject,
+  onProjectSelect,
+  selectedClient,
+  onSettingsUpdate,
+  onNotificationCreate
+}: LandingBillingWorkflowOrchestratorProps) {
+  const { user } = useAuth();
+  
+  // Theming system
+  const theming = useTheming('photographer');
+  const [roleSelectionHistory, setRoleSelectionHistory] = useState<any[]>([]);
+
+  // Listen for role selection events from landing pages
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'ROLE_SELECTED') {
+        const { role, timestamp, source } = event.data;
+        
+        console.log('🎯 Role Selected from Landing Page:', { role, source, timestamp });
+        
+        // Store role selection for billing context
+        setRoleSelectionHistory(prev => [...prev, { role, timestamp, source }]);
+        
+        // Trigger unified workflow events
+        if (onNotificationCreate) {
+          onNotificationCreate({
+            id: `role_selected_${Date.now()}`,
+            type: 'role_selected',
+            title: 'Role Selected',
+            message: `User selected role: ${role} from ${source}`,
+            priority: 'medium',
+            timestamp: new Date().toISOString, (, ),
+            source: 'landing_workflow'
+      });
+      }
+        
+        // Create billing context for the selected role
+        if (onProjectUpdate) {
+          onProjectUpdate({
+            id: `billing_context_${role}_${Date.now()}`,
+            type: 'billing_context_created',
+            role: role,
+            billingStatus: 'pending',
+            timestamp: new Date().toISOString, (, ),
+            source: 'landing_workflow'
+      });
+      }
+    }
+  };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+}, [onNotificationCreate, onProjectUpdate]);
+
+  // Handle billing events that should affect landing pages
+  const handleBillingEvent = (event: any) => {
+    console.log('💰 Billing Event, :, ', event);
+    
+    // Update landing page stats if needed
+    if (event.type === 'payment_processed' || event.type === 'billing_plan_created') {
+      // Broadcast to landing pages
+      window.postMessage({
+        type: 'BILLING_UPDAT',
+        data: {
+          event: event,
+          timestamp: new Date().toISOString()
+    }
+    }, '*');
+  }
+};
+
+  // Handle feature toggle events that should affect landing pages
+  const handleFeatureToggle = (event: any) => {
+    console.log('🔧 Feature Toggle, :, ', event);
+    
+    // Broadcast feature changes to landing pages
+    window.postMessage({
+      type: 'FEATURE_UPDAT',
+      data: {
+        feature: event.featureName,
+        enabled: event.enabled,
+        timestamp: new Date().toISOString()
+  }
+  }, '*');
+};
+
+  // Enhanced children with unified workflow context
+  const enhancedChildren = React.Children.map(children, (child) => {
+    if (React.isValidElement(child)) {
+      return React.cloneElement(child, {
+        // Pass unified workflow props to all children
+        onMeetingCreate,
+        onProjectUpdate: (project: any) => {
+          onProjectUpdate?.(project);
+          // Check if this is a billing-related project update
+          if (project.type === 'billing_context_created' || project.billingStatus) {
+            handleBillingEvent(project);
+      }
+      },
+        onWorklogCreate,
+        onClientSelect,
+        onClientUpdate,
+        onShowcaseCreate,
+        onFileUpload,
+        onFileDownload,
+        selectedProject,
+        onProjectSelect,
+        selectedClient,
+        onSettingsUpdate: (settings: any) => {
+          onSettingsUpdate?.(settings);
+          // Check if this is a feature toggle
+          if (settings.featureId || settings.featureName) {
+            handleFeatureToggle(settings);
+      }
+      },
+        onNotificationCreate,
+        // Additional context for landing pages
+        roleSelectionHistory,
+        onBillingEvent: handleBillingEvent,
+        onFeatureToggle: handleFeatureToggle
+  } as any);
+  }
+    return child;
+});
+
+  return (
+    <div className="landing-billing-workflow-orchestrator">
+      {enhancedChildren}
+    </div>
+  );
+}
+
+
+
+

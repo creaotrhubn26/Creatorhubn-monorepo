@@ -1,0 +1,639 @@
+/**
+ * Photo Camera Database
+ * Professional photography cameras with detailed specifications
+ */
+
+export interface PhotoCamera {
+  id: string;
+  brand: string;
+  model: string;
+  category: 'dslr' | 'mirrorless' | 'medium-format' | 'point-and-shoot' | 'instant' | 'film' | 'action' | 'phone';
+  priceRange: 'budget' | 'mid-range' | 'professional' | 'cinema';
+  description: string;
+  features: string[];
+  isPhotoOptimized: boolean;
+  isVideoOptimized: boolean;
+  
+  // Photo-specific properties
+  megapixels: number;
+  sensorSize: string;
+  isoRange: string;
+  shutterSpeed: string;
+  burstMode: string;
+  autofocusPoints: number;
+  imageStabilization: boolean;
+  weatherSealing: boolean;
+  batteryLife: string;
+  
+  // Video capabilities (if any)
+  videoResolution?: string[];
+  videoFrameRates?: string[];
+  videoCodecs?: string[];
+  logFormats?: string[];
+  
+  // Common properties
+  mount: string;
+  weight: string;
+  dimensions: string;
+  releaseDate: string;
+  colorSpace?: string[];
+  
+  // Dynamic update properties
+  addedDate: string; // When this camera was added to the database
+  lastUpdated: string; // When this camera was last updated
+  isNew: boolean; // True if added within last 30 days
+  isRecentlyUpdated: boolean; // True if updated within last 7 days
+  source: 'manual' | 'api' | 'discovery'; // How this camera was added
+  version: number; // Version number for tracking updates
+}
+
+export const PHOTO_CAMERA_DATABASE: PhotoCamera[] = [
+  // SONY PHOTO CAMERAS
+  {
+    id: 'sony-a7r',
+    brand: 'Sony',
+    model: 'A7R',
+    category: 'mirrorless',
+    priceRange: 'professional',
+    description: 'High-resolution full-frame mirrorless with 61MP sensor',
+    features: ['61MP sensor', '8K video','Real-time AF','5-axis stabilization','Dual card slots'],
+    isPhotoOptimized: true,
+    isVideoOptimized: true,
+    megapixels:  61,
+    sensorSize: 'Full-frame (35.9 x 24.0mm, ), ',
+    isoRange: '100-32000 (expandable to 50-102400, ), ',
+    shutterSpeed: '1/8000 - 30 sec',
+    burstMode: '10 fps continuous',
+    autofocusPoints: 63,
+    imageStabilization: true,
+    weatherSealing: true,
+    batteryLife: '530 shots',
+    videoResolution: ['8','4K','1080p'],
+    videoFrameRates: ['24fps','25fps','30fps','60fps'],
+    videoCodecs: ['XAVC-','XAVC-HS','AVCHD'],
+    logFormats: ['S-Log','S-Log3'],
+    mount: 'Sony E-mount',
+    weight: '723',
+    dimensions: '131.3 x 96.9 x 69.7mm',
+    releaseDate: '2022-10-2',
+    colorSpace: ['sRG','Adobe RGB','Rec.709']
+},
+  {
+    id: 'sony-a7iv',
+    brand: 'Sony',
+    model: 'A7 I',
+    category: 'mirrorless',
+    priceRange: 'professional',
+    description: 'Versatile full-frame mirrorless with 33MP sensor',
+    features: ['33MP sensor','4K 60fps','Real-time AF','5-axis stabilization','Dual card slots'],
+    isPhotoOptimized: true,
+    isVideoOptimized: true,
+    megapixels:  33,
+    sensorSize: 'Full-frame (35.9 x 24.0mm, ), ',
+    isoRange: '100-51200 (expandable to 50-204800, ), ',
+    shutterSpeed: '1/8000 - 30 sec',
+    burstMode: '10 fps continuous',
+    autofocusPoints: 79,
+    imageStabilization: true,
+    weatherSealing: true,
+    batteryLife: '580 shots',
+    videoResolution: ['4','1080p'],
+    videoFrameRates: ['24fps','25fps','30fps','60fps'],
+    videoCodecs: ['XAVC-','XAVC-HS','AVCHD'],
+    logFormats: ['S-Log','S-Log3'],
+    mount: 'Sony E-mount',
+    weight: '658',
+    dimensions: '131.3 x 96.4 x 82.1mm',
+    releaseDate: '2021-10-2',
+    colorSpace: ['sRG','Adobe RGB','Rec.709']
+},
+  {
+    id: 'sony-a7',
+    brand: 'Sony',
+    model: 'A7',
+    category: 'mirrorless',
+    priceRange: 'mid-range',
+    description: 'Compact full-frame mirrorless with 24MP sensor',
+    features: ['24MP sensor','4K video','Real-time AF','5-axis stabilization','Compact design'],
+    isPhotoOptimized: true,
+    isVideoOptimized: true,
+    megapixels:  24,
+    sensorSize: 'Full-frame (35.9 x 24.0mm, ), ',
+    isoRange: '100-51200 (expandable to 50-204800, ), ',
+    shutterSpeed: '1/4000 - 30 sec',
+    burstMode: '10 fps continuous',
+    autofocusPoints: 63,
+    imageStabilization: true,
+    weatherSealing: true,
+    batteryLife: '740 shots',
+    videoResolution: ['4','1080p'],
+    videoFrameRates: ['24fps','25fps','30fps','60fps'],
+    videoCodecs: ['XAVC-','XAVC-HS','AVCHD'],
+    logFormats: ['S-Log','S-Log3'],
+    mount: 'Sony E-mount',
+    weight: '509',
+    dimensions: '124.0 x 71.1 x 59.7mm',
+    releaseDate: '2020-09-1',
+    colorSpace: ['sRG','Adobe RGB','Rec.709']
+},
+  {
+    id: 'sony-a660',
+    brand: 'Sony',
+    model: 'A660',
+    category: 'mirrorless',
+    priceRange: 'mid-range',
+    description: 'APS-C mirrorless with 24MP sensor and excellent autofocus',
+    features: ['24MP sensor','4K video','Real-time AF','5-axis stabilization','Long battery life'],
+    isPhotoOptimized: true,
+    isVideoOptimized: true,
+    megapixels:  24,
+    sensorSize: 'APS-C (23.5 x 15.6mm, ), ',
+    isoRange: '100-32000 (expandable to 50-102400, ), ',
+    shutterSpeed: '1/4000 - 30 sec',
+    burstMode: '11 fps continuous',
+    autofocusPoints: 45,
+    imageStabilization: true,
+    weatherSealing: true,
+    batteryLife: '810 shots',
+    videoResolution: ['4','1080p'],
+    videoFrameRates: ['24fps','25fps','30fps','60fps'],
+    videoCodecs: ['XAVC-','XAVC-HS','AVCHD'],
+    logFormats: ['S-Log','S-Log3'],
+    mount: 'Sony E-mount',
+    weight: '503',
+    dimensions: '120.0 x 66.9 x 69.3mm',
+    releaseDate: '2019-08-2',
+    colorSpace: ['sRG','Adobe RGB','Rec.709']
+},
+
+  // CANON PHOTO CAMERAS
+  {
+    id: 'canon-r',
+    brand: 'Canon',
+    model: 'EOS R',
+    category: 'mirrorless',
+    priceRange: 'professional',
+    description: 'High-resolution full-frame mirrorless with 45MP sensor',
+    features: ['45MP sensor','8K video','Dual Pixel AF','5-axis stabilization','Dual card slots'],
+    isPhotoOptimized: true,
+    isVideoOptimized: true,
+    megapixels:  45,
+    sensorSize: 'Full-frame (36 x 24mm, ), ',
+    isoRange: '100-51200 (expandable to 50-102400, ), ',
+    shutterSpeed: '1/8000 - 30 sec',
+    burstMode: '12 fps continuous',
+    autofocusPoints: 590,
+    imageStabilization: true,
+    weatherSealing: true,
+    batteryLife: '490 shots',
+    videoResolution: ['8','4K','1080p'],
+    videoFrameRates: ['24fps','25fps','30fps','60fps','120fps'],
+    videoCodecs: ['H.26','H.264','RAW'],
+    logFormats: ['C-Log','C-Log2','C-Log3'],
+    mount: 'Canon RF-mount',
+    weight: '738',
+    dimensions: '138.5 x 97.5 x 88.0mm',
+    releaseDate: '2020-07-0',
+    colorSpace: ['sRG','Adobe RGB','Rec.709']
+},
+  {
+    id: 'canon-r',
+    brand: 'Canon',
+    model: 'EOS R',
+    category: 'mirrorless',
+    priceRange: 'professional',
+    description: 'Full-frame mirrorless with 20MP sensor and excellent low-light performance',
+    features: ['20MP sensor','4K video','Dual Pixel AF','5-axis stabilization','Dual card slots'],
+    isPhotoOptimized: true,
+    isVideoOptimized: true,
+    megapixels:  20,
+    sensorSize: 'Full-frame (36 x 24mm, ), ',
+    isoRange: '100-102400 (expandable to 50-204800, ), ',
+    shutterSpeed: '1/8000 - 30 sec',
+    burstMode: '12 fps continuous',
+    autofocusPoints: 602,
+    imageStabilization: true,
+    weatherSealing: true,
+    batteryLife: '510 shots',
+    videoResolution: ['4','1080p'],
+    videoFrameRates: ['24fps','25fps','30fps','60fps','120fps'],
+    videoCodecs: ['H.26','H.264'],
+    logFormats: ['C-Log','C-Log2','C-Log3'],
+    mount: 'Canon RF-mount',
+    weight: '680',
+    dimensions: '138.4 x 97.5 x 88.4mm',
+    releaseDate: '2020-07-0',
+    colorSpace: ['sRG','Adobe RGB','Rec.709']
+},
+  {
+    id: 'canon-5d-mkiv',
+    brand: 'Canon',
+    model: 'EOS 5D Mark I',
+    category: 'dslr',
+    priceRange: 'professional',
+    description: 'Professional DSLR with 30MP sensor and dual pixel A',
+    features: ['30MP sensor','4K video','Dual Pixel AF','Dual card slots','Built-in GPS'],
+    isPhotoOptimized: true,
+    isVideoOptimized: true,
+    megapixels:  30,
+    sensorSize: 'Full-frame (36 x 24mm, ), ',
+    isoRange: '100-32000 (expandable to 50-102400, ), ',
+    shutterSpeed: '1/8000 - 30 sec',
+    burstMode: '7 fps continuous',
+    autofocusPoints:  61,
+    imageStabilization: false,
+    weatherSealing: true,
+    batteryLife: '900 shots',
+    videoResolution: ['4','1080p'],
+    videoFrameRates: ['24fps','25fps','30fps','60fps'],
+    videoCodecs: ['H.26','Motion JPEG'],
+    logFormats: [''],
+    mount: 'Canon EF-mount',
+    weight: '890',
+    dimensions: '150.7 x 116.4 x 75.9mm',
+    releaseDate: '2016-08-2',
+    colorSpace: ['sRG','Adobe RGB','Rec.709']
+},
+  {
+    id: 'canon-90',
+    brand: 'Canon',
+    model: 'EOS 90',
+    category: 'dslr',
+    priceRange: 'mid-range',
+    description: 'APS-C DSLR with 32MP sensor and 4K video',
+    features: ['32MP sensor','4K video','Dual Pixel AF','Dual card slots','Built-in Wi-Fi'],
+    isPhotoOptimized: true,
+    isVideoOptimized: true,
+    megapixels:  32,
+    sensorSize: 'APS-C (22.3 x 14.9mm, ), ',
+    isoRange: '100-25600 (expandable to 50-51200, ), ',
+    shutterSpeed: '1/8000 - 30 sec',
+    burstMode: '10 fps continuous',
+    autofocusPoints:  45,
+    imageStabilization: false,
+    weatherSealing: true,
+    batteryLife: '1300 shots',
+    videoResolution: ['4','1080p'],
+    videoFrameRates: ['24fps','25fps','30fps','60fps'],
+    videoCodecs: ['H.26','Motion JPEG'],
+    logFormats: [''],
+    mount: 'Canon EF-mount',
+    weight: '701',
+    dimensions: '140.7 x 104.8 x 76.8mm',
+    releaseDate: '2019-08-2',
+    colorSpace: ['sRG','Adobe RGB','Rec.709']
+},
+
+  // NIKON PHOTO CAMERAS
+  {
+    id: 'nikon-z',
+    brand: 'Nikon',
+    model: 'Z',
+    category: 'mirrorless',
+    priceRange: 'professional',
+    description: 'Flagship mirrorless with 45MP sensor and 8K video',
+    features: ['45MP sensor','8K video','Real-time AF','5-axis stabilization','Dual card slots'],
+    isPhotoOptimized: true,
+    isVideoOptimized: true,
+    megapixels:  45,
+    sensorSize: 'Full-frame (35.9 x 23.9mm, ), ',
+    isoRange: '64-25600 (expandable to 32-102400, ), ',
+    shutterSpeed: '1/32000 - 30 sec',
+    burstMode: '20 fps continuous',
+    autofocusPoints: 43,
+    imageStabilization: true,
+    weatherSealing: true,
+    batteryLife: '740 shots',
+    videoResolution: ['8','4K','1080p'],
+    videoFrameRates: ['24fps','25fps','30fps','60fps','120fps'],
+    videoCodecs: ['H.26','H.264','ProRes'],
+    logFormats: [''],
+    mount: 'Nikon Z-mount',
+    weight: '1340',
+    dimensions: '149 x 149.5 x 90.5mm',
+    releaseDate: '2021-10-2',
+    colorSpace: ['sRG','Adobe RGB','Rec.709']
+},
+  {
+    id: 'nikon-d85',
+    brand: 'Nikon',
+    model: 'D85',
+    category: 'dslr',
+    priceRange: 'professional',
+    description: 'Professional DSLR with 45MP sensor and 4K video',
+    features: ['45MP sensor','4K video','153-point AF','Dual card slots','Built-in Wi-Fi'],
+    isPhotoOptimized: true,
+    isVideoOptimized: true,
+    megapixels:  45,
+    sensorSize: 'Full-frame (35.9 x 23.9mm, ), ',
+    isoRange: '64-25600 (expandable to 32-102400, ), ',
+    shutterSpeed: '1/8000 - 30 sec',
+    burstMode: '7 fps continuous',
+    autofocusPoints: 13,
+    imageStabilization: false,
+    weatherSealing: true,
+    batteryLife: '1840 shots',
+    videoResolution: ['4','1080p'],
+    videoFrameRates: ['24fps','25fps','30fps','60fps'],
+    videoCodecs: ['H.26','Motion JPEG'],
+    logFormats: [''],
+    mount: 'Nikon F-mount',
+    weight: '1005',
+    dimensions: '146 x 124 x 78.5mm',
+    releaseDate: '2017-08-2',
+    colorSpace: ['sRG','Adobe RGB','Rec.709']
+},
+  {
+    id: 'nikon-z6-ii',
+    brand: 'Nikon',
+    model: 'Z6 I',
+    category: 'mirrorless',
+    priceRange: 'professional',
+    description: 'Full-frame mirrorless with 24MP sensor and dual processors',
+    features: ['24MP sensor','4K video','Real-time AF','5-axis stabilization','Dual card slots'],
+    isPhotoOptimized: true,
+    isVideoOptimized: true,
+    megapixels:  24,
+    sensorSize: 'Full-frame (35.9 x 23.9mm, ), ',
+    isoRange: '100-51200 (expandable to 50-204800, ), ',
+    shutterSpeed: '1/8000 - 30 sec',
+    burstMode: '14 fps continuous',
+    autofocusPoints: 23,
+    imageStabilization: true,
+    weatherSealing: true,
+    batteryLife: '410 shots',
+    videoResolution: ['4','1080p'],
+    videoFrameRates: ['24fps','25fps','30fps','60fps'],
+    videoCodecs: ['H.26','H.264'],
+    logFormats: [''],
+    mount: 'Nikon Z-mount',
+    weight: '705',
+    dimensions: '134 x 100.5 x 69.5mm',
+    releaseDate: '2020-10-1',
+    colorSpace: ['sRG','Adobe RGB','Rec.709']
+},
+
+  // FUJIFILM PHOTO CAMERAS
+  {
+    id: 'fujifilm-gfx100',
+    brand: 'Fujifilm',
+    model: 'GFX 100',
+    category: 'medium-format',
+    priceRange: 'professional',
+    description: 'Medium format mirrorless with 102MP sensor',
+    features: ['102MP sensor','4K video','Real-time AF','5-axis stabilization','Dual card slots'],
+    isPhotoOptimized: true,
+    isVideoOptimized: true,
+    megapixels: 12,
+    sensorSize: 'Medium format (43.8 x 32.9mm, ), ',
+    isoRange: '100-12800 (expandable to 50-102400, ), ',
+    shutterSpeed: '1/4000 - 30 sec',
+    burstMode: '5 fps continuous',
+    autofocusPoints: 45,
+    imageStabilization: true,
+    weatherSealing: true,
+    batteryLife: '460 shots',
+    videoResolution: ['4','1080p'],
+    videoFrameRates: ['24fps','25fps','30fps'],
+    videoCodecs: ['H.26','H.264'],
+    logFormats: [''],
+    mount: 'Fujifilm G-mount',
+    weight: '900',
+    dimensions: '150 x 104.2 x 87.2mm',
+    releaseDate: '2021-01-2',
+    colorSpace: ['sRG','Adobe RGB','Rec.709']
+},
+  {
+    id: 'fujifilm-xt',
+    brand: 'Fujifilm',
+    model: 'X-T',
+    category: 'mirrorless',
+    priceRange: 'professional',
+    description: 'APS-C mirrorless with 40MP sensor and 6K video',
+    features: ['40MP sensor','6K video','Real-time AF','5-axis stabilization','Dual card slots'],
+    isPhotoOptimized: true,
+    isVideoOptimized: true,
+    megapixels:  40,
+    sensorSize: 'APS-C (23.5 x 15.6mm, ), ',
+    isoRange: '125-12800 (expandable to 64-51200, ), ',
+    shutterSpeed: '1/8000 - 30 sec',
+    burstMode: '15 fps continuous',
+    autofocusPoints: 45,
+    imageStabilization: true,
+    weatherSealing: true,
+    batteryLife: '580 shots',
+    videoResolution: ['6','4K','1080p'],
+    videoFrameRates: ['24fps','25fps','30fps','60fps'],
+    videoCodecs: ['H.26','H.264','ProRes'],
+    logFormats: ['F-Log','F-Log2'],
+    mount: 'Fujifilm X-mount',
+    weight: '557',
+    dimensions: '129.5 x 91 x 63.8mm',
+    releaseDate: '2022-11-0',
+    colorSpace: ['sRG','Adobe RGB','Rec.709']
+},
+  {
+    id: 'fujifilm-x100',
+    brand: 'Fujifilm',
+    model: 'X100',
+    category: 'point-and-shoot',
+    priceRange: 'mid-range',
+    description: 'Premium fixed-lens camera with 26MP sensor',
+    features: ['26MP sensor','4K video','Hybrid viewfinder','Fixed 23mm lens','Classic design'],
+    isPhotoOptimized: true,
+    isVideoOptimized: true,
+    megapixels:  26,
+    sensorSize: 'APS-C (23.5 x 15.6mm, ), ',
+    isoRange: '160-12800 (expandable to 80-51200, ), ',
+    shutterSpeed: '1/4000 - 30 sec',
+    burstMode: '11 fps continuous',
+    autofocusPoints: 45,
+    imageStabilization: false,
+    weatherSealing: true,
+    batteryLife: '420 shots',
+    videoResolution: ['4','1080p'],
+    videoFrameRates: ['24fps','25fps','30fps','60fps'],
+    videoCodecs: ['H.26','H.264'],
+    logFormats: [', '],
+    mount: 'Fixed 23mm f/',
+    weight: '478',
+    dimensions: '128 x 74.9 x 53.3mm',
+    releaseDate: '2020-02-0',
+    colorSpace: ['sRG','Adobe RGB','Rec.709']
+},
+
+  // LEICA PHOTO CAMERAS
+  {
+    id: 'leica-m1',
+    brand: 'Leica',
+    model: 'M1',
+    category: 'mirrorless',
+    priceRange: 'cinema',
+    description: 'Premium rangefinder camera with 60MP sensor',
+    features: ['60MP sensor','Rangefinder focusing','Manual focus only','Classic design','Dual card slots'],
+    isPhotoOptimized: true,
+    isVideoOptimized: false,
+    megapixels:  60,
+    sensorSize: 'Full-frame (36 x 24mm, ), ',
+    isoRange: '64-5000',
+    shutterSpeed: '1/4000 - 60 sec',
+    burstMode: '4.5 fps continuous',
+    autofocusPoints: 0, // Manual focus only
+    imageStabilization: false,
+    weatherSealing: true,
+    batteryLife: '700 shots',
+    mount: 'Leica M-mount',
+    weight: '640',
+    dimensions: '138.6 x 80.3 x 38.5mm',
+    releaseDate: '2022-01-1',
+    colorSpace: ['sRG','Adobe RGB']
+},
+  {
+    id: 'leica-q',
+    brand: 'Leica',
+    model: 'Q',
+    category: 'point-and-shoot',
+    priceRange: 'professional',
+    description: 'Premium fixed-lens camera with 47MP sensor',
+    features: ['47MP sensor','Fixed 28mm lens','4K video','Weather sealing','Classic design'],
+    isPhotoOptimized: true,
+    isVideoOptimized: true,
+    megapixels:  47,
+    sensorSize: 'Full-frame (36 x 24mm, ), ',
+    isoRange: '50-5000',
+    shutterSpeed: '1/2000 - 60 sec',
+    burstMode: '10 fps continuous',
+    autofocusPoints:  49,
+    imageStabilization: true,
+    weatherSealing: true,
+    batteryLife: '370 shots',
+    videoResolution: ['4','1080p'],
+    videoFrameRates: ['24fps','25fps','30fps','60fps'],
+    videoCodecs: ['H.264', ],
+    logFormats: ['Leica Log', ],
+    mount: 'Fixed 28mm f/1.',
+    weight: '718',
+    dimensions: '130 x 80 x 91.9mm',
+    releaseDate: '2019-03-0',
+    colorSpace: ['sRG','Adobe RGB','Rec.709']
+},
+
+  // INSTANT CAMERAS
+  {
+    id: 'fujifilm-instax-mini-1',
+    brand: 'Fujifilm',
+    model: 'Instax Mini 1',
+    category: 'instant',
+    priceRange: 'budget',
+    description: 'Simple instant camera with automatic exposure',
+    features: ['Automatic exposure','Selfie mode','Built-in flash','Compact design','Instant prints'],
+    isPhotoOptimized: true,
+    isVideoOptimized: false,
+    megapixels: 0, // Film-based
+    sensorSize: 'Instax Mini film',
+    isoRange: '80',
+    shutterSpeed: '1/2 - 1/250 sec',
+    burstMode: 'Single shot',
+    autofocusPoints: 0, // Fixed focus
+    imageStabilization: false,
+    weatherSealing: false,
+    batteryLife: '100 shots',
+    mount: 'Fixed 60mm f/12.',
+    weight: '293',
+    dimensions: '107.6 x 121.0 x 67.3mm',
+    releaseDate: '2020-02-2',
+    colorSpace: ['sRGB']
+,},
+  {
+    id: 'polaroid-now',
+    brand: 'Polaroid',
+    model: 'Now',
+    category: 'instant',
+    priceRange: 'budget',
+    description: 'Modern instant camera with dual lens system',
+    features: ['Dual lens system','Selfie mode','Built-in flash','Auto focus','Instant prints'],
+    isPhotoOptimized: true,
+    isVideoOptimized: false,
+    megapixels: 0, // Film-based
+    sensorSize: 'Polaroid i-Type film',
+    isoRange: '80',
+    shutterSpeed: '1/3 - 1/200 sec',
+    burstMode: 'Single shot',
+    autofocusPoints: 0, // Auto focus
+    imageStabilization: false,
+    weatherSealing: false,
+    batteryLife: '15 shots',
+    mount: 'Fixed 35mm f/1',
+    weight: '460',
+    dimensions: '107 x 88.5 x 61.5mm',
+    releaseDate: '2019-09-0',
+    colorSpace: ['sRGB']
+,}
+];
+
+// Helper functions
+export const getPhotoCamerasByProfession = (profession: string): PhotoCamera[] => {
+  switch (profession.toLowerCase()) {
+    case 'photographer':
+    case 'portrait_photographer':
+    case 'wedding_photographer':
+      return PHOTO_CAMERA_DATABASE.filter(camera => 
+        camera.category === 'mirrorless' || 
+        camera.category === 'dslr' ||
+        camera.priceRange === 'professional' ||
+        camera.priceRange === 'cinema'
+      );
+    case 'commercial_photographer':
+    case 'fashion_photographer':
+      return PHOTO_CAMERA_DATABASE.filter(camera => 
+        camera.category === 'medium-format' ||
+        camera.category === 'mirrorless' ||
+        camera.priceRange === 'professional' ||
+        camera.priceRange === 'cinema'
+      );
+    case 'street_photographer':
+    case 'travel_photographer':
+      return PHOTO_CAMERA_DATABASE.filter(camera => 
+        camera.category === 'mirrorless' ||
+        camera.category === 'point-and-shoot' ||
+        camera.priceRange === 'mid-range' ||
+        camera.priceRange === 'professional'
+      );
+    case 'instant_photographer':
+      return PHOTO_CAMERA_DATABASE.filter(camera => 
+        camera.category ==='instant'
+      );
+    default:
+      return PHOTO_CAMERA_DATABASE;
+  }
+};
+
+export const getPhotoCameraByModel = (model: string): PhotoCamera | undefined => {
+  return PHOTO_CAMERA_DATABASE.find(camera => 
+    camera.model.toLowerCase().includes(model.toLowerCase()) ||
+    model.toLowerCase().includes(camera.model.toLowerCase())
+  );
+};
+
+export const getPhotoCameraBrand = (cameraModel: string): string | undefined => {
+  const camera = getPhotoCameraByModel(cameraModel);
+  return camera ? camera.brand : undefined;
+};
+
+export const getPhotoCamerasByBrand = (brand: string): PhotoCamera[] => {
+  return PHOTO_CAMERA_DATABASE.filter(camera => 
+    camera.brand.toLowerCase() === brand.toLowerCase()
+  );
+};
+
+export const getPhotoCamerasByPriceRange = (priceRange: string): PhotoCamera[] => {
+  return PHOTO_CAMERA_DATABASE.filter(camera => 
+    camera.priceRange === priceRange
+  );
+};
+
+export const getPhotoCamerasByCategory = (category: string): PhotoCamera[] => {
+  return PHOTO_CAMERA_DATABASE.filter(camera => 
+    camera.category === category
+  );
+};

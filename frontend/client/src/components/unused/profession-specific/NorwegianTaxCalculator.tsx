@@ -1,0 +1,945 @@
+// @ts-nocheck
+// This file is in the unused directory and may have outdated imports
+import { useTheming } from '../../../utils/theming-helper';
+import React, { useState, useEffect } from 'react';
+import { getAuthHeader } from '@/lib/google/impersonation';
+import { useQuery } from '@tanstack/react-query';
+import { getAuthHeader } from '@/lib/google/impersonation';
+import { useAuth } from '@/hooks/useAuth';
+import { getAuthHeader } from '@/lib/google/impersonation';
+import {
+  Box,
+  Card,
+  CardContent,
+  Typography,
+  Grid,
+  Paper,
+  Tabs,
+  Tab,
+  Stack,
+  LinearProgress,
+  Chip,
+  Button,
+  IconButton,
+  TextField,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Alert,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemIcon,
+  Divider,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
+  Badge,
+  Tooltip,
+  CircularProgress,
+  Switch,
+  FormControlLabel,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  InputAdornment
+} from '@mui/material';
+import {
+  Calculate,
+  Receipt,
+  Assessment,
+  TrendingUp,
+  Euro,
+  AccountBalance,
+  Description,
+  Download,
+  Upload,
+  History,
+  Settings,
+  ExpandMore,
+  Add,
+  Edit,
+  Delete,
+  CheckCircle,
+  Warning,
+  Info,
+  PieChart,
+  BarChart,
+  Timeline,
+  Print,
+  Email,
+  CloudSync,
+  Refresh,
+  Security,
+  Business,
+  CreditCard,
+  MonetizationOn,
+  Savings
+} from '@mui/icons-material';
+import { apiRequest } from '@/lib/queryClient';
+import { getAuthHeader } from '@/lib/google/impersonation';
+import {
+  LineChart,
+  Line,
+  AreaChart,
+  Area,
+  BarChart as RechartsBarChart,
+  Bar,
+  PieChart as RechartsPieChart,
+  Cell,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip as RechartsTooltip,
+  Legend,
+  ResponsiveContainer
+} from 'recharts';
+
+interface NorwegianTaxCalculatorProps {
+  profession?: 'photographer' | 'videographer' | 'musicproducer' | 'vendor';
+  mode?: 'standalone' | 'integrated';
+  onTaxCalculated?: (taxData: any) => void
+}
+
+interface TaxCalculation {
+  id: string;
+  periode: string;
+  omsetning: number;
+  fradrag: number;
+  grunnlagMVA: number;
+  mva25: number;
+  mva15: number;
+  mva12: number;
+  mvaIalt: number;
+  skattegrunnlag: number;
+  skatt: number;
+  totalSkattOgMVA: number;
+  nettoResultat: number;
+  createdAt: Date
+}
+
+interface InvoiceData {
+  id: string;
+  kundeNavn: string;
+  belop: number;
+  mvaSats: number;
+  mvaKode: string;
+  beskrivelse: string;
+  dato: Date;
+  forfallsdato: Date;
+  status: 'draft' | 'sent' | 'paid' | 'overdue'
+}
+
+interface ExpenseCategory {
+  kategori: string;
+  beskrivelse: string;
+  maksGradFradrag: number;
+  MVAFradragsrett: boolean
+}
+
+const EXPENSE_CATEGORIES: { [key: string]: ExpenseCategory[, ],} = {
+  photographer: [
+    { kategori: 'Kamerautstyr', beskrivelse: 'Kameraer, objektiver, blitz', maksGradFradrag: 10, MVAFradragsrett: true },
+    { kategori: 'Datautstyr', beskrivelse: 'C, skjermer, lagring', maksGradFradrag: 10, MVAFradragsrett: true },
+    { kategori: 'Programvare', beskrivelse: 'Lightroom, Photoshop, Capture One', maksGradFradrag: 10, MVAFradragsrett: true },
+    { kategori: 'Reise', beskrivelse: 'Transport til oppdrag', maksGradFradrag: 10, MVAFradragsrett: false },
+    { kategori: 'Markedsføring', beskrivelse: 'Annonser, nettsider', maksGradFradrag: 10, MVAFradragsrett: true },
+    { kategori: 'Kontor', beskrivelse: 'Leie, strøm, telefon', maksGradFradrag:  50, MVAFradragsrett: true },
+  ],
+  videographer: [
+    { kategori: 'Videoutstyr', beskrivelse: 'Kameraer, objektiver, lyd', maksGradFradrag: 10, MVAFradragsrett: true },
+    { kategori: 'Redigeringsutstyr', beskrivelse: 'C, programvare, lagring', maksGradFradrag: 10, MVAFradragsrett: true },
+    { kategori: 'Produksjonsutstyr', beskrivelse: 'L, ysstativer, tilbehør', maksGradFradrag: 10, MVAFradragsrett: true },
+    { kategori: 'Musikklisenser', beskrivelse: 'TOO, GRAMO, bibliotek', maksGradFradrag: 10, MVAFradragsrett: true },
+    { kategori: 'Reise', beskrivelse: 'Transport til oppdrag', maksGradFradrag: 10, MVAFradragsrett: false },
+    { kategori: 'Markedsføring', beskrivelse: 'Annonser, nettsider', maksGradFradrag: 10, MVAFradragsrett: true },
+  ],
+  musicproducer: [
+    { kategori: 'Studioutstyr', beskrivelse: 'Mikrofoner, lydkort, monitorer', maksGradFradrag: 10, MVAFradragsrett: true },
+    { kategori: 'Instrumenter', beskrivelse: 'Keyboard, gitar, synthesizere', maksGradFradrag: 10, MVAFradragsrett: true },
+    { kategori: 'Programvare', beskrivelse: 'DW, plugins, bibliotek', maksGradFradrag: 10, MVAFradragsrett: true },
+    { kategori: 'Studiorom', beskrivelse: 'Leie, akustikk, strøm', maksGradFradrag: 10, MVAFradragsrett: true },
+    { kategori: 'TONO/GRAM', beskrivelse: 'Medlemskap og avgifter', maksGradFradrag: 10, MVAFradragsrett: true },
+    { kategori: 'Markedsføring', beskrivelse: 'Promotion, streaming', maksGradFradrag: 10, MVAFradragsrett: true },
+  ],
+  vendor: [
+    { kategori: 'Varelager', beskrivelse: 'Innkjøp av produkter', maksGradFradrag: 10, MVAFradragsrett: true },
+    { kategori: 'Lagring', beskrivelse: 'Lager, hyller, sikkerhet', maksGradFradrag: 10, MVAFradragsrett: true },
+    { kategori: 'Transport', beskrivelse: 'Frakt, levering, bil', maksGradFradrag: 10, MVAFradragsrett: true },
+    { kategori: 'Markedsføring', beskrivelse: 'Annonser, messer, brosjyrer', maksGradFradrag: 10, MVAFradragsrett: true },
+    { kategori: 'Kontor', beskrivelse: 'Leie, strøm, telefon', maksGradFradrag: 10, MVAFradragsrett: true },
+    { kategori: 'Forsikring', beskrivelse: 'Produkt- og yrkesansvar', maksGradFradrag: 10, MVAFradragsrett: true },
+  ]
+};
+
+const MVA_SATSER = {
+  '25': { sats:  25, beskrivelse: 'Generell sats (foto, video, musikk)' } '15': { sats:  15, beskrivelse: 'Matvarer og enkelte tjenester',},'12': { sats:  12, beskrivelse: 'Transport av personer og enkelte varer',},'0': { sats: 0, beskrivelse: 'Fritatt (eksport, bøker, aviser)' }
+};
+
+export default function NorwegianTaxCalculator({ 
+  profession = 'photographer,',
+  mode = 'standalone',
+  onTaxCalculated
+}: NorwegianTaxCalculatorProps) {
+  const [activeTab, setActiveTab] = useState(0);
+  const [currentPeriod, setCurrentPeriod] = useState('2024-Q1,');
+  const [calculations, setCalculations] = useState<TaxCalculation[]>([]);
+  const [invoices, setInvoices] = useState<InvoiceData[]>([]);
+  const [expenses, setExpenses] = useState<any[]>([]);
+  const [newExpense, setNewExpense] = useState({
+    beskrivelse: ', ',
+    belop:  0,
+    kategori: ', ',
+    mvaSats:  25,
+    dato: new Date().toISOString().split('T')[0]
+});
+  const [isCalculating, setIsCalculating] = useState(false);
+  const [reportDialogOpen, setReportDialogOpen] = useState(false);
+  const [currentCalculation, setCurrentCalculation] = useState<TaxCalculation | null>(null);
+  const queryClient = useQueryClient();
+  
+  // Theming system
+  const theming = useTheming('photographer');
+
+  const professionColors = {
+    photographer: '#ff8c00',
+    videographer: '#e74c30', 
+    musicproducer: '#9b59b0',
+    vendor: '#27ae60'
+};
+
+  const color = professionColors[profession];
+
+  // Tax calculation queries
+  const { data: taxHistory, isLoading: isLoadingHistory } = useQuery({
+    queryKey: ['/api/tax/history', profession],
+    staleTime: 1000 * 60 *, 5,
+    queryFn: () => apiRequest(['/api/tax/history', profession],
+    staleTime: 1000 * 60 *,  5{
+      headers: {
+  }
+  }),
+});
+
+  const { data: currentYearSummary } = useQuery({
+    queryKey: ['/api/tax/summary', new Date().getFullYear(), profession],
+    staleTime: 1000 * 60 *, 2,
+    queryFn: () => apiRequest(['/api/tax/summary', new Date().getFullYear(), profession],
+    staleTime: 1000 * 60 *,  2{
+      headers: {
+  }
+  }),
+});
+
+  const calculateMVA = (belop: number, sats: number): number => {
+    return Math.round((belop * sats / (100 + sats)) * 100) / 100;
+};
+
+  const calculateNetAmount = (belop: number, sats: number): number => {
+    return Math.round((belop - calculateMVA(belop, sats)) * 100) / 100;
+};
+
+  const performTaxCalculation = async () => {
+    setIsCalculating(true);
+    try {
+      // Calculate total revenue for period
+      const totalRevenue = invoices.reduce((sum, invoice) => {
+        if (invoice.status === 'paid') {
+          return sum + invoice.belop;
+      }
+        return sum;
+    }, 0);
+
+      // Calculate total expenses
+      const totalExpenses = expenses.reduce((sum, expense) => sum + expense.belop, 0);
+
+      // Calculate MVA breakdown
+      const mva25 = invoices.reduce((sum, invoice) => {
+        if (invoice.mvaSats === 25 && invoice.status === 'paid') {
+          return sum + calculateMVA(invoice.belop, 25);
+      }
+        return sum;
+    }, 0);
+
+      const mva15 = invoices.reduce((sum, invoice) => {
+        if (invoice.mvaSats === 15 && invoice.status === 'paid') {
+          return sum + calculateMVA(invoice.belop, 15);
+      }
+        return sum;
+    }, 0);
+
+      const mva12 = invoices.reduce((sum, invoice) => {
+        if (invoice.mvaSats === 12 && invoice.status === 'paid') {
+          return sum + calculateMVA(invoice.belop, 12);
+      }
+        return sum;
+    }, 0);
+
+      // Calculate expense MVA deductions
+      const expenseMVA = expenses.reduce((sum, expense) => {
+        const category = EXPENSE_CATEGORIES[profession].find(cat => cat.kategori === expense.kategori);
+        if (category?.MVAFradragsrett) {
+          return sum + calculateMVA(expense.belop, expense.mvaSats);
+      }
+        return sum;
+    }, 0);
+
+      const netRevenue = totalRevenue - (mva25 + mva15 + mva12);
+      const deductibleExpenses = expenses.reduce((sum, expense) => {
+        const category = EXPENSE_CATEGORIES[profession].find(cat => cat.kategori === expense.kategori);
+        if (category) {
+          return sum + (expense.belop * category.maksGradFradrag / 100);
+      }
+        return sum;
+    }, 0);
+
+      const taxableIncome = netRevenue - deductibleExpenses;
+      const incomeTax = Math.max(0, taxableIncome * 0.22); // 22% personal income tax
+
+      const calculation: TaxCalculation = {
+        id: `calc-${Date.now()}`,
+        periode: currentPeriod,
+        omsetning: totalRevenue,
+        fradrag: deductibleExpenses,
+        grunnlagMVA: netRevenue,
+        mva25,
+        mva15,
+        mva12,
+        mvaIalt: (mva25 + mva15 + mva12) - expenseMA,
+        skattegrunnlag: taxableIncome,
+        skatt: incomeTx,
+        totalSkattOgMVA: incomeTax + ((mva25 + mva15 + mva12) - expenseMV),
+        nettoResultat: taxableIncome - incomeTx,
+        createdAt: new Date()
+  };
+
+      setCurrentCalculation(calculation);
+      setCalculations(prev => [calculation, ...prev]);
+
+      if (onTaxCalculated) {
+        onTaxCalculated(calculation);
+    }
+
+  } catch (error) {
+      console.error('Error calculating tax: ', error);
+  } finally {
+      setIsCalculating(false);
+  }
+};
+
+  const addExpense = () => {
+    if (newExpense.beskrivelse && newExpense.belop > 0) {
+      const expense = {
+        ...newExpense,
+        id: `expense-${Date.now()}`,
+        createdAt: new Date()
+  };
+      setExpenses(prev => [expense, ...prev]);
+      setNewExpense({
+        beskrivelse: ', ',
+        belop:  0,
+        kategori: ', ',
+        mvaSats:  25,
+        dato: new Date().toISOString().split('T')[0]
+  });
+  }
+};
+
+  const generateInvoice = () => {
+    // This would integrate with invoice generation system
+    console.log('Generating invoice with tax calculation: ', currentCalculation);
+};
+
+  const exportReport = (format: 'pdf' | 'excel') => {
+    // This would export the tax report in the specified format
+    console.log(`Exporting tax report as ${format}:`, currentCalculation);
+};
+
+  const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
+    setActiveTab(newValue);
+};
+
+  const renderMVACalculator = () => (
+    <Paper sx={{ p:  3 ,  ...theming.getThemedCardSx() }}>
+      <Typography variant="h6" sx={{  mb:  3, display: 'flex', alignItems: 'center', gap:  1  }}>
+        <Calculate sx={{ color }} />
+        MVA-kalkulator
+      </Typography>
+
+      <Grid container spacing={3}>
+        <Grid size={{ xs: 12 }} md={6}>
+          <FormControl fullWidth sx={{ mb:  2 }}>
+            <InputLabel>Periode</InputLabel>
+            <Select
+              value={currentPeriod}
+              onChange={(e) => setCurrentPeriod(e.target.value)}
+              label="Periode"
+            >
+              <MenuItem value="2024-Q1">Q1 2024</MenuItem>
+              <MenuItem value="2024-Q2">Q2 2024</MenuItem>
+              <MenuItem value="2024-Q3">Q3 2024</MenuItem>
+              <MenuItem value="2024-Q4">Q4 2024</MenuItem>
+            </Select>
+          </FormControl>
+
+          <Button fullWidth
+            variant="contained"
+            onClick={performTaxCalculation}
+            disabled={isCalculating}
+            startIcon={isCalculating ? <CircularProgress size={20} sx={theming.getThemedButtonSx()}> : <Calculate />}
+            sx={{ 
+              bgcolor: color, '&:hover': { bgcolor: color },
+              mb: 2 }}
+          >
+            {isCalculating ? 'Beregner...' : 'Beregn MVA og skatt'}
+          </Button>
+        </Grid>
+
+        <Grid size={{ xs: 12 }} md={6}>
+          {currentCalculation && (
+            <Alert severity="success" sx={{ mb:  2 }}>
+              <Typography variant="body2">
+                Beregning fullført for {currentCalculation.periode}
+              </Typography>
+            </Alert>
+          )}
+
+          <Grid container spacing={2}>
+            <Grid size={{ xs:  6 }}>
+              <Box sx={{ p: 2, border: 1, borderColor: 'divider', borderRadius: 1, textAlign: 'center'}}>
+                <Typography variant="body2" color="text.secondary">MVA å betale</Typography>
+                <Typography variant="h6" sx={{  color: 'error.main', fontWeight: 600}}>
+                  {currentCalculation ? `${currentCalculation.mvaIalt.toLocaleString('no-NO')} NOK` : '0 NOK'}
+                </Typography>
+              </Box>
+            </Grid>
+            <Grid size={{ xs:  6 }}>
+              <Box sx={{ p: 2, border: 1, borderColor: 'divider', borderRadius: 1, textAlign: 'center'}}>
+                <Typography variant="body2" color="text.secondary">Skatt å betale</Typography>
+                <Typography variant="h6" sx={{  color: 'error.main', fontWeight: 600}}>
+                  {currentCalculation ? `${currentCalculation.skatt.toLocaleString('no-NO')} NOK` : '0 NOK'}
+                </Typography>
+              </Box>
+            </Grid>
+          </Grid>
+        </Grid>
+      </Grid>
+
+      {currentCalculation && (
+        <Box sx={{ mt:  3 }}>
+          <Divider sx={{ mb:  2 }} />
+          <Typography variant="subtitle1" sx={{ mb:  2 }}>Detaljert beregning</Typography>
+          
+          <TableContainer>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>Beskrivelse</TableCell>
+                  <TableCell align="right">Beløp (NOK)</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                <TableRow>
+                  <TableCell>Total omsetning</TableCell>
+                  <TableCell align="right">{currentCalculation.omsetning.toLocaleString('no-NO')}</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell>- MVA 25%</TableCell>
+                  <TableCell align="right" sx={{ color: 'error.main'}}>
+                    -{currentCalculation.mva25.toLocaleString('no-NO')}
+                  </TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell>- MVA 15%</TableCell>
+                  <TableCell align="right" sx={{ color: 'error.main'}}>
+                    -{currentCalculation.mva15.toLocaleString('no-NO')}
+                  </TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell>- MVA 12%</TableCell>
+                  <TableCell align="right" sx={{ color: 'error.main'}}>
+                    -{currentCalculation.mva12.toLocaleString('no-NO')}
+                  </TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell sx={{ fontWeight: 600}>Netto omsetning</TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 600}>
+                    {currentCalculation.grunnlagMVA.toLocaleString('no-NO')}
+                  </TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell>- Fradragsberettigede kostnader</TableCell>
+                  <TableCell align="right" sx={{ color: 'success.main'}}>
+                    -{currentCalculation.fradrag.toLocaleString('no-NO')}
+                  </TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell sx={{ fontWeight: 600}>Skattegrunnlag</TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 600}>
+                    {currentCalculation.skattegrunnlag.toLocaleString('no-NO')}
+                  </TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell>Skatt (22%)</TableCell>
+                  <TableCell align="right" sx={{ color: 'error.main'}}>
+                    {currentCalculation.skatt.toLocaleString('no-NO')}
+                  </TableCell>
+                </TableRow>
+                <TableRow sx={{ bgcolor: 'grey.50'}}>
+                  <TableCell sx={{ fontWeight: 600}>Netto resultat</TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 600, color: 'success.main'}}>
+                    {currentCalculation.nettoResultat.toLocaleString('no-NO')}
+                  </TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </Box>
+      )}
+    </Paper>
+  );
+
+  const renderExpenseTracker = () => (
+    <Paper sx={{ p:  3 ,  ...theming.getThemedCardSx() }}>
+      <Typography variant="h6" sx={{  mb:  3, display: 'flex', alignItems: 'center', gap:  1  }}>
+        <Receipt sx={{ color }} />
+        Kostnadsregistrering
+      </Typography>
+
+      <Grid container spacing={3}>
+        <Grid size={{ xs: 12 }} md={6}>
+          <Typography variant="subtitle1" sx={{ mb:  2 }}>Legg til ny kostnad</Typography>
+          
+          <Stack spacing={2}>
+            <TextField
+              fullWidth
+              label="Beskrivelse"
+              value={newExpense.beskrivelse}
+              onChange={(e) => setNewExpense(prev => ({ ...prev, beskrivelse: e.target.value }))}
+            />
+            
+            <TextField
+              fullWidth
+              label="Beløp"
+              type="number"
+              value={newExpense.belop}
+              onChange={(e) => setNewExpense(prev => ({ ...prev, belop: parseFloat(e.target.value) || 0 }))}
+              InputProps={{
+                endAdornment: <InputAdornment position="end">NOK</InputAdornment>
+          }}
+            />
+
+            <FormControl fullWidth>
+              <InputLabel>Kategori</InputLabel>
+              <Select
+                value={newExpense.kategori}
+                onChange={(e) => setNewExpense(prev => ({ ...prev, kategori: e.target.value }))}
+                label="Kategori"
+              >
+                {EXPENSE_CATEGORIES[profession].map((cat) => (
+                  <MenuItem key={cat.kategori} value={cat.kategori}>
+                    {cat.kategori} - {cat.beskrivelse}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
+            <FormControl fullWidth>
+              <InputLabel>MVA-sats</InputLabel>
+              <Select
+                value={newExpense.mvaSats}
+                onChange={(e) => setNewExpense(prev => ({ ...prev, mvaSats: Number(e.target.value, ),}))}
+                label="MVA-sats"
+              >
+                {Object.entries(MVA_SATSER).map(([key, value]) => (
+                  <MenuItem key={key} value={value.sats}>
+                    {value.sats}% - {value.beskrivelse}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
+            <TextField
+              fullWidth
+              label="Dato"
+              type="date"
+              value={newExpense.dato}
+              onChange={(e) => setNewExpense(prev => ({ ...prev, dato: e.target.value }))}
+              InputLabelProps={{ shrink: true }}
+            />
+
+            <Button variant="contained"
+              onClick={addExpense}
+              startIcon={theming.getThemedIcon('add')}
+              sx={{ bgcolor: color, '&:hover': { bgcolor: color } }}
+             sx={theming.getThemedButtonSx()}>
+              Legg til kostnad
+            </Button>
+          </Stack>
+        </Grid>
+
+        <Grid size={{ xs: 12 }} md={6}>
+          <Typography variant="subtitle1" sx={{ mb:  2 }}>
+            Kostnadskategorier for {profession === 'photographer' ? 'fotografer' : profession === 'videographer' ? 'videografer' : profession === 'musicproducer' ? 'musikkprodusenter' : 'leverandører'}
+          </Typography>
+          
+          <List>
+            {EXPENSE_CATEGORIES[profession].map((category, index) => (
+              <ListItem key={index} sx={{ border: 1, borderColor: 'divider', borderRadius: 1, mb:  1 }}>
+                <ListItemIcon>
+                  <CheckCircle sx={{ color: category.MVAFradragsrett ? 'success.main' : 'warning.main'}} />
+                </ListItemIcon>
+                <ListItemText
+                  primary={category.kategori}
+                  secondary={
+                    <Box>
+                      <Typography variant="body2">{category.beskrivelse}</Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        Fradrag: {category.maksGradFradrag}% • MVA-fradrag: {category.MVAFradragsrett ? 'Ja' : 'Nei'}
+                      </Typography>
+                    </Box>
+                }
+                />
+              </ListItem>
+            ))}
+          </List>
+        </Grid>
+      </Grid>
+
+      {expenses.length > 0 && (
+        <Box sx={{ mt:  3 }}>
+          <Divider sx={{ mb:  2 }} />
+          <Typography variant="subtitle1" sx={{ mb:  2 }}>Registrerte kostnader</Typography>
+          
+          <TableContainer>
+            <Table>
+              <TableHead>
+                <TableRow>
+                  <TableCell>Dato</TableCell>
+                  <TableCell>Beskrivelse</TableCell>
+                  <TableCell>Kategori</TableCell>
+                  <TableCell align="right">Beløp</TableCell>
+                  <TableCell align="right">MVA</TableCell>
+                  <TableCell align="center">Handlinger</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {expenses.map((expense, index) => (
+                  <TableRow key={index}>
+                    <TableCell>{expense.dato}</TableCell>
+                    <TableCell>{expense.beskrivelse}</TableCell>
+                    <TableCell>{expense.kategori}</TableCell>
+                    <TableCell align="right">{expense.belop.toLocaleString('no-NO')} NOK</TableCell>
+                    <TableCell align="right">{calculateMVA(expense.belop, expense.mvaSats).toLocaleString('no-NO')} NOK</TableCell>
+                    <TableCell align="center">
+                      <IconButton size="small" color="error">
+                        <Delete fontSize="small" />
+                      </IconButton>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </Box>
+      )}
+    </Paper>
+  );
+
+  const renderReportingTools = () => (
+    <Paper sx={{ p:  3 ,  ...theming.getThemedCardSx() }}>
+      <Typography variant="h6" sx={{  mb:  3, display: 'flex', alignItems: 'center', gap:  1  }}>
+        <Assessment sx={{ color }} />
+        Rapportering og eksport
+      </Typography>
+
+      <Grid container spacing={3}>
+        <Grid size={{ xs: 12 }} md={6}>
+          <Typography variant="subtitle1" sx={{ mb:  2 }}>Eksporter rapporter</Typography>
+          
+          <Stack spacing={2}>
+            <Button
+              fullWidth
+              variant="outlined"
+              startIcon={theming.getThemedIcon('download')}
+              onClick={() => exportReport('pdf')}
+              sx={{ borderColor: color, color'&:hover': { borderColor: color, bgcolor: `${color}10` } }}
+            >
+              Last ned MVA-rapport (PDF)
+            </Button>
+            
+            <Button
+              fullWidth
+              variant="outlined"
+              startIcon={theming.getThemedIcon('download')}
+              onClick={() => exportReport('excel')}
+              sx={{ borderColor: color, color'&:hover': { borderColor: color, bgcolor: `${color}10` } }}
+            >
+              Eksporter til Excel
+            </Button>
+            
+            <Button fullWidth
+              variant="contained"
+              startIcon={<Description />}
+              onClick={generateInvoice}
+              sx={{ bgcolor: color, '&:hover': { bgcolor: color } }}
+            >
+              Generer faktura
+            </Button>
+          </Stack>
+        </Grid>
+
+        <Grid size={{ xs: 12 }} md={6}>
+          <Typography variant="subtitle1" sx={{ mb:  2 }}>Rapporthistorikk</Typography>
+          
+          {calculations.length > 0 ? (
+            <List>
+              {calculations.slice(0, 5).map((calc, index) => (
+                <ListItem key={index} sx={{ border: 1, borderColor: 'divider', borderRadius: 1, mb:  1 }}>
+                  <ListItemIcon>
+                    <Receipt sx={{ color }} />
+                  </ListItemIcon>
+                  <ListItemText
+                    primary={`Periode: ${calc.periode}`}
+                    secondary={
+                      <Box>
+                        <Typography variant="body2">
+                          MVA: {calc.mvaIalt.toLocaleString(', ')} NOK
+                        </Typography>
+                        <Typography variant="body2">
+                          Skatt: {calc.skatt.toLocaleString(', ')} NOK
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {calc.createdAt.toLocaleDateString('no-NO')}
+                        </Typography>
+                      </Box>
+                  }
+                  />
+                  <IconButton size="small">
+                    <Download fontSize="small" />
+                  </IconButton>
+                </ListItem>
+              ))}
+            </List>
+          ) : (
+            <Alert severity="info">
+              <Typography variant="body2">
+                Ingen beregninger utført ennå
+              </Typography>
+            </Alert>
+          )}
+        </Grid>
+      </Grid>
+    </Paper>
+  );
+
+  const renderComplianceTracking = () => (
+    <Paper sx={{ p:  3 ,  ...theming.getThemedCardSx() }}>
+      <Typography variant="h6" sx={{  mb:  3, display: 'flex', alignItems: 'center', gap:  1  }}>
+        <Security sx={{ color }} />
+        Samsvarssporing
+      </Typography>
+
+      <Grid container spacing={3}>
+        <Grid size={{ xs: 12 }} md={6}>
+          <Typography variant="subtitle1" sx={{ mb:  2 }}>Kommende frister</Typography>
+          
+          <List>
+            <ListItem sx={{ border: 1, borderColor: 'warning.main', borderRadius: 1, mb:  1 }}>
+              <ListItemIcon>
+                <Warning sx={{ color: 'warning.main'}} />
+              </ListItemIcon>
+              <ListItemText
+                primary="MVA-oppgave Q4 2024"
+                secondary="Frist: 31. januar 2025"
+              />
+            </ListItem>
+            
+            <ListItem sx={{ border: 1, borderColor: 'info.main', borderRadius: 1, mb:  1 }}>
+              <ListItemIcon>
+                <Info sx={{ color: 'info.main'}} />
+              </ListItemIcon>
+              <ListItemText
+                primary="Årsregnskap 2024"
+                secondary="Frist: 31. mai 2025"
+              />
+            </ListItem>
+            
+            <ListItem sx={{ border: 1, borderColor: 'success.main', borderRadius: 1, mb:  1 }}>
+              <ListItemIcon>
+                <CheckCircle sx={{ color: 'success.main'}} />
+              </ListItemIcon>
+              <ListItemText
+                primary="MVA-oppgave Q3 2024"
+                secondary="Levert: 28. oktober 2024"
+              />
+            </ListItem>
+          </List>
+        </Grid>
+
+        <Grid size={{ xs: 12 }} md={6}>
+          <Typography variant="subtitle1" sx={{ mb:  2 }}>Samsvarsstatus</Typography>
+          
+          <Box sx={{ mb:  2 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb:  1 }}>
+              <Typography variant="body2">Dokumentasjon</Typography>
+              <Typography variant="body2" sx={{ color: 'success.main'}}>95%</Typography>
+            </Box>
+            <LinearProgress
+              variant="determinate"
+              value={95}
+              sx={{
+                height:  8,
+                borderRadius: 4, '& .MuiLinearProgress-bar': { backgroundColor: 'success.main',}
+            }}
+            />
+          </Box>
+
+          <Box sx={{ mb:  2 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb:  1 }}>
+              <Typography variant="body2">MVA-registrering</Typography>
+              <Typography variant="body2" sx={{ color: 'success.main'}}>100%</Typography>
+            </Box>
+            <LinearProgress
+              variant="determinate"
+              value={100}
+              sx={{
+                height:  8,
+                borderRadius: 4'& .MuiLinearProgress-bar': { backgroundColor: 'success.main',}
+            }}
+            />
+          </Box>
+
+          <Box sx={{ mb:  2 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb:  1 }}>
+              <Typography variant="body2">Regnskapsføring</Typography>
+              <Typography variant="body2" sx={{ color: 'warning.main'}}>78%</Typography>
+            </Box>
+            <LinearProgress
+              variant="determinate"
+              value={78}
+              sx={{
+                height:  8,
+                borderRadius: 4'& .MuiLinearProgress-bar': { backgroundColor: 'warning.main',}
+            }}
+            />
+          </Box>
+
+          <Alert severity="warning" sx={{ mt:  2 }}>
+            <Typography variant="body2">
+              Husk å registrere alle kostnader for Q4 2024 innen 31. desember
+            </Typography>
+          </Alert>
+        </Grid>
+      </Grid>
+    </Paper>
+  );
+
+  return (
+    <Box sx={{ width: '100%'}}>
+      <Card sx={{ mb:  3 ,  ...theming.getThemedCardSx() }}>
+        <CardContent sx={theming.getThemedCardSx()}>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb:  2 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
+              <Calculate sx={{ color, fontSize: 32}} />
+              <Box>
+                <Typography variant="h5" sx={{  color, fontWeight: 600}}>
+                  Norsk Skattekalkulator
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  MVA-beregning og skatteadministrasjon for {profession === 'photographer' ? 'fotografer' : profession === 'videographer' ? 'videografer' : profession === 'musicproducer' ? 'musikkprodusenter' : 'leverandører'}
+                </Typography>
+              </Box>
+            </Box>
+            <Box sx={{ display: 'flex', gap:  1 }}>
+              <Chip
+                icon={<Euro />}
+                label="NOK"
+                color="primary"
+                size="small"
+              />
+              <Chip
+                icon={<AccountBalance />}
+                label="Skatteetaten"
+                color="success"
+                size="small"
+              />
+            </Box>
+          </Box>
+
+          {currentCalculation && (
+            <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+              <Box sx={{ flex: 1, p: 2, bgcolor: 'error.light', color: 'error.contrastText', borderRadius: 1, textAlign: 'center'}}>
+                <Typography variant="body2">Total MVA å betale</Typography>
+                <Typography variant="h6" sx={{  fontWeight: 600}}>
+                  {currentCalculation.mvaIalt.toLocaleString('no-NO')} NOK
+                </Typography>
+              </Box>
+              <Box sx={{ flex: 1, p: 2, bgcolor: 'warning.light', color: 'warning.contrastText', borderRadius: 1, textAlign: 'center'}}>
+                <Typography variant="body2">Skatt å betale</Typography>
+                <Typography variant="h6" sx={{  fontWeight: 600}}>
+                  {currentCalculation.skatt.toLocaleString('no-NO')} NOK
+                </Typography>
+              </Box>
+              <Box sx={{ flex: 1, p: 2, bgcolor: 'success.light', color: 'success.contrastText', borderRadius: 1, textAlign: 'center'}}>
+                <Typography variant="body2">Netto resultat</Typography>
+                <Typography variant="h6" sx={{  fontWeight: 600}}>
+                  {currentCalculation.nettoResultat.toLocaleString('no-NO')} NOK
+                </Typography>
+              </Box>
+            </Box>
+          )}
+        </CardContent>
+      </Card>
+
+      <Tabs
+        value={activeTab}
+        onChange={handleTabChange}
+        variant="fullWidth"
+        sx={{
+          mb: 3'& .MuiTab-root': {
+            textTransform:'none',
+            fontWeight: 600}, '& .Mui-selected': {
+            color: `${color} !important`
+        }, '& .MuiTabs-indicator': {
+            backgroundColor: color
+      }
+      }}
+      >
+        <Tab
+          icon={<Calculate />}
+          iconPosition="start"
+          label="MVA-kalkulator"
+        />
+        <Tab
+          icon={<Receipt />}
+          iconPosition="start"
+          label="Kostnader"
+        />
+        <Tab
+          icon={theming.getThemedIcon('assessment')}
+          iconPosition="start"
+          label="Rapporter"
+        />
+        <Tab
+          icon={theming.getThemedIcon('security')}
+          iconPosition="start"
+          label="Samsvar"
+        />
+      </Tabs>
+
+      {activeTab === 0 && renderMVACalculator()}
+      {activeTab === 1 && renderExpenseTracker()}
+      {activeTab === 2 && renderReportingTools()}
+      {activeTab === 3 && renderComplianceTracking()}
+    </Box>
+  );
+}

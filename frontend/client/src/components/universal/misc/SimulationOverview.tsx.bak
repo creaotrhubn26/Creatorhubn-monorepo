@@ -1,0 +1,342 @@
+import { useTheming } from '../../utils/theming-helper';
+import React, { useState } from 'react';
+import {
+  Box,
+  Typography,
+  Grid,
+  Card,
+  CardContent,
+  CardActions,
+  Button,
+  Chip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  IconButton,
+  Avatar,
+  Tab,
+  Tabs,
+  useTheme
+} from '@mui/material';
+import {
+  Lightbulb,
+  Camera,
+  Videocam,
+  ThreeDRotation,
+  Preview,
+  Compare,
+  Close,
+  PlayArrow,
+  Settings,
+  Info
+} from '@mui/icons-material';
+import LightingSimulator3D from './LightingSimulator3D';
+import ScenePreviewSimulator from './scene-preview-simulator';
+import LightingComparisonTool from './lighting-comparison-tool';
+
+interface SimulationCard {
+  id: string;
+  title: string;
+  description: string;
+  icon: React.ReactNode;
+  category: 'lighting' | 'camera' | 'video' | 'advanced';
+  features: string[];
+  component: React.ComponentType;
+  status: 'active' | 'beta' | 'coming-soon'
+}
+
+const simulationCards: SimulationCard[] = [
+  {
+    id: '3d-lighting',
+    title: '3D Lighting Simulator',
+    description: 'Avansert 3D-simulator for lysoppsett med realistisk rendering og utstyrsdatabase.',
+    icon: <Lightbulb sx={{ color: '#ff8c00'}} />,
+    category: 'lighting',
+    features: ['3D Scene Rendering','Real-time Shadows','Equipment Database','Preset Management'],
+    component: LightingSimulatorD,
+    status: 'active'
+},
+  {
+    id: 'scene-preview',
+    title: 'Scene Preview Simulator',
+    description: 'Forhåndsvisning av scener med forskjellige kamerainnstillinger og lysforhold.',
+    icon: <Preview sx={{ color: '#e74c3c'}} />,
+    category: 'camera',
+    features: ['Real-time Preview','Settings Comparison','Export Options','Metadata Analysis'],
+    component: ScenePreviewSimulator,
+    status: 'active'
+},
+  {
+    id: 'lighting-comparison',
+    title: 'Lighting Comparison Tool',
+    description: 'Sammenlign forskjellige lysoppsett side ved side med detaljerte analyser.',
+    icon: <Compare sx={{ color: '#9b59b6'}} />,
+    category: 'lighting',
+    features: ['Side-by-side Comparison','Histogram Analysis','Color Temperature','Shadow Mapping'],
+    component: LightingComparisonTool,
+    status: 'active'
+}
+];
+
+export default function SimulationOverview() {
+  const theme = useTheme();
+  
+  // Theming system
+  const theming = useTheming('photographer');
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [openSimulator, setOpenSimulator] = useState<string | null>(null);
+
+  const categories = [
+    { id: 'all', label: 'Alle Simuleringer', icon: <ThreeDRotation />,},
+    { id: 'lighting', label: 'Lys & Belysning', icon: <Lightbulb />,},
+    { id: 'camera', label: 'Kamera & Optikk', icon: <Camera />,},
+    { id: 'video', label: 'Video & Film', icon: theming.getThemedIcon(', ') },
+    { id: 'advanced', label: 'Avanserte Verktø', icon: theming.getThemedIcon(', ') }
+  ];
+
+  const filteredSimulations = selectedCategory === 'all' 
+    ? simulationCards 
+    : simulationCards.filter(sim => sim.category === selectedCategory);
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'active': return 'success';
+      case 'beta': return 'warning';
+      case 'coming-soon': return 'info';
+      default: return 'default';
+}
+};
+
+  const getStatusLabel = (status: string) => {
+    switch (status) {
+      case 'active': return 'Aktiv';
+      case 'beta': return 'Beta';
+      case 'coming-soon': return 'Kommer snart';
+      default: return status;
+}
+};
+
+  const handleOpenSimulator = (simulatorId: string) => {
+    setOpenSimulator(simulatorId);
+};
+
+  const handleCloseSimulator = () => {
+    setOpenSimulator(null);
+};
+
+  const renderSimulatorDialog = () => {
+    const selectedSim = simulationCards.find(sim => sim.id === openSimulator);
+    if (!selectedSim) return null;
+
+    const SimulatorComponent = selectedSim.component;
+
+    return (
+      <Dialog
+        open={!!openSimulator}
+        onClose={handleCloseSimulator}
+        maxWidth="xl"
+        fullWidth
+        sx={{
+          '& .MuiDialog-paper': {
+            height: '90vh',
+            background: `linear-gradient(135deg, ${theme.palette.background.default} 0%, ${theme.palette.background.paper} 100%)`
+        }
+      }}
+      >
+        <DialogTitle sx={{ 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'center',
+          background: `linear-gradient(45deg, ${theme.palette.primary.main}22, ${theme.palette.secondary.main}22)`
+      }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
+            {selectedSim.icon}
+            <Typography variant="h6" sx={{ color: theming.colors.primary }}>{selectedSim.title}</Typography>
+          </Box>
+          <IconButton onClick={handleCloseSimulator}>
+            {theming.getThemedIcon('close')}
+          </IconButton>
+        </DialogTitle>
+        <DialogContent sx={{ p: 0, overflow: 'hidden'}}>
+          <SimulatorComponent />
+        </DialogContent>
+      </Dialog>
+    );
+};
+
+  return (
+    <Box sx={{ 
+      p:  3,
+      background: `linear-gradient(135deg, ${theme.palette.background.default} 0%, ${theme.palette.background.paper} 100%)`,
+      minHeight: '100vh'
+}}>
+      {/* Header */}
+      <Box sx={{ mb:  4, textAlign: 'center'}}>
+        <Typography variant="h3" 
+          sx={{ 
+            mb: 2, background: `linear-gradient(45deg, ${theme.palette.primary.main}, ${theme.palette.secondary.main})`,
+            backgroundClip: 'text',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+            fontWeight: 'bold'
+      }}
+         sx={{ color: theming.colors.primary }}>
+          CreatorHub Norge Simuleringer
+        </Typography>
+        <Typography variant="h6" color="text.secondary" sx={{  maxWidth: 80, mx: 'auto' }}>
+          Avanserte simuleringer og verktøy for profesjonelle fotografer, videografer og kreative produsenter
+        </Typography>
+      </Box>
+
+      {/* Category Tabs */}
+      <Box sx={{ mb:  4, display: 'flex', justifyContent: 'center'}}>
+        <Tabs
+          value={selectedCategory}
+          onChange={(_, newValue) => setSelectedCategory(newValue)}
+          variant="scrollable"
+          scrollButtons="auto"
+          sx={{
+            '& .MuiTab-root': {
+              display: 'flex',
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap:  1,
+              minWidth: 'auto',
+              px: 3 }
+        }}
+        >
+          {categories.map((category) => (
+            <Tab
+              key={category.id}
+              value={category.id}
+              label={category.label}
+              icon={category.icon}
+              iconPosition="start"
+            />
+          ))}
+        </Tabs>
+      </Box>
+
+      {/* Simulation Cards Grid */}
+      <Grid container spacing={3}>
+        {filteredSimulations.map((simulation) => (
+          <Grid size={{ xs: 12 }} md={6} lg={4} key={simulation.id}>
+            <Card 
+              elevation={4}
+              sx={{ 
+                height: '100%',
+                display: 'flex',
+                flexDirection: 'column',
+                transition: 'all 0.3s ease',
+                background: `linear-gradient(135deg, ${theme.palette.background.paper} 0%, ${theme.palette.background.default} 100%)`,
+                border: `1px solid ${theme.palette.divider}`, '&:hover': {
+                  transform: 'translateY(-8px)',
+                  boxShadow: theme.shadows[],
+                  borderColor: theme.palette.primary.main
+            }
+            }}
+             sx={theming.getThemedCardSx()}>
+              <CardContent sx={{ flexGrow:  1 ,  ...theming.getThemedCardSx() }}>
+                {/* Card Header */}
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb:  2 }}>
+                  <Avatar sx={{ bgcolor: 'primary.main'}}>
+                    {simulation.icon}
+                  </Avatar>
+                  <Chip 
+                    label={getStatusLabel(simulation.status)}
+                    color={getStatusColor(simulation.status) as any}
+                    size="small"
+                  />
+                </Box>
+
+                {/* Title and Description */}
+                <Typography variant="h6" gutterBottom sx={{  fontWeight: 'bold' }}>
+                  {simulation.title}
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb:  2 }}>
+                  {simulation.description}
+                </Typography>
+
+                {/* Features */}
+                <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 'bold'}}>
+                  Funksjoner: </Typography>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5}}>
+                  {simulation.features.map((feature, index) => (
+                    <Chip
+                      key={index}
+                      label={feature}
+                      size="small"
+                      variant="outlined"
+                      sx={{ fontSize: '0.75rem'}}
+                    />
+                  ))}
+                </Box>
+              </CardContent>
+
+              <CardActions sx={{ p: 2, pt: 0 ,  ...theming.getThemedCardSx() }}>
+                <Button variant="contained"
+                  startIcon={theming.getThemedIcon('play')}
+                  onClick={() => handleOpenSimulator(simulation.id)}
+                  disabled={simulation.status === 'coming-soon'}
+                  fullWidth
+                  sx={{
+                    background: `linear-gradient(45deg, ${theme.palette.primary.main}, ${theme.palette.secondary.main})`, '&:hover': {
+                      background: `linear-gradient(45deg, ${theme.palette.primary.dark}, ${theme.palette.secondary.dark})`
+                  }
+                }}
+                >
+                  {simulation.status === 'coming-soon' ? 'Kommer snart' : 'Start Simulator'}
+                </Button>
+              </CardActions>
+            </Card>
+          </Grid>
+        ))}
+      </Grid>
+
+      {/* Statistics */}
+      <Box sx={{ mt:  6, p:  3, bgcolor: 'background.paper', borderRadius: 2, border: `1px solid ${theme.palette.divider}` }}>
+        <Typography variant="h6" gutterBottom sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
+          {theming.getThemedIcon('info')}
+          Simuleringsstatistikk
+        </Typography>
+        <Grid container spacing={2}>
+          <Grid size={{ xs:  6 }} md={3}>
+            <Typography variant="h4" color="primary.main" sx={{  fontWeight: 'bold' }}>
+              {simulationCards.filter(s => s.status === 'active').length}
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Aktive Simuleringer
+            </Typography>
+          </Grid>
+          <Grid size={{ xs:  6 }} md={3}>
+            <Typography variant="h4" color="warning.main" sx={{  fontWeight: 'bold' }}>
+              {simulationCards.filter(s => s.status === 'beta').length}
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Beta Versjoner
+            </Typography>
+          </Grid>
+          <Grid size={{ xs:  6 }} md={3}>
+            <Typography variant="h4" color="info.main" sx={{  fontWeight: 'bold' }}>
+              {simulationCards.filter(s => s.category === 'lighting').length}
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Lys Simuleringer
+            </Typography>
+          </Grid>
+          <Grid size={{ xs:  6 }} md={3}>
+            <Typography variant="h4" color="secondary.main" sx={{  fontWeight: 'bold' }}>
+              {simulationCards.reduce((acc, sim) => acc + sim.features.length, 0)}
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Totale Funksjoner
+            </Typography>
+          </Grid>
+        </Grid>
+      </Box>
+
+      {/* Simulator Dialog */}
+      {renderSimulatorDialog()}
+    </Box>
+  );
+}

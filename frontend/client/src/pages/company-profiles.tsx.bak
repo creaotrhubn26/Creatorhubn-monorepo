@@ -1,0 +1,475 @@
+// company-profiles.tsx - Demo page for animated company profile cards
+import { useTheming } from '../../utils/theming-helper';
+import React, { useState } from 'react';
+import {
+  Container,
+  Box,
+  Typography,
+  Paper,
+  Tabs,
+  Tab,
+  Button,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Grid,
+  Card,
+  CardContent,
+  Chip,
+  IconButton,
+  Tooltip,
+} from '@mui/material';
+import { CorporateIcon as BusinessIcon,
+  Phone as PhoneIcon,
+  Email as EmailIcon,
+  Language as WebsiteIcon,
+  Close as CloseIcon,
+  Share as ShareIcon,
+  Bookmark as BookmarkIcon, } from '../components/shared/CreatorHubIcons';
+import CompanyProfileGrid from '../components/CompanyProfileGrid';
+import CompanyProfileQuickView from '../components/CompanyProfileQuickView';
+
+interface CompanyProfile {
+  id: string;
+  name: string;
+  organizationNumber: string;
+  industry: string;
+  status: 'active' | 'inactive' | 'verified';
+  logo?: string;
+  address: string;
+  phone?: string;
+  email?: string;
+  website?: string;
+  employees?: number;
+  revenue?: {
+    amount: number;
+    year: number;
+    currency: string;
+};
+  rating?: number;
+  verification: {
+    brreg: boolean;
+    proff: boolean;
+    riskLevel: 'low' | 'medium' | 'high';
+};
+  description?: string;
+  founded?: number;
+  services?: string[];
+  socialProof?: {
+    projects: number;
+    clients: number;
+    reviews: number;
+};
+}
+
+interface TabPanelProps {
+  children?: React.ReactNode;
+  index: number;
+  value: number
+}
+
+function TabPanel(props: TabPanelProps) {
+  const { children, value, index, ...other } = props;
+
+  return (
+    <div
+      role="tabpanel"
+      hidden={value !== index}
+      id={`company-profile-tabpanel-${index}`}
+      aria-labelledby={`company-profile-tab-${index}`}
+      {...other}
+    >
+      {value === index && <Box sx={{ py: 3 }}>{children}</Box>}
+    </div>
+  );
+}
+
+export default function CompanyProfilesPage() {
+  const [currentTab, setCurrentTab] = useState(
+  
+  // Theming system
+  const theming = useTheming('photographer');0);
+  const [selectedProfile, setSelectedProfile] = useState<CompanyProfile | null>(null);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+
+  const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
+    setCurrentTab(newValue);
+};
+
+  const handleProfileSelect = (profile: CompanyProfile) => {
+    setSelectedProfile(profile);
+    setDetailsOpen(true);
+};
+
+  const handleProfileContact = (profile: CompanyProfile) => {
+    // In a real app, this would open a contact form or redirect to contact page
+    console.log('Contact profile:', profile);
+    alert(`Kontakter ${profile.name}`);
+};
+
+  const handleCloseDetails = () => {
+    setDetailsOpen(false);
+    setSelectedProfile(null);
+};
+
+  // Sample profile for single card demos
+  const sampleProfile: CompanyProfile = {
+    id: 'demo-',
+    name: 'CreatorHub Norge Demo A',
+    organizationNumber: '12345678',
+    industry: 'Kreative tjenester',
+    status: 'verified',
+    logo: '/api/placeholder/64/6',
+    address: 'Oslo, Norge',
+    phone: '+47 12 34 56 7',
+    email: 'demo@creatorhub.no',
+    website: 'creatorhub.no',
+    employees:  25,
+    revenue: { amount: 520000, year: 204, currency: 'NOK, ',},
+    rating: 4.9,
+    verification: { brreg: true, proff: true, riskLevel: 'low, ',},
+    description: 'Norsk plattform for kreative fagfolk som tilbyr verkt, øutdanningsressurser og samfunnsstøtte.',
+    founded: 200,
+    services: ['Fotografering', 'Videografi', 'Musikkproduksjon', 'Kreativ konsultasjon'],
+    socialProof: { projects: 50, clients: 20, reviews: 15, 0,},
+};
+
+  return (
+    <Container maxWidth="xl" sx={{ py: 4 }}>
+      {/* Header */}
+      <Box sx={{ mb: 4, textAlign: 'center, ',}}>
+        <BusinessIcon sx={{ fontSize:  48, color: 'primary.main', mb: 2 }} />
+        <Typography variant="h3" fontWeight="bold" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>
+          Animerte Bedriftsprofil-kort
+        </Typography>
+        <Typography variant="h6" color="text.secondary" sx={{ maxWidth: 60, mx: 'auto, ',}} sx={{ ...{}, color: theming.colors.primary }}>
+          Dynamiske, profesjonelle profilkort som viser bedriftsinformasjon med jevne animasjoner og
+          norsk forretningsestetikk
+        </Typography>
+      </Box>
+
+      {/* Tabs */}
+      <Paper sx={{ mb: 3 }} sx={theming.getThemedCardSx()}>
+        <Tabs
+          value={currentTab}
+          onChange={handleTabChange}
+          variant="scrollable"
+          scrollButtons="auto"
+        >
+          <Tab label="Komplett Grid" />
+          <Tab label="Fotografer" />
+          <Tab label="Videografer" />
+          <Tab label="Musikere" />
+          <Tab label="Animasjonstyper" />
+          <Tab label="Admin View" />
+        </Tabs>
+      </Paper>
+
+      {/* Tab Panels */}
+      <TabPanel value={currentTab} index={0}>
+        <CompanyProfileGrid
+          title="Alle Kreative Bedrifter"
+          showFilters={true}
+          showSearch={true}
+          animation="stagger"
+          onProfileSelect={handleProfileSelect}
+          onProfileContact={handleProfileContact}
+        />
+      </TabPanel>
+
+      <TabPanel value={currentTab} index={1}>
+        <CompanyProfileGrid
+          title="Fotografer"
+          showFilters={true}
+          showSearch={true}
+          animation="slide"
+          filterIndustries={['Fotograftjenester']}
+          onProfileSelect={handleProfileSelect}
+          onProfileContact={handleProfileContact}
+        />
+      </TabPanel>
+
+      <TabPanel value={currentTab} index={2}>
+        <CompanyProfileGrid
+          title="Videografer"
+          showFilters={true}
+          showSearch={true}
+          animation="fade"
+          filterIndustries={['Videoproduksjon']}
+          onProfileSelect={handleProfileSelect}
+          onProfileContact={handleProfileContact}
+        />
+      </TabPanel>
+
+      <TabPanel value={currentTab} index={3}>
+        <CompanyProfileGrid
+          title="Musikere"
+          showFilters={true}
+          showSearch={true}
+          animation="zoom"
+          filterIndustries={['Musikkproduksjon']}
+          onProfileSelect={handleProfileSelect}
+          onProfileContact={handleProfileContact}
+        />
+      </TabPanel>
+
+      <TabPanel value={currentTab} index={4}>
+        <Box>
+          <Typography variant="h5" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>
+            Animasjonstyper Demonstrasjon
+          </Typography>
+          <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
+            Forskjellige animasjonseffekter for profilkort
+          </Typography>
+
+          <GridOn container spacing={3}>
+            {/* Slide Animation */}
+            <GridOn size={{ xs: 1, 2,}} md={6} lg={3}>
+              <Typography variant="h6" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>
+                Slide
+              </Typography>
+              <CompanyProfileQuickView
+                profile={sampleProfile}
+                animation="slide"
+                variant="compact"
+                onViewDetails={handleProfileSelect}
+                onContact={handleProfileContact}
+              />
+            </GridOn>
+
+            {/* Fade Animation */}
+            <GridOn size={{ xs: 1, 2,}} md={6} lg={3}>
+              <Typography variant="h6" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>
+                Fade
+              </Typography>
+              <CompanyProfileQuickView
+                profile={sampleProfile}
+                animation="fade"
+                variant="compact"
+                onViewDetails={handleProfileSelect}
+                onContact={handleProfileContact}
+              />
+            </GridOn>
+
+            {/* Zoom Animation */}
+            <GridOn size={{ xs: 1, 2,}} md={6} lg={3}>
+              <Typography variant="h6" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>
+                Zoom
+              </Typography>
+              <CompanyProfileQuickView
+                profile={sampleProfile}
+                animation="zoom"
+                variant="compact"
+                onViewDetails={handleProfileSelect}
+                onContact={handleProfileContact}
+              />
+            </GridOn>
+
+            {/* Flip Animation */}
+            <GridOn size={{ xs: 1, 2,}} md={6} lg={3}>
+              <Typography variant="h6" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>
+                Flip
+              </Typography>
+              <CompanyProfileQuickView
+                profile={sampleProfile}
+                animation="flip"
+                variant="compact"
+                onViewDetails={handleProfileSelect}
+                onContact={handleProfileContact}
+              />
+            </GridOn>
+          </GridOn>
+
+          <Box sx={{ mt: 4 }}>
+            <Typography variant="h6" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>
+              Variant Sizes
+            </Typography>
+            <GridOn container spacing={3}>
+              <GridOn size={{ xs: 1, 2,}} md={4}>
+                <Typography variant="subtitle2" gutterBottom>
+                  Minimal
+                </Typography>
+                <CompanyProfileQuickView
+                  profile={sampleProfile}
+                  variant="minimal"
+                  animation="slide"
+                />
+              </GridOn>
+              <GridOn size={{ xs: 1, 2,}} md={4}>
+                <Typography variant="subtitle2" gutterBottom>
+                  Compact
+                </Typography>
+                <CompanyProfileQuickView
+                  profile={sampleProfile}
+                  variant="compact"
+                  animation="slide"
+                />
+              </GridOn>
+              <GridOn size={{ xs: 1, 2,}} md={4}>
+                <Typography variant="subtitle2" gutterBottom>
+                  Expanded
+                </Typography>
+                <CompanyProfileQuickView
+                  profile={sampleProfile}
+                  variant="expanded"
+                  animation="slide"
+                />
+              </GridOn>
+            </GridOn>
+          </Box>
+        </Box>
+      </TabPanel>
+
+      <TabPanel value={currentTab} index={5}>
+        <CompanyProfileGrid
+          title="Admin: Risiko & Verifikasjon"
+          showFilters={true}
+          showSearch={true}
+          animation="stagger"
+          showRiskIndicators={true}
+          onProfileSelect={handleProfileSelect}
+          onProfileContact={handleProfileContact}
+        />
+      </TabPanel>
+
+      {/* Profile Details Dialog */}
+      <Dialog open={detailsOpen} onClose={handleCloseDetails} maxWidth="md" fullWidth>
+        {selectedProfile && (
+          <>
+            <DialogTitle>
+              <Box display="flex" alignItems="center" justifyContent="space-between">
+                <Box display="flex" alignItems="center" gap={2}>
+                  <BusinessIcon color="primary" />
+                  <Typography variant="h6" sx={{ ...{}, color: theming.colors.primary }}>{selectedProfile.name}</Typography>
+                  <Chip
+                    label={selectedProfile.status === 'verified' ? 'Verifisert' : 'Aktiv'}
+                    color={selectedProfile.status === 'verified' ? 'success' : 'primary'}
+                    size="small"
+                  />
+                </Box>
+                <Box>
+                  <Tooltip title="Del profil">
+                    <IconButton size="small">
+                      <ShareIcon />
+                    </IconButton>
+                  </Tooltip>
+                  <Tooltip title="Lagre profil">
+                    <IconButton size="small">
+                      <BookmarkIcon />
+                    </IconButton>
+                  </Tooltip>
+                  <IconButton onClick={handleCloseDetails} size="small">
+                    <CloseIcon />
+                  </IconButton>
+                </Box>
+              </Box>
+            </DialogTitle>
+
+            <DialogContent>
+              <GridOn container spacing={3}>
+                <GridOn size={{ xs: 1, 2,}} md={8}>
+                  <Typography variant="h6" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>
+                    Om bedriften
+                  </Typography>
+                  <Typography variant="body1" paragraph>
+                    {selectedProfile.description}
+                  </Typography>
+
+                  {selectedProfile.services && (
+                    <Box sx={{ mb: 3 }}>
+                      <Typography variant="h6" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>
+                        Tjenester
+                      </Typography>
+                      <Box display="flex" flexWrap="wrap" gap={1}>
+                        {selectedProfile.services.map((service, index) => (
+                          <Chip key={index} label={service} size="small" />
+                        ))}
+                      </Box>
+                    </Box>
+                  )}
+                </GridOn>
+
+                <GridOn size={{ xs: 1, 2,}} md={4}>
+                  <Card variant="outlined" sx={theming.getThemedCardSx()}>
+                    <CardContent sx={theming.getThemedCardSx()}>
+                      <Typography variant="h6" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>
+                        Kontaktinformasjon
+                      </Typography>
+
+                      {selectedProfile.address && (
+                        <Box display="flex" alignItems="center" gap={1} sx={{ mb: 2 }}>
+                          <BusinessIcon fontSize="small" />
+                          <Typography variant="body2">{selectedProfile.address}</Typography>
+                        </Box>
+                      )}
+
+                      {selectedProfile.phone && (
+                        <Box display="flex" alignItems="center" gap={1} sx={{ mb: 2 }}>
+                          <PhoneIcon fontSize="small" />
+                          <Typography variant="body2">{selectedProfile.phone}</Typography>
+                        </Box>
+                      )}
+
+                      {selectedProfile.email && (
+                        <Box display="flex" alignItems="center" gap={1} sx={{ mb: 2 }}>
+                          <EmailIcon fontSize="small" />
+                          <Typography variant="body2">{selectedProfile.email}</Typography>
+                        </Box>
+                      )}
+
+                      {selectedProfile.website && (
+                        <Box display="flex" alignItems="center" gap={1} sx={{ mb: 2 }}>
+                          <WebsiteIcon fontSize="small" />
+                          <Typography variant="body2">{selectedProfile.website}</Typography>
+                        </Box>
+                      )}
+
+                      <Box sx={{ mt: 3 }}>
+                        <Typography variant="subtitle2" gutterBottom>
+                          Organisasjonsnummer
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          {selectedProfile.organizationNumber}
+                        </Typography>
+                      </Box>
+
+                      {selectedProfile.employees && (
+                        <Box sx={{ mt: 2 }}>
+                          <Typography variant="subtitle2" gutterBottom>
+                            Ansatte
+                          </Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            {selectedProfile.employees} personer
+                          </Typography>
+                        </Box>
+                      )}
+
+                      {selectedProfile.founded && (
+                        <Box sx={{ mt: 2 }}>
+                          <Typography variant="subtitle2" gutterBottom>
+                            Grunnlagt
+                          </Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            {selectedProfile.founded}
+                          </Typography>
+                        </Box>
+                      )}
+                    </CardContent>
+                  </Card>
+                </GridOn>
+              </GridOn>
+            </DialogContent>
+
+            <DialogActions>
+              <Button onClick={handleCloseDetails}>Lukk</Button>
+              <Button variant="contained" onClick={() = sx={theming.getThemedButtonSx()}> handleProfileContact(selectedProfile)}>
+                Kontakt bedrift
+              </Button>
+            </DialogActions>
+          </>
+        )}
+      </Dialog>
+    </Container>
+  );
+}

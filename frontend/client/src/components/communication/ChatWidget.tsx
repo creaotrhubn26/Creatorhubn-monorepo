@@ -1,0 +1,560 @@
+/**
+ * Enhanced Chat Widget with Smart Response Integration
+ * Combines existing chat functionality with intelligent response suggestions
+ */
+
+import { useTheming } from '../../utils/theming-helper';
+import React, { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { useAuth } from '@/hooks/useAuth';
+import { usePushNotifications } from '../../hooks/usePushNotifications';
+import { PushNotificationSettings } from '../shared/PushNotificationSettings';
+import {
+  Box,
+  Paper,
+  Typography,
+  IconButton,
+  Fab,
+  Badge,
+  useTheme,
+  useMediaQuery,
+  Zoom,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Button,
+  Tabs,
+  Tab,
+  Chip,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemAvatar,
+  Avatar,
+  Menu,
+  MenuItem,
+  Divider,
+  Tooltip,
+} from '@mui/material';
+import {
+  Chat as ChatIcon,
+  Close as CloseIcon,
+  SmartToy as SmartToyIcon,
+  Settings as SettingsIcon,
+  ExpandMore as ExpandMoreIcon,
+  ExpandLess as ExpandLessIcon,
+  Google,
+  Groups,
+  Add,
+  MoreVert,
+  AlternateEmail,
+  Notifications,
+  NotificationsActive,
+} from '@mui/icons-material';
+import { IntelligentChatWidget } from './IntelligentChatWidget';
+import { apiRequest } from '@/lib/queryClient';
+import WorklogContextShortcuts from '../worklog/WorklogContextShortcuts';
+import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
+import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
+import getProfessionIcon from '@/utils/profession-icons';
+import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
+
+interface ChatMessage {
+  id: string;
+  content: string;
+  sender: 'customer' | 'photographer';
+  timestamp: Date;
+  leadId?: string
+}
+
+interface ChatWidgetProps {
+  userId: string;
+  position?: 'bottom-right' | 'bottom-left';
+  enableSmartSuggestions?: boolean;
+  defaultExpanded?: boolean;
+  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  // Integration props for unified workflow connectivity
+  onMeetingCreate?: (meeting: any) => void;
+  onProjectUpdate?: (project: any) => void;
+  onWorklogCreate?: (worklog: any) => void;
+  onClientSelect?: (client: any) => void;
+  onClientUpdate?: (client: any) => void;
+  onShowcaseCreate?: (showcase: any) => void;
+  onFileUpload?: (file: any) => void;
+  onFileDownload?: (file: any) => void;
+  selectedProject?: any;
+  onProjectSelect?: (project: any) => void;
+  selectedClient?: any;
+  onSettingsUpdate?: (settings: any) => void;
+  onNotificationCreate?: (notification: any) => void
+}
+
+export const ChatWidget: React.FC<ChatWidgetProps> = ({
+  userd,
+  position = 'bottom-right',
+  enableSmartSuggestions = true,
+  defaultExpanded = false,
+  profession = 'photographer',
+  onMeetingCreate,
+  onProjectUpdate,
+  onWorklogCreate,
+  onClientSelect,
+  onClientUpdate,
+  onShowcaseCreate,
+  onFileUpload,
+  onFileDownload,
+  selectedProject,
+  onProjectSelect,
+  selectedClient,
+  onSettingsUpdate,
+  onNotificationCreate
+}) => {
+  const theme = useTheme();
+  
+  // Theming system - use dynamic profession instead of hardcoded value
+  const theming = useTheming(profession);
+  const isMobile = useMediaQuery(theme.breakpoints.down( 'md,'));
+  
+  const [isOpen, setIsOpen] = useState(defaultExpanded);
+  const [isMinimized, setIsMinimized] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [isCustomerTyping, setIsCustomerTyping] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [tabValue, setTabValue] = useState(0); // 0 = Internal Chat, 1 = Google Chat
+  const [menuAnchorEl, setMenuAnchorEl] = useState<null | HTMLElement>(null);
+  const [pushSettingsOpen, setPushSettingsOpen] = useState(false);
+  
+  // Push notifications
+  const { pushEnabled, isSupported } = usePushNotifications(userId);
+
+  // Get active conversations
+  const { data: conversations = [, ],} = useQuery({
+    queryKey: ['conversations', userId],
+    queryFn: () => apiRequest(`/api/communication/conversations?userId=${userId}`),
+    refetchInterval: 5000 // Poll for new messages
+});
+
+  // Get messages for active conversation
+  const { data: conversationMessages = [, ],} = useQuery({
+    queryKey: ['conversation-messages', activeConversationId],
+    queryFn: () => activeConversationId 
+      ? apiRequest(`/api/communication/conversations/${activeConversationd}/messages`)
+      : Promise.resolve([]),
+    enabled: !!activeConversationd,
+    refetchInterval: 2000 });
+
+  // Set up the first conversation as active if none selected
+  useEffect(() => {
+    if (conversations.length > 0 && !activeConversationId) {
+      setActiveConversationId(conversations[0].id);
+  }
+}, [conversations, activeConversationId]);
+
+  // Update messages when conversation changes
+  useEffect(() => {
+    if (conversationMessages.length > 0) {
+      const formattedMessages: ChatMessage[] = conversationMessages.map(msg => ({
+        id: msg.d,
+        content: msg.content,
+        sender: msg.senderId === userId ? 'photographer' : 'customer',
+        timestamp: new Date(msg.timestamp),
+        leadId: msg.leadId
+  }));
+      setMessages(formattedMessages);
+      
+      // Calculate unread count
+      const unread = formattedMessages.filter(msg => 
+        msg.sender === 'customer' && !msg.timestamp
+      ).length;
+      setUnreadCount(unread);
+  }
+}, [conversationMessages, userId]);
+
+  const handleSendMessage = async (content: string) => {
+    if (!activeConversationId) return;
+
+    try {
+      const newMessage = await apiRequest(`/api/communication/conversations/${activeConversationd}/messages`, {
+        headers: {
+          "Content-Type" : "application/json"
+    },
+        method: 'POS',
+        body: JSON.stringify({
+          content,
+          senderId: userd,
+          senderType: 'photographer'
+    })
+    });
+
+      // Add to local messages immediately for better UX
+      const messageObj: ChatMessage = {
+        id: newMessage.d,
+        content,
+        sender: 'photographer',
+        timestamp: new Date(),
+        leadId: newMessage.leadId
+  };
+      
+      setMessages(prev => [...prev, messageObj]);
+      
+  } catch (error) {
+      console.error('Failed to send message: ', error);
+  }
+};
+
+  const positionStyles = {
+    'bottom-right': {
+      bottom:  20,
+      right: 10, // Leave space for SpeedDial
+  }, 'bottom-left': {
+      bottom:  20,
+      left:  20,
+  }
+};
+
+  if (isMobile && !isOpen) {
+    // Mobile: Show only floating button when closed
+    return (
+      <Zoom in={true}>
+        <Fab
+          color="primary"
+          sx={{
+            position: 'fixed',
+            ...positionStyles[position],
+            zIndex: 1000}}
+          onClick={() => setIsOpen(true)}
+        >
+          <Badge badgeContent={unreadCount} color="error">
+            <ChatIcon />
+          </Badge>
+        </Fab>
+      </Zoom>
+    );
+}
+
+  if (isMobile && isOpen) {
+    // Mobile: Full screen dialog
+    return (
+      <Dialog
+        fullScreen
+        open={isOpen}
+        onClose={() => setIsOpen(false)}
+        sx={{ zIndex: 130}}
+      >
+        <Box sx={{ bgcolor: 'primary.main', color: 'white' }}>
+          <Box sx={{ 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            alignItems: 'center',
+            p: 2 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
+              <ChatIcon />
+              <Typography variant="h6" sx={{ color: theming.colors.primary }}>Google Chat Integration v2.1</Typography>
+              <Chip 
+                label={tabValue === 0 ? "INTERN CHAT" : "GOOGLE CHAT"}
+                size="small" 
+                sx={{ 
+                  bgcolor: tabValue === 0 ? '#FF5722' : '#4285F0', 
+                  color: 'white',
+                  fontSize: '0.75rem',
+                  fontWeight: 'bold'
+            }}
+              />
+            </Box>
+            <Box>
+              {isSupported && (
+                <Tooltip title="Push-varsler innstillinger">
+                  <IconButton
+                    color="inherit"
+                    onClick={() => setPushSettingsOpen(true)}
+                    sx={{ color: pushEnabled ? 'rgba(255, 255, 255, 0.9)' : 'white' }}
+                  >
+                    {pushEnabled ? <NotificationsActive /> : <Notifications />}
+                  </IconButton>
+                </Tooltip>
+              )}
+              {tabValue === 1 && (
+                <IconButton
+                  color="inherit"
+                  onClick={(e) => setMenuAnchorEl(e.currentTarget)}
+                >
+                  {theming.getThemedIcon('moreVert')}
+                </IconButton>
+              )}
+              <IconButton
+                color="inherit"
+                onClick={() => setIsOpen(false)}
+              >
+                <CloseIcon />
+              </IconButton>
+            </Box>
+          </Box>
+          
+          {/* Google Chat Tabs */}
+          <Tabs 
+            value={tabValue}
+            onChange={(e, newValue) => setTabValue(newValue)}
+            variant="fullWidth"
+            sx={{
+              '& .MuiTab-root': { 
+                color: 'rgba(25,255,255,0.7)',
+                minHeight:  60,
+                fontSize: '1rem',
+                fontWeight: 60
+               , border: '2px solid rgba(25,255,255,0.2)',
+                borderRadius:  2,
+                mx: 0.5, '&:hover': {
+                  bgcolor: 'rgba(25,255,255,0.1)'
+              }
+            }, '& .Mui-selected': { 
+                color: 'white !important',
+                bgcolor: 'rgba(25,255,255,0.2)',
+                border: '2px solid white'
+          }, '& .MuiTabs-indicator': {
+                display: 'none'
+          }
+          }}
+          >
+            <Tab 
+              icon={<ChatIcon sx={{ fontSize: 24}} />}
+              label="INTERN CHAT" 
+              iconPosition="start"
+              sx={{ textTransform: 'none' }}
+            />
+            <Tab 
+              icon={<Google sx={{ fontSize: 24}} />}
+              label="GOOGLE CHAT" 
+              iconPosition="start" 
+              sx={{ textTransform: 'none' }}
+            />
+          </Tabs>
+        </Box>
+        <DialogContent sx={{ p: 0, height: '100%' }}>
+          {tabValue === 0 ? (
+            // Internal Chat Tab
+            activeConversationId && enableSmartSuggestions ? (
+              <IntelligentChatWidget
+                conversationId={activeConversationId}
+                leadId={messages[0]?.leadId}
+                onSendMessage={handleSendMessage}
+                messages={messages}
+                isCustomerTyping={isCustomerTyping}
+              />
+            ) : (
+              <Box sx={{ p:  2 }}>
+                <Typography>Standard internal chat interface</Typography>
+              </Box>
+            )
+          ) : (
+            // Google Chat Tab
+            <Box sx={{ p: 2, textAlign: 'center', mt:  4 }}>
+              <Google sx={{ fontSize:  64, color: '#4285F0', mb:  2 }} />
+              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>Google Chat Integration</Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb:  3 }}>
+                Connect with your Google Chat spaces and colleagues directly from CreatorHub Norge
+              </Typography>
+              <Button variant="contained" 
+                startIcon={<Google />}
+                sx={{ bgcolor: '#4285F0','&:hover': { bgcolor: '#3367D6' } }}
+                onClick={() => console.log('Google Chat authorization')}
+              >
+                Connect Google Chat
+              </Button>
+            </Box>
+          )}
+        </DialogContent>
+        
+        {/* Google Chat Actions Menu */}
+        <Menu
+          anchorEl={menuAnchorEl}
+          open={Boolean(menuAnchorEl)}
+          onClose={() => setMenuAnchorEl(null)}
+          transformOrigin={{ horizontal: 'right', vertical: 'top' }}
+          anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
+        >
+          <MenuItem onClick={() => console.log('Create Chat Space')}>
+            <Add sx={{ mr:  1 }} />
+            Opprett nytt Chat-rom
+          </MenuItem>
+          <MenuItem onClick={() => console.log('Mention Someone')}>
+            <AlternateEmail sx={{ mr:  1 }} />
+            @nevn noen
+          </MenuItem>
+          <Divider />
+          <MenuItem onClick={() => console.log('Chat Settings')}>
+            <SettingsIcon sx={{ mr:  1 }} />
+            Chat-innstillinger
+          </MenuItem>
+        </Menu>
+      </Dialog>
+    );
+}
+
+  // Desktop: Floating widget
+  return (
+    <>
+      <Zoom in={true}>
+        <Paper
+          elevation={8}
+          sx={{
+            position: 'fixed',
+            ...positionStyles[position],
+            width: isMinimized ? 'auto' : 40,
+            height: isMinimized ? 'auto' : 60,
+            zIndex: 10,
+            borderRadius:  2,
+            overflow: 'hidden',
+            background: `linear-gradient(135deg, ${theme.palette.primary.main}15 0%, ${theme.palette.background.paper} 100%)`,
+            backdropFilter: 'blur(10px)',
+            border: `1px solid ${theme.palette.divider}`,
+            transition: 'all 0.3s ease-in-out'
+      }}
+         sx={theming.getThemedCardSx()}>
+          {/* Header */}
+          <Box
+            sx={{
+              bgcolor: 'primary.main',
+              color: 'white',
+              p:  2,
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              cursor: 'pointer'
+        }}
+            onClick={() => setIsMinimized(!isMinimized)}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
+              <ChatIcon />
+              <Typography variant="subtitle1" sx={{ fontWeight: 600}>
+                Kunde Chat
+              </Typography>
+              {enableSmartSuggestions && (
+                <SmartToyIcon sx={{ opacity: 0, .fontSize: 20}} />
+              )}
+              {unreadCount > 0 && (
+                <Badge badgeContent={unreadCount} color="error" />
+              )}
+            </Box>
+            <Box>
+              <IconButton
+                size="small"
+                color="inherit"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSettingsOpen(true);
+              }}
+              >
+                <SettingsIcon />
+              </IconButton>
+              <IconButton
+                size="small"
+                color="inherit"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsMinimized(!isMinimized);
+              }}
+              >
+                {isMinimized ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+              </IconButton>
+              <IconButton
+                size="small"
+                color="inherit"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsOpen(false);
+              }}
+              >
+                <CloseIcon />
+              </IconButton>
+            </Box>
+          </Box>
+
+          {/* Content */}
+          {!isMinimized && (
+            <Box sx={{ height: 'calc(100% - 64px)' }}>
+              {activeConversationId && enableSmartSuggestions ? (
+                <>
+                  {/* Worklog Context Shortcuts for Chat */}
+                  <WorklogContextShortcuts
+                    userId="daniel@creatorhubnorge.com"
+                    contextType="chat"
+                    timeframe="week"
+                    onWorklogSelect={(worklog) => {
+                      // Send worklog as chat message
+                      const worklogMessage = `📝 Fra worklog: ${worklog.title}\n${worklog.description}${worklog.nextSteps ? '\n\nNeste steg: ' + worklog.nextSteps :', '}`;
+                      handleSendMessage(worklogMessage);
+                  }}
+                    compact={true}
+                  />
+                  <IntelligentChatWidget
+                    conversationId={activeConversationId}
+                    leadId={messages[0]?.leadId}
+                    onSendMessage={handleSendMessage}
+                    messages={messages}
+                    isCustomerTyping={isCustomerTyping}
+                  />
+                </>
+              ) : (
+                <Box sx={{ p: 2, height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Typography color="text.secondary">
+                    Ingen aktive samtaler
+                  </Typography>
+                </Box>
+              )}
+            </Box>
+          )}
+        </Paper>
+      </Zoom>
+
+      {/* Settings Dialog */}
+      <Dialog open={settingsOpen} onClose={() => setSettingsOpen(false)}>
+        <DialogTitle>Chat Innstillinger</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ mb:  2 }}>
+            Konfigurer chat-funksjonalitet og smarte forslag.
+          </Typography>
+          
+          <Box sx={{ mt:  2 }}>
+            <Typography variant="subtitle2">Smart Forslag: </Typography>
+            <Typography variant="body2" color="text.secondary">
+              {enableSmartSuggestions ? 'Aktivert' : 'Deaktivert'} - Automatiske svar-forslag basert på kunde-forespørsler
+            </Typography>
+          </Box>
+          
+          <Box sx={{ mt:  2 }}>
+            <Typography variant="subtitle2">Aktive Samtaler: </Typography>
+            <Typography variant="body2" color="text.secondary">
+              {conversations.length} samtaler
+            </Typography>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setSettingsOpen(false)}>
+            Lukk
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Floating Action Button when closed */}
+      {!isOpen && (
+        <Zoom in={true}>
+          <Fab
+            color="primary"
+            sx={{
+              position:'fixed',
+              ...positionStyles[position],
+              zIndex: 999}}
+            onClick={() => setIsOpen(true)}
+          >
+            <Badge badgeContent={unreadCount} color="error">
+              <ChatIcon />
+            </Badge>
+          </Fab>
+        </Zoom>
+      )}
+    </>
+  );
+};

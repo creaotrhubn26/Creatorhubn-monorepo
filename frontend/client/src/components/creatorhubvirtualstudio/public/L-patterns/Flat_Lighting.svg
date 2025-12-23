@@ -1,0 +1,92 @@
+<svg width="400" height="400" viewBox="0 0 400 400" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="400" height="400" fill="#1a1a1a"/>
+  
+  <!-- Title -->
+  <text x="200" y="30" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ffffff" text-anchor="middle">Flat Lighting</text>
+  
+  <!-- Subject (face circle) - evenly lit, no shadows -->
+  <circle cx="200" cy="200" r="60" fill="#8a8a8a" stroke="#aaa" stroke-width="2"/>
+  
+  <!-- Face features - all clearly visible, no shadows -->
+  <circle cx="185" cy="190" r="5" fill="#333"/>
+  <circle cx="215" cy="190" r="5" fill="#333"/>
+  
+  <!-- Nose - no shadow -->
+  <line x1="200" y1="190" x2="200" y2="210" stroke="#666" stroke-width="2" stroke-linecap="round"/>
+  
+  <!-- Mouth -->
+  <path d="M 185 220 Q 200 228 215 220" stroke="#666" stroke-width="2" fill="none" stroke-linecap="round"/>
+  
+  <!-- Even lighting glow around face -->
+  <circle cx="200" cy="200" r="70" fill="none" stroke="#b0e0e6" stroke-width="2" opacity="0.3"/>
+  <circle cx="200" cy="200" r="75" fill="none" stroke="#b0e0e6" stroke-width="1" opacity="0.2"/>
+  
+  <!-- Main Light (close to camera, large softbox) -->
+  <g id="mainLight">
+    <!-- Large softbox -->
+    <rect x="160" y="290" width="80" height="50" fill="#87ceeb" opacity="0.8" rx="5"/>
+    <rect x="170" y="300" width="60" height="30" fill="#b0e0e6" opacity="0.6" rx="3"/>
+    
+    <!-- Light rays - very even, spread wide -->
+    <line x1="170" y1="290" x2="160" y2="260" stroke="#b0e0e6" stroke-width="3" opacity="0.5" stroke-linecap="round"/>
+    <line x1="185" y1="290" x2="180" y2="260" stroke="#b0e0e6" stroke-width="4" opacity="0.6" stroke-linecap="round"/>
+    <line x1="200" y1="290" x2="200" y2="260" stroke="#b0e0e6" stroke-width="5" opacity="0.7" stroke-linecap="round"/>
+    <line x1="215" y1="290" x2="220" y2="260" stroke="#b0e0e6" stroke-width="4" opacity="0.6" stroke-linecap="round"/>
+    <line x1="230" y1="290" x2="240" y2="260" stroke="#b0e0e6" stroke-width="3" opacity="0.5" stroke-linecap="round"/>
+    
+    <!-- Wide light cone -->
+    <path d="M 160 290 L 120 260 L 280 260 L 240 290 Z" fill="#b0e0e6" opacity="0.2"/>
+    
+    <!-- Label -->
+    <text x="200" y="365" font-family="Arial, sans-serif" font-size="12" fill="#87ceeb" text-anchor="middle">Large Softbox</text>
+    <text x="200" y="380" font-family="Arial, sans-serif" font-size="10" fill="#999" text-anchor="middle">Close to camera</text>
+  </g>
+  
+  <!-- Optional reflector/fill on sides -->
+  <g id="reflectors" opacity="0.6">
+    <!-- Left reflector -->
+    <rect x="80" y="170" width="15" height="60" fill="#ddd" opacity="0.5" rx="2"/>
+    <line x1="95" y1="185" x2="135" y2="185" stroke="#e0e0e0" stroke-width="2" opacity="0.4" stroke-linecap="round"/>
+    <line x1="95" y1="200" x2="135" y2="200" stroke="#e0e0e0" stroke-width="2" opacity="0.4" stroke-linecap="round"/>
+    <line x1="95" y1="215" x2="135" y2="215" stroke="#e0e0e0" stroke-width="2" opacity="0.4" stroke-linecap="round"/>
+    <text x="87" y="250" font-family="Arial, sans-serif" font-size="9" fill="#999" text-anchor="middle">Reflector</text>
+    
+    <!-- Right reflector -->
+    <rect x="305" y="170" width="15" height="60" fill="#ddd" opacity="0.5" rx="2"/>
+    <line x1="305" y1="185" x2="265" y2="185" stroke="#e0e0e0" stroke-width="2" opacity="0.4" stroke-linecap="round"/>
+    <line x1="305" y1="200" x2="265" y2="200" stroke="#e0e0e0" stroke-width="2" opacity="0.4" stroke-linecap="round"/>
+    <line x1="305" y1="215" x2="265" y2="215" stroke="#e0e0e0" stroke-width="2" opacity="0.4" stroke-linecap="round"/>
+    <text x="312" y="250" font-family="Arial, sans-serif" font-size="9" fill="#999" text-anchor="middle">Reflector</text>
+  </g>
+  
+  <!-- Camera position indicator (very close to light) -->
+  <g id="camera">
+    <rect x="180" y="340" width="40" height="25" fill="#555" rx="3"/>
+    <circle cx="200" cy="352" r="6" fill="#333"/>
+    <circle cx="200" cy="352" r="3" fill="#666"/>
+    <text x="200" y="390" font-family="Arial, sans-serif" font-size="11" fill="#999" text-anchor="middle">Camera</text>
+  </g>
+  
+  <!-- No shadow indicator -->
+  <g id="noShadow">
+    <circle cx="200" cy="200" r="50" fill="none" stroke="#4caf50" stroke-width="2" stroke-dasharray="5,5" opacity="0.4"/>
+    <text x="200" y="120" font-family="Arial, sans-serif" font-size="12" fill="#4caf50" text-anchor="middle">No Shadows</text>
+  </g>
+  
+  <!-- Even lighting indicators -->
+  <text x="130" y="200" font-family="Arial, sans-serif" font-size="10" fill="#87ceeb" text-anchor="middle">Even</text>
+  <text x="270" y="200" font-family="Arial, sans-serif" font-size="10" fill="#87ceeb" text-anchor="middle">Even</text>
+  
+  <!-- Description -->
+  <text x="200" y="50" font-family="Arial, sans-serif" font-size="13" fill="#ccc" text-anchor="middle">Minimal shadows, very soft and even</text>
+  
+  <!-- Difficulty badge -->
+  <rect x="10" y="10" width="70" height="25" fill="#4caf50" rx="12"/>
+  <text x="45" y="27" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#fff" text-anchor="middle">Beginner</text>
+  
+  <!-- Use case -->
+  <text x="380" y="370" font-family="Arial, sans-serif" font-size="10" fill="#999" text-anchor="end">Documentary</text>
+  <text x="380" y="383" font-family="Arial, sans-serif" font-size="10" fill="#999" text-anchor="end">Simple</text>
+</svg>
+

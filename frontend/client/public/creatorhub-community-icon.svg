@@ -1,0 +1,179 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="120" height="120" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- CreatorHub Community Amber-Orange Gradient -->
+    <linearGradient id="communityGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#fbbf24;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#f59e0b;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#d97706;stop-opacity:1" />
+    </linearGradient>
+    
+    <!-- Secondary gradient for depth -->
+    <linearGradient id="darkGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#d97706;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#b45309;stop-opacity:1" />
+    </linearGradient>
+    
+    <!-- Glow effect -->
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    
+    <!-- Strong glow for pulsing -->
+    <filter id="strongGlow" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur stdDeviation="4" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    
+    <!-- Shadow -->
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="1" dy="2" stdDeviation="2" flood-color="#000000" flood-opacity="0.2"/>
+    </filter>
+  </defs>
+  
+  <style>
+    @keyframes rotate {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+    @keyframes rotateReverse {
+      from { transform: rotate(360deg); }
+      to { transform: rotate(0deg); }
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.8; transform: scale(1.05); }
+    }
+    @keyframes pulseGlow {
+      0%, 100% { filter: url(#glow); }
+      50% { filter: url(#strongGlow); }
+    }
+    @keyframes dash {
+      0% { stroke-dashoffset: 20; }
+      100% { stroke-dashoffset: 0; }
+    }
+    @keyframes float {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-3px); }
+    }
+    @keyframes blink {
+      0%, 100% { opacity: 0.5; }
+      50% { opacity: 1; }
+    }
+    .rotating-ring {
+      transform-origin: 60px 60px;
+      animation: rotate 30s linear infinite;
+    }
+    .rotating-ring-reverse {
+      transform-origin: 60px 60px;
+      animation: rotateReverse 45s linear infinite;
+    }
+    .pulse-hub {
+      transform-origin: 60px 60px;
+      animation: pulse 3s ease-in-out infinite;
+    }
+    .person-1 { animation: pulseGlow 4s ease-in-out infinite; }
+    .person-2 { animation: pulseGlow 4s ease-in-out infinite 0.5s; }
+    .person-3 { animation: pulseGlow 4s ease-in-out infinite 1s; }
+    .person-4 { animation: pulseGlow 4s ease-in-out infinite 1.5s; }
+    .person-5 { animation: pulseGlow 4s ease-in-out infinite 2s; }
+    .person-6 { animation: pulseGlow 4s ease-in-out infinite 2.5s; }
+    .connection-lines {
+      stroke-dasharray: 4 2;
+      animation: dash 2s linear infinite;
+    }
+    .floating-dot-1 { animation: blink 2s ease-in-out infinite; }
+    .floating-dot-2 { animation: blink 2s ease-in-out infinite 0.3s; }
+    .floating-dot-3 { animation: blink 2s ease-in-out infinite 0.6s; }
+    .floating-dot-4 { animation: blink 2s ease-in-out infinite 0.9s; }
+    .floating-dot-5 { animation: blink 2s ease-in-out infinite 1.2s; }
+    .floating-dot-6 { animation: blink 2s ease-in-out infinite 1.5s; }
+  </style>
+  
+  <!-- Background circle -->
+  <circle cx="60" cy="60" r="56" fill="#1a1a2e" stroke="url(#communityGradient)" stroke-width="2"/>
+  
+  <!-- Outer decorative ring - rotating -->
+  <circle class="rotating-ring" cx="60" cy="60" r="52" fill="none" stroke="url(#communityGradient)" stroke-width="1" stroke-dasharray="8 4" opacity="0.4"/>
+  
+  <!-- Inner decorative ring - rotating reverse -->
+  <circle class="rotating-ring-reverse" cx="60" cy="60" r="48" fill="none" stroke="url(#communityGradient)" stroke-width="0.5" stroke-dasharray="3 3" opacity="0.3"/>
+  
+  <!-- Central hub - represents CreatorHub - pulsing -->
+  <g class="pulse-hub">
+    <circle cx="60" cy="60" r="16" fill="url(#communityGradient)" filter="url(#shadow)"/>
+    <circle cx="60" cy="60" r="10" fill="#1a1a2e"/>
+    <circle cx="60" cy="60" r="6" fill="url(#communityGradient)"/>
+    <!-- Creative tool symbol in center (pencil/pen tip) -->
+    <path d="M60 54 L63 60 L60 66 L57 60 Z" fill="#1a1a2e"/>
+  </g>
+  
+  <!-- Community members - 6 people around the hub with staggered animations -->
+  
+  <!-- Person 1 - Top -->
+  <g class="person-1" transform="translate(60, 22)" filter="url(#glow)">
+    <circle cx="0" cy="0" r="8" fill="url(#communityGradient)"/>
+    <circle cx="0" cy="-4" r="4" fill="#1a1a2e"/>
+    <path d="M-5 2 Q0 8 5 2" fill="#1a1a2e"/>
+  </g>
+  
+  <!-- Person 2 - Top Right -->
+  <g class="person-2" transform="translate(88, 40)" filter="url(#glow)">
+    <circle cx="0" cy="0" r="7" fill="url(#communityGradient)"/>
+    <circle cx="0" cy="-3" r="3.5" fill="#1a1a2e"/>
+    <path d="M-4 1.5 Q0 6 4 1.5" fill="#1a1a2e"/>
+  </g>
+  
+  <!-- Person 3 - Bottom Right -->
+  <g class="person-3" transform="translate(88, 80)" filter="url(#glow)">
+    <circle cx="0" cy="0" r="7" fill="url(#communityGradient)"/>
+    <circle cx="0" cy="-3" r="3.5" fill="#1a1a2e"/>
+    <path d="M-4 1.5 Q0 6 4 1.5" fill="#1a1a2e"/>
+  </g>
+  
+  <!-- Person 4 - Bottom -->
+  <g class="person-4" transform="translate(60, 98)" filter="url(#glow)">
+    <circle cx="0" cy="0" r="8" fill="url(#communityGradient)"/>
+    <circle cx="0" cy="-4" r="4" fill="#1a1a2e"/>
+    <path d="M-5 2 Q0 8 5 2" fill="#1a1a2e"/>
+  </g>
+  
+  <!-- Person 5 - Bottom Left -->
+  <g class="person-5" transform="translate(32, 80)" filter="url(#glow)">
+    <circle cx="0" cy="0" r="7" fill="url(#communityGradient)"/>
+    <circle cx="0" cy="-3" r="3.5" fill="#1a1a2e"/>
+    <path d="M-4 1.5 Q0 6 4 1.5" fill="#1a1a2e"/>
+  </g>
+  
+  <!-- Person 6 - Top Left -->
+  <g class="person-6" transform="translate(32, 40)" filter="url(#glow)">
+    <circle cx="0" cy="0" r="7" fill="url(#communityGradient)"/>
+    <circle cx="0" cy="-3" r="3.5" fill="#1a1a2e"/>
+    <path d="M-4 1.5 Q0 6 4 1.5" fill="#1a1a2e"/>
+  </g>
+  
+  <!-- Connection lines from hub to people - animated dashes -->
+  <g class="connection-lines" stroke="url(#communityGradient)" stroke-width="2" opacity="0.6" fill="none">
+    <line x1="60" y1="44" x2="60" y2="30"/>
+    <line x1="73" y1="52" x2="82" y2="43"/>
+    <line x1="73" y1="68" x2="82" y2="77"/>
+    <line x1="60" y1="76" x2="60" y2="90"/>
+    <line x1="47" y1="68" x2="38" y2="77"/>
+    <line x1="47" y1="52" x2="38" y2="43"/>
+  </g>
+  
+  <!-- Small decorative dots - blinking -->
+  <circle class="floating-dot-1" cx="74" cy="30" r="2" fill="url(#communityGradient)" opacity="0.5"/>
+  <circle class="floating-dot-2" cx="46" cy="30" r="2" fill="url(#communityGradient)" opacity="0.5"/>
+  <circle class="floating-dot-3" cx="95" cy="60" r="2" fill="url(#communityGradient)" opacity="0.5"/>
+  <circle class="floating-dot-4" cx="25" cy="60" r="2" fill="url(#communityGradient)" opacity="0.5"/>
+  <circle class="floating-dot-5" cx="74" cy="90" r="2" fill="url(#communityGradient)" opacity="0.5"/>
+  <circle class="floating-dot-6" cx="46" cy="90" r="2" fill="url(#communityGradient)" opacity="0.5"/>
+</svg>

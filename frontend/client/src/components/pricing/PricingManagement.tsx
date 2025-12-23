@@ -1,0 +1,972 @@
+/**
+ * CreatorHub Norge - Comprehensive Pricing Management Interface
+ * Integrated across all platform areas
+ */
+
+import React, { useState, useEffect } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useAuth } from '@/hooks/useAuth';
+import { useEnhancedMasterIntegration } from "@/integration/EnhancedMasterIntegrationProvider";
+import { useTheming } from '../../utils/theming-helper';
+import { useClientServicePricing } from '../../services/ClientServicePricingService';
+import { apiRequest } from '@/lib/queryClient';
+import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
+import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
+import getProfessionIcon from '@/utils/profession-icons';
+import {
+  Box,
+  Container,
+  Typography,
+  Tabs,
+  Tab,
+  Card,
+  CardContent,
+  Button,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  Grid,
+  Chip,
+  Alert,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Paper,
+  IconButton,
+  Fab,
+  Switch,
+  FormControlLabel
+} from '@mui/material';
+import {
+  Add as AddIcon,
+  Edit as EditIcon,
+  Delete as DeleteIcon,
+  Visibility as VisibilityIcon,
+  VisibilityOff as VisibilityOffIcon,
+  Category as CategoryIcon,
+  LocalOffer as PriceIcon,
+  Group as CustomerIcon,
+  Inventory as PackageIcon
+} from '@mui/icons-material';
+
+// Import dynamic profession system
+import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
+
+interface PricingManagementProps {
+  userId: string;
+  profession: string;
+  onPricingUpdate?: () => void
+}
+
+interface TabPanelProps {
+  children?: React.ReactNode;
+  index: number;
+  value: number
+}
+
+function TabPanel(props: TabPanelProps) {
+  const { children, value, index, ...other } = props;
+  return (
+    <div role="tabpanel" hidden={value !== index} {...other}>
+      {value === index && <Box sx={{ p:  3 }}>{children}</Box>}
+    </div>
+  );
+}
+
+export default function PricingManagement({ userId, profession, onPricingUpdate }: PricingManagementProps) {
+  // Use dynamic profession system
+  const { professionConfigs, isLoading: professionsLoading } = useDynamicProfessions();
+  const professionConfig = professionConfigs?.[profession];
+
+  // Client service pricing service integration
+  const { 
+    formatCurrency,
+    getDefaultPrice,
+    getMVA,
+    getTotalWithMVA,
+    isLoading: pricingLoading 
+} = useClientServicePricing();
+  const [tabValue, setTabValue] = useState(0);
+  const [categoryDialog, setCategoryDialog] = useState(false);
+  const [serviceDialog, setServiceDialog] = useState(false);
+  const [packageDialog, setPackageDialog] = useState(false);
+  const [customerPricingDialog, setCustomerPricingDialog] = useState(false);
+  const [selectedItem, setSelectedItem] = useState<any>(null);
+    const [alert, setAlert] = useState<{ severity: 'success' | 'error'; message: string } | null>(null);
+
+  const queryClient = useQueryClient();
+
+  // Master integration system for "everything interacts with everything"
+  const { integration, communication, dataFlow, componentRegistry, features } = useEnhancedMasterIntegration();
+  
+  // Theming system - use dynamic profession
+  const theming = useTheming(currentProfession);
+
+  // Comprehensive Feature System for Pricing Management
+  const pricingManagementAccess = features.checkFeatureAccess('pricing-management,');
+  const priceAdministrationAccess = features.checkFeatureAccess('price-administration,');
+  const packageManagementAccess = features.checkFeatureAccess('package-management');
+  const subscriptionManagementAccess = features.checkFeatureAccess('subscription-management');
+  const billingAccess = features.checkFeatureAccess('billing');
+  const pricingAnalyticsAccess = features.checkFeatureAccess('pricing-analytics');
+  const discountManagementAccess = features.checkFeatureAccess('discount-management');
+  const revenueTrackingAccess = features.checkFeatureAccess('revenue-tracking');
+
+  // Register component and data flow nodes with MasterIntegrationProvider
+  useEffect(() => {
+    communication.registerComponent('pricing-management','pricing', [
+      'data:read','data:write','event:emit','event:listen','ui:update','pricing:create','pricing:update','pricing:delete','category:manage','service:manage','package:manage','customer:manage'
+    ]);
+
+    // Track feature usage
+    features.trackFeatureUsage('pricing-management, ','opened', {
+      timestamp: Date.now(),
+      component: 'PricingManagement',
+      activeTab: activeTab
+});
+
+    dataFlow.registerNode({
+      type: 'source',
+      componentId: 'pricing-management',
+      dataKey: 'pricing-management:categories',
+      transform: (data: any) => ({ ...data, lastUpdated: Date.now(),})
+  });
+
+    dataFlow.registerNode({
+      type: 'source',
+      componentId: 'pricing-management',
+      dataKey: 'pricing-management:services',
+      transform: (data: any) => ({ ...data, lastUpdated: Date.now(),})
+  });
+
+    dataFlow.registerNode({
+      type: 'source',
+      componentId: 'pricing-management',
+      dataKey: 'pricing-management:packages',
+      transform: (data: any) => ({ ...data, lastUpdated: Date.now(),})
+  });
+
+    return () => {
+      communication.unregisterComponent('pricing-management');
+  };
+}, [communication, dataFlow]);
+
+  // Listen to global events from other components
+  useEffect(() => {
+    const unsubscribe = communication.onMessage((message: any) => {
+      if (message.type === 'project:selected' && message.data) {
+        console.log('💰 Pricing Management: Project selected, ', message.data);
+        // Update pricing context based on selected project
+    }
+      if (message.type === 'client: selected' && message.data) {
+        console.log('💰 Pricing Management: Client selected', message.data);
+        // Update pricing context based on selected client
+    }
+      if (message.type === 'data: sync' && message.data.dataKey === 'pricing-management:categories') {
+        console.log('💰 Pricing Management: Categories synced', message.data.data);
+    }
+  });
+    return unsubscribe;
+}, [communication]);
+
+  // Fetch pricing data
+  const { data: categories = [], isLoading: categoriesLoading } = useQuery({
+    queryKey: ['/api/pricing/categories', userId],
+    queryFn: () => apiRequest(`/api/pricing/categories/${userId}`)
+});
+
+  const { data: services = [], isLoading: servicesLoading } = useQuery({
+    queryKey: ['/api/pricing/services', userId],
+    queryFn: () => apiRequest(`/api/pricing/services/${userId}`)
+});
+
+  const { data: packages = [], isLoading: packagesLoading } = useQuery({
+    queryKey: ['/api/pricing/packages', userId],
+    queryFn: () => apiRequest(`/api/pricing/packages/${userId}`)
+});
+
+  // Mutations for CRUD operations
+  const createCategoryMutation = useMutation({
+    mutationFn: async (data: any) => {
+      return apiRequest('/api/pricing/categories', {
+        headers: {
+          "Content-Type" : "application/json"
+    },
+        method: 'POS',
+        body: JSON.stringify({ ...data, userId, profession })
+    });
+  },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/pricing/categories', ],});
+      setCategoryDialog(false);
+      setAlert({ severity: 'success', message: 'Kategori opprettet!',});
+      onPricingUpdate?.();
+  },
+    onError: () => {
+      setAlert({ severity: 'error', message: 'Feil ved opprettelse av kategori',});
+  }
+});
+
+  const updateCategoryMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: number; data: any }) => {
+      return apiRequest(`/api/pricing/categories/${id}`, {
+        headers: {
+          "Content-Type" : "application/json"
+    },
+        method: 'PU',
+        body: JSON.stringify(data)
+  });
+  },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/pricing/categories', ],});
+      setCategoryDialog(false);
+      setAlert({ severity: 'success', message: 'Kategori oppdatert!',});
+      onPricingUpdate?.();
+  }
+});
+
+  const deleteCategoryMutation = useMutation({
+    mutationFn: async (id: number) => {
+      return apiRequest(`/api/pricing/categories/${d}`, {
+        headers: {
+          "Content-Type" : "application/json"
+    },
+        method: 'DELETE'
+  });
+  },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/pricing/categories', ],});
+      setAlert({ severity: 'success', message: 'Kategori slettet!',});
+      onPricingUpdate?.();
+  }
+});
+
+  const createServiceMutation = useMutation({
+    mutationFn: async (data: any) => {
+      return apiRequest('/api/pricing/services', {
+        headers: {
+          "Content-Type" : "application/json"
+    },
+        method: 'POS',
+        body: JSON.stringify({ ...data, userId })
+    });
+  },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/pricing/services', ],});
+      setServiceDialog(false);
+      setAlert({ severity: 'success', message: 'Tjeneste opprettet!',});
+      onPricingUpdate?.();
+  }
+});
+
+  const updateServiceMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: number; data: any }) => {
+      return apiRequest(`/api/pricing/services/${id}`, {
+        method: 'PUT',
+        headers: {
+          "Content-Type" : "application/json"
+        },
+        body: JSON.stringify(data)
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/pricing/services'] });
+      setServiceDialog(false);
+      setAlert({ severity: 'success', message: 'Tjeneste oppdatert!' });
+      onPricingUpdate?.();
+    }
+  });
+
+  const deleteServiceMutation = useMutation({
+    mutationFn: async (id: number) => {
+      return apiRequest(`/api/pricing/services/${id}`, {
+        method: 'DELETE',
+        headers: {
+          "Content-Type" : "application/json"
+        }
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/pricing/services'] });
+      setAlert({ severity: 'success', message: 'Tjeneste slettet!' });
+      onPricingUpdate?.();
+    }
+  });
+
+  // Sync pricing data on component mount and data changes
+  useEffect(() => {
+    dataFlow.syncData('pricing-management: categories', categories);
+    dataFlow.syncData('pricing-management: services', services);
+    dataFlow.syncData('pricing-management: packages', packages);
+}, [dataFlow, categories, services, packages]);
+
+  // Handle tab changes and broadcast them
+  const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
+    setTabValue(newValue);
+    
+    // Broadcast tab change to other components
+    communication.sendMessage({
+      from: 'pricing-management',
+      to: 'all',
+      type: 'pricing:tabChanged',
+      data: {
+        tabValue: newValue,
+        tabName: ['Kategorier','Tjenester','Pakker','Kundepriser'][newValue] || 'Unknown',
+        timestamp: Date.now()
+      }
+    });
+  };
+
+  // Enhanced mutation handlers with integration broadcasting
+  const handleCategoryCreated = (categoryData: any) => {
+    console.log('💰 Category Created: ', categoryData);
+    
+    // Broadcast to other components
+    communication.sendMessage({
+      from: 'pricing-management',
+      to: 'all',
+      type: 'pricing:categoryCreated',
+      data: {
+        ...categoryData,
+        createdBy: 'pricing-management',
+        timestamp: Date.now()
+  }
+  });
+
+    // Sync data flow
+    dataFlow.syncData('pricing-management: categories', [...categories, categoryData]);
+};
+
+  const handleServiceCreated = (serviceData: any) => {
+    console.log('💰 Service Created, :', serviceData);
+    
+    // Broadcast to other components
+    communication.sendMessage({
+      from: 'pricing-management',
+      to: 'all',
+      type: 'pricing:serviceCreated',
+      data: {
+        ...serviceData,
+        createdBy: 'pricing-management',
+        timestamp: Date.now()
+  }
+  });
+
+    // Sync data flow
+    dataFlow.syncData('pricing-management: services', [...services, serviceData]);
+};
+
+  const handlePackageCreated = (packageData: any) => {
+    console.log('💰 Package Created, :', packageData);
+    
+    // Broadcast to other components
+    communication.sendMessage({
+      from: 'pricing-management',
+      to: 'all',
+      type: 'pricing:packageCreated',
+      data: {
+        ...packageData,
+        createdBy: 'pricing-management',
+        timestamp: Date.now()
+  }
+  });
+
+    // Sync data flow
+    dataFlow.syncData('pricing-management: packages', [...packages, packageData]);
+};
+
+  // Categories Tab Content
+  const CategoriesTab = () => (
+    <Box>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb:  3 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          {professionIcon && (
+            <Box sx={{ color: professionColor, display: 'flex', alignItems: 'center' }}>
+              {professionIcon}
+            </Box>
+          )}
+          <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+            {enhancedProfessionConfig?.displayName || professionConfig?.displayName
+              ? `${enhancedProfessionConfig?.displayName || professionConfig.displayName} - Priskategorier`
+              : 'Priskategorier'}
+          </Typography>
+        </Box>
+        <Button variant="contained"
+          startIcon={<AddIcon />}
+          onClick={() => {
+            setSelectedItem(null);
+            setCategoryDialog(true);
+        }}
+          sx={{ 
+            background: 'linear-gradient(135deg, #ff6b35 0%, #f7931e 100%)',
+            color: 'white'
+      }}
+        >
+          Ny kategori
+        </Button>
+      </Box>
+
+      <Grid container spacing={2}>
+        {categories.map((category: any) => (
+          <Grid size={{ xs: 12, md: 6, lg: 4 }} key={category.id}>
+            <Card sx={{
+              background: 'rgba(25, 255, 255, 0.9)',
+              backdropFilter: 'blur(10px)',
+              border: '1px solid rgba(25, 107, 53, 0.2)',
+              ...theming.getThemedCardSx()
+            }}>
+              <CardContent sx={theming.getThemedCardSx()}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
+                  <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+                    {category.category_name}
+                  </Typography>
+                  <Box>
+                    <IconButton
+                      size="small"
+                      onClick={() => {
+                        setSelectedItem(category);
+                        setCategoryDialog(true);
+                    }}
+                    >
+                      <EditIcon />
+                    </IconButton>
+                    <IconButton
+                      size="small"
+                      onClick={() => deleteCategoryMutation.mutate(category.id)}
+                    >
+                      <DeleteIcon />
+                    </IconButton>
+                  </Box>
+                </Box>
+                <Typography variant="body2" color="text.secondary" sx={{ mb:  2 }}>
+                  {category.description}
+                </Typography>
+                <Chip
+                  label={category.is_active ? 'Aktiv' : 'Inaktiv'}
+                  color={category.is_active ? 'success' : 'default'}
+                  size="small"
+                />
+              </CardContent>
+            </Card>
+          </Grid>
+        ))}
+      </Grid>
+    </Box>
+  );
+
+  // Services Tab Content
+  const ServicesTab = () => (
+    <Box>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb:  3 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          {professionIcon && (
+            <Box sx={{ color: professionColor, display: 'flex', alignItems: 'center' }}>
+              {professionIcon}
+            </Box>
+          )}
+          <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+            {enhancedProfessionConfig?.displayName || professionConfig?.displayName
+              ? `${enhancedProfessionConfig?.displayName || professionConfig.displayName} - Tjenester og priser`
+              : 'Tjenester og priser'}
+          </Typography>
+        </Box>
+        <Button variant="contained"
+          startIcon={<AddIcon />}
+          onClick={() => {
+            setSelectedItem(null);
+            setServiceDialog(true);
+        }}
+          sx={{ 
+            background: 'linear-gradient(135deg, #ff6b35 0%, #f7931e 100%)',
+            color: 'white'
+      }}
+        >
+          Ny tjeneste
+        </Button>
+      </Box>
+
+      <TableContainer component={Paper} sx={{ background: 'rgba(25, 255, 255, 0.9)' }}>
+        <Table>
+          <TableHead>
+            <TableRow>
+              <TableCell>Tjeneste</TableCell>
+              <TableCell>Kategori</TableCell>
+              <TableCell>Pris</TableCell>
+              <TableCell>Type</TableCell>
+              <TableCell>Synlig</TableCell>
+              <TableCell>Handlinger</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {services.map((service: any) => (
+              <TableRow key={service.d}>
+                <TableCell>
+                  <Typography variant="subtitle2">{service.service_name}</Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    {service.description}
+                  </Typography>
+                </TableCell>
+                <TableCell>{service.category_name}</TableCell>
+                <TableCell>
+                  <Typography variant="subtitle2" sx={{ color: '#ff6b35'}}>
+                    {service.base_price} NOK
+                  </Typography>
+                  <Typography variant="caption">
+                    per {service.unit}
+                  </Typography>
+                </TableCell>
+                <TableCell>
+                  <Chip label={service.price_type} size="small" />
+                </TableCell>
+                <TableCell>
+                  <IconButton size="small">
+                    {service.is_visible ? <VisibilityIcon /> : <VisibilityOffIcon />}
+                  </IconButton>
+                </TableCell>
+                <TableCell>
+                  <IconButton
+                    size="small"
+                    onClick={() => {
+                      setSelectedItem(service);
+                      setServiceDialog(true);
+                  }}
+                  >
+                    <EditIcon />
+                  </IconButton>
+                  <IconButton
+                    size="small"
+                    onClick={() => deleteServiceMutation.mutate(service.id)}
+                  >
+                    <DeleteIcon />
+                  </IconButton>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </TableContainer>
+    </Box>
+  );
+
+  // Packages Tab Content
+  const PackagesTab = () => (
+    <Box>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb:  3 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          {professionIcon && (
+            <Box sx={{ color: professionColor, display: 'flex', alignItems: 'center' }}>
+              {professionIcon}
+            </Box>
+          )}
+          <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+            {enhancedProfessionConfig?.displayName || professionConfig?.displayName
+              ? `${enhancedProfessionConfig?.displayName || professionConfig.displayName} - Pakkepriser`
+              : 'Pakkepriser'}
+          </Typography>
+        </Box>
+        <Button variant="contained"
+          startIcon={<AddIcon />}
+          onClick={() => {
+            setSelectedItem(null);
+            setPackageDialog(true);
+        }}
+          sx={{ 
+            background: 'linear-gradient(135deg, #ff6b35 0%, #f7931e 100%)',
+            color: 'white'
+      }}
+        >
+          Ny pakke
+        </Button>
+      </Box>
+
+      <Grid container spacing={3}>
+        {packages.map((pkg: any) => (
+          <Grid size={{ xs: 12, md: 6, lg: 4 }} key={pkg.id}>
+            <Card sx={{
+              background: 'rgba(25, 255, 255, 0.9)',
+              backdropFilter: 'blur(10px)',
+              border: '1px solid rgba(25, 107, 53, 0.2)',
+              height: '100%',
+              ...theming.getThemedCardSx()
+            }}>
+              <CardContent sx={theming.getThemedCardSx()}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
+                  <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+                    {pkg.package_name}
+                  </Typography>
+                  <Box>
+                    <IconButton
+                      size="small"
+                      onClick={() => {
+                        setSelectedItem(pkg);
+                        setPackageDialog(true);
+                    }}
+                    >
+                      <EditIcon />
+                    </IconButton>
+                    <IconButton
+                      size="small"
+                      onClick={() => deletePricingPackage.mutate(pkg.id)}
+                    >
+                      <DeleteIcon />
+                    </IconButton>
+                  </Box>
+                </Box>
+                <Typography variant="body2" color="text.secondary" sx={{ mb:  2 }}>
+                  {pkg.description}
+                </Typography>
+                <Typography variant="h5" sx={{ mb: 2, color: theming.colors.primary }}>
+                  {pkg.total_price} NOK
+                </Typography>
+                {pkg.discount_from_individual && (
+                  <Chip
+                    label={`Spar ${pkg.discount_from_individual} NOK`}
+                    color="success"
+                    size="small"
+                    sx={{ mb:  2 }}
+                  />
+                )}
+                <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap'}}>
+                  <Chip
+                    label={pkg.is_active ? 'Aktiv' : 'Inaktiv'}
+                    color={pkg.is_active ? 'success' : 'default'}
+                    size="small"
+                  />
+                  <Chip
+                    label={pkg.is_visible ? 'Synlig' : 'Skjult'}
+                    color={pkg.is_visible ? 'primary' : 'default'}
+                    size="small"
+                  />
+                </Box>
+              </CardContent>
+            </Card>
+          </Grid>
+        ))}
+      </Grid>
+    </Box>
+  );
+
+  return (
+    <Container maxWidth="xl" sx={{ py:  3 }}>
+      {alert && (
+        <Alert 
+          severity={alert.severity}
+          onClose={() => setAlert(null)}
+          sx={{ mb:  3 }}
+        >
+          {alert.message}
+        </Alert>
+      )}
+
+      <Typography variant="h4" sx={{ mb: 3, color: theming.colors.primary }}>
+        {professionConfig ? `${professionConfig.displayName} - Prissystem` : 'Prissystem'}
+      </Typography>
+      {professionConfig && (
+        <Typography variant="body1" color="text.secondary" sx={{ mb:  3 }}>
+          Administrer priser og pakker for {professionConfig.displayName.toLowerCase()}
+        </Typography>
+      )}
+      
+      {/* Feature Analytics Display */}
+      <Box sx={{ 
+        display: 'flex', 
+        alignItems: 'center', 
+        gap: 1, mb: 3 }}>
+        <Typography variant="caption" color="text.secondary">
+          Features: {features.getFeatureAnalytics().enabledFeatures}/{features.getFeatureAnalytics().totalFeatures}
+        </Typography>
+        <Chip 
+          label={`${Math.round(features.getFeatureAnalytics().featureAdoptionRate * 100)}%`}
+          size="small"
+          variant="outlined"
+          sx={{ fontSize: '10px', height: 18}}
+        />
+      </Box>
+
+      <Card sx={{
+        background: 'rgba(25, 255, 255, 0.95)',
+        backdropFilter: 'blur(20px)',
+        border: '1px solid rgba(25, 107, 53, 0.2)',
+        ...theming.getThemedCardSx()
+      }}>
+        <Box sx={{ borderBottom: 1, borderColor: 'divider'}}>
+          <Tabs 
+            value={tabValue}
+            onChange={handleTabChange}
+            sx={{
+              '& .MuiTab-root': {
+                color: '#666', '&.Mui-selected': {
+                  color: '#ff6b35'
+                }
+              }, '& .MuiTabs-indicator': {
+                backgroundColor: '#ff6b35'
+              }
+            }}
+          >
+            <Tab icon={<CategoryIcon />} label="Kategorier" />
+            <Tab icon={<PriceIcon />} label="Tjenester" />
+            <Tab icon={<PackageIcon />} label="Pakker" />
+            <Tab icon={<CustomerIcon />} label="Kundepriser" />
+          </Tabs>
+        </Box>
+
+        <TabPanel value={tabValue} index={0}>
+          <CategoriesTab />
+        </TabPanel>
+
+        <TabPanel value={tabValue} index={1}>
+          <ServicesTab />
+        </TabPanel>
+
+        <TabPanel value={tabValue} index={2}>
+          <PackagesTab />
+        </TabPanel>
+
+        <TabPanel value={tabValue} index={3}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            {professionIcon && (
+              <Box sx={{ color: professionColor, display: 'flex', alignItems: 'center' }}>
+                {professionIcon}
+              </Box>
+            )}
+            <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+              {enhancedProfessionConfig?.displayName || professionConfig?.displayName
+                ? `${enhancedProfessionConfig?.displayName || professionConfig.displayName} - Kundepriser`
+                : 'Kundepriser'}
+            </Typography>
+          </Box>
+          <Typography color="text.secondary">
+            Administrer spesialpriser og rabatter for {professionConfig ? professionConfig.displayName.toLowerCase() : ''} kunder
+          </Typography>
+        </TabPanel>
+      </Card>
+
+      {/* Category Dialog */}
+      <Dialog open={categoryDialog} onClose={() => setCategoryDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          {selectedItem ? 'Rediger kategori' : 'Ny kategori'}
+        </DialogTitle>
+        <DialogContent>
+          <CategoryForm
+            category={selectedItem}
+            onSave={(data) => {
+              if (selectedItem) {
+                updateCategoryMutation.mutate({ id: selectedItem.id, data });
+              } else {
+                createCategoryMutation.mutate(data);
+              }
+            }}
+            onCancel={() => setCategoryDialog(false)}
+          />
+        </DialogContent>
+      </Dialog>
+
+      {/* Service Dialog */}
+      <Dialog open={serviceDialog} onClose={() => setServiceDialog(false)} maxWidth="md" fullWidth>
+        <DialogTitle>
+          {selectedItem ? 'Rediger tjeneste' : 'Ny tjeneste'}
+        </DialogTitle>
+        <DialogContent>
+          <ServiceForm
+            service={selectedItem}
+            categories={categories}
+            onSave={(data) => {
+              if (selectedItem) {
+                updateServiceMutation.mutate({ id: selectedItem.id, data });
+              } else {
+                createServiceMutation.mutate(data);
+              }
+            }}
+            onCancel={() => setServiceDialog(false)}
+          />
+        </DialogContent>
+      </Dialog>
+    </Container>
+  );
+}
+
+// Category Form Component
+function CategoryForm({ category, onSave, onCancel }: any) {
+  const [formData, setFormData] = useState({
+    categoryName: category?.category_name ||', ',
+    description: category?.description ||', ',
+    isActive: category?.is_active ?? true
+});
+
+  return (
+    <Box sx={{ pt:  2 }}>
+      <TextField
+        fullWidth
+        label="Kategorinavn"
+        value={formData.categoryName}
+        onChange={(e) => setFormData({ ...formData, categoryName: e.target.value })}
+        sx={{ mb:  3 }}
+      />
+      <TextField
+        fullWidth
+        multiline
+        rows={3}
+        label="Beskrivelse"
+        value={formData.description}
+        onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+        sx={{ mb:  3 }}
+      />
+      <FormControlLabel
+        control={
+          <Switch
+            checked={formData.isActive}
+            onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })}
+          />
+      }
+        label="Aktiv kategori"
+        sx={{ mb:  3 }}
+      />
+      <Box sx={{ display: 'flex', gap: 2, justifyContent: 'flex-end' }}>
+        <Button onClick={onCancel}>Avbryt</Button>
+        <Button
+          variant="contained"
+          onClick={() => onSave(formData)}
+          sx={{
+            ...theming.getThemedButtonSx(),
+            background: 'linear-gradient(135deg, #ff6b35 0%, #f7931e 100%)',
+            color: 'white'
+          }}
+        >
+          Lagre
+        </Button>
+      </Box>
+    </Box>
+  );
+}
+
+// Service Form Component
+function ServiceForm({ service, categories, onSave, onCancel }: any) {
+  const [formData, setFormData] = useState({
+    categoryId: service?.category_id ||', ',
+    serviceName: service?.service_name || '',
+    description: service?.description || '',
+    basePrice: service?.base_price || '',
+    priceType: service?.price_type || 'fixed',
+    unit: service?.unit || 'stk',
+    minimumQuantity: service?.minimum_quantity || 1,
+    maximumQuantity: service?.maximum_quantity || ', ',
+    isVisible: service?.is_visible ?? true,
+    isActive: service?.is_active ?? true,
+  });
+
+  return (
+    <Box sx={{ pt:  2 }}>
+      <Grid container spacing={3}>
+        <Grid size={{ xs: 12 }} md={6}>
+          <FormControl fullWidth>
+            <InputLabel>Kategori</InputLabel>
+            <Select
+              value={formData.categoryId}
+              onChange={(e) => setFormData({ ...formData, categoryId: e.target.value })}
+            >
+              {categories.map((cat: any) => (
+                <MenuItem key={cat.d} value={cat.id}>
+                  {cat.category_name}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        </Grid>
+        <Grid size={{ xs: 12 }} md={6}>
+          <TextField
+            fullWidth
+            label="Tjenestenavn"
+            value={formData.serviceName}
+            onChange={(e) => setFormData({ ...formData, serviceName: e.target.value })}
+          />
+        </Grid>
+        <Grid size={{ xs: 12 }}>
+          <TextField
+            fullWidth
+            multiline
+            rows={3}
+            label="Beskrivelse"
+            value={formData.description}
+            onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+          />
+        </Grid>
+        <Grid size={{ xs: 12 }} md={4}>
+          <TextField
+            fullWidth
+            type="number"
+            label="Grunnpris (NOK)"
+            value={formData.basePrice}
+            onChange={(e) => setFormData({ ...formData, basePrice: e.target.value })}
+          />
+        </Grid>
+        <Grid size={{ xs: 12 }} md={4}>
+          <FormControl fullWidth>
+            <InputLabel>Pristype</InputLabel>
+            <Select
+              value={formData.priceType}
+              onChange={(e) => setFormData({ ...formData, priceType: e.target.value })}
+            >
+              <MenuItem value="fixed">Fast pris</MenuItem>
+              <MenuItem value="per_hour">Per time</MenuItem>
+              <MenuItem value="per_item">Per stykk</MenuItem>
+              <MenuItem value="per_day">Per dag</MenuItem>
+            </Select>
+          </FormControl>
+        </Grid>
+        <Grid size={{ xs: 12 }} md={4}>
+          <TextField
+            fullWidth
+            label="Enhet"
+            value={formData.unit}
+            onChange={(e) => setFormData({ ...formData, unit: e.target.value })}
+          />
+        </Grid>
+        <Grid size={{ xs: 12 }} md={6}>
+          <FormControlLabel
+            control={
+              <Switch
+                checked={formData.isVisible}
+                onChange={(e) => setFormData({ ...formData, isVisible: e.target.checked })}
+              />
+          }
+            label="Synlig for kunder"
+          />
+        </Grid>
+        <Grid size={{ xs: 12 }} md={6}>
+          <FormControlLabel
+            control={
+              <Switch
+                checked={formData.isActive}
+                onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })}
+              />
+          }
+            label="Aktiv tjeneste"
+          />
+        </Grid>
+      </Grid>
+      <Box sx={{ display: 'flex', gap: 2, justifyContent: 'flex-end', mt: 3 }}>
+        <Button onClick={onCancel}>Avbryt</Button>
+        <Button
+          variant="contained"
+          onClick={() => onSave(formData)}
+          sx={{
+            ...theming.getThemedButtonSx(),
+            background: 'linear-gradient(135deg, #ff6b35 0%, #f7931e 100%)',
+            color:'white'
+          }}
+        >
+          Lagre
+        </Button>
+      </Box>
+    </Box>
+  );
+}

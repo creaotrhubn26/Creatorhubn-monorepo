@@ -1,0 +1,391 @@
+import React from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
+import {
+  Box,
+  Typography,
+  Card,
+  CardContent,
+  Tabs,
+  Tab,
+  CircularProgress,
+  Alert,
+  Grid,
+  Chip,
+  Button,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemSecondaryAction,
+  IconButton,
+  Tooltip,
+  Divider,
+} from '@mui/material';
+import {
+  Description as ContractIcon,
+  AccountBalance as SplitSheetIcon,
+  Receipt as QuoteIcon,
+  Visibility as ViewIcon,
+  Add as AddIcon,
+} from '@mui/icons-material';
+import { useTheming } from '../../../utils/theming-helper';
+import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
+import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
+import getProfessionIcon from '@/utils/profession-icons';
+import { useDynamicProfessions } from '../hooks/useDynamicProfessions';
+
+interface RelatedItemsWidgetProps {
+  projectId: string;
+  onViewContract?: (contract: any) => void;
+  onViewSplitSheet?: (splitSheet: any) => void;
+  onViewQuote?: (quote: any) => void;
+  onCreateContract?: () => void;
+  onCreateSplitSheet?: () => void;
+  onCreateQuote?: () => void;
+  profession?: string;
+}
+
+interface TabPanelProps {
+  children?: React.ReactNode;
+  index: number;
+  value: number;
+}
+
+function TabPanel({ children, value, index, ...other }: TabPanelProps) {
+  return (
+    <div
+      role="tabpanel"
+      hidden={value !== index}
+      id={`related-items-tabpanel-${index}`}
+      aria-labelledby={`related-items-tab-${index}`}
+      {...other}
+    >
+      {value === index && <Box sx={{ py: 2 }}>{children}</Box>}
+    </div>
+  );
+}
+
+export default function RelatedItemsWidget({
+  projectId,
+  onViewContract,
+  onViewSplitSheet,
+  onViewQuote,
+  onCreateContract,
+  onCreateSplitSheet,
+  onCreateQuote,
+  profession = 'photographer',
+}: RelatedItemsWidgetProps) {
+  const theming = useTheming(profession);
+  const [activeTab, setActiveTab] = React.useState(0);
+  
+  // Dynamic profession system - check if profession supports split sheets
+  const { professionConfigs, professionSupports } = useDynamicProfessions();
+  
+  // Check if profession supports split sheets (currently music_producer, but can be extended via profession config)
+  const supportsSplitSheets = React.useMemo(() => {
+    // Check if profession config has split sheet capability
+    // For now, music_producer supports it, but this can be made dynamic via profession config
+    const config = professionConfigs[profession];
+    if (!config) return profession === 'music_producer';
+    
+    // Future: Check config.components or config.capabilities for 'split_sheets'
+    // For now, use profession check but make it extensible
+    return profession === 'music_producer' || professionSupports(profession , 'split_sheets,');
+  }, [profession, professionConfigs, professionSupports]);
+
+  // Fetch related contracts
+  const { data: contractsData, isLoading: contractsLoading } = useQuery({
+    queryKey: ['/api/contracts,', 'project', projectId],
+    queryFn: () => apiRequest(`/api/contracts?projectId=${projectId}`),
+    enabled: !!projectId,
+    retry: false,
+  });
+
+  // Fetch related split sheets (for professions that support split sheets)
+  const { data: splitSheetsData, isLoading: splitSheetsLoading } = useQuery({
+    queryKey: ['split-sheets','project', projectId],
+    queryFn: () => apiRequest(`/api/split-sheets?project_id=${projectId}`),
+    enabled: !!projectId && supportsSplitSheets,
+    retry: false,
+  });
+
+  // Fetch related quotes
+  const { data: quotesData, isLoading: quotesLoading } = useQuery({
+    queryKey: ['/api/price-administration/quotes','project', projectId],
+    queryFn: () => apiRequest(`/api/price-administration/quotes?projectId=${projectId}`),
+    enabled: !!projectId,
+    retry: false,
+  });
+
+  const contracts = contractsData?.contracts || [];
+  const splitSheets = splitSheetsData?.data || [];
+  const quotes = quotesData?.quotes || [];
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'active':
+      case 'completed':
+        return 'success';
+      case 'cancelled':
+        return 'error';
+      case 'pending_signatures':
+        return 'warning';
+      default:
+        return 'default';
+    }
+  };
+
+  return (
+    <Card variant="outlined" sx={theming.getThemedCardSx()}>
+      <CardContent sx={theming.getThemedCardSx()}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+            Relaterte Elementer
+          </Typography>
+        </Box>
+
+        <Tabs value={activeTab} onChange={(_, v) => setActiveTab(v)} sx={{ mb: 2 }}>
+          <Tab
+            icon={<ContractIcon />}
+            label={`Kontrakter (${contracts.length})`}
+            iconPosition="start"
+          />
+          {supportsSplitSheets && (
+            <Tab
+              icon={<SplitSheetIcon />}
+              label={`Split Sheets (${splitSheets.length})`}
+              iconPosition="start"
+            />
+          )}
+          <Tab
+            icon={<QuoteIcon />}
+            label={`Tilbud (${quotes.length})`}
+            iconPosition="start"
+          />
+        </Tabs>
+
+        {/* Contracts Tab */}
+        <TabPanel value={activeTab} index={0}>
+          {contractsLoading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
+              <CircularProgress size={24} />
+            </Box>
+          ) : contracts.length === 0 ? (
+            <Alert severity="info">
+              Ingen kontrakter funnet for dette prosjektet.
+              {onCreateContract && (
+                <Button size="small" onClick={onCreateContract} sx={{ ml: 2 }}>
+                  Opprett Kontrakt
+                </Button>
+              )}
+            </Alert>
+          ) : (
+            <List>
+              {contracts.map((contract: any) => (
+                <ListItem
+                  key={contract.id}
+                  sx={{
+                    border: '1px solid',
+                    borderColor: 'divider',
+                    borderRadius: 1,
+                    mb: 1, '&:hover': {
+                      bgcolor: 'action.hover',
+                    }}}
+                >
+                  <ListItemText
+                    primary={
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Typography variant="subtitle1" sx={{ fontWeight: 600}}>
+                          {contract.clientName || 'Ukjent klient'}
+                        </Typography>
+                        <Chip
+                          label={contract.status || 'draft'}
+                          size="small"
+                          color={getStatusColor(contract.status)}
+                        />
+                      </Box>
+                    }
+                    secondary={
+                      <Box>
+                        <Typography variant="body2" color="text.secondary">
+                          {contract.projectDescription || contract.description || 'Ingen beskrivelse'}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          NOK {contract.totalAmount?.toLocaleString('no-NO') || '0'} •{', '}
+                          {new Date(contract.createdAt).toLocaleDateString('no-NO')}
+                        </Typography>
+                      </Box>
+                    }
+                  />
+                  {onViewContract && (
+                    <ListItemSecondaryAction>
+                      <Tooltip title="Se detaljer">
+                        <IconButton
+                          edge="end"
+                          onClick={() => onViewContract(contract)}
+                          sx={{ color: theming.colors.primary }}
+                        >
+                          <ViewIcon />
+                        </IconButton>
+                      </Tooltip>
+                    </ListItemSecondaryAction>
+                  )}
+                </ListItem>
+              ))}
+            </List>
+          )}
+        </TabPanel>
+
+        {/* Split Sheets Tab */}
+        {supportsSplitSheets && (
+          <TabPanel value={activeTab} index={1}>
+            {splitSheetsLoading ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
+                <CircularProgress size={24} />
+              </Box>
+            ) : splitSheets.length === 0 ? (
+              <Alert severity="info">
+                Ingen split sheets funnet for dette prosjektet.
+                {onCreateSplitSheet && (
+                  <Button size="small" onClick={onCreateSplitSheet} sx={{ ml: 2 }}>
+                    Opprett Split Sheet
+                  </Button>
+                )}
+              </Alert>
+            ) : (
+              <List>
+                {splitSheets.map((splitSheet: any) => (
+                  <ListItem
+                    key={splitSheet.id}
+                    sx={{
+                      border: '1px solid',
+                      borderColor: 'divider',
+                      borderRadius: 1,
+                      mb: 1, '&:hover': {
+                        bgcolor: 'action.hover',
+                      }}}
+                  >
+                    <ListItemText
+                      primary={
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Typography variant="subtitle1" sx={{ fontWeight: 600}}>
+                            {splitSheet.title || 'Untitled Split Sheet'}
+                          </Typography>
+                          <Chip
+                            label={splitSheet.status || 'draft'}
+                            size="small"
+                            color={getStatusColor(splitSheet.status)}
+                          />
+                        </Box>
+                      }
+                      secondary={
+                        <Box>
+                          <Typography variant="body2" color="text.secondary">
+                            {splitSheet.description || 'Ingen beskrivelse'}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {splitSheet.contributor_count || 0} bidragsytere •{', '}
+                            {new Date(splitSheet.created_at).toLocaleDateString('no-NO')}
+                          </Typography>
+                        </Box>
+                      }
+                    />
+                    {onViewSplitSheet && (
+                      <ListItemSecondaryAction>
+                        <Tooltip title="Se detaljer">
+                          <IconButton
+                            edge="end"
+                            onClick={() => onViewSplitSheet(splitSheet)}
+                            sx={{ color: theming.colors.primary }}
+                          >
+                            <ViewIcon />
+                          </IconButton>
+                        </Tooltip>
+                      </ListItemSecondaryAction>
+                    )}
+                  </ListItem>
+                ))}
+              </List>
+            )}
+          </TabPanel>
+        )}
+
+        {/* Quotes Tab */}
+        <TabPanel value={activeTab} index={supportsSplitSheets ? 2 : 1}>
+          {quotesLoading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
+              <CircularProgress size={24} />
+            </Box>
+          ) : quotes.length === 0 ? (
+            <Alert severity="info">
+              Ingen tilbud funnet for dette prosjektet.
+              {onCreateQuote && (
+                <Button size="small" onClick={onCreateQuote} sx={{ ml: 2 }}>
+                  Opprett Tilbud
+                </Button>
+              )}
+            </Alert>
+          ) : (
+            <List>
+              {quotes.map((quote: any) => (
+                <ListItem
+                  key={quote.id}
+                  sx={{
+                    border: '1px solid',
+                    borderColor: 'divider',
+                    borderRadius: 1,
+                    mb: 1, '&:hover': {
+                      bgcolor: 'action.hover',
+                    }}}
+                >
+                  <ListItemText
+                    primary={
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Typography variant="subtitle1" sx={{ fontWeight: 600}}>
+                          {quote.quoteNumber || `Tilbud #${quote.id}`}
+                        </Typography>
+                        <Chip
+                          label={quote.status || 'draft'}
+                          size="small"
+                          color={quote.status === 'accepted' ? 'success': 'default'}
+                        />
+                      </Box>
+                    }
+                    secondary={
+                      <Box>
+                        <Typography variant="body2" color="text.secondary">
+                          Klient: {quote.clientId || 'Ukjent'}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          NOK {quote.totalAmount?.toLocaleString('no-NO') || '0'} •{', '}
+                          {new Date(quote.createdAt).toLocaleDateString('no-NO')}
+                        </Typography>
+                      </Box>
+                    }
+                  />
+                  {onViewQuote && (
+                    <ListItemSecondaryAction>
+                      <Tooltip title="Se detaljer">
+                        <IconButton
+                          edge="end"
+                          onClick={() => onViewQuote(quote)}
+                          sx={{ color: theming.colors.primary }}
+                        >
+                          <ViewIcon />
+                        </IconButton>
+                      </Tooltip>
+                    </ListItemSecondaryAction>
+                  )}
+                </ListItem>
+              ))}
+            </List>
+          )}
+        </TabPanel>
+      </CardContent>
+    </Card>
+  );
+}
+
+
+
+

@@ -1,0 +1,28 @@
+import { useTheming } from '../../utils/theming-helper';
+import React from 'react';
+/* Alert & Snackbar removed - Zero Toast Compliance */
+// import { Alert, Snackbar } from'@mui/material';
+
+interface ToasterProps {
+  children?: React.ReactNode;
+}
+
+export function Toaster({ children }: ToasterProps) {
+  // Theming system
+  const theming = useTheming('photographer');
+  return (
+    <div>
+      {children}
+    </div>
+  );
+}
+
+// Also export toast hook placeholder
+// ZERO TOAST COMPLIANCE - CreatorHub Norge uses Material UI feedback only
+export function useToast() {
+  return {
+    toast: (message: any) => {
+      console.log('Toast disabled (Zero Toast Compliance):', message);
+  }
+};
+}

@@ -1,0 +1,40 @@
+{
+  "id": "dramatic-lighting",
+  "name": "Dramatic Lighting",
+  "description": "High contrast, moody lighting for dramatic portraits",
+  "category": "portrait",
+  "difficulty": "advanced",
+  "lights": [
+    {
+      "name": "Key Light",
+      "type": "spot",
+      "position": [-3.5, 2.5, 0.5],
+      "rotation": [0.4, 0.8, 0],
+      "power": 0.9,
+      "cct": 4500,
+      "beam": 25,
+      "modifier": "spot"
+    },
+    {
+      "name": "Rim Light",
+      "type": "spot",
+      "position": [2.5, 2.0, -1.0],
+      "rotation": [0.6, -0.5, 0],
+      "power": 0.6,
+      "cct": 6500,
+      "beam": 20,
+      "modifier": "spot"
+    }
+  ],
+  "camera": {
+    "position": [0, 1.6, 3.5],
+    "focalLength": 85,
+    "aperture": 1.8
+  },
+  "subject": {
+    "position": [0, 1.7, 0],
+    "height": 1.75,
+    "rotation": [0, 0.3, 0]
+  }
+}
+

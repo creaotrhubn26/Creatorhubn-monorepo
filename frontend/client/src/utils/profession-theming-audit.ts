@@ -1,0 +1,218 @@
+/**
+ * Profession Theming Audit Tool
+ * Automatically detects and reports on profession-based theming implementation
+ */
+
+import { CREATOR_HUB_ICONS } from '../components/shared/CreatorHubIcons';
+
+export interface ThemingAuditResult {
+  componentPath: string;
+  hasIntegration: boolean;
+  hasTheming: boolean;
+  iconUsage: string[];
+  missingTheming: string[];
+  recommendations: string[];
+  severity: 'low' | 'medium' | 'high', ;, 
+}
+
+export interface ComponentThemingStatus {
+  totalComponents: number;
+  integratedComponents: number;
+  themedComponents: number;
+  missingTheming: number;
+  coverage: number;
+  results: ThemingAuditResult[], ;, 
+}
+
+/**
+ * Audit a single component for profession-based theming
+ */
+export function auditComponentTheming(
+  componentPath: string,
+  content: string
+): ThemingAuditResult {
+  const result: ThemingAuditResult = {
+    componentPath,
+    hasIntegration: false,
+    hasTheming: false,
+    iconUsage:  [],
+    missingTheming:  [],
+    recommendations:  [],
+    severity: 'low'
+,};
+
+  // Check for EnhancedMasterIntegration usage
+  const hasIntegration = content.includes('useEnhancedMasterIntegration, ');
+  result.hasIntegration = hasIntegration;
+
+  // Check for profession-based theming patterns
+  const themingPatterns = [
+    'getThemedIcon', 'getProfessionColors','professionColors','icons.getThemedIcon','icons.getProfessionColors'
+  ];
+  
+  const hasTheming = themingPatterns.some(pattern => content.includes(pattern));
+  result.hasTheming = hasTheming;
+
+  // Find CreatorHub icon usage
+  const iconMatches = content.match(/CREATOR_HUB_ICONS\[[', "`]([^',"`]+)[', "`]\]/g);
+  if (iconMatches) {
+    result.iconUsage = iconMatches.map(match => 
+      match.match(/[', "`]([^',"`]+)['"`]/)?.[1] || ','
+    ).filter(Boolean);
+}
+
+  // Check for direct icon imports
+  const directIconMatches = content.match(/import.*\{([^}]+)\}.*from.*CreatorHubIcons/g);
+  if (directIconMatches) {
+    const iconNames = directIconMatches[0]
+      .match(/\{([^}]+)\}/)?.[1]
+      .split(', ')
+      .map(name => name.trim())
+      .filter(name => name && !name.includes('import'));
+    
+    result.iconUsage.push(...iconNames);
+}
+
+  // Find missing theming opportunities
+  if (result.iconUsage.length > 0 && !hasTheming) {
+    result.missingTheming = result.iconUsage;
+    result.severity = 'high';
+    result.recommendations.push(
+      'Replace static icon usage with profession-based theming','Use icons.getThemedIcon() for dynamic color theming','Apply professionColors to icon styling'
+    );
+}
+
+  // Check for Material UI icons that could be replaced
+  const muiIconMatches = content.match(/from '@mui\/icons-material'/g);
+  if (muiIconMatches && !hasTheming) {
+    result.recommendations.push(
+      'Consider replacing Material UI icons with CreatorHub icons for consistency', 'Implement profession-based theming for better UX'
+    );
+    if (result.severity === 'low') result.severity = 'medium';
+}
+
+  // Check for hardcoded colors
+  const hardcodedColors = content.match(/#[0-9a-fA-F]{6}|#[0-9a-fA-F]{3}/g);
+  if (hardcodedColors && !hasTheming) {
+    result.recommendations.push(
+      'Replace hardcoded colors with profession-based color variables', 'Use getProfessionColors() for consistent theming'
+    );
+    if (result.severity === 'low') result.severity = 'medium';
+}
+
+  return result;
+}
+
+/**
+ * Get all available CreatorHub icons
+ */
+export function getAvailableIcons(): string[] {
+  return Object.keys(CREATOR_HUB_ICONS);
+}
+
+/**
+ * Generate theming implementation suggestions
+ */
+export function generateThemingSuggestions(result: ThemingAuditResult): string[] {
+  const suggestions: string[] = [];
+
+  if (result.hasIntegration && !result.hasTheming) {
+    suggestions.push(`
+// Add to component:
+const { icons } = useEnhancedMasterIntegration();
+
+// Replace static icons with themed versions: <MemoryCardIcon sx={{ color: professionColors.primary }} />
+    `);
+}
+
+  if (result.iconUsage.length > 0) {
+    suggestions.push(`
+// Replace direct icon usage: // OLD: <Memory />
+// NEW: <MemoryCardIcon sx={{ color: professionColors.primary }} />
+
+// Or use themed icon function: {icons.getThemedIcon('memoryCard', profession)}
+    `);
+}
+
+  return suggestions;
+}
+
+/**
+ * Calculate overall theming coverage
+ */
+export function calculateCoverage(results: ThemingAuditResult[]): ComponentThemingStatus {
+  const totalComponents = results.length;
+  const integratedComponents = results.filter(r => r.hasIntegration).length;
+  const themedComponents = results.filter(r => r.hasTheming).length;
+  const missingTheming = results.filter(r => r.severity === 'high').length;
+  
+  const coverage = totalComponents > 0 ? (themedComponents / totalComponents) * 100 : 0;
+
+  return {
+    totalComponents,
+    integratedComponents,
+    themedComponents,
+    missingTheming,
+    coverage,
+    results
+};
+}
+
+/**
+ * Generate audit report
+ */
+export function generateAuditReport(status: ComponentThemingStatus): string {
+  const { totalComponents, integratedComponents, themedComponents, missingTheming, coverage, results } = status;
+  
+  const highSeverity = results.filter(r => r.severity === 'high');
+  const mediumSeverity = results.filter(r => r.severity ==='medium');
+  
+  return `
+# 🎨 Profession Theming Audit Report
+
+## 📊 Overall Status
+- **Total Components**: ${totalComponents}
+- **Integrated Components**: ${integratedComponents} (${((integratedComponents/totalComponents)*100).toFixed(1)}%)
+- **Themed Components**: ${themedComponents} (${coverage.toFixed(1)}%)
+- **Missing Theming**: ${missingTheming} (${((missingTheming/totalComponents)*100).toFixed(1)}%)
+
+## 🚨 High Priority Issues (${highSeverity.length})
+${highSeverity.map(r => `- **${r.componentPath}**: ${r.missingTheming.length} icons need theming`).join('\n')}
+
+## ⚠️ Medium Priority Issues (${mediumSeverity.length})
+${mediumSeverity.map(r => `- **${r.componentPath}**: ${r.recommendations.length} improvements needed`).join('\n')}
+
+## 🎯 Recommendations
+1. **Priority 1**: Fix high severity components with missing theming
+2. **Priority 2**: Implement profession-based theming for medium severity components
+3. **Priority 3**: Replace Material UI icons with CreatorHub icons for consistency
+
+## 🔧 Quick Fixes
+${highSeverity.slice(0, 3).map(r => `
+### ${r.componentPath}
+${r.recommendations.slice(0, 2).join('\n')}
+`).join('\n')}
+  `;
+}
+
+export default {
+  auditComponentTheming,
+  getAvailableIcons,
+  generateThemingSuggestions,
+  calculateCoverage,
+  generateAuditReport
+};
+
+
+
+
+
+
+
+
+
+
+
+
+
+

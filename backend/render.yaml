@@ -1,0 +1,33 @@
+# Render.com Configuration for Backend Service
+# This file helps configure the backend service on Render
+
+services:
+  - type: web
+    name: creatorhub-backend
+    env: node
+    buildCommand: npm install
+    startCommand: npm run dev
+    envVars:
+      # Database
+      - key: DATABASE_URL
+        sync: false  # Set manually in Render dashboard
+      
+      # VAPID Keys for Push Notifications
+      # Note: Add these in Render dashboard Environment tab (not in this file for security)
+      - key: VAPID_PUBLIC_KEY
+        sync: false  # Set manually: BN_3cOcqCG21vOe5QCvuMeJtdtS43Fc4ZnHbs8GXjY_FOjqWVuPy4gBBqht1cBoTuCenp22ETqDZN8hOY01DnzE
+      - key: VAPID_PRIVATE_KEY
+        sync: false  # Set manually: U5IfYD_QEigu8bjNXEOQn7gBj4-SUYjiRjOPVtF_pSU
+      
+      # Email Configuration
+      - key: GMAIL_USER
+        sync: false  # Set manually in Render dashboard
+      - key: GMAIL_APP_PASSWORD
+        sync: false  # Set manually in Render dashboard
+      
+      # Node Environment
+      - key: NODE_ENV
+        value: production
+
+# Note: For security, sensitive variables (marked with sync: false) should be
+# set directly in the Render dashboard rather than in this file.

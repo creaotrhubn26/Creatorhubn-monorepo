@@ -1,0 +1,964 @@
+/**
+ * Team Collaboration Manager
+ * Manages team collaboration with roles and permissions
+ */
+
+export interface TeamCollaborationConfig {
+  enableCollaboration: boolean;
+  enableRoles: boolean;
+  enablePermissions: boolean;
+  enableRealTime: boolean;
+  enableNotifications: boolean;
+  enableActivityFeed: boolean;
+  enablePresence: boolean;
+  enableCursorTracking: boolean;
+  enableComments: boolean;
+  enableMentions: boolean;
+  enableFileSharing: boolean;
+  enableScreenSharing: boolean;
+  enableVideoCalls: boolean;
+  enableVoiceCalls: boolean;
+  enableChat: boolean;
+  enableWorkspaces: boolean;
+  enableProjects: boolean;
+  enableTasks: boolean;
+  enableMeetings: boolean;
+  enableCalendar: boolean;
+  enableAnalytics: boolean;
+  enableDebugging: boolean;
+  enableLogging: boolean;
+  enableMetrics: boolean;
+  debug: boolean
+}
+
+export interface TeamMember {
+  id: string;
+  userId: string;
+  teamId: string;
+  role: TeamRole;
+  permissions: TeamPermissions;
+  status: 'active, ' | 'inactive, ' | 'pending' | 'suspended' | 'banned';
+  joinedAt: number;
+  lastActive: number;
+  avatar?: string;
+  displayName: string;
+  email: string;
+  phone?: string;
+  timezone: string;
+  preferences: TeamMemberPreferences;
+  metadata: {
+    created: number;
+    modified: number;
+    version: string;
+    author: string;
+    tags: string[];
+    usageCount: number;
+    lastUsed: number;
+    successCount: number;
+    errorCount: number;
+};
+  config: Record<string, any>;
+}
+
+export interface TeamRole {
+  id: string;
+  name: string;
+  description: string;
+  level: number; // 1-0, higher = more permissions
+  permissions: string[];
+  color: string;
+  icon: string;
+  isDefault: boolean;
+  isSystem: boolean;
+  metadata: {
+    created: number;
+    modified: number;
+    version: string;
+    author: string;
+    tags: string[];
+    usageCount: number;
+    lastUsed: number;
+    successCount: number;
+    errorCount: number;
+};
+  config: Record<string, any>;
+}
+
+export interface TeamPermissions {
+  // Project permissions
+  canViewProjects: boolean;
+  canCreateProjects: boolean;
+  canEditProjects: boolean;
+  canDeleteProjects: boolean;
+  canShareProjects: boolean;
+  canArchiveProjects: boolean;
+  
+  // File permissions
+  canViewFiles: boolean;
+  canUploadFiles: boolean;
+  canDownloadFiles: boolean;
+  canDeleteFiles: boolean;
+  canShareFiles: boolean;
+  canOrganizeFiles: boolean;
+  
+  // Collaboration permissions
+  canInviteMembers: boolean;
+  canRemoveMembers: boolean;
+  canEditMemberRoles: boolean;
+  canViewMemberActivity: boolean;
+  canManageWorkspaces: boolean;
+  canCreateWorkspaces: boolean;
+  
+  // Communication permissions
+  canSendMessages: boolean;
+  canCreateChannels: boolean;
+  canManageChannels: boolean;
+  canStartMeetings: boolean;
+  canJoinMeetings: boolean;
+  canRecordMeetings: boolean;
+  
+  // Admin permissions
+  canManageTeam: boolean;
+  canManageBilling: boolean;
+  canViewAnalytics: boolean;
+  canManageIntegrations: boolean;
+  canAccessAdminPanel: boolean;
+  
+  // Custom permissions
+  custom: Record<string, boolean>;
+}
+
+export interface TeamMemberPreferences {
+  notifications: {
+    email: boolean;
+    push: boolean;
+    inApp: boolean;
+    mentions: boolean;
+    directMessages: boolean;
+    projectUpdates: boolean;
+    meetingReminders: boolean;
+    systemAlerts: boolean;
+};
+  privacy: {
+    showOnlineStatus: boolean;
+    showLastActive: boolean;
+    allowDirectMessages: boolean;
+    allowMentions: boolean;
+    showEmail: boolean;
+    showPhone: boolean;
+};
+  appearance: {
+    theme: 'light' | 'dark' | 'auto';
+    language: string;
+    timezone: string;
+    dateFormat: string;
+    timeFormat: '12h' | '24h';
+};
+  collaboration: {
+    autoJoinMeetings: boolean;
+    showCursorTracking: boolean;
+    showPresence: boolean;
+    enableScreenSharing: boolean;
+    enableVideoCalls: boolean;
+    enableVoiceCalls: boolean;
+};
+}
+
+export interface Team {
+  id: string;
+  name: string;
+  description: string;
+  avatar?: string;
+  type: 'organization' | 'project' | 'department' | 'custom';
+  status: 'active' | 'inactive' | 'archived' | 'suspended';
+  ownerId: string;
+  members: TeamMember[];
+  workspaces: string[];
+  projects: string[];
+  settings: TeamSettings;
+  metadata: {
+    created: number;
+    modified: number;
+    version: string;
+    author: string;
+    tags: string[];
+    usageCount: number;
+    lastUsed: number;
+    successCount: number;
+    errorCount: number;
+};
+  config: Record<string, any>;
+}
+
+export interface TeamSettings {
+  general: {
+    allowMemberInvites: boolean;
+    requireApprovalForJoins: boolean;
+    allowGuestAccess: boolean;
+    maxMembers: number;
+    defaultRole: string;
+};
+  security: {
+    requireTwoFactor: boolean;
+    allowExternalSharing: boolean;
+    requirePasswordForSensitive: boolean;
+    sessionTimeout: number;
+    ipWhitelist: string[];
+};
+  notifications: {
+    enableEmailNotifications: boolean;
+    enablePushNotifications: boolean;
+    enableInAppNotifications: boolean;
+    notificationFrequency: 'immediate' | 'hourly' | 'daily' | 'weekly';
+};
+  collaboration: {
+    enableRealTimeEditing: boolean;
+    enableCursorTracking: boolean;
+    enablePresence: boolean;
+    enableComments: boolean;
+    enableMentions: boolean;
+    enableFileSharing: boolean;
+    enableScreenSharing: boolean;
+    enableVideoCalls: boolean;
+    enableVoiceCalls: boolean;
+};
+  integrations: {
+    enableSlack: boolean;
+    enableMicrosoftTeams: boolean;
+    enableGoogleWorkspace: boolean;
+    enableZoom: boolean;
+    enableCalendar: boolean;
+};
+}
+
+export interface Workspace {
+  id: string;
+  name: string;
+  description: string;
+  teamId: string;
+  type: 'general' | 'project' | 'department' | 'custom';
+  status: 'active' | 'inactive' | 'archived';
+  ownerId: string;
+  members: string[];
+  projects: string[];
+  channels: string[];
+  settings: WorkspaceSettings;
+  metadata: {
+    created: number;
+    modified: number;
+    version: string;
+    author: string;
+    tags: string[];
+    usageCount: number;
+    lastUsed: number;
+    successCount: number;
+    errorCount: number;
+};
+  config: Record<string, any>;
+}
+
+export interface WorkspaceSettings {
+  general: {
+    allowMemberInvites: boolean;
+    requireApprovalForJoins: boolean;
+    allowGuestAccess: boolean;
+    maxMembers: number;
+};
+  collaboration: {
+    enableRealTimeEditing: boolean;
+    enableCursorTracking: boolean;
+    enablePresence: boolean;
+    enableComments: boolean;
+    enableMentions: boolean;
+    enableFileSharing: boolean;
+};
+  notifications: {
+    enableEmailNotifications: boolean;
+    enablePushNotifications: boolean;
+    enableInAppNotifications: boolean;
+};
+}
+
+export interface Activity {
+  id: string;
+  type: 'project_created' | 'project_updated' | 'file_uploaded' | 'file_downloaded' | 'member_joined' | 'member_left' | 'comment_added' | 'meeting_scheduled' | 'task_created' | 'task_completed' | 'custom';
+  actorId: string;
+  targetId?: string;
+  targetType?: 'project' | 'file' | 'member' | 'workspace' | 'task' | 'meeting' | 'custom';
+  description: string;
+  metadata: Record<string, any>;
+  timestamp: number;
+  teamId: string;
+  workspaceId?: string;
+  projectId?: string;
+  isPublic: boolean;
+  isSystem: boolean
+}
+
+export interface TeamCollaborationManagerState {
+  isEnabled: boolean;
+  isInitialized: boolean;
+  hasError: boolean;
+  error: string | null;
+  teams: Map<string, Team>;
+  members: Map<string, TeamMember>;
+  roles: Map<string, TeamRole>;
+  workspaces: Map<string, Workspace>;
+  activities: Map<string, Activity>;
+  currentTeam: Team | null;
+  currentWorkspace: Workspace | null;
+  currentUser: TeamMember | null;
+  lastUpdate: number;
+  totalTeams: number;
+  totalMembers: number;
+  totalRoles: number;
+  totalWorkspaces: number;
+  totalActivities: number;
+  totalErrors: number;
+  totalConflicts: number;
+  totalOverrides: number
+}
+
+class TeamCollaborationManager {
+  private config: TeamCollaborationConfig;
+  private state: TeamCollaborationManagerState;
+  private eventListeners: Map<string, Function[]> = new Map();
+  private isInitialized = false;
+
+  constructor(config: Partial<TeamCollaborationConfig> = {}) {
+    this.config = {
+      enableCollaboration: true,
+      enableRoles: true,
+      enablePermissions: true,
+      enableRealTime: true,
+      enableNotifications: true,
+      enableActivityFeed: true,
+      enablePresence: true,
+      enableCursorTracking: true,
+      enableComments: true,
+      enableMentions: true,
+      enableFileSharing: true,
+      enableScreenSharing: true,
+      enableVideoCalls: true,
+      enableVoiceCalls: true,
+      enableChat: true,
+      enableWorkspaces: true,
+      enableProjects: true,
+      enableTasks: true,
+      enableMeetings: true,
+      enableCalendar: true,
+      enableAnalytics: true,
+      enableDebugging: false,
+      enableLogging: true,
+      enableMetrics: true,
+      debug: false,
+      ...config
+  };
+
+    this.state = {
+      isEnabled: false,
+      isInitialized: false,
+      hasError: false,
+      error: null,
+      teams: new Map(),
+      members: new Map(),
+      roles: new Map(),
+      workspaces: new Map(),
+      activities: new Map(),
+      currentTeam: null,
+      currentWorkspace: null,
+      currentUser: null,
+      lastUpdate:  0,
+      totalTeams:  0,
+      totalMembers:  0,
+      totalRoles:  0,
+      totalWorkspaces:  0,
+      totalActivities:  0,
+      totalErrors:  0,
+      totalConflicts:  0,
+      totalOverrides: 0
+};
+
+    this.initializeTeamCollaborationManager();
+}
+
+  /**
+   * Initialize team collaboration manager
+   */
+  private initializeTeamCollaborationManager(): void {
+    if (!this.config.enableCollaboration) return;
+
+    try {
+      this.setupEventListeners();
+      this.loadDefaultRoles();
+      this.loadDefaultTeams();
+      this.state.isEnabled = true;
+      this.state.isInitialized = true;
+      this.emit('initialized, ');
+  } catch (error) {
+      this.state.hasError = true;
+      this.state.error = error instanceof Error ? error.message : 'Unknown error';
+      this.emit('error, ', { error: this.state.error });
+  }
+}
+
+  /**
+   * Setup event listeners
+   */
+  private setupEventListeners(): void {
+    if (!this.config.enableCollaboration) return;
+    // Implementation depends on event handling strategy
+}
+
+  /**
+   * Load default roles
+   */
+  private loadDefaultRoles(): void {
+    const defaultRoles: Partial<TeamRole>[] = [
+      {
+        id: 'owner',
+        name: 'Owner',
+        description: 'Full access to all team features and settings',
+        level:  10,
+        permissions: ['*']// All permissions
+        color: '#ff6b6',
+        icon: '�, �, ',
+        isDefault: false,
+        isSystem: true
+  },
+      {
+        id: 'admin',
+        name: 'Admin',
+        description: 'Administrative access to team management',
+        level:  9,
+        permissions: [
+          'canViewProjects','canCreateProjects','canEditProjects','canDeleteProjects','canShareProjects','canArchiveProjects','canViewFiles','canUploadFiles','canDownloadFiles','canDeleteFiles','canShareFiles','canOrganizeFiles','canInviteMembers','canRemoveMembers','canEditMemberRoles','canViewMemberActivity','canManageWorkspaces','canCreateWorkspaces','canSendMessages','canCreateChannels','canManageChannels','canStartMeetings','canJoinMeetings','canRecordMeetings','canManageTeam','canViewAnalytics','canManageIntegrations','canAccessAdminPanel'
+        ],
+        color: '#4ecdc',
+        icon: '⚙, ️, ',
+        isDefault: false,
+        isSystem: true
+  },
+      {
+        id: 'editor',
+        name: 'Editor',
+        description: 'Can create and edit projects and files',
+        level:  7,
+        permissions: [
+          'canViewProjects','canCreateProjects','canEditProjects','canShareProjects','canViewFiles','canUploadFiles','canDownloadFiles','canShareFiles','canOrganizeFiles','canSendMessages','canJoinMeetings','canViewAnalytics'
+        ],
+        color: '#45b7d',
+        icon: '✏, ️, ',
+        isDefault: true,
+        isSystem: true
+  },
+      {
+        id: 'viewer',
+        name: 'Viewer',
+        description: 'Can view projects and files but cannot edit',
+        level:  5,
+        permissions: [
+          'canViewProjects','canViewFiles','canDownloadFiles','canSendMessages','canJoinMeetings'
+        ],
+        color: '#96ceb',
+        icon: '👁, ️, ',
+        isDefault: true,
+        isSystem: true
+  },
+      {
+        id: 'guest',
+        name: 'Guest',
+        description: 'Limited access for external collaborators',
+        level:  3,
+        permissions: [
+          'canViewProjects','canViewFiles','canDownloadFiles','canSendMessages'
+        ],
+        color: '#feca5',
+        icon: '�, �, ',
+        isDefault: false,
+        isSystem: true
+  }
+    ];
+
+    defaultRoles.forEach(roleData => {
+      this.addRole(roleData);
+  });
+}
+
+  /**
+   * Load default teams
+   */
+  private loadDefaultTeams(): void {
+    const defaultTeams: Partial<Team>[] = [
+      {
+        id: 'default-team',
+        name: 'Default Team',
+        description: 'Default team for new users',
+        type: 'organization',
+        status: 'active',
+        ownerId: 'system',
+        members:  [],
+        workspaces:  [],
+        projects:  [],
+        settings: {
+          general: {
+            allowMemberInvites: true,
+            requireApprovalForJoins: false,
+            allowGuestAccess: true,
+            maxMembers: 10,
+            defaultRole: 'editor'
+      },
+          security: {
+            requireTwoFactor: false,
+            allowExternalSharing: true,
+            requirePasswordForSensitive: false,
+            sessionTimeout: 360,
+            ipWhitelist: []
+      },
+          notifications: {
+            enableEmailNotifications: true,
+            enablePushNotifications: true,
+            enableInAppNotifications: true,
+            notificationFrequency: 'immediate'
+      },
+          collaboration: {
+            enableRealTimeEditing: true,
+            enableCursorTracking: true,
+            enablePresence: true,
+            enableComments: true,
+            enableMentions: true,
+            enableFileSharing: true,
+            enableScreenSharing: true,
+            enableVideoCalls: true,
+            enableVoiceCalls: true
+      },
+          integrations: {
+            enableSlack: false,
+            enableMicrosoftTeams: false,
+            enableGoogleWorkspace: false,
+            enableZoom: false,
+            enableCalendar: false
+      }
+      }
+    }
+    ];
+
+    defaultTeams.forEach(teamData => {
+      this.addTeam(teamData);
+  });
+}
+
+  /**
+   * Add role
+   */
+  async addRole(roleData: Partial<TeamRole>): Promise<TeamRole> {
+    if (!this.state.isEnabled) throw new Error('Team collaboration manager is not enabled');
+
+    const role: TeamRole = {
+      id: roleData.id || this.generateId(),
+      name: roleData.name || 'Untitled Role',
+      description: roleData.description ||', ',
+      level: roleData.level || 1,
+      permissions: roleData.permissions || [],
+      color: roleData.color || '#66666',
+      icon: roleData.icon || '�, �',
+      isDefault: roleData.isDefault || false,
+      isSystem: roleData.isSystem || false,
+      metadata: {
+        created: Date.now(),
+        modified: Date.now(),
+        version: '1.0.0',
+        author: 'User',
+        tags: [],
+        usageCount: 0,
+        lastUsed: 0,
+        successCount: 0,
+        errorCount: 0
+  },
+      config: roleData.config || {}
+  };
+
+    try {
+      this.state.roles.set(role.id, role);
+      this.state.totalRoles++;
+      this.state.lastUpdate = Date.now();
+
+      this.emit('role_added', { role });
+      return role;
+
+  } catch (error) {
+      this.state.totalErrors++;
+      this.state.hasError = true;
+      this.state.error = error instanceof Error ? error.message : 'Unknown error';
+      
+      this.emit('role_add_failed', { role, error: this.state.error });
+      throw error;
+  }
+}
+
+  /**
+   * Add team
+   */
+  async addTeam(teamData: Partial<Team>): Promise<Team> {
+    if (!this.state.isEnabled) throw new Error('Team collaboration manager is not enabled');
+
+    const team: Team = {
+      id: teamData.id || this.generateId(),
+      name: teamData.name || 'Untitled Team',
+      description: teamData.description ||', ',
+      avatar: teamData.avatar,
+      type: teamData.type || 'organization',
+      status: teamData.status || 'active',
+      ownerId: teamData.ownerId || 'system',
+      members: teamData.members || [],
+      workspaces: teamData.workspaces || [],
+      projects: teamData.projects || [],
+      settings: teamData.settings || {
+        general: {
+          allowMemberInvites: true,
+          requireApprovalForJoins: false,
+          allowGuestAccess: true,
+          maxMembers: 10,
+          defaultRole: 'editor'
+    },
+        security: {
+          requireTwoFactor: false,
+          allowExternalSharing: true,
+          requirePasswordForSensitive: false,
+          sessionTimeout: 360,
+          ipWhitelist: []
+    },
+        notifications: {
+          enableEmailNotifications: true,
+          enablePushNotifications: true,
+          enableInAppNotifications: true,
+          notificationFrequency: 'immediate'
+    },
+        collaboration: {
+          enableRealTimeEditing: true,
+          enableCursorTracking: true,
+          enablePresence: true,
+          enableComments: true,
+          enableMentions: true,
+          enableFileSharing: true,
+          enableScreenSharing: true,
+          enableVideoCalls: true,
+          enableVoiceCalls: true
+    },
+        integrations: {
+          enableSlack: false,
+          enableMicrosoftTeams: false,
+          enableGoogleWorkspace: false,
+          enableZoom: false,
+          enableCalendar: false
+    }
+    },
+      metadata: {
+        created: Date.now(),
+        modified: Date.now(),
+        version: '1.0.0',
+        author: 'User',
+        tags: [],
+        usageCount: 0,
+        lastUsed: 0,
+        successCount: 0,
+        errorCount: 0
+  },
+      config: teamData.config || {}
+  };
+
+    try {
+      this.state.teams.set(team.id, team);
+      this.state.totalTeams++;
+      this.state.lastUpdate = Date.now();
+
+      this.emit('team_added', { team });
+      return team;
+
+  } catch (error) {
+      this.state.totalErrors++;
+      this.state.hasError = true;
+      this.state.error = error instanceof Error ? error.message : 'Unknown error';
+      
+      this.emit('team_add_failed', { team, error: this.state.error });
+      throw error;
+  }
+}
+
+  /**
+   * Add team member
+   */
+  async addTeamMember(memberData: Partial<TeamMember>): Promise<TeamMember> {
+    if (!this.state.isEnabled) throw new Error('Team collaboration manager is not enabled');
+
+    const role = this.state.roles.get(memberData.role?.id || 'editor');
+    if (!role) throw new Error('Role not found');
+
+    const member: TeamMember = {
+      id: memberData.id || this.generateId(),
+      userId: memberData.userId || this.generateId(),
+      teamId: memberData.teamId || 'default-team',
+      role: role,
+      permissions: this.getPermissionsForRole(role),
+      status: memberData.status || 'active',
+      joinedAt: memberData.joinedAt || Date.now(),
+      lastActive: Date.now(),
+      avatar: memberData.avatar,
+      displayName: memberData.displayName || 'Unknown User',
+      email: memberData.email ||', ',
+      phone: memberData.phone,
+      timezone: memberData.timezone || 'UT',
+      preferences: memberData.preferences || {
+        notifications: {
+          email: true,
+          push: true,
+          inApp: true,
+          mentions: true,
+          directMessages: true,
+          projectUpdates: true,
+          meetingReminders: true,
+          systemAlerts: true
+    },
+        privacy: {
+          showOnlineStatus: true,
+          showLastActive: true,
+          allowDirectMessages: true,
+          allowMentions: true,
+          showEmail: false,
+          showPhone: false
+    },
+        appearance: {
+          theme: 'auto',
+          language: 'en',
+          timezone: 'UT',
+          dateFormat: 'MM/DD/YYY',
+          timeFormat: '12h'
+    },
+        collaboration: {
+          autoJoinMeetings: false,
+          showCursorTracking: true,
+          showPresence: true,
+          enableScreenSharing: true,
+          enableVideoCalls: true,
+          enableVoiceCalls: true
+    }
+    },
+      metadata: {
+        created: Date.now(),
+        modified: Date.now(),
+        version: '1.0.0',
+        author: 'User',
+        tags: [],
+        usageCount: 0,
+        lastUsed: 0,
+        successCount: 0,
+        errorCount: 0
+  },
+      config: memberData.config || {}
+  };
+
+    try {
+      this.state.members.set(member.id, member);
+      this.state.totalMembers++;
+      this.state.lastUpdate = Date.now();
+
+      this.emit('member_added', { member });
+      return member;
+
+  } catch (error) {
+      this.state.totalErrors++;
+      this.state.hasError = true;
+      this.state.error = error instanceof Error ? error.message : 'Unknown error';
+      
+      this.emit('member_add_failed', { member, error: this.state.error });
+      throw error;
+  }
+}
+
+  /**
+   * Get permissions for role
+   */
+  private getPermissionsForRole(role: TeamRole): TeamPermissions {
+    const permissions: TeamPermissions = {
+      canViewProjects: false,
+      canCreateProjects: false,
+      canEditProjects: false,
+      canDeleteProjects: false,
+      canShareProjects: false,
+      canArchiveProjects: false,
+      canViewFiles: false,
+      canUploadFiles: false,
+      canDownloadFiles: false,
+      canDeleteFiles: false,
+      canShareFiles: false,
+      canOrganizeFiles: false,
+      canInviteMembers: false,
+      canRemoveMembers: false,
+      canEditMemberRoles: false,
+      canViewMemberActivity: false,
+      canManageWorkspaces: false,
+      canCreateWorkspaces: false,
+      canSendMessages: false,
+      canCreateChannels: false,
+      canManageChannels: false,
+      canStartMeetings: false,
+      canJoinMeetings: false,
+      canRecordMeetings: false,
+      canManageTeam: false,
+      canManageBilling: false,
+      canViewAnalytics: false,
+      canManageIntegrations: false,
+      canAccessAdminPanel: false,
+      custom:  {}
+  };
+
+    if (role.permissions.includes('*')) {
+      // Owner has all permissions
+      Object.keys(permissions).forEach(key => {
+        if (key !=='custom') {
+          (permissions as any)[key] = true;
+      }
+    });
+  } else {
+      role.permissions.forEach(permission => {
+        if (permission in permissions) {
+          (permissions as any)[permission] = true;
+      }
+    });
+  }
+
+    return permissions;
+}
+
+  /**
+   * Get role by ID
+   */
+  getRole(id: string): TeamRole | null {
+    return this.state.roles.get(id) || null;
+}
+
+  /**
+   * Get team by ID
+   */
+  getTeam(id: string): Team | null {
+    return this.state.teams.get(id) || null;
+}
+
+  /**
+   * Get member by ID
+   */
+  getMember(id: string): TeamMember | null {
+    return this.state.members.get(id) || null;
+}
+
+  /**
+   * Get all roles
+   */
+  getAllRoles(): TeamRole[] {
+    return Array.from(this.state.roles.values());
+}
+
+  /**
+   * Get all teams
+   */
+  getAllTeams(): Team[] {
+    return Array.from(this.state.teams.values());
+}
+
+  /**
+   * Get all members
+   */
+  getAllMembers(): TeamMember[] {
+    return Array.from(this.state.members.values());
+}
+
+  /**
+   * Generate ID
+   */
+  private generateId(): string {
+    return Math.random().toString(36).substr(2, 9) + Date.now().toString(36);
+}
+
+  /**
+   * Add event listener
+   */
+  on(event: string, callback: Function): void {
+    if (!this.eventListeners.has(event)) {
+      this.eventListeners.set(event, []);
+  }
+    this.eventListeners.get(event)!.push(callback);
+}
+
+  /**
+   * Remove event listener
+   */
+  off(event: string, callback: Function): void {
+    const listeners = this.eventListeners.get(event);
+    if (listeners) {
+      const index = listeners.indexOf(callback);
+      if (index > -1) {
+        listeners.splice(index, 1);
+    }
+  }
+}
+
+  /**
+   * Emit event
+   */
+  private emit(event: string, data?: any): void {
+    const listeners = this.eventListeners.get(event);
+    if (listeners) {
+      listeners.forEach(callback => {
+        try {
+          callback(data);
+      } catch (error) {
+          console.error('Error in team collaboration manager event listener:', error);
+      }
+    });
+  }
+}
+
+  /**
+   * Get state
+   */
+  getState(): TeamCollaborationManagerState {
+    return { ...this.state };
+}
+
+  /**
+   * Get configuration
+   */
+  getConfig(): TeamCollaborationConfig {
+    return { ...this.config };
+}
+
+  /**
+   * Update configuration
+   */
+  updateConfig(newConfig: Partial<TeamCollaborationConfig>): void {
+    this.config = { ...this.config, ...newConfig };
+}
+
+  /**
+   * Cleanup
+   */
+  destroy(): void {
+    this.state.teams.clear();
+    this.state.members.clear();
+    this.state.roles.clear();
+    this.state.workspaces.clear();
+    this.state.activities.clear();
+    this.eventListeners.clear();
+    this.state.isEnabled = false;
+}
+}
+
+// Create singleton instance
+export const teamCollaborationManager = new TeamCollaborationManager();
+
+export default teamCollaborationManager;
+
+
+
+
+

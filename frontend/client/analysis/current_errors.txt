@@ -1,0 +1,20 @@
+src/components/chat/AdvancedChatProtocols.tsx(247,12): error TS17008: JSX element 'Box' has no corresponding closing tag.
+src/components/chat/AdvancedChatProtocols.tsx(334,12): error TS17008: JSX element 'Box' has no corresponding closing tag.
+src/components/chat/QuoteCreationModal.tsx(493,20): error TS1005: ',' expected.
+src/components/cms-admin-menu.tsx(12,9): error TS1005: ':' expected.
+src/components/cms-admin-menu.tsx(12,39): error TS1005: ',' expected.
+src/components/cms-admin-menu.tsx(15,9): error TS1005: ':' expected.
+src/components/cms-admin-menu.tsx(19,5): error TS1005: ',' expected.
+src/components/cms-admin-menu.tsx(22,9): error TS1005: ':' expected.
+src/components/cms-admin-menu.tsx(31,5): error TS1005: ',' expected.
+src/components/creatorhub-light-photographer-dashboard.tsx(3,66): error TS1002: Unterminated string literal.
+src/components/creatorhub-light-photographer-dashboard.tsx(4,12): error TS1005: ';' expected.
+src/components/creatorhub-light-photographer-dashboard.tsx(4,14): error TS1002: Unterminated string literal.
+src/components/creatorhub-light-vendor-dashboard-unified.tsx(4,11): error TS1005: ';' expected.
+src/components/creatorhub-light-vendor-dashboard-unified.tsx(4,13): error TS1002: Unterminated string literal.
+src/components/creatorhub-light-videographer-dashboard-unified.tsx(4,1): error TS1434: Unexpected keyword or identifier.
+src/components/creatorhub-light-videographer-dashboard-unified.tsx(4,7): error TS1002: Unterminated string literal.
+src/components/creatorhub-light-videographer-dashboard.tsx(3,66): error TS1002: Unterminated string literal.
+src/components/creatorhub-light-videographer-dashboard.tsx(4,12): error TS1005: ';' expected.
+src/components/creatorhub-light-videographer-dashboard.tsx(4,14): error TS1002: Unterminated string literal.
+src/components/crm/access-status-widget.tsx(7,3): error TS1005: ',' expected.

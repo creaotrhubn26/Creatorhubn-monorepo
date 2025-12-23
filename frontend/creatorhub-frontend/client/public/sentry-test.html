@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sentry Test Page</title>
+  <script
+    src="https://browser.sentry-cdn.com/7.119.0/bundle.min.js"
+    integrity="sha384-tJJYGmKMh8VGHuMqjpqKHfqVBqF3Y3PqKqKqKqKqKqKqKqKqKqKqKqKqKqKqKqKq"
+    crossorigin="anonymous"
+  ></script>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      max-width: 800px;
+      margin: 50px auto;
+      padding: 20px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+    }
+    .container {
+      background: white;
+      border-radius: 12px;
+      padding: 40px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+    }
+    h1 {
+      color: #333;
+      margin-bottom: 10px;
+    }
+    .status {
+      padding: 15px;
+      border-radius: 8px;
+      margin: 20px 0;
+      font-weight: 500;
+    }
+    .success {
+      background: #d4edda;
+      color: #155724;
+      border: 1px solid #c3e6cb;
+    }
+    .error {
+      background: #f8d7da;
+      color: #721c24;
+      border: 1px solid #f5c6cb;
+    }
+    .info {
+      background: #d1ecf1;
+      color: #0c5460;
+      border: 1px solid #bee5eb;
+    }
+    button {
+      background: #667eea;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 6px;
+      font-size: 16px;
+      cursor: pointer;
+      margin: 10px 10px 10px 0;
+      transition: all 0.3s ease;
+    }
+    button:hover {
+      background: #5568d3;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+    button:active {
+      transform: translateY(0);
+    }
+    .code {
+      background: #f5f5f5;
+      padding: 15px;
+      border-radius: 6px;
+      font-family: 'Courier New', monospace;
+      font-size: 14px;
+      overflow-x: auto;
+      margin: 15px 0;
+    }
+    .button-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin: 20px 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🧪 Sentry Integration Test</h1>
+    <p>This page tests your Sentry integration directly without any React dependencies.</p>
+    
+    <div id="status" class="status info">
+      ⏳ Initializing Sentry...
+    </div>
+
+    <div class="code">
+      <strong>DSN:</strong> https://9acb98c2076c39ade4ed6e6920756c81@o4510405607358464.ingest.de.sentry.io/4510405677547600<br>
+      <strong>Environment:</strong> development
+    </div>
+
+    <div class="button-group">
+      <button onclick="testCaughtError()">🔴 Test Caught Error</button>
+      <button onclick="testMessage()">💬 Test Message</button>
+      <button onclick="testWarning()">⚠️ Test Warning</button>
+      <button onclick="testUncaughtError()">💥 Test Uncaught Error</button>
+      <button onclick="testWithContext()">📋 Test with Context</button>
+    </div>
+
+    <div id="results"></div>
+  </div>
+
+  <script>
+    // Initialize Sentry
+    Sentry.init({
+      dsn: "https://9acb98c2076c39ade4ed6e6920756c81@o4510405607358464.ingest.de.sentry.io/4510405677547600",
+      environment: "development",
+      tracesSampleRate: 1.0,
+      replaysSessionSampleRate: 1.0,
+      replaysOnErrorSampleRate: 1.0,
+    });
+
+    // Update status
+    document.getElementById('status').innerHTML = '✅ Sentry initialized successfully!';
+    document.getElementById('status').className = 'status success';
+
+    console.log('✅ Sentry initialized successfully');
+
+    function addResult(message, type = 'success') {
+      const results = document.getElementById('results');
+      const div = document.createElement('div');
+      div.className = `status ${type}`;
+      div.innerHTML = message;
+      results.appendChild(div);
+      
+      // Auto-remove after 5 seconds
+      setTimeout(() => div.remove(), 5000);
+    }
+
+    function testCaughtError() {
+      try {
+        throw new Error('Test error from Sentry test page - Caught Error');
+      } catch (error) {
+        Sentry.captureException(error);
+        addResult('✅ Caught error sent to Sentry! Check your dashboard.', 'success');
+        console.log('✅ Caught error sent to Sentry');
+      }
+    }
+
+    function testMessage() {
+      Sentry.captureMessage('Test message from Sentry test page', 'info');
+      addResult('✅ Message sent to Sentry! Check your dashboard.', 'success');
+      console.log('✅ Message sent to Sentry');
+    }
+
+    function testWarning() {
+      Sentry.captureMessage('Test warning from Sentry test page', 'warning');
+      addResult('⚠️ Warning sent to Sentry! Check your dashboard.', 'success');
+      console.log('⚠️ Warning sent to Sentry');
+    }
+
+    function testUncaughtError() {
+      addResult('💥 Throwing uncaught error... Check your dashboard!', 'error');
+      setTimeout(() => {
+        throw new Error('Test uncaught error from Sentry test page');
+      }, 100);
+    }
+
+    function testWithContext() {
+      Sentry.setUser({
+        id: 'test-user-123',
+        email: 'test@example.com',
+        username: 'Test User'
+      });
+
+      Sentry.setTags({
+        'test-feature': 'sentry-integration',
+        'test-page': 'standalone-test'
+      });
+
+      Sentry.addBreadcrumb({
+        category: 'test',
+        message: 'User clicked test with context button',
+        level: 'info'
+      });
+
+      try {
+        throw new Error('Test error with full context (user, tags, breadcrumbs)');
+      } catch (error) {
+        Sentry.captureException(error);
+        addResult('✅ Error with context sent! Check dashboard for user info, tags, and breadcrumbs.', 'success');
+        console.log('✅ Error with context sent to Sentry');
+      }
+    }
+
+    // Send an automatic test error on page load
+    setTimeout(() => {
+      Sentry.captureMessage('🎉 Sentry test page loaded successfully!', 'info');
+      console.log('🎉 Auto-test message sent to Sentry');
+    }, 1000);
+  </script>
+</body>
+</html>
+

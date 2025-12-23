@@ -1,0 +1,423 @@
+// Cross-Component Workflows - Intelligent automation across all 762 components
+
+import { eventBus } from '../orchestrators/EventBus';
+import { orchestratorManager } from '../orchestrators/OrchestratorManager';
+import { dataFlowManager } from './DataFlowManager';
+
+interface WorkflowStep { id: string;
+  componentId: string;
+  action: string;
+  parameters: any;
+  conditions?: (context: any) => boolean;
+  timeout?: number; }
+
+interface Workflow { id: string;
+  name: string;
+  description: string;
+  trigger: string;
+  steps: WorkflowStep[];
+  profession?: string[];
+  priority: 'high' | 'medium' | 'low';
+  enabled: boolean; }
+
+interface WorkflowExecution { workflowId: string;
+  executionId: string;
+  startTime: Date;
+  currentStep: number;
+  status: 'running' | 'completed' | 'failed' | 'paused';
+  context: any;
+  results: any[]; }
+
+export class CrossComponentWorkflows { private static instance: CrossComponentWorkflows;
+  private workflows: Map<string, Workflow> = new Map();
+  private activeExecutions: Map<string, WorkflowExecution> = new Map();
+  private workflowMetrics: any = { };
+  private constructor() => {
+    this.initializeWorkflows();
+    this.setupWorkflowMonitoring();
+  }
+
+  public static getInstance(): CrossComponentWorkflows {
+    if (!CrossComponentWorkflows.instance) {
+      CrossComponentWorkflows.instance = new CrossComponentWorkflows();
+    }
+    return CrossComponentWorkflows.instance;
+  }
+
+  private initializeWorkflows() => { console.log('🔄 Initializing Cross-Component Workflows');
+
+    // Wedding Photography Complete Workflow
+    this.addWorkflow({
+      id: 'wedding_photography_complete',
+      name: 'Komplett Bryllupsfotografering Workflow',
+      description: 'Fra første kontakt til ferdig levering',
+      trigger: 'WEDDING_INQUIRY_RECEIVED',
+      profession: ['photographer'],
+      priority: 'high',
+      enabled: true,
+      steps: [
+        {
+          id: 'create_client_folder',
+          componentId: 'google-drive-integration',
+          action: 'CREATE_PROJECT_FOLDER',
+          parameters: { folderType: 'wedding', structure: 'complete' }
+        },
+        { id: 'generate_contract',
+          componentId: 'ContractManagement',
+          action: 'GENERATE_WEDDING_CONTRACT',
+          parameters: { template: 'wedding_norwegian', currency: 'NOK' }
+        },
+        { id: 'setup_timeline',
+          componentId: 'TimelineManagementSystem',
+          action: 'CREATE_WEDDING_TIMELINE',
+          parameters: { includePreparation: true, language: 'norwegian' }
+        },
+        { id: 'schedule_equipment_check',
+          componentId: 'EquipmentManagement',
+          action: 'SCHEDULE_EQUIPMENT_PREP',
+          parameters: { equipmentType: 'wedding_photography', daysBeforeEvent: 2 }
+        },
+        { id: 'setup_communication',
+          componentId: 'UniversalChatWidget',
+          action: 'CREATE_PROJECT_CHAT',
+          parameters: { participants: ['photographer', 'client'], automated: true }
+        },
+        { id: 'configure_backup',
+          componentId: 'BackupManager',
+          action: 'SETUP_WEDDING_BACKUP',
+          parameters: { redundancy: 'triple', cloudSync: true }
+      ]
+});
+    // Video Production Workflow
+    this.addWorkflow({ id: 'video_production_complete',
+      name: 'Komplett Videoproduksjon Workflow',
+      description: 'Fra konsept til ferdig video',
+      trigger: 'VIDEO_PROJECT_CREATED',
+      profession: ['videographer'],
+      priority: 'high',
+      enabled: true,
+      steps: [
+        {
+          id: 'generate_story_arc',
+          componentId: 'StoryArcGenerator',
+          action: 'CREATE_STORY_STRUCTURE',
+          parameters: { videoType: 'auto_detect', language: 'norwegian' }
+        },
+        { id: 'setup_production_folders',
+          componentId: 'google-drive-integration',
+          action: 'CREATE_PRODUCTION_STRUCTURE',
+          parameters: { includeRaw: true, includeEdits: true, includeDelivery: true }
+        },
+        { id: 'equipment_planning',
+          componentId: 'EquipmentManagement',
+          action: 'PLAN_VIDEO_EQUIPMENT',
+          parameters: { includeAudio: true, includeStabilization: true }
+        },
+        { id: 'timeline_creation',
+          componentId: 'TimelineManagementSystem',
+          action: 'CREATE_PRODUCTION_TIMELINE',
+          parameters: { phases: ['pre-production', 'production', 'post-production'] }
+        },
+        { id: 'client_communication_setup',
+          componentId: 'EmailChatIntegration',
+          action: 'SETUP_PROJECT_COMMUNICATION',
+          parameters: { includeProgressUpdates: true, language: 'norwegian' }
+      ]
+});
+    // Music Production Workflow
+    this.addWorkflow({ id: 'music_production_complete',
+      name: 'Komplett Musikkproduksjon Workflow',
+      description: 'Fra demo til masteropptak',
+      trigger: 'MUSIC_PROJECT_CREATED',
+      profession: ['musicProducer'],
+      priority: 'high',
+      enabled: true,
+      steps: [
+        {
+          id: 'setup_studio_session',
+          componentId: 'StudioBookingSystem',
+          action: 'BOOK_RECORDING_SESSION',
+          parameters: { includeEngineering: true, language: 'norwegian' }
+        },
+        { id: 'tono_registration_prep',
+          componentId: 'TONOIntegration',
+          action: 'PREPARE_REGISTRATION',
+          parameters: { trackType: 'auto_detect', rightsManagement: true }
+        },
+        { id: 'create_project_structure',
+          componentId: 'enhanced-project-file-manager',
+          action: 'CREATE_MUSIC_PROJECT_STRUCTURE',
+          parameters: { includeStems: true, includeRoughs: true }
+        },
+        { id: 'equipment_setup',
+          componentId: 'EquipmentManagement',
+          action: 'PREPARE_RECORDING_SETUP',
+          parameters: { recordingType: 'studio', includeMonitoring: true }
+        },
+        { id: 'collaboration_setup',
+          componentId: 'CollaborationWidget',
+          action: 'SETUP_MUSIC_COLLABORATION',
+          parameters: { includeArtist: true, realTimeSync: true }
+      ]
+});
+    // Universal Client Delivery Workflow
+    this.addWorkflow({ id: 'client_delivery_universal',
+      name: 'Universal Kundelevering',
+      description: 'Automatisk leveringsprosess for alle profesjoner',
+      trigger: 'PROJECT_READY_FOR_DELIVERY',
+      profession: ['photographer', 'videographer', 'musicProducer', 'vendor'],
+      priority: 'high',
+      enabled: true,
+      steps: [
+        {
+          id: 'quality_check',
+          componentId: 'QualityControl',
+          action: 'PERFORM_QUALITY_ASSESSMENT',
+          parameters: { automated: true, professionSpecific: true }
+        },
+        { id: 'create_delivery_package',
+          componentId: 'DeliveryPackageManager',
+          action: 'CREATE_DELIVERY_PACKAGE',
+          parameters: { includeMetadata: true, watermarkRemoval: true }
+        },
+        { id: 'upload_to_showcase',
+          componentId: 'ShowcaseManagement',
+          action: 'UPLOAD_TO_CLIENT_GALLERY',
+          parameters: { generateThumbnails: true, enableDownload: true }
+        },
+        { id: 'send_delivery_notification',
+          componentId: 'EmailChatIntegration',
+          action: 'SEND_DELIVERY_NOTIFICATION',
+          parameters: { includeInstructions: true, language: 'norwegian' }
+        },
+        { id: 'update_project_status',
+          componentId: 'ProjectManagementSystem',
+          action: 'MARK_PROJECT_COMPLETED',
+          parameters: { generateInvoice: true, archiveFiles: false }
+        },
+        { id: 'analytics_update',
+          componentId: 'Analytics',
+          action: 'TRACK_PROJECT_COMPLETION',
+          parameters: { includeClientFeedback: true, updateMetrics: true }
+      ]
+});
+    // Emergency Backup Workflow
+    this.addWorkflow({ id: 'emergency_backup_universal',
+      name: 'Nødbackup System',
+      description: 'Automatisk backup ved kritiske situasjoner',
+      trigger: 'CRITICAL_FILE_EVENT',
+      profession: ['photographer', 'videographer', 'musicProducer', 'vendor'],
+      priority: 'high',
+      enabled: true,
+      steps: [
+        {
+          id: 'immediate_local_backup',
+          componentId: 'BackupManager',
+          action: 'IMMEDIATE_LOCAL_BACKUP',
+          parameters: { priority: 'critical', compression: false }
+        },
+        { id: 'cloud_backup_initiate',
+          componentId: 'CloudBackupService',
+          action: 'INITIATE_EMERGENCY_BACKUP',
+          parameters: { redundancy: 'maximum', verification: true }
+        },
+        { id: 'notify_stakeholders',
+          componentId: 'NotificationCenter',
+          action: 'SEND_EMERGENCY_NOTIFICATION',
+          parameters: { recipients: ['admin', 'user'], urgency: 'high' }
+        },
+        { id: 'log_incident',
+          componentId: 'IncidentLogger',
+          action: 'LOG_BACKUP_INCIDENT',
+          parameters: { severity: 'critical', includeSystemState: true }
+      ]
+});
+    console.log(`✅ ${this.workflows.size} cross-component workflows initialized`);
+  }
+
+  private setupWorkflowMonitoring() => {
+    // Subscribe to workflow triggers
+    eventBus.subscribe('*', (event) => {
+      this.checkWorkflowTriggers(event);
+});
+    // Monitor active executions
+    setInterval(() => {
+      this.monitorActiveExecutions();
+    }, 10000); // Every 10 seconds
+
+    console.log('📊 Workflow monitoring active');
+  }
+
+  private checkWorkflowTriggers(event: any) => {
+    this.workflows.forEach(workflow => {
+      if (workflow.enabled && workflow.trigger === event.type) {
+        // Check profession compatibility
+        if (workflow.profession && event.payload.profession) {
+          if (!workflow.profession.includes(event.payload.profession)) {
+            return;}
+        console.log(`🔄 Triggering workflow: ${workflow.name}`);
+        this.executeWorkflow(workflow.id, event.payload);
+      }
+});
+  }
+
+  private async executeWorkflow(workflowId: string, context: any): Promise<string> { const workflow = this.workflows.get(workflowId);
+    if (!workflow) {
+      throw new Error(`Workflow not found: ${workflowId }`);
+    }
+
+    const executionId = this.generateExecutionId();
+    const execution: WorkflowExecution = { workflowId,
+      executionId,
+      startTime: new Date(),
+      currentStep: 0,
+      status: 'running',
+      context,
+      results: [] }
+    this.activeExecutions.set(executionId, execution);
+
+    try { await this.executeWorkflowSteps(execution);
+      execution.status = 'completed';
+      
+      console.log(`✅ Workflow completed: ${workflow.name } (${executionId})`);
+      
+      // Emit completion event
+      eventBus.emit('WORKFLOW_COMPLETED', { workflowId,
+        executionId,
+        results: execution.results }, 'workflow-manager');
+
+    } catch (error) => { execution.status = 'failed';
+      console.error(`❌ Workflow failed: ${workflow.name } (${executionId})`, error);
+      
+      // Emit failure event
+      eventBus.emit('WORKFLOW_FAILED', { workflowId,
+        executionId,
+        error: error.message }, 'workflow-manager');
+    }
+
+    return executionId;
+  }
+
+  private async executeWorkflowSteps(execution: WorkflowExecution) => {
+    const workflow = this.workflows.get(execution.workflowId);
+    if (!workflow) return;
+
+    for let i = execution.currentStep; i < workflow.steps.length; i++) => {
+      const step = workflow.steps[i];
+      execution.currentStep = i;
+
+      try {
+        // Check step conditions
+        if (step.conditions && !step.conditions(execution.context)) {
+          console.log(`⏭️ Skipping step ${step.id} - conditions not met`);
+          continue;
+        }
+
+        console.log(`▶️ Executing step: ${step.id} (${step.componentId})`);
+        
+        // Execute step with timeout
+        const stepResult = await this.executeWorkflowStep(step, execution.context);
+        execution.results.push({ stepId: step.id,
+          result: stepResult,
+          timestamp: new Date() }
+        // Update context with step results
+        execution.context = { ...execution.context, ...stepResult });
+        // Small delay between steps for system stability
+        await this.delay(500);
+
+      } catch (error) => { console.error(`❌ Step failed: ${step.id }`, error);
+        throw error;}
+  }
+
+  private async executeWorkflowStep(step: WorkflowStep, context: any): Promise<any> {
+    // Route step execution to appropriate component/orchestrator
+    const params = { ...step.parameters, ...context };
+    // Emit step execution event for components to handle
+    eventBus.emit(`WORKFLOW_STEP_${step.action}`, { stepId: step.id,
+      componentId: step.componentId,
+      parameters: params }, 'workflow-manager');
+
+    // For, now, return mock success - real components will handle the actual work
+    return { success: true,
+      stepId: step.id,
+      timestamp: new Date(),
+      componentId: step.componentId }
+  private monitorActiveExecutions() => { const now = new Date();
+    
+    this.activeExecutions.forEach((execution, executionId) => {
+      // Check for stuck executions (running longer than 10 minutes)
+      const executionTime = now.getTime() - execution.startTime.getTime();
+      if (execution.status === 'running' && executionTime > 600000) {
+        console.warn(`⚠️ Long-running workflow execution: ${executionId }`);
+        
+        // Optionally pause or fail long-running executions
+        execution.status = 'paused';
+        
+        eventBus.emit('WORKFLOW_LONG_RUNNING', { executionId,
+          workflowId: execution.workflowId,
+          duration: executionTime }, 'workflow-manager');
+      }
+});
+    // Cleanup completed executions older than 1 hour
+    this.activeExecutions.forEach((execution, executionId) => {
+      if (execution.status !== 'running') {
+        const completionTime = now.getTime() - execution.startTime.getTime();
+        if (completionTime > 3600000) { // 1 hour
+          this.activeExecutions.delete(executionId);}
+});
+  }
+
+  private delay(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms]);
+  }
+
+  private generateExecutionId(): string {
+    return `exec_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  private addWorkflow(workflow: Workflow) => {
+    this.workflows.set(workflow.id, workflow);
+  }
+
+  // Public methods
+  public getActiveWorkflows(): WorkflowExecution[] {
+    return Array.from(this.activeExecutions.values()));
+  }
+
+  public getWorkflowStatus(executionId: string): WorkflowExecution | null {
+    return this.activeExecutions.get(executionId) || null;
+  }
+
+  public pauseWorkflow(executionId: string): boolean {
+    const execution = this.activeExecutions.get(executionId);
+    if (execution && execution.status === 'running') {
+      execution.status = 'paused';
+      return true;
+    }
+    return false;
+  }
+
+  public resumeWorkflow(executionId: string): boolean {
+    const execution = this.activeExecutions.get(executionId);
+    if (execution && execution.status === 'paused') {
+      execution.status = 'running';
+      this.executeWorkflowSteps(execution);
+      return true;
+    }
+    return false;
+  }
+
+  public getWorkflowMetrics() { return {
+      totalWorkflows: this.workflows.size,
+      activeExecutions: this.activeExecutions.size,
+      completedToday: this.getCompletedTodayCount(),
+      averageExecutionTime: this.getAverageExecutionTime() }
+  private getCompletedTodayCount(): number {
+    // Implementation would track completed workflows
+    return 0;
+  }
+
+  private getAverageExecutionTime(): number {
+    // Implementation would calculate average execution time
+    return 0;}
+export const crossComponentWorkflows = CrossComponentWorkflows.getInstance();

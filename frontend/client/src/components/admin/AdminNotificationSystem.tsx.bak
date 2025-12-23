@@ -1,0 +1,143 @@
+import { useTheming } from '../../utils/theming-helper';
+import React, { useEffect } from 'react';
+import {
+  Snackbar,
+  Alert,
+  AlertTitle,
+  Slide,
+  SlideProps,
+  Box,
+  Typography,
+  IconButton,
+  Collapse,
+} from '@mui/material';
+import {
+  Close as CloseIcon,
+  CheckCircle as CheckCircleIcon,
+  Error as ErrorIcon,
+  Info as InfoIcon,
+  Warning as WarningIcon,
+} from '@mui/icons-material';
+import { useAdmin } from '../../contexts/AdminContext';
+
+// Slide transition component
+function SlideTransition(props: SlideProps) {
+  return <Slide {...props} direction="up" />;
+}
+
+// Individual notification component
+const NotificationItem: React.FC<{
+  id: string;
+  message: string;
+  type: 'success' | 'error' | 'info' | 'warning';
+  onClose: (id: string) => void;
+}> = ({ id, message, type, onClose }) => {
+  const getIcon = () => {
+    switch (type) {
+      case 'success':
+        return <CheckCircleIcon />;
+      case 'error':
+        return <ErrorIcon />;
+      case 'warning':
+        return <WarningIcon />;
+      case 'info':
+      default: return <InfoIcon />;
+  }
+};
+
+  const getSeverity = () => {
+    switch (type) {
+      case 'success':
+        return 'success';
+      case 'error':
+        return 'error';
+      case 'warning':
+        return 'warning';
+      case 'info':
+      default: return 'info';
+  }
+};
+
+  return (
+    <Alert
+      severity={getSeverity()}
+      icon={getIcon()}
+      action={
+        <IconButton
+          size="small"
+          aria-label="close"
+          color="inherit"
+          onClick={() => onClose(id)}
+        >
+          <CloseIcon fontSize="small" />
+        </IconButton>
+    }
+      sx={{
+        mb: 1,
+        '& .MuiAlert-message': {
+          width: '100%',
+      },
+    }}
+    >
+      <Typography variant="body2">{message}</Typography>
+    </Alert>
+  );
+};
+
+// Main notification system component
+const AdminNotificationSystem: React.FC = () => {
+  const { state, removeNotification } = useAdmin();
+  
+  // Theming system
+  const theming = useTheming('prototype_tester');
+  const { notifications } = state;
+
+  // Auto-remove notifications after 5 seconds
+  useEffect(() => {
+    notifications.forEach((notification) => {
+      const timer = setTimeout(() => {
+        removeNotification(notification.id);
+    }, 5000);
+
+      return () => clearTimeout(timer);
+  });
+}, [notifications, removeNotification]);
+
+  if (notifications.length === 0) {
+    return null;
+}
+
+  return (
+    <Box
+      sx={{
+        position: 'fixed',
+        top: 16,
+        right: 16,
+        zIndex: 9999,
+        maxWidth: 400,
+        width: '100%',
+    }}
+    >
+      {notifications.map((notification) => (
+        <Collapse
+          key={notification.id}
+          in={true}
+          timeout={300}
+          unmountOnExit
+        >
+          <NotificationItem
+            id={notification.id}
+            message={notification.message}
+            type={notification.type}
+            onClose={removeNotification}
+          />
+        </Collapse>
+      ))}
+    </Box>
+  );
+};
+
+export default AdminNotificationSystem;
+
+
+

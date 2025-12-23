@@ -1,0 +1,230 @@
+import React, { useEffect, useRef, useCallback } from 'react';
+
+interface PerformanceMetrics {
+  componentName: string;
+  renderTime: number;
+  mountTime: number;
+  timestamp: number;
+  memoryUsage?: number}
+
+interface PerformanceConfig {
+  trackRenderTime?: boolean;
+  trackMemoryUsage?: boolean;
+  trackMountTime?: boolean;
+  threshold?: number; // Only track if render time exceeds threshold (ms)
+  onMetric?: (metric: PerformanceMetrics) => void}
+
+export const usePerformanceMonitor = (componentName: string, config: PerformanceConfig = {}) => {
+  const {
+    trackRenderTime = true,
+    trackMemoryUsage = false,
+    trackMountTime = true,
+    threshold = 16, // 16ms = 60fps threshold
+    onMetric,
+} = config;
+
+  const renderStartTime = useRef<number>(0);
+  const mountStartTime = useRef<number>(0);
+  const renderCount = useRef<number>(0);
+
+  const trackMetric = useCallback(
+    (metric: Partial<PerformanceMetrics>) => {
+      const fullMetric: PerformanceMetrics = {
+        componentName,
+        renderTime: 0,
+        mountTime: 0,
+        timestamp: Date.now(),
+        ...metric,
+    };
+
+      // Only track if it exceeds threshold or is explicitly requested
+      if (metric.renderTime && metric.renderTime < threshold && !config.threshold) {
+        return;
+    }
+
+      // Log to console in development
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`Performance [${componentName}]:`, fullMetric);
+    }
+
+      // Call custom handler
+      if (onMetric) {
+        onMetric(fullMetric);
+    }
+
+      // In production, you might want to send this to an analytics service
+      if (process.env.NODE_ENV === 'production') {
+        // Example: analytics.track('performance_metric', fullMetric);
+    }
+  },
+    [componentName, threshold, onMetric],
+  );
+
+  // Track component mount time
+  useEffect(() => {
+    if (trackMountTime) {
+      mountStartTime.current = performance.now();
+  }
+
+    return () => {
+      if (trackMountTime && mountStartTime.current) {
+        const mountTime = performance.now() - mountStartTime.current;
+        trackMetric({ mountTime });
+    }
+  };
+}, [trackMountTime, trackMetric]);
+
+  // Track render time
+  const startRenderTimer = useCallback(() => {
+    if (trackRenderTime) {
+      renderStartTime.current = performance.now();
+  }
+}, [trackRenderTime]);
+
+  const endRenderTimer = useCallback(() => {
+    if (trackRenderTime && renderStartTime.current) {
+      const renderTime = performance.now() - renderStartTime.current;
+      renderCount.current += 1;
+
+      // Get memory usage if available and requested
+      let memoryUsage: number | undefined;
+      if (trackMemoryUsage && 'memory' in performance) {
+        const memory = (performance as any).memory;
+        memoryUsage = memory.usedJSHeapSize / 1024 / 1024; // MB
+}
+
+      trackMetric({
+        renderTime,
+        memoryUsage,
+    });
+  }
+}, [trackRenderTime, trackMemoryUsage, trackMetric]);
+
+  return {
+    startRenderTimer,
+    endRenderTimer,
+    renderCount: renderCount.current,
+};
+};
+
+// Hook for tracking page load performance
+export const usePageLoadMonitor = (pageName: string) => {
+  useEffect(() => {
+    const trackPageLoad = () => {
+      const navigation = performance.getEntriesByType(
+        'navigation',
+      )[0] as PerformanceNavigationTiming;
+
+      if (navigation) {
+        const metrics = {
+          pageName,
+          loadTime: navigation.loadEventEnd - navigation.fetchStart,
+          domContentLoaded: navigation.domContentLoadedEventEnd - navigation.fetchStart,
+          firstPaint: 0,
+          firstContentfulPaint: 0,
+          timestamp: Date.now(),
+      };
+
+        // Get paint metrics if available
+        const paintEntries = performance.getEntriesByType('paint');
+        paintEntries.forEach((entry) => {
+          if (entry.name === 'first-paint') {
+            metrics.firstPaint = entry.startTime;
+        } else if (entry.name === 'first-contentful-paint') {
+            metrics.firstContentfulPaint = entry.startTime;
+        }
+      });
+
+        console.log(`Page Load [${pageName}]:`, metrics);
+
+        // Track slow page loads
+        if (metrics.loadTime > 3000) {
+          // 3 seconds
+          console.warn(`Slow page load detected: ${pageName} took ${metrics.loadTime}ms`);
+      }
+    }
+  };
+
+    // Track when page is fully loaded
+    if (document.readyState === 'complete') {
+      trackPageLoad();
+  } else {
+      window.addEventListener('load', trackPageLoad);
+      return () => window.removeEventListener('load', trackPageLoad);
+  }
+}, [pageName]);
+};
+
+// Hook for tracking API call performance
+export const useApiPerformanceMonitor = () => {
+  const trackApiCall = useCallback(
+    (url: string, method: string, startTime: number, endTime: number, success: boolean) => {
+      const duration = endTime - startTime;
+      const metric = {
+        url,
+        method,
+        duration,
+        success,
+        timestamp: Date.now(),
+    };
+
+      // Log slow API calls
+      if (duration > 1000) {
+        // 1 second
+        console.warn(`Slow API call: ${method} ${url} took ${duration}ms`);
+    }
+
+      // Log to console in development
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`API Performance:`, metric);
+    }
+
+      // In production, you might want to send this to an analytics service
+      if (process.env.NODE_ENV ==='production') {
+        // Example: analytics.track('api_performance', metric);
+    }
+  },
+    [],
+  );
+
+  return { trackApiCall };
+};
+
+// Higher-order component for automatic performance monitoring
+export const withPerformanceMonitoring = <P extends object>(
+  Component: React.ComponentType<P>,
+  componentName: string,
+  config?: PerformanceConfig,
+) => {
+  return (props: P) => {
+    const { startRenderTimer, endRenderTimer } = usePerformanceMonitor(componentName, config);
+
+    useEffect(() => {
+      startRenderTimer();
+      return () => endRenderTimer();
+  });
+
+    return React.createElement(Component, props);
+};
+};
+
+// Utility function to measure function execution time
+export const measureFunction = <T extends any[], R>(
+  fn: (...args: T) => R,
+  functionName: string,
+) => {
+  return (...args: T): R => {
+    const startTime = performance.now();
+    const result = fn(...args);
+    const endTime = performance.now();
+
+    const duration = endTime - startTime;
+
+    if (duration > 16) {
+      // Only log if it takes longer than one frame
+      console.log(`Function [${functionName}] took ${duration.toFixed(2)}ms`);
+  }
+
+    return result;
+};
+};

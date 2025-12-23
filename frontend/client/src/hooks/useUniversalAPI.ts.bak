@@ -1,0 +1,259 @@
+/**
+ * CreatorHub Norge - Universal API Hook
+ * Frontend hook for automatisk API proxy bruk
+ */
+
+import { useState, useCallback } from 'react';
+import { useToast } from '@/hooks/use-toast';
+
+interface APIResponse<T = any> {
+  success: boolean;
+  data?: T;
+  error?: string;
+  details?: any; 
+}
+
+interface UseUniversalAPIOptions {
+  showErrorToast?: boolean;
+  showSuccessToast?: boolean;
+}
+
+// Service navne-mapping for enkel bruk
+export const API_SERVICES = {
+  // AI Services
+  OPENAI: 'openai',
+  GEMINI: 'google-gemini',
+  ANTHROPIC: 'anthropic',
+  COHERE: 'cohere',
+
+  // Google Services
+  GOOGLE_DRIVE: 'google-drive',
+  GOOGLE_PHOTOS: 'google-photos',
+  GOOGLE_CALENDAR: 'google-calendar',
+  GMAIL: 'google-gmail',
+  GOOGLE_ANALYTICS: 'google-analytics',
+  YOUTUBE: 'youtube',
+
+  // Payment
+  STRIPE: 'stripe',
+  PAYPAL: 'paypal',
+  VIPPS: 'vipps',
+  KLARNA: 'klarna',
+
+  // Social Media
+  INSTAGRAM: 'instagram',
+  FACEBOOK: 'facebook',
+  TWITTER: 'twitter',
+  LINKEDIN: 'linkedin',
+  TIKTOK: 'tiktok',
+
+  // Communication
+  SENDGRID: 'sendgrid',
+  TWILIO: 'twilio',
+  MAILCHIMP: 'mailchimp',
+  MAILGUN: 'mailgun',
+  WHATSAPP: 'whatsapp',
+  SLACK: 'slack',
+
+  // Creative
+  UNSPLASH: 'unsplash',
+  PEXELS: 'pexels',
+  ADOBE: 'adobe-creative',
+  CANVA: 'canva',
+  FIGMA: 'figma',
+
+  // Music
+  SPOTIFY: 'spotify',
+  SOUNDCLOUD: 'soundcloud',
+  APPLE_MUSIC: 'apple-music',
+
+  // Norwegian
+  BRREG: 'brreg',
+  ALTINN: 'altinn',
+  BRING: 'bring',
+  POSTEN: 'posten-norge',
+  DIGIPOST: 'digipost',
+} as const;
+
+export type APIService = (typeof API_SERVICES)[keyof typeof API_SERVICES];
+
+/**
+ * Universal API Hook for automatisk proxy-bruk
+ *
+ * @example
+ * ```tsx
+ * const api = useUniversalAPI();
+ *
+ * // Call OpenAI
+ * const response = await api.call('openai', '/chat/completions', 'POST', {
+ *   model: 'gpt-3.5-turbo',
+ *   messages: [{ role: 'user', content: 'Hello!' }]
+ * });
+ *
+ * // Call Google Gemini
+ * const geminiResponse = await api.call(API_SERVICES.GEMINI, '/models/gemini-pro:generateContent', 'POST', {
+ *   contents: [{ parts: [{ text: 'Hello Gemini!' }] }]
+ * });
+ *
+ * // Check if service is configured
+ * const isStripeReady = await api.checkService('stripe');
+ * ```
+ */
+export function useUniversalAPI(options: UseUniversalAPIOptions = {}) {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const { toast } = useToast();
+  const { showErrorToast = true, showSuccessToast = false } = options;
+
+  /**
+   * Call any API service via proxy
+   */
+  const call = useCallback(
+    async <T = any>(
+      service: string | APIService,
+      endpoint: string,
+      method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH' = 'GET',
+      body?: any,
+      headers?: Record<string, string>,
+    ): Promise<APIResponse<T>> => {
+      setLoading(true);
+      setError(null);
+
+      try {
+        const response = await fetch(`/api/proxy/${service}${endpoint}`, {
+          method,
+          headers: {
+            'Content-Type': 'application/json',
+            ...headers,
+        },
+          body: body ? JSON.stringify(body) : undefined,
+      }).then(res => res.json());
+
+        if (showSuccessToast) {
+          toast({
+            title: 'Suksess',
+            description: `${service} API-kall fullført`,
+        });
+      }
+
+        setLoading(false);
+        return {
+          success: true,
+          data: response,
+      };
+    } catch (err: any) {
+        const errorMessage =
+          err.response?.data?.message ||
+          err.response?.data?.error ||
+          err.message ||
+          'API-kall feilet';
+
+        setError(errorMessage);
+
+        if (showErrorToast) {
+          toast({
+            title: 'API Feil',
+            description: errorMessage,
+            variant: 'destructive',
+        });
+      }
+
+        setLoading(false);
+        return {
+          success: false,
+          error: errorMessage,
+          details: err.response?.data,
+      };
+    }
+  },
+    [showErrorToast, showSuccessToast, toast],
+  );
+
+  /**
+   * Check if a service is configured
+   */
+  const checkService = useCallback(async (service: string | APIService): Promise<boolean> => {
+    try {
+      const response = await fetch(`/api/proxy/check/${service}`).then(res => res.json());
+      return response.isConfigured || false;
+  } catch {
+      return false;
+  }
+}, []);
+
+  /**
+   * Get list of configured services
+   */
+  const getConfiguredServices = useCallback(async (): Promise<string[]> => {
+    try {
+      const response = await fetch('/api/proxy/configured').then(res => res.json());
+      return response.configured || [];
+  } catch {
+      return [];
+  }
+}, []);
+
+  /**
+   * Get list of supported services
+   */
+  const getSupportedServices = useCallback(async (): Promise<string[]> => {
+    try {
+      const response = await fetch('/api/proxy/supported').then(res => res.json());
+      return response.supported || [];
+  } catch {
+      return [];
+  }
+}, []);
+
+  // Spesifikke AI-hjelpemetoder
+  const callGemini = useCallback(
+    async (prompt: string, model: string = 'gemini-pro') => {
+      return call(API_SERVICES.GEMINI, `/models/${model}:generateContent`, 'POST', {
+        contents: [{ parts: [{ text: prompt }] }],
+    });
+  },
+    [call],
+  );
+
+  const callOpenAI = useCallback(
+    async (prompt: string, model: string = 'gpt-3.5-turbo') => {
+      return call(API_SERVICES.OPENAI, '/chat/completions', 'POST', {
+        model,
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.7,
+    });
+  },
+    [call],
+  );
+
+  const callAnthropic = useCallback(
+    async (prompt: string, model: string = 'claude-3-haiku-20240307') => {
+      return call(API_SERVICES.ANTHROPIC, '/messages', 'POST', {
+        model,
+        max_tokens: 1024,
+        messages: [{ role: 'user', content: prompt }],
+    });
+  },
+    [call],
+  );
+
+  return {
+    // Core methods
+    call,
+    checkService,
+    getConfiguredServices,
+    getSupportedServices,
+
+    // AI helpers
+    callGemini,
+    callOpenAI,
+    callAnthropic,
+
+    // State
+    loading,
+    error,
+
+    // Service constants
+    services: API_SERVICES,
+};
+}

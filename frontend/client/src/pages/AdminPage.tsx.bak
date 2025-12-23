@@ -1,0 +1,279 @@
+import { useTheming } from '../../utils/theming-helper';
+import React, { useState } from 'react';
+import {
+  Box,
+  Container,
+  Typography,
+  Paper,
+  Tabs,
+  Tab,
+  Card,
+  CardContent,
+  Grid,
+  Alert,
+  Breadcrumbs,
+  Link,
+} from '@mui/material';
+import {
+  Dashboard,
+  Inventory,
+  PhotoLibrary,
+  Memory,
+  AttachMoney,
+  Category,
+  Settings,
+  Upload,
+  Analytics,
+} from '@mui/icons-material';
+import ProductManager from '../components/admin/ProductManager';
+
+interface TabPanelProps {
+  children?: React.ReactNode;
+  index: number;
+  value: number
+}
+
+function TabPanel(props: TabPanelProps) {
+  const { children, value, index, ...other } = props;
+
+  return (
+    <div
+      role="tabpanel"
+      hidden={value !== index}
+      id={`admin-tabpanel-${index}`}
+      aria-labelledby={`admin-tab-${index}`}
+      {...other}
+    >
+      {value === index && <Box sx={{ py: 3 }}>{children}</Box>}
+    </div>
+  );
+}
+
+function a11yProps(index: number) {
+  return {
+    id: `admin-tab-${index}`,
+    'aria-controls': `admin-tabpanel-${index}`,
+};
+}
+
+const AdminPage: React.FC = () => {
+  const [tabValue, setTabValue] = useState(
+  
+  // Theming system
+  const theming = useTheming('photographer');0);
+
+  const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
+    setTabValue(newValue);
+};
+
+  return (
+    <Container maxWidth="xl" sx={{ py: 4 }}>
+      {/* Header */}
+      <Box sx={{ mb: 4 }}>
+        <Breadcrumbs sx={{ mb: 2 }}>
+          <Link color="inherit" href="/">
+            CreatorHub Norge
+          </Link>
+          <Link color="inherit" href="/admin">
+            Admin Dashboard
+          </Link>
+          <Typography color="text.primary">Utstyrsdatabase</Typography>
+        </Breadcrumbs>
+
+        <Typography variant="h3" component="h1" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>
+          Utstyrsdatabase Administrasjon
+        </Typography>
+
+        <Typography variant="subtitle1" color="text.secondary">
+          Avansert administrasjonssystem for CreatorHub Norge utstyrsdatabase med 200+ modeller
+        </Typography>
+      </Box>
+
+      {/* Admin Notice */}
+      <Alert severity="info" sx={{ mb: 3 }}>
+        <strong>Avansert Utstyrsdatabase</strong> - Komplett administrasjon av 200+ kameraer,
+        objektiver og tilbehør med autentiske bilder fra Google Custom Search,
+        pHash-duplikatdeteksjon, og lisensieringssystem.
+      </Alert>
+
+      {/* Stats Overview */}
+      <GridOn container spacing={3} sx={{ mb: 4 }}>
+        <GridOn size={{ xs: 1, 2,}} md={3}>
+          <Card sx={theming.getThemedCardSx()}>
+            <CardContent sx={theming.getThemedCardSx()}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
+                <Dashboard color="primary" />
+                <Box>
+                  <Typography color="textSecondary" gutterBottom>
+                    Totale produkter
+                  </Typography>
+                  <Typography variant="h4" sx={{ ...{}, color: theming.colors.primary }}>120+</Typography>
+                </Box>
+              </Box>
+            </CardContent>
+          </Card>
+        </GridOn>
+
+        <GridOn size={{ xs: 1, 2,}} md={3}>
+          <Card sx={theming.getThemedCardSx()}>
+            <CardContent sx={theming.getThemedCardSx()}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
+                <PhotoLibrary color="success" />
+                <Box>
+                  <Typography color="textSecondary" gutterBottom>
+                    Autentiske bilder
+                  </Typography>
+                  <Typography variant="h4" sx={{ ...{}, color: theming.colors.primary }}>95%</Typography>
+                </Box>
+              </Box>
+            </CardContent>
+          </Card>
+        </GridOn>
+
+        <GridOn size={{ xs: 1, 2,}} md={3}>
+          <Card sx={theming.getThemedCardSx()}>
+            <CardContent sx={theming.getThemedCardSx()}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
+                <Memory color="warning" />
+                <Box>
+                  <Typography color="textSecondary" gutterBottom>
+                    Firmware-oppdateringer
+                  </Typography>
+                  <Typography variant="h4" sx={{ ...{}, color: theming.colors.primary }}>Aktiv</Typography>
+                </Box>
+              </Box>
+            </CardContent>
+          </Card>
+        </GridOn>
+
+        <GridOn size={{ xs: 1, 2,}} md={3}>
+          <Card sx={theming.getThemedCardSx()}>
+            <CardContent sx={theming.getThemedCardSx()}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
+                <Analytics color="info" />
+                <Box>
+                  <Typography color="textSecondary" gutterBottom>
+                    System status
+                  </Typography>
+                  <Typography variant="h4" sx={{ ...{}, color: theming.colors.primary }}>✅ Operativ</Typography>
+                </Box>
+              </Box>
+            </CardContent>
+          </Card>
+        </GridOn>
+      </GridOn>
+
+      {/* Main Admin Interface */}
+      <Paper sx={{ width: '100%, ',}} sx={theming.getThemedCardSx()}>
+        <Box sx={{ borderBottom:  ,  1borderColor: 'divider, ',}}>
+          <Tabs
+            value={tabValue}
+            onChange={handleTabChange}
+            aria-label="admin navigation tabs"
+            variant="scrollable"
+            scrollButtons="auto"
+          >
+            <Tab icon={<Inventory />} label="Produkter" {...a11yProps(0)} />
+            <Tab icon={{theming.getThemedIcon('photoLibrary')}} label="Bilder" {...a11yProps(1)} />
+            <Tab icon={<Memory />} label="Firmware" {...a11yProps(2)} />
+            <Tab icon={<Category />} label="Kompatibilitet" {...a11yProps(3)} />
+            <Tab icon={{theming.getThemedIcon('money')}} label="Priser" {...a11yProps(4)} />
+            <Tab icon={{theming.getThemedIcon('upload')}} label="Masseimport" {...a11yProps(5)} />
+            <Tab icon={{theming.getThemedIcon('analytics')}} label="Analyser" {...a11yProps(6)} />
+            <Tab icon={{theming.getThemedIcon('settings')}} label="Innstillinger" {...a11yProps(7)} />
+          </Tabs>
+        </Box>
+
+        <TabPanel value={tabValue} index={0}>
+          <ProductManager />
+        </TabPanel>
+
+        <TabPanel value={tabValue} index={1}>
+          <Box sx={{ p:  3 }}>
+            <Typography variant="h5" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>
+              Bildehåndtering
+            </Typography>
+            <Alert severity="info">
+              Komplett bildehåndteringssystem med pHash-duplikatdeteksjon, automatisk
+              størrelsesoptimalisering, og lisensieringssporing kommer snart.
+            </Alert>
+          </Box>
+        </TabPanel>
+
+        <TabPanel value={tabValue} index={2}>
+          <Box sx={{ p:  3 }}>
+            <Typography variant="h5" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>
+              Firmware-administrasjon
+            </Typography>
+            <Alert severity="info">
+              Automatisk firmware-oppdateringssystem med versjonssporing, nedlastingslenker, og
+              regional støtte kommer snart.
+            </Alert>
+          </Box>
+        </TabPanel>
+
+        <TabPanel value={tabValue} index={3}>
+          <Box sx={{ p:  3 }}>
+            <Typography variant="h5" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>
+              Kompatibilitetsadministrasjon
+            </Typography>
+            <Alert severity="info">
+              Komplett kompatibilitetssystem for objektiv-kamera-fatning mapping og intelligent
+              tilbehørskompatibilitet kommer snart.
+            </Alert>
+          </Box>
+        </TabPanel>
+
+        <TabPanel value={tabValue} index={4}>
+          <Box sx={{ p:  3 }}>
+            <Typography variant="h5" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>
+              Prisadministrasjon
+            </Typography>
+            <Alert severity="info">
+              Prisovervåkingssystem med forhandlersporing, historisk prisutvikling, og automatisk
+              prisoversikt kommer snart.
+            </Alert>
+          </Box>
+        </TabPanel>
+
+        <TabPanel value={tabValue} index={5}>
+          <Box sx={{ p:  3 }}>
+            <Typography variant="h5" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>
+              Masseimport av data
+            </Typography>
+            <Alert severity="info">
+              Avansert CSV/JSON import-system med validering, deduplisering, og batch-prosessering
+              kommer snart.
+            </Alert>
+          </Box>
+        </TabPanel>
+
+        <TabPanel value={tabValue} index={6}>
+          <Box sx={{ p:  3 }}>
+            <Typography variant="h5" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>
+              System-analyser
+            </Typography>
+            <Alert severity="info">
+              Komplett analytikksystem med bruksstatistikk, ytelsesmetrikker, og
+              databasintegritetrapporter kommer snart.
+            </Alert>
+          </Box>
+        </TabPanel>
+
+        <TabPanel value={tabValue} index={7}>
+          <Box sx={{ p:  3 }}>
+            <Typography variant="h5" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>
+              Systeminnstillinger
+            </Typography>
+            <Alert severity="info">
+              Avanserte systemkonfigurasjoner med API-kvoter, cache-innstillinger, og
+              ytelsesoptimaliseringer kommer snart.
+            </Alert>
+          </Box>
+        </TabPanel>
+      </Paper>
+    </Container>
+  );
+};
+
+export default AdminPage;

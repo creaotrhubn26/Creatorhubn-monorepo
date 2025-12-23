@@ -1,0 +1,3978 @@
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
+import {
+  Box,
+  Container,
+  Typography,
+  Card,
+  CardContent,
+  Grid,
+  Avatar,
+  Button,
+  Tabs,
+  Tab,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Paper,
+  LinearProgress,
+  Stepper,
+  Step,
+  StepLabel,
+  Alert,
+  Checkbox,
+  FormControlLabel,
+  Fab,
+  Badge,
+  IconButton,
+  SpeedDial,
+  SpeedDialAction,
+  SpeedDialIcon,
+  Chip,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemIcon,
+  ListItemSecondaryAction,
+  Divider,
+  Switch
+} from '@mui/material';
+import {
+  Camera,
+  Group,
+  Build,
+  Add,
+  CalendarToday,
+  Assessment,
+  Settings,
+  AttachMoney,
+  TrendingUp,
+  Close,
+  CheckCircle,
+  Event,
+  Business,
+  Person,
+  Chat,
+  Email,
+  Star,
+  Campaign,
+  Speed,
+  Schedule,
+  FilterList,
+  Search,
+  Archive,
+  Edit,
+  Visibility,
+  Share,
+  LocationOn,
+  Photo,
+  PhotoCamera,
+  Phone,
+  Delete,
+  Undo,
+  Assignment,
+  Videocam,
+  DateRange,
+  Collections,
+  Flag,
+  Map,
+  OpenInNew,
+  AssistantPhoto,
+  SupervisorAccount,
+  Article,
+  FolderOpen,
+  Notifications,
+  ArrowRight
+} from '@mui/icons-material';
+
+// Import comprehensive components
+import BRREGIntegration from '../components/photographer/BRREGIntegration';
+import AdvancedClientManagement from '../components/photographer/AdvancedClientManagement';
+import IntegratedMailInterface from '../components/mail/IntegratedMailInterface';
+import EquipmentManagementDB from '../components/photographer/EquipmentManagementDB';
+import ProjectManagementSystem from '../components/photographer/ProjectManagementSystem';
+import ProfessionalQuickActions from '../components/photographer/ProfessionalQuickActions';
+import BusinessIntelligenceDashboard from '../components/photographer/BusinessIntelligenceDashboard';
+import ExternalIntegrationsWidget from '../components/photographer/ExternalIntegrationsWidget';
+import ProfessionalCommunicationSystem from '../components/photographer/ProfessionalCommunicationSystem';
+import EnhancedSettingsModal from '../components/photographer/EnhancedSettingsModal';
+import ComprehensiveChatSystem from '../components/chat/ComprehensiveChatSystem-stub';
+
+import TutorialIntegrationButton from '../components/tutorials/TutorialIntegrationButton';
+import UniversalOnboardingButton from '../components/tutorials/UniversalOnboardingButton';
+import CreativeShowcaseSystem from '../components/showcase/CreativeShowcaseSystem';
+import ContractManagementWithScanner from '../components/shared/ContractManagementWithScanner';
+import SmartSalesAssistant from '../components/sales/SmartSalesAssistant';
+import { FeatureBrandingBox } from '../components/FeatureLogos';
+import LogoCustomization from '../components/settings/LogoCustomization';
+
+
+export default function PhotographerDashboardMaterial() {
+  // Basic State Management
+  const [tabValue, setTabValue] = useState(0);
+  const [projectAdminTabValue, setProjectAdminTabValue] = useState(0);
+  const [showProjectModal, setShowProjectModal] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [showChatSystem, setShowChatSystem] = useState(false);
+  const [showMailInterface, setShowMailInterface] = useState(false);
+  const [showLogoSettings, setShowLogoSettings] = useState(false);
+  const [activeStep, setActiveStep] = useState(0);
+  
+  // Comprehensive Project Wizard State
+  const [comprehensiveProjectForm, setComprehensiveProjectForm] = useState({
+    // Basic Project Info
+    name: '',
+    type: '',
+    category: '',
+    eventDate: '',
+    location: '',
+    description: '',
+    // Client Information
+    clientName: '',
+    clientEmail: '',
+    clientPhone: '',
+    clientCompany: '',
+    // Financial Details
+    totalAmount: '',
+    currency: 'NOK',
+    paymentStructure: 'milestone',
+    // Advanced Settings
+    priority: 'medium',
+    estimatedDuration: '',
+    complexity: 'normal',
+    tags: []
+  });
+  const [availableSubmissions] = useState([]);
+  const [showSubmissionPanel, setShowSubmissionPanel] = useState(false);
+  const [unreadEmails, setUnreadEmails] = useState(0);
+  
+  // Project management states
+  const [showEditProjectModal, setShowEditProjectModal] = useState(false);
+  const [showProjectDetailsModal, setShowProjectDetailsModal] = useState(false);
+  const [showAddParticipantModal, setShowAddParticipantModal] = useState(false);
+  const [selectedProject, setSelectedProject] = useState(null);
+  const [projectParticipants, setProjectParticipants] = useState([]);
+  const [removedParticipants, setRemovedParticipants] = useState([]);
+  const [notifyCustomer, setNotifyCustomer] = useState(true);
+  
+  // New participant form
+  const [newParticipant, setNewParticipant] = useState({
+    name: '',
+    email: '',
+    phone: '',
+    role: 'Assistent'
+  });
+
+  // Project details editing states
+  const [projectDetails, setProjectDetails] = useState({
+    date: '',
+    location: '',
+    budget: '',
+    imageCount: '',
+    priority: 'Normal'
+  });
+
+  // Photography locations management
+  const [photographyLocations, setPhotographyLocations] = useState([]);
+  const [newLocation, setNewLocation] = useState({ name: '', googleMapsLink: '' });
+  const [showAddLocationModal, setShowAddLocationModal] = useState(false);
+  
+  // API Integration with React Query
+  const queryClient = useQueryClient();
+  
+  // Get user session for API calls
+  const { data: userSession } = useQuery({
+    queryKey: ['userSession'],
+    queryFn: () => apiRequest('/api/auth/public-session'),
+    retry: false
+  });
+  
+  const userId = userSession?.userId || 'guest';
+  
+  // Fetch comprehensive business intelligence data
+  const { data: businessIntelligence = [] } = useQuery({
+    queryKey: ['/api/business-intelligence', userId],
+    queryFn: () => apiRequest(`/api/business-intelligence/${userId}`),
+    enabled: !!userId && userId !== 'guest'
+  });
+  
+  // Fetch service integrations status
+  const { data: serviceIntegrations = [] } = useQuery({
+    queryKey: ['/api/integrations/services', userId],
+    queryFn: () => apiRequest(`/api/integrations/services/${userId}`),
+    enabled: !!userId && userId !== 'guest'
+  });
+  
+  // Fetch GDPR compliance status
+  const { data: gdprConsents = [] } = useQuery({
+    queryKey: ['/api/compliance/gdpr-consents', userId],
+    queryFn: () => apiRequest(`/api/compliance/gdpr-consents/${userId}`),
+    enabled: !!userId && userId !== 'guest'
+  });
+  
+  // Fetch tax compliance data
+  const { data: taxCompliance = [] } = useQuery({
+    queryKey: ['/api/compliance/tax-compliance', userId],
+    queryFn: () => apiRequest(`/api/compliance/tax-compliance/${userId}`),
+    enabled: !!userId && userId !== 'guest'
+  });
+  
+  // Fetch performance metrics
+  const { data: performanceMetrics = [] } = useQuery({
+    queryKey: ['/api/performance/metrics'],
+    queryFn: () => apiRequest('/api/performance/metrics')
+  });
+  
+  // Fetch AI image analysis data
+  const { data: aiImageAnalysis = [] } = useQuery({
+    queryKey: ['/api/ai/image-analysis', userId],
+    queryFn: () => apiRequest(`/api/ai/image-analysis/${userId}`),
+    enabled: !!userId && userId !== 'guest'
+  });
+  
+  // Fetch equipment monitoring data
+  const { data: equipmentMonitoring = [] } = useQuery({
+    queryKey: ['/api/equipment/monitoring', userId],
+    queryFn: () => apiRequest(`/api/equipment/monitoring/${userId}`),
+    enabled: !!userId && userId !== 'guest'
+  });
+  
+  // Fetch live equipment pricing
+  const { data: liveEquipmentPricing = [] } = useQuery({
+    queryKey: ['/api/equipment/live-pricing'],
+    queryFn: () => apiRequest('/api/equipment/live-pricing')
+  });
+
+  // Fetch unread email count
+  const { data: emailData } = useQuery({
+    queryKey: ['/api/mail/unread-count', userId],
+    queryFn: () => apiRequest(`/api/mail/unread-count/${userId}`),
+    enabled: !!userId && userId !== 'guest',
+    refetchInterval: 30000, // Check every 30 seconds
+  });
+
+  // Update unread emails state when data changes
+  useEffect(() => {
+    if (emailData?.unreadCount !== undefined) {
+      setUnreadEmails(emailData.unreadCount);
+    }
+  }, [emailData]);
+  
+  console.log('📊 Dashboard Data Loaded:', {
+    businessIntelligence: businessIntelligence.length,
+    serviceIntegrations: serviceIntegrations.length,
+    gdprConsents: gdprConsents.length,
+    taxCompliance: taxCompliance.length,
+    performanceMetrics: performanceMetrics.length,
+    aiImageAnalysis: aiImageAnalysis.length,
+    equipmentMonitoring: equipmentMonitoring.length,
+    liveEquipmentPricing: liveEquipmentPricing.length
+  });
+  
+  // Comprehensive Project Form State
+  const [comprehensiveProjectForm, setComprehensiveProjectForm] = useState({
+    name: '',
+    type: '',
+    description: '',
+    eventDate: '',
+    location: '',
+    duration: 4,
+    clientName: '',
+    clientEmail: '',
+    clientPhone: '',
+    basePrice: 15000,
+    vatRate: 25
+  });
+
+  const projectWizardSteps = [
+    'Prosjektinformasjon',
+    'Klientadministrasjon', 
+    'Tidsplan & Planlegging',
+    'Økonomi & Prising',
+    'Team & Ressurser',
+    'Leveranser & Kvalitet',
+    'Risikostyring',
+    'Kommunikasjonsplan'
+  ];
+
+  // API Queries
+  const { data: projectsData = [] } = useQuery({
+    queryKey: ['/api/stats/projects'],
+    retry: false,
+  });
+
+  const { data: revenueData = [] } = useQuery({
+    queryKey: ['/api/stats/revenue'],
+    retry: false,
+  });
+
+  const { data: equipmentData = [] } = useQuery({
+    queryKey: ['/api/stats/equipment'],
+    retry: false,
+  });
+
+  const { data: user } = useQuery({
+    queryKey: ['/api/auth/public-session'],
+    retry: false,
+  });
+
+  // Detailed projects query for project administration tab
+  const { data: detailedProjectsData = [] } = useQuery({
+    queryKey: ['/api/projects/detailed'],
+    retry: false,
+  });
+
+  // Project statistics query
+  const { data: projectStatsData } = useQuery({
+    queryKey: ['/api/projects/stats'],
+    retry: false,
+  });
+
+  // Completed projects for income overview - using sample data until API is available
+  const completedProjectsData = [
+    {
+      id: '1',
+      title: 'Bryllup - Emma og Lars',
+      client: 'Emma Larsen',
+      type: 'Bryllup',
+      date: '2025-01-15',
+      location: 'Oslo Rådhus',
+      budget: 45000,
+      status: 'completed'
+    },
+    {
+      id: '2', 
+      title: 'Bedriftsfotografering - TechNorge AS',
+      client: 'TechNorge AS',
+      type: 'Kommersiell',
+      date: '2025-01-20',
+      location: 'Oslo',
+      budget: 28000,
+      status: 'completed'
+    },
+    {
+      id: '3',
+      title: 'Familieportrett - Hansen Familie',
+      client: 'Kari Hansen',
+      type: 'Portrett',
+      date: '2025-01-25',
+      location: 'Bergen',
+      budget: 15000,
+      status: 'completed'
+    },
+    {
+      id: '4',
+      title: 'Produktfotografering - NorwayFashion',
+      client: 'NorwayFashion',
+      type: 'Produkt',
+      date: '2025-02-01',
+      location: 'Trondheim',
+      budget: 32000,
+      status: 'completed'
+    },
+    {
+      id: '5',
+      title: 'Konfirmasjon - Andrea Svendsen',
+      client: 'Liv Svendsen',
+      type: 'Event',
+      date: '2025-02-10',
+      location: 'Stavanger',
+      budget: 18000,
+      status: 'completed'
+    }
+  ];
+
+  // Calculate statistics from authentic database data
+  const totalProjects = projectsData.length;
+  const totalRevenue = revenueData.reduce?.((sum: number, item: any) => sum + (item.amount || 0), 0) || 0;
+  const totalEquipment = equipmentData.length;
+
+  // Calculate project statistics from database
+  const completedProjectsCount = projectStatsData?.completed || 0;
+  const pendingProjects = projectStatsData?.pending || 0;
+  const scheduledProjects = projectStatsData?.scheduled || 0;
+  
+  // Define projectStats to prevent undefined error
+  const projectStats = {
+    completed: completedProjectsCount,
+    pending: pendingProjects,
+    scheduled: scheduledProjects,
+    total: completedProjectsCount + pendingProjects + scheduledProjects
+  };
+
+  // Calculate progress percentages
+  const projectsProgress = Math.min((totalProjects / 20) * 100, 100);
+  const revenueProgress = Math.min((totalRevenue / 200000) * 100, 100);
+  const equipmentProgress = Math.min((totalEquipment / 25) * 100, 100);
+
+  // Wizard Navigation
+  const handleNext = () => setActiveStep((prev) => prev + 1);
+  const handleBack = () => setActiveStep((prev) => prev - 1);
+  const handleReset = () => {
+    setActiveStep(0);
+    setComprehensiveProjectForm({
+      name: '',
+      type: '',
+      description: '',
+      eventDate: '',
+      location: '',
+      duration: 4,
+      clientName: '',
+      clientEmail: '',
+      clientPhone: '',
+      basePrice: 15000,
+      vatRate: 25
+    });
+  };
+
+  // Project Creation Mutation
+  const createProjectMutation = useMutation({
+    mutationFn: async (projectData: any) => {
+      console.log('Creating comprehensive project:', projectData);
+      const response = await fetch('/api/projects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(projectData),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      return response.json();
+    },
+    onSuccess: () => {
+      console.log('Project created successfully');
+      queryClient.invalidateQueries({ queryKey: ['/api/stats/projects'] });
+      setShowProjectModal(false);
+      handleReset();
+    },
+    onError: (error) => {
+      console.error('Error creating project:', error);
+    },
+  });
+
+  // Project Wizard Step Renderer - Enhanced Version
+  const renderProjectWizardStep = (step: number) => {
+    switch (step) {
+      case 0:
+        return renderStep1ProjectInfo(comprehensiveProjectForm, setComprehensiveProjectForm);
+
+      case 1:
+        return (
+          <Box sx={{ 
+            background: 'linear-gradient(135deg, rgba(33, 150, 243, 0.05), rgba(21, 101, 192, 0.02))',
+            borderRadius: 3,
+            p: 4,
+            border: '1px solid rgba(33, 150, 243, 0.1)'
+          }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 4 }}>
+              <Box sx={{
+                background: 'linear-gradient(135deg, #2196f3, #21cbf3)',
+                borderRadius: '50%',
+                width: 60,
+                height: 60,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                mr: 3
+              }}>
+                <Typography variant="h4" sx={{ color: 'white', fontWeight: 700 }}>👥</Typography>
+              </Box>
+              <Box>
+                <Typography variant="h4" sx={{ fontWeight: 700, color: '#2196f3', mb: 1 }}>
+                  Steg 2: Klientadministrasjon
+                </Typography>
+                <Typography variant="body1" color="textSecondary">
+                  Klientinformasjon og BRREG-integrasjon
+                </Typography>
+              </Box>
+            </Box>
+
+            <Grid container spacing={4}>
+              <Grid item xs={12} md={6}>
+                <TextField
+                  fullWidth
+                  label="Klientnavn"
+                  placeholder="For- og etternavn eller bedriftsnavn"
+                  value={comprehensiveProjectForm.clientName}
+                  onChange={(e) => setComprehensiveProjectForm(prev => ({
+                    ...prev,
+                    clientName: e.target.value
+                  }))}
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      '&:hover fieldset': { borderColor: '#2196f3' },
+                      '&.Mui-focused fieldset': { borderColor: '#2196f3' }
+                    },
+                    '& .MuiInputLabel-root.Mui-focused': { color: '#2196f3' }
+                  }}
+                />
+              </Grid>
+              
+              <Grid item xs={12} md={6}>
+                <TextField
+                  fullWidth
+                  label="E-postadresse"
+                  type="email"
+                  placeholder="klient@example.com"
+                  value={comprehensiveProjectForm.clientEmail}
+                  onChange={(e) => setComprehensiveProjectForm(prev => ({
+                    ...prev,
+                    clientEmail: e.target.value
+                  }))}
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      '&:hover fieldset': { borderColor: '#2196f3' },
+                      '&.Mui-focused fieldset': { borderColor: '#2196f3' }
+                    },
+                    '& .MuiInputLabel-root.Mui-focused': { color: '#2196f3' }
+                  }}
+                />
+              </Grid>
+
+              <Grid item xs={12} md={6}>
+                <TextField
+                  fullWidth
+                  label="Telefonnummer"
+                  placeholder="+47 XXX XX XXX"
+                  value={comprehensiveProjectForm.clientPhone}
+                  onChange={(e) => setComprehensiveProjectForm(prev => ({
+                    ...prev,
+                    clientPhone: e.target.value
+                  }))}
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      '&:hover fieldset': { borderColor: '#2196f3' },
+                      '&.Mui-focused fieldset': { borderColor: '#2196f3' }
+                    },
+                    '& .MuiInputLabel-root.Mui-focused': { color: '#2196f3' }
+                  }}
+                />
+              </Grid>
+            </Grid>
+
+            <Box sx={{ mt: 4 }}>
+              <BRREGIntegration onCompanySelect={(data) => {
+                console.log('BRREG data selected:', data);
+                setComprehensiveProjectForm(prev => ({
+                  ...prev,
+                  clientName: data.name || prev.clientName,
+                  // Add other BRREG fields as needed
+                }));
+              }} />
+            </Box>
+          </Box>
+        );
+
+      case 2:
+        return (
+          <Box sx={{ 
+            background: 'linear-gradient(135deg, rgba(76, 175, 80, 0.05), rgba(56, 142, 60, 0.02))',
+            borderRadius: 3,
+            p: 4,
+            border: '1px solid rgba(76, 175, 80, 0.1)'
+          }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 4 }}>
+              <Box sx={{
+                background: 'linear-gradient(135deg, #4caf50, #8bc34a)',
+                borderRadius: '50%',
+                width: 60,
+                height: 60,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                mr: 3
+              }}>
+                <Typography variant="h4" sx={{ color: 'white', fontWeight: 700 }}>📅</Typography>
+              </Box>
+              <Box>
+                <Typography variant="h4" sx={{ fontWeight: 700, color: '#4caf50', mb: 1 }}>
+                  Steg 3: Tidsplan & Planlegging
+                </Typography>
+                <Typography variant="body1" color="textSecondary">
+                  Tidsplanlegging og prosjektorganisering
+                </Typography>
+              </Box>
+            </Box>
+
+            <Grid container spacing={4}>
+              <Grid item xs={12} md={6}>
+                <FormControl fullWidth>
+                  <InputLabel sx={{ '&.Mui-focused': { color: '#4caf50' } }}>Varighet (timer)</InputLabel>
+                  <Select
+                    value={comprehensiveProjectForm.duration}
+                    onChange={(e) => setComprehensiveProjectForm(prev => ({
+                      ...prev,
+                      duration: Number(e.target.value)
+                    }))}
+                    sx={{
+                      '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#4caf50' },
+                      '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#4caf50' }
+                    }}
+                  >
+                    <MenuItem value={2}>2 timer - Kort økt</MenuItem>
+                    <MenuItem value={4}>4 timer - Standard økt</MenuItem>
+                    <MenuItem value={8}>8 timer - Hel dag</MenuItem>
+                    <MenuItem value={12}>12 timer - Utvidet dag</MenuItem>
+                    <MenuItem value={16}>16 timer - Flere dager</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+            </Grid>
+          </Box>
+        );
+
+      case 3:
+        return (
+          <Box sx={{ 
+            background: 'linear-gradient(135deg, rgba(156, 39, 176, 0.05), rgba(123, 31, 162, 0.02))',
+            borderRadius: 3,
+            p: 4,
+            border: '1px solid rgba(156, 39, 176, 0.1)'
+          }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 4 }}>
+              <Box sx={{
+                background: 'linear-gradient(135deg, #9c27b0, #e1bee7)',
+                borderRadius: '50%',
+                width: 60,
+                height: 60,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                mr: 3
+              }}>
+                <Typography variant="h4" sx={{ color: 'white', fontWeight: 700 }}>💰</Typography>
+              </Box>
+              <Box>
+                <Typography variant="h4" sx={{ fontWeight: 700, color: '#9c27b0', mb: 1 }}>
+                  Steg 4: Økonomi & Prising
+                </Typography>
+                <Typography variant="body1" color="textSecondary">
+                  Priser og norsk MVA-beregning
+                </Typography>
+              </Box>
+            </Box>
+
+            <Grid container spacing={4}>
+              <Grid item xs={12} md={6}>
+                <TextField
+                  fullWidth
+                  type="number"
+                  label="Grunnpris (NOK)"
+                  value={comprehensiveProjectForm.basePrice}
+                  onChange={(e) => setComprehensiveProjectForm(prev => ({
+                    ...prev,
+                    basePrice: Number(e.target.value)
+                  }))}
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      '&:hover fieldset': { borderColor: '#9c27b0' },
+                      '&.Mui-focused fieldset': { borderColor: '#9c27b0' }
+                    },
+                    '& .MuiInputLabel-root.Mui-focused': { color: '#9c27b0' }
+                  }}
+                />
+              </Grid>
+              
+              <Grid item xs={12} md={6}>
+                <TextField
+                  fullWidth
+                  type="number"
+                  label="MVA (%)"
+                  value={comprehensiveProjectForm.vatRate}
+                  onChange={(e) => setComprehensiveProjectForm(prev => ({
+                    ...prev,
+                    vatRate: Number(e.target.value)
+                  }))}
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      '&:hover fieldset': { borderColor: '#9c27b0' },
+                      '&.Mui-focused fieldset': { borderColor: '#9c27b0' }
+                    },
+                    '& .MuiInputLabel-root.Mui-focused': { color: '#9c27b0' }
+                  }}
+                />
+              </Grid>
+
+              <Grid item xs={12}>
+                <Paper sx={{ p: 3, background: 'rgba(156, 39, 176, 0.05)' }}>
+                  <Typography variant="h6" sx={{ mb: 2, color: '#9c27b0' }}>Prissammendrag</Typography>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                    <Typography>Grunnpris:</Typography>
+                    <Typography>{`${comprehensiveProjectForm.basePrice.toLocaleString('nb-NO')} NOK`}</Typography>
+                  </Box>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                    <Typography>{`MVA (${comprehensiveProjectForm.vatRate}%):`}</Typography>
+                    <Typography>{`${(comprehensiveProjectForm.basePrice * comprehensiveProjectForm.vatRate / 100).toLocaleString('nb-NO')} NOK`}</Typography>
+                  </Box>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', fontWeight: 600, borderTop: 1, pt: 1 }}>
+                    <Typography sx={{ fontWeight: 600 }}>Totalpris:</Typography>
+                    <Typography sx={{ fontWeight: 600, color: '#9c27b0' }}>
+                      {`${(comprehensiveProjectForm.basePrice * (1 + comprehensiveProjectForm.vatRate / 100)).toLocaleString('nb-NO')} NOK`}
+                    </Typography>
+                  </Box>
+                </Paper>
+              </Grid>
+            </Grid>
+          </Box>
+        );
+
+      case 4:
+        return (
+          <Box sx={{ 
+            background: 'linear-gradient(135deg, rgba(255, 193, 7, 0.05), rgba(255, 235, 59, 0.02))',
+            borderRadius: 3,
+            p: 4,
+            border: '1px solid rgba(255, 193, 7, 0.1)'
+          }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 4 }}>
+              <Box sx={{
+                background: 'linear-gradient(135deg, #ffc107, #ffeb3b)',
+                borderRadius: '50%',
+                width: 60,
+                height: 60,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                mr: 3
+              }}>
+                <Typography variant="h4" sx={{ color: 'white', fontWeight: 700 }}>👥</Typography>
+              </Box>
+              <Box>
+                <Typography variant="h4" sx={{ fontWeight: 700, color: '#ffc107', mb: 1 }}>
+                  Steg 5: Team & Ressurser
+                </Typography>
+                <Typography variant="body1" color="textSecondary">
+                  Organisering av team og nødvendige ressurser
+                </Typography>
+              </Box>
+            </Box>
+
+            <Grid container spacing={4}>
+              <Grid item xs={12} md={6}>
+                <TextField
+                  fullWidth
+                  label="Hovedfotograf"
+                  placeholder="Navn på hovedfotograf"
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      '&:hover fieldset': { borderColor: '#ffc107' },
+                      '&.Mui-focused fieldset': { borderColor: '#ffc107' }
+                    },
+                    '& .MuiInputLabel-root.Mui-focused': { color: '#ffc107' }
+                  }}
+                />
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <TextField
+                  fullWidth
+                  label="Assistent(er)"
+                  placeholder="Navn på assistent(er)"
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      '&:hover fieldset': { borderColor: '#ffc107' },
+                      '&.Mui-focused fieldset': { borderColor: '#ffc107' }
+                    },
+                    '& .MuiInputLabel-root.Mui-focused': { color: '#ffc107' }
+                  }}
+                />
+              </Grid>
+              <Grid item xs={12}>
+                <Typography variant="h6" sx={{ mb: 2, color: '#ffc107' }}>Utstyr & Ressurser</Typography>
+                <Grid container spacing={2}>
+                  <Grid item xs={12} md={4}>
+                    <FormControlLabel
+                      control={<Checkbox sx={{ color: '#ffc107', '&.Mui-checked': { color: '#ffc107' } }} />}
+                      label="Hovedkamera"
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={4}>
+                    <FormControlLabel
+                      control={<Checkbox sx={{ color: '#ffc107', '&.Mui-checked': { color: '#ffc107' } }} />}
+                      label="Reservekamera"
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={4}>
+                    <FormControlLabel
+                      control={<Checkbox sx={{ color: '#ffc107', '&.Mui-checked': { color: '#ffc107' } }} />}
+                      label="Ekstra objektiver"
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={4}>
+                    <FormControlLabel
+                      control={<Checkbox sx={{ color: '#ffc107', '&.Mui-checked': { color: '#ffc107' } }} />}
+                      label="Blitseutstyr"
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={4}>
+                    <FormControlLabel
+                      control={<Checkbox sx={{ color: '#ffc107', '&.Mui-checked': { color: '#ffc107' } }} />}
+                      label="Stativer"
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={4}>
+                    <FormControlLabel
+                      control={<Checkbox sx={{ color: '#ffc107', '&.Mui-checked': { color: '#ffc107' } }} />}
+                      label="Minnekort & batterier"
+                    />
+                  </Grid>
+                </Grid>
+              </Grid>
+            </Grid>
+          </Box>
+        );
+
+      case 5:
+        return (
+          <Box sx={{ 
+            background: 'linear-gradient(135deg, rgba(63, 81, 181, 0.05), rgba(121, 134, 203, 0.02))',
+            borderRadius: 3,
+            p: 4,
+            border: '1px solid rgba(63, 81, 181, 0.1)'
+          }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 4 }}>
+              <Box sx={{
+                background: 'linear-gradient(135deg, #3f51b5, #7986cb)',
+                borderRadius: '50%',
+                width: 60,
+                height: 60,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                mr: 3
+              }}>
+                <Typography variant="h4" sx={{ color: 'white', fontWeight: 700 }}>📦</Typography>
+              </Box>
+              <Box>
+                <Typography variant="h4" sx={{ fontWeight: 700, color: '#3f51b5', mb: 1 }}>
+                  Steg 6: Leveranser & Kvalitet
+                </Typography>
+                <Typography variant="body1" color="textSecondary">
+                  Definering av leveranser og kvalitetsstandarder
+                </Typography>
+              </Box>
+            </Box>
+
+            <Grid container spacing={4}>
+              <Grid item xs={12} md={6}>
+                <TextField
+                  fullWidth
+                  label="Antall bearbeidede bilder"
+                  type="number"
+                  defaultValue="50"
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      '&:hover fieldset': { borderColor: '#3f51b5' },
+                      '&.Mui-focused fieldset': { borderColor: '#3f51b5' }
+                    },
+                    '& .MuiInputLabel-root.Mui-focused': { color: '#3f51b5' }
+                  }}
+                />
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <TextField
+                  fullWidth
+                  label="Leveringstidspunkt"
+                  placeholder="F.eks. 2-3 uker etter arrangement"
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      '&:hover fieldset': { borderColor: '#3f51b5' },
+                      '&.Mui-focused fieldset': { borderColor: '#3f51b5' }
+                    },
+                    '& .MuiInputLabel-root.Mui-focused': { color: '#3f51b5' }
+                  }}
+                />
+              </Grid>
+              <Grid item xs={12}>
+                <Typography variant="h6" sx={{ mb: 2, color: '#3f51b5' }}>Leveranseformat</Typography>
+                <Grid container spacing={2}>
+                  <Grid item xs={12} md={4}>
+                    <FormControlLabel
+                      control={<Checkbox defaultChecked sx={{ color: '#3f51b5', '&.Mui-checked': { color: '#3f51b5' } }} />}
+                      label="Online galleri"
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={4}>
+                    <FormControlLabel
+                      control={<Checkbox sx={{ color: '#3f51b5', '&.Mui-checked': { color: '#3f51b5' } }} />}
+                      label="USB-minnepinne"
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={4}>
+                    <FormControlLabel
+                      control={<Checkbox sx={{ color: '#3f51b5', '&.Mui-checked': { color: '#3f51b5' } }} />}
+                      label="Trykte bilder"
+                    />
+                  </Grid>
+                </Grid>
+              </Grid>
+            </Grid>
+          </Box>
+        );
+
+      case 6:
+        return (
+          <Box sx={{ 
+            background: 'linear-gradient(135deg, rgba(244, 67, 54, 0.05), rgba(229, 115, 115, 0.02))',
+            borderRadius: 3,
+            p: 4,
+            border: '1px solid rgba(244, 67, 54, 0.1)'
+          }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 4 }}>
+              <Box sx={{
+                background: 'linear-gradient(135deg, #f44336, #e57373)',
+                borderRadius: '50%',
+                width: 60,
+                height: 60,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                mr: 3
+              }}>
+                <Typography variant="h4" sx={{ color: 'white', fontWeight: 700 }}>⚠️</Typography>
+              </Box>
+              <Box>
+                <Typography variant="h4" sx={{ fontWeight: 700, color: '#f44336', mb: 1 }}>
+                  Steg 7: Risikostyring
+                </Typography>
+                <Typography variant="body1" color="textSecondary">
+                  Identifisering og håndtering av potensielle risikoer
+                </Typography>
+              </Box>
+            </Box>
+
+            <Grid container spacing={4}>
+              <Grid item xs={12}>
+                <Typography variant="h6" sx={{ mb: 2, color: '#f44336' }}>Potensielle Risikoer</Typography>
+                <Grid container spacing={2}>
+                  <Grid item xs={12} md={6}>
+                    <FormControlLabel
+                      control={<Checkbox sx={{ color: '#f44336', '&.Mui-checked': { color: '#f44336' } }} />}
+                      label="Værforhold (utendørs fotografering)"
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <FormControlLabel
+                      control={<Checkbox sx={{ color: '#f44336', '&.Mui-checked': { color: '#f44336' } }} />}
+                      label="Utstyrsfeil eller tekniske problemer"
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <FormControlLabel
+                      control={<Checkbox sx={{ color: '#f44336', '&.Mui-checked': { color: '#f44336' } }} />}
+                      label="Lokasjonsproblemer eller endringer"
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <FormControlLabel
+                      control={<Checkbox sx={{ color: '#f44336', '&.Mui-checked': { color: '#f44336' } }} />}
+                      label="Sykdom eller nødsituasjoner"
+                    />
+                  </Grid>
+                </Grid>
+              </Grid>
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  label="Beredskapsplan"
+                  multiline
+                  rows={4}
+                  placeholder="Beskriv hvordan potensielle problemer skal håndteres..."
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      '&:hover fieldset': { borderColor: '#f44336' },
+                      '&.Mui-focused fieldset': { borderColor: '#f44336' }
+                    },
+                    '& .MuiInputLabel-root.Mui-focused': { color: '#f44336' }
+                  }}
+                />
+              </Grid>
+            </Grid>
+          </Box>
+        );
+
+      case 7:
+        return (
+          <Box sx={{ 
+            background: 'linear-gradient(135deg, rgba(0, 150, 136, 0.05), rgba(77, 182, 172, 0.02))',
+            borderRadius: 3,
+            p: 4,
+            border: '1px solid rgba(0, 150, 136, 0.1)'
+          }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 4 }}>
+              <Box sx={{
+                background: 'linear-gradient(135deg, #009688, #4db6ac)',
+                borderRadius: '50%',
+                width: 60,
+                height: 60,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                mr: 3
+              }}>
+                <Typography variant="h4" sx={{ color: 'white', fontWeight: 700 }}>💬</Typography>
+              </Box>
+              <Box>
+                <Typography variant="h4" sx={{ fontWeight: 700, color: '#009688', mb: 1 }}>
+                  Steg 8: Kommunikasjonsplan
+                </Typography>
+                <Typography variant="body1" color="textSecondary">
+                  Planlegging av kommunikasjon med klient
+                </Typography>
+              </Box>
+            </Box>
+
+            <Grid container spacing={4}>
+              <Grid item xs={12} md={6}>
+                <TextField
+                  fullWidth
+                  label="Foretrukket kommunikasjonsmåte"
+                  select
+                  defaultValue="email"
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      '&:hover fieldset': { borderColor: '#009688' },
+                      '&.Mui-focused fieldset': { borderColor: '#009688' }
+                    },
+                    '& .MuiInputLabel-root.Mui-focused': { color: '#009688' }
+                  }}
+                >
+                  <MenuItem value="email">E-post</MenuItem>
+                  <MenuItem value="phone">Telefon</MenuItem>
+                  <MenuItem value="sms">SMS</MenuItem>
+                  <MenuItem value="whatsapp">WhatsApp</MenuItem>
+                </TextField>
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <TextField
+                  fullWidth
+                  label="Møtefrekvens"
+                  select
+                  defaultValue="weekly"
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      '&:hover fieldset': { borderColor: '#009688' },
+                      '&.Mui-focused fieldset': { borderColor: '#009688' }
+                    },
+                    '& .MuiInputLabel-root.Mui-focused': { color: '#009688' }
+                  }}
+                >
+                  <MenuItem value="daily">Daglig</MenuItem>
+                  <MenuItem value="weekly">Ukentlig</MenuItem>
+                  <MenuItem value="biweekly">Hver 14. dag</MenuItem>
+                  <MenuItem value="monthly">Månedlig</MenuItem>
+                </TextField>
+              </Grid>
+              <Grid item xs={12}>
+                <Typography variant="h6" sx={{ mb: 2, color: '#009688' }}>Kommunikasjonsmilepæler</Typography>
+                <Grid container spacing={2}>
+                  <Grid item xs={12}>
+                    <FormControlLabel
+                      control={<Checkbox defaultChecked sx={{ color: '#009688', '&.Mui-checked': { color: '#009688' } }} />}
+                      label="Planleggingsmøte (1-2 uker før)"
+                    />
+                  </Grid>
+                  <Grid item xs={12}>
+                    <FormControlLabel
+                      control={<Checkbox defaultChecked sx={{ color: '#009688', '&.Mui-checked': { color: '#009688' } }} />}
+                      label="Bekreftelse dag før arrangement"
+                    />
+                  </Grid>
+                  <Grid item xs={12}>
+                    <FormControlLabel
+                      control={<Checkbox defaultChecked sx={{ color: '#009688', '&.Mui-checked': { color: '#009688' } }} />}
+                      label="Oppdatering under redigering"
+                    />
+                  </Grid>
+                  <Grid item xs={12}>
+                    <FormControlLabel
+                      control={<Checkbox defaultChecked sx={{ color: '#009688', '&.Mui-checked': { color: '#009688' } }} />}
+                      label="Leveringsnotifikasjon"
+                    />
+                  </Grid>
+                </Grid>
+              </Grid>
+            </Grid>
+          </Box>
+        );
+
+      default:
+        return (
+          <Box sx={{ textAlign: 'center', py: 8 }}>
+            <CheckCircle sx={{ fontSize: 64, color: '#4caf50', mb: 2 }} />
+            <Typography variant="h5" sx={{ mb: 2 }}>Alle steg fullført!</Typography>
+            <Typography variant="body1" color="textSecondary">
+              Prosjektet er klart for opprettelse
+            </Typography>
+          </Box>
+        );
+    }
+  };
+
+  // Submit Handler
+  const handleComprehensiveProjectSubmit = useCallback(() => {
+    if (!comprehensiveProjectForm.name || !comprehensiveProjectForm.type) {
+      console.error('Missing required fields');
+      return;
+    }
+
+    const projectData = {
+      name: comprehensiveProjectForm.name,
+      type: comprehensiveProjectForm.type,
+      description: comprehensiveProjectForm.description,
+      eventDate: comprehensiveProjectForm.eventDate,
+      totalAmount: comprehensiveProjectForm.basePrice * (1 + comprehensiveProjectForm.vatRate / 100),
+      clientName: comprehensiveProjectForm.clientName,
+      clientEmail: comprehensiveProjectForm.clientEmail,
+      status: 'planning',
+      userId: user?.id || 'guest'
+    };
+
+    createProjectMutation.mutate(projectData);
+  }, [comprehensiveProjectForm, user, createProjectMutation]);
+
+  return (
+    <Container maxWidth="xl" sx={{ 
+      py: 4,
+      pb: 12, // Extra bottom padding to prevent SpeedDial overlap
+      minHeight: '100vh'
+    }}>
+      {/* Header */}
+      <Box sx={{ 
+        background: 'linear-gradient(135deg, rgba(255, 140, 0, 0.1), rgba(255, 165, 0, 0.05))',
+        borderRadius: 3,
+        p: 3,
+        mb: 4,
+        border: '1px solid rgba(255, 140, 0, 0.2)'
+      }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Box>
+            <Typography variant="h3" sx={{ 
+              fontWeight: 700,
+              background: 'linear-gradient(135deg, #ff8c00, #ffa500)',
+              backgroundClip: 'text',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+              mb: 1 
+            }}>
+              📸 Fotograf Dashboard
+            </Typography>
+            <Typography variant="h6" color="textSecondary">
+              Velkommen tilbake, {user?.firstName || 'Fotograf'}!
+            </Typography>
+          </Box>
+          <Box sx={{ display: 'flex', gap: 1 }}>
+            <TutorialIntegrationButton 
+              userType="photographer" 
+              variant="contained" 
+              size="small"
+            />
+            <Badge 
+              badgeContent={unreadEmails} 
+              color="error"
+              sx={{
+                '& .MuiBadge-badge': {
+                  right: -3,
+                  top: 3,
+                  fontSize: '0.6rem',
+                  height: 16,
+                  minWidth: 16
+                }
+              }}
+            >
+              <Button
+                variant="contained"
+                size="small"
+                startIcon={<Email sx={{ fontSize: '1rem' }} />}
+                onClick={async () => {
+                  setShowMailInterface(true);
+                  setUnreadEmails(0); // Clear notifications when opening mail
+                  
+                  // Mark emails as read on server
+                  try {
+                    await apiRequest(`/api/mail/mark-read/${userId}`, {
+                      method: 'POST'
+                    });
+                  } catch (error) {
+                    console.log('Could not mark emails as read:', error);
+                  }
+                }}
+                sx={{
+                  background: 'linear-gradient(135deg, #1976d2, #1565c0)',
+                  '&:hover': {
+                    background: 'linear-gradient(135deg, #1565c0, #1976d2)'
+                  },
+                  minWidth: 'auto',
+                  px: 1.5,
+                  fontSize: '0.75rem'
+                }}
+              >
+                E-post
+              </Button>
+            </Badge>
+            <Button
+              variant="contained"
+              size="small"
+              startIcon={<Settings sx={{ fontSize: '1rem' }} />}
+              onClick={() => setShowSettingsModal(true)}
+              sx={{
+                background: 'linear-gradient(135deg, #ff8c00, #ffa500)',
+                '&:hover': {
+                  background: 'linear-gradient(135deg, #e67e00, #ff8c00)'
+                },
+                minWidth: 'auto',
+                px: 1.5,
+                fontSize: '0.75rem'
+              }}
+            >
+              Innstillinger
+            </Button>
+          </Box>
+        </Box>
+        
+
+        
+
+        
+
+      </Box>
+
+      {/* Compact Quick Actions - Floating SpeedDial */}
+      <Box sx={{ position: 'fixed', bottom: 100, right: 20, zIndex: 1000 }}>
+        <SpeedDial
+          ariaLabel="Hurtighandlinger"
+          sx={{ 
+            '& .MuiFab-primary': { 
+              background: 'linear-gradient(135deg, #ff8c00, #ffa500)',
+              '&:hover': { background: 'linear-gradient(135deg, #e67e00, #ff8c00)' }
+            }
+          }}
+          icon={<Speed />}
+          direction="up"
+        >
+          <SpeedDialAction
+            key="nytt-prosjekt"
+            icon={<Add />}
+            tooltipTitle="Nytt Prosjekt"
+            onClick={() => setShowProjectModal(true)}
+            sx={{ 
+              '& .MuiFab-primary': { 
+                background: 'linear-gradient(135deg, #2196f3, #21cbf3)' 
+              }
+            }}
+          />
+          <SpeedDialAction
+            key="epost"
+            icon={<Email />}
+            tooltipTitle="Send E-post"
+            onClick={() => setShowMailInterface(true)}
+            sx={{ 
+              '& .MuiFab-primary': { 
+                background: 'linear-gradient(135deg, #4caf50, #8bc34a)' 
+              }
+            }}
+          />
+          <SpeedDialAction
+            key="chat"
+            icon={<Chat />}
+            tooltipTitle="Chat"
+            onClick={() => setShowChatSystem(true)}
+            sx={{ 
+              '& .MuiFab-primary': { 
+                background: 'linear-gradient(135deg, #9c27b0, #e1bee7)' 
+              }
+            }}
+          />
+          <SpeedDialAction
+            key="kalender"
+            icon={<CalendarToday />}
+            tooltipTitle="Kalender"
+            onClick={() => window.open('/calendar', '_blank')}
+            sx={{ 
+              '& .MuiFab-primary': { 
+                background: 'linear-gradient(135deg, #ff9800, #ffb74d)' 
+              }
+            }}
+          />
+          <SpeedDialAction
+            key="analyser"
+            icon={<Assessment />}
+            tooltipTitle="Analyser"
+            onClick={() => setTabValue(7)}
+            sx={{ 
+              '& .MuiFab-primary': { 
+                background: 'linear-gradient(135deg, #f44336, #e57373)' 
+              }
+            }}
+          />
+          <SpeedDialAction
+            key="innstillinger"
+            icon={<Settings />}
+            tooltipTitle="Innstillinger"
+            onClick={() => setShowSettingsModal(true)}
+            sx={{ 
+              '& .MuiFab-primary': { 
+                background: 'linear-gradient(135deg, #607d8b, #90a4ae)' 
+              }
+            }}
+          />
+        </SpeedDial>
+      </Box>
+
+
+
+
+
+
+
+      {/* Main Tabs */}
+      <Paper sx={{ background: 'rgba(255, 255, 255, 0.9)' }}>
+        <Tabs 
+          value={tabValue} 
+          onChange={(_, newValue) => setTabValue(newValue)}
+          variant="scrollable"
+          scrollButtons="auto"
+          sx={{ 
+            borderBottom: 1, 
+            borderColor: 'divider',
+            '& .MuiTab-root': {
+              fontWeight: 600,
+              minWidth: 140,
+              fontSize: '0.9rem',
+              '&.Mui-selected': {
+                color: '#ff8c00'
+              }
+            },
+            '& .MuiTabs-indicator': {
+              backgroundColor: '#ff8c00',
+              height: 3
+            }
+          }}
+        >
+          <Tab label="📊 Oversikt" icon={<Camera />} />
+          <Tab label="⚙️ Prosjektadministrasjon" icon={<Assignment />} />
+          <Tab label="📄 Business & Kontrakter" icon={<Business />} />
+          <Tab label="🎨 Kreativ Studio" icon={<Star />} />
+          <Tab label="🔧 Utstyr & Ressurser" icon={<Build />} />
+          <Tab label="📈 Markedsføring & Salg" icon={<Campaign />} />
+          <Tab label="📊 Rapporter & Analyse" icon={<Assessment />} />
+          <Tab label="⚙️ Systeminnstillinger" icon={<Settings />} />
+        </Tabs>
+
+        {/* Tab Content */}
+        <Box sx={{ p: 3 }}>
+          {tabValue === 0 && (
+            <Box>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+                <Typography variant="h5" sx={{ fontWeight: 600, color: '#ff8c00' }}>
+                  Dashboard Oversikt
+                </Typography>
+                <Button
+                  variant="contained"
+                  startIcon={<Add />}
+                  onClick={() => setShowProjectModal(true)}
+                  sx={{
+                    background: 'linear-gradient(135deg, #ff8c00, #ffa500)',
+                    '&:hover': {
+                      background: 'linear-gradient(135deg, #e67e00, #ff8c00)'
+                    }
+                  }}
+                >
+                  Nytt Prosjekt
+                </Button>
+              </Box>
+              
+              {/* Key Performance Indicators */}
+              <Paper sx={{ 
+                background: 'linear-gradient(135deg, rgba(255, 140, 0, 0.05), rgba(255, 165, 0, 0.02))',
+                border: '1px solid rgba(255, 140, 0, 0.1)',
+                p: 2, 
+                mb: 3 
+              }}>
+                <Typography variant="h6" sx={{ fontWeight: 600, color: '#ff8c00', mb: 2 }}>
+                  📊 Nøkkeltall
+                </Typography>
+                <Grid container spacing={2}>
+                  <Grid item xs={6} md={3}>
+                    <Box 
+                      onClick={() => setTabValue(1)}
+                      sx={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        cursor: 'pointer',
+                        p: 1.5,
+                        borderRadius: 2,
+                        transition: 'all 0.2s ease',
+                        '&:hover': { 
+                          background: 'rgba(33, 150, 243, 0.05)',
+                          transform: 'translateY(-1px)' 
+                        }
+                      }}
+                    >
+                      <Avatar sx={{ bgcolor: '#2196f3', mr: 1.5, width: 32, height: 32 }}>
+                        <Camera sx={{ fontSize: '1.1rem' }} />
+                      </Avatar>
+                      <Box sx={{ minWidth: 0, flex: 1 }}>
+                        <Typography variant="body2" sx={{ fontWeight: 600, color: '#2196f3', fontSize: '0.8rem' }}>
+                          Prosjekter
+                        </Typography>
+                        <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1 }}>
+                          {totalProjects}
+                        </Typography>
+                      </Box>
+                    </Box>
+                  </Grid>
+
+                  <Grid item xs={6} md={3}>
+                    <Box 
+                      onClick={() => setTabValue(6)}
+                      sx={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        cursor: 'pointer',
+                        p: 1.5,
+                        borderRadius: 2,
+                        transition: 'all 0.2s ease',
+                        '&:hover': { 
+                          background: 'rgba(76, 175, 80, 0.05)',
+                          transform: 'translateY(-1px)' 
+                        }
+                      }}
+                    >
+                      <Avatar sx={{ bgcolor: '#4caf50', mr: 1.5, width: 32, height: 32 }}>
+                        <AttachMoney sx={{ fontSize: '1.1rem' }} />
+                      </Avatar>
+                      <Box sx={{ minWidth: 0, flex: 1 }}>
+                        <Typography variant="body2" sx={{ fontWeight: 600, color: '#4caf50', fontSize: '0.8rem' }}>
+                          Inntekt
+                        </Typography>
+                        <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1 }}>
+                          {Math.round(totalRevenue / 1000)}k NOK
+                        </Typography>
+                      </Box>
+                    </Box>
+                  </Grid>
+
+                  <Grid item xs={6} md={3}>
+                    <Box sx={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      cursor: 'pointer',
+                      p: 1.5,
+                      borderRadius: 2,
+                      transition: 'all 0.2s ease',
+                      '&:hover': { 
+                        background: 'rgba(156, 39, 176, 0.05)',
+                        transform: 'translateY(-1px)' 
+                      }
+                    }}>
+                      <Avatar sx={{ bgcolor: '#9c27b0', mr: 1.5, width: 32, height: 32 }}>
+                        <Build sx={{ fontSize: '1.1rem' }} />
+                      </Avatar>
+                      <Box sx={{ minWidth: 0, flex: 1 }}>
+                        <Typography variant="body2" sx={{ fontWeight: 600, color: '#9c27b0', fontSize: '0.8rem' }}>
+                          Utstyr
+                        </Typography>
+                        <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1 }}>
+                          {totalEquipment}
+                        </Typography>
+                      </Box>
+                    </Box>
+                  </Grid>
+
+                  <Grid item xs={6} md={3}>
+                    <Box sx={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      cursor: 'pointer',
+                      p: 1.5,
+                      borderRadius: 2,
+                      transition: 'all 0.2s ease',
+                      '&:hover': { 
+                        background: 'rgba(255, 152, 0, 0.05)',
+                        transform: 'translateY(-1px)' 
+                      }
+                    }}>
+                      <Avatar sx={{ bgcolor: '#ff9800', mr: 1.5, width: 32, height: 32 }}>
+                        <Star sx={{ fontSize: '1.1rem' }} />
+                      </Avatar>
+                      <Box sx={{ minWidth: 0, flex: 1 }}>
+                        <Typography variant="body2" sx={{ fontWeight: 600, color: '#ff9800', fontSize: '0.8rem' }}>
+                          Klienter
+                        </Typography>
+                        <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1 }}>
+                          {Math.max(totalProjects * 2, 8)}
+                        </Typography>
+                      </Box>
+                    </Box>
+                  </Grid>
+                </Grid>
+              </Paper>
+
+
+              {/* Comprehensive Professional Tools Suite */}
+              <Paper sx={{ p: 3, mb: 4 }}>
+                <Typography variant="h5" sx={{ fontWeight: 600, mb: 3, color: '#ff8c00' }}>
+                  🛠️ Avanserte Profesjonelle Verktøy
+                </Typography>
+                
+                {/* File Management & Cloud Storage */}
+                <Box sx={{ mb: 4 }}>
+                  <Typography variant="h6" sx={{ fontWeight: 600, mb: 2, color: '#673ab7' }}>
+                    📁 Avansert Filbehandling & Cloud-lagring
+                  </Typography>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} md={4}>
+                      <Card sx={{ 
+                        background: 'linear-gradient(135deg, rgba(103, 58, 183, 0.1), rgba(156, 39, 176, 0.05))',
+                        border: '1px solid rgba(103, 58, 183, 0.2)',
+                        height: '100%'
+                      }}>
+                        <CardContent>
+                          <Typography variant="body2" sx={{ fontWeight: 600, mb: 1, color: '#673ab7' }}>
+                            🔄 Multi-Cloud Backup
+                          </Typography>
+                          <Typography variant="caption" color="textSecondary" sx={{ display: 'block', mb: 2 }}>
+                            Automatisk backup til Google Drive, OneDrive, og Dropbox
+                          </Typography>
+                          <Button size="small" fullWidth variant="outlined" sx={{ borderColor: '#673ab7', color: '#673ab7' }}>
+                            Konfigurer
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                    <Grid item xs={12} md={4}>
+                      <Card sx={{ 
+                        background: 'linear-gradient(135deg, rgba(255, 87, 34, 0.1), rgba(255, 138, 101, 0.05))',
+                        border: '1px solid rgba(255, 87, 34, 0.2)',
+                        height: '100%'
+                      }}>
+                        <CardContent>
+                          <Typography variant="body2" sx={{ fontWeight: 600, mb: 1, color: '#ff5722' }}>
+                            📤 Klient Galleri System
+                          </Typography>
+                          <Typography variant="caption" color="textSecondary" sx={{ display: 'block', mb: 2 }}>
+                            Passord-beskyttede gallerier med nedlastingssporing
+                          </Typography>
+                          <Button size="small" fullWidth variant="outlined" sx={{ borderColor: '#ff5722', color: '#ff5722' }}>
+                            Opprett Galleri
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                    <Grid item xs={12} md={4}>
+                      <Card sx={{ 
+                        background: 'linear-gradient(135deg, rgba(0, 150, 136, 0.1), rgba(77, 182, 172, 0.05))',
+                        border: '1px solid rgba(0, 150, 136, 0.2)',
+                        height: '100%'
+                      }}>
+                        <CardContent>
+                          <Typography variant="body2" sx={{ fontWeight: 600, mb: 1, color: '#009688' }}>
+                            🎨 RAW Prosessering
+                          </Typography>
+                          <Typography variant="caption" color="textSecondary" sx={{ display: 'block', mb: 2 }}>
+                            Automatisk RAW til JPEG konvertering med presets
+                          </Typography>
+                          <Button size="small" fullWidth variant="outlined" sx={{ borderColor: '#009688', color: '#009688' }}>
+                            Konfigurer
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                  </Grid>
+                </Box>
+
+                {/* AI-Powered Features */}
+                <Box sx={{ mb: 4 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                    <Typography variant="h6" sx={{ fontWeight: 600, color: '#9c27b0' }}>
+                      🤖 AI-Drevne Funksjoner
+                    </Typography>
+                    <FeatureBrandingBox 
+                      feature="ai-photo-studio" 
+                      title="AI Photo Studio" 
+                      subtitle="Advanced AI processing" 
+                      size={32} 
+                    />
+                    <FeatureBrandingBox 
+                      feature="ai-writing-assistant" 
+                      title="AI Writing" 
+                      subtitle="Intelligent content creation" 
+                      size={32} 
+                    />
+                  </Box>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} md={3}>
+                      <Card sx={{ 
+                        background: 'linear-gradient(135deg, rgba(156, 39, 176, 0.1), rgba(233, 30, 99, 0.05))',
+                        border: '1px solid rgba(156, 39, 176, 0.2)',
+                        height: '100%'
+                      }}>
+                        <CardContent sx={{ textAlign: 'center' }}>
+                          <Typography variant="body2" sx={{ fontWeight: 600, mb: 1, color: '#9c27b0' }}>
+                            👁️ Bildeanalyse
+                          </Typography>
+                          <Typography variant="caption" color="textSecondary" sx={{ display: 'block', mb: 2 }}>
+                            Automatisk kvalitetsvurdering og tagging
+                          </Typography>
+                          <Button size="small" fullWidth variant="contained" sx={{ 
+                            background: 'linear-gradient(135deg, #9c27b0, #e91e63)',
+                            fontSize: '0.7rem'
+                          }}>
+                            Aktiver AI
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                    <Grid item xs={12} md={3}>
+                      <Card sx={{ 
+                        background: 'linear-gradient(135deg, rgba(63, 81, 181, 0.1), rgba(103, 58, 183, 0.05))',
+                        border: '1px solid rgba(63, 81, 181, 0.2)',
+                        height: '100%'
+                      }}>
+                        <CardContent sx={{ textAlign: 'center' }}>
+                          <Typography variant="body2" sx={{ fontWeight: 600, mb: 1, color: '#3f51b5' }}>
+                            🎭 Ansiktsgjenkjenning
+                          </Typography>
+                          <Typography variant="caption" color="textSecondary" sx={{ display: 'block', mb: 2 }}>
+                            Automatisk persongruppering
+                          </Typography>
+                          <Button size="small" fullWidth variant="contained" sx={{ 
+                            background: 'linear-gradient(135deg, #3f51b5, #673ab7)',
+                            fontSize: '0.7rem'
+                          }}>
+                            Skann Bilder
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                    <Grid item xs={12} md={3}>
+                      <Card sx={{ 
+                        background: 'linear-gradient(135deg, rgba(255, 152, 0, 0.1), rgba(255, 193, 7, 0.05))',
+                        border: '1px solid rgba(255, 152, 0, 0.2)',
+                        height: '100%'
+                      }}>
+                        <CardContent sx={{ textAlign: 'center' }}>
+                          <Typography variant="body2" sx={{ fontWeight: 600, mb: 1, color: '#ff9800' }}>
+                            ⚡ Auto-Editing
+                          </Typography>
+                          <Typography variant="caption" color="textSecondary" sx={{ display: 'block', mb: 2 }}>
+                            Intelligente fargekorrigeringer
+                          </Typography>
+                          <Button size="small" fullWidth variant="contained" sx={{ 
+                            background: 'linear-gradient(135deg, #ff9800, #ffc107)',
+                            fontSize: '0.7rem',
+                            color: 'black'
+                          }}>
+                            Batch Edit
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                    <Grid item xs={12} md={3}>
+                      <Card sx={{ 
+                        background: 'linear-gradient(135deg, rgba(76, 175, 80, 0.1), rgba(139, 195, 74, 0.05))',
+                        border: '1px solid rgba(76, 175, 80, 0.2)',
+                        height: '100%'
+                      }}>
+                        <CardContent sx={{ textAlign: 'center' }}>
+                          <Typography variant="body2" sx={{ fontWeight: 600, mb: 1, color: '#4caf50' }}>
+                            📊 Smart Rapport
+                          </Typography>
+                          <Typography variant="caption" color="textSecondary" sx={{ display: 'block', mb: 2 }}>
+                            AI-genererte prosjektrapporter
+                          </Typography>
+                          <Button size="small" fullWidth variant="contained" sx={{ 
+                            background: 'linear-gradient(135deg, #4caf50, #8bc34a)',
+                            fontSize: '0.7rem'
+                          }}>
+                            Generer
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                  </Grid>
+                </Box>
+
+                {/* Advanced Business Tools */}
+                <Box sx={{ mb: 4 }}>
+                  <Typography variant="h6" sx={{ fontWeight: 600, mb: 2, color: '#2196f3' }}>
+                    💼 Avanserte Forretningsverktøy
+                  </Typography>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} md={6}>
+                      <Card sx={{ 
+                        background: 'linear-gradient(135deg, rgba(33, 150, 243, 0.1), rgba(21, 101, 192, 0.05))',
+                        border: '1px solid rgba(33, 150, 243, 0.2)'
+                      }}>
+                        <CardContent>
+                          <Typography variant="body1" sx={{ fontWeight: 600, mb: 2, color: '#2196f3' }}>
+                            📈 Avansert CRM System
+                          </Typography>
+                          <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
+                            Komplett klientadministrasjon med salgspipeline, automatisk oppfølging, og norske kontrakter
+                          </Typography>
+                          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                            <Button size="small" variant="outlined" sx={{ borderColor: '#2196f3', color: '#2196f3' }}>
+                              Lead Management
+                            </Button>
+                            <Button size="small" variant="outlined" sx={{ borderColor: '#2196f3', color: '#2196f3' }}>
+                              Salgspipeline
+                            </Button>
+                            <Button size="small" variant="outlined" sx={{ borderColor: '#2196f3', color: '#2196f3' }}>
+                              E-post Kampanjer
+                            </Button>
+                          </Box>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                    <Grid item xs={12} md={6}>
+                      <Card sx={{ 
+                        background: 'linear-gradient(135deg, rgba(255, 87, 34, 0.1), rgba(255, 138, 101, 0.05))',
+                        border: '1px solid rgba(255, 87, 34, 0.2)'
+                      }}>
+                        <CardContent>
+                          <Typography variant="body1" sx={{ fontWeight: 600, mb: 2, color: '#ff5722' }}>
+                            🧾 Norsk Regnskapsintegrasjon
+                          </Typography>
+                          <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
+                            Direkte integrasjon med Fiken, Tripletex, og PowerOffice. Automatisk MVA-håndtering og årsrapporter
+                          </Typography>
+                          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                            <Button size="small" variant="outlined" sx={{ borderColor: '#ff5722', color: '#ff5722' }}>
+                              Fiken
+                            </Button>
+                            <Button size="small" variant="outlined" sx={{ borderColor: '#ff5722', color: '#ff5722' }}>
+                              Tripletex
+                            </Button>
+                            <Button size="small" variant="outlined" sx={{ borderColor: '#ff5722', color: '#ff5722' }}>
+                              PowerOffice
+                            </Button>
+                          </Box>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                  </Grid>
+                </Box>
+
+                {/* Marketing & Social Media Integration */}
+                <Box>
+                  <Typography variant="h6" sx={{ fontWeight: 600, mb: 2, color: '#e91e63' }}>
+                    📱 Markedsføring & Sosiale Medier
+                  </Typography>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} md={4}>
+                      <Card sx={{ 
+                        background: 'linear-gradient(135deg, rgba(233, 30, 99, 0.1), rgba(156, 39, 176, 0.05))',
+                        border: '1px solid rgba(233, 30, 99, 0.2)',
+                        height: '100%'
+                      }}>
+                        <CardContent>
+                          <Typography variant="body2" sx={{ fontWeight: 600, mb: 1, color: '#e91e63' }}>
+                            📸 Instagram Integrasjon
+                          </Typography>
+                          <Typography variant="caption" color="textSecondary" sx={{ display: 'block', mb: 2 }}>
+                            Automatisk posting med optimal timing og hashtags
+                          </Typography>
+                          <Button size="small" fullWidth variant="outlined" sx={{ borderColor: '#e91e63', color: '#e91e63' }}>
+                            Koble til Instagram
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                    <Grid item xs={12} md={4}>
+                      <Card sx={{ 
+                        background: 'linear-gradient(135deg, rgba(59, 89, 152, 0.1), rgba(24, 119, 242, 0.05))',
+                        border: '1px solid rgba(59, 89, 152, 0.2)',
+                        height: '100%'
+                      }}>
+                        <CardContent>
+                          <Typography variant="body2" sx={{ fontWeight: 600, mb: 1, color: '#3b5998' }}>
+                            📘 Facebook Business
+                          </Typography>
+                          <Typography variant="caption" color="textSecondary" sx={{ display: 'block', mb: 2 }}>
+                            Lead-generering og automatiske annonser
+                          </Typography>
+                          <Button size="small" fullWidth variant="outlined" sx={{ borderColor: '#3b5998', color: '#3b5998' }}>
+                            Aktiver Facebook
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                    <Grid item xs={12} md={4}>
+                      <Card sx={{ 
+                        background: 'linear-gradient(135deg, rgba(255, 87, 34, 0.1), rgba(255, 138, 101, 0.05))',
+                        border: '1px solid rgba(255, 87, 34, 0.2)',
+                        height: '100%'
+                      }}>
+                        <CardContent>
+                          <Typography variant="body2" sx={{ fontWeight: 600, mb: 1, color: '#ff5722' }}>
+                            🎯 Google Ads
+                          </Typography>
+                          <Typography variant="caption" color="textSecondary" sx={{ display: 'block', mb: 2 }}>
+                            Lokale søkekampanjer for fotograftjenester
+                          </Typography>
+                          <Button size="small" fullWidth variant="outlined" sx={{ borderColor: '#ff5722', color: '#ff5722' }}>
+                            Opprett Kampanje
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                  </Grid>
+                </Box>
+              </Paper>
+
+              {/* Norwegian Legal & Compliance Framework */}
+              <Paper sx={{ p: 3, mb: 4 }}>
+                <Typography variant="h5" sx={{ fontWeight: 600, mb: 3, color: '#ff8c00' }}>
+                  🇳🇴 Norsk Lovverk & Compliance Framework
+                </Typography>
+                
+                {/* GDPR & Privacy Compliance */}
+                <Box sx={{ mb: 4 }}>
+                  <Typography variant="h6" sx={{ fontWeight: 600, mb: 2, color: '#4caf50' }}>
+                    🔒 GDPR & Personvernlovgivning
+                  </Typography>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} md={4}>
+                      <Card sx={{ 
+                        background: 'linear-gradient(135deg, rgba(76, 175, 80, 0.1), rgba(139, 195, 74, 0.05))',
+                        border: '1px solid rgba(76, 175, 80, 0.2)',
+                        height: '100%'
+                      }}>
+                        <CardContent>
+                          <Typography variant="body2" sx={{ fontWeight: 600, mb: 1, color: '#4caf50' }}>
+                            ✅ Automatisk Samtykkeadministrasjon
+                          </Typography>
+                          <Typography variant="caption" color="textSecondary" sx={{ display: 'block', mb: 2 }}>
+                            Digital innhenting og lagring av fotosamtykker med juridisk gyldighet
+                          </Typography>
+                          <Button size="small" fullWidth variant="outlined" sx={{ borderColor: '#4caf50', color: '#4caf50' }}>
+                            Administrer Samtykker
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                    <Grid item xs={12} md={4}>
+                      <Card sx={{ 
+                        background: 'linear-gradient(135deg, rgba(33, 150, 243, 0.1), rgba(21, 101, 192, 0.05))',
+                        border: '1px solid rgba(33, 150, 243, 0.2)',
+                        height: '100%'
+                      }}>
+                        <CardContent>
+                          <Typography variant="body2" sx={{ fontWeight: 600, mb: 1, color: '#2196f3' }}>
+                            📋 Databehandlingsregister
+                          </Typography>
+                          <Typography variant="caption" color="textSecondary" sx={{ display: 'block', mb: 2 }}>
+                            Automatisk protokollføring av all persondata behandling
+                          </Typography>
+                          <Button size="small" fullWidth variant="outlined" sx={{ borderColor: '#2196f3', color: '#2196f3' }}>
+                            Vis Register
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                    <Grid item xs={12} md={4}>
+                      <Card sx={{ 
+                        background: 'linear-gradient(135deg, rgba(255, 152, 0, 0.1), rgba(255, 193, 7, 0.05))',
+                        border: '1px solid rgba(255, 152, 0, 0.2)',
+                        height: '100%'
+                      }}>
+                        <CardContent>
+                          <Typography variant="body2" sx={{ fontWeight: 600, mb: 1, color: '#ff9800' }}>
+                            🚫 Rett til Sletting
+                          </Typography>
+                          <Typography variant="caption" color="textSecondary" sx={{ display: 'block', mb: 2 }}>
+                            Automatisk håndtering av slettingsforespørsler innen 30 dager
+                          </Typography>
+                          <Button size="small" fullWidth variant="outlined" sx={{ borderColor: '#ff9800', color: '#ff9800' }}>
+                            Behandle Forespørsler
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                  </Grid>
+                </Box>
+
+                {/* Norwegian Tax & Business Compliance */}
+                <Box sx={{ mb: 4 }}>
+                  <Typography variant="h6" sx={{ fontWeight: 600, mb: 2, color: '#ff5722' }}>
+                    🧾 Norsk Skatt & Bedriftslovgivning
+                  </Typography>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} md={6}>
+                      <Card sx={{ 
+                        background: 'linear-gradient(135deg, rgba(255, 87, 34, 0.1), rgba(255, 138, 101, 0.05))',
+                        border: '1px solid rgba(255, 87, 34, 0.2)'
+                      }}>
+                        <CardContent>
+                          <Typography variant="body1" sx={{ fontWeight: 600, mb: 2, color: '#ff5722' }}>
+                            📊 25% MVA Automatikk
+                          </Typography>
+                          <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
+                            Automatisk beregning og rapportering av merverdinavgift med direkte integrasjon til Altinn
+                          </Typography>
+                          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                            <Button size="small" variant="outlined" sx={{ borderColor: '#ff5722', color: '#ff5722' }}>
+                              MVA Rapport
+                            </Button>
+                            <Button size="small" variant="outlined" sx={{ borderColor: '#ff5722', color: '#ff5722' }}>
+                              Altinn Sync
+                            </Button>
+                          </Box>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                    <Grid item xs={12} md={6}>
+                      <Card sx={{ 
+                        background: 'linear-gradient(135deg, rgba(103, 58, 183, 0.1), rgba(156, 39, 176, 0.05))',
+                        border: '1px solid rgba(103, 58, 183, 0.2)'
+                      }}>
+                        <CardContent>
+                          <Typography variant="body1" sx={{ fontWeight: 600, mb: 2, color: '#673ab7' }}>
+                            🏢 BRREG Compliance Monitor
+                          </Typography>
+                          <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
+                            Overvåking av næringsvirksomhet, årsrapporter og firmaendringer via Brønnøysundregistrene
+                          </Typography>
+                          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                            <Button size="small" variant="outlined" sx={{ borderColor: '#673ab7', color: '#673ab7' }}>
+                              Firmainfo
+                            </Button>
+                            <Button size="small" variant="outlined" sx={{ borderColor: '#673ab7', color: '#673ab7' }}>
+                              Årsrapport
+                            </Button>
+                          </Box>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                  </Grid>
+                </Box>
+
+                {/* Insurance & Legal Protection */}
+                <Box>
+                  <Typography variant="h6" sx={{ fontWeight: 600, mb: 2, color: '#9c27b0' }}>
+                    🛡️ Forsikring & Juridisk Beskyttelse
+                  </Typography>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} md={4}>
+                      <Card sx={{ 
+                        background: 'linear-gradient(135deg, rgba(156, 39, 176, 0.1), rgba(233, 30, 99, 0.05))',
+                        border: '1px solid rgba(156, 39, 176, 0.2)',
+                        height: '100%'
+                      }}>
+                        <CardContent>
+                          <Typography variant="body2" sx={{ fontWeight: 600, mb: 1, color: '#9c27b0' }}>
+                            🏥 Yrkesansvarsforsikring
+                          </Typography>
+                          <Typography variant="caption" color="textSecondary" sx={{ display: 'block', mb: 2 }}>
+                            Integrasjon med norske forsikringsselskaper for fotografer
+                          </Typography>
+                          <Button size="small" fullWidth variant="outlined" sx={{ borderColor: '#9c27b0', color: '#9c27b0' }}>
+                            Se Tilbud
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                    <Grid item xs={12} md={4}>
+                      <Card sx={{ 
+                        background: 'linear-gradient(135deg, rgba(255, 193, 7, 0.1), rgba(255, 235, 59, 0.05))',
+                        border: '1px solid rgba(255, 193, 7, 0.2)',
+                        height: '100%'
+                      }}>
+                        <CardContent>
+                          <Typography variant="body2" sx={{ fontWeight: 600, mb: 1, color: '#ffc107' }}>
+                            📜 Norske Kontrakter
+                          </Typography>
+                          <Typography variant="caption" color="textSecondary" sx={{ display: 'block', mb: 2 }}>
+                            Juridisk validerte maler for bryllup, portrett og kommersiell foto
+                          </Typography>
+                          <Button size="small" fullWidth variant="outlined" sx={{ borderColor: '#ffc107', color: '#ffc107' }}>
+                            Velg Mal
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                    <Grid item xs={12} md={4}>
+                      <Card sx={{ 
+                        background: 'linear-gradient(135deg, rgba(0, 150, 136, 0.1), rgba(77, 182, 172, 0.05))',
+                        border: '1px solid rgba(0, 150, 136, 0.2)',
+                        height: '100%'
+                      }}>
+                        <CardContent>
+                          <Typography variant="body2" sx={{ fontWeight: 600, mb: 1, color: '#009688' }}>
+                            ⚖️ Juridisk Rådgivning
+                          </Typography>
+                          <Typography variant="caption" color="textSecondary" sx={{ display: 'block', mb: 2 }}>
+                            Chat med juridiske eksperter for kreative næringer
+                          </Typography>
+                          <Button size="small" fullWidth variant="outlined" sx={{ borderColor: '#009688', color: '#009688' }}>
+                            Start Chat
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                  </Grid>
+                </Box>
+              </Paper>
+
+              {/* Advanced Analytics & Performance Tracking */}
+              <Paper sx={{ p: 3, mb: 4 }}>
+                <Typography variant="h5" sx={{ fontWeight: 600, mb: 3, color: '#ff8c00' }}>
+                  📊 Avansert Analyse & Ytelsesovervåking
+                </Typography>
+                
+                <Grid container spacing={3}>
+                  <Grid item xs={12} md={6}>
+                    <Card sx={{ 
+                      background: 'linear-gradient(135deg, rgba(33, 150, 243, 0.1), rgba(21, 101, 192, 0.05))',
+                      border: '1px solid rgba(33, 150, 243, 0.2)'
+                    }}>
+                      <CardContent>
+                        <Typography variant="h6" sx={{ fontWeight: 600, mb: 2, color: '#2196f3' }}>
+                          📈 Forretningsanalyse Dashboard
+                        </Typography>
+                        <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
+                          Sanntids overvåking av inntekter, kunder, prosjekter med prediktiv analyse for norsk fotografimarked
+                        </Typography>
+                        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                          <Button size="small" variant="outlined" sx={{ borderColor: '#2196f3', color: '#2196f3' }}>
+                            Inntektsanalyse
+                          </Button>
+                          <Button size="small" variant="outlined" sx={{ borderColor: '#2196f3', color: '#2196f3' }}>
+                            Markedstrender
+                          </Button>
+                          <Button size="small" variant="outlined" sx={{ borderColor: '#2196f3', color: '#2196f3' }}>
+                            Konkurrentanalyse
+                          </Button>
+                        </Box>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <Card sx={{ 
+                      background: 'linear-gradient(135deg, rgba(76, 175, 80, 0.1), rgba(139, 195, 74, 0.05))',
+                      border: '1px solid rgba(76, 175, 80, 0.2)'
+                    }}>
+                      <CardContent>
+                        <Typography variant="h6" sx={{ fontWeight: 600, mb: 2, color: '#4caf50' }}>
+                          🎯 Kundemålgruppe Analyse
+                        </Typography>
+                        <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
+                          AI-drevet segmentering og atferdsanalyse av klientbase med personaliserte markedsføringsstrategier
+                        </Typography>
+                        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                          <Button size="small" variant="outlined" sx={{ borderColor: '#4caf50', color: '#4caf50' }}>
+                            Segmentering
+                          </Button>
+                          <Button size="small" variant="outlined" sx={{ borderColor: '#4caf50', color: '#4caf50' }}>
+                            Atferdsanalyse
+                          </Button>
+                          <Button size="small" variant="outlined" sx={{ borderColor: '#4caf50', color: '#4caf50' }}>
+                            Kampanjer
+                          </Button>
+                        </Box>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                </Grid>
+              </Paper>
+
+              {/* Comprehensive Integration Hub */}
+              <Paper sx={{ p: 3, mb: 4 }}>
+                <Typography variant="h5" sx={{ fontWeight: 600, mb: 3, color: '#ff8c00' }}>
+                  🔗 Komplett Integrasjonshub - 50+ Profesjonelle Tjenester
+                </Typography>
+                
+                {/* Core Business Integrations */}
+                <Box sx={{ mb: 4 }}>
+                  <Typography variant="h6" sx={{ fontWeight: 600, mb: 2, color: '#2196f3' }}>
+                    💼 Kjerneforretningsintegrasjoner
+                  </Typography>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} md={4}>
+                      <Card sx={{ 
+                        background: 'linear-gradient(135deg, rgba(255, 87, 34, 0.1), rgba(255, 138, 101, 0.05))',
+                        border: '1px solid rgba(255, 87, 34, 0.2)'
+                      }}>
+                        <CardContent>
+                          <Typography variant="body2" sx={{ fontWeight: 600, mb: 1, color: '#ff5722' }}>
+                            📅 Avansert Kalenderintegrasjon
+                          </Typography>
+                          <Typography variant="caption" color="textSecondary" sx={{ display: 'block', mb: 2 }}>
+                            Google Calendar, Outlook 365, Apple Calendar, Calendly, Acuity Scheduling
+                          </Typography>
+                          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                            <Button size="small" variant="outlined" sx={{ borderColor: '#ff5722', color: '#ff5722', fontSize: '0.7rem' }}>
+                              Google
+                            </Button>
+                            <Button size="small" variant="outlined" sx={{ borderColor: '#ff5722', color: '#ff5722', fontSize: '0.7rem' }}>
+                              Outlook
+                            </Button>
+                            <Button size="small" variant="outlined" sx={{ borderColor: '#ff5722', color: '#ff5722', fontSize: '0.7rem' }}>
+                              Calendly
+                            </Button>
+                          </Box>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                    <Grid item xs={12} md={4}>
+                      <Card sx={{ 
+                        background: 'linear-gradient(135deg, rgba(103, 58, 183, 0.1), rgba(156, 39, 176, 0.05))',
+                        border: '1px solid rgba(103, 58, 183, 0.2)'
+                      }}>
+                        <CardContent>
+                          <Typography variant="body2" sx={{ fontWeight: 600, mb: 1, color: '#673ab7' }}>
+                            💳 Norske Betalingsløsninger
+                          </Typography>
+                          <Typography variant="caption" color="textSecondary" sx={{ display: 'block', mb: 2 }}>
+                            Vipps, Klarna, Nets, PayPal, Stripe, BankID, BankAxept
+                          </Typography>
+                          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                            <Button size="small" variant="outlined" sx={{ borderColor: '#673ab7', color: '#673ab7', fontSize: '0.7rem' }}>
+                              Vipps
+                            </Button>
+                            <Button size="small" variant="outlined" sx={{ borderColor: '#673ab7', color: '#673ab7', fontSize: '0.7rem' }}>
+                              Klarna
+                            </Button>
+                            <Button size="small" variant="outlined" sx={{ borderColor: '#673ab7', color: '#673ab7', fontSize: '0.7rem' }}>
+                              BankID
+                            </Button>
+                          </Box>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                    <Grid item xs={12} md={4}>
+                      <Card sx={{ 
+                        background: 'linear-gradient(135deg, rgba(0, 150, 136, 0.1), rgba(77, 182, 172, 0.05))',
+                        border: '1px solid rgba(0, 150, 136, 0.2)'
+                      }}>
+                        <CardContent>
+                          <Typography variant="body2" sx={{ fontWeight: 600, mb: 1, color: '#009688' }}>
+                            📧 E-post & Kommunikasjon
+                          </Typography>
+                          <Typography variant="caption" color="textSecondary" sx={{ display: 'block', mb: 2 }}>
+                            Gmail, Outlook, Mailchimp, SendGrid, Twilio SMS, Slack
+                          </Typography>
+                          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                            <Button size="small" variant="outlined" sx={{ borderColor: '#009688', color: '#009688', fontSize: '0.7rem' }}>
+                              Gmail
+                            </Button>
+                            <Button size="small" variant="outlined" sx={{ borderColor: '#009688', color: '#009688', fontSize: '0.7rem' }}>
+                              Mailchimp
+                            </Button>
+                            <Button size="small" variant="outlined" sx={{ borderColor: '#009688', color: '#009688', fontSize: '0.7rem' }}>
+                              Twilio
+                            </Button>
+                          </Box>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                  </Grid>
+                </Box>
+
+                {/* Cloud Storage & File Management */}
+                <Box sx={{ mb: 4 }}>
+                  <Typography variant="h6" sx={{ fontWeight: 600, mb: 2, color: '#9c27b0' }}>
+                    ☁️ Cloud Lagring & Filhåndtering
+                  </Typography>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} md={6}>
+                      <Card sx={{ 
+                        background: 'linear-gradient(135deg, rgba(156, 39, 176, 0.1), rgba(233, 30, 99, 0.05))',
+                        border: '1px solid rgba(156, 39, 176, 0.2)'
+                      }}>
+                        <CardContent>
+                          <Typography variant="body2" sx={{ fontWeight: 600, mb: 1, color: '#9c27b0' }}>
+                            📁 Multi-Cloud Synkronisering
+                          </Typography>
+                          <Typography variant="caption" color="textSecondary" sx={{ display: 'block', mb: 2 }}>
+                            Google Drive, OneDrive, Dropbox, iCloud, Amazon S3, Adobe Creative Cloud
+                          </Typography>
+                          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                            <Button size="small" variant="outlined" sx={{ borderColor: '#9c27b0', color: '#9c27b0', fontSize: '0.7rem' }}>
+                              Google Drive
+                            </Button>
+                            <Button size="small" variant="outlined" sx={{ borderColor: '#9c27b0', color: '#9c27b0', fontSize: '0.7rem' }}>
+                              OneDrive
+                            </Button>
+                            <Button size="small" variant="outlined" sx={{ borderColor: '#9c27b0', color: '#9c27b0', fontSize: '0.7rem' }}>
+                              Dropbox
+                            </Button>
+                            <Button size="small" variant="outlined" sx={{ borderColor: '#9c27b0', color: '#9c27b0', fontSize: '0.7rem' }}>
+                              Amazon S3
+                            </Button>
+                          </Box>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                    <Grid item xs={12} md={6}>
+                      <Card sx={{ 
+                        background: 'linear-gradient(135deg, rgba(255, 193, 7, 0.1), rgba(255, 235, 59, 0.05))',
+                        border: '1px solid rgba(255, 193, 7, 0.2)'
+                      }}>
+                        <CardContent>
+                          <Typography variant="body2" sx={{ fontWeight: 600, mb: 1, color: '#ffc107' }}>
+                            🎨 Kreative Verktøy & Design
+                          </Typography>
+                          <Typography variant="caption" color="textSecondary" sx={{ display: 'block', mb: 2 }}>
+                            Adobe Creative Suite, Canva, Figma, Sketch, Lightroom, Photoshop
+                          </Typography>
+                          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                            <Button size="small" variant="outlined" sx={{ borderColor: '#ffc107', color: '#ffc107', fontSize: '0.7rem' }}>
+                              Adobe CC
+                            </Button>
+                            <Button size="small" variant="outlined" sx={{ borderColor: '#ffc107', color: '#ffc107', fontSize: '0.7rem' }}>
+                              Lightroom
+                            </Button>
+                            <Button size="small" variant="outlined" sx={{ borderColor: '#ffc107', color: '#ffc107', fontSize: '0.7rem' }}>
+                              Canva
+                            </Button>
+                          </Box>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                  </Grid>
+                </Box>
+
+                {/* Norwegian Government & Legal Services */}
+                <Box sx={{ mb: 4 }}>
+                  <Typography variant="h6" sx={{ fontWeight: 600, mb: 2, color: '#ff5722' }}>
+                    🇳🇴 Norske Myndigheter & Juridiske Tjenester
+                  </Typography>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} md={4}>
+                      <Card sx={{ 
+                        background: 'linear-gradient(135deg, rgba(255, 87, 34, 0.1), rgba(255, 138, 101, 0.05))',
+                        border: '1px solid rgba(255, 87, 34, 0.2)',
+                        height: '100%'
+                      }}>
+                        <CardContent>
+                          <Typography variant="body2" sx={{ fontWeight: 600, mb: 1, color: '#ff5722' }}>
+                            🏛️ Offentlige Registre
+                          </Typography>
+                          <Typography variant="caption" color="textSecondary" sx={{ display: 'block', mb: 2 }}>
+                            Altinn, BRREG, Skatteetaten, NAV, Patentstyret
+                          </Typography>
+                          <Button size="small" fullWidth variant="outlined" sx={{ borderColor: '#ff5722', color: '#ff5722' }}>
+                            Koble til Altinn
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                    <Grid item xs={12} md={4}>
+                      <Card sx={{ 
+                        background: 'linear-gradient(135deg, rgba(76, 175, 80, 0.1), rgba(139, 195, 74, 0.05))',
+                        border: '1px solid rgba(76, 175, 80, 0.2)',
+                        height: '100%'
+                      }}>
+                        <CardContent>
+                          <Typography variant="body2" sx={{ fontWeight: 600, mb: 1, color: '#4caf50' }}>
+                            🧾 Regnskapssystemer
+                          </Typography>
+                          <Typography variant="caption" color="textSecondary" sx={{ display: 'block', mb: 2 }}>
+                            Fiken, Tripletex, PowerOffice, Visma, Mamut
+                          </Typography>
+                          <Button size="small" fullWidth variant="outlined" sx={{ borderColor: '#4caf50', color: '#4caf50' }}>
+                            Synkroniser Fiken
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                    <Grid item xs={12} md={4}>
+                      <Card sx={{ 
+                        background: 'linear-gradient(135deg, rgba(33, 150, 243, 0.1), rgba(21, 101, 192, 0.05))',
+                        border: '1px solid rgba(33, 150, 243, 0.2)',
+                        height: '100%'
+                      }}>
+                        <CardContent>
+                          <Typography variant="body2" sx={{ fontWeight: 600, mb: 1, color: '#2196f3' }}>
+                            ⚖️ Juridiske Tjenester
+                          </Typography>
+                          <Typography variant="caption" color="textSecondary" sx={{ display: 'block', mb: 2 }}>
+                            Advokatfirmaer, Kontraktmaler, Forsikring
+                          </Typography>
+                          <Button size="small" fullWidth variant="outlined" sx={{ borderColor: '#2196f3', color: '#2196f3' }}>
+                            Juridisk Rådgivning
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                  </Grid>
+                </Box>
+
+                {/* Professional Photography Services */}
+                <Box>
+                  <Typography variant="h6" sx={{ fontWeight: 600, mb: 2, color: '#795548' }}>
+                    📸 Profesjonelle Fotografitjenester
+                  </Typography>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} md={3}>
+                      <Card sx={{ 
+                        background: 'linear-gradient(135deg, rgba(121, 85, 72, 0.1), rgba(141, 110, 99, 0.05))',
+                        border: '1px solid rgba(121, 85, 72, 0.2)',
+                        height: '100%'
+                      }}>
+                        <CardContent sx={{ textAlign: 'center' }}>
+                          <Typography variant="body2" sx={{ fontWeight: 600, mb: 1, color: '#795548' }}>
+                            🏪 Leverandørnettverk
+                          </Typography>
+                          <Typography variant="caption" color="textSecondary" sx={{ display: 'block', mb: 2 }}>
+                            Canon, Nikon, Sony, Fujifilm, Leica
+                          </Typography>
+                          <Button size="small" fullWidth variant="outlined" sx={{ borderColor: '#795548', color: '#795548' }}>
+                            Se Priser
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                    <Grid item xs={12} md={3}>
+                      <Card sx={{ 
+                        background: 'linear-gradient(135deg, rgba(96, 125, 139, 0.1), rgba(120, 144, 156, 0.05))',
+                        border: '1px solid rgba(96, 125, 139, 0.2)',
+                        height: '100%'
+                      }}>
+                        <CardContent sx={{ textAlign: 'center' }}>
+                          <Typography variant="body2" sx={{ fontWeight: 600, mb: 1, color: '#607d8b' }}>
+                            🚚 Leveringspartnere
+                          </Typography>
+                          <Typography variant="caption" color="textSecondary" sx={{ display: 'block', mb: 2 }}>
+                            Posten, Bring, DHL, FedEx, UPS
+                          </Typography>
+                          <Button size="small" fullWidth variant="outlined" sx={{ borderColor: '#607d8b', color: '#607d8b' }}>
+                            Spor Leveranse
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                    <Grid item xs={12} md={3}>
+                      <Card sx={{ 
+                        background: 'linear-gradient(135deg, rgba(233, 30, 99, 0.1), rgba(240, 98, 146, 0.05))',
+                        border: '1px solid rgba(233, 30, 99, 0.2)',
+                        height: '100%'
+                      }}>
+                        <CardContent sx={{ textAlign: 'center' }}>
+                          <Typography variant="body2" sx={{ fontWeight: 600, mb: 1, color: '#e91e63' }}>
+                            📱 Sosiale Medier
+                          </Typography>
+                          <Typography variant="caption" color="textSecondary" sx={{ display: 'block', mb: 2 }}>
+                            Instagram, Facebook, TikTok, LinkedIn
+                          </Typography>
+                          <Button size="small" fullWidth variant="outlined" sx={{ borderColor: '#e91e63', color: '#e91e63' }}>
+                            Auto-Post
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                    <Grid item xs={12} md={3}>
+                      <Card sx={{ 
+                        background: 'linear-gradient(135deg, rgba(0, 188, 212, 0.1), rgba(77, 208, 225, 0.05))',
+                        border: '1px solid rgba(0, 188, 212, 0.2)',
+                        height: '100%'
+                      }}>
+                        <CardContent sx={{ textAlign: 'center' }}>
+                          <Typography variant="body2" sx={{ fontWeight: 600, mb: 1, color: '#00bcd4' }}>
+                            📊 Analyseverktøy
+                          </Typography>
+                          <Typography variant="caption" color="textSecondary" sx={{ display: 'block', mb: 2 }}>
+                            Google Analytics, Facebook Insights
+                          </Typography>
+                          <Button size="small" fullWidth variant="outlined" sx={{ borderColor: '#00bcd4', color: '#00bcd4' }}>
+                            Se Rapport
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                  </Grid>
+                </Box>
+              </Paper>
+
+              {/* Advanced Equipment Management & Monitoring */}
+              <Paper sx={{ p: 3, mb: 4 }}>
+                <Typography variant="h5" sx={{ fontWeight: 600, mb: 3, color: '#ff8c00' }}>
+                  📷 Avansert Utstyrsstyring & Overvåking
+                </Typography>
+                
+                <Grid container spacing={3}>
+                  <Grid item xs={12} md={6}>
+                    <Card sx={{ 
+                      background: 'linear-gradient(135deg, rgba(121, 85, 72, 0.1), rgba(141, 110, 99, 0.05))',
+                      border: '1px solid rgba(121, 85, 72, 0.2)'
+                    }}>
+                      <CardContent>
+                        <Typography variant="h6" sx={{ fontWeight: 600, mb: 2, color: '#795548' }}>
+                          🏪 Live Utstyrspriser & Tilgjengelighet
+                        </Typography>
+                        <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
+                          Sanntids priser fra Canon, Nikon, Sony, Fujifilm med automatisk leverandørsammenligning
+                        </Typography>
+                        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                          <Button size="small" variant="outlined" sx={{ borderColor: '#795548', color: '#795548' }}>
+                            Canon Priser
+                          </Button>
+                          <Button size="small" variant="outlined" sx={{ borderColor: '#795548', color: '#795548' }}>
+                            Nikon Tilbud
+                          </Button>
+                          <Button size="small" variant="outlined" sx={{ borderColor: '#795548', color: '#795548' }}>
+                            Sony Nyheter
+                          </Button>
+                        </Box>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <Card sx={{ 
+                      background: 'linear-gradient(135deg, rgba(63, 81, 181, 0.1), rgba(103, 58, 183, 0.05))',
+                      border: '1px solid rgba(63, 81, 181, 0.2)'
+                    }}>
+                      <CardContent>
+                        <Typography variant="h6" sx={{ fontWeight: 600, mb: 2, color: '#3f51b5' }}>
+                          📱 IoT Utstyrsovervåking
+                        </Typography>
+                        <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
+                          Smart overvåking av kameratemperatur, batteristatus, og vedlikeholdsmeldinger
+                        </Typography>
+                        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                          <Button size="small" variant="outlined" sx={{ borderColor: '#3f51b5', color: '#3f51b5' }}>
+                            Batteristatus
+                          </Button>
+                          <Button size="small" variant="outlined" sx={{ borderColor: '#3f51b5', color: '#3f51b5' }}>
+                            Vedlikehold
+                          </Button>
+                          <Button size="small" variant="outlined" sx={{ borderColor: '#3f51b5', color: '#3f51b5' }}>
+                            Kalibrering
+                          </Button>
+                        </Box>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                </Grid>
+              </Paper>
+
+              {/* Professional Workflow Automation */}
+              <Paper sx={{ p: 3, mb: 4 }}>
+                <Typography variant="h5" sx={{ fontWeight: 600, mb: 3, color: '#ff8c00' }}>
+                  ⚡ Profesjonell Arbeidsflytautomatisering
+                </Typography>
+                
+                <Grid container spacing={2}>
+                  <Grid item xs={12} md={4}>
+                    <Card sx={{ 
+                      background: 'linear-gradient(135deg, rgba(255, 152, 0, 0.1), rgba(255, 193, 7, 0.05))',
+                      border: '1px solid rgba(255, 152, 0, 0.2)',
+                      height: '100%'
+                    }}>
+                      <CardContent>
+                        <Typography variant="body1" sx={{ fontWeight: 600, mb: 2, color: '#ff9800' }}>
+                          🔄 Zapier Integrasjon
+                        </Typography>
+                        <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
+                          Koble sammen 5000+ apper med automatiske arbeidsflyter for fotografer
+                        </Typography>
+                        <Button size="small" fullWidth variant="outlined" sx={{ borderColor: '#ff9800', color: '#ff9800' }}>
+                          Opprett Zap
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                  <Grid item xs={12} md={4}>
+                    <Card sx={{ 
+                      background: 'linear-gradient(135deg, rgba(103, 58, 183, 0.1), rgba(156, 39, 176, 0.05))',
+                      border: '1px solid rgba(103, 58, 183, 0.2)',
+                      height: '100%'
+                    }}>
+                      <CardContent>
+                        <Typography variant="body1" sx={{ fontWeight: 600, mb: 2, color: '#673ab7' }}>
+                          🤖 Microsoft Power Automate
+                        </Typography>
+                        <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
+                          Automatiser Office 365, OneDrive og Teams for sømløs prosjektadministrasjon
+                        </Typography>
+                        <Button size="small" fullWidth variant="outlined" sx={{ borderColor: '#673ab7', color: '#673ab7' }}>
+                          Opprett Flow
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                  <Grid item xs={12} md={4}>
+                    <Card sx={{ 
+                      background: 'linear-gradient(135deg, rgba(76, 175, 80, 0.1), rgba(139, 195, 74, 0.05))',
+                      border: '1px solid rgba(76, 175, 80, 0.2)',
+                      height: '100%'
+                    }}>
+                      <CardContent>
+                        <Typography variant="body1" sx={{ fontWeight: 600, mb: 2, color: '#4caf50' }}>
+                          📊 IFTTT Smartautomatikk
+                        </Typography>
+                        <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
+                          "If This Then That" logikk for smarte fotografiautomatikker og varsler
+                        </Typography>
+                        <Button size="small" fullWidth variant="outlined" sx={{ borderColor: '#4caf50', color: '#4caf50' }}>
+                          Lag Applet
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                </Grid>
+              </Paper>
+
+              {/* Enterprise Customer Success & Support */}
+              <Paper sx={{ p: 3, mb: 4 }}>
+                <Typography variant="h5" sx={{ fontWeight: 600, mb: 3, color: '#ff8c00' }}>
+                  🏢 Enterprise Kundesuksess & Support
+                </Typography>
+                
+                <Grid container spacing={3}>
+                  <Grid item xs={12} md={6}>
+                    <Card sx={{ 
+                      background: 'linear-gradient(135deg, rgba(255, 87, 34, 0.1), rgba(255, 138, 101, 0.05))',
+                      border: '1px solid rgba(255, 87, 34, 0.2)'
+                    }}>
+                      <CardContent>
+                        <Typography variant="h6" sx={{ fontWeight: 600, mb: 2, color: '#ff5722' }}>
+                          🎯 Dedikert Kundesuksess Manager
+                        </Typography>
+                        <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
+                          Personlig rådgiver for optimalisering av fotografiarbeidsflyt og forretningsutvikling
+                        </Typography>
+                        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                          <Button size="small" variant="outlined" sx={{ borderColor: '#ff5722', color: '#ff5722' }}>
+                            Book Møte
+                          </Button>
+                          <Button size="small" variant="outlined" sx={{ borderColor: '#ff5722', color: '#ff5722' }}>
+                            Chat Support
+                          </Button>
+                          <Button size="small" variant="outlined" sx={{ borderColor: '#ff5722', color: '#ff5722' }}>
+                            Telefon: 24/7
+                          </Button>
+                        </Box>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <Card sx={{ 
+                      background: 'linear-gradient(135deg, rgba(76, 175, 80, 0.1), rgba(139, 195, 74, 0.05))',
+                      border: '1px solid rgba(76, 175, 80, 0.2)'
+                    }}>
+                      <CardContent>
+                        <Typography variant="h6" sx={{ fontWeight: 600, mb: 2, color: '#4caf50' }}>
+                          📚 Kontinuerlig Læring & Sertifisering
+                        </Typography>
+                        <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
+                          CreatorHub Academy med norske fotografikurs, bransjertifikater og ekspertnettverk
+                        </Typography>
+                        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                          <Button size="small" variant="outlined" sx={{ borderColor: '#4caf50', color: '#4caf50' }}>
+                            Kurskatolog
+                          </Button>
+                          <Button size="small" variant="outlined" sx={{ borderColor: '#4caf50', color: '#4caf50' }}>
+                            Sertifiseringer
+                          </Button>
+                          <Button size="small" variant="outlined" sx={{ borderColor: '#4caf50', color: '#4caf50' }}>
+                            Ekspertnettverk
+                          </Button>
+                        </Box>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                </Grid>
+              </Paper>
+
+              {/* Advanced Security & Data Protection */}
+              <Paper sx={{ p: 3, mb: 4 }}>
+                <Typography variant="h5" sx={{ fontWeight: 600, mb: 3, color: '#ff8c00' }}>
+                  🔐 Avansert Sikkerhet & Databeskyttelse
+                </Typography>
+                
+                <Grid container spacing={2}>
+                  <Grid item xs={12} md={4}>
+                    <Card sx={{ 
+                      background: 'linear-gradient(135deg, rgba(244, 67, 54, 0.1), rgba(255, 87, 34, 0.05))',
+                      border: '1px solid rgba(244, 67, 54, 0.2)',
+                      height: '100%'
+                    }}>
+                      <CardContent sx={{ textAlign: 'center' }}>
+                        <Typography variant="body2" sx={{ fontWeight: 600, mb: 1, color: '#f44336' }}>
+                          🛡️ ISO 27001 Sertifisert
+                        </Typography>
+                        <Typography variant="caption" color="textSecondary" sx={{ display: 'block', mb: 2 }}>
+                          Internasjonal standard for informasjonssikkerhet med årlige revisjoner
+                        </Typography>
+                        <Button size="small" fullWidth variant="outlined" sx={{ borderColor: '#f44336', color: '#f44336' }}>
+                          Se Sertifikat
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                  <Grid item xs={12} md={4}>
+                    <Card sx={{ 
+                      background: 'linear-gradient(135deg, rgba(156, 39, 176, 0.1), rgba(233, 30, 99, 0.05))',
+                      border: '1px solid rgba(156, 39, 176, 0.2)',
+                      height: '100%'
+                    }}>
+                      <CardContent sx={{ textAlign: 'center' }}>
+                        <Typography variant="body2" sx={{ fontWeight: 600, mb: 1, color: '#9c27b0' }}>
+                          🔒 End-to-End Kryptering
+                        </Typography>
+                        <Typography variant="caption" color="textSecondary" sx={{ display: 'block', mb: 2 }}>
+                          AES-256 kryptering av alle fotografier og klientdata med zero-knowledge arkitektur
+                        </Typography>
+                        <Button size="small" fullWidth variant="outlined" sx={{ borderColor: '#9c27b0', color: '#9c27b0' }}>
+                          Krypteringsdetaljer
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                  <Grid item xs={12} md={4}>
+                    <Card sx={{ 
+                      background: 'linear-gradient(135deg, rgba(63, 81, 181, 0.1), rgba(103, 58, 183, 0.05))',
+                      border: '1px solid rgba(63, 81, 181, 0.2)',
+                      height: '100%'
+                    }}>
+                      <CardContent sx={{ textAlign: 'center' }}>
+                        <Typography variant="body2" sx={{ fontWeight: 600, mb: 1, color: '#3f51b5' }}>
+                          📍 Norske Datasentre
+                        </Typography>
+                        <Typography variant="caption" color="textSecondary" sx={{ display: 'block', mb: 2 }}>
+                          All data lagres i Norge (Oslo & Bergen) for full GDPR-overholdelse
+                        </Typography>
+                        <Button size="small" fullWidth variant="outlined" sx={{ borderColor: '#3f51b5', color: '#3f51b5' }}>
+                          Datasentre
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                </Grid>
+              </Paper>
+
+              {/* Performance & Scalability Features */}
+              <Paper sx={{ p: 3, mb: 4 }}>
+                <Typography variant="h5" sx={{ fontWeight: 600, mb: 3, color: '#ff8c00' }}>
+                  ⚡ Ytelse & Skalerbarhetsfunksjoner
+                </Typography>
+                
+                <Grid container spacing={3}>
+                  <Grid item xs={12} md={6}>
+                    <Card sx={{ 
+                      background: 'linear-gradient(135deg, rgba(255, 193, 7, 0.1), rgba(255, 235, 59, 0.05))',
+                      border: '1px solid rgba(255, 193, 7, 0.2)'
+                    }}>
+                      <CardContent>
+                        <Typography variant="h6" sx={{ fontWeight: 600, mb: 2, color: '#ffc107' }}>
+                          🚀 CDN & Global Accelerasjon
+                        </Typography>
+                        <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
+                          Cloudflare CDN med 270+ globale servere for lynrask bildeopplasting og -nedlasting verden over
+                        </Typography>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                          <Typography variant="caption" sx={{ color: '#4caf50', fontWeight: 600 }}>
+                            ⚡ 99.9% oppetid garantert
+                          </Typography>
+                          <Typography variant="caption" sx={{ color: '#2196f3', fontWeight: 600 }}>
+                            🌍 &lt;50ms responstid
+                          </Typography>
+                        </Box>
+                        <Button size="small" variant="outlined" sx={{ borderColor: '#ffc107', color: '#ffc107' }}>
+                          Ytelsesrapport
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <Card sx={{ 
+                      background: 'linear-gradient(135deg, rgba(0, 188, 212, 0.1), rgba(77, 208, 225, 0.05))',
+                      border: '1px solid rgba(0, 188, 212, 0.2)'
+                    }}>
+                      <CardContent>
+                        <Typography variant="h6" sx={{ fontWeight: 600, mb: 2, color: '#00bcd4' }}>
+                          📈 Automatisk Skalering
+                        </Typography>
+                        <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
+                          Kubernetes-basert infrastruktur som automatisk skalerer fra 1 til 100,000+ samtidige brukere
+                        </Typography>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                          <Typography variant="caption" sx={{ color: '#ff9800', fontWeight: 600 }}>
+                            📊 Load balancing
+                          </Typography>
+                          <Typography variant="caption" sx={{ color: '#9c27b0', fontWeight: 600 }}>
+                            🔄 Auto-recovery
+                          </Typography>
+                        </Box>
+                        <Button size="small" variant="outlined" sx={{ borderColor: '#00bcd4', color: '#00bcd4' }}>
+                          Infrastruktur Status
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                </Grid>
+              </Paper>
+
+              {/* Advanced Reporting & Business Intelligence */}
+              <Paper sx={{ p: 3, mb: 4 }}>
+                <Typography variant="h5" sx={{ fontWeight: 600, mb: 3, color: '#ff8c00' }}>
+                  📊 Avansert Rapportering & Business Intelligence
+                </Typography>
+                
+                <Grid container spacing={2}>
+                  <Grid item xs={12} md={3}>
+                    <Card sx={{ 
+                      background: 'linear-gradient(135deg, rgba(33, 150, 243, 0.1), rgba(21, 101, 192, 0.05))',
+                      border: '1px solid rgba(33, 150, 243, 0.2)',
+                      height: '100%'
+                    }}>
+                      <CardContent sx={{ textAlign: 'center' }}>
+                        <Typography variant="body2" sx={{ fontWeight: 600, mb: 1, color: '#2196f3' }}>
+                          📈 Power BI Integrasjon
+                        </Typography>
+                        <Typography variant="caption" color="textSecondary" sx={{ display: 'block', mb: 2 }}>
+                          Avanserte dashboards og prediktiv analyse
+                        </Typography>
+                        <Button size="small" fullWidth variant="outlined" sx={{ borderColor: '#2196f3', color: '#2196f3' }}>
+                          Koble til
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                  <Grid item xs={12} md={3}>
+                    <Card sx={{ 
+                      background: 'linear-gradient(135deg, rgba(76, 175, 80, 0.1), rgba(139, 195, 74, 0.05))',
+                      border: '1px solid rgba(76, 175, 80, 0.2)',
+                      height: '100%'
+                    }}>
+                      <CardContent sx={{ textAlign: 'center' }}>
+                        <Typography variant="body2" sx={{ fontWeight: 600, mb: 1, color: '#4caf50' }}>
+                          📊 Tableau Connector
+                        </Typography>
+                        <Typography variant="caption" color="textSecondary" sx={{ display: 'block', mb: 2 }}>
+                          Profesjonelle visualiseringer og rapporter
+                        </Typography>
+                        <Button size="small" fullWidth variant="outlined" sx={{ borderColor: '#4caf50', color: '#4caf50' }}>
+                          Aktiver
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                  <Grid item xs={12} md={3}>
+                    <Card sx={{ 
+                      background: 'linear-gradient(135deg, rgba(255, 152, 0, 0.1), rgba(255, 193, 7, 0.05))',
+                      border: '1px solid rgba(255, 152, 0, 0.2)',
+                      height: '100%'
+                    }}>
+                      <CardContent sx={{ textAlign: 'center' }}>
+                        <Typography variant="body2" sx={{ fontWeight: 600, mb: 1, color: '#ff9800' }}>
+                          📋 Excel/Sheets Export
+                        </Typography>
+                        <Typography variant="caption" color="textSecondary" sx={{ display: 'block', mb: 2 }}>
+                          Automatisk rapportgenerering til regneark
+                        </Typography>
+                        <Button size="small" fullWidth variant="outlined" sx={{ borderColor: '#ff9800', color: '#ff9800' }}>
+                          Eksporter
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                  <Grid item xs={12} md={3}>
+                    <Card sx={{ 
+                      background: 'linear-gradient(135deg, rgba(156, 39, 176, 0.1), rgba(233, 30, 99, 0.05))',
+                      border: '1px solid rgba(156, 39, 176, 0.2)',
+                      height: '100%'
+                    }}>
+                      <CardContent sx={{ textAlign: 'center' }}>
+                        <Typography variant="body2" sx={{ fontWeight: 600, mb: 1, color: '#9c27b0' }}>
+                          🤖 AI Innsikt
+                        </Typography>
+                        <Typography variant="caption" color="textSecondary" sx={{ display: 'block', mb: 2 }}>
+                          Maskinlæring for forretningsoptimalisering
+                        </Typography>
+                        <Button size="small" fullWidth variant="outlined" sx={{ borderColor: '#9c27b0', color: '#9c27b0' }}>
+                          AI Analyse
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                </Grid>
+              </Paper>
+
+              {/* Professional Quick Actions */}
+              <ProfessionalQuickActions 
+                onProjectCreate={() => setShowProjectModal(true)}
+                onClientAdd={() => console.log('🧑‍💼 Åpner klient opprettelse')}
+                onEquipmentAccess={() => setTabValue(3)}
+                onCalendarOpen={() => console.log('📅 Åpner kalender')}
+              />
+
+            </Box>
+          )}
+
+          {tabValue === 1 && (
+            <Box>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+                <Typography variant="h5" sx={{ fontWeight: 600, color: '#ff8c00' }}>
+                  ⚙️ Prosjektadministrasjon
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 2 }}>
+                  <Button
+                    variant="outlined"
+                    startIcon={<Archive />}
+                    sx={{ borderColor: '#2196f3', color: '#2196f3' }}
+                  >
+                    Arkiv
+                  </Button>
+                  <Button
+                    variant="contained"
+                    startIcon={<Add />}
+                    onClick={() => setShowProjectModal(true)}
+                    sx={{
+                      background: 'linear-gradient(135deg, #ff8c00, #ffa500)',
+                      '&:hover': {
+                        background: 'linear-gradient(135deg, #e67e00, #ff8c00)'
+                      }
+                    }}
+                  >
+                    Nytt Prosjekt
+                  </Button>
+                </Box>
+              </Box>
+
+              {/* Project Administration Sub-Tabs */}
+              <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
+                <Tabs 
+                  value={projectAdminTabValue} 
+                  onChange={(e, newValue) => setProjectAdminTabValue(newValue)}
+                  sx={{
+                    '& .MuiTab-root': {
+                      color: '#666',
+                      fontWeight: 600,
+                      fontSize: '0.85rem',
+                      '&.Mui-selected': {
+                        color: '#ff8c00'
+                      }
+                    },
+                    '& .MuiTabs-indicator': {
+                      backgroundColor: '#ff8c00'
+                    }
+                  }}
+                >
+                  <Tab label="Oversikt" />
+                  <Tab label="Alle Prosjekter" />
+                  <Tab label="Kalender" />
+                  <Tab label="Rapporter" />
+                </Tabs>
+              </Box>
+
+              {/* Sub-Tab Content */}
+              {projectAdminTabValue === 0 && (
+                <>
+                  {/* Main Project Statistics */}
+                  <Paper sx={{ 
+                    background: 'linear-gradient(135deg, rgba(255, 140, 0, 0.05), rgba(255, 165, 0, 0.02))',
+                    border: '1px solid rgba(255, 140, 0, 0.1)',
+                    p: 3, 
+                    mb: 3 
+                  }}>
+                    <Typography variant="h6" sx={{ fontWeight: 600, color: '#ff8c00', mb: 2 }}>
+                      📊 Prosjektstatistikk
+                    </Typography>
+                    <Grid container spacing={2}>
+                      <Grid item xs={12} md={3}>
+                        <Box sx={{ 
+                          textAlign: 'center', 
+                          p: 2, 
+                          borderRadius: 2, 
+                          bgcolor: 'rgba(33, 150, 243, 0.1)',
+                          border: '2px solid rgba(33, 150, 243, 0.2)',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s ease',
+                          '&:hover': { transform: 'translateY(-2px)', boxShadow: 2 }
+                        }}>
+                          <Event sx={{ fontSize: 32, color: '#2196f3', mb: 1 }} />
+                          <Typography variant="h4" sx={{ fontWeight: 700, color: '#2196f3' }}>
+                            {projectStats?.active || 3}
+                          </Typography>
+                          <Typography variant="body2" sx={{ fontWeight: 600, color: '#2196f3' }}>
+                            Aktive Prosjekter
+                          </Typography>
+                          <Typography variant="caption" color="textSecondary">
+                            Pågående oppdrag
+                          </Typography>
+                        </Box>
+                      </Grid>
+
+                      <Grid item xs={12} md={3}>
+                        <Box sx={{ 
+                          textAlign: 'center', 
+                          p: 2, 
+                          borderRadius: 2, 
+                          bgcolor: 'rgba(255, 193, 7, 0.1)',
+                          border: '2px solid rgba(255, 193, 7, 0.2)',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s ease',
+                          '&:hover': { transform: 'translateY(-2px)', boxShadow: 2 }
+                        }}>
+                          <Schedule sx={{ fontSize: 32, color: '#ffc107', mb: 1 }} />
+                          <Typography variant="h4" sx={{ fontWeight: 700, color: '#ffc107' }}>
+                            {projectStats?.pending || 2}
+                          </Typography>
+                          <Typography variant="body2" sx={{ fontWeight: 600, color: '#ffc107' }}>
+                            Ventende
+                          </Typography>
+                          <Typography variant="caption" color="textSecondary">
+                            Avventer godkjenning
+                          </Typography>
+                        </Box>
+                      </Grid>
+
+                      <Grid item xs={12} md={3}>
+                        <Box sx={{ 
+                          textAlign: 'center', 
+                          p: 2, 
+                          borderRadius: 2, 
+                          bgcolor: 'rgba(76, 175, 80, 0.1)',
+                          border: '2px solid rgba(76, 175, 80, 0.2)',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s ease',
+                          '&:hover': { transform: 'translateY(-2px)', boxShadow: 2 }
+                        }}>
+                          <CheckCircle sx={{ fontSize: 32, color: '#4caf50', mb: 1 }} />
+                          <Typography variant="h4" sx={{ fontWeight: 700, color: '#4caf50' }}>
+                            {projectStats?.completed || 12}
+                          </Typography>
+                          <Typography variant="body2" sx={{ fontWeight: 600, color: '#4caf50' }}>
+                            Fullførte
+                          </Typography>
+                          <Typography variant="caption" color="textSecondary">
+                            Leverte prosjekter
+                          </Typography>
+                        </Box>
+                      </Grid>
+
+                      <Grid item xs={12} md={3}>
+                        <Box sx={{ 
+                          textAlign: 'center', 
+                          p: 2, 
+                          borderRadius: 2, 
+                          bgcolor: 'rgba(156, 39, 176, 0.1)',
+                          border: '2px solid rgba(156, 39, 176, 0.2)',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s ease',
+                          '&:hover': { transform: 'translateY(-2px)', boxShadow: 2 }
+                        }}>
+                          <CalendarToday sx={{ fontSize: 32, color: '#9c27b0', mb: 1 }} />
+                          <Typography variant="h4" sx={{ fontWeight: 700, color: '#9c27b0' }}>
+                            {projectStats?.total || 5}
+                          </Typography>
+                          <Typography variant="body2" sx={{ fontWeight: 600, color: '#9c27b0' }}>
+                            Planlagte
+                          </Typography>
+                          <Typography variant="caption" color="textSecondary">
+                            Fremtidige oppdrag
+                          </Typography>
+                        </Box>
+                      </Grid>
+                    </Grid>
+                  </Paper>
+
+                  {/* Comprehensive Project Management System */}
+                  <ProjectManagementSystem />
+
+                  {/* Active Projects from Database */}
+                  <Paper sx={{ p: 3, mt: 3 }}>
+                    <Typography variant="h6" sx={{ fontWeight: 600, mb: 3, color: '#ff8c00' }}>
+                      Aktive Prosjekter
+                    </Typography>
+                    
+                    {detailedProjectsData.length === 0 ? (
+                      <Box sx={{ textAlign: 'center', py: 4 }}>
+                        <Typography variant="body1" color="textSecondary">
+                          Ingen prosjekter funnet. {user?.id === 'guest' ? 'Logg inn for å se dine prosjekter.' : 'Opprett ditt første prosjekt!'}
+                        </Typography>
+                      </Box>
+                    ) : detailedProjectsData.map((project, index) => (
+                      <Card key={index} sx={{ mb: 2, '&:hover': { boxShadow: 3 } }}>
+                        <CardContent>
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
+                            <Box>
+                              <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>
+                                {project.name || project.title}
+                              </Typography>
+                              <Typography variant="body2" color="textSecondary" sx={{ mb: 1 }}>
+                                {project.type === 'bryllup' && '💍 Bryllupsfotografering'}
+                                {project.type === 'kommersielle' && '🏢 Kommersiell fotografering'}
+                                {project.type === 'familie' && '👨‍👩‍👧‍👦 Familiefotografering'}
+                                {project.type === 'portrett' && '👤 Portrettfotografering'}
+                                {project.type === 'event' && '🎉 Eventfotografering'}
+                                {project.type === 'bedrift' && '🏢 Bedriftsfotografering'}
+                              </Typography>
+                              <Typography variant="caption" color="textSecondary">
+                                Dato: {project.eventDate ? new Date(project.eventDate).toLocaleDateString('nb-NO') : 'Ikke satt'}
+                              </Typography>
+                            </Box>
+                            <Box sx={{ textAlign: 'right' }}>
+                              <Typography variant="body2" sx={{ 
+                                fontWeight: 600,
+                                color: project.status === 'completed' || project.status === 'Fullført' ? '#4caf50' : 
+                                       project.status === 'planning' || project.status === 'Planlegging' ? '#2196f3' :
+                                       project.status === 'active' || project.status === 'Fotografering' ? '#ffc107' : '#ff8c00'
+                              }}>
+                                {project.status === 'completed' ? 'Fullført' :
+                                 project.status === 'planning' ? 'Planlegging' :
+                                 project.status === 'active' ? 'Aktiv' :
+                                 project.status}
+                              </Typography>
+                            </Box>
+                          </Box>
+                          
+                          <LinearProgress 
+                            variant="determinate" 
+                            value={project.progress || (project.status === 'completed' ? 100 : project.status === 'active' ? 50 : 25)}
+                            sx={{ 
+                              height: 6, 
+                              borderRadius: 3,
+                              backgroundColor: 'rgba(255, 140, 0, 0.1)',
+                              '& .MuiLinearProgress-bar': {
+                                background: (project.progress || (project.status === 'completed' ? 100 : 0)) === 100 ? 
+                                  'linear-gradient(135deg, #4caf50, #8bc34a)' :
+                                  'linear-gradient(135deg, #ff8c00, #ffa500)',
+                                borderRadius: 3
+                              }
+                            }}
+                          />
+                          
+                          <Box sx={{ display: 'flex', gap: 1, mt: 2 }}>
+                            <Button size="small" variant="outlined" sx={{ borderColor: '#ff8c00', color: '#ff8c00' }}>
+                              Detaljer
+                            </Button>
+                            <Button size="small" variant="outlined" sx={{ borderColor: '#ff8c00', color: '#ff8c00' }}>
+                              Rediger
+                            </Button>
+                            {project.status !== 'completed' && project.status !== 'Fullført' && (
+                              <Button size="small" variant="outlined" sx={{ borderColor: '#4caf50', color: '#4caf50' }}>
+                                Fullfør
+                              </Button>
+                            )}
+                          </Box>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </Paper>
+                </>
+              )}
+
+              {projectAdminTabValue === 1 && (
+                <>
+                  {/* Alle Prosjekter - Detaljert Oversikt */}
+                  <Paper sx={{ 
+                    background: 'linear-gradient(135deg, rgba(33, 150, 243, 0.02), rgba(33, 150, 243, 0.01))',
+                    border: '1px solid rgba(33, 150, 243, 0.1)',
+                    p: 0,
+                    mb: 4,
+                    overflow: 'hidden'
+                  }}>
+                    <Box sx={{ p: 3, pb: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Box>
+                        <Typography variant="h6" sx={{ fontWeight: 600, color: '#2196f3', mb: 1 }}>
+                          📋 Alle Prosjekter - Detaljert Oversikt
+                        </Typography>
+                        <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
+                          Komplett oversikt over alle aktive, ventende, fullførte og planlagte prosjekter
+                        </Typography>
+                      </Box>
+                      <Button
+                        variant="contained"
+                        startIcon={<Add />}
+                        onClick={() => setShowProjectModal(true)}
+                        sx={{ 
+                          background: 'linear-gradient(135deg, #ff8c00, #ffa726)',
+                          color: 'white',
+                          fontWeight: 600,
+                          px: 3,
+                          py: 1.5,
+                          boxShadow: '0 4px 12px rgba(255, 140, 0, 0.3)',
+                          '&:hover': {
+                            background: 'linear-gradient(135deg, #e67e00, #ff8c00)',
+                            boxShadow: '0 6px 16px rgba(255, 140, 0, 0.4)'
+                          }
+                        }}
+                      >
+                        Nytt Prosjekt
+                      </Button>
+                    </Box>
+
+                    {/* Enhanced Project Table - Matching First Image Layout */}
+                    <Box sx={{ overflow: 'auto' }}>
+                      <table style={{ 
+                        width: '100%', 
+                        borderCollapse: 'collapse',
+                        backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                        boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+                      }}>
+                        <thead>
+                          <tr style={{ 
+                            backgroundColor: '#f8f9fa',
+                            borderBottom: '2px solid #e9ecef'
+                          }}>
+                            <th style={{ 
+                              padding: '16px', 
+                              textAlign: 'left', 
+                              fontWeight: 600, 
+                              color: '#495057',
+                              fontSize: '14px',
+                              textTransform: 'uppercase',
+                              letterSpacing: '0.5px'
+                            }}>
+                              Prosjekt
+                            </th>
+                            <th style={{ 
+                              padding: '16px', 
+                              textAlign: 'left', 
+                              fontWeight: 600, 
+                              color: '#495057',
+                              fontSize: '14px',
+                              textTransform: 'uppercase',
+                              letterSpacing: '0.5px'
+                            }}>
+                              Type
+                            </th>
+                            <th style={{ 
+                              padding: '16px', 
+                              textAlign: 'left', 
+                              fontWeight: 600, 
+                              color: '#495057',
+                              fontSize: '14px',
+                              textTransform: 'uppercase',
+                              letterSpacing: '0.5px'
+                            }}>
+                              Status
+                            </th>
+                            <th style={{ 
+                              padding: '16px', 
+                              textAlign: 'left', 
+                              fontWeight: 600, 
+                              color: '#495057',
+                              fontSize: '14px',
+                              textTransform: 'uppercase',
+                              letterSpacing: '0.5px'
+                            }}>
+                              Prioritet
+                            </th>
+                            <th style={{ 
+                              padding: '16px', 
+                              textAlign: 'left', 
+                              fontWeight: 600, 
+                              color: '#495057',
+                              fontSize: '14px',
+                              textTransform: 'uppercase',
+                              letterSpacing: '0.5px'
+                            }}>
+                              Budsjett
+                            </th>
+                            <th style={{ 
+                              padding: '16px', 
+                              textAlign: 'left', 
+                              fontWeight: 600, 
+                              color: '#495057',
+                              fontSize: '14px',
+                              textTransform: 'uppercase',
+                              letterSpacing: '0.5px'
+                            }}>
+                              Frist
+                            </th>
+                            <th style={{ 
+                              padding: '16px', 
+                              textAlign: 'center', 
+                              fontWeight: 600, 
+                              color: '#495057',
+                              fontSize: '14px',
+                              textTransform: 'uppercase',
+                              letterSpacing: '0.5px'
+                            }}>
+                              Handlinger
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {/* Bryllup - Emma & Lars */}
+                          <tr style={{ 
+                            backgroundColor: '#fff',
+                            borderBottom: '1px solid #e9ecef',
+                            '&:hover': { backgroundColor: '#f8f9fa' }
+                          }}>
+                            <td style={{ padding: '16px 20px' }}>
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                                <Avatar sx={{ bgcolor: '#e91e63', width: 32, height: 32 }}>
+                                  💒
+                                </Avatar>
+                                <Box>
+                                  <Typography variant="body2" sx={{ fontWeight: 600, color: '#212529', mb: 0.5 }}>
+                                    Bryllup - Emma & Lars
+                                  </Typography>
+                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                    <Person sx={{ fontSize: 14, color: '#6c757d' }} />
+                                    <Typography variant="caption" sx={{ color: '#6c757d' }}>
+                                      Emma Andersen • 
+                                    </Typography>
+                                    <LocationOn sx={{ fontSize: 14, color: '#6c757d', ml: 0.5 }} />
+                                    <Typography variant="caption" sx={{ color: '#6c757d' }}>
+                                      Stavanger Domkirke
+                                    </Typography>
+                                  </Box>
+                                </Box>
+                              </Box>
+                            </td>
+                            <td style={{ padding: '16px 20px' }}>
+                              <Chip 
+                                label="Bryllup"
+                                size="small"
+                                sx={{ 
+                                  bgcolor: '#e91e63', 
+                                  color: 'white',
+                                  fontWeight: 600,
+                                  fontSize: '12px'
+                                }}
+                              />
+                            </td>
+                            <td style={{ padding: '16px 20px' }}>
+                              <Chip 
+                                label="Aktiv"
+                                size="small"
+                                sx={{ 
+                                  bgcolor: '#28a745', 
+                                  color: 'white',
+                                  fontWeight: 600,
+                                  fontSize: '12px'
+                                }}
+                              />
+                            </td>
+                            <td style={{ padding: '16px 20px' }}>
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                <Flag sx={{ fontSize: 16, color: '#dc3545' }} />
+                                <Typography variant="body2" sx={{ color: '#dc3545', fontWeight: 600 }}>
+                                  Høy
+                                </Typography>
+                              </Box>
+                            </td>
+                            <td style={{ padding: '16px 20px' }}>
+                              <Typography variant="body2" sx={{ fontWeight: 600, color: '#212529' }}>
+                                45,000 NOK
+                              </Typography>
+                            </td>
+                            <td style={{ padding: '16px 20px' }}>
+                              <Typography variant="body2" sx={{ fontWeight: 600, color: '#212529' }}>
+                                15. Sep 2025
+                              </Typography>
+                            </td>
+                            <td style={{ padding: '16px 20px', textAlign: 'center' }}>
+                              <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center' }}>
+                                <Button
+                                  size="small"
+                                  variant="contained"
+                                  startIcon={<Edit />}
+                                  onClick={() => {
+                                    setSelectedProject({ name: 'Bryllup - Emma & Lars', id: 1 });
+                                    setShowEditProjectModal(true);
+                                  }}
+                                  sx={{ 
+                                    bgcolor: '#007bff',
+                                    color: 'white',
+                                    minWidth: 'auto',
+                                    fontSize: '11px',
+                                    px: 2,
+                                    py: 0.5,
+                                    '&:hover': { bgcolor: '#0056b3' }
+                                  }}
+                                >
+                                  Rediger
+                                </Button>
+                                <Button
+                                  size="small"
+                                  variant="contained"
+                                  startIcon={<Visibility />}
+                                  onClick={() => {
+                                    setSelectedProject({ name: 'Bryllup - Emma & Lars', id: 1 });
+                                    setShowProjectDetailsModal(true);
+                                  }}
+                                  sx={{ 
+                                    bgcolor: '#28a745',
+                                    color: 'white',
+                                    minWidth: 'auto',
+                                    fontSize: '11px',
+                                    px: 2,
+                                    py: 0.5,
+                                    '&:hover': { bgcolor: '#1e7e34' }
+                                  }}
+                                >
+                                  Detaljer
+                                </Button>
+                                <Button
+                                  size="small"
+                                  variant="contained"
+                                  startIcon={<Assignment />}
+                                  sx={{ 
+                                    bgcolor: '#ffc107',
+                                    color: '#212529',
+                                    minWidth: 'auto',
+                                    fontSize: '11px',
+                                    px: 2,
+                                    py: 0.5,
+                                    '&:hover': { bgcolor: '#e0a800' }
+                                  }}
+                                >
+                                  Kontrakt
+                                </Button>
+                              </Box>
+                            </td>
+                          </tr>
+                          
+                          {/* Hansen Familie Portrett */}
+                          <tr style={{ 
+                            backgroundColor: '#fff',
+                            borderBottom: '1px solid #e9ecef',
+                            '&:hover': { backgroundColor: '#f8f9fa' }
+                          }}>
+                            <td style={{ padding: '16px 20px' }}>
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                                <Avatar sx={{ bgcolor: '#4caf50', width: 32, height: 32 }}>
+                                  👨‍👩‍👧‍👦
+                                </Avatar>
+                                <Box>
+                                  <Typography variant="body2" sx={{ fontWeight: 600, color: '#212529', mb: 0.5 }}>
+                                    Hansen Familie Portrett
+                                  </Typography>
+                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                    <Person sx={{ fontSize: 14, color: '#6c757d' }} />
+                                    <Typography variant="caption" sx={{ color: '#6c757d' }}>
+                                      Hansen Familie • 
+                                    </Typography>
+                                    <LocationOn sx={{ fontSize: 14, color: '#6c757d', ml: 0.5 }} />
+                                    <Typography variant="caption" sx={{ color: '#6c757d' }}>
+                                      Frognerparken
+                                    </Typography>
+                                  </Box>
+                                </Box>
+                              </Box>
+                            </td>
+                            <td style={{ padding: '16px 20px' }}>
+                              <Chip 
+                                label="Familie"
+                                size="small"
+                                sx={{ 
+                                  bgcolor: '#4caf50', 
+                                  color: 'white',
+                                  fontWeight: 600,
+                                  fontSize: '12px'
+                                }}
+                              />
+                            </td>
+                            <td style={{ padding: '16px 20px' }}>
+                              <Chip 
+                                label="Fullført"
+                                size="small"
+                                sx={{ 
+                                  bgcolor: '#6c757d', 
+                                  color: 'white',
+                                  fontWeight: 600,
+                                  fontSize: '12px'
+                                }}
+                              />
+                            </td>
+                            <td style={{ padding: '16px 20px' }}>
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                <Flag sx={{ fontSize: 16, color: '#6c757d' }} />
+                                <Typography variant="body2" sx={{ color: '#6c757d', fontWeight: 600 }}>
+                                  Normal
+                                </Typography>
+                              </Box>
+                            </td>
+                            <td style={{ padding: '16px 20px' }}>
+                              <Typography variant="body2" sx={{ fontWeight: 600, color: '#212529' }}>
+                                12,000 NOK
+                              </Typography>
+                            </td>
+                            <td style={{ padding: '16px 20px' }}>
+                              <Typography variant="body2" sx={{ fontWeight: 600, color: '#212529' }}>
+                                30. Sep 2025
+                              </Typography>
+                            </td>
+                            <td style={{ padding: '16px 20px', textAlign: 'center' }}>
+                              <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center' }}>
+                                <Button
+                                  size="small"
+                                  variant="contained"
+                                  startIcon={<Edit />}
+                                  onClick={() => {
+                                    setSelectedProject({ name: 'Hansen Familie Portrett', id: 2 });
+                                    setShowEditProjectModal(true);
+                                  }}
+                                  sx={{ 
+                                    bgcolor: '#007bff',
+                                    color: 'white',
+                                    minWidth: 'auto',
+                                    fontSize: '11px',
+                                    px: 2,
+                                    py: 0.5,
+                                    '&:hover': { bgcolor: '#0056b3' }
+                                  }}
+                                >
+                                  Rediger
+                                </Button>
+                                <Button
+                                  size="small"
+                                  variant="contained"
+                                  startIcon={<Visibility />}
+                                  onClick={() => {
+                                    setSelectedProject({ name: 'Hansen Familie Portrett', id: 2 });
+                                    setShowProjectDetailsModal(true);
+                                  }}
+                                  sx={{ 
+                                    bgcolor: '#28a745',
+                                    color: 'white',
+                                    minWidth: 'auto',
+                                    fontSize: '11px',
+                                    px: 2,
+                                    py: 0.5,
+                                    '&:hover': { bgcolor: '#1e7e34' }
+                                  }}
+                                >
+                                  Detaljer
+                                </Button>
+                                <Button
+                                  size="small"
+                                  variant="contained"
+                                  startIcon={<Assignment />}
+                                  sx={{ 
+                                    bgcolor: '#ffc107',
+                                    color: '#212529',
+                                    minWidth: 'auto',
+                                    fontSize: '11px',
+                                    px: 2,
+                                    py: 0.5,
+                                    '&:hover': { bgcolor: '#e0a800' }
+                                  }}
+                                >
+                                  Kontrakt
+                                </Button>
+                              </Box>
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </Box>
+                  </Paper>
+
+                  {/* Administrative Project Control Tools */}
+                  <Paper sx={{ 
+                    background: 'linear-gradient(135deg, rgba(33, 150, 243, 0.05), rgba(33, 150, 243, 0.02))',
+                    border: '1px solid rgba(33, 150, 243, 0.1)',
+                    p: 3, 
+                    mb: 4 
+                  }}>
+                    <Typography variant="h6" sx={{ fontWeight: 600, color: '#2196f3', mb: 2 }}>
+                      🔧 Administrative Verktøy
+                    </Typography>
+                    <Box sx={{ display: 'flex', gap: 2, mb: 3, flexWrap: 'wrap' }}>
+                      <Button
+                        variant="contained"
+                        startIcon={<Add />}
+                        onClick={() => setShowProjectModal(true)}
+                        sx={{ 
+                          background: 'linear-gradient(135deg, #4caf50, #66bb6a)',
+                          color: 'white',
+                          fontWeight: 600,
+                          '&:hover': { 
+                            background: 'linear-gradient(135deg, #388e3c, #4caf50)' 
+                          }
+                        }}
+                      >
+                        Opprett Nytt Prosjekt
+                      </Button>
+                      <Button
+                        variant="outlined"
+                        startIcon={<FilterList />}
+                        sx={{ 
+                          borderColor: '#2196f3', 
+                          color: '#2196f3',
+                          '&:hover': { bgcolor: 'rgba(33, 150, 243, 0.1)' }
+                        }}
+                      >
+                        Avansert Filtrering
+                      </Button>
+                      <Button
+                        variant="outlined" 
+                        startIcon={<Search />}
+                        sx={{ 
+                          borderColor: '#4caf50', 
+                          color: '#4caf50',
+                          '&:hover': { bgcolor: 'rgba(76, 175, 80, 0.1)' }
+                        }}
+                      >
+                        Global Prosjektsøk
+                      </Button>
+                      <Button
+                        variant="outlined"
+                        startIcon={<Archive />}
+                        sx={{ 
+                          borderColor: '#ff9800', 
+                          color: '#ff9800',
+                          '&:hover': { bgcolor: 'rgba(255, 152, 0, 0.1)' }
+                        }}
+                      >
+                        Massearkivering
+                      </Button>
+                      <Button
+                        variant="outlined"
+                        startIcon={<Assessment />}
+                        sx={{ 
+                          borderColor: '#9c27b0', 
+                          color: '#9c27b0',
+                          '&:hover': { bgcolor: 'rgba(156, 39, 176, 0.1)' }
+                        }}
+                      >
+                        Prosjektrapporter
+                      </Button>
+                      <Button
+                        variant="outlined"
+                        startIcon={<Edit />}
+                        sx={{ 
+                          borderColor: '#f44336', 
+                          color: '#f44336',
+                          '&:hover': { bgcolor: 'rgba(244, 67, 54, 0.1)' }
+                        }}
+                      >
+                        Masseediting
+                      </Button>
+                    </Box>
+                    
+                    <Typography variant="body2" color="textSecondary" sx={{ fontStyle: 'italic' }}>
+                      📋 All prosjektediting inkluderer: grunnleggende detaljer, fotograferingspunkter, deltakeradministrasjon, og avanserte funksjoner
+                    </Typography>
+                  </Paper>
+                </>
+              )}
+
+              {projectAdminTabValue === 2 && (
+                <Box sx={{ textAlign: 'center', py: 6 }}>
+                  <CalendarToday sx={{ fontSize: 64, color: '#ff8c00', mb: 2 }} />
+                  <Typography variant="h5" sx={{ fontWeight: 600, color: '#ff8c00', mb: 2 }}>
+                    Kalender
+                  </Typography>
+                  <Typography variant="body2" color="textSecondary">
+                    Kalenderintegrasjon kommer snart
+                  </Typography>
+                </Box>
+              )}
+
+              {projectAdminTabValue === 3 && (
+                <Box sx={{ textAlign: 'center', py: 6 }}>
+                  <Assessment sx={{ fontSize: 64, color: '#ff8c00', mb: 2 }} />
+                  <Typography variant="h5" sx={{ fontWeight: 600, color: '#ff8c00', mb: 2 }}>
+                    Rapporter
+                  </Typography>
+                  <Typography variant="body2" color="textSecondary">
+                    Prosjektrapporter kommer snart
+                  </Typography>
+                </Box>
+              )}
+            </Box>
+          )}
+
+          {/* Business & Kontrakter */}
+          {tabValue === 3 && (
+            <Box>
+              <ContractManagementWithScanner />
+            </Box>
+          )}
+
+          {/* Kreativ Studio */}
+          {tabValue === 4 && (
+            <Box>
+              <Paper sx={{ p: 3, mb: 4 }}>
+                <Typography variant="h6" sx={{ fontWeight: 600, color: '#ff8c00', mb: 2 }}>
+                  🎨 Kreativ Studio
+                </Typography>
+                <Typography variant="body2" color="textSecondary">
+                  Kreative verktøy og studio kommer snart
+                </Typography>
+              </Paper>
+            </Box>
+          )}
+
+          {/* Utstyr & Ressurser */}
+          {tabValue === 5 && (
+            <Box>
+              <Paper sx={{ p: 3, mb: 4 }}>
+                <Typography variant="h6" sx={{ fontWeight: 600, color: '#ff8c00', mb: 2 }}>
+                  📷 Utstyr & Ressurser
+                </Typography>
+                <Typography variant="body2" color="textSecondary">
+                  Utstyrshåndtering kommer snart
+                </Typography>
+              </Paper>
+            </Box>
+          )}
+
+          {/* Markedsføring & Salg */}
+          {tabValue === 6 && (
+            <Box>
+              <Paper sx={{ p: 3, mb: 4 }}>
+                <Typography variant="h6" sx={{ fontWeight: 600, color: '#ff8c00', mb: 2 }}>
+                  📈 Markedsføring & Salg
+                </Typography>
+                <Typography variant="body2" color="textSecondary">
+                  Markedsføringsverktøy kommer snart
+                </Typography>
+              </Paper>
+            </Box>
+          )}
+
+          {/* Rapporter & Analyse */}
+          {tabValue === 7 && (
+            <Box>
+              <Paper sx={{ p: 3, mb: 4 }}>
+                <Typography variant="h6" sx={{ fontWeight: 600, color: '#ff8c00', mb: 2 }}>
+                  📊 Rapporter & Analyse
+                </Typography>
+                <Typography variant="body2" color="textSecondary">
+                  Rapporter og analyse kommer snart
+                </Typography>
+              </Paper>
+            </Box>
+          )}
+
+          {/* Systeminnstillinger */}
+          {tabValue === 8 && (
+            <Box>
+              <SettingsDashboard userType="photographer" />
+            </Box>
+          )}
+        </Box>
+      </Paper>
+
+      {/* Project Creation Dialog */}
+      <Dialog 
+        open={showProjectModal} 
+        onClose={() => setShowProjectModal(false)}
+        maxWidth="md"
+        fullWidth>
+        <DialogTitle>
+          <Typography variant="h6" sx={{ color: '#ff8c00', fontWeight: 600 }}>
+            Nytt Prosjekt
+          </Typography>
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ mt: 2 }}>
+            <TextField
+              fullWidth
+              label="Prosjektnavn"
+              margin="normal"
+              value={comprehensiveProjectForm.name}
+              onChange={(e) => setComprehensiveProjectForm(prev => ({
+                ...prev,
+                name: e.target.value
+              }))}
+            />
+            <TextField
+              fullWidth
+              label="Klientnavn"
+              margin="normal"
+              value={comprehensiveProjectForm.clientName}
+              onChange={(e) => setComprehensiveProjectForm(prev => ({
+                ...prev,
+                clientName: e.target.value
+              }))}
+            />
+            <TextField
+              fullWidth
+              type="date"
+              label="Ønsket dato"
+              margin="normal"
+              value={comprehensiveProjectForm.eventDate}
+              onChange={(e) => setComprehensiveProjectForm(prev => ({
+                ...prev,
+                eventDate: e.target.value
+              }))}
+              InputLabelProps={{ shrink: true }}
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowProjectModal(false)}>
+            Avbryt
+          </Button>
+          <Button 
+            variant="contained"
+            onClick={() => {
+              console.log('Creating project:', comprehensiveProjectForm);
+              setShowProjectModal(false);
+            }}
+            sx={{ bgcolor: '#ff8c00' }}
+          >
+            Opprett Prosjekt
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Floating Speed Dial for Quick Actions - Positioned to avoid overlaps */}
+      <SpeedDial
+        ariaLabel="Hurtighandlinger"
+        sx={{ 
+          position: 'fixed', 
+          bottom: 100, 
+          right: 24,
+          zIndex: 1300
+        }}
+        icon={<SpeedDialIcon />}
+        FabProps={{
+          sx: {
+            bgcolor: '#ff8c00',
+            '&:hover': { bgcolor: '#e67e00' },
+            width: 56,
+            height: 56
+          }
+        }}
+      >
+        <SpeedDialAction
+          icon={<Add />}
+          tooltipTitle="Nytt Prosjekt"
+          onClick={() => setShowProjectModal(true)}
+          FabProps={{
+            sx: {
+              bgcolor: '#ff8c00',
+              '&:hover': { bgcolor: '#e67e00' }
+            }
+          }}
+        />
+        <SpeedDialAction
+          icon={<CalendarToday />}
+          tooltipTitle="Kalender"
+          FabProps={{
+            sx: {
+              bgcolor: '#4caf50',
+              '&:hover': { bgcolor: '#45a049' }
+            }
+          }}
+        />
+        <SpeedDialAction
+          icon={<PhotoCamera />}
+          tooltipTitle="Fotostudio"
+          FabProps={{
+            sx: {
+              bgcolor: '#2196f3',
+              '&:hover': { bgcolor: '#1976d2' }
+            }
+          }}
+        />
+        <SpeedDialAction
+          icon={<Assessment />}
+          tooltipTitle="Rapporter"
+          FabProps={{
+            sx: {
+              bgcolor: '#9c27b0',
+              '&:hover': { bgcolor: '#7b1fa2' }
+            }
+          }}
+        />
+      </SpeedDial>
+
+      {/* Project Edit Modal */}
+      <Dialog 
+        open={showEditProjectModal} 
+        onClose={() => setShowEditProjectModal(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Edit sx={{ color: '#007bff' }} />
+            <Typography variant="h6" sx={{ fontWeight: 600, color: '#007bff' }}>
+              Rediger Prosjekt: {selectedProject?.name}
+            </Typography>
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ pt: 2 }}>
+            <Grid container spacing={3}>
+              <Grid item xs={12} md={6}>
+                <TextField
+                  fullWidth
+                  label="Prosjektnavn"
+                  defaultValue={selectedProject?.name}
+                  variant="outlined"
+                />
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <TextField
+                  fullWidth
+                  label="Dato"
+                  type="date"
+                  InputLabelProps={{ shrink: true }}
+                  variant="outlined"
+                />
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <TextField
+                  fullWidth
+                  label="Lokasjon"
+                  variant="outlined"
+                />
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <TextField
+                  fullWidth
+                  label="Budsjett (NOK)"
+                  variant="outlined"
+                />
+              </Grid>
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  multiline
+                  rows={3}
+                  label="Beskrivelse"
+                  variant="outlined"
+                />
+              </Grid>
+            </Grid>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowEditProjectModal(false)}>
+            Avbryt
+          </Button>
+          <Button 
+            variant="contained" 
+            sx={{ bgcolor: '#007bff', '&:hover': { bgcolor: '#0056b3' } }}
+            onClick={() => {
+              console.log('Prosjekt oppdatert');
+              setShowEditProjectModal(false);
+            }}
+          >
+            Lagre Endringer
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Project Details Modal */}
+      <Dialog 
+        open={showProjectDetailsModal} 
+        onClose={() => setShowProjectDetailsModal(false)}
+        maxWidth="lg"
+        fullWidth
+      >
+        <DialogTitle>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Visibility sx={{ color: '#28a745' }} />
+            <Typography variant="h6" sx={{ fontWeight: 600, color: '#28a745' }}>
+              Prosjektdetaljer: {selectedProject?.name}
+            </Typography>
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ pt: 2 }}>
+            <Grid container spacing={3}>
+              <Grid item xs={12} md={8}>
+                <Paper sx={{ p: 3, mb: 3 }}>
+                  <Typography variant="h6" sx={{ mb: 2, color: '#212529' }}>
+                    📋 Prosjektinformasjon
+                  </Typography>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <Typography variant="body2" color="textSecondary">Status:</Typography>
+                      <Chip label="Aktiv" size="small" color="success" />
+                    </Box>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <Typography variant="body2" color="textSecondary">Prioritet:</Typography>
+                      <Chip label="Høy" size="small" color="error" />
+                    </Box>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <Typography variant="body2" color="textSecondary">Budsjett:</Typography>
+                      <Typography variant="body2" sx={{ fontWeight: 600 }}>45,000 NOK</Typography>
+                    </Box>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <Typography variant="body2" color="textSecondary">Frist:</Typography>
+                      <Typography variant="body2" sx={{ fontWeight: 600 }}>15. Sep 2025</Typography>
+                    </Box>
+                  </Box>
+                </Paper>
+                
+                <Paper sx={{ p: 3 }}>
+                  <Typography variant="h6" sx={{ mb: 2, color: '#212529' }}>
+                    📸 Prosjektfremdrift
+                  </Typography>
+                  <Box sx={{ mb: 2 }}>
+                    <Typography variant="body2" color="textSecondary" sx={{ mb: 1 }}>
+                      Totalt fremgang: 65%
+                    </Typography>
+                    <Box sx={{ 
+                      width: '100%', 
+                      height: 8, 
+                      bgcolor: '#e9ecef', 
+                      borderRadius: 1,
+                      overflow: 'hidden'
+                    }}>
+                      <Box sx={{ 
+                        width: '65%', 
+                        height: '100%', 
+                        bgcolor: '#28a745',
+                        borderRadius: 1
+                      }} />
+                    </Box>
+                  </Box>
+                </Paper>
+              </Grid>
+              
+              <Grid item xs={12} md={4}>
+                <Paper sx={{ p: 3 }}>
+                  <Typography variant="h6" sx={{ mb: 2, color: '#212529' }}>
+                    👥 Klientinformasjon
+                  </Typography>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <Box>
+                      <Typography variant="body2" color="textSecondary">Navn:</Typography>
+                      <Typography variant="body2" sx={{ fontWeight: 600 }}>Emma Andersen</Typography>
+                    </Box>
+                    <Box>
+                      <Typography variant="body2" color="textSecondary">E-post:</Typography>
+                      <Typography variant="body2" sx={{ fontWeight: 600 }}>emma@example.com</Typography>
+                    </Box>
+                    <Box>
+                      <Typography variant="body2" color="textSecondary">Telefon:</Typography>
+                      <Typography variant="body2" sx={{ fontWeight: 600 }}>+47 123 45 678</Typography>
+                    </Box>
+                    <Box>
+                      <Typography variant="body2" color="textSecondary">Lokasjon:</Typography>
+                      <Typography variant="body2" sx={{ fontWeight: 600 }}>Stavanger Domkirke</Typography>
+                    </Box>
+                  </Box>
+                </Paper>
+              </Grid>
+            </Grid>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowProjectDetailsModal(false)}>
+            Lukk
+          </Button>
+          <Button 
+            variant="contained" 
+            startIcon={<Edit />}
+            sx={{ bgcolor: '#007bff', '&:hover': { bgcolor: '#0056b3' } }}
+            onClick={() => {
+              setShowProjectDetailsModal(false);
+              setShowEditProjectModal(true);
+            }}
+          >
+            Rediger Prosjekt
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Container>
+  );
+}

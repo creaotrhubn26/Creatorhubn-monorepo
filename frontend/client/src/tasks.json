@@ -1,0 +1,17 @@
+[
+  {
+    "id": "fix-wedding-timeline-syntax",
+    "content": "Fix syntax errors in wedding timeline components",
+    "status": "in_progress"
+  },
+  {
+    "id": "test-wedding-timeline",
+    "content": "Test wedding timeline functionality",
+    "status": "pending"
+  },
+  {
+    "id": "verify-imports",
+    "content": "Verify all imports are working correctly",
+    "status": "pending"
+  }
+]

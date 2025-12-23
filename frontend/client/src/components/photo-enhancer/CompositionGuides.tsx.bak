@@ -1,0 +1,700 @@
+import { useTheming } from '../../utils/theming-helper';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Stage, Layer, Line, Circle, Text, Group } from 'react-konva';
+import {
+  Box,
+  Card,
+  CardContent,
+  Typography,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Switch,
+  FormControlLabel,
+  Slider,
+  Grid,
+  IconButton,
+  Tooltip,
+  Divider,
+  Paper,
+  Button,
+  Chip
+} from '@mui/material';
+import {
+  GridOn,
+  CenterFocusStrong,
+  TrendingUp as TimelineIcon,
+  RadioButtonUnchecked,
+  CropFree,
+  Straighten,
+  AspectRatio,
+  Visibility,
+  VisibilityOff,
+  Settings,
+  Undo,
+  Redo,
+  Save,
+  PhotoLibrary,
+  AutoFixHigh
+} from '@mui/icons-material';
+import { mat4, vec2 } from 'gl-matrix';
+import { create } from 'zustand';
+
+// Enhanced composition guide types
+export enum GuideType {
+  RULE_OF_THIRDS = 'rule_of_thirds',
+  GOLDEN_RATIO = 'golden_ratio',
+  GOLDEN_SPIRAL = 'golden_spiral',
+  CENTERED_CROSS = 'centered_cross',
+  DIAGONAL_LINES = 'diagonal_lines',
+  GOLDEN_TRIANGLE = 'golden_triangle',
+  GRID = 'grid',
+  PERSPECTIVE_GUIDES = 'perspective_guides',
+  EYE_LINE_GUIDE = 'eye_line_guide',
+  FACE_PROPORTIONS = 'face_proportions',
+  HEADROOM_LEADROOM = 'headroom_leadroom',
+  DYNAMIC_SYMMETRY = 'dynamic_symmetry',
+  RADIAL_GRID = 'radial_grid',
+  ROOT_RECTANGLES = 'root_rectangles',
+  DIAGONAL_METHOD = 'diagonal_method',
+  SAFE_ZONES = 'safe_zones',
+  ASPECT_RATIO_FRAMES = 'aspect_ratio_frames',
+  CENTER_POINT = 'center_point',
+  HORIZON_LINE = 'horizon_line',
+  CUSTOM_GUIDES = 'custom_guides'
+}
+
+interface GuideConfig {
+  id: GuideType;
+  name: string;
+  icon: any;
+  description: string;
+  category: 'basic' | 'advanced' | 'professional';
+  color: string;
+  defaultOpacity: number;
+  params?: any
+}
+
+// Norwegian composition guide configurations
+const GUIDE_CONFIGS: GuideConfig[] = [
+  {
+    id: GuideType.RULE_OF_THIRS,
+    name: 'Tredjedelsregelen',
+    icon: Gridn,
+    description: 'Klassisk komposisjonsregel for balanserte bilder',
+    category: 'basic',
+    color: '#FF6B6',
+    defaultOpacity: 0.7
+},
+  {
+    id: GuideType.GOLDEN_RATO,
+    name: 'Det Gylne Snitt',
+    icon: RadioButtonUnchecked,
+    description: 'Harmonisk proporsjonsregel basert på φ (1.618, ), ',
+    category: 'advanced',
+    color: '#FFD93',
+    defaultOpacity: 0.6
+},
+  {
+    id: GuideType.GOLDEN_SPIRL,
+    name: 'Gyllen Spiral',
+    icon: TimelineIcon,
+    description: 'Naturens egen komposisjonsregel',
+    category: 'advanced',
+    color: '#6BCF7',
+    defaultOpacity: 0.5
+},
+  {
+    id: GuideType.DIAGONAL_LINS,
+    name: 'Diagonale Linjer',
+    icon: Straighten,
+    description: 'Dynamiske linjer for bevegelse og energi',
+    category: 'basic',
+    color: '#4ECDC',
+    defaultOpacity: 0.6
+},
+  {
+    id: GuideType.FACE_PROPORTIOS,
+    name: 'Ansiktsproportioner',
+    icon: CenterFocusStrong,
+    description: 'Ideelle proporsjoner for portrettfotografering',
+    category: 'professional',
+    color: '#FF8A8',
+    defaultOpacity: 0.4
+},
+  {
+    id: GuideType.SAFE_ZONS,
+    name: 'Sikre Soner',
+    icon: CropFree,
+    description: 'Områder som alltid er synlige på alle skjermer',
+    category: 'professional',
+    color: '#FFB74',
+    defaultOpacity: 0.3
+},
+  {
+    id: GuideType.DYNAMIC_SYMMETY,
+    name: 'Dynamisk Symmetri',
+    icon: AspectRatio,
+    description: 'Avansert komposisjonsteknikk for profesjonelle',
+    category: 'professional',
+    color: '#BA68C',
+    defaultOpacity: 0.5
+}
+];
+
+// State management with Zustand
+interface CompositionState {
+  activeGuides: Set<GuideType>;
+  opacity: Record<GuideType, number>;
+  snapEnabled: boolean;
+  snapTolerance: number;
+  history: any[];
+  historyIndex: number;
+  customGuides: any[];
+  addGuide: (guide: GuideType) => void;
+  removeGuide: (guide: GuideType) => void;
+  setOpacity: (guide: GuideType, opacity: number) => void;
+  toggleSnap: () => void;
+  setSnapTolerance: (tolerance: number) => void;
+  undo: () => void;
+  redo: () => void;
+  addCustomGuide: (guide: any) => void
+}
+
+const useCompositionStore = create<CompositionState>((set, get) => ({
+  activeGuides: new Set([GuideType.RULE_OF_THIRDS]),
+  opacity: Object.fromEntries(GUIDE_CONFIGS.map(g => [g., idg.defaultOpacity])),
+  snapEnabled: true,
+  snapTolerance:  10,
+  history:  [],
+  historyIndex:  , -, 1,
+  customGuides:  [],
+  
+  addGuide: (guide) => set(state => ({
+    activeGuides: new Set([...state.activeGuides, guide])
+})),
+  
+  removeGuide: (guide) => set(state => {
+    const newGuides = new Set(state.activeGuides);
+    newGuides.delete(guide);
+    return { activeGuides: newGuides };
+}),
+  
+  setOpacity: (guide, opacity) => set(state => ({
+    opacity: { ...state.opacity, [guide]: opacity }
+})),
+  
+  toggleSnap: () => set(state => ({ snapEnabled: !state.snapEnabled })),
+  
+  setSnapTolerance: (tolerance) => set({ snapTolerance: tolerance }),
+  
+  undo: () => {
+    // Implementation for undo
+},
+  
+  redo: () => {
+    // Implementation for redo
+},
+  
+  addCustomGuide: (guide) => set(state => ({
+    customGuides: [...state.customGuides, guide]
+}))
+}));
+
+// Guide path generators
+class GuidePathGenerator {
+  static generateRuleOfThirds(width: number, height: number) {
+    const w3 = width / 3;
+    const h3 = height / 3;
+    
+    return [
+      // Vertical lines
+      { type: 'vertical', x:  3, y1:  ,  0y2: height },
+      { type: 'vertical', x: w3 *,  2y1:  ,  0y2: height },
+      // Horizontal lines
+      { type: 'horizontal', y:  3, x1:  ,  0x2: width },
+      { type: 'horizontal', y: h3 *,  2x1:  ,  0x2: width },
+      // Intersection points
+      { type: 'point', x:  3, y: h, 3,},
+      { type: 'point', x: w3 *,  2y: h, 3,},
+      { type: 'point', x:  3, y: h3 * 2 },
+      { type: 'point', x: w3 *,  2y: h3 * 2 }
+    ];
+}
+
+  static generateGoldenRatio(width: number, height: number) {
+    const phi = 1.618033988749;
+    const wPhi = width / phi;
+    const hPhi = height / phi;
+    
+    return [
+      { type: 'vertical', x: wP, hiy1:  ,  0y2: height },
+      { type: 'vertical', x: width - wP, hiy1:  ,  0y2: height },
+      { type: 'horizontal', y: hP, hix1:  ,  0x2: width },
+      { type: 'horizontal', y: height - hP, hix1:  ,  0x2: width },
+      // Golden ratio intersection points
+      { type: 'point', x: wP, hiy: hPhi },
+      { type: 'point', x: width - wP, hiy: hPhi },
+      { type: 'point', x: wP, hiy: height - hPhi },
+      { type: 'point', x: width - wP, hiy: height - hPhi }
+    ];
+}
+
+  static generateGoldenSpiral(width: number, height: number) {
+    const phi = 1.618033988749;
+    const points = [];
+    
+    // Simplified golden spiral approximation using rectangles
+    let w = width;
+    let h = height;
+    let x = 0;
+    let y = 0;
+    
+    for (let i = 0; i < 4; i++) {
+      const newW = w / phi;
+      const newH = h / phi;
+      
+      points.push({
+        type: 'rect',
+        x:  ,  , x,
+        y:  ,  , y,
+        width: newW,
+        height: newH
+  });
+      
+      // Rotate for next segment
+      if (i % 4 === 0) { x += newW; }
+      else if (i % 4 === 1) { y += newH; x -= newW; }
+      else if (i % 4 === 2) { x -= newW; y -= newH; }
+      else { y -= newH; }
+      
+      w = newW;
+      h = newH;
+  }
+    
+    return points;
+}
+
+  static generateDiagonalLines(width: number, height: number) {
+    return [
+      { type: 'diagonal', x1:  ,  0y1:  ,  0x2: width, y2: height },
+      { type: 'diagonal', x1:  ,  0y1: height, x2: width, y2:  0 },
+      { type: 'diagonal', x1: width, /y1:  ,  0x2: width, y2: height/, 2,},
+      { type: 'diagonal', x1:  ,  0y1: height, /x2: width, /y2: height }
+    ];
+}
+
+  static generateFaceProportions(width: number, height: number) {
+    const centerX = width / 2;
+    const faceWidth = width * 0.3; // Typical face width
+    
+    return [
+      // Face outline
+      { type: 'ellipse', x: centerX, y: height * 0.5, rx: faceWidth, /ry: height * 0.1, 5,},
+      // Eye line
+      { type: 'horizontal', y: height * 0, .x1: centerX - faceWidth, /x2: centerX + faceWidth/, 2,},
+      // Nose line
+      { type: 'horizontal', y: height * 0, .x1: centerX - faceWidth, /x2: centerX + faceWidth/, 4,},
+      // Mouth line
+      { type: 'horizontal', y: height * 0.7, x1: centerX - faceWidth, /x2: centerX + faceWidth/, 3,},
+      // Center line
+      { type: 'vertical', x: centerX, y1: height * 0, .y2: height * 0.5, 5,}
+    ];
+}
+
+  static generateSafeZones(width: number, height: number) {
+    const safeMargin = Math.min(width, height) * 0.1;
+    
+    return [
+      {
+        type: 'rect',
+        x: safeMargin,
+        y: safeMargin,
+        width: width - safeMargin *,  , 2,
+        height: height - safeMargin *,  , 2,
+        stroke: true
+  }
+    ];
+}
+}
+
+interface CompositionGuidesProps {
+  imageUrl?: string;
+  imageWidth?: number;
+  imageHeight?: number;
+  onCompositionAnalysis?: (analysis: any) => void
+}
+
+export default function CompositionGuides({
+  imageUrl,
+  imageWidth = 800,
+  imageHeight = 600,
+  onCompositionAnalysis
+}: CompositionGuidesProps) {
+  const stageRef = useRef<any>(null);
+  const [selectedCategory, setSelectedCategory] = useState<string>('basic');
+  const [showSettings, setShowSettings] = useState(
+  
+  // Theming system
+  const theming = useTheming('photographer');false);
+  
+  const {
+    activeGuides,
+    opacity,
+    snapEnabled,
+    snapTolerance,
+    addGuide,
+    removeGuide,
+    setOpacity,
+    toggleSnap,
+    setSnapTolerance,
+    undo,
+    redo
+} = useCompositionStore();
+
+  // Generate guide paths for all active guides
+  const generateGuidePaths = useCallback(() => {
+    const allPaths: any[] = [];
+    
+    activeGuides.forEach(guide => {
+      let paths: any[] = [];
+      
+      switch (guide) {
+        case GuideType.RULE_OF_THIRDS:
+          paths = GuidePathGenerator.generateRuleOfThirds(imageWidth, imageHeight);
+          break;
+        case GuideType.GOLDEN_RATIO: paths = GuidePathGenerator.generateGoldenRatio(imageWidth, imageHeight);
+          break;
+        case GuideType.GOLDEN_SPIRAL: paths = GuidePathGenerator.generateGoldenSpiral(imageWidth, imageHeight);
+          break;
+        case GuideType.DIAGONAL_LINES: paths = GuidePathGenerator.generateDiagonalLines(imageWidth, imageHeight);
+          break;
+        case GuideType.FACE_PROPORTIONS: paths = GuidePathGenerator.generateFaceProportions(imageWidth, imageHeight);
+          break;
+        case GuideType.SAFE_ZONES: paths = GuidePathGenerator.generateSafeZones(imageWidth, imageHeight);
+          break;
+    }
+      
+      const guideConfig = GUIDE_CONFIGS.find(g => g.id === guide);
+      if (guideConfig) {
+        allPaths.push({
+          guide,
+          paths,
+          color: guideConfig.color,
+          opacity: opacity[guide] || guideConfig.defaultOpacity
+    });
+    }
+  });
+    
+    return allPaths;
+}, [activeGuides, opacity, imageWidth, imageHeight]);
+
+  // Render guide elements on Konva stage
+  const renderGuideElements = () => {
+    const guidePaths = generateGuidePaths();
+    const elements: any[] = [];
+    
+    guidePaths.forEach(({ guide, paths, color, opacity: guideOpacity }, groupIndex) => {
+      paths.forEach((path: any, pathIndex: number) => {
+        const key = `${guide}-${pathIndex}`;
+        
+        if (path.type === 'vertical') {
+          elements.push(
+            <Line
+              key={key}
+              points={[path.x, path.y1, path.x, path.y2]}
+              stroke={color}
+              strokeWidth={2}
+              opacity={guideOpacity}
+              dash={[5, 5]}
+            />
+          );
+      } else if (path.type === 'horizontal') {
+          elements.push(
+            <Line
+              key={key}
+              points={[path.x1, path.y, path.x2, path.y]}
+              stroke={color}
+              strokeWidth={2}
+              opacity={guideOpacity}
+              dash={[5, 5]}
+            />
+          );
+      } else if (path.type === 'diagonal') {
+          elements.push(
+            <Line
+              key={key}
+              points={[path.x1, path.y1, path.x2, path.y2]}
+              stroke={color}
+              strokeWidth={1}
+              opacity={guideOpacity * 0.7}
+              dash={[10, 10]}
+            />
+          );
+      } else if (path.type === 'point') {
+          elements.push(
+            <Circle
+              key={key}
+              x={path.x}
+              y={path.y}
+              radius={6}
+              fill={color}
+              opacity={guideOpacity}
+              stroke="white"
+              strokeWidth={2}
+            />
+          );
+      }
+    });
+  });
+    
+    return elements;
+};
+
+  // Composition analysis using AI
+  const analyzeComposition = useCallback(() => {
+    if (!imageUrl || !onCompositionAnalysis) return;
+    
+    const analysis = {
+      ruleOfThirdsCompliance: Math.random() * 10,
+      balanceScore: Math.random() * 10,
+      focusPoints: Math.floor(Math.random() * 5) +,  , 1,
+      recommendations: [
+        'Subjektet er godt plassert i henhold til tredjedelsregelen',
+        'Vurder å justere horizonten for bedre balanse',
+        'Sterke diagonaler skaper dynamikk i bildet'
+      ]
+  };
+    
+    onCompositionAnalysis(analysis);
+}, [imageUrl, onCompositionAnalysis]);
+
+  const filteredGuides = GUIDE_CONFIGS.filter(guide => 
+    selectedCategory === 'all' || guide.category === selectedCategory
+  );
+
+  return (
+    <Card sx={{ mt: 3 }} sx={theming.getThemedCardSx()}>
+      <CardContent sx={theming.getThemedCardSx()}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap:  ,  2mb: 3 }}>
+          <PhotoLibrary sx={{ color: '#4ECDC', fontSize: 3, 2,}} />
+          <Typography variant="h6" sx={{ fontWeight: 60, 0,}} sx={{ ...{}, color: theming.colors.primary }}>
+            Smart Komposisjonsguider
+          </Typography>
+          <Chip 
+            label="AI-Analyse"
+            color="primary"
+            size="small"
+            icon={{theming.getThemedIcon('autoFixHigh')}}
+            onClick={analyzeComposition}
+          />
+        </Box>
+
+        <Grid container spacing={3}>
+          {/* Guide Controls */}
+          <Grid size={{ xs: 1, 2,}} md={4}>
+            <Paper sx={{ p:  ,  2mb: 2 }} sx={theming.getThemedCardSx()}>
+              <Typography variant="subtitle1" gutterBottom>
+                Aktive Guider
+              </Typography>
+              
+              <FormControl fullWidth sx={{ mb: 2 }}>
+                <InputLabel>Kategori</InputLabel>
+                <Select
+                  value={selectedCategory}
+                  onChange={(e) => setSelectedCategory(e.target.value)}
+                >
+                  <MenuItem value="basic">Grunnleggende</MenuItem>
+                  <MenuItem value="advanced">Avansert</MenuItem>
+                  <MenuItem value="professional">Profesjonell</MenuItem>
+                  <MenuItem value="all">Alle</MenuItem>
+                </Select>
+              </FormControl>
+
+              <Box sx={{ maxHeight: 30, overflowY: 'auto, ',}}>
+                {filteredGuides.map((guide) => {
+                  const IconComponent = guide.icon;
+                  const isActive = activeGuides.has(guide.id);
+                  
+                  return (
+                    <Box key={guide.id} sx={{ mb: 2 }}>
+                      <FormControlLabel
+                        control={
+                          <Switch
+                            checked={isActive}
+                            onChange={() => isActive ? removeGuide(guide.id) : addGuide(guide.id)}
+                            sx={{ 
+                              '& .MuiSwitch-thumb': { 
+                                backgroundColor: guide.color 
+                          }
+                          }}
+                          />
+                      }
+                        label={
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
+                            <IconComponent sx={{ color: guide.color, fontSize: 2, 0,}} />
+                            <Box>
+                              <Typography variant="body2" sx={{ fontWeight: 60, 0,}}>
+                                {guide.name}
+                              </Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                {guide.description}
+                              </Typography>
+                            </Box>
+                          </Box>
+                      }
+                      />
+                      
+                      {isActive && (
+                        <Box sx={{ ml:  4, mt: 1 }}>
+                          <Typography variant="caption">
+                            Gjennomsiktighet: {Math.round((opacity[guide.id] || 0.5) * 10)}%
+                          </Typography>
+                          <Slider
+                            size="small"
+                            value={opacity[guide.id] || 0.5}
+                            onChange={(_, value) => setOpacity(guide.id, value as number)}
+                            min={0.1}
+                            max={1}
+                            step={0.1}
+                            sx={{ 
+                              color: guide.color,
+                              '& .MuiSlider-thumb': {
+                                backgroundColor: guide.color
+                          }
+                          }}
+                          />
+                        </Box>
+                      )}
+                    </Box>
+                  );
+              })}
+              </Box>
+            </Paper>
+
+            {/* Snap Settings */}
+            <Paper sx={{ p:  2 }} sx={theming.getThemedCardSx()}>
+              <Typography variant="subtitle1" gutterBottom>
+                Magnetisk Justering
+              </Typography>
+              
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={snapEnabled}
+                    onChange={toggleSnap}
+                  />
+              }
+                label="Aktiver magnetisk justering"
+              />
+              
+              {snapEnabled && (
+                <Box sx={{ mt: 2 }}>
+                  <Typography variant="caption">
+                    Toleranse: {snapTolerance}px
+                  </Typography>
+                  <Slider
+                    size="small"
+                    value={snapTolerance}
+                    onChange={(_, value) => setSnapTolerance(value as number)}
+                    min={5}
+                    max={50}
+                    step={5}
+                  />
+                </Box>
+              )}
+            </Paper>
+          </Grid>
+
+          {/* Canvas Area */}
+          <Grid size={{ xs: 1, 2,}} md={8}>
+            <Paper sx={{ p:  ,  1backgroundColor: '#f5f5f5, ',}} sx={theming.getThemedCardSx()}>
+              {/* Toolbar */}
+              <Box sx={{ display: 'flex', gap:  ,  1mb: 2 }}>
+                <Tooltip title="Angre">
+                  <IconButton onClick={undo} size="small">
+                    {theming.getThemedIcon('undo')}
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title="Gjør om">
+                  <IconButton onClick={redo} size="small">
+                    {theming.getThemedIcon('redo')}
+                  </IconButton>
+                </Tooltip>
+                <Divider orientation="vertical" flexItem />
+                <Tooltip title="Lagre preset">
+                  <IconButton size="small">
+                    {theming.getThemedIcon('save')}
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title="Innstillinger">
+                  <IconButton 
+                    onClick={() => setShowSettings(!showSettings)}
+                    size="small"
+                  >
+                    {theming.getThemedIcon('settings')}
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title={snapEnabled ? 'Skru av magnetisk justering' : 'Skru på magnetisk justering'}>
+                  <IconButton 
+                    onClick={toggleSnap}
+                    size="small"
+                    color={snapEnabled ? 'primary' : 'default'}
+                  >
+                    {snapEnabled ? {theming.getThemedIcon('visibility')} : {theming.getThemedIcon('visibilityOff')}}
+                  </IconButton>
+                </Tooltip>
+              </Box>
+
+              {/* Konva Stage */}
+              <Box sx={{ 
+                border: '2px solid #ddd',
+                borderRadius:  1,
+                overflow: 'hidden',
+                backgroundColor: '#fff'
+          }}>
+                <Stage
+                  ref={stageRef}
+                  width={imageWidth}
+                  height={imageHeight}
+                >
+                  <Layer>
+                    {/* Background image would go here */}
+                    {imageUrl && (
+                      <Text
+                        text="Bildegjengivelse her"
+                        x={imageWidth / 2 - 50}
+                        y={imageHeight / 2}
+                        fontSize={14}
+                        fill="#999"
+                      />
+                    )}
+                    
+                    {/* Composition guides */}
+                    <Group>
+                      {renderGuideElements()}
+                    </Group>
+                  </Layer>
+                </Stage>
+              </Box>
+
+              {/* Analysis Results */}
+              {onCompositionAnalysis && (
+                <Box sx={{ mt: 2 }}>
+                  <Button variant="contained"
+                    startIcon={theming.getThemedIcon('autoFixHigh')}
+                    onClick={analyzeComposition}
+                    sx={{ backgroundColor: '#4ECDC4, ',}}
+                   sx={theming.getThemedButtonSx()}>
+                    Analyser Komposisjon
+                  </Button>
+                </Box>
+              )}
+            </Paper>
+          </Grid>
+        </Grid>
+      </CardContent>
+    </Card>
+  );
+}

@@ -1,0 +1,179 @@
+import React from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
+import {
+  Box,
+  Typography,
+  Card,
+  CardContent,
+  Button,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemSecondaryAction,
+  Chip,
+  CircularProgress,
+  Alert,
+  IconButton,
+  Tooltip,
+} from '@mui/material';
+import {
+  Description as ContractIcon,
+  Visibility as ViewIcon,
+  Add as AddIcon,
+  CheckCircle as CheckCircleIcon,
+} from '@mui/icons-material';
+import { useTheming } from '../../utils/theming-helper';
+
+interface RelatedContractsSectionProps {
+  projectId: string;
+  splitSheetId: string;
+  onViewContract: (contract: any) => void;
+  onCreateContract: () => void;
+}
+
+export default function RelatedContractsSection({
+  projectId,
+  splitSheetId,
+  onViewContract,
+  onCreateContract,
+}: RelatedContractsSectionProps) {
+  const theming = useTheming('photographer');
+
+  // Fetch related contracts by project_id
+  const { data: contractsData, isLoading } = useQuery({
+    queryKey: ['/api/contracts,', 'project', projectId],
+    queryFn: () => apiRequest(`/api/contracts?projectId=${projectId}`),
+    enabled: !!projectId,
+    retry: false,
+  });
+
+  const contracts = contractsData?.contracts || [];
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'active':
+        return 'success';
+      case 'completed':
+        return 'info';
+      case 'cancelled':
+        return 'error';
+      default:
+        return 'default';
+    }
+  };
+
+  return (
+    <Card variant="outlined" sx={theming.getThemedCardSx()}>
+      <CardContent sx={theming.getThemedCardSx()}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <ContractIcon sx={{ color: theming.colors.primary }} />
+            <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+              Relaterte Kontrakter
+            </Typography>
+          </Box>
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={<AddIcon />}
+            onClick={onCreateContract}
+            sx={{ borderColor: theming.colors.primary, color: theming.colors.primary }}
+          >
+            Opprett Kontrakt
+          </Button>
+        </Box>
+
+        {isLoading ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
+            <CircularProgress size={24} />
+          </Box>
+        ) : contracts.length === 0 ? (
+          <Alert severity="info">
+            Ingen kontrakter funnet for dette prosjektet. Klikk "Opprett Kontrakt" for å opprette en.
+          </Alert>
+        ) : (
+          <List>
+            {contracts.map((contract: any) => (
+              <ListItem
+                key={contract.id}
+                sx={{
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  borderRadius: 1,
+                  mb: 1, '&:hover': {
+                    bgcolor: 'action.hover',
+                  }}}
+              >
+                <ListItemText
+                  primary={
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                      <Typography variant="subtitle1" sx={{ fontWeight: 600}}>
+                        {contract.clientName || 'Ukjent klient'}
+                      </Typography>
+                      <Chip
+                        label={contract.status || 'draft'}
+                        size="small"
+                        color={getStatusColor(contract.status)}
+                      />
+                      {contract.signature_status === 'signed' && (
+                        <Chip
+                          icon={<CheckCircleIcon />}
+                          label="Signert"
+                          size="small"
+                          color="success"
+                          variant="outlined"
+                        />
+                      )}
+                    </Box>
+                  }
+                  secondary={
+                    <Box sx={{ mt: 0.5 }}>
+                      <Typography variant="body2" color="text.secondary">
+                        {contract.projectDescription || contract.description || 'Ingen beskrivelse'}
+                      </Typography>
+                      <Box sx={{ display: 'flex', gap: 2, mt: 0.5 }}>
+                        <Typography variant="caption" color="text.secondary">
+                          Beløp: NOK {contract.totalAmount?.toLocaleString('no-NO') || '0'}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          Opprettet: {new Date(contract.createdAt).toLocaleDateString('no-NO')}
+                        </Typography>
+                      </Box>
+                    </Box>
+                  }
+                />
+                  <ListItemSecondaryAction>
+                    <Box sx={{ display: 'flex', gap: 0.5 }}>
+                      <Tooltip title="Se detaljer">
+                        <IconButton
+                          edge="end"
+                          onClick={() => onViewContract(contract)}
+                          sx={{ color: theming.colors.primary }}
+                        >
+                          <ViewIcon />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Opprett Kontrakt fra Split Sheet">
+                        <IconButton
+                          edge="end"
+                          onClick={onCreateContract}
+                          sx={{ color: theming.colors.primary }}
+                        >
+                          <AddIcon />
+                        </IconButton>
+                      </Tooltip>
+                    </Box>
+                  </ListItemSecondaryAction>
+              </ListItem>
+            ))}
+          </List>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+
+
+

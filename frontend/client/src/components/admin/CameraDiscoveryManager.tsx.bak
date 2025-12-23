@@ -1,0 +1,421 @@
+/**
+ * Camera Discovery Manager
+ * Admin interface for managing automatic camera discovery
+ */
+
+import { useTheming } from '../../utils/theming-helper';
+import React, { useState, useEffect } from 'react';
+import {
+  Box,
+  Card,
+  CardContent,
+  Typography,
+  Button,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Paper,
+  Chip,
+  Switch,
+  FormControlLabel,
+  Alert,
+  CircularProgress,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemSecondaryAction,
+  IconButton,
+  Divider,
+  Grid,
+  LinearProgress
+} from '@mui/material';
+import {
+  Refresh,
+  Check,
+  Close,
+  Settings,
+  CameraAlt,
+  AutoAwesome,
+  Warning,
+  Info
+} from '@mui/icons-material';
+import { cameraDiscoveryService } from '../../data/camera-discovery-system';
+
+interface CameraDiscoveryManagerProps {
+  onCamerasApproved?: (cameras: any[]) => void;
+}
+
+const CameraDiscoveryManager: React.FC<CameraDiscoveryManagerProps> = ({
+  onCamerasApproved
+}) => {
+  const [discoveredCameras, setDiscoveredCameras] = useState<any[]>([]);
+  const [isDiscovering, setIsDiscovering] = useState(false);
+  const [selectedCameras, setSelectedCameras] = useState<string[]>([]);
+  const [showApprovalDialog, setShowApprovalDialog] = useState(false);
+  const [stats, setStats] = useState<any>(null);
+  const [autoUpdate, setAutoUpdate] = useState(true);
+  
+  // Theming system
+  const theming = useTheming('prototype_tester');
+
+  // Load initial data
+  useEffect(() => {
+    loadDiscoveredCameras();
+    loadStats();
+}, []);
+
+  const loadDiscoveredCameras = () => {
+    const cameras = cameraDiscoveryService.getDiscoveredCameras();
+    setDiscoveredCameras(cameras);
+};
+
+  const loadStats = () => {
+    const discoveryStats = cameraDiscoveryService.getDiscoveryStats();
+    setStats(discoveryStats);
+};
+
+  const handleDiscoverCameras = async () => {
+    setIsDiscovering(true);
+    try {
+      const newCameras = await cameraDiscoveryService.discoverNewCameras();
+      setDiscoveredCameras(newCameras);
+      loadStats();
+  } catch (error) {
+      console.error('Error discovering cameras:', error);
+  } finally {
+      setIsDiscovering(false);
+  }
+};
+
+  const handleCameraSelect = (cameraId: string) => {
+    setSelectedCameras(prev => 
+      prev.includes(cameraId) 
+        ? prev.filter(id => id !== cameraId)
+        : [...prev, cameraId]
+    );
+};
+
+  const handleSelectAll = () => {
+    if (selectedCameras.length === discoveredCameras.length) {
+      setSelectedCameras([]);
+  } else {
+      setSelectedCameras(discoveredCameras.map(c => c.id));
+  }
+};
+
+  const handleApproveSelected = () => {
+    const approvedCameras = cameraDiscoveryService.approveCameras(selectedCameras);
+    setDiscoveredCameras(prev => prev.filter(c => !selectedCameras.includes(c.id)));
+    setSelectedCameras([]);
+    setShowApprovalDialog(false);
+    
+    if (onCamerasApproved) {
+      onCamerasApproved(approvedCameras);
+  }
+};
+
+  const handleRejectSelected = () => {
+    cameraDiscoveryService.rejectCameras(selectedCameras);
+    setDiscoveredCameras(prev => prev.filter(c => !selectedCameras.includes(c.id)));
+    setSelectedCameras([]);
+};
+
+  const handleAutoUpdateToggle = () => {
+    setAutoUpdate(!autoUpdate);
+    if (autoUpdate) {
+      cameraDiscoveryService.stopAutoUpdate();
+  } else {
+      // Restart auto update
+      window.location.reload(); // Simple restart
+  }
+};
+
+  return (
+    <Box sx={{ p: 3 }}>
+      <Typography variant="h4" gutterBottom sx={{ color: theming.colors.primary }}>
+        <CameraAlt sx={{ mr: 1, verticalAlign: 'middle' }} />
+        Camera Discovery Manager
+      </Typography>
+
+      {/* Statistics Card */}
+      <Card sx={{ mb: 3, ...theming.getThemedCardSx() }}>
+        <CardContent sx={theming.getThemedCardSx()}>
+          <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+            Discovery Statistics
+          </Typography>
+          {stats && (
+            <Grid container spacing={2}>
+              <Grid item xs={12} sm={3}>
+                <Typography variant="body2" color="text.secondary">
+                  Total Sources
+                </Typography>
+                <Typography variant="h4" sx={{ color: theming.colors.primary }}>
+                  {stats.totalSources}
+                </Typography>
+              </Grid>
+              <Grid item xs={12} sm={3}>
+                <Typography variant="body2" color="text.secondary">
+                  Enabled Sources
+                </Typography>
+                <Typography variant="h4" sx={{ color: theming.colors.primary }}>
+                  {stats.enabledSources}
+                </Typography>
+              </Grid>
+              <Grid item xs={12} sm={3}>
+                <Typography variant="body2" color="text.secondary">
+                  Discovered Cameras
+                </Typography>
+                <Typography variant="h4" sx={{ color: theming.colors.primary }}>
+                  {stats.discoveredCameras}
+                </Typography>
+              </Grid>
+              <Grid item xs={12} sm={3}>
+                <Typography variant="body2" color="text.secondary">
+                  Last Update
+                </Typography>
+                <Typography variant="body1">
+                  {new Date(stats.lastUpdate).toLocaleString()}
+                </Typography>
+              </Grid>
+            </Grid>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Controls */}
+      <Card sx={{ mb: 3, ...theming.getThemedCardSx() }}>
+        <CardContent sx={theming.getThemedCardSx()}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+              Discovery Controls
+            </Typography>
+            <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={autoUpdate}
+                    onChange={handleAutoUpdateToggle}
+                  />
+              }
+                label="Auto Update"
+              />
+              <Button 
+                variant="contained"
+                startIcon={isDiscovering ? <CircularProgress size={20} /> : <Refresh />}
+                onClick={handleDiscoverCameras}
+                disabled={isDiscovering}
+                sx={theming.getThemedButtonSx()}
+              >
+                {isDiscovering ? 'Discovering...' : 'Discover Cameras'}
+              </Button>
+            </Box>
+          </Box>
+
+          {isDiscovering && (
+            <Alert severity="info" sx={{ mb: 2 }}>
+              <AutoAwesome sx={{ mr: 1 }} />
+              Discovering new cameras from all enabled sources...
+            </Alert>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Discovered Cameras */}
+      <Card sx={theming.getThemedCardSx()}>
+        <CardContent sx={theming.getThemedCardSx()}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+              Discovered Cameras ({discoveredCameras.length})
+            </Typography>
+            {discoveredCameras.length > 0 && (
+              <Box sx={{ display: 'flex', gap: 1 }}>
+                <Button
+                  variant="outlined"
+                  onClick={handleSelectAll}
+                  size="small"
+                >
+                  {selectedCameras.length === discoveredCameras.length ? 'Deselect All' : 'Select All'}
+                </Button>
+                <Button 
+                  variant="contained"
+                  color="success"
+                  startIcon={<Check />}
+                  onClick={() => setShowApprovalDialog(true)}
+                  disabled={selectedCameras.length === 0}
+                >
+                  Approve Selected ({selectedCameras.length})
+                </Button>
+                <Button
+                  variant="outlined"
+                  color="error"
+                  startIcon={<Close />}
+                  onClick={handleRejectSelected}
+                  disabled={selectedCameras.length === 0}
+                >
+                  Reject Selected
+                </Button>
+              </Box>
+            )}
+          </Box>
+
+          {discoveredCameras.length === 0 ? (
+            <Alert severity="info">
+              <Info sx={{ mr: 1 }} />
+              No new cameras discovered. Click "Discover Cameras" to search for new models.
+            </Alert>
+          ) : (
+            <TableContainer component={Paper}>
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableCell padding="checkbox">
+                      <input
+                        type="checkbox"
+                        checked={selectedCameras.length === discoveredCameras.length}
+                        onChange={handleSelectAll}
+                      />
+                    </TableCell>
+                    <TableCell>Brand</TableCell>
+                    <TableCell>Model</TableCell>
+                    <TableCell>Category</TableCell>
+                    <TableCell>LOG Formats</TableCell>
+                    <TableCell>Resolution</TableCell>
+                    <TableCell>Price Range</TableCell>
+                    <TableCell>Features</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {discoveredCameras.map((camera) => (
+                    <TableRow key={camera.id}>
+                      <TableCell padding="checkbox">
+                        <input
+                          type="checkbox"
+                          checked={selectedCameras.includes(camera.id)}
+                          onChange={() => handleCameraSelect(camera.id)}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Chip label={camera.brand} size="small" />
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="body2" fontWeight="medium">
+                          {camera.model}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Chip 
+                          label={camera.category} 
+                          size="small" 
+                          color="primary" 
+                          variant="outlined"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                          {camera.logFormats.map((format: string) => (
+                            <Chip 
+                              key={format} 
+                              label={format} 
+                              size="small" 
+                              color="secondary"
+                            />
+                          ))}
+                        </Box>
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="body2">
+                          {camera.resolution.join(', ')}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Chip 
+                          label={camera.priceRange} 
+                          size="small" 
+                          color={
+                            camera.priceRange === 'cinema' ? 'error' :
+                            camera.priceRange === 'professional' ? 'warning' :
+                            camera.priceRange === 'mid-range' ? 'info' : 'default'
+                        }
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="body2" sx={{ maxWidth: 200 }}>
+                          {camera.features.slice(0, 3).join(', ')}
+                          {camera.features.length > 3 && '...'}
+                        </Typography>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Approval Dialog */}
+      <Dialog open={showApprovalDialog} onClose={() => setShowApprovalDialog(false)} maxWidth="md" fullWidth>
+        <DialogTitle>
+          Approve Selected Cameras
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body1" sx={{ mb: 2 }}>
+            You are about to approve {selectedCameras.length} cameras for addition to the database:
+          </Typography>
+          <List>
+            {discoveredCameras
+              .filter(camera => selectedCameras.includes(camera.id))
+              .map((camera) => (
+                <ListItem key={camera.id}>
+                  <ListItemText
+                    primary={`${camera.brand} ${camera.model}`}
+                    secondary={`${camera.category} • ${camera.logFormats.join(', ')} • ${camera.priceRange}`}
+                  />
+                </ListItem>
+              ))}
+          </List>
+          <Alert severity="warning" sx={{ mt: 2 }}>
+            <Warning sx={{ mr: 1 }} />
+            These cameras will be permanently added to the database and will be available for all users.
+          </Alert>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowApprovalDialog(false)}>
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleApproveSelected} 
+            variant="contained" 
+            color="success"
+            startIcon={<Check />}
+          >
+            Approve & Add to Database
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
+  );
+};
+
+export default CameraDiscoveryManager;
+
+
+
+
+
+
+
+
+
+
+
+
+
+

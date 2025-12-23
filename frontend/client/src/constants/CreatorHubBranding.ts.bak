@@ -1,0 +1,224 @@
+/**
+ * CreatorHub Norge - Centralized Branding System
+ * This file defines the official branding colors, icons, and styles
+ * DO NOT MODIFY - Changes here affect the entire platform
+ */
+
+import { 
+  RingIcon, 
+  PhotographyIcon, 
+  VideographyIcon, 
+  MusicProductionIcon, 
+  CorporateIcon 
+} from '../components/shared/CreatorHubIcons';
+
+// Official CreatorHub Norge Brand Colors
+export const CREATOR_HUB_BRAND_COLORS = {
+  // Primary Profession Colors
+  PHOTOGRAPHY: '#ff8c00',      // Orange - Photography & Admin
+  VIDEOGRAPHY: '#e74c3c',      // Red - Videography
+  MUSIC: '#9b59b6',            // Purple - Music Production
+  CORPORATE: '#27ae60',        // Green - Corporate & Vendor
+  WEDDING: '#ff8c00',          // Orange - Wedding (same as photography)
+  
+  // Secondary Colors
+  PRIMARY: '#1976d2',          // Blue - Primary actions
+  SECONDARY: '#dc004e',        // Pink - Secondary actions
+  SUCCESS: '#2e7d32',          // Green - Success states
+  WARNING: '#ed6c02',          // Orange - Warning states
+  ERROR: '#d32f2f',            // Red - Error states
+  INFO: '#0288d1',             // Light Blue - Info states
+  
+  // Neutral Colors
+  WHITE: '#ffffff',
+  BLACK: '#000000',
+  GRAY_50: '#fafafa',
+  GRAY_100: '#f5f5f5',
+  GRAY_200: '#eeeeee',
+  GRAY_300: '#e0e0e0',
+  GRAY_400: '#bdbdbd',
+  GRAY_500: '#9e9e9e',
+  GRAY_600: '#757575',
+  GRAY_700: '#616161',
+  GRAY_800: '#424242',
+  GRAY_900: '#212121',
+} as const;
+
+// Profession Configuration with Locked Values
+export const PROFESSION_BRANDING = {
+  photographer: {
+    name: 'Fotograf',
+    color: CREATOR_HUB_BRAND_COLORS.PHOTOGRAPHY,
+    icon: PhotographyIcon,
+    description: 'Professional photography services',
+},
+  videographer: {
+    name: 'Videograf', 
+    color: CREATOR_HUB_BRAND_COLORS.VIDEOGRAPHY,
+    icon: VideographyIcon,
+    description: 'Professional videography services',
+},
+  music_producer: {
+    name: 'Musikkprodusent',
+    color: CREATOR_HUB_BRAND_COLORS.MUSIC,
+    icon: MusicProductionIcon,
+    description: 'Music production and audio services',
+},
+  vendor: {
+    name: 'Leverandør',
+    color: CREATOR_HUB_BRAND_COLORS.CORPORATE,
+    icon: CorporateIcon,
+    description: 'Equipment and service providers',
+},
+  admin: {
+    name: 'Admin',
+    color: CREATOR_HUB_BRAND_COLORS.PHOTOGRAPHY, // Same as photography
+    icon: PhotographyIcon,
+    description: 'System administrator',
+},
+} as const;
+
+// Project Category Branding
+export const PROJECT_CATEGORY_BRANDING = {
+  wedding: {
+    name: 'Bryllup',
+    color: CREATOR_HUB_BRAND_COLORS.WEDDING,
+    icon: RingIcon,
+    description: 'Wedding photography and videography',
+},
+  photography: {
+    name: 'Fotografi',
+    color: CREATOR_HUB_BRAND_COLORS.PHOTOGRAPHY,
+    icon: PhotographyIcon,
+    description: 'Professional photography services',
+},
+  videography: {
+    name: 'Videografi',
+    color: CREATOR_HUB_BRAND_COLORS.VIDEOGRAPHY,
+    icon: VideographyIcon,
+    description: 'Professional videography services',
+},
+  music: {
+    name: 'Musikk',
+    color: CREATOR_HUB_BRAND_COLORS.MUSIC,
+    icon: MusicProductionIcon,
+    description: 'Music production services',
+},
+  corporate: {
+    name: 'Bedrift',
+    color: CREATOR_HUB_BRAND_COLORS.CORPORATE,
+    icon: CorporateIcon,
+    description: 'Corporate services',
+},
+} as const;
+
+// Brand Typography
+export const BRAND_TYPOGRAPHY = {
+  fontFamily: {
+    primary: '"Inter", "Roboto", "Helvetica", "Arial", sans-serif',
+    secondary: '"Inter", "Roboto", "Helvetica", "Arial", sans-serif',
+    mono: '"Fira Code", "Monaco", "Consolas", monospace',
+},
+  fontWeight: {
+    light: 300,
+    regular: 400,
+    medium: 500,
+    semiBold: 600,
+    bold: 700,
+},
+  fontSize: {
+    xs: '0.75rem',
+    sm: '0.875rem',
+    base: '1rem',
+    lg: '1.125rem',
+    xl: '1.25rem',
+    '2xl': '1.5rem',
+    '3xl': '1.875rem',
+    '4xl': '2.25rem',
+    '5xl': '3rem',
+},
+} as const;
+
+// Brand Spacing
+export const BRAND_SPACING = {
+  xs: '0.25rem',
+  sm: '0.5rem',
+  md: '1rem',
+  lg: '1.5rem',
+  xl: '2rem',
+  '2xl': '3rem',
+  '3xl': '4rem',
+  '4xl': '6rem',
+} as const;
+
+// Brand Shadows
+export const BRAND_SHADOWS = {
+  sm: '0 1px 2px 0 rgba(00, 0.05)',
+  base: '0 1px 3px 0 rgba(00, 0.1), 0 1px 2px 0 rgba(00, 0.06)',
+  md: '0 4px 6px -1px rgba(00, 0.1), 0 2px 4px -1px rgba(00, 0.06)',
+  lg: '0 10px 15px -3px rgba(00, 0.1), 0 4px 6px -2px rgba(00, 0.05)',
+  xl: '0 20px 25px -5px rgba(00, 0.1), 0 10px 10px -5px rgba(00, 0.04)',
+  '2xl': '0 25px 50px -12px rgba(00, 0.25)',
+} as const;
+
+// Brand Border Radius
+export const BRAND_BORDER_RADIUS = {
+  none: '0',
+  sm: '0.125rem',
+  base: '0.25rem',
+  md: '0.375rem',
+  lg: '0.5rem',
+  xl: '0.75rem',
+  '2xl': '1rem',
+  '3xl': '1.5rem',
+  full: '9999px',
+} as const;
+
+// Helper Functions
+export function getProfessionBranding(profession: keyof typeof PROFESSION_BRANDING) {
+  return PROFESSION_BRANDING[profession];
+}
+
+export function getProjectCategoryBranding(category: keyof typeof PROJECT_CATEGORY_BRANDING) {
+  return PROJECT_CATEGORY_BRANDING[category];
+}
+
+export function getBrandColor(colorName: keyof typeof CREATOR_HUB_BRAND_COLORS) {
+  return CREATOR_HUB_BRAND_COLORS[colorName];
+}
+
+// Brand Validation
+export function validateBrandColor(color: string): boolean {
+  const validColors = Object.values(CREATOR_HUB_BRAND_COLORS);
+  return validColors.includes(color as any);
+}
+
+// Brand Consistency Checker
+export function checkBrandConsistency(componentName: string, usedColor: string, expectedColor: string): void {
+  if (usedColor !== expectedColor) {
+    console.warn(`⚠️ Brand Inconsistency in ${componentName}: Expected ${expectedColor}, got ${usedColor}`);
+}
+}
+
+// Export all branding as a single object for easy access
+export const CREATOR_HUB_BRANDING = {
+  colors: CREATOR_HUB_BRAND_COLORS,
+  professions: PROFESSION_BRANDING,
+  projectCategories: PROJECT_CATEGORY_BRANDING,
+  typography: BRAND_TYPOGRAPHY,
+  spacing: BRAND_SPACING,
+  shadows: BRAND_SHADOWS,
+  borderRadius: BRAND_BORDER_RADIUS,
+  helpers: {
+    getProfessionBranding,
+    getProjectCategoryBranding,
+    getBrandColor,
+    validateBrandColor,
+    checkBrandConsistency,
+},
+} as const;
+
+// Type exports for TypeScript
+export type ProfessionType = keyof typeof PROFESSION_BRANDING;
+export type ProjectCategoryType = keyof typeof PROJECT_CATEGORY_BRANDING;
+export type BrandColorType = keyof typeof CREATOR_HUB_BRAND_COLORS;

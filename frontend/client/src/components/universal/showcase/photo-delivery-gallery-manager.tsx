@@ -1,0 +1,612 @@
+import { useTheming } from '../../../utils/theming-helper';
+import React, { useState } from 'react';
+import {
+  Box,
+  Typography,
+  Grid,
+  Card,
+  CardContent,
+  CardMedia,
+  Button,
+  Chip,
+  IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  TextField,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Switch,
+  FormControlLabel,
+  Tabs,
+  Tab,
+  Badge,
+  LinearProgress,
+  Alert,
+  Divider,
+} from '@mui/material';
+import {
+  AddCircle as Add,
+  Visibility,
+  Edit,
+  Share,
+  Download,
+  Analytics,
+  PhotoLibrary,
+  VideocamLibrary,
+  Public,
+  Lock,
+  Group,
+  Star,
+  Comment,
+  Favorite,
+  Link as LinkIcon,
+  Settings,
+  Send,
+} from '@mui/icons-material';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
+
+interface Gallery {
+  id: string;
+  title: string;
+  description?: string;
+  clientName: string;
+  projectType: string;
+  status: 'draft' | 'active' | 'completed';
+  visibility: 'public' | 'private' | 'client_only';
+  imageCount: number;
+  videoCount: number;
+  viewCount: number;
+  likeCount: number;
+  commentCount: number;
+  downloadEnabled: boolean;
+  watermarkEnabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+  thumbnailUrl?: string;
+  projectId?: string;
+  shareableLink?: string
+}
+
+export default function PhotoDeliveryGalleryManager() {
+  const queryClient = useQueryClient();
+  
+  // Theming system
+  const theming = useTheming('photographer, ');
+  const [activeTab, setActiveTab] = useState(0);
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [selectedGallery, setSelectedGallery] = useState<Gallery | null>(null);
+  const [filterStatus, setFilterStatus] = useState<string>('all');
+
+  // Hent alle gallerier for den påloggede fotografen
+  const { data: galleries = [], isLoading } = useQuery({
+    queryKey: ['/api/photo-showcase','galleries'],
+    queryFn: () => apiRequest('/api/photo-showcase/galleries', ),
+    retry: false,
+});
+
+  // Hent statistikk og analytics
+  const { data: analytics } = useQuery({
+    queryKey: ['/api/photo-showcase','analytics'],
+    queryFn: () => apiRequest('/api/photo-showcase/analytics', ),
+    retry: false,
+});
+
+  // Opprett nytt galleri
+  const createGalleryMutation = useMutation({
+    mutationFn: (data: Partial<Gallery>) =>
+      apiRequest('/api/photo-showcase/create', {
+        method: 'POS',
+        body: JSON.stringify(data),
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/photo-showcase', ],});
+      setShowCreateDialog(false);
+  },
+});
+
+  // Oppdater galleri
+  const updateGalleryMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<Gallery> }) =>
+      apiRequest(`/api/photo-showcase/galleries/${id}`, {
+        method: 'PU',
+        body: JSON.stringify(data),
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/photo-showcase', ],});
+  },
+});
+
+  const filteredGalleries = galleries.filter((gallery: Gallery) => {
+    if (filterStatus === 'all') return true;
+    return gallery.status === filterStatus;
+});
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'draft':
+        return 'warning';
+      case 'active':
+        return 'success';
+      case 'completed':
+        return 'info';
+      default:
+        return 'default';
+}
+};
+
+  const getVisibilityIcon = (visibility: string) => {
+    switch (visibility) {
+      case 'public':
+        return <Public fontSize="small" />;
+      case 'private':
+        return <Lock fontSize="small" />;
+      case 'client_only':
+        return <Group fontSize="small" />;
+      default:
+        return <Public fontSize="small" />;
+}
+};
+
+  const handleCreateGallery = (formData: FormData) => {
+    const galleryData = {
+      title: formData.get('title') as string,
+      description: formData.get('description') as string,
+      clientName: formData.get('clientName') as string,
+      projectType: formData.get('projectType') as string,
+      visibility: formData.get('visibility') as string,
+      downloadEnabled: formData.get('downloadEnabled') === 'on',
+      watermarkEnabled: formData.get('watermarkEnabled') === 'on',
+  };
+    createGalleryMutation.mutate(galleryData);
+};
+
+  const handleShareGallery = (gallery: Gallery) => {
+    const shareUrl = gallery.shareableLink || `${window.location.origin}/gallery/${gallery.id}`;
+    navigator.clipboard.writeText(shareUrl);
+    // Toast notification kunne vært lagt til her
+};
+
+  const tabLabels = [
+    'Alle gallerier', 'Aktive leveranser', 'Utkast', 'Fullførte prosjekter', 'Analytics & Statistikk',
+  ];
+
+  return (
+    <Box sx={{ p:  3 }}>
+      {/* Header */}
+      <Box
+        sx={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          mb:  3}}
+      >
+        <Box>
+          <Typography variant="h4" sx={{  fontWeight: 600, color: 'primary.main'  }}>
+            📸 Galleristyring & Leveranse
+          </Typography>
+          <Typography variant="subtitle1" color="text.secondary">
+            Administrer klientgallerier og levering av fotografier
+          </Typography>
+        </Box>
+        <Button variant="contained"
+          startIcon={theming.getThemedIcon('add')}
+          onClick={() => setShowCreateDialog(true)}
+          sx={{ borderRadius: 2px:  3 }}
+        >
+          Nytt galleri
+        </Button>
+      </Box>
+
+      {/* Quick Stats */}
+      {analytics && (
+        <Grid container spacing={2} sx={{ mb:  3 }}>
+          <Grid item xs={12} sm={3}>
+            <Card
+              sx={{
+                bgcolor: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                color: 'white',
+                boxShadow:  3}}
+             sx={theming.getThemedCardSx()}>
+              <CardContent sx={theming.getThemedCardSx()}>
+                <Typography variant="h6" sx={{ color: theming.colors.primary }}>{analytics.totalGalleries || galleries.length}</Typography>
+                <Typography variant="body2">Totale gallerier</Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+          <Grid item xs={12} sm={3}>
+            <Card
+              sx={{
+                bgcolor: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+                color: 'white',
+                boxShadow:  3}}
+             sx={theming.getThemedCardSx()}>
+              <CardContent sx={theming.getThemedCardSx()}>
+                <Typography variant="h6" sx={{ color: theming.colors.primary }}>{analytics.totalViews || 0}</Typography>
+                <Typography variant="body2">Totale visninger</Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+          <Grid item xs={12} sm={3}>
+            <Card
+              sx={{
+                bgcolor: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
+                color: 'white',
+                boxShadow:  3}}
+             sx={theming.getThemedCardSx()}>
+              <CardContent sx={theming.getThemedCardSx()}>
+                <Typography variant="h6" sx={{ color: theming.colors.primary }}>{analytics.activeClients || 0}</Typography>
+                <Typography variant="body2">Aktive klienter</Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+          <Grid item xs={12} sm={3}>
+            <Card
+              sx={{
+                bgcolor: 'linear-gradient(135deg, #fa709a 0%, #fee140 100%)',
+                color: 'white',
+                boxShadow:  3}}
+             sx={theming.getThemedCardSx()}>
+              <CardContent sx={theming.getThemedCardSx()}>
+                <Typography variant="h6" sx={{ color: theming.colors.primary }}>{analytics.totalDownloads || 0}</Typography>
+                <Typography variant="body2">Nedlastinger</Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+        </Grid>
+      )}
+
+      {/* Tabs */}
+      <Tabs value={activeTab} onChange={(_, newValue) => setActiveTab(newValue)} sx={{ mb:  3 }}>
+        {tabLabels.map((label, index) => (
+          <Tab key={index} label={label} />
+        ))}
+      </Tabs>
+
+      {/* Content based on active tab */}
+      {activeTab < 4 && (
+        <>
+          {/* Filter */}
+          <Box sx={{ mb:  3 }}>
+            <FormControl size="small" sx={{ minWidth: 120}}>
+              <InputLabel>Status</InputLabel>
+              <Select
+                value={filterStatus}
+                label="Status"
+                onChange={(e) => setFilterStatus(e.target.value)}
+              >
+                <MenuItem value="all">Alle</MenuItem>
+                <MenuItem value="draft">Utkast</MenuItem>
+                <MenuItem value="active">Aktive</MenuItem>
+                <MenuItem value="completed">Fullførte</MenuItem>
+              </Select>
+            </FormControl>
+          </Box>
+
+          {/* Galleries Grid */}
+          {isLoading ? (
+            <LinearProgress />
+          ) : filteredGalleries.length === 0 ? (
+            <Alert severity="info" sx={{ borderRadius:  2 }}>
+              <Typography variant="h6" sx={{  mb:  1  }}>
+                Ingen gallerier funnet
+              </Typography>
+              <Typography variant="body2">
+                Opprett ditt første galleri for å komme i gang med leveranse til klienter!
+              </Typography>
+            </Alert>
+          ) : (
+            <Grid container spacing={3}>
+              {filteredGalleries.map((gallery: Gallery) => (
+                <Grid item xs={12} sm={6} md={4} lg={3} key={gallery.id}>
+                  <Card
+                    sx={{
+                      height: '100%',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      transition: 'all 0.3s ease','&:hover': {
+                        transform: 'translateY(-4px)',
+                        boxShadow:  6,
+                    },
+                      borderRadius:  2,
+                      overflow: 'hidden' }}
+                   sx={theming.getThemedCardSx()}>
+                    {gallery.thumbnailUrl && (
+                      <CardMedia component="img"
+                        height="200"
+                        image={gallery.thumbnailUrl}
+                        alt={gallery.title}
+                        sx={{ objectFit: 'cover' ,  ...theming.getThemedCardSx() }}>
+                    )}
+                    <CardContent sx={{ flexGrow: 1p:  2 ,  ...theming.getThemedCardSx() }}>
+                      <Box
+                        sx={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          mb:  1}}
+                      >
+                        <Typography variant="h6" noWrap sx={{  fontWeight: 600}}>
+                          {gallery.title}
+                        </Typography>
+                        <Chip
+                          label={gallery.status}
+                          color={getStatusColor(gallery.status) as any}
+                          size="small"
+                        />
+                      </Box>
+
+                      <Typography variant="body2" color="text.secondary" sx={{ mb:  1 }}>
+                        👤 Klient: {gallery.clientName}
+                      </Typography>
+
+                      <Typography variant="body2" color="text.secondary" sx={{ mb:  2 }}>
+                        📋 Type: {gallery.projectType}
+                      </Typography>
+
+                      {/* Gallery Stats */}
+                      <Box
+                        sx={{
+                          display: 'flex',
+                          gap:  1,
+                          mb:  2,
+                          flexWrap: 'wrap' }}
+                      >
+                        <Chip
+                          icon={theming.getThemedIcon('photoLibrary')}}
+                          label={gallery.imageCount}
+                          size="small"
+                          variant="outlined"
+                          color="primary"
+                        />
+                        <Chip
+                          icon={theming.getThemedIcon('videoLibrary')}}
+                          label={gallery.videoCount}
+                          size="small"
+                          variant="outlined"
+                          color="secondary"
+                        />
+                        <Chip
+                          icon={theming.getThemedIcon('visibility')}}
+                          label={gallery.viewCount}
+                          size="small"
+                          variant="outlined"
+                        />
+                      </Box>
+
+                      <Divider sx={{ my:  1 }} />
+
+                      {/* Gallery Features */}
+                      <Box
+                        sx={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          mb:  2}}
+                      >
+                        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                          {getVisibilityIcon(gallery.visibility)}
+                          {gallery.downloadEnabled && <Download fontSize="small" color="success" />}
+                          {gallery.watermarkEnabled && <Star fontSize="small" color="warning" />}
+                        </Box>
+                        <Box sx={{ display: 'flex', gap:  1 }}>
+                          <Badge badgeContent={gallery.likeCount} color="error">
+                            <Favorite fontSize="small" />
+                          </Badge>
+                          <Badge badgeContent={gallery.commentCount} color="primary">
+                            <Comment fontSize="small" />
+                          </Badge>
+                        </Box>
+                      </Box>
+                    </CardContent>
+
+                    {/* Action Buttons */}
+                    <Box sx={{ p: 2, pt: 0 }}>
+                      <Grid container spacing={1}>
+                        <Grid item xs={6} >
+                          <Button
+                            fullWidth
+                            variant="outlined"
+                            startIcon={theming.getThemedIcon('edit')}
+                            size="small"
+                            onClick={() => setSelectedGallery(gallery)}
+                          >
+                            Rediger
+                          </Button>
+                        </Grid>
+                        <Grid item xs={6} >
+                          <Button fullWidth
+                            variant="contained"
+                            startIcon={theming.getThemedIcon('share')}
+                            size="small"
+                            onClick={() => handleShareGallery(gallery)}
+                          >
+                            Del
+                          </Button>
+                        </Grid>
+                        <Grid item xs={12}>
+                          <Button
+                            fullWidth
+                            variant="text"
+                            startIcon={<LinkIcon />}
+                            size="small"
+                            color="primary"
+                          >
+                            Kopier lenke til klient
+                          </Button>
+                        </Grid>
+                      </Grid>
+                    </Box>
+                  </Card>
+                </Grid>
+              ))}
+            </Grid>
+          )}
+        </>
+      )}
+
+      {/* Analytics Tab */}
+      {activeTab === 4 && (
+        <Box>
+          <Typography variant="h5" sx={{  mb:  3, fontWeight: 600}}>
+            📊 Galleri Analytics & Statistikk
+          </Typography>
+          <Grid container spacing={3}>
+            <Grid item xs={12} md={6}>
+              <Card sx={{ borderRadius:  2 ,  ...theming.getThemedCardSx() }}>
+                <CardContent sx={theming.getThemedCardSx()}>
+                  <Typography variant="h6" sx={{  mb: 2, fontWeight: 600}}>
+                    🏆 Mest populære gallerier
+                  </Typography>
+                  {analytics?.popularGalleries?.map((gallery: any, index: number) => (
+                    <Box
+                      key={gallery.d}
+                      sx={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        mb:  1,
+                        p:  1,
+                        borderRadius:  1,
+                        bgcolor: index === 0 ? 'primary.light' : 'transparent',
+                        color: index === 0 ? 'primary.contrastText' : 'inherit' }}
+                    >
+                      <Typography variant="body2">
+                        {index + 1}. {gallery.title}
+                      </Typography>
+                      <Typography variant="body2" fontWeight="bold">
+                        {gallery.viewCount} visninger
+                      </Typography>
+                    </Box>
+                  ))}
+                </CardContent>
+              </Card>
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <Card sx={{ borderRadius:  2 ,  ...theming.getThemedCardSx() }}>
+                <CardContent sx={theming.getThemedCardSx()}>
+                  <Typography variant="h6" sx={{  mb: 2, fontWeight: 600}}>
+                    📈 Månedsstatistikk
+                  </Typography>
+                  <Typography variant="body2" sx={{ mb:  1 }}>
+                    📈 Visninger denne måneden: <strong>{analytics?.monthlyViews || 0}</strong>
+                  </Typography>
+                  <Typography variant="body2" sx={{ mb:  1 }}>
+                    💾 Nedlastinger denne måneden: {''}
+                    <strong>{analytics?.monthlyDownloads || 0}</strong>
+                  </Typography>
+                  <Typography variant="body2" sx={{ mb:  1 }}>
+                    👥 Nye klienter denne måneden: {', '}
+                    <strong>{analytics?.newClientsThisMonth || 0}</strong>
+                  </Typography>
+                  <Typography variant="body2">
+                    ⭐ Gjennomsnittlig rating: <strong>{analytics?.averageRating || 'N/'}</strong>
+                  </Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+          </Grid>
+        </Box>
+      )}
+
+      {/* Create Gallery Dialog */}
+      <Dialog
+        open={showCreateDialog}
+        onClose={() => setShowCreateDialog(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle sx={{ bgcolor: 'primary.main', color: 'white' }}>
+          📸 Opprett nytt klientgalleri
+        </DialogTitle>
+        <DialogContent sx={{ mt:  2 }}>
+          <Box
+            component="form"
+            onSubmit={(e) => {
+              e.preventDefault();
+              const formData = new FormData(e.currentTarget);
+              handleCreateGallery(formData);
+          }}
+            sx={{ mt:  2 }}
+          >
+            <Grid container spacing={2}>
+              <Grid item xs={12}>
+                <TextField
+                  name="title"
+                  label="Gallerititel"
+                  fullWidth
+                  required
+                  placeholder="f.eks. Bryllup - Anna & Ole"
+                />
+              </Grid>
+              <Grid item xs={12}>
+                <TextField
+                  name="description"
+                  label="Beskrivelse"
+                  fullWidth
+                  multiline
+                  rows={3}
+                  placeholder="Beskrivelse av galleriet for klienten..."
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  name="clientName"
+                  label="Klientnavn"
+                  fullWidth
+                  required
+                  placeholder="Anna & Ole Nordmann"
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <FormControl fullWidth>
+                  <InputLabel>Prosjekttype</InputLabel>
+                  <Select name="projectType" label="Prosjekttype" required>
+                    <MenuItem value="bryllup">Bryllup</MenuItem>
+                    <MenuItem value="portrett">Portrett</MenuItem>
+                    <MenuItem value="bedrift">Bedriftsfotografering</MenuItem>
+                    <MenuItem value="produkt">Produktfotografering</MenuItem>
+                    <MenuItem value="event">Event</MenuItem>
+                    <MenuItem value="familie">Familie</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <FormControl fullWidth>
+                  <InputLabel>Synlighet</InputLabel>
+                  <Select name="visibility" label="Synlighet" defaultValue="client_only">
+                    <MenuItem value="public">🌐 Offentlig</MenuItem>
+                    <MenuItem value="client_only">👥 Kun klient</MenuItem>
+                    <MenuItem value="private">🔒 Privat</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12}>
+                <FormControlLabel
+                  control={<Switch name="downloadEnabled" defaultChecked />}
+                  label="💾 Tillat nedlasting for klient"
+                />
+                <FormControlLabel
+                  control={<Switch name="watermarkEnabled" defaultChecked />}
+                  label="🏷️ Vannmerke på bilder"
+                />
+              </Grid>
+              <Grid item xs={12}>
+                <Box sx={{ display: 'flex', gap: 2, justifyContent: 'flex-end' }}>
+                  <Button onClick={() => setShowCreateDialog(false)}>Avbryt</Button>
+                  <Button type="submit"
+                    variant="contained"
+                    disabled={createGalleryMutation.isPending}
+                    startIcon={<Send />}
+                  >
+                    {createGalleryMutation.isPending ? 'Oppretter...' : 'Opprett galleri'}
+                  </Button>
+                </Box>
+              </Grid>
+            </Grid>
+          </Box>
+        </DialogContent>
+      </Dialog>
+    </Box>
+  );
+}

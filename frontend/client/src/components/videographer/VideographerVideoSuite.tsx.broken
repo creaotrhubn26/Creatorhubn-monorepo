@@ -1,0 +1,1442 @@
+import React, { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import {
+  Box,
+  Typography,
+  Card as MuiCard,
+  CardContent,
+  Grid,
+  Button,
+  Tabs,
+  Tab,
+  Divider,
+  Chip,
+  IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  CircularProgress,
+  Paper,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Slider,
+  Switch,
+  FormControlLabel,
+  List,
+  ListItem,
+  ListItemText,
+  Stack,
+  LinearProgress,
+  TextField,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails
+} from '@mui/material';
+import {
+  PlayArrow,
+  VideoLibrary,
+  Edit,
+  Timeline,
+  Movie,
+  FileCopy,
+  CloudUpload,
+  Share,
+  TrendingUp,
+  AutoAwesome,
+  AudioFile,
+  AccessTime,
+  TouchApp,
+  Subtitles,
+  Science,
+  HighQuality,
+  Crop,
+  Instagram,
+  Facebook,
+  YouTube,
+  Twitter,
+  LinkedIn,
+  SmartToy,
+  Analytics,
+  Tune,
+  AutoGraph,
+  Speed,
+  Close,
+  CloudDownload,
+  History,
+  Restore,
+  ExpandMore,
+  Download
+} from '@mui/icons-material';
+import { CreatorHubVideoSuiteLogo } from '../../assets/CreatorHubVideoSuiteLogo';
+
+interface VideographerVideoSuiteProps {
+  userId?: string;
+  selectedVideoFiles?: string[];
+  onClose?: () => void;
+}
+
+interface TabPanelProps {
+  children?: React.ReactNode;
+  index: number;
+  value: number;
+}
+
+function TabPanel(props: TabPanelProps) {
+  const { children, value, index, ...other } = props;
+  return (
+    <div
+      role="tabpanel"
+      hidden={value !== index}
+      id={`video-suite-tabpanel-${index}`}
+      aria-labelledby={`video-suite-tab-${index}`}
+      {...other}
+    >
+      {value === index && <Box sx={{ p: 0 }}>{children}</Box>}
+    </div>
+  );
+}
+
+export default function VideographerVideoSuite({ 
+  userId = 'guest', 
+  selectedVideoFiles = [],
+  onClose 
+}: VideographerVideoSuiteProps) {
+  const [tabValue, setTabValue] = useState(0);
+  const [saveAsDialogOpen, setSaveAsDialogOpen] = useState(false);
+  const [saveAsName, setSaveAsName] = useState('');
+  const [saveAsType, setSaveAsType] = useState<'overwrite' | 'new' | 'download'>('new');
+
+  // Handle download to computer
+  const handleDownloadToComputer = () => {
+    const link = document.createElement('a');
+    link.href = 'data:text/plain;charset=utf-8,' + encodeURIComponent(`CreatorHub Video Suite Project
+Eksport dato: ${new Date().toLocaleDateString('no-NO')}
+Prosjekt: ${selectedVideoFiles.length || 1} video-filer
+Status: Klar for nedlasting til datamaskin`);
+    link.download = `CreatorHub_Video_Project_${new Date().toISOString().split('T')[0]}.txt`;
+    link.click();
+  };
+  const [socialMediaDialogOpen, setSocialMediaDialogOpen] = useState(false);
+  const [algorithmOptimizerOpen, setAlgorithmOptimizerOpen] = useState(false);
+  const [selectedSocialFormat, setSelectedSocialFormat] = useState('');
+  const [selectedPlatform, setSelectedPlatform] = useState('instagram');
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [processingProgress, setProcessingProgress] = useState(0);
+
+  // Enhanced Social Media Platform Options
+  const socialPlatforms = [
+    { id: 'instagram', name: 'Instagram', icon: <Instagram />, formats: ['Story (9:16)', 'Post (1:1)', 'Reel (9:16)', 'IGTV (9:16)'] },
+    { id: 'tiktok', name: 'TikTok', icon: <Movie />, formats: ['Standard (9:16)', 'Live (9:16)'] },
+    { id: 'youtube', name: 'YouTube', icon: <YouTube />, formats: ['Landscape (16:9)', 'Shorts (9:16)', 'Story (9:16)'] },
+    { id: 'facebook', name: 'Facebook', icon: <Facebook />, formats: ['Post (16:9)', 'Story (9:16)', 'Cover (16:9)'] },
+    { id: 'twitter', name: 'Twitter/X', icon: <Twitter />, formats: ['Post (16:9)', 'Video Tweet (1:1)'] },
+    { id: 'linkedin', name: 'LinkedIn', icon: <LinkedIn />, formats: ['Post (16:9)', 'Story (9:16)'] },
+    { id: 'snapchat', name: 'Snapchat', icon: <PhotoCamera />, formats: ['Snap (9:16)', 'Spotlight (9:16)'] }
+  ];
+
+  // Algorithm Optimization Features
+  const algorithmFeatures = [
+    { 
+      name: 'Hook Optimizer', 
+      description: 'Analyserer første 3 sekunder for maksimal engagement',
+      metrics: { hookStrength: 85, retentionRate: 78, clickThroughRate: 12 }
+    },
+    { 
+      name: 'Pacing Analyzer', 
+      description: 'Optimaliserer tempo for hver plattform',
+      metrics: { avgPacing: 92, dropOffRate: 15, avgWatchTime: '65%' }
+    },
+    { 
+      name: 'Trend Integration', 
+      description: 'Integrerer aktuelle trender og hashtags',
+      metrics: { trendScore: 88, hashtagReach: '2.5M', viralPotential: 73 }
+    },
+    { 
+      name: 'Audio Optimization', 
+      description: 'Justerer audio for mobile consumption',
+      metrics: { audioClarity: 94, bassBoost: 'Optimal', speechEnhancement: 89 }
+    }
+  ];
+
+  // Fetch real video projects from database
+  const { data: videoProjects = [], isLoading: projectsLoading } = useQuery({
+    queryKey: ['/api/projects', { profession: 'videographer', userId }],
+    enabled: !!userId && userId !== 'guest'
+  });
+
+  // Fetch video editor statistics from database
+  const { data: videoStats = {}, isLoading: statsLoading } = useQuery({
+    queryKey: ['/api/video-editor/stats', userId],
+    enabled: !!userId && userId !== 'guest'
+  });
+
+  // Mock video suite features with real database connection preparation
+  const videoSuiteFeatures = [
+    {
+      title: 'Avansert Video Editor',
+      description: 'Profesjonell redigering med multicam sync og color grading',
+      icon: <Edit sx={{ fontSize: 40, color: '#e74c3c' }} />,
+      stats: {
+        projects: videoStats.totalProjects || 0,
+        totalMinutes: videoStats.totalMinutes || 0,
+        completedEdits: videoStats.completedEdits || 0
+      },
+      action: () => setTabValue(4) // Video Editor Tab
+    },
+    {
+      title: 'Sosiale Medier Optimizer',
+      description: 'Optimaliser videoer for alle sosiale medier med algoritme-intelligens',
+      icon: <Share sx={{ fontSize: 40, color: '#e91e63' }} />,
+      stats: {
+        platforms: 6,
+        formats: 15,
+        avgEngagement: '89%'
+      },
+      action: () => setSocialMediaDialogOpen(true)
+    },
+    {
+      title: 'Algoritme Optimizer',
+      description: 'Intelligent analyse og optimalisering for maksimal reach',
+      icon: <SmartToy sx={{ fontSize: 40, color: '#9c27b0' }} />,
+      stats: {
+        hookStrength: '85%',
+        retention: '78%',
+        viralScore: 92
+      },
+      action: () => setAlgorithmOptimizerOpen(true)
+    }
+  ];
+
+  const handleSocialMediaExport = async () => {
+    setIsProcessing(true);
+    setProcessingProgress(0);
+
+    // Simulate processing with real API integration preparation
+    const interval = setInterval(() => {
+      setProcessingProgress(prev => {
+        if (prev >= 100) {
+          clearInterval(interval);
+          setIsProcessing(false);
+          setSocialMediaDialogOpen(false);
+          return 100;
+        }
+        return prev + 10;
+      });
+    }, 500);
+  };
+
+  return (
+    <Dialog 
+      open={true} 
+      onClose={onClose}
+      maxWidth="xl" 
+      fullWidth
+      sx={{
+        '& .MuiDialog-paper': {
+          height: '90vh',
+          bgcolor: 'background.default'
+        }
+      }}
+    >
+      <DialogTitle sx={{ 
+        background: 'linear-gradient(135deg, #e74c3c 0%, #c0392b 100%)',
+        color: 'white',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between'
+      }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <CreatorHubVideoSuiteLogo size={32} color="#FF6B35" />
+          <Box>
+            <Typography variant="h5" sx={{ fontWeight: 'bold' }}>
+              CreatorHub Video Suite
+            </Typography>
+            <Typography variant="body2" sx={{ opacity: 0.9 }}>
+              {selectedVideoFiles.length > 0 
+                ? `${selectedVideoFiles.length} video${selectedVideoFiles.length !== 1 ? 'er' : ''} valgt`
+                : 'Avanserte video verktøy med sosiale medier optimalisering'
+              }
+            </Typography>
+          </Box>
+        </Box>
+        <IconButton onClick={onClose} sx={{ color: 'white' }}>
+          <Close />
+        </IconButton>
+      </DialogTitle>
+
+      <DialogContent sx={{ p: 3 }}>
+        <Tabs 
+          value={tabValue} 
+          onChange={(e, newValue) => setTabValue(newValue)}
+          sx={{ mb: 3 }}
+        >
+          <Tab icon={<Movie />} label="Video Verktøy" />
+          <Tab icon={<Share />} label="Sosiale Medier" />
+          <Tab icon={<SmartToy />} label="Algoritme Optimizer" />
+          <Tab icon={<Timeline />} label="Prosjekt & Struktur" />
+          <Tab icon={<Edit />} label="Review & Godkjenning" />
+          <Tab icon={<Analytics />} label="Leveranse & Eksport" />
+          <Tab icon={<History />} label="Endringshistorikk" />
+          <Tab icon={<TrendingUp />} label="Statistikk" />
+        </Tabs>
+
+        <TabPanel value={tabValue} index={0}>
+          <Grid container spacing={3}>
+            {videoSuiteFeatures.map((feature, index) => (
+              <Grid item xs={12} md={4} key={index}>
+                <MuiCard sx={{ 
+                  height: '100%',
+                  '&:hover': { 
+                    transform: 'translateY(-4px)',
+                    boxShadow: 6
+                  },
+                  transition: 'all 0.3s ease'
+                }}>
+                  <CardContent sx={{ textAlign: 'center', p: 3 }}>
+                    <Box sx={{ mb: 2 }}>
+                      {feature.icon}
+                    </Box>
+                    <Typography variant="h6" sx={{ fontWeight: 'bold', mb: 1 }}>
+                      {feature.title}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                      {feature.description}
+                    </Typography>
+                    
+                    <Grid container spacing={1} sx={{ mb: 3, textAlign: 'center' }}>
+                      {Object.entries(feature.stats).map(([key, value]) => (
+                        <Grid item xs={4} key={key}>
+                          <Typography variant="h6" sx={{ color: '#e74c3c', fontWeight: 'bold' }}>
+                            {value}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {key === 'projects' && 'Prosjekter'}
+                            {key === 'totalMinutes' && 'Minutter'}
+                            {key === 'completedEdits' && 'Ferdig'}
+                            {key === 'platforms' && 'Plattformer'}
+                            {key === 'formats' && 'Formater'}
+                            {key === 'avgEngagement' && 'Engagement'}
+                            {key === 'hookStrength' && 'Hook Score'}
+                            {key === 'retention' && 'Retention'}
+                            {key === 'viralScore' && 'Viral Score'}
+                          </Typography>
+                        </Grid>
+                      ))}
+                    </Grid>
+
+                    <Button 
+                      variant="contained" 
+                      fullWidth
+                      onClick={feature.action}
+                      sx={{ 
+                        bgcolor: '#e74c3c',
+                        '&:hover': { bgcolor: '#c0392b' }
+                      }}
+                    >
+                      Åpne {feature.title.split(' ')[0]}
+                    </Button>
+                  </CardContent>
+                </MuiCard>
+              </Grid>
+            ))}
+          </Grid>
+        </TabPanel>
+
+        <TabPanel value={tabValue} index={1}>
+          <Typography variant="h5" sx={{ fontWeight: 'bold', mb: 3 }}>
+            Sosiale Medier Format Optimizer
+          </Typography>
+          
+          <Grid container spacing={3}>
+            {socialPlatforms.map((platform) => (
+              <Grid item xs={12} md={6} lg={4} key={platform.id}>
+                <Paper 
+                  sx={{ 
+                    p: 3, 
+                    textAlign: 'center',
+                    cursor: 'pointer',
+                    border: selectedPlatform === platform.id ? '2px solid #e74c3c' : '1px solid #eee',
+                    '&:hover': { 
+                      transform: 'translateY(-2px)',
+                      boxShadow: 4
+                    },
+                    transition: 'all 0.3s ease'
+                  }}
+                  onClick={() => setSelectedPlatform(platform.id)}
+                >
+                  <Box sx={{ mb: 2, color: '#e74c3c' }}>
+                    {React.cloneElement(platform.icon, { sx: { fontSize: 48 } })}
+                  </Box>
+                  <Typography variant="h6" sx={{ fontWeight: 'bold', mb: 2 }}>
+                    {platform.name}
+                  </Typography>
+                  <Stack spacing={1}>
+                    {platform.formats.map((format, idx) => (
+                      <Chip 
+                        key={idx}
+                        label={format} 
+                        size="small" 
+                        variant={selectedPlatform === platform.id ? 'filled' : 'outlined'}
+                        color={selectedPlatform === platform.id ? 'primary' : 'default'}
+                      />
+                    ))}
+                  </Stack>
+                </Paper>
+              </Grid>
+            ))}
+          </Grid>
+
+          <Box sx={{ mt: 3, textAlign: 'center' }}>
+            <Button 
+              variant="contained" 
+              size="large"
+              onClick={() => setSocialMediaDialogOpen(true)}
+              sx={{ 
+                bgcolor: '#e74c3c',
+                '&:hover': { bgcolor: '#c0392b' }
+              }}
+            >
+              Konfigurer for {socialPlatforms.find(p => p.id === selectedPlatform)?.name}
+            </Button>
+          </Box>
+        </TabPanel>
+
+        <TabPanel value={tabValue} index={2}>
+          <Typography variant="h5" sx={{ fontWeight: 'bold', mb: 3 }}>
+            Algoritme Optimizer
+          </Typography>
+          
+          <Grid container spacing={3}>
+            {algorithmFeatures.map((feature, index) => (
+              <Grid item xs={12} md={6} key={index}>
+                <Paper sx={{ p: 3 }}>
+                  <Typography variant="h6" sx={{ fontWeight: 'bold', mb: 1 }}>
+                    {feature.name}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                    {feature.description}
+                  </Typography>
+                  
+                  <Grid container spacing={2}>
+                    {Object.entries(feature.metrics).map(([key, value]) => (
+                      <Grid item xs={4} key={key}>
+                        <Typography variant="h6" sx={{ color: '#9c27b0', fontWeight: 'bold' }}>
+                          {value}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {key.replace(/([A-Z])/g, ' $1').trim()}
+                        </Typography>
+                      </Grid>
+                    ))}
+                  </Grid>
+                </Paper>
+              </Grid>
+            ))}
+          </Grid>
+
+          <Box sx={{ mt: 3, textAlign: 'center' }}>
+            <Button 
+              variant="contained" 
+              size="large"
+              onClick={() => setAlgorithmOptimizerOpen(true)}
+              sx={{ 
+                bgcolor: '#9c27b0',
+                '&:hover': { bgcolor: '#7b1fa2' }
+              }}
+            >
+              Start Algoritme Analyse
+            </Button>
+          </Box>
+        </TabPanel>
+
+        <TabPanel value={tabValue} index={3}>
+          <Typography variant="h5" sx={{ fontWeight: 'bold', mb: 3 }}>
+            Prosjekt & Struktur
+          </Typography>
+          
+          <Grid container spacing={3}>
+            <Grid item xs={12} md={6}>
+              <Paper sx={{ p: 3 }}>
+                <Typography variant="h6" sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Movie />
+                  Prosjekt Sekvenser/Kapitler
+                </Typography>
+                <Stack spacing={2}>
+                  {['Forberedelser', 'Vielse', 'Taler', 'Dans', 'Portretter'].map((chapter, idx) => (
+                    <Box key={idx} sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
+                      <Typography sx={{ minWidth: 120 }}>{chapter}</Typography>
+                      <Chip label="V1" size="small" />
+                      <Chip label="V2" size="small" color="primary" />
+                      <Chip label="Final" size="small" color="success" />
+                    </Box>
+                  ))}
+                </Stack>
+              </Paper>
+            </Grid>
+
+            <Grid item xs={12} md={6}>
+              <Paper sx={{ p: 3 }}>
+                <Typography variant="h6" sx={{ mb: 2 }}>
+                  Video Kategorier
+                </Typography>
+                <Grid container spacing={1}>
+                  {[
+                    { name: 'Highlight', duration: '3-5 min', icon: '⭐' },
+                    { name: 'Feature', duration: '12-18 min', icon: '🎬' },
+                    { name: 'Seremoni full', duration: '45-60 min', icon: '💒' },
+                    { name: 'Taler full', duration: '30-45 min', icon: '🎤' },
+                    { name: 'Sosiale medier-vertikal', duration: '<60s', icon: '📱' }
+                  ].map((category, idx) => (
+                    <Grid item xs={12} key={idx}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 2, border: '1px solid', borderColor: 'grey.300', borderRadius: 1 }}>
+                        <Typography sx={{ fontSize: '1.2em' }}>{category.icon}</Typography>
+                        <Box sx={{ flex: 1 }}>
+                          <Typography variant="body1" sx={{ fontWeight: 'bold' }}>{category.name}</Typography>
+                          <Typography variant="body2" color="text.secondary">{category.duration}</Typography>
+                        </Box>
+                        <Button size="small" variant="outlined">Opprett</Button>
+                      </Box>
+                    </Grid>
+                  ))}
+                </Grid>
+              </Paper>
+            </Grid>
+
+            <Grid item xs={12}>
+              <Paper sx={{ p: 3 }}>
+                <Typography variant="h6" sx={{ mb: 2 }}>
+                  Import, Proxy & Synk
+                </Typography>
+                <Grid container spacing={2}>
+                  <Grid item xs={12} md={4}>
+                    <Box sx={{ textAlign: 'center', p: 2 }}>
+                      <Typography variant="body1" sx={{ fontWeight: 'bold', mb: 1 }}>Multicam-sync</Typography>
+                      <Typography variant="body2" color="text.secondary">Audio waveform eller timecode (TC in/out)</Typography>
+                      <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
+                        <Button variant="contained">Start Sync</Button>
+                        <Button 
+                          variant="outlined" 
+                          onClick={() => setSaveAsDialogOpen(true)}
+                          size="small"
+                        >
+                          Lagre som...
+                        </Button>
+                      </Stack>
+                    </Box>
+                  </Grid>
+                  <Grid item xs={12} md={4}>
+                    <Box sx={{ textAlign: 'center', p: 2 }}>
+                      <Typography variant="body1" sx={{ fontWeight: 'bold', mb: 1 }}>Auto-proxy</Typography>
+                      <Typography variant="body2" color="text.secondary">Automatisk proxy-generering for raskere redigering</Typography>
+                      <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
+                        <Button variant="contained">Generer Proxy</Button>
+                        <Button 
+                          variant="outlined" 
+                          onClick={() => setSaveAsDialogOpen(true)}
+                          size="small"
+                        >
+                          Lagre som...
+                        </Button>
+                      </Stack>
+                    </Box>
+                  </Grid>
+                  <Grid item xs={12} md={4}>
+                    <Box sx={{ textAlign: 'center', p: 2 }}>
+                      <Typography variant="body1" sx={{ fontWeight: 'bold', mb: 1 }}>Scene-markører</Typography>
+                      <Typography variant="body2" color="text.secondary">Auto-splitt av lange opptak</Typography>
+                      <Button variant="contained" sx={{ mt: 2 }}>Marker Scener</Button>
+                    </Box>
+                  </Grid>
+                </Grid>
+              </Paper>
+            </Grid>
+          </Grid>
+        </TabPanel>
+
+        <TabPanel value={tabValue} index={4}>
+          <Typography variant="h5" sx={{ fontWeight: 'bold', mb: 3 }}>
+            Review & Godkjenning (Proofing)
+          </Typography>
+          
+          <Grid container spacing={3}>
+            <Grid item xs={12} md={8}>
+              <Paper sx={{ p: 3 }}>
+                <Typography variant="h6" sx={{ mb: 2 }}>
+                  Tidskodede Kommentarer
+                </Typography>
+                <Box sx={{ mb: 3 }}>
+                  <TextField
+                    fullWidth
+                    multiline
+                    rows={3}
+                    placeholder="Skriv kommentar ved 00:02:15..."
+                    sx={{ mb: 2 }}
+                  />
+                  <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+                    <TextField
+                      label="Timecode"
+                      placeholder="00:02:15"
+                      size="small"
+                      sx={{ width: 120 }}
+                    />
+                    <TextField
+                      label="Mention @person"
+                      placeholder="@videograf"
+                      size="small"
+                      sx={{ flex: 1 }}
+                    />
+                  </Box>
+                  <Button variant="contained" color="primary">
+                    Legg til Kommentar
+                  </Button>
+                </Box>
+
+                <Typography variant="h6" sx={{ mb: 2 }}>
+                  Aktive Kommentarer
+                </Typography>
+                <Stack spacing={2}>
+                  {[
+                    { timecode: '00:01:23', comment: 'Kan vi legge til musikk her?', author: 'Klient', status: 'Åpen' },
+                    { timecode: '00:03:45', comment: 'Perfekt øyeblikk! Kan vi få slow motion?', author: 'Klient', status: 'Under arbeid' },
+                    { timecode: '00:05:12', comment: 'Kan vi korte ned denne sekvensen?', author: 'Klient', status: 'Løst' }
+                  ].map((comment, idx) => (
+                    <Box key={idx} sx={{ p: 2, border: '1px solid', borderColor: 'grey.300', borderRadius: 1 }}>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                        <Typography variant="body2" sx={{ fontWeight: 'bold' }}>{comment.timecode}</Typography>
+                        <Chip 
+                          label={comment.status} 
+                          size="small"
+                          color={comment.status === 'Løst' ? 'success' : comment.status === 'Under arbeid' ? 'warning' : 'default'}
+                        />
+                      </Box>
+                      <Typography variant="body2">{comment.comment}</Typography>
+                      <Typography variant="caption" color="text.secondary">- {comment.author}</Typography>
+                    </Box>
+                  ))}
+                </Stack>
+              </Paper>
+            </Grid>
+
+            <Grid item xs={12} md={4}>
+              <Paper sx={{ p: 3 }}>
+                <Typography variant="h6" sx={{ mb: 2 }}>
+                  Endringsrunder
+                </Typography>
+                <Stack spacing={2}>
+                  {['R1', 'R2', 'R3'].map((round, idx) => (
+                    <Box key={idx} sx={{ p: 2, bgcolor: idx === 1 ? 'primary.light' : 'grey.100', borderRadius: 1, color: idx === 1 ? 'white' : 'inherit' }}>
+                      <Typography variant="body1" sx={{ fontWeight: 'bold' }}>{round}</Typography>
+                      <Typography variant="body2">
+                        {idx === 0 && 'Første gjennomgang - 5 kommentarer'}
+                        {idx === 1 && 'Aktiv runde - 3 kommentarer igjen'}
+                        {idx === 2 && 'Ikke startet'}
+                      </Typography>
+                    </Box>
+                  ))}
+                </Stack>
+
+                <Typography variant="h6" sx={{ mt: 3, mb: 2 }}>
+                  Versjonskontroll
+                </Typography>
+                <Button fullWidth variant="outlined" sx={{ mb: 1 }}>
+                  Side-by-side Sammenligning
+                </Button>
+                <Button fullWidth variant="outlined" sx={{ mb: 1 }}>
+                  Diff-logg
+                </Button>
+                <Button fullWidth variant="contained" color="success">
+                  Promote to Final
+                </Button>
+              </Paper>
+            </Grid>
+          </Grid>
+        </TabPanel>
+
+        <TabPanel value={tabValue} index={5}>
+          <Typography variant="h5" sx={{ fontWeight: 'bold', mb: 3 }}>
+            Leveranse & Eksport
+          </Typography>
+          
+          <Grid container spacing={3}>
+            <Grid item xs={12} md={6}>
+              <Paper sx={{ p: 3 }}>
+                <Typography variant="h6" sx={{ mb: 2 }}>
+                  Render-presets
+                </Typography>
+                <Stack spacing={2}>
+                  {[
+                    { name: '4K Master', format: 'ProRes/DNxHR', size: '~15GB', quality: 'Lossless' },
+                    { name: 'Web Delivery', format: 'H.264/H.265', size: '~2GB', quality: 'High' },
+                    { name: 'SoMe-vertikal', format: '1080×1920', size: '~500MB', quality: 'Optimized' }
+                  ].map((preset, idx) => (
+                    <Box key={idx} sx={{ p: 2, border: '1px solid', borderColor: 'grey.300', borderRadius: 1 }}>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                        <Typography variant="body1" sx={{ fontWeight: 'bold' }}>{preset.name}</Typography>
+                        <Button size="small" variant="contained">Render</Button>
+                      </Box>
+                      <Typography variant="body2" color="text.secondary">
+                        Format: {preset.format} | Størrelse: {preset.size} | Kvalitet: {preset.quality}
+                      </Typography>
+                    </Box>
+                  ))}
+                </Stack>
+              </Paper>
+            </Grid>
+
+            <Grid item xs={12} md={6}>
+              <Paper sx={{ p: 3 }}>
+                <Typography variant="h6" sx={{ mb: 2 }}>
+                  Direktelevering
+                </Typography>
+                <Stack spacing={2}>
+                  <Button
+                    fullWidth
+                    variant="outlined"
+                    startIcon={<CloudDownload />}
+                    sx={{ justifyContent: 'flex-start', p: 2 }}
+                  >
+                    Send til Google Drive
+                  </Button>
+                  <Button
+                    fullWidth
+                    variant="outlined"
+                    startIcon={<CloudDownload />}
+                    sx={{ justifyContent: 'flex-start', p: 2 }}
+                  >
+                    Send til Dropbox
+                  </Button>
+                  <Button
+                    fullWidth
+                    variant="outlined"
+                    startIcon={<CloudDownload />}
+                    sx={{ justifyContent: 'flex-start', p: 2 }}
+                  >
+                    Opprett WeTransfer-link
+                  </Button>
+                </Stack>
+
+                <Typography variant="h6" sx={{ mt: 3, mb: 2 }}>
+                  Leveransepakke
+                </Typography>
+                <FormControlLabel
+                  control={<Switch defaultChecked />}
+                  label="Final Master"
+                />
+                <FormControlLabel
+                  control={<Switch defaultChecked />}
+                  label="Mezzanine"
+                />
+                <FormControlLabel
+                  control={<Switch />}
+                  label="Proxy"
+                />
+                <FormControlLabel
+                  control={<Switch defaultChecked />}
+                  label="Lisens/PDF"
+                />
+                <FormControlLabel
+                  control={<Switch defaultChecked />}
+                  label="Kapittelpunkter"
+                />
+
+                <Button fullWidth variant="contained" sx={{ mt: 2 }}>
+                  Opprett Leveransepakke
+                </Button>
+              </Paper>
+            </Grid>
+
+            <Grid item xs={12}>
+              <Paper sx={{ p: 3 }}>
+                <Typography variant="h6" sx={{ mb: 2 }}>
+                  Bryllup Leveranse-oppsett (Praktiske presets)
+                </Typography>
+                <Grid container spacing={2}>
+                  {[
+                    { name: 'Highlight', duration: '3–5 min', description: 'Høydepunkter fra dagen' },
+                    { name: 'Feature', duration: '12–18 min', description: 'Komplett historiefortelling' },
+                    { name: 'Full Seremoni', duration: '45-60 min', description: 'Komplett vielse uredigert' },
+                    { name: 'Full Taler', duration: '30-45 min', description: 'Alle taler og gratulasioner' },
+                    { name: 'Teaser', duration: '<60s', description: 'Vertikal for sosiale medier' }
+                  ].map((preset, idx) => (
+                    <Grid item xs={12} md={6} lg={4} key={idx}>
+                      <Box sx={{ p: 2, border: '1px solid', borderColor: 'grey.300', borderRadius: 1, textAlign: 'center' }}>
+                        <Typography variant="body1" sx={{ fontWeight: 'bold' }}>{preset.name}</Typography>
+                        <Typography variant="body2" color="primary">{preset.duration}</Typography>
+                        <Typography variant="caption" color="text.secondary">{preset.description}</Typography>
+                        <Button size="small" variant="contained" sx={{ mt: 1, display: 'block', mx: 'auto' }}>
+                          Opprett
+                        </Button>
+                      </Box>
+                    </Grid>
+                  ))}
+                </Grid>
+              </Paper>
+            </Grid>
+          </Grid>
+        </TabPanel>
+
+        <TabPanel value={tabValue} index={6}>
+          <Typography variant="h5" sx={{ fontWeight: 'bold', mb: 3 }}>
+            Endringshistorikk & Gjenoppretting
+          </Typography>
+          
+          <Grid container spacing={3}>
+            <Grid item xs={12} md={8}>
+              <Paper sx={{ p: 3 }}>
+                <Typography variant="h6" sx={{ mb: 2 }}>
+                  Siste Endringer
+                </Typography>
+                
+                <Stack spacing={2}>
+                  {[
+                    {
+                      id: '1',
+                      type: 'sequence_edit',
+                      description: 'Redigert bryllupssekvens - kuttet fra 45 min til 35 min',
+                      version: 'V2',
+                      timecode: '00:15:30',
+                      user: 'Videograf',
+                      timestamp: '2025-01-21 17:45',
+                      canRevert: true
+                    },
+                    {
+                      id: '2', 
+                      type: 'color_grade',
+                      description: 'Anvendt LUT for varmere fargetone på taler-sekvens',
+                      version: 'V2',
+                      timecode: '00:22:15',
+                      user: 'Videograf',
+                      timestamp: '2025-01-21 17:30',
+                      canRevert: true
+                    },
+                    {
+                      id: '3',
+                      type: 'multicam_sync',
+                      description: 'Synkronisert 3 kameraer via audio waveform',
+                      version: 'V1',
+                      timecode: '00:00:00',
+                      user: 'Videograf',
+                      timestamp: '2025-01-21 16:15',
+                      canRevert: false
+                    },
+                    {
+                      id: '4',
+                      type: 'comment_add',
+                      description: 'Klient la til kommentar: "Kan vi legge til musikk her?"',
+                      version: 'V1',
+                      timecode: '00:08:45',
+                      user: 'Klient',
+                      timestamp: '2025-01-21 15:30',
+                      canRevert: false
+                    }
+                  ].map((change) => (
+                    <Accordion key={change.id}>
+                      <AccordionSummary expandIcon={<ExpandMore />}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, width: '100%' }}>
+                          <Chip 
+                            label={change.type.replace('_', ' ')} 
+                            size="small"
+                            color={change.type === 'sequence_edit' ? 'primary' : 
+                                   change.type === 'color_grade' ? 'secondary' :
+                                   change.type === 'multicam_sync' ? 'success' : 'default'}
+                          />
+                          <Typography variant="body2" sx={{ flex: 1 }}>
+                            {change.description}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {change.timestamp}
+                          </Typography>
+                        </Box>
+                      </AccordionSummary>
+                      <AccordionDetails>
+                        <Grid container spacing={2}>
+                          <Grid item xs={12} md={6}>
+                            <Typography variant="body2" color="text.secondary">
+                              <strong>Versjon:</strong> {change.version}
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              <strong>Timecode:</strong> {change.timecode}
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              <strong>Bruker:</strong> {change.user}
+                            </Typography>
+                          </Grid>
+                          <Grid item xs={12} md={6}>
+                            <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
+                              <Button size="small" variant="outlined">
+                                Vis Detaljer
+                              </Button>
+                              {change.canRevert && (
+                                <Button 
+                                  size="small" 
+                                  variant="contained" 
+                                  color="warning"
+                                  startIcon={<Restore />}
+                                >
+                                  Gjør Tilbake
+                                </Button>
+                              )}
+                            </Box>
+                          </Grid>
+                        </Grid>
+                      </AccordionDetails>
+                    </Accordion>
+                  ))}
+                </Stack>
+              </Paper>
+            </Grid>
+
+            <Grid item xs={12} md={4}>
+              <Paper sx={{ p: 3, mb: 3 }}>
+                <Typography variant="h6" sx={{ mb: 2 }}>
+                  Versjonhistorikk
+                </Typography>
+                <Stack spacing={2}>
+                  {[
+                    { name: 'Final', active: false, created: '2025-01-21 18:00', canRestore: true },
+                    { name: 'V2', active: true, created: '2025-01-21 17:45', canRestore: true },
+                    { name: 'V1', active: false, created: '2025-01-21 16:00', canRestore: true },
+                    { name: 'Draft', active: false, created: '2025-01-21 14:30', canRestore: false }
+                  ].map((version, idx) => (
+                    <Box key={idx} sx={{ 
+                      p: 2, 
+                      border: '1px solid', 
+                      borderColor: version.active ? 'primary.main' : 'grey.300',
+                      borderRadius: 1,
+                      bgcolor: version.active ? 'primary.light' : 'transparent',
+                      color: version.active ? 'white' : 'inherit'
+                    }}>
+                      <Typography variant="body1" sx={{ fontWeight: 'bold' }}>
+                        {version.name} {version.active && '(Aktiv)'}
+                      </Typography>
+                      <Typography variant="caption" sx={{ opacity: 0.8 }}>
+                        {version.created}
+                      </Typography>
+                      <Box sx={{ mt: 1 }}>
+                        {version.canRestore && !version.active && (
+                          <Button 
+                            size="small" 
+                            variant="outlined"
+                            startIcon={<Restore />}
+                            sx={{ 
+                              color: version.active ? 'white' : 'inherit',
+                              borderColor: version.active ? 'white' : 'inherit'
+                            }}
+                          >
+                            Gjenopprett
+                          </Button>
+                        )}
+                      </Box>
+                    </Box>
+                  ))}
+                </Stack>
+              </Paper>
+
+              <Paper sx={{ p: 3 }}>
+                <Typography variant="h6" sx={{ mb: 2 }}>
+                  Sikkerhetskopi & Gjenoppretting
+                </Typography>
+                <Stack spacing={2}>
+                  <Button 
+                    fullWidth 
+                    variant="contained" 
+                    color="success"
+                    startIcon={<CloudUpload />}
+                  >
+                    Opprett Sikkerhetskopi
+                  </Button>
+                  <Button 
+                    fullWidth 
+                    variant="outlined"
+                    startIcon={<CloudDownload />}
+                  >
+                    Last Ned Backup
+                  </Button>
+                  <Button 
+                    fullWidth 
+                    variant="outlined"
+                    color="error"
+                    startIcon={<Restore />}
+                  >
+                    Nødgjenoppretting
+                  </Button>
+                </Stack>
+                
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+                  Automatisk sikkerhetskopi hver 30 min under redigering
+                </Typography>
+              </Paper>
+            </Grid>
+          </Grid>
+        </TabPanel>
+
+        <TabPanel value={tabValue} index={7}>
+          <Typography variant="h5" sx={{ fontWeight: 'bold', mb: 3 }}>
+            Statistikk & Ytelse
+          </Typography>
+          
+          <Grid container spacing={3}>
+            <Grid item xs={12} md={6}>
+              <Paper sx={{ p: 3 }}>
+                <Typography variant="h6" sx={{ mb: 2 }}>
+                  Aktive Prosjekter
+                </Typography>
+                <Typography variant="h3" sx={{ color: '#FF6B35', fontWeight: 'bold', mb: 1 }}>
+                  8
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  3 bryllup, 2 firmaeventer, 2 musikk-videoer, 1 dokumentar
+                </Typography>
+              </Paper>
+            </Grid>
+
+            <Grid item xs={12} md={6}>
+              <Paper sx={{ p: 3 }}>
+                <Typography variant="h6" sx={{ mb: 2 }}>
+                  Denne måned
+                </Typography>
+                <Typography variant="h3" sx={{ color: '#4CAF50', fontWeight: 'bold', mb: 1 }}>
+                  127
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Timer redigert med Video Suite
+                </Typography>
+              </Paper>
+            </Grid>
+          </Grid>
+        </TabPanel>
+
+        {/* Lagre som Dialog for Video Suite */}
+        <Dialog 
+          open={saveAsDialogOpen} 
+          onClose={() => setSaveAsDialogOpen(false)}
+          maxWidth="sm"
+          fullWidth
+        >
+          <DialogTitle>
+            Lagre Video Prosjekt
+          </DialogTitle>
+          <DialogContent>
+            <Stack spacing={3} sx={{ mt: 1 }}>
+              <FormControl fullWidth>
+                <InputLabel>Lagringstype</InputLabel>
+                <Select
+                  value={saveAsType}
+                  onChange={(e) => setSaveAsType(e.target.value as 'overwrite' | 'new' | 'download')}
+                  label="Lagringstype"
+                >
+                  <MenuItem value="overwrite">
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <CloudUpload />
+                      Overskrive eksisterende
+                    </Box>
+                  </MenuItem>
+                  <MenuItem value="new">
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <History />
+                      Lagre som ny versjon
+                    </Box>
+                  </MenuItem>
+                  <MenuItem value="download">
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Download />
+                      Lagre til datamaskin
+                    </Box>
+                  </MenuItem>
+                </Select>
+              </FormControl>
+
+              {saveAsType === 'new' && (
+                <TextField
+                  fullWidth
+                  label="Prosjektnavn"
+                  value={saveAsName}
+                  onChange={(e) => setSaveAsName(e.target.value)}
+                  placeholder="Skriv inn navn for ny versjon..."
+                  helperText="Eksempel: Bryllup_Film_V3, Highlight_Final_Version"
+                />
+              )}
+
+              <Paper sx={{ p: 2, bgcolor: 'grey.50' }}>
+                <Typography variant="body2" sx={{ mb: 1, fontWeight: 'bold' }}>
+                  {saveAsType === 'overwrite' ? 'Overskrive eksisterende:' : 'Ny versjon vil inneholde:'}
+                </Typography>
+                <List dense>
+                  <ListItem>
+                    <ListItemText primary="Alle videosekvenser og kapitler" />
+                  </ListItem>
+                  <ListItem>
+                    <ListItemText primary="Color grading og LUT-innstillinger" />
+                  </ListItem>
+                  <ListItem>
+                    <ListItemText primary="Multicam sync og proxy-filer" />
+                  </ListItem>
+                  <ListItem>
+                    <ListItemText primary="Render-presets og eksportinnstillinger" />
+                  </ListItem>
+                  <ListItem>
+                    <ListItemText primary="Kommentarer og review-runder" />
+                  </ListItem>
+                </List>
+              </Paper>
+            </Stack>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setSaveAsDialogOpen(false)}>
+              Avbryt
+            </Button>
+            <Button 
+              variant="contained"
+              disabled={saveAsType === 'new' && !saveAsName.trim()}
+              onClick={() => {
+                if (saveAsType === 'download') {
+                  handleDownloadToComputer();
+                } else {
+                  // Handle save logic here
+                  console.log('Lagrer video som:', saveAsType, saveAsName);
+                }
+                setSaveAsDialogOpen(false);
+                setSaveAsName('');
+              }}
+            >
+              {saveAsType === 'overwrite' ? 'Overskrive' : 
+             saveAsType === 'download' ? 'Last ned til datamaskin' : 'Lagre som ny'}
+            </Button>
+          </DialogActions>
+        </Dialog>
+          <Typography variant="h5" sx={{ fontWeight: 'bold', mb: 3 }}>
+            Statistikk & Analyse
+          </Typography>
+          
+          <Grid container spacing={3}>
+            <Grid item xs={12} md={3}>
+              <MuiCard sx={{ textAlign: 'center', p: 3 }}>
+                <Typography variant="h3" sx={{ color: '#e74c3c', fontWeight: 'bold' }}>
+                  {videoStats.totalProjects || 0}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Total Prosjekter
+                </Typography>
+              </MuiCard>
+            </Grid>
+            <Grid item xs={12} md={3}>
+              <MuiCard sx={{ textAlign: 'center', p: 3 }}>
+                <Typography variant="h3" sx={{ color: '#27ae60', fontWeight: 'bold' }}>
+                  {videoStats.totalEditingHours || 0}h
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Redigeringstid
+                </Typography>
+              </MuiCard>
+            </Grid>
+            <Grid item xs={12} md={3}>
+              <MuiCard sx={{ textAlign: 'center', p: 3 }}>
+                <Typography variant="h3" sx={{ color: '#9b59b6', fontWeight: 'bold' }}>
+                  {videoStats.averageRating || 0}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Gjennomsnittsvurdering
+                </Typography>
+              </MuiCard>
+            </Grid>
+            <Grid item xs={12} md={3}>
+              <MuiCard sx={{ textAlign: 'center', p: 3 }}>
+                <Typography variant="h3" sx={{ color: '#f39c12', fontWeight: 'bold' }}>
+                  {videoStats.clientSatisfaction || 0}%
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Kundetilfredshet
+                </Typography>
+              </MuiCard>
+            </Grid>
+
+            <Grid item xs={12}>
+              <Paper sx={{ p: 3 }}>
+                <Typography variant="h6" sx={{ mb: 2 }}>
+                  Videograf Ytelse (Siste 30 dager)
+                </Typography>
+                <Grid container spacing={3}>
+                  <Grid item xs={12} md={6}>
+                    <Box sx={{ textAlign: 'center', p: 2 }}>
+                      <Typography variant="h4" sx={{ color: '#e74c3c', fontWeight: 'bold', mb: 1 }}>
+                        15
+                      </Typography>
+                      <Typography variant="body1">Fullførte prosjekter</Typography>
+                      <Typography variant="body2" color="text.secondary">+3 fra forrige måned</Typography>
+                    </Box>
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <Box sx={{ textAlign: 'center', p: 2 }}>
+                      <Typography variant="h4" sx={{ color: '#27ae60', fontWeight: 'bold', mb: 1 }}>
+                        4.8/5
+                      </Typography>
+                      <Typography variant="body1">Gjennomsnittsvurdering</Typography>
+                      <Typography variant="body2" color="text.secondary">Basert på 47 anmeldelser</Typography>
+                    </Box>
+                  </Grid>
+                </Grid>
+              </Paper>
+            </Grid>
+
+            <Grid item xs={12} md={6}>
+              <Paper sx={{ p: 3 }}>
+                <Typography variant="h6" sx={{ mb: 2 }}>
+                  Mest Populære Videoformater
+                </Typography>
+                <Stack spacing={2}>
+                  {[
+                    { format: 'Bryllup Highlight', count: 8, percentage: 45 },
+                    { format: 'Sosiale Medier Innhold', count: 5, percentage: 28 },
+                    { format: 'Bedriftsvideoer', count: 3, percentage: 17 },
+                    { format: 'Musikkvideo', count: 2, percentage: 10 }
+                  ].map((format, idx) => (
+                    <Box key={idx} sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                      <Typography sx={{ minWidth: 120 }}>{format.format}</Typography>
+                      <Box sx={{ 
+                        flex: 1, 
+                        height: 8, 
+                        bgcolor: 'grey.200', 
+                        borderRadius: 4,
+                        overflow: 'hidden'
+                      }}>
+                        <Box sx={{ 
+                          width: `${format.percentage}%`, 
+                          height: '100%', 
+                          bgcolor: '#e74c3c',
+                          transition: 'width 0.3s ease'
+                        }} />
+                      </Box>
+                      <Typography variant="body2" sx={{ minWidth: 40 }}>
+                        {format.count}
+                      </Typography>
+                    </Box>
+                  ))}
+                </Stack>
+              </Paper>
+            </Grid>
+
+            <Grid item xs={12} md={6}>
+              <Paper sx={{ p: 3 }}>
+                <Typography variant="h6" sx={{ mb: 2 }}>
+                  Inntektsanalyse
+                </Typography>
+                <Stack spacing={2}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Typography variant="body1">Total omsetning</Typography>
+                    <Typography variant="h6" sx={{ color: '#27ae60', fontWeight: 'bold' }}>
+                      NOK 185,500
+                    </Typography>
+                  </Box>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Typography variant="body1">Gjennomsnitt per prosjekt</Typography>
+                    <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
+                      NOK 12,367
+                    </Typography>
+                  </Box>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Typography variant="body1">Høyeste enkeltprosjekt</Typography>
+                    <Typography variant="h6" sx={{ color: '#f39c12', fontWeight: 'bold' }}>
+                      NOK 35,000
+                    </Typography>
+                  </Box>
+                </Stack>
+              </Paper>
+            </Grid>
+          </Grid>
+        </TabPanel>
+        
+        <TabPanel value={tabValue} index={1}>
+          <Typography>Sosiale Medier content kommer her</Typography>
+        </TabPanel>
+        
+        <TabPanel value={tabValue} index={2}>
+          <Typography>Algoritme Optimizer content kommer her</Typography>
+        </TabPanel>
+        
+        <TabPanel value={tabValue} index={3}>
+          <Typography>Prosjekt & Struktur content kommer her</Typography>
+        </TabPanel>
+        
+        <TabPanel value={tabValue} index={4}>
+          <Typography>Review & Godkjenning content kommer her</Typography>
+        </TabPanel>
+        
+        <TabPanel value={tabValue} index={5}>
+          <Typography>Leveranse & Eksport content kommer her</Typography>
+        </TabPanel>
+        
+        <TabPanel value={tabValue} index={6}>
+          <Typography>Endringshistorikk content kommer her</Typography>
+        </TabPanel>
+        
+        <TabPanel value={tabValue} index={7}>
+          <Typography>Statistikk content kommer her</Typography>
+        </TabPanel>
+      </DialogContent>
+    </Dialog>
+
+    {/* Social Media Format Dialog */}
+    <Dialog open={socialMediaDialogOpen} onClose={() => setSocialMediaDialogOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, bgcolor: '#e91e63', color: 'white' }}>
+          <Share />
+          Sosiale Medier Format Optimizer
+        </DialogTitle>
+        <DialogContent sx={{ p: 3 }}>
+          <Typography variant="body1" sx={{ mb: 3 }}>
+            Optimaliser {selectedVideoFiles.length || 1} video{(selectedVideoFiles.length || 1) !== 1 ? 'er' : ''} for sosiale medier
+          </Typography>
+          
+          <FormControl fullWidth sx={{ mb: 2 }}>
+            <InputLabel>Plattform</InputLabel>
+            <Select value={selectedPlatform} onChange={(e) => setSelectedPlatform(e.target.value)}>
+              {socialPlatforms.map((platform) => (
+                <MenuItem key={platform.id} value={platform.id}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    {platform.icon}
+                    {platform.name}
+                  </Box>
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+
+          <FormControl fullWidth sx={{ mb: 2 }}>
+            <InputLabel>Format</InputLabel>
+            <Select value={selectedSocialFormat} onChange={(e) => setSelectedSocialFormat(e.target.value)}>
+              {socialPlatforms.find(p => p.id === selectedPlatform)?.formats.map((format, idx) => (
+                <MenuItem key={idx} value={format}>
+                  {format}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+
+          <FormControlLabel
+            control={<Switch defaultChecked />}
+            label="Legg til automatiske undertekster"
+            sx={{ mb: 2 }}
+          />
+
+          <FormControlLabel
+            control={<Switch defaultChecked />}
+            label="Optimaliser for mobile visning"
+            sx={{ mb: 2 }}
+          />
+
+          {isProcessing && (
+            <Box sx={{ mt: 2 }}>
+              <LinearProgress variant="determinate" value={processingProgress} sx={{ mb: 1 }} />
+              <Typography variant="body2" color="text.secondary">
+                Prosesserer: {processingProgress}% fullført
+              </Typography>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setSocialMediaDialogOpen(false)} disabled={isProcessing}>
+            Avbryt
+          </Button>
+          <Button 
+            variant="contained" 
+            onClick={handleSocialMediaExport}
+            disabled={isProcessing}
+            sx={{ bgcolor: '#e91e63' }}
+          >
+            {isProcessing ? 'Prosesserer...' : 'Start Optimalisering'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Algorithm Optimizer Dialog */}
+      <Dialog open={algorithmOptimizerOpen} onClose={() => setAlgorithmOptimizerOpen(false)} maxWidth="lg" fullWidth>
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, bgcolor: '#9c27b0', color: 'white' }}>
+          <SmartToy />
+          Algoritme Optimizer - Intelligent Video Analyse
+        </DialogTitle>
+        <DialogContent sx={{ p: 3 }}>
+          <Typography variant="body1" sx={{ mb: 3 }}>
+            Analyser og optimaliser {selectedVideoFiles.length || 1} video{(selectedVideoFiles.length || 1) !== 1 ? 'er' : ''} for maksimal reach og engagement
+          </Typography>
+          
+          <Grid container spacing={3}>
+            <Grid item xs={12} md={6}>
+              <Paper sx={{ p: 2 }}>
+                <Typography variant="h6" sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Analytics />
+                  Hook Analyse (3 første sekunder)
+                </Typography>
+                <Box sx={{ mb: 2 }}>
+                  <Typography gutterBottom>Hook Styrke</Typography>
+                  <Slider
+                    defaultValue={85}
+                    min={0}
+                    max={100}
+                    valueLabelDisplay="auto"
+                    valueLabelFormat={(value) => `${value}%`}
+                  />
+                </Box>
+                <Typography variant="body2" color="text.secondary">
+                  Optimerer åpningssekvens for maksimal attention capture
+                </Typography>
+              </Paper>
+            </Grid>
+
+            <Grid item xs={12} md={6}>
+              <Paper sx={{ p: 2 }}>
+                <Typography variant="h6" sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Speed />
+                  Pacing Optimalisering
+                </Typography>
+                <Box sx={{ mb: 2 }}>
+                  <Typography gutterBottom>Tempo Score</Typography>
+                  <Slider
+                    defaultValue={92}
+                    min={0}
+                    max={100}
+                    valueLabelDisplay="auto"
+                    valueLabelFormat={(value) => `${value}%`}
+                  />
+                </Box>
+                <Typography variant="body2" color="text.secondary">
+                  Justerer klipping og overganger for optimal retention
+                </Typography>
+              </Paper>
+            </Grid>
+
+            <Grid item xs={12}>
+              <Paper sx={{ p: 2 }}>
+                <Typography variant="h6" sx={{ mb: 2 }}>
+                  Trend Integration & Hashtag Optimizer
+                </Typography>
+                <Grid container spacing={2}>
+                  <Grid item xs={12} md={4}>
+                    <Typography variant="body2" color="text.secondary">Trend Score</Typography>
+                    <Typography variant="h4" sx={{ color: '#9c27b0', fontWeight: 'bold' }}>88%</Typography>
+                  </Grid>
+                  <Grid item xs={12} md={4}>
+                    <Typography variant="body2" color="text.secondary">Hashtag Reach</Typography>
+                    <Typography variant="h4" sx={{ color: '#9c27b0', fontWeight: 'bold' }}>2.5M</Typography>
+                  </Grid>
+                  <Grid item xs={12} md={4}>
+                    <Typography variant="body2" color="text.secondary">Viral Potential</Typography>
+                    <Typography variant="h4" sx={{ color: '#9c27b0', fontWeight: 'bold' }}>73%</Typography>
+                  </Grid>
+                </Grid>
+              </Paper>
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setAlgorithmOptimizerOpen(false)}>
+            Lukk
+          </Button>
+          <Button variant="contained" sx={{ bgcolor: '#9c27b0' }}>
+            Utfør Optimalisering
+          </Button>
+        </DialogActions>
+      </Dialog>
+  );
+}

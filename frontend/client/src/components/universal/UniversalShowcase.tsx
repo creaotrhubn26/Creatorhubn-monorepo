@@ -1,0 +1,11019 @@
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
+import { useAuth } from '@/hooks/useAuth';
+import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
+import { useTheming } from '../../utils/theming-helper';
+import { useClientServicePricing } from '../../services/ClientServicePricingService';
+import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
+import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
+import _getProfessionIcon from '@/utils/profession-icons';
+// Wiring: getProfessionIcon is available for dynamic icon rendering
+const getProfessionIcon = _getProfessionIcon;
+import { useDynamicProfessions } from './hooks/useDynamicProfessions';
+import { useFileManagementStatus } from '../../contexts/FileManagementStatusContext';
+import { FileStatusWrapper } from '../common/FileStatusIndicators';
+import { useDemoMode, useDemoModeData } from '@/contexts/DemoModeContext';
+import UniversalFileUpload from './UniversalFileUpload';
+// @ts-ignore - ClientAuthDialog import for FASE 2
+const ClientAuthDialog = React.lazy(() => import('../proofing/ClientAuthDialog'));
+// Import Academy Dashboard
+import AcademyDashboard from '../academy/AcademyDashboard';
+// Import Universal Dashboard
+import UniversalDashboard from './UniversalDashboard';
+// Import CreatorHub Icons
+import { AcademyIcon } from '../shared/CreatorHubIcons';
+import DashboardIcon from '@mui/icons-material/Dashboard';
+// Google Drive Integration
+// Toast Notifications
+import { useVisualEditor } from '../admin/visual-editor/VisualEditorContext';
+// New context imports
+import { useProject } from '../../contexts/ProjectContext';
+import { useSettings } from '../../contexts/SettingsContext';
+import { useTheme as useCustomTheme } from '../../contexts/ThemeContext';
+import { useRealTime } from '../../contexts/RealTimeContext';
+import { usePushNotifications } from '../../hooks/usePushNotifications';
+import { PushNotificationSettings } from '../shared/PushNotificationSettings';
+import {
+  Box,
+  Typography,
+  Card as MuiCard,
+  CardMedia,
+  CardContent,
+  Chip,
+  IconButton,
+  Fade,
+  Paper,
+  Avatar,
+  Stack,
+  Button,
+  Dialog,
+  DialogTitle,
+  DialogActions,
+  DialogContent,
+  Tooltip,
+  useTheme,
+  alpha,
+  TextField,
+  Divider,
+  Badge,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Menu,
+  Grid,
+  AppBar,
+  Toolbar,
+  Drawer,
+  List,
+  ListItem,
+  ListItemIcon,
+  ListItemText,
+  ListItemButton,
+  Container,
+  Slider,
+  Switch,
+  FormControlLabel,
+  Radio,
+  RadioGroup,
+  FormLabel,
+  CircularProgress,
+  LinearProgress,
+  Autocomplete,
+  ToggleButtonGroup,
+  ToggleButton,
+  Breadcrumbs,
+  Link,
+  Checkbox,
+  FormGroup,
+  Popper,
+  ClickAwayListener,
+  Grow,
+  MenuList,
+  Skeleton,
+  ImageList,
+  ImageListItem,
+  ImageListItemBar,
+  SpeedDial,
+  SpeedDialAction,
+  SpeedDialIcon,
+  Backdrop,
+  Zoom,
+  Card,
+  Snackbar,
+  Alert
+} from '@mui/material';
+import {
+  PlayArrow,
+  Favorite,
+  FavoriteBorder,
+  Share,
+  Download,
+  Fullscreen,
+  GridView,
+  ViewList,
+  FilterList,
+  Search,
+  Close,
+  PhotoLibrary,
+  VideoLibrary,
+  LibraryMusic,
+  Description,
+  Palette,
+  CameraAlt,
+  Comment,
+  Security,
+  ThumbUp,
+  Reply,
+  AccessTime,
+  Send,
+  Menu as MenuIcon,
+  Home,
+  Collections,
+  Person,
+  Settings,
+  Info,
+  Star,
+  LocationOn,
+  DragIndicator,
+  SelectAll,
+  CheckBox,
+  CheckBoxOutlineBlank,
+  Label,
+  Category,
+  FolderSpecial,
+  Edit,
+  Delete,
+  CloudUpload,
+  CloudDownload,
+  Sync,
+  Compare,
+  PushPin,
+  Tag,
+  CropFree,
+  ColorLens,
+  ViewComfy,
+  Apps,
+  ViewModule,
+  Undo,
+  Redo,
+  ContentCopy,
+  FindInPage,
+  Fingerprint,
+  Speed,
+  Cached,
+  CalendarMonth,
+  Camera,
+  Visibility,
+  VisibilityOff,
+  Add,
+  AddCircle,
+  ChevronLeft,
+  ChevronRight,
+  AttachMoney,
+  ShoppingCart,
+  Payment,
+  MoreVert,
+  OpenInNew,
+  Business,
+  Email,
+  Phone,
+  Language,
+  AccountCircle,
+  CheckCircle,
+  RadioButtonUnchecked,
+  AutoFixHigh,
+  AccountBalance,
+  Tune,
+  Brightness6,
+  Contrast,
+  BlurOn,
+  Copyright,
+  DriveFileMove,
+  Warning,
+  Image,
+  FolderOpen,
+  Archive,
+  Crop,
+  Rotate90DegreesCcw,
+  Flip,
+  Transform,
+  Straighten,
+  Notifications,
+  // Video-specific icons
+  Movie,
+  Videocam,
+  MovieCreation,
+  TrendingUp as TimelineIcon,
+  Layers,
+  VolumeUp,
+  Subtitles,
+  HighQuality,
+  Hd,
+  FourK,
+  VideoSettings,
+  GraphicEq,
+  LibraryAdd,
+  PlaylistPlay,
+  Shuffle,
+  Repeat,
+  SkipNext,
+  SkipPrevious,
+  FastForward,
+  FastRewind,
+  QueueMusic,
+  Equalizer,
+  MusicNote,
+  Chat,
+  School,
+  ArrowBack,
+  CreateNewFolder
+} from '@mui/icons-material';
+import { ProjectSelectorModal } from '../shared/ProjectSelectorModal';
+import ProjectTimeline from '../project/ProjectTimeline';
+import ElegantVideoPlayer from '../ElegantVideoPlayer';
+import CommandPalette from './CommandPalette';
+import KeyboardShortcutsGuide from './showcase/KeyboardShortcutsGuide';
+import WorkflowExecutor from './showcase/WorkflowExecutor';
+import ContextualActionBar from './showcase/ContextualActionBar';
+import QuickPreview from './showcase/QuickPreview';
+import ActivityFeed from './showcase/ActivityFeed';
+import ShareToCommunityDialog from '../community/ShareToCommunityDialog';
+import SmartCollections from './showcase/SmartCollections';
+import ComparisonView from './showcase/ComparisonView';
+import BulkFolderUpload from './showcase/BulkFolderUpload';
+import ClientActivityPanel from './showcase/ClientActivityPanel';
+// Pro Tools Integration
+import ProToolsConnection from '../protools/ProToolsConnection';
+import PlayheadSync from '../protools/PlayheadSync';
+import ProToolsCommentsPanel from '../protools/ProToolsCommentsPanel';
+const VideographerVideoSuite = React.lazy(() => import('../videographer/VideographerVideoSuite'));
+// @ts-ignore - PhotographerPhotoSuite has implicit return type
+const PhotographerPhotoSuite = React.lazy(() => import('../photographer/PhotographerPhotoSuite'));
+const VideoShowcaseEnhanced = React.lazy(() => import('./VideoShowcaseEnhanced'));
+
+// Enhanced hierarchical data models
+interface ShowcaseCategory {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string;
+  parentId?: string;
+  icon?: string;
+  color?: string;
+  sortOrder: number;
+  createdAt: Date;
+  updatedAt: Date;
+  createdBy: string;
+}
+
+interface ShowcaseSet {
+  id: string;
+  name: string;
+  description?: string;
+  categoryId: string;
+  items: string[]; // Item IDs
+  coverImageId?: string;
+  sortOrder: number;
+  metadata?: Record<string, any>;
+  createdAt: Date;
+  updatedAt: Date;
+  createdBy: string;
+}
+
+interface ShowcaseCollection {
+  id: string;
+  name: string;
+  description?: string;
+  items: string[]; // Item IDs from various categories/sets
+  visibility: 'private' | 'team' | 'public';
+  dynamic: boolean; // If true, auto-updates based on savedQuery
+  savedQuery?: SearchQuery;
+  tags?: string[];
+  coverImageId?: string;
+  collaborators?: string[];
+  createdAt: Date;
+  updatedAt: Date;
+  createdBy: string;
+  version: number;
+}
+
+interface SearchQuery {
+  text?: string;
+  categories?: string[];
+  tags?: string[];
+  dateRange?: { start: Date; end: Date };
+  camera?: string;
+  lens?: string;
+  location?: string;
+  person?: string[];
+  minRating?: number;
+  fileType?: string[];
+  customFilters?: Record<string, any>;
+}
+
+interface ItemAnnotation {
+  id: string;
+  itemId: string;
+  x: number; // Position percentage
+  y: number;
+  width?: number;
+  height?: number;
+  text: string;
+  type: 'note' | 'marker' | 'region';
+  color?: string;
+  createdAt: Date;
+  createdBy: string;
+  version: number;
+}
+
+interface ShowcaseItem {
+  id: string;
+  title: string;
+  description?: string;
+  thumbnailUrl?: string;
+  fileUrl?: string;
+  fileType: 'video' | 'photo' | 'audio' | 'document' | 'design';
+  tags?: string[];
+  clientName?: string;
+  projectType?: string;
+  category?: string;
+  createdAt?: string;
+  featured?: boolean;
+  isFeatured?: boolean;
+  type?: string;
+  stats?: {
+    views?: number;
+    likes?: number;
+    downloads?: number;
+};
+  brandLogoUrl?: string;
+  // New enhanced fields
+  lqipDataUrl?: string; // Low Quality Image Placeholder
+  dominantColor?: string; // For placeholder background
+  checksum?: string; // For deduplication
+  googlePhotosData?: any; // Google Photos specific data
+  categoryId?: string;
+  setId?: string;
+  collectionIds?: string[];
+  annotations?: ItemAnnotation[];
+  exif?: {
+    camera?: string;
+    lens?: string;
+    focalLength?: string;
+    aperture?: string;
+    shutterSpeed?: string;
+    iso?: string;
+    dateTime?: Date;
+    gps?: { lat: number; lng: number };
+    orientation?: number;
+    colorSpace?: string;
+    iccProfile?: string;
+};
+  focalPoint?: { x: number; y: number }; // For smart cropping
+  similarityHash?: string; // For duplicate detection
+  aiTags?: string[]; // Auto-generated tags
+  exportPresets?: Record<string, any>;
+  projectId?: string; // Optional - links to project if created from project
+}
+
+// Memoized ShowcaseCard component for performance optimization
+const ShowcaseCard = React.memo(({
+  item,
+  profession,
+  accentColor,
+  clientMode,
+  clientSelections,
+  handleClientSelection,
+  favorites,
+  toggleFavorite,
+  showComments,
+  setShowComments,
+  setSelectedItem,
+  handleDownload,
+  showcaseSettings,
+  analytics,
+  effectiveUserId,
+  addNotification,
+  features,
+  setSelectedItemForPublish,
+  setShowPublishToAcademyDialog,
+  setSelectedItemForCommunityShare,
+  setShowShareToCommunityDialog
+}: {
+  item: ShowcaseItem;
+  profession: string;
+  accentColor: string;
+  clientMode?: boolean;
+  clientSelections: string[];
+  handleClientSelection: (id: string) => void;
+  favorites: Set<string>;
+  toggleFavorite: (id: string) => void;
+  showComments: boolean;
+  setShowComments: (show: boolean) => void;
+  setSelectedItem: (item: ShowcaseItem) => void;
+  handleDownload: (item: ShowcaseItem) => void;
+  showcaseSettings: any;
+  analytics: any;
+  effectiveUserId: string;
+  addNotification: (notification: any) => void;
+  features: any;
+  setSelectedItemForPublish: (item: ShowcaseItem | null) => void;
+  setShowPublishToAcademyDialog: (show: boolean) => void;
+  setSelectedItemForCommunityShare: (item: ShowcaseItem | null) => void;
+  setShowShareToCommunityDialog: (show: boolean) => void;
+  adminMode?: boolean;
+  onOpenProject?: (item: ShowcaseItem) => void;
+  projectState?: 'delivered' | 'in_review';
+}) => {
+  const [contextMenu, setContextMenu] = React.useState<{
+    mouseX: number;
+    mouseY: number;
+} | null>(null);
+
+  const handleContextMenu = (event: React.MouseEvent) => {
+    event.preventDefault();
+    setContextMenu(
+      contextMenu === null
+        ? {
+            mouseX: event.clientX + 2,
+            mouseY: event.clientY - 6 }
+        : null
+    );
+  };
+
+  const handleClose = () => {
+    setContextMenu(null);
+};
+
+  // Edit item handler
+  const handleEditItem = () => {
+    console.log('Edit item: ', item);
+    
+    // Show toast notification
+    addNotification({
+      message: `Redigerer ${item.title || item.fileType}...`,
+      type: 'info',
+      duration: 3000,
+      title: 'Redigering'
+    });
+    
+    // You can add specific edit logic here based on item type
+    if (item.fileType === 'photo') {
+      // Open photo editor
+      setSelectedItem(item);
+      // You could also trigger a photo editor dialog here
+} else if (item.fileType === 'video') {
+      // Open video editor
+      setSelectedItem(item);
+      // You could also trigger a video editor dialog here
+} else {
+      // Generic edit for other file types
+      setSelectedItem(item);
+}
+    handleClose();
+};
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    if (!showcaseSettings.keyboardShortcuts) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey) {
+        switch (e.key) {
+          case 'd':
+            e.preventDefault();
+            handleDownload(item);
+            break;
+          case 'e':
+            e.preventDefault();
+            handleEditItem();
+            break;
+          case 'f':
+            e.preventDefault();
+            setSelectedItem(item);
+            break;
+          case 's':
+            e.preventDefault();
+            handleClientSelection(item.id);
+            break;
+          case 'l':
+            e.preventDefault();
+            toggleFavorite(item.id);
+            break;
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+}, [showcaseSettings.keyboardShortcuts, item, handleDownload, setSelectedItem, handleClientSelection, toggleFavorite]);
+
+  return (
+  <Box sx={{ 
+    // Remove flex-based sizing since we're using CSS Grid now
+    width: '100%'
+}} key={item.id}>
+    <MuiCard 
+      onContextMenu={handleContextMenu}
+      onDoubleClick={() => {
+        if (showcaseSettings.doubleClickAction === 'fullscreen') {
+          setSelectedItem(item);
+        } else if (showcaseSettings.doubleClickAction === 'download') {
+          handleDownload(item);
+        } else if (showcaseSettings.doubleClickAction === 'select') {
+          handleClientSelection(item.id);
+        }
+      }}
+      sx={{ 
+        bgcolor: showcaseSettings.cardBackground === 'dark' ? 'rgba(6, 31, 46, 0.8)' :
+                showcaseSettings.cardBackground === 'light' ? 'rgba(2, 5, 5, 255, 255, 0.9)' :
+                showcaseSettings.cardBackground === 'transparent' ? 'transparent' :
+                'rgba(26, 31, 46, 0.8)',
+        background: showcaseSettings.cardBackground === 'dark' ? 
+                   'linear-gradient(145deg, rgba(26, 31, 46, 0.9), rgba(31, 36, 50, 0.7))' :
+                   showcaseSettings.cardBackground === 'light' ?
+                   'linear-gradient(145deg, rgba(2, 5, 5, 255, 255, 0.9), rgba(2, 4, 5, 245, 245, 0.7))' :
+                   'linear-gradient(145deg, rgba(26, 31, 46, 0.9), rgba(31, 36, 50, 0.7))',
+        border: '1px solid rgba(2, 5, 5, 107, 53, 0.1)',
+        borderRadius: showcaseSettings.cardBorderRadius === 'none' ? 0 :
+                     showcaseSettings.cardBorderRadius === 'small' ? 1 :
+                     showcaseSettings.cardBorderRadius === 'medium' ? 3 :
+                     showcaseSettings.cardBorderRadius === 'large' ? 6 : 3,
+        overflow: 'hidden',
+        cursor: 'pointer',
+        backdropFilter: 'blur(20px)',
+        boxShadow: showcaseSettings.cardShadow === 'none' ? 'none' :
+                  showcaseSettings.cardShadow === 'subtle' ? '0 1px 3px rgba(0,0,0,0.12)' :
+                  showcaseSettings.cardShadow === 'medium' ? '0 4px 20px rgba(0,0,0,0.3), 0 1px 4px rgba(2, 5, 5, 107, 53, 0.1)' :
+                  showcaseSettings.cardShadow === 'strong' ? '0 8px 30px rgba(0,0,0,0.5), 0 2px 8px rgba(2, 5, 5, 107, 53, 0.2)' :
+                  '0 4px 20px rgba(0,0,0,0.3), 0 1px 4px rgba(2, 5, 5, 107, 53, 0.1)',
+        position: 'relative',
+        transition: showcaseSettings.animationSpeed === 'disabled' ? 'none' :
+                   showcaseSettings.animationSpeed === 'slow' ? 'all 0.6s cubic-bezier(0.4, 0, 0.2, 1)' :
+                   showcaseSettings.animationSpeed === 'fast' ? 'all 0.15s cubic-bezier(0.4, 0, 0.2, 1)' :
+                   'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+        // Dynamic sizing based on cardSize setting
+        minHeight: showcaseSettings.cardSize === 'small' ? 200 :
+                  showcaseSettings.cardSize === 'medium' ? 300 :
+                  showcaseSettings.cardSize === 'large' ? 400 :
+                  showcaseSettings.cardSize === 'extra-large' ? 500 : 300, '&::before': {
+          content: '""',
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'linear-gradient(135deg, rgba(2, 5, 5, 107, 53, 0.03), transparent, rgba(2, 5, 5, 140, 0, 0.03))',
+          opacity: 0,
+          transition: 'opacity 0.3s ease',
+          pointerEvents: 'none',
+          zIndex: 1,
+        }, '&:hover': {
+          transform: showcaseSettings.hoverEffects === 'none' ? 'none' :
+                    showcaseSettings.hoverEffects === 'glow' ? 'translateY(-4px)' :
+                    showcaseSettings.hoverEffects === 'scale' ? 'translateY(-8px) scale(1.02)' :
+                    showcaseSettings.hoverEffects === 'fade' ? 'translateY(-4px)' :
+                    'translateY(-8px) scale(1.02)',
+          borderColor: 'rgba(25, 107, 53, 0.3)',
+          boxShadow: showcaseSettings.hoverEffects === 'none' ? 'inherit' :
+                    showcaseSettings.hoverEffects === 'glow' ? '0 0 20px rgba(25, 107, 53, 0.4)' :
+                    showcaseSettings.hoverEffects === 'scale' ? '0 20px 40px rgba(0,0,0,0.4), 0 8px 16px rgba(25, 107, 53, 0.2)' :
+                    showcaseSettings.hoverEffects === 'fade' ? '0 4px 20px rgba(0,0,0,0.2)' :
+                    '0 20px 40px rgba(0,0,0,0.4), 0 8px 16px rgba(25, 107, 53, 0.2)',
+          opacity: showcaseSettings.hoverEffects === 'fade' ? 0.8 : 1, '&::before': {
+            opacity: showcaseSettings.hoverEffects === 'none' ? 0 : 1,
+          },
+        }, '&:active': {
+          transform: 'translateY(-4px) scale(1.01)',
+        }}}>
+      <Box sx={{ position: 'relative' }}>
+        <CardMedia
+          component="img"
+          height="auto"
+          image={(() => {
+            const baseUrl = item.thumbnailUrl || 'https://images.unsplash.com/photo-1542038784456-1ea8e935640e';
+            const quality = showcaseSettings.imageQuality === 'low' ? 'w=120&h=120&q=60' :
+                           showcaseSettings.imageQuality === 'medium' ? 'w=240&h=240&q=80' :
+                           showcaseSettings.imageQuality === 'high' ? 'w=480&h=480&q=90' :
+                           'w=120&h=120&q=100'; // original
+            return `${baseUrl}?${quality}&fit=crop`;
+          })()}
+          alt={`${getProfessionDisplayName(profession) || 'Innhold'}: ${item.title} - Klikk for å se fullskjerm`}
+          loading={showcaseSettings.lazyLoading ? "lazy" : "eager"}
+          sx={{ 
+            objectFit: 'cover',
+            transition: 'opacity 0.3s ease',
+            aspectRatio: showcaseSettings.imageAspectRatio === 'square' ? '1/1' :
+                        showcaseSettings.imageAspectRatio === '16:9' ? '16/9' :
+                        showcaseSettings.imageAspectRatio === '4:3' ? '4/3' :
+                        showcaseSettings.imageAspectRatio === '3:2' ? '3/2' :
+                        showcaseSettings.imageAspectRatio === 'original' ? 'auto' : '16/9',
+            width: '100%',
+            height: 'auto'
+          }}
+          onClick={() => {
+            // Track view if enabled
+            if (showcaseSettings.viewTracking && analytics?.trackEvent && showcaseSettings.analyticsTracking) {
+              analytics.trackEvent('item_viewed', {
+                itemId: item.id,
+                profession,
+                fileType: item.fileType,
+                userId: effectiveUserId,
+                timestamp: new Date().toISOString(),
+                action: 'click'
+              });
+            }
+
+            // Play sound effect if enabled
+            if (showcaseSettings.soundEffects) {
+              const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBSuBzvLZiTYIG2m98OScTgwOUarm7blmGgU7k9n1unEiBC13yO/eizEIHWq+8+OWT');
+              audio.volume = 0.1;
+              audio.play().catch(() => {}); // Ignore errors
+            }
+
+            if (showcaseSettings.clickAction === 'fullscreen') {
+              setSelectedItem(item);
+            } else if (showcaseSettings.clickAction === 'download') {
+              handleDownload(item);
+            } else if (showcaseSettings.clickAction === 'select') {
+              handleClientSelection(item.id);
+            }
+            // Custom action can be handled separately
+      }}
+          onError={(e) => {
+            const target = e.target as HTMLImageElement;
+            target.src = profession === 'photographer' 
+              ? 'https://images.unsplash.com/photo-1542038784456-1ea8e935640e?w=120&h=120&fit=crop'
+              : profession === 'videographer'
+              ? 'https://images.unsplash.com/photo-1574717024653-61fd2cf4d44d?w=120&h=120&fit=crop'
+              : profession === 'music_producer'
+              ? 'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=120&h=120&fit=crop'
+              : 'https://images.unsplash.com/photo-1542038784456-1ea8e935640e?w=120&h=120&fit=crop';
+          }}
+        />
+        
+        {/* Media overlay icon */}
+        <Box sx={{
+          position: 'absolute',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          bgcolor: 'rgba(0,0,0,0.7)',
+          borderRadius: '50%',
+          width: 32,
+          height: 32,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center'
+        }}>
+          {profession === 'photographer' ? (
+            <Fullscreen sx={{ color: '#fff', fontSize: 18 }} />
+          ) : profession === 'videographer' ? (
+            <PlayArrow sx={{ color: '#fff', fontSize: 18 }} />
+          ) : profession === 'music_producer' ? (
+            <PlayArrow sx={{ color: '#fff', fontSize: 18 }} />
+          ) : (
+            <Description sx={{ color: '#fff', fontSize: 18 }} />
+          )}
+        </Box>
+
+        {/* Watermark */}
+        {/* Watermark - Only show if in_review state, hide if delivered */}
+        {showcaseSettings.watermark !== 'none' && projectState !== 'delivered' && (
+          <Box sx={{
+            position: 'absolute',
+            // Dynamic positioning based on settings
+            [showcaseSettings.watermarkPosition.includes('top') ? 'top' : 'bottom']: 8,
+            [showcaseSettings.watermarkPosition.includes('left') ? 'left' : 'right']: 8,
+            // Center positioning
+            ...(showcaseSettings.watermarkPosition === 'center' && {
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)'
+            }),
+            // Dynamic background opacity
+            bgcolor: `rgba(0,0,0,${(showcaseSettings.watermarkOpacity || 70) / 100})`,
+            color: '#fff',
+            px: 1,
+            py: 0.5,
+            borderRadius: 1,
+            // Dynamic font size
+            fontSize: showcaseSettings.watermarkSize === 'small' ? '0.7rem' : 
+                     showcaseSettings.watermarkSize === 'medium' ? '0.9rem' : '1.1rem',
+            fontWeight: 50,
+            backdropFilter: 'blur(4px)',
+            zIndex: 2,
+            // Smooth transitions for dynamic changes
+            transition: 'all 0.3s ease-in-out'
+          }}>
+            {showcaseSettings.watermark === 'text' ? (showcaseSettings.watermarkText || 'CreatorHub') :
+             showcaseSettings.watermark === 'logo' ? '🏢' :
+             showcaseSettings.watermark === 'both' ? `🏢 ${showcaseSettings.watermarkText || 'CreatorHub'}` : ','}
+          </Box>
+        )}
+
+        {/* Duration badge - only for video content */}
+        {profession === 'videographer' && (
+          <Chip
+            label="2: 34"
+            size="small"
+            sx={{
+              position: 'absolute',
+              bottom: 8,
+              right: 8,
+              bgcolor: 'rgba(0,0,0,0.8)',
+              color: '#fff',
+              fontSize: '0.7rem',
+              height: 20 }}
+          />
+        )}
+
+        {/* Audio Watermarking indicator - only for music producers */}
+        {profession === 'music_producer' && showcaseSettings.audioWatermarkEnabled && (
+          <Chip
+            icon={<Security sx={{ fontSize: '0.8rem' }} />}
+            label="Lyd-vannmerke"
+            size="small"
+            sx={{
+              position: 'absolute',
+              top: 8,
+              right:  8,
+              bgcolor: 'rgba(6, 175, 80, 0.9)',
+              color: '#fff',
+              fontSize: '0.7rem',
+              fontWeight: 50,
+              height: 20, '& .MuiChip-icon': {
+                color: '#fff',
+              }}}
+          />
+        )}
+      </Box>
+
+      <CardContent sx={{ p: 2, bgcolor: '#1a1f2e' }}>
+        <Typography variant="subtitle2" sx={{ 
+          fontWeight: 600, 
+          color: '#fff',
+          mb: 0.5,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap'
+        }}>
+          {item.title}
+        </Typography>
+        
+        <Typography variant="caption" sx={{ 
+          color: 'rgba(2, 5, 5,255,255,0.7)',
+          display: 'block',
+          mb: 1 }}>
+          {item.stats?.views} visninger • {new Date().toLocaleDateString('no-NO')}
+        </Typography>
+
+        {/* Project Link Indicator - Admin Mode Only */}
+        {adminMode && item.projectId && (
+          <Box sx={{ mb: 1 }}>
+            <Tooltip title="View Project Timeline">
+              <Chip 
+                icon={<TimelineIcon />} 
+                label="Project" 
+                size="small" 
+                color="primary"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onOpenProject?.(item);
+                }}
+                sx={{ cursor: 'pointer' }}
+              />
+            </Tooltip>
+          </Box>
+        )}
+
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Box sx={{ display: 'flex', gap: 0.5 }}>
+            {/* Selection Button - Available in both modes */}
+            {showcaseSettings.showSelectionButton && (
+              <IconButton
+                size={showcaseSettings.mobileButtonSize === 'small' ? 'small' : 
+                      showcaseSettings.mobileButtonSize === 'large' ? 'large' : 'medium'}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleClientSelection(item.id);
+                }}
+                sx={{
+                  color: clientSelections.includes(item.id) ? accentColor : 'rgba(2, 5, 5,255,255,0.5)',
+                  bgcolor: clientSelections.includes(item.id) ? 'rgba(2, 5, 5, 107, 53, 0.2)' : 'transparent',
+                  variant: showcaseSettings.buttonStyle === 'filled' ? 'contained' :
+                          showcaseSettings.buttonStyle === 'outlined' ? 'outlined' :
+                          showcaseSettings.buttonStyle === 'text' ? 'text' : 'text','&:hover': { 
+                    color: accentColor,
+                    bgcolor: showcaseSettings.buttonStyle === 'filled' ? accentColor :
+                            showcaseSettings.buttonStyle === 'outlined' ? 'rgba(2, 5, 5, 107, 53, 0.1)' :
+                            'rgba(2, 5, 5, 107, 53, 0.1)'
+                  }
+                }}
+              >
+                {clientSelections.includes(item.id) ? 
+                  <CheckCircle sx={{ fontSize: 16 }} /> : 
+                  <RadioButtonUnchecked sx={{ fontSize: 16 }} />
+                }
+              </IconButton>
+            )}
+
+            {/* Favorite Button - Available in both modes */}
+            {showcaseSettings.showFavoriteButton && (
+              <IconButton 
+                size={showcaseSettings.mobileButtonSize === 'small' ? 'small' : 
+                      showcaseSettings.mobileButtonSize === 'large' ? 'large' : 'medium'}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleFavorite(item.id);
+                }}
+                sx={{ 
+                  color: favorites.has(item.id) ? '#ff4444' : 'rgba(2, 5, 5,255,255,0.5)','&:hover': { color: '#ff4444' }
+                }}
+              >
+                {favorites.has(item.id) ? <Favorite sx={{ fontSize: 16 }} /> : <FavoriteBorder sx={{ fontSize: 16 }} />}
+              </IconButton>
+            )}
+            
+            {/* Comments Button - Enabled in review, disabled when delivered */}
+            {showcaseSettings.showCommentButton && (
+              <IconButton 
+                size={showcaseSettings.mobileButtonSize === 'small' ? 'small' : 
+                      showcaseSettings.mobileButtonSize === 'large' ? 'large' : 'medium'} 
+                disabled={projectState === 'delivered'}
+                sx={{ 
+                  color: projectState === 'delivered' ? 'rgba(2, 5, 5,255,255,0.2)' : 'rgba(2, 5, 5,255,255,0.5)','&:hover': { color: projectState === 'delivered' ? 'rgba(2, 5, 5,255,255,0.2)' : '#fff' }
+                }}
+                onClick={() => setShowComments(!showComments)}
+              >
+                <Comment sx={{ fontSize: 16 }} />
+              </IconButton>
+            )}
+            
+            {/* Download Button - Disabled if in review, enabled if delivered */}
+            {showcaseSettings.showDownloadButton && (
+              <IconButton 
+                size={showcaseSettings.mobileButtonSize === 'small' ? 'small' : 
+                      showcaseSettings.mobileButtonSize === 'large' ? 'large' : 'medium'} 
+                disabled={projectState === 'in_review'}
+                sx={{ 
+                  color: projectState === 'in_review' ? 'rgba(2, 5, 5,255,255,0.2)' : 'rgba(2, 5, 5,255,255,0.5)','&:hover': { color: projectState === 'in_review' ? 'rgba(2, 5, 5,255,255,0.2)' : accentColor }
+            }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleDownload(item);
+            }}
+              >
+                <Download sx={{ fontSize: 16 }} />
+              </IconButton>
+            )}
+
+            {/* Fullscreen Button - Available in both modes */}
+            {showcaseSettings.showFullscreenButton && (
+              <IconButton 
+                size={showcaseSettings.mobileButtonSize === 'small' ? 'small' : 
+                      showcaseSettings.mobileButtonSize === 'large' ? 'large' : 'medium'} 
+                sx={{ 
+                  color: 'rgba(2, 5, 5,255,255,0.5)','&:hover': { color: '#9C27B0' }
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSelectedItem(item);
+            }}
+              >
+                <Fullscreen sx={{ fontSize: 16 }} />
+              </IconButton>
+            )}
+
+            {/* Project Timeline Button - Admin Mode Only */}
+            {adminMode && item.projectId && (
+              <Tooltip title="View Project Timeline">
+                <IconButton 
+                  size={showcaseSettings.mobileButtonSize === 'small' ? 'small' : 
+                        showcaseSettings.mobileButtonSize === 'large' ? 'large' : 'medium'} 
+                  sx={{ 
+                    color: 'rgba(2, 5, 5,255,255,0.5)','&:hover': { color: accentColor }
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onOpenProject?.(item);
+                  }}
+                >
+                  <TimelineIcon sx={{ fontSize: 16 }} />
+                </IconButton>
+              </Tooltip>
+            )}
+
+            {/* Project State Update Button - Admin Mode Only */}
+            {adminMode && item.projectId && clientSession && (
+              <Tooltip title="Update Project State">
+                <IconButton 
+                  size={showcaseSettings.mobileButtonSize === 'small' ? 'small' : 
+                        showcaseSettings.mobileButtonSize === 'large' ? 'large' : 'medium'} 
+                  sx={{ 
+                    color: projectState === 'delivered' ? '#4caf50' : '#ff9800','&:hover': { color: projectState === 'delivered' ? '#388e3c' : '#f57c00' }
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedItemForStateUpdate(item);
+                    setNewProjectState(projectState);
+                    setProjectStateUpdateOpen(true);
+                  }}
+                >
+                  <CheckCircle sx={{ fontSize: 16 }} />
+                </IconButton>
+              </Tooltip>
+            )}
+          </Box>
+          
+          {showcaseSettings.showStatusText && (
+            <Typography variant="caption" sx={{ color: 'rgba(2, 5, 5,255,255,0.5)' }}>
+              {[
+                clientSelections.includes(item.id) ? 'Valgt' : 'Ikke valgt',
+                favorites.has(item.id) ? 'Favoritt' : 'Ikke favoritt',
+                ...(showcaseSettings.showViewCount && item.stats?.views ? [`${item.stats.views} visninger`] : []),
+                ...(showcaseSettings.showLikeCount && item.stats?.likes ? [`${item.stats.likes} likes`] : []),
+                ...(showcaseSettings.showUploadDate && item.createdAt ? [new Date(item.createdAt).toLocaleDateString('no-NO')] : []),
+                ...(showcaseSettings.showFileSize && item.fileUrl ? [formatFileSize(item.fileSize || item.size || 0)] : []),
+                ...(showcaseSettings.showProfessionBadge ? [getProfessionDisplayName(profession) || 'Leverandør'] : []),
+                ...(showcaseSettings.showAITags && item.aiTags ? item.aiTags.slice(0, 2) : [])
+              ].join(' • ')}
+            </Typography>
+          )}
+        </Box>
+      </CardContent>
+    </MuiCard>
+    
+    {/* Context Menu */}
+    {showcaseSettings.enableContextMenu && (
+      <Menu
+        open={contextMenu !== null}
+        onClose={handleClose}
+        anchorReference="anchorPosition"
+        anchorPosition={
+          contextMenu !== null
+            ? { top: contextMenu.mouseY, left: contextMenu.mouseX }
+            : undefined
+        }
+      >
+        {showcaseSettings.showDownloadButton && (
+          <MenuItem onClick={() => {
+            handleDownload(item);
+            handleClose();
+          }}>
+            <ListItemIcon>
+              <Download fontSize="small" />
+            </ListItemIcon>
+            <ListItemText>Last ned</ListItemText>
+          </MenuItem>
+        )}
+        
+        {showcaseSettings.showEditButton && (
+          <MenuItem onClick={handleEditItem}>
+            <ListItemIcon>
+              <Edit fontSize="small" />
+            </ListItemIcon>
+            <ListItemText>Rediger</ListItemText>
+          </MenuItem>
+        )}
+        
+        <MenuItem onClick={() => {
+          setSelectedItem(item);
+          handleClose();
+    }}>
+          <ListItemIcon>
+            <Fullscreen fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Se fullskjerm</ListItemText>
+        </MenuItem>
+        
+        {showcaseSettings.showSelectionButton && (
+          <MenuItem onClick={() => {
+            handleClientSelection(item.id);
+            handleClose();
+          }}>
+            <ListItemIcon>
+              {clientSelections.includes(item.id) ? <CheckCircle fontSize="small" /> : <RadioButtonUnchecked fontSize="small" />}
+            </ListItemIcon>
+            <ListItemText>
+              {clientSelections.includes(item.id) ? 'Fjern fra valg' : 'Legg til valg'}
+            </ListItemText>
+          </MenuItem>
+        )}
+        
+        {showcaseSettings.showFavoriteButton && (
+          <MenuItem onClick={() => {
+            toggleFavorite(item.id);
+            handleClose();
+          }}>
+            <ListItemIcon>
+              {favorites.has(item.id) ? <Favorite fontSize="small" /> : <FavoriteBorder fontSize="small" />}
+            </ListItemIcon>
+            <ListItemText>
+              {favorites.has(item.id) ? 'Fjern fra favoritter' : 'Legg til favoritter'}
+            </ListItemText>
+          </MenuItem>
+        )}
+        
+        {showcaseSettings.showCommentButton && (
+          <MenuItem onClick={() => {
+            setShowComments(!showComments);
+            handleClose();
+          }}>
+            <ListItemIcon>
+              <Comment fontSize="small" />
+            </ListItemIcon>
+            <ListItemText>Kommentarer</ListItemText>
+          </MenuItem>
+        )}
+        
+        {/* Profession-Specific Actions */}
+        <Divider sx={{ my: 1 }} />
+        
+        {/* PHOTOGRAPHER-SPECIFIC ACTIONS */}
+        {profession === 'photographer' && (
+          <>
+            <MenuItem onClick={() => {
+              addNotification({
+                message: 'Åpner CreatorHub Photo Enhancer...',
+                type: 'info',
+                duration: 2000 });
+              handleClose();
+            }}>
+              <ListItemIcon>
+                <AutoFixHigh fontSize="small" sx={{ color: '#FF6B35' }} />
+              </ListItemIcon>
+              <ListItemText>Enhance Photo (AI)</ListItemText>
+            </MenuItem>
+            
+            <MenuItem onClick={() => {
+              addNotification({
+                message: 'Åpner vannmerke-dialog...',
+                type: 'info',
+                duration: 2000 });
+              handleClose();
+            }}>
+              <ListItemIcon>
+                <Copyright fontSize="small" sx={{ color: '#FF8C00' }} />
+              </ListItemIcon>
+              <ListItemText>Apply Watermark</ListItemText>
+            </MenuItem>
+            
+            <MenuItem onClick={() => {
+              addNotification({
+                message: 'Sender til Lightroom...',
+                type: 'success',
+                duration: 2000 });
+              handleClose();
+            }}>
+              <ListItemIcon>
+                <OpenInNew fontSize="small" sx={{ color: '#31A8FF' }} />
+              </ListItemIcon>
+              <ListItemText>Send to Lightroom</ListItemText>
+            </MenuItem>
+            
+            <MenuItem onClick={() => {
+              addNotification({
+                message: 'Sett pris for dette bildet',
+                type: 'info',
+                duration: 2000 });
+              handleClose();
+            }}>
+              <ListItemIcon>
+                <AttachMoney fontSize="small" sx={{ color: '#4CAF50' }} />
+              </ListItemIcon>
+              <ListItemText>Set Price</ListItemText>
+            </MenuItem>
+          </>
+        )}
+        
+        {/* VIDEOGRAPHER-SPECIFIC ACTIONS */}
+        {profession === 'videographer' && (
+          <>
+            <MenuItem onClick={() => {
+              addNotification({
+                message: 'Legger til i sekvens...',
+                type: 'info',
+                duration: 2000 });
+              handleClose();
+            }}>
+              <ListItemIcon>
+                <TimelineIcon fontSize="small" sx={{ color: '#E74C3C' }} />
+              </ListItemIcon>
+              <ListItemText>Add to Sequence</ListItemText>
+            </MenuItem>
+            
+            <MenuItem onClick={() => {
+              addNotification({
+                message: 'Genererer proxy-fil...',
+                type: 'info',
+                duration: 2000 });
+              handleClose();
+            }}>
+              <ListItemIcon>
+                <Layers fontSize="small" sx={{ color: '#C0392B' }} />
+              </ListItemIcon>
+              <ListItemText>Generate Proxy</ListItemText>
+            </MenuItem>
+            
+            <MenuItem onClick={() => {
+              addNotification({
+                message: 'Eksporterer for sosiale medier...',
+                type: 'info',
+                duration: 2000 });
+              handleClose();
+            }}>
+              <ListItemIcon>
+                <Share fontSize="small" sx={{ color: '#3498DB' }} />
+              </ListItemIcon>
+              <ListItemText>Export for Social Media</ListItemText>
+            </MenuItem>
+            
+            <MenuItem onClick={() => {
+              addNotification({
+                message: 'Legg til tidskode-kommentar',
+                type: 'info',
+                duration: 2000 });
+              handleClose();
+            }}>
+              <ListItemIcon>
+                <AccessTime fontSize="small" sx={{ color: '#F39C12' }} />
+              </ListItemIcon>
+              <ListItemText>Add Timecode Comment</ListItemText>
+            </MenuItem>
+          </>
+        )}
+        
+        {/* MUSIC PRODUCER-SPECIFIC ACTIONS */}
+        {profession === 'music_producer' && (
+          <>
+            <MenuItem onClick={() => {
+              addNotification({
+                message: 'Split Sheet: Gå til "Split Sheets"-fanen i dashboardet for å opprette split sheet for dette sporet',
+                type: 'info',
+                duration: 4000
+              });
+              handleClose();
+            }}>
+              <ListItemIcon>
+                <AccountBalance fontSize="small" sx={{ color: '#9f7aea' }} />
+              </ListItemIcon>
+              <ListItemText>Opprett Split Sheet</ListItemText>
+            </MenuItem>
+            
+            <MenuItem onClick={() => {
+              addNotification({
+                message: 'Ekstraherer stems...',
+                type: 'info',
+                duration: 2000 });
+              handleClose();
+            }}>
+              <ListItemIcon>
+                <GraphicEq fontSize="small" sx={{ color: '#9B59B6' }} />
+              </ListItemIcon>
+              <ListItemText>Extract Stems</ListItemText>
+            </MenuItem>
+            
+            <MenuItem onClick={() => {
+              addNotification({
+                message: 'Setter lyd-vannmerke...',
+                type: 'info',
+                duration: 2000 });
+              handleClose();
+            }}>
+              <ListItemIcon>
+                <Security fontSize="small" sx={{ color: '#8E44AD' }} />
+              </ListItemIcon>
+              <ListItemText>Apply Audio Watermark</ListItemText>
+            </MenuItem>
+            
+            <MenuItem onClick={() => {
+              addNotification({
+                message: 'Analyserer audio med AI...',
+                type: 'info',
+                duration: 2000 });
+              handleClose();
+            }}>
+              <ListItemIcon>
+                <AutoFixHigh fontSize="small" sx={{ color: '#E74C3C' }} />
+              </ListItemIcon>
+              <ListItemText>Analyze Audio (AI)</ListItemText>
+            </MenuItem>
+            
+            <MenuItem onClick={() => {
+              addNotification({
+                message: 'Legger til i sample pack...',
+                type: 'info',
+                duration: 2000 });
+              handleClose();
+            }}>
+              <ListItemIcon>
+                <LibraryAdd fontSize="small" sx={{ color: '#27AE60' }} />
+              </ListItemIcon>
+              <ListItemText>Add to Sample Pack</ListItemText>
+            </MenuItem>
+            
+            <MenuItem onClick={() => {
+              setShowProToolsDialog(true);
+              handleClose();
+            }}>
+              <ListItemIcon>
+                <Sync fontSize="small" sx={{ color: '#9B59B6' }} />
+              </ListItemIcon>
+              <ListItemText>Sync with Pro Tools</ListItemText>
+            </MenuItem>
+          </>
+        )}
+        
+        {/* VENDOR-SPECIFIC ACTIONS */}
+        {profession === 'vendor' && (
+          <>
+            <MenuItem onClick={() => {
+              addNotification({
+                message: 'Legger til i produktpakke...',
+                type: 'info',
+                duration: 2000 });
+              handleClose();
+            }}>
+              <ListItemIcon>
+                <Business fontSize="small" sx={{ color: '#3498DB' }} />
+              </ListItemIcon>
+              <ListItemText>Add to Product Bundle</ListItemText>
+            </MenuItem>
+            
+            <MenuItem onClick={() => {
+              addNotification({
+                message: 'Redigerer prising...',
+                type: 'info',
+                duration: 2000 });
+              handleClose();
+            }}>
+              <ListItemIcon>
+                <AttachMoney fontSize="small" sx={{ color: '#27AE60' }} />
+              </ListItemIcon>
+              <ListItemText>Edit Pricing</ListItemText>
+            </MenuItem>
+            
+            <MenuItem onClick={() => {
+              addNotification({
+                message: 'Legger til varianter...',
+                type: 'info',
+                duration: 2000 });
+              handleClose();
+            }}>
+              <ListItemIcon>
+                <ViewModule fontSize="small" sx={{ color: '#E67E22' }} />
+              </ListItemIcon>
+              <ListItemText>Add Variants</ListItemText>
+            </MenuItem>
+            
+            <MenuItem onClick={() => {
+              addNotification({
+                message: 'Oppdaterer lagerstatus...',
+                type: 'info',
+                duration: 2000 });
+              handleClose();
+            }}>
+              <ListItemIcon>
+                <Archive fontSize="small" sx={{ color: '#95A5A6' }} />
+              </ListItemIcon>
+              <ListItemText>Update Inventory</ListItemText>
+            </MenuItem>
+          </>
+        )}
+        
+        {/* Publish to Academy - Pro Plan Feature */}
+        {features.checkFeatureAccess('publish-to-academy')?.hasAccess && (
+          <>
+            <Divider sx={{ my: 1 }} />
+            <MenuItem onClick={() => {
+              setSelectedItemForPublish(item);
+              setShowPublishToAcademyDialog(true);
+              handleClose();
+            }}>
+              <ListItemIcon>
+                <School fontSize="small" sx={{ color: '#ff8c00' }} />
+              </ListItemIcon>
+              <ListItemText>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  Publiser til Academy
+                  <Chip label="PRO" size="small" sx={{ height: 16, fontSize: '0.6rem', bgcolor: '#ff8c00', color: 'white' }} />
+                </Box>
+              </ListItemText>
+            </MenuItem>
+          </>
+        )}
+        
+        {/* Share to Community */}
+        <MenuItem onClick={() => {
+          setSelectedItemForCommunityShare(item);
+          setShowShareToCommunityDialog(true);
+          handleClose();
+        }}>
+          <ListItemIcon>
+            <Share fontSize="small" sx={{ color: '#2196f3' }} />
+          </ListItemIcon>
+          <ListItemText>Del til Community</ListItemText>
+        </MenuItem>
+      </Menu>
+    )}
+    </Box>
+  );
+});
+
+interface UniversalShowcaseProps {
+  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  userId?: string;
+  compact?: boolean;
+  maxItems?: number;
+  isOwner?: boolean;
+  adminMode?: boolean;
+  // Client proofing mode - FASE 1 Implementation
+  clientMode?: boolean;
+  sessionIdd?: string;
+  clientEmail?: string;
+  isPublic?: boolean;
+  // New proofing session props
+  proofingToken?: string;
+  maxSelections?: number;
+  deadline?: Date;
+  round?: number;
+  // Google Drive Integration
+  enableGoogleDriveSync?: boolean;
+  onGoogleDriveSync?: (items: any[]) => void;
+  googleDriveFolderId?: string;
+  // Enhanced Master Integration
+  integrationContext?: any;
+  onItemSelect?: (item: any) => void;
+  onItemUpdate?: (item: any) => void;
+  onItemDelete?: (item: any) => void;
+  // Real-time collaboration
+  enableRealTimeSync?: boolean;
+  collaborationSessionId?: string;
+  // AI Features
+  enableAIAnalysis?: boolean;
+  enableAutoTagging?: boolean;
+  enableSmartCollections?: boolean
+}
+
+interface ClientSession {
+  id: string;
+  sessionName: string;
+  clientName: string;
+  maxSelections: number;
+  minSelections: number;
+  selectionDeadline: string;
+  status: 'setup' | 'active' | 'selections_made' | 'approved' | 'delivered' | 'expired';
+  proofingRound: number;
+  selectedCount: number;
+  description?: string
+}
+
+// Helper functions for timecode conversion
+const secondsToTimecode = (seconds: number, fps: number = 30): string => {
+  const totalFrames = Math.floor(seconds * fps);
+  const hours = Math.floor(totalFrames / (fps * 3600));
+  const minutes = Math.floor((totalFrames % (fps * 3600)) / (fps * 60));
+  const secs = Math.floor((totalFrames % (fps * 60)) / fps);
+  const frames = totalFrames % fps;
+  return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2,'0')}:${secs.toString().padStart(2,'0')}:${frames.toString().padStart(2,'0')}`;
+};
+
+const timecodeToSeconds = (timecode: string): number => {
+  const parts = timecode.split(':');
+  if (parts.length !== 4) return 0;
+  const [hours, minutes, seconds, frames] = parts.map(Number);
+  const fps = 30;
+  return hours * 3600 + minutes * 60 + seconds + frames / fps;
+};
+
+const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
+  profession,
+  userId,
+  compact = false,
+  maxItems = 12,
+  isOwner = false,
+  adminMode = false,
+  clientMode = false,
+  sessionIdd,
+  clientEmail,
+  isPublic = false,
+  // Google Drive Integration
+  enableGoogleDriveSync = false,
+  onGoogleDriveSync,
+  googleDriveFolderId,
+  // Enhanced Master Integration
+  integrationContext,
+  onItemSelect,
+  onItemUpdate,
+  onItemDelete,
+  // Real-time collaboration
+  enableRealTimeSync = false,
+  collaborationSessionId,
+  // AI Features
+  enableAIAnalysis = false,
+  enableAutoTagging = false,
+  enableSmartCollections = false
+}) => {
+  const { user } = useAuth();
+
+  // Use provided userId or fallback to authenticated user - MUST be defined early as it's used by hooks below
+  const effectiveUserId = userId || user?.id || user?.email || 'unknown-user';
+
+  // Theming system - use dynamic profession instead of hardcoded value
+  const theming = useTheming(profession);
+  const theme = useTheme();
+  
+  // Client service pricing service integration
+  const {
+    formatCurrency
+  } = useClientServicePricing();
+
+  // Toast Notifications - Implemented with MUI Snackbar
+  const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' | 'warning' | 'info' } | null>(null);
+  const [notificationOpen, setNotificationOpen] = useState(false);
+
+  const addNotification = useCallback((notification: { message: string; type?: 'success' | 'error' | 'warning' | 'info' }) => {
+    setNotification({
+      message: notification.message,
+      type: notification.type || 'info',
+    });
+    setNotificationOpen(true);
+  }, []);
+
+  const handleCloseNotification = useCallback(() => {
+    setNotificationOpen(false);
+  }, []);
+
+  // File Management Status
+  const { status: fileManagementStatus } = useFileManagementStatus();
+
+  // Utility function to format file size
+  const formatFileSize = useCallback((bytes: number): string => {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B','KB','MB','GB','TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ', ' + sizes[i];
+  }, []);
+
+  // Profession-specific watermark defaults
+  const getProfessionWatermarkDefaults = (profession: string) => {
+    switch (profession) {
+      case 'photographer':
+        return {
+          watermark: 'text' as const,
+          watermarkPosition: 'bottom-right' as const,
+          watermarkText: 'Fotograf: CreatorHub',
+          watermarkOpacity: 60,
+          watermarkSize: 'small' as const
+        };
+      case 'videographer':
+        return {
+          watermark: 'both' as const,
+          watermarkPosition: 'bottom-left' as const,
+          watermarkText: 'Videograf: CreatorHub',
+          watermarkOpacity: 80,
+          watermarkSize: 'medium' as const
+        };
+      case 'music_producer':
+        return {
+          watermark: 'none' as const, // No visual watermark for music producers
+          watermarkPosition: 'center' as const,
+          watermarkText: 'Musikprodusent: CreatorHub',
+          watermarkOpacity: 70,
+          watermarkSize: 'large' as const,
+          // Audio watermarking settings
+          audioWatermarkEnabled: true,
+          audioWatermarkMethod: 'steganography' as const,
+          audioWatermarkStrength: 'medium' as const,
+          audioWatermarkFrequency: 'medium' as const
+        };
+      case 'vendor':
+        return {
+          watermark: 'text' as const,
+          watermarkPosition: 'top-right' as const,
+          watermarkText: 'Leverandør: CreatorHub',
+          watermarkOpacity: 50,
+          watermarkSize: 'small' as const
+        };
+      default: return {
+          watermark: 'none' as const,
+          watermarkPosition: 'bottom-right' as const,
+          watermarkText: 'CreatorHub',
+          watermarkOpacity: 70,
+          watermarkSize: 'small' as const
+        };
+    }
+  };
+
+  const professionWatermarkDefaults = getProfessionWatermarkDefaults(profession);
+
+  // Showcase Settings
+  const [showcaseSettings, setShowcaseSettings] = useState({
+    // Button Visibility
+    showDownloadButton: true,
+    showFavoriteButton: true,
+    showCommentButton: true,
+    showSelectionButton: true,
+    showFullscreenButton: false,
+    enableContextMenu: true,
+    showStatusText: true,
+    compactMode: false,
+    
+    // Visual Layout
+    cardSize: 'medium' as const,
+    gridColumns: 3 as const,
+    cardSpacing: 'normal' as const,
+    imageAspectRatio: '16:9' as const,
+    cardBorderRadius: 'medium' as const,
+    cardShadow: 'medium' as const,
+    
+    // Mobile Responsive
+    mobileColumns: 2 as const,
+    touchGestures: true,
+    mobileButtonSize: 'medium' as const,
+    compactMobileView: false,
+    
+    // Search & Filter
+    searchBarPosition: 'top' as const,
+    showFilterBar: true,
+    defaultSortBy: 'date' as const,
+    defaultSortOrder: 'desc' as const,
+    showQuickFilters: true,
+    
+    // Data Display
+    showFileSize: true,
+    showUploadDate: true,
+    showViewCount: true,
+    showLikeCount: true,
+    showProfessionBadge: true,
+    showAITags: false,
+    maxItemsPerPage: 20 as const,
+    
+    // Theme & Styling
+    cardBackground: 'dark' as const,
+    accentColorMode: 'auto' as const,
+    customAccentColor: '#',
+    buttonStyle: 'outlined' as const,
+    animationSpeed: 'normal' as const,
+    
+    // Interaction & Behavior
+    clickAction: 'fullscreen' as const,
+    hoverEffects: 'scale' as const,
+    doubleClickAction: 'download' as const,
+    keyboardShortcuts: true,
+    autoPlayVideos: false,
+    lazyLoading: true,
+    
+    // Performance
+    imageQuality: 'high' as const,
+    thumbnailSize: 'medium' as const,
+    cacheDuration: '1d' as const,
+    preloadImages: 'next3' as const,
+    backgroundSync: true,
+    
+    // Security & Privacy - Use profession-specific defaults
+    ...professionWatermarkDefaults,
+    
+    // Audio Watermarking (for music producers)
+    audioWatermarkEnabled: false,
+    audioWatermarkMethod: 'steganography' as const,
+    audioWatermarkStrength: 'medium' as const,
+    audioWatermarkFrequency: 'medium' as const,
+    
+    downloadProtection: 'none' as const,
+    downloadPassword: undefined as string | undefined, // Password for download protection
+    viewTracking: true,
+    shareRestrictions: 'public' as const,
+    clientAccess: 'full' as const,
+    
+    // Notifications
+    newItemAlerts: 'inapp' as const,
+    downloadNotifications: false,
+    favoriteNotifications: false,
+    commentNotifications: true,
+    soundEffects: false,
+    
+    // Advanced Features
+    bulkActions: true,
+    dragAndDrop: true,
+    keyboardNavigation: true,
+    voiceCommands: false,
+    aiSuggestions: false,
+    analyticsTracking: true
+});
+
+  // Additional state for real-time features
+  const [selectedItems, setSelectedItems] = useState<string[]>([]);
+  const [showcaseItems, setShowcaseItems] = useState<ShowcaseItem[]>([]);
+  
+  // Academy navigation state
+  const [showAcademy, setShowAcademy] = useState(false);
+  // Dashboard navigation state
+  const [showDashboard, setShowDashboard] = useState(false);
+
+  // Push notifications - initialize subscription if user is logged in
+  const { pushEnabled, isSupported, subscribe } = usePushNotifications(effectiveUserId);
+  
+  // Auto-subscribe to push notifications when component mounts (if supported and user is logged in)
+  useEffect(() => {
+    if (isSupported && effectiveUserId && effectiveUserId !== 'guest' && !pushEnabled) {
+      // Optionally auto-subscribe, or let user enable manually
+      // For now, we'll let users enable manually via settings
+    }
+  }, [isSupported, effectiveUserId, pushEnabled, subscribe]);
+
+  // Load showcase settings (server first) with profession-specific defaults
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await fetch('/api/user/kv/showcase-settings', { credentials: 'include' });
+        const j = r.ok ? await r.json().catch(() => null) : null;
+        const serverVal = j && typeof j === 'object' && 'value' in j ? j.value : (j?.data ?? j);
+        const parsedSettings = serverVal || (() => { try { return JSON.parse(localStorage.getItem('showcase-settings') || 'null'); } catch { return null; }})();
+        if (parsedSettings) {
+          setShowcaseSettings(prev => ({ ...prev, ...professionWatermarkDefaults, ...parsedSettings }));
+        } else {
+          setShowcaseSettings(prev => ({ ...prev, ...professionWatermarkDefaults }));
+        }
+      } catch {
+        const savedSettings = localStorage.getItem('showcase-settings');
+        if (savedSettings) {
+          try {
+            const parsedSettings = JSON.parse(savedSettings);
+            setShowcaseSettings(prev => ({ ...prev, ...professionWatermarkDefaults, ...parsedSettings }));
+          } catch {
+            setShowcaseSettings(prev => ({ ...prev, ...professionWatermarkDefaults }));
+          }
+        } else {
+          setShowcaseSettings(prev => ({ ...prev, ...professionWatermarkDefaults }));
+        }
+      }
+    })();
+  }, [profession]);
+
+  // Note: Project password sync is handled later via selectedProject state after it's declared
+  
+  
+  
+  // Profession configuration hook
+  const { professionConfigs, isLoading: configsLoading } = useProfessionConfigs();
+  
+  // Profession adapter and dynamic professions for auto-scalability
+  const { getProfessionDisplayName, getUserProfessionColor, getProfessionIcon } = useDynamicProfessions();
+  const { adaptDashboardTitle, adaptTabLabels } = useProfessionAdapter();
+  
+  // Get base config from useProfessionConfigs (for terminology, settings, workflows, etc.)
+  const baseConfig = professionConfigs[profession] || null;
+  
+  // Enhance with dynamic profession branding (auto-scalable)
+  // This makes UniversalShowcase auto-scalable - new professions added via ProfessionTypeManager will automatically work
+  const professionConfig = useMemo(() => {
+    if (!baseConfig) return null;
+    
+    const displayName = getProfessionDisplayName(profession);
+    const professionColor = getUserProfessionColor(profession);
+    const professionIcon = getProfessionIcon(profession);
+    
+    return {
+      ...baseConfig,
+      // Override with dynamic data if available (for auto-scalability)
+      name: displayName || baseConfig.name,
+      color: professionColor || baseConfig.color,
+      icon: professionIcon || baseConfig.icon,
+    };
+  }, [profession, baseConfig, getProfessionDisplayName, getUserProfessionColor, getProfessionIcon]);
+
+  // Profession Config Functions - Properly implemented
+  const terminology = useMemo(() => {
+    if (!professionConfig) return {};
+    return professionConfig.terminology || {};
+  }, [professionConfig]);
+
+  const professionSettings = useMemo(() => {
+    if (!professionConfig) return {};
+    return professionConfig.settings || {};
+  }, [professionConfig]);
+
+  const workflows = useMemo(() => {
+    if (!professionConfig) return {};
+    return professionConfig.workflows || {};
+  }, [professionConfig]);
+
+  const ui = useMemo(() => {
+    if (!professionConfig) return {};
+    return professionConfig.ui || {};
+  }, [professionConfig]);
+
+  const integrations = useMemo(() => {
+    if (!professionConfig) return {};
+    return professionConfig.integrations || {};
+  }, [professionConfig]);
+
+  const getTerm = useCallback((key: string) => {
+    return terminology[key] || key;
+  }, [terminology]);
+
+  const getSetting = useCallback((key: string) => {
+    return professionSettings[key] || null;
+  }, [professionSettings]);
+
+  const getWorkflow = useCallback((key: string) => {
+    return workflows[key] || null;
+  }, [workflows]);
+
+  const getUISetting = useCallback((key: string) => {
+    return ui[key] || null;
+  }, [ui]);
+
+  const getIntegration = useCallback((key: string) => {
+    return integrations[key] || null;
+  }, [integrations]);
+
+  const [selectedItem, setSelectedItem] = useState<ShowcaseItem | null>(null);
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [filter, setFilter] = useState<string>('all');
+  const [favorites, setFavorites] = useState<Set<string>>(new Set());
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [projectSelectorOpen, setProjectSelectorOpen] = useState(false);
+  const [selectedProject, setSelectedProject] = useState<{ id: number; title: string; description?: string; category: string; profession: string; status: string; driveUrl?: string; driveFolderId?: string } | null>(null);
+  const [showUploadComponent, setShowUploadComponent] = useState(false);
+  const [currentVideoTime, setCurrentVideoTime] = useState(0);
+  const [featuredItem, setFeaturedItem] = useState<ShowcaseItem | null>(null);
+  
+  // Multi-dag category states
+  const [selectedDayCategory, setSelectedDayCategory] = useState<string | null>(null);
+  const [showMultiDayView, setShowMultiDayView] = useState(false);
+  const [dayCategories, setDayCategories] = useState<any[]>([]);
+  
+  // Comments state
+  const [showComments, setShowComments] = useState(false);
+  const [newComment, setNewComment] = useState('');
+  const [replyingTo, setReplyingTo] = useState<string | null>(null);
+  
+  // FASE 1: Proofing System States
+  const [proofingSession, setProofingSession] = useState<any>(null);
+  const [selectionCount, setSelectionCount] = useState(0);
+  const [timeRemaining, setTimeRemaining] = useState(0);
+  const [showDeadlineWarning, setShowDeadlineWarning] = useState(false);
+  const [clientSelections, setClientSelections] = useState<string[]>([]);
+  
+  // FASE 2: Enhanced Security States
+  const [showAuthDialog, setShowAuthDialog] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [authSessionData, setAuthSessionData] = useState<any>(null);
+  const [sessionRequiresAuth, setSessionRequiresAuth] = useState(false);
+
+  // Advanced Features States
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [batchMode, setBatchMode] = useState(false);
+  const [selectedBatchItems, setSelectedBatchItems] = useState<Set<string>>(new Set());
+  const [searchQuery, setSearchQuery] = useState<SearchQuery>({});
+  const [categories, setCategories] = useState<ShowcaseCategory[]>([]);
+  const [sets, setSets] = useState<ShowcaseSet[]>([]);
+  const [collections, setCollections] = useState<ShowcaseCollection[]>([]);
+  const [layoutMode, setLayoutMode] = useState<'grid' | 'masonry' | 'justified'>('grid');
+  const [isLoading, setIsLoading] = useState(false);
+  const [annotations, setAnnotations] = useState<ItemAnnotation[]>([]);
+  const [showAnnotations, setShowAnnotations] = useState(true);
+  const [filterChips, setFilterChips] = useState<Array<{id: string; label: string; type: string}>>([]);
+  const [duplicates, setDuplicates] = useState<Map<string, string[]>>(new Map());
+  const [undoStack, setUndoStack] = useState<Array<() => void>>([]);
+  const [redoStack, setRedoStack] = useState<Array<() => void>>([]);
+
+  // Enhanced Master Integration
+  const { 
+    integration,
+    communication,
+    dataFlow,
+    componentRegistry,
+    analytics,
+    auth,
+    features
+} = useEnhancedMasterIntegration();
+  
+  // Comprehensive Feature System for Universal Showcase
+  const showcaseAccess = features.checkFeatureAccess('universal-showcase');
+  const showcaseCreationAccess = features.checkFeatureAccess('showcase-creation');
+  const showcaseManagementAccess = features.checkFeatureAccess('showcase-management');
+  const portfolioManagementAccess = features.checkFeatureAccess('portfolio-management');
+  const contentManagementAccess = features.checkFeatureAccess('content-management');
+  const mediaUploadAccess = features.checkFeatureAccess('media-upload');
+  const showcasePublishingAccess = features.checkFeatureAccess('showcase-publishing');
+  const showcaseAnalyticsAccess = features.checkFeatureAccess('showcase-analytics');
+  
+  // New context hooks
+  const { 
+    currentProject, 
+    updateProject, 
+    updateProjectSettings,
+    getProjectSettings,
+    updateProjectMetadata,
+    getProjectMetadata,
+    updateIntegrationStatus,
+    getIntegrationStatus
+} = useProject();
+  
+  const {
+    settings: userSettings, 
+    updateSetting, 
+    getSetting: getUserSetting, 
+    getProfessionDefaults,
+    mergeWithDefaults
+} = useSettings();
+  
+  const { 
+    theme: customTheme, 
+    getProfessionTheme, 
+    getComponentTheme,
+    isDarkMode 
+} = useCustomTheme();
+  
+  const { 
+    isConnected, 
+    emitEvent, 
+    onEvent, 
+    offEvent,
+    createSession,
+    joinSession,
+    leaveSession,
+    participants,
+    localParticipant
+} = useRealTime();
+
+  // Load from project context and user settings
+  useEffect(() => {
+    // Load from project context if available
+    if (currentProject?.settings?.showcaseSettings) {
+      setShowcaseSettings(prev => ({ ...prev, ...currentProject.settings.showcaseSettings }));
+}
+    
+    // Load from user settings
+    if (userSettings?.showcase) {
+      setShowcaseSettings(prev => ({ ...prev, ...(userSettings.showcase as any) }));
+}
+}, [currentProject, userSettings]);
+
+  // Real-time event handling
+  useEffect(() => {
+    const handleItemSelected = (event: any) => {
+      if (event.data.itemId) {
+        setSelectedItems(prev => [...prev, event.data.itemId.toString()]);
+        showInfoToast(`${event.data.userName} selected an item`);
+  }
+};
+
+    const handleItemUpdated = (event: any) => {
+      if (event.data.itemId) {
+        showInfoToast(`${event.data.userName} updated an item`);
+        // Refresh the item data
+        setShowcaseItems(prev => prev.map(item => 
+          item.id === event.data.itemId.toString() ? { ...item, ...event.data.updates } : item
+        ));
+      }
+    };
+
+    const handleUserJoined = (event: any) => {
+      showInfoToast(`${event.data.userName} joined the showcase`);
+};
+
+    if (isConnected) {
+      onEvent('item_selected', handleItemSelected);
+      onEvent('item_updated', handleItemUpdated);
+      onEvent('user_joined', handleUserJoined);
+}
+
+    return () => {
+      if (isConnected) {
+        offEvent('item_selected', handleItemSelected);
+        offEvent('item_updated', handleItemUpdated);
+        offEvent('user_joined', handleUserJoined);
+  }
+};
+}, [isConnected, onEvent, offEvent, setSelectedItems, setShowcaseItems]);
+
+  // Load toast template from ToastDesigner (respects draft/publish system)
+  const [toastTemplate, setToastTemplate] = useState<any>(null);
+  const [liveUpdateEnabled, setLiveUpdateEnabled] = useState(false);
+  
+  useEffect(() => {
+    const loadToastTemplate = () => {
+      // Check if live update is enabled
+      // Load live update flag from server KV
+      fetch('/api/user/kv/toastLiveUpdateEnabled', { credentials: 'include' })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j) => {
+          const v = j && typeof j === 'object' && 'value' in j ? j.value : (j?.data ?? j);
+          const liveUpdate = (v ?? localStorage.getItem('toastLiveUpdateEnabled')) === 'true';
+          setLiveUpdateEnabled(!!liveUpdate);
+        })
+        .catch(() => setLiveUpdateEnabled(localStorage.getItem('toastLiveUpdateEnabled') === 'true'));
+      
+      // Load published templates
+      fetch('/api/user/kv/toastTemplatesPublished', { credentials: 'include' })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j) => {
+          const v = j && typeof j === 'object' && 'value' in j ? j.value : (j?.data ?? j);
+          const publishedTemplates = v || localStorage.getItem('toastTemplatesPublished');
+          if (publishedTemplates) {
+            try { setToastTemplate(typeof publishedTemplates === 'string' ? JSON.parse(publishedTemplates) : publishedTemplates); } catch {}
+          }
+        })
+        .catch(() => {
+          const publishedTemplates = localStorage.getItem('toastTemplatesPublished');
+          if (publishedTemplates) {
+            try { setToastTemplate(JSON.parse(publishedTemplates)); } catch {}
+          }
+        });
+    };
+    
+    loadToastTemplate();
+    
+    // Listen for template updates
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'toastTemplatesPublished' || e.key === 'toastLiveUpdateEnabled') {
+        loadToastTemplate();
+      }
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+}, []);
+
+  // Toast Helper Functions
+  const showToast = useCallback((message: string, type: 'success' | 'error' | 'warning' | 'info', title?: string) => {
+    const template = toastTemplate || {};
+    
+    addNotification({
+      type,
+      title: title || type.charAt(0).toUpperCase() + type.slice(),
+      message,
+      read: false,
+      action: template.actions?.enabled && template.actions.buttons?.length > 0 ? {
+        label: template.actions.buttons[0].label,
+        callback: () => {
+          // Handle template action
+          console.log(`Template action: ${template.actions.buttons[0].action}`);
+        }
+      } : undefined
+    });
+}, [addNotification, toastTemplate]);
+
+  const showSuccessToast = useCallback((message: string, title = 'Success') => {
+    showToast(message, 'success,', title);
+}, [showToast]);
+
+  const showErrorToast = useCallback((message: string, title = 'Error') => {
+    showToast(message, 'error, ', title);
+}, [showToast]);
+
+  const showWarningToast = useCallback((message: string, title = 'Warning') => {
+    showToast(message, 'warning', title);
+}, [showToast]);
+
+  const showInfoToast = useCallback((message: string, title = 'Info') => {
+    showToast(message, 'info', title);
+}, [showToast]);
+
+  const showToastWithActions = useCallback((message: string, type: 'success' | 'error' | 'warning' | 'info', actions: Array<{label: string, action: () => void}>, title?: string) => {
+    const template = toastTemplate || {};
+    
+    // Use template actions if available, otherwise use provided actions
+    const templateActions = template.actions?.enabled && template.actions.buttons?.length > 0;
+    const finalActions = templateActions ? template.actions.buttons : actions;
+    
+    addNotification({
+      type,
+      title: title || type.charAt(0).toUpperCase() + type.slice(),
+      message,
+      read: false,
+      action: finalActions.length > 0 ? {
+        label: finalActions[0].label,
+        callback: templateActions ? () => {
+          // Handle template action
+          console.log(`Template action: ${finalActions[0].action}`);
+        } : finalActions[0].action
+      } : undefined
+    });
+}, [addNotification, toastTemplate]);
+
+  // Template-specific toast functions
+  const showTemplateToast = useCallback((templateId: string, customMessage?: string, customActions?: Array<{label: string, action: () => void}>) => {
+    // Check server KV for published templates first, then localStorage
+    (async () => {
+      let templatesObj: any = null;
+      try {
+        const r = await fetch('/api/user/kv/toastTemplatesPublished', { credentials: 'include' });
+        const j = r.ok ? await r.json().catch(() => null) : null;
+        const v = j && typeof j === 'object' && 'value' in j ? j.value : (j?.data ?? j);
+        if (v) templatesObj = typeof v === 'string' ? JSON.parse(v) : v;
+      } catch {}
+      if (!templatesObj) {
+        const ls = localStorage.getItem('toastTemplatesPublished');
+        if (ls) {
+          try { templatesObj = JSON.parse(ls); } catch {}
+        }
+      }
+
+      const template = templatesObj?.[templateId];
+      if (template) {
+        addNotification({
+          type: template.type || 'info',
+          title: template.title || 'Notification',
+          message: customMessage || template.message || 'Template notification',
+          read: false,
+          action: template.actions?.enabled && template.actions.buttons?.length > 0 ? {
+            label: template.actions.buttons[0].label,
+            callback: () => {
+              console.log(`Template action: ${template.actions.buttons[0].action}`);
+            }
+          } : undefined
+        });
+        return;
+      }
+
+      // Fallback
+      showToast(customMessage || 'Template notification, ','info','Notification');
+    })();
+  }, [addNotification, showToast]);
+
+  // Profession-specific toast templates
+  const getProfessionToastStyle = useCallback((type: 'success' | 'error' | 'warning' | 'info') => {
+    const baseStyles = {
+      borderRadius: 12,
+      boxShadow: '0 8px 24px rgba(0,0,0,0.15)'
+    };
+
+    switch (profession) {
+      case 'photographer':
+        return {
+          ...baseStyles,
+          backgroundColor: type === 'success' ? '#4caf50' : type === 'error' ? '#f44336' : type === 'warning' ? '#ff9800' : '#2196f3'
+        };
+      case 'videographer':
+        return {
+          ...baseStyles,
+          backgroundColor: type === 'success' ? '#8bc34a' : type === 'error' ? '#e91e63' : type === 'warning' ? '#ff5722' : '#03a9f4'
+  };
+      case 'music_producer':
+        return {
+          ...baseStyles,
+          backgroundColor: type === 'success' ? '#9c27b0' : type === 'error' ? '#f44336' : type === 'warning' ? '#ff9800' : '#673ab7'
+  };
+      case 'vendor':
+        return {
+          ...baseStyles,
+          backgroundColor: type === 'success' ? '#00bcd4' : type === 'error' ? '#f44336' : type === 'warning' ? '#ff9800' : '#009688'
+  };
+      default: return baseStyles;
+    }
+}, [profession]);
+
+  // Google Drive Integration State
+  const [googleDriveSyncStatus, setGoogleDriveSyncStatus] = useState<'idle' | 'syncing' | 'success' | 'error'>('idle');
+  const [googleDriveItems, setGoogleDriveItems] = useState<any[]>([]);
+  const [syncProgress, setSyncProgress] = useState(0);
+  const [currentGoogleDriveFolderId, setCurrentGoogleDriveFolderId] = useState<string | null>(null);
+  
+  // Google People/Contacts Integration State
+  const [googleContactsStatus, setGoogleContactsStatus] = useState<'idle' | 'syncing' | 'success' | 'error'>('idle');
+  const [googleContacts, setGoogleContacts] = useState<any[]>([]);
+  const [contactSyncProgress, setContactSyncProgress] = useState(0);
+
+  // AI Analysis State
+  const [aiAnalysisResults, setAiAnalysisResults] = useState<Map<string, any>>(new Map());
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+
+  // Real-time Collaboration State
+  const [collaborators, setCollaborators] = useState<any[]>([]);
+  const [activeCollaborators, setActiveCollaborators] = useState<Set<string>>(new Set());
+
+  // Showcase Sharing and Overage Management State
+  const [shareShowcaseDialogOpen, setShareShowcaseDialogOpen] = useState(false);
+  const [overageDialogOpen, setOverageDialogOpen] = useState(false);
+  const [selectedShowcaseData, setSelectedShowcaseData] = useState<any>(null);
+  const [prefilledClient, setPrefilledClient] = useState<{ email: string; name: string } | undefined>(undefined);
+  
+  // Lightroom Plugin Dialog State
+  const [lightroomPluginDialogOpen, setLightroomPluginDialogOpen] = useState(false);
+  
+  // Custom Categories and Sets Dialog State
+  const [customCategoriesDialogOpen, setCustomCategoriesDialogOpen] = useState(false);
+  const [customSetsDialogOpen, setCustomSetsDialogOpen] = useState(false);
+  const [newCategoryForm, setNewCategoryForm] = useState({
+    name: '',
+    description: '',
+    icon: '📁',
+    color: '#ff8c00',
+    parentId: '',
+    sortOrder: 0 });
+  const [newSetForm, setNewSetForm] = useState({
+    name: '',
+    description: '',
+    categoryId: '',
+    coverImageId: '',
+    sortOrder: 0 });
+  
+  const queryClient = useQueryClient();
+
+  // Videographer-specific states
+  const [selectedSequence, setSelectedSequence] = useState<string | null>(null);
+  const [selectedChapter, setSelectedChapter] = useState<string | null>(null);
+  const [videoVersion, setVideoVersion] = useState<'R1' | 'R2' | 'R3' | 'Final'>('R1');
+  const [timecodedComments, setTimecodedComments] = useState<any[]>([]);
+  const [selectedLUT, setSelectedLUT] = useState<string>('rec709');
+  const [selectedAudioFormat, setSelectedAudioFormat] = useState<string>('master');
+  const [showVideoEditor, setShowVideoEditor] = useState(false);
+  const [showSequenceManager, setShowSequenceManager] = useState(false);
+  const [showExportDialog, setShowExportDialog] = useState(false);
+  const [videoCurrentTime, setVideoCurrentTime] = useState(0);
+  const [videoDuration, setVideoDuration] = useState(0);
+  const [showVideoWatermarkDialog, setShowVideoWatermarkDialog] = useState(false);
+  
+  // New advanced videographer features
+  const [showProxyGenerator, setShowProxyGenerator] = useState(false);
+  const [showMulticamSync, setShowMulticamSync] = useState(false);
+  const [showChapterMarker, setShowChapterMarker] = useState(false);
+  const [showVersionComparison, setShowVersionComparison] = useState(false);
+  const [showRenderPresets, setShowRenderPresets] = useState(false);
+  const [showStreamingSetup, setShowStreamingSetup] = useState(false);
+  const [showWeddingPackages, setShowWeddingPackages] = useState(false);
+  const [showAnalytics, setShowAnalytics] = useState(false);
+  const [selectedPreset, setSelectedPreset] = useState<'4k-master' | 'web-h264' | 'social-vertical' | 'custom'>('web-h264');
+  const [selectedWeddingPackage, setSelectedWeddingPackage] = useState<'highlight' | 'feature' | 'ceremony' | 'speeches' | 'teaser'>('highlight');
+  const [isProcessingVideo, setIsProcessingVideo] = useState(false);
+  const [processingProgress, setProcessingProgress] = useState(0);
+
+  // Google Photos Integration States
+  const [googlePhotosConnected, setGooglePhotosConnected] = useState(false);
+  const [googlePhotosAlbums, setGooglePhotosAlbums] = useState<any[]>([]);
+  const [selectedGoogleAlbum, setSelectedGoogleAlbum] = useState<string | null>(null);
+  const [googlePhotosItems, setGooglePhotosItems] = useState<any[]>([]);
+  const [isLoadingGooglePhotos, setIsLoadingGooglePhotos] = useState(false);
+  const [showGooglePhotosSync, setShowGooglePhotosSync] = useState(false);
+  const [googlePhotosSyncProgress, setGooglePhotosSyncProgress] = useState(0);
+  const [showGooglePhotosDialog, setShowGooglePhotosDialog] = useState(false);
+
+  // AI Processing Dialog States
+  const [showAutoTagDialog, setShowAutoTagDialog] = useState(false);
+  const [showAutoCurateDialog, setShowAutoCurateDialog] = useState(false);
+  const [showChapterDialog, setShowChapterDialog] = useState(false);
+  const [showSubtitleDialog, setShowSubtitleDialog] = useState(false);
+  const [showMoveDialog, setShowMoveDialog] = useState(false);
+  const [showCreateCollection, setShowCreateCollection] = useState(false);
+  
+  // Publish to Academy Dialog States
+  const [showPublishToAcademyDialog, setShowPublishToAcademyDialog] = useState(false);
+  const [selectedItemForPublish, setSelectedItemForPublish] = useState<ShowcaseItem | null>(null);
+  const [publishToAcademyMode, setPublishToAcademyMode] = useState<'existing' | 'new'>('existing');
+  
+  // Share to Community Dialog States
+  const [showShareToCommunityDialog, setShowShareToCommunityDialog] = useState(false);
+  const [showProToolsDialog, setShowProToolsDialog] = useState(false);
+  const [proToolsSessionId, setProToolsSessionId] = useState<string | undefined>();
+  const [selectedItemForCommunityShare, setSelectedItemForCommunityShare] = useState<ShowcaseItem | null>(null);
+  const [selectedItemsForCommunityShare, setSelectedItemsForCommunityShare] = useState<ShowcaseItem[]>([]);
+  const [selectedCourseForPublish, setSelectedCourseForPublish] = useState<string>('');
+  const [newCourseData, setNewCourseData] = useState({
+    title: '',
+    description: '',
+    category: 'photography',
+    difficulty: 'beginner' as 'beginner' | 'intermediate' | 'advanced',
+    moduleTitle: ''
+  });
+  
+  // Keyboard Shortcuts Guide State
+  const [showKeyboardShortcuts, setShowKeyboardShortcuts] = useState(false);
+  
+  // Workflow Executor State
+  const [showWorkflowExecutor, setShowWorkflowExecutor] = useState(false);
+  
+  // Quick Preview State
+  const [quickPreviewOpen, setQuickPreviewOpen] = useState(false);
+  const [quickPreviewIndex, setQuickPreviewIndex] = useState(0);
+  
+  // Activity Feed State
+  const [activityFeedOpen, setActivityFeedOpen] = useState(false);
+  
+  // Smart Collections State
+  const [showSmartCollections, setShowSmartCollections] = useState(false);
+
+  // Bulk Folder Upload State
+  const [showBulkFolderUpload, setShowBulkFolderUpload] = useState(false);
+  const [currentParentFolderId, setCurrentParentFolderId] = useState<string | undefined>(undefined);
+
+  // Comparison View State
+  const [comparisonViewOpen, setComparisonViewOpen] = useState(false);
+  
+  // Client Activity Panel State
+  const [showClientActivity, setShowClientActivity] = useState(false);
+  
+  // Project overview and timeline state (admin mode only)
+  const [selectedProjectForOverview, setSelectedProjectForOverview] = useState<any | null>(null);
+  const [projectOverviewOpen, setProjectOverviewOpen] = useState(false);
+  const [projectTimelineOpen, setProjectTimelineOpen] = useState(false);
+  const [selectedProjectForTimeline, setSelectedProjectForTimeline] = useState<any | null>(null);
+
+  // Project State Update Dialog States
+  const [projectStateUpdateOpen, setProjectStateUpdateOpen] = useState(false);
+  const [selectedItemForStateUpdate, setSelectedItemForStateUpdate] = useState<ShowcaseItem | null>(null);
+  const [newProjectState, setNewProjectState] = useState<'delivered' | 'in_review'>('in_review');
+
+  // Theme settings for elegant dark design
+  const isDark = true; // Always use dark theme for professional look
+  const bgColor = '#1a1a1a';
+  const cardBg = '#2a2a2a';
+  const textPrimary = '#ffffff';
+  const textSecondary = '#b0b0b0';
+  // Dynamic accent color based on settings (memoized for performance and auto-scalability)
+  const accentColor = useMemo(() => {
+    if ((showcaseSettings.accentColorMode as string) === 'custom') {
+      return showcaseSettings.customAccentColor;
+    } else if ((showcaseSettings.accentColorMode as string) === 'random') {
+      const colors = ['#ff6b35','#e53e3e','#9f7aea','#38b2ac','#f6ad55','#68d391'];
+      return colors[Math.floor(Math.random() * colors.length)];
+    } else {
+      // Auto - profession-based (using dynamic profession colors for auto-scalability)
+      const professionColor = getUserProfessionColor(profession);
+      return professionColor || '#38b2ac'; // fallback color
+    }
+  }, [showcaseSettings.accentColorMode, showcaseSettings.customAccentColor, profession, getUserProfessionColor]);
+
+  // Handle project selection for showcase
+  const handleProjectSelected = async (project: { id: number; title: string; description?: string; category: string; profession: string; status: string; driveUrl?: string; driveFolderId?: string }) => {
+    try {
+      // Store selected project
+      setSelectedProject(project);
+      
+      // Link project to showcase via API
+      const response = await fetch('/api/showcase/link-project', {
+      method: 'POST',
+      headers: { 'Content-Type' : 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          projectId: project.id,
+          profession,
+          userId,
+          driveUrl: project.driveUrl,
+          driveFolderId: project.driveFolderId
+  })
+  });
+      
+      if (!response.ok) throw new Error('Failed to link project to showcase');
+      
+      const linkedShowcase = await response.json();
+      // Project linked to showcase successfully
+      
+      // Show upload component instead of reloading
+      setShowUploadComponent(true);
+      
+      // Invalidate queries to refresh data
+      queryClient.invalidateQueries({ queryKey: [`/api/showcase/profession/${profession}`] });
+      
+} catch (error) {
+      // Error linking project to showcase - handled by error boundary
+      throw error;
+}
+};
+
+  // Google Photos Connection Check - Skip in client mode (no auth)
+  const { data: googlePhotosStatus, isLoading: googlePhotosStatusLoading } = useQuery({
+    queryKey: ['/api/google-photos/test-connection', ],
+    queryFn: async () => {
+      const response = await fetch('/api/google-photos/test-connection', {
+        headers: {
+          'X-Google-Impersonation' : 'true','X-User-Email': user?.email || ','
+        }
+      });
+      if (!response.ok) return { success: false };
+      return response.json();
+},
+    enabled: !clientMode && !!user?.email  // Only check Google Photos for authenticated non-client users
+});
+
+  // Update Google Photos connection status when data changes
+  useEffect(() => {
+    if (googlePhotosStatus) {
+      setGooglePhotosConnected(googlePhotosStatus.success);
+}
+}, [googlePhotosStatus]);
+
+  // Enhanced Master Integration - Component Registration
+  useEffect(() => {
+    const componentId = `universal-showcase-${effectiveUserId}`;
+    componentRegistry.registerComponent({
+      id: componentId,
+      name: 'Universal Showcase',
+      type: 'universal',
+      category: 'showcase',
+      capabilities: ['showcase-display','item-selection','ai-analysis','google-drive-sync'],
+      dependencies:  [],
+      props: ['items','profession','effectiveUserId'],
+      events: ['item-selected','item-updated','item-deleted'],
+      dataKeys: ['showcase-items','selected-items','ai-analysis-results']
+});
+
+    // Track feature usage
+    features.trackFeatureUsage('universal-showcase','opened', {
+      timestamp: Date.now(),
+      component: 'UniversalShowcase',
+      profession: profession,
+      userId: effectiveUserId,
+      viewMode: viewMode
+});
+
+    return () => {
+      componentRegistry.unregisterComponent(componentId);
+};
+}, [componentRegistry, effectiveUserId, profession, selectedItem, viewMode, filter, favorites, categories, sets, collections]);
+
+  // Handler to open project overview from showcase item
+  const handleOpenProjectFromShowcase = useCallback(async (item: ShowcaseItem) => {
+    if (!item.projectId) {
+      // Show notification that this showcase item is not linked to a project
+      showInfoToast('This showcase item is not linked to a project','No Project Link');
+      return;
+    }
+    
+    // Fetch project details based on projectId
+    try {
+      // Try to determine project type from showcase metadata or fetch from API
+      // First, try to fetch project from wedding projects API
+      const weddingRes = await fetch(`/api/wedding-projects/${item.projectId}`, { credentials: 'include' });
+      if (weddingRes.ok) {
+        const data = await weddingRes.json();
+        if (data.success && data.project) {
+          setSelectedProjectForOverview({
+            ...data.project,
+            projectType: 'photo',
+          });
+          setProjectOverviewOpen(true);
+          return;
+        }
+      }
+      
+      // Try Story Arc projects
+      const storyArcRes = await fetch(`/api/story-arc/projects/${item.projectId}`, { credentials: 'include' });
+      if (storyArcRes.ok) {
+        const data = await storyArcRes.json();
+        if (data.success && data.project) {
+          setSelectedProjectForOverview({
+            ...data.project,
+            projectType: 'story-arc',
+          });
+          setProjectOverviewOpen(true);
+          return;
+        }
+      }
+      
+      // If project type cannot be determined, show generic project overview
+      setSelectedProjectForOverview({
+        id: item.projectId,
+        name: item.title || 'Project',
+        projectType: 'timeline', // Default to timeline
+      });
+      setProjectOverviewOpen(true);
+    } catch (error) {
+      console.error('Failed to fetch project details:', error);
+      showErrorToast('Failed to fetch project details','Error');
+    }
+  }, [showInfoToast, showErrorToast]);
+
+  // Handler to open project timeline overview
+  const handleOpenProjectTimeline = useCallback((project: any) => {
+    setSelectedProjectForTimeline(project);
+    setProjectTimelineOpen(true);
+    setProjectOverviewOpen(false);
+  }, []);
+
+  // Handler to open in fullscreen editor
+  const handleOpenInEditor = useCallback(() => {
+    if (!selectedProjectForOverview) return;
+    
+    const { projectType, ...project } = selectedProjectForOverview;
+    
+    // Emit event to open in UniversalDashboard (if integrated)
+    if (integration) {
+      integration.emit('project:open', {
+        projectId: project.id,
+        projectType,
+        openIn: 'editor'
+      });
+    }
+    
+    // Close overview dialog
+    setProjectOverviewOpen(false);
+  }, [selectedProjectForOverview, integration]);
+
+  // Handler to open in new browser tab
+  const handleOpenInNewTab = useCallback(() => {
+    if (!selectedProjectForOverview) return;
+    
+    const { projectType, id } = selectedProjectForOverview;
+    
+    let url = '';
+    switch (projectType) {
+      case 'story-arc':
+        url = `/story-arc/${id}`;
+        break;
+      case 'photo':
+        url = `/photo-enhancement/${id}`;
+        break;
+      case 'audio':
+        url = `/audio-enhancement/${id}`;
+        break;
+      case 'timeline':
+        url = `/project-timeline/${id}`;
+        break;
+    }
+    
+      window.open(url, '_blank', 'noopener,noreferrer');
+    setProjectOverviewOpen(false);
+  }, [selectedProjectForOverview]);
+
+  // Audio watermarking service
+  const applyAudioWatermark = useCallback(async (audioFile: File, watermarkSettings: any) => {
+    if (profession !== 'music_producer' || !watermarkSettings.audioWatermarkEnabled) {
+      return audioFile; // Return original file if watermarking is disabled
+}
+
+    try {
+      // Create FormData for audio watermarking API
+      const formData = new FormData();
+      formData.append('audioFile', audioFile);
+      formData.append('watermarkMethod', watermarkSettings.audioWatermarkMethod);
+      formData.append('watermarkStrength', watermarkSettings.audioWatermarkStrength);
+      formData.append('watermarkFrequency', watermarkSettings.audioWatermarkFrequency);
+      formData.append('userId', effectiveUserId);
+      formData.append('profession', profession);
+
+      // Call audio watermarking API
+      const response = await fetch('/api/audio/watermark', {
+        method: 'POS',
+        body: formData
+});
+
+      if (response.ok) {
+        const watermarkedBlob = await response.blob();
+        return new File([watermarkedBlob], audioFile.name, { type: audioFile.type });
+  } else {
+        console.warn('Audio watermarking failed, returning original file');
+        return audioFile;
+  }
+} catch (error) {
+      console.error('Audio watermarking error:', error);
+      return audioFile; // Return original file on error
+}
+}, [profession, effectiveUserId]);
+
+  // Individual item download function
+  const handleDownload = useCallback(async (item: ShowcaseItem) => {
+    try {
+      if (!item.fileUrl) {
+        console.error('No file URL available for download');
+        return;
+}
+
+      // Check download protection
+      if ((showcaseSettings.downloadProtection as string) === 'password') {
+        // Get password from showcase settings or item
+        const storedPassword = showcaseSettings.downloadPassword || item.downloadPassword;
+        if (storedPassword) {
+          const password = prompt('Skriv inn passord for å laste ned filen:');
+          if (!password) {
+            return; // User cancelled
+          }
+          
+          // Verify password against stored hash (backend handles hashing/verification)
+          try {
+            const verifyResponse = await fetch('/api/user/kv/verify-password', {
+              method: 'POST',
+              headers: { 'Content-Type' : 'application/json' },
+              credentials: 'include',
+              body: JSON.stringify({
+                key: 'showcase-settings',
+                password: password,
+              }),
+            });
+            
+            const verifyResult = await verifyResponse.json();
+            if (!verifyResult.verified) {
+              addNotification({
+                type: 'error',
+                message: 'Feil passord. Prøv igjen.',
+              });
+              return;
+            }
+            // Password verified, continue with download
+          } catch (verifyError) {
+            console.error('Password verification failed:', verifyError);
+            // Fallback: try direct comparison for legacy plain text passwords
+            const isHashed = /^\$2[ayb]\$/.test(storedPassword);
+            if (!isHashed && password !== storedPassword) {
+              addNotification({
+                type: 'error',
+                message: 'Feil passord. Prøv igjen.',
+              });
+              return;
+            } else if (isHashed) {
+              addNotification({
+                type: 'error',
+                message: 'Kunne ikke verifisere passord. Prøv igjen.',
+              });
+              return;
+            }
+          }
+        } else {
+          // No password set - allow download but warn admin
+          if (adminMode) {
+            addNotification({
+              type: 'warning',
+              message: 'Ingen passord er satt for denne filen. Vurder å legge til passordbeskyttelse.',
+            });
+          }
+        }
+      } else if ((showcaseSettings.downloadProtection as string) === 'timelimit') {
+        const now = new Date();
+        const limit = new Date(now.getTime() + 24 * 60 * 60 * 1000); // 24 hours
+        if (now > limit) {
+          showTemplateToast('showcase-time-limit-warning');
+          return;
+    }
+  }
+
+      // Create download item for UniversalDownload component
+      const downloadItem = {
+        url: item.fileUrl,
+        filename: item.title || `download-${item.id}`,
+        type: item.fileType === 'photo' ? 'image' : 
+              item.fileType === 'video' ? 'video' : 
+              item.fileType === 'audio' ? 'audio' : 'document',
+        size: item.stats?.downloads || 0,
+        description: item.description
+};
+
+      // Use UniversalDownload component functionality
+      const response = await fetch(downloadItem.url, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('authToken')}`, 'X-Download-Source' : 'CreatorHub-Norge', 'X-User-ID': effectiveUserId,
+        },
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Download failed: ${response.statusText}`);
+  }
+      
+      let blob = await response.blob();
+      
+      // Apply audio watermarking for music producers
+      if (profession === 'music_producer' && item.fileType === 'audio' && showcaseSettings.audioWatermarkEnabled) {
+        try {
+          const audioFile = new File([blob], downloadItem.filename, { type: blob.type });
+          const watermarkedFile = await applyAudioWatermark(audioFile, showcaseSettings);
+          blob = watermarkedFile;
+          showTemplateToast('showcase-audio-watermark-success');
+    } catch (error) {
+          console.warn('Failed to apply audio watermarking:', error);
+          // Continue with original file if watermarking fails
+    }
+  }
+      
+      const downloadUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = downloadUrl;
+      a.download = downloadItem.filename;
+      a.rel = 'noopener noreferrer';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(downloadUrl);
+
+      // Track download analytics
+            if (analytics?.trackEvent && showcaseSettings.analyticsTracking) {
+              analytics.trackEvent('item_downloaded', {
+                itemId: item.id,
+                profession,
+                fileType: item.fileType,
+                userId: effectiveUserId,
+                timestamp: new Date().toISOString(),
+                userAgent: navigator.userAgent,
+                settings: {
+                  clickAction: showcaseSettings.clickAction,
+                  downloadProtection: showcaseSettings.downloadProtection,
+                  watermark: showcaseSettings.watermark
+                }
+              });
+            }
+
+      // Send download notification to admin/photographer if enabled
+      // Only notify if downloadNotifications is enabled AND it's a client download (not admin downloading their own content)
+      if (showcaseSettings.downloadNotifications && clientMode && !adminMode) {
+        try {
+          // Get photographer/admin userId (owner of the showcase)
+          // In client mode, userId prop should be the photographer's ID
+          const photographerUserId = userId || user?.id;
+          
+          if (!photographerUserId) {
+            console.warn('Cannot send download notification: photographer userId not available');
+            // Still track the download even if we can't notify
+          } else {
+            // Determine client name/email
+            const clientName = clientEmail || item.clientName || 'En klient';
+            const clientIdentifier = clientEmail || effectiveUserId;
+            
+            // Track download in client activity system (this also sends the notification)
+            try {
+              await fetch('/api/client-activity/download', {
+                method: 'POST',
+                headers: { 'Content-Type' : 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({
+                  photographerUserId: photographerUserId,
+                  profession: profession, // Pass profession for profession-specific notifications
+                  itemId: item.id,
+                  itemTitle: item.title || downloadItem.filename,
+                  itemType: item.fileType,
+                  clientName: clientName,
+                  clientEmail: clientEmail,
+                  clientId: clientIdentifier,
+                  projectId: item.projectId,
+                  timestamp: new Date().toISOString(),
+                }),
+              }).catch((error) => {
+                console.warn('Failed to track download in client activity:', error);
+              });
+            } catch (activityError) {
+              console.warn('Client activity tracking error:', activityError);
+            }
+          }
+        } catch (notificationError) {
+          console.warn('Download notification error:', notificationError);
+          // Don't fail the download if notification fails
+        }
+      }
+
+      } catch (error) {
+      console.error('Download failed:', error);
+      // Show user-friendly error message with retry action
+      showTemplateToast('showcase-download-error','Kunne ikke laste ned filen. Prøv igjen senere.');
+}
+}, [effectiveUserId, profession, analytics, showcaseSettings.downloadNotifications, clientMode, adminMode, userId, user?.id, clientEmail, addNotification]);
+
+  // Enhanced Master Integration - Event Subscriptions
+  useEffect(() => {
+    const handleProjectSelected = (data: any) => {
+      if (data.projectId) {
+        // Update showcase based on selected project
+        setFilter('all');
+        setSelectedItem(null);
+}
+};
+
+    const handleItemUpdate = (data: any) => {
+      if (data.itemId) {
+        // Handle item updates from other components
+          onItemUpdate?.(data);
+        }
+      };
+
+    const handleFolderCreated = (data: any) => {
+      if (data.projectId && data.folderId) {
+        // Update Google Drive folder ID when project folders are created
+        setCurrentGoogleDriveFolderId(data.folderId);
+        console.log('Project folders created, updating showcase folder ID:', data.folderId);
+      }
+    };
+
+    const handleShowcaseSynced = (data: any) => {
+      if (data.projectId) {
+        // Refresh showcase data when synced to Drive
+        console.log('Showcase synced to Drive:', data);
+      }
+    };
+
+    // Communication events are handled by the Enhanced Master Integration system
+    // No manual subscription needed
+}, [communication, onItemUpdate]);
+
+  // Google Drive Integration - Sync Function with Automatic Folder Structure
+  const syncToGoogleDrive = useCallback(async () => {
+    if (!enableGoogleDriveSync) return;
+
+    setGoogleDriveSyncStatus('syncing');
+    setSyncProgress(0);
+
+    try {
+      const authHeader = await auth.getAuthHeader();
+
+      // Get current showcase items
+      const showcaseItems = integration.getData(`universal-showcase-${effectiveUserId}:items`) || [];
+
+      // Get current project context from UniversalDashboard
+      const currentProject = integration.getData(`universal-dashboard-${effectiveUserId}:selectedProject`);
+
+      // Sync to Google Drive with automatic folder structure
+      const response = await fetch('/api/google-drive/sync-showcase-to-project-folders', {
+        method: 'POST',
+        headers: {
+          'Content-Type' : 'application/json',
+          Authorization: authHeader.Authorization,
+        },
+        body: JSON.stringify({
+          items: showcaseItems,
+          profession,
+          userId: effectiveUserId,
+          projectId: currentProject?.d,
+          projectName: currentProject?.title || currentProject?.name,
+          clientName: currentProject?.clientName,
+               // Comprehensive 180+ folder structure covering all CreatorHub Norge components
+               folderStructure: {
+                 // CORE 8-FOLDER STRUCTURE (Foundation)
+                 '01_Raw':'Raw files and original content','02_Edited':'Edited and processed files','03_Proofing':'Client proofing and selection files','04_Deliverables':'Final deliverables for client','05_Archive':'Archived and backup files','06_Client_Communication':'Client communication and feedback','07_Project_Documents':'Contracts, invoices, and project docs','08_Showcase' : 'Showcase and portfolio files',
+                 
+                 // STORY ARC STUDIO (9-16)
+                 '09_Raw_Footage':'Original video recordings for story arcs','10_Edited_Files':'Processed video content','11_Client_Review':'Client review and approval files','12_Final_Delivery':'Final story arc deliverables','13_Scripts_Notes':'Video scripts and project notes','14_Moodboards_Inspiration':'Visual inspiration and moodboards','15_Contracts_Documents':'Story arc contracts and docs','16_Communication' : 'Client communication for story arcs',
+                 
+                 // DAVINCI RESOLVE INTEGRATION (17-24)
+                 '17_Resolve_Projects':'DaVinci Resolve project files','18_Resolve_Timelines':'Timeline configurations','19_Resolve_Clips':'Video clip assets','20_Resolve_Transitions':'Transition effects','21_Resolve_Color_Grading':'Color correction files','22_Resolve_Audio_Mix':'Audio mixing projects','23_Resolve_Graphics':'Motion graphics assets','24_Resolve_Exports' : 'Final export files',
+                 
+                 // VIDEO PRODUCTION (25-40)
+                 '25_Video_Projects':'Video production projects','26_Raw_Footage':'Original video recordings','27_Edited_Videos':'Processed video content','28_Color_Grading':'Color correction files','29_Audio_Mix':'Audio mixing and sound design','30_Graphics_Assets':'Motion graphics and overlays','31_Shot_Lists':'Video shot planning','32_Storyboards':'Visual storyboards','33_Equipment_Logs':'Video equipment tracking','34_Client_Reviews':'Video review and feedback','35_Drone_Footage':'Aerial video content','36_Time_Lapse':'Time-lapse sequences','37_Slow_Motion':'Slow-motion footage','38_Green_Screen':'Chroma key footage','39_Interview_Footage':'Interview recordings','40_B_Roll' : 'B-roll footage',
+                 
+                 // MUSIC PRODUCTION (41-60)
+                 '41_Music_Projects':'Music production projects','42_Audio_Samples':'Sample libraries and loops','43_Mastering':'Final mastered tracks','44_Contracts_Music':'Music-specific contracts','45_Session_Notes':'Recording session notes','46_Stems':'Individual track stems','47_Mix_Down':'Mix down versions','48_Reference_Tracks':'Reference music','49_Equipment_Setup':'Music equipment configs','50_Collaboration':'Artist collaboration files','51_VST_Plugins':'Virtual instruments','52_Audio_Effects':'Audio processing effects','53_MIDI_Files':'MIDI sequences','54_Tempo_Maps':'Tempo and timing','55_Vocal_Recordings':'Vocal tracks','56_Instrument_Recordings':'Instrument tracks','57_Backing_Tracks':'Backing music','58_Live_Recordings':'Live performance recordings','59_Studio_Sessions':'Studio session files','60_Music_Licensing' : 'Licensing agreements',
+                 
+                 // PHOTOGRAPHY-SPECIFIC (61-80)
+                 '61_Photo_Enhancement':'AI-enhanced photos','62_Composition_Analysis':'AI composition analysis','63_Moodboards':'Visual moodboards and inspiration','64_Equipment_Checklists':'Equipment management','65_Client_Galleries':'Wedding, Portrait, Commercial galleries','66_Editing_Presets':'Lightroom presets and templates','67_Location_Scouting':'Location photos and notes','68_Posing_References':'Posing guides and references','69_Color_Palettes':'Color schemes and palettes','70_Wedding_Timeline':'Wedding planning timelines','71_Engagement_Sessions':'Pre-wedding photography','72_Newborn_Sessions':'Newborn photography','73_Family_Sessions':'Family photography','74_Event_Coverage':'Event photography','75_Commercial_Shoots':'Commercial photography','76_Product_Photography':'Product shots','77_Headshots':'Professional headshots','78_Real_Estate':'Real estate photography','79_Food_Photography':'Food and restaurant shots','80_Street_Photography' : 'Street and documentary',
+                 
+                 // VENDOR/PRODUCT (81-100)
+                 '81_Product_Assets':'Product images and materials','82_Marketing_Materials':'Promotional content','83_Technical_Docs':'Technical documentation','84_Customer_Support':'Support materials and FAQs','85_Release_Notes':'Product release documentation','86_User_Guides':'User manuals and guides','87_Testing_Reports':'Quality assurance reports','88_Deployment':'Deployment configurations','89_Feedback_Collection':'Customer feedback','90_Product_Updates':'Update files and patches','91_Plugin_Builds':'Plugin builds and versions','92_VST_Files':'VST plugin files','93_AU_Files':'Audio Unit files','94_AAX_Files':'AAX plugin files','95_WAV_Samples':'WAV sample files','96_MIDI_Files':'MIDI files','97_Installation_Files':'Installation packages','98_License_Documents':'License agreements','99_Warranty_Info':'Warranty information','100_Receipts' : 'Purchase receipts',
+                 
+                 // BUSINESS ADMINISTRATION (101-120)
+                 '101_Financial_Records':'Invoicing and payments','102_Business_Analytics':'Business performance data','103_Lead_Management':'Lead tracking and CRM','104_Marketing_Campaigns':'Marketing materials','105_Client_Relations':'Client relationship management','106_Project_Timelines':'Project scheduling','107_Budget_Tracking':'Financial planning','108_Expense_Reports':'Expense documentation','109_Tax_Documents':'Tax-related files','110_Legal_Documents':'Legal compliance files','111_Contracts_General':'General contracts','112_Invoices':'Invoice documents','113_Time_Tracking':'Time registration','114_Meeting_Notes':'Meeting documentation','115_Project_Plans':'Project planning documents','116_Client_Profiles':'Client information','117_Proposals':'Project proposals','118_Quotes':'Price quotes','119_Agreements':'Service agreements','120_Policies' : 'Company policies',
+                 
+                 // UNIVERSAL COMPONENTS (121-140)
+                 '121_File_Uploads':'Universal file upload temp files','122_Downloads_Queue':'Download queue and batch processing','123_AI_Analysis':'AI analysis results and metadata','124_Real_Time_Collaboration':'Real-time collaboration files','125_System_Logs':'System integration logs','126_Error_Reports':'Error tracking and debugging','127_Performance_Metrics':'Performance monitoring data','128_User_Preferences':'User settings and preferences','129_Notification_History':'Notification logs','130_Session_Data':'User session information','131_Showcase_Categories':'Showcase category mappings','132_Showcase_Grids':'Grid layouts and display settings','133_Showcase_Thumbnails':'Generated thumbnails','134_Photo_Enhancement':'AI-enhanced photos','135_Composition_Analysis':'AI composition analysis','136_Moodboards':'Visual moodboards and inspiration','137_Equipment_Checklists':'Equipment management','138_Client_Galleries':'Wedding, Portrait, Commercial galleries','139_Editing_Presets':'Lightroom presets and templates','140_Location_Scouting' : 'Location photos and notes',
+                 
+                 // SYSTEM & BACKUP (141-160)
+                 '141_System_Backup':'System backup files','142_Memory_Card_Backup':'Memory card backups','143_Auto_Backup':'Automatic backup files','144_Disaster_Recovery':'Disaster recovery files','145_System_Updates':'System update files','146_Security_Logs':'Security monitoring','147_Access_Control':'Permission management','148_Data_Retention':'Data retention policies','149_Compliance_Reports':'GDPR compliance','150_Audit_Trails':'System audit logs','151_Backup_Verification':'Backup verification files','152_System_Health':'System health monitoring','153_Performance_Logs':'Performance monitoring','154_Error_Logs':'Error tracking','155_Access_Logs':'Access logging','156_Integration_Logs':'Integration monitoring','157_Backup_Schedules':'Backup scheduling','158_Recovery_Plans':'Recovery procedures','159_System_Configs':'System configurations','160_Monitoring_Dashboards' : 'Monitoring data',
+                 
+                 // ACADEMY & EDUCATION (161-170)
+                 '161_Photography_Courses':'Photography education','162_Videography_Courses':'Videography education','163_Music_Production_Courses':'Music production education','164_Tutorial_Content':'Tutorial materials','165_FAQ_Database':'Frequently asked questions','166_Help_Desk':'Support ticket system','167_Feature_Requests':'Feature request tracking','168_Bug_Reports':'Bug tracking and fixes','169_User_Feedback':'User feedback collection','170_Knowledge_Base' : 'Knowledge management',
+                 
+                      // ADVANCED FEATURES (171-180)
+                      '171_AI_Workflows':'AI automation workflows','172_Magic_Creator':'Magic Creator generated features','173_Smart_Notes':'Smart notes system','174_Google_Docs_Sync':'Google Docs integration','175_Cross_Platform_Sync':'Cross-platform synchronization','176_Real_Time_Updates':'Real-time data updates','177_Platform_Extensions':'Platform extensions','178_System_Integrations':'System integration files','179_User_Activity':'User activity tracking','180_Platform_Health' : 'Platform health monitoring',
+                      
+                      // GOOGLE PEOPLE & CONTACTS (181-190)
+                      '181_Google_Contacts':'Google People API contacts','182_Contact_Search':'Contact search and discovery','183_Contact_Sync':'Contact synchronization','184_Collaborator_Contacts':'Project collaborator contacts','185_Client_Contacts':'Client contact management','186_Contact_Import':'Contact import from Google','187_Contact_Export':'Contact export to Google','188_Contact_Validation':'Contact data validation','189_Contact_History':'Contact interaction history','190_Contact_Integration' : 'Cross-platform contact integration'
+                    },
+                    targetFolder: '08_Showcase', // Showcase items go to the showcase folder
+                    googleDriveFolderId: googleDriveFolderId || currentProject?.driveFolderId
+                  })
+                });
+
+        if (response.ok) {
+          const result = await response.json();
+          setGoogleDriveItems(result.items || []);
+          setGoogleDriveSyncStatus('success');
+          onGoogleDriveSync?.(result.items || []);
+        
+      // Broadcast sync completion to other components
+      communication.sendMessage({
+        type: 'showcase-synced-to-drive',
+        from: `universal-showcase-${effectiveUserId}`,
+        to: 'all',
+        priority: 'medium',
+        data: {
+          projectId: currentProject?.id,
+          folderId: result.folderId,
+          itemsCount: result.items?.length || 0,
+          profession
+        }
+      });
+      } else {
+        throw new Error('Failed to sync to Google Drive');
+      }
+    } catch (error) {
+      console.error('Google Drive sync error:', error);
+      setGoogleDriveSyncStatus('error');
+    } finally {
+      setSyncProgress(100);
+    }
+}, [enableGoogleDriveSync, googleDriveFolderId, profession, effectiveUserId, componentRegistry, communication, onGoogleDriveSync]);
+
+  // Google People/Contacts Integration - Sync Function
+  const syncGoogleContacts = React.useCallback(async () => {
+    setGoogleContactsStatus('syncing');
+    setContactSyncProgress(0);
+
+    try {
+      const authHeader = await auth.getAuthHeader();
+
+      // Get current showcase items
+      const showcaseItems = integration.getData(`universal-showcase-${effectiveUserId}:items`) || [];
+
+      // Get current project context from UniversalDashboard
+      const currentProject = integration.getData(`universal-dashboard-${effectiveUserId}:selectedProject`);
+
+      // Sync to Google People/Contacts
+      const response = await fetch('/api/google/people/sync-contacts-to-showcase', {
+        method: 'POST',
+        headers: {
+          'Content-Type' : 'application/json',
+          Authorization: authHeader.Authorization,
+        },
+        body: JSON.stringify({
+          items: showcaseItems,
+          profession,
+          userId: effectiveUserId,
+          projectId: currentProject?.d,
+          projectName: currentProject?.title || currentProject?.name,
+          clientName: currentProject?.clientName,
+          contactTypes: [
+            'collaborators','clients','vendors','team_members'
+          ],
+          syncOptions: {
+            importFromGoogle: true,
+            exportToGoogle: true,
+            syncContactHistory: true,
+            validateContacts: true
+    }
+    })
+  });
+
+      if (response.ok) {
+        const result = await response.json();
+        setGoogleContacts(result.contacts || []);
+        setGoogleContactsStatus('success');
+        
+        // Broadcast sync completion to other components
+        communication.sendMessage({
+          type: 'contacts-synced-to-showcase',
+          from: `universal-showcase-${effectiveUserId}`,
+          to: 'all',
+          priority: 'medium',
+          data: {
+            projectId: currentProject?.d,
+            contactsCount: result.contacts?.length || 0,
+            profession
+          }
+        });
+      } else {
+        throw new Error('Failed to sync Google Contacts');
+      }
+    } catch (error) {
+      console.error('Google Contacts sync error:', error);
+      setGoogleContactsStatus('error');
+    } finally {
+      setContactSyncProgress(100);
+    }
+}, [profession, effectiveUserId, integration, communication]);
+
+  // AI Analysis - Audio Analysis for Music Producers
+  const analyzeAudioContent = useCallback(async (item: ShowcaseItem) => {
+    if (profession !== 'music_producer' || !enableAIAnalysis) return;
+
+    setIsAnalyzing(true);
+    try {
+      const response = await fetch('/api/ai/analyze-audio', {
+      method: 'POST',
+      headers: { 'Content-Type' : 'application/json' },
+        body: JSON.stringify({
+          itemId: item.id,
+          fileUrl: item.fileUrl,
+          profession
+        })
+      });
+
+      if (response.ok) {
+        const analysis = await response.json();
+        setAiAnalysisResults(prev => new Map(prev.set(item.id, analysis)));
+        
+        // Auto-tagging if enabled
+        if (enableAutoTagging && analysis.tags) {
+          const updatedItem = { ...item, tags: [...(item.tags || []), ...analysis.tags] };
+          onItemUpdate?.(updatedItem);
+        }
+      }
+    } catch (error) {
+      console.error('AI analysis error:', error);
+    } finally {
+      setIsAnalyzing(false);
+    }
+}, [profession, enableAIAnalysis, enableAutoTagging, onItemUpdate]);
+
+  // Real-time Collaboration - WebSocket Connection
+  useEffect(() => {
+    if (!enableRealTimeSync || !collaborationSessionId) return;
+
+    const ws = new WebSocket(`ws://localhost:3001/collaboration/${collaborationSessionId}`);
+    
+    ws.onopen = () => {
+      console.log('Collaboration WebSocket connected');
+    };
+
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      
+      switch (data.type) {
+        case 'collaborator-joined':
+          setCollaborators(prev => [...prev, data.collaborator]);
+          setActiveCollaborators(prev => new Set(Array.from(prev).concat(data.collaborator.id)));
+          break;
+        case 'collaborator-left':
+          setActiveCollaborators(prev => {
+            const newSet = new Set(prev);
+            newSet.delete(data.collaboratorId);
+            return newSet;
+          });
+          break;
+        case 'item-updated':
+          if (data.itemId) {
+            onItemUpdate?.(data.item);
+          }
+          break;
+        case 'item-selected':
+          if (data.itemId) {
+            setSelectedItem(data.item);
+            onItemSelect?.(data.item);
+          }
+          break;
+      }
+    };
+
+    ws.onclose = () => {
+      console.log('Collaboration WebSocket disconnected');
+    };
+
+    return () => {
+      ws.close();
+    };
+}, [enableRealTimeSync, collaborationSessionId, onItemUpdate, onItemSelect]);
+
+  // Fetch Google Photos Albums
+  const { data: googlePhotosAlbumsData = [], isLoading: googlePhotosAlbumsLoading } = useQuery({
+    queryKey: ['/api/google-photos/albums'],
+    queryFn: async () => {
+      const response = await fetch('/api/google-photos/albums', {
+        headers: {
+          'X-Google-Impersonation' : 'true','X-User-Email': user?.email || ','
+        }
+      });
+      if (!response.ok) return [];
+      return response.json();
+},
+    enabled: googlePhotosConnected
+});
+
+  // Update Google Photos albums when data changes
+  useEffect(() => {
+    if (googlePhotosAlbumsData) {
+      setGooglePhotosAlbums(googlePhotosAlbumsData);
+    }
+  }, [googlePhotosAlbumsData]);
+
+  // Fetch Google Photos Items from Selected Album
+  const { data: googlePhotosAlbumItems = [], isLoading: googlePhotosItemsLoading } = useQuery({
+    queryKey: [`/api/google-photos/albums/${selectedGoogleAlbum}/photos`],
+    queryFn: async () => {
+      if (!selectedGoogleAlbum) return [];
+      const response = await fetch(`/api/google-photos/albums/${selectedGoogleAlbum}/photos`, {
+        headers: {
+          'X-Google-Impersonation' : 'true','X-User-Email': user?.email || ','
+        }
+      });
+      if (!response.ok) return [];
+      return response.json();
+},
+    enabled: !!(googlePhotosConnected && selectedGoogleAlbum)
+});
+
+  // Update Google Photos items when data changes
+  useEffect(() => {
+    if (googlePhotosAlbumItems) {
+      setGooglePhotosItems(googlePhotosAlbumItems);
+    }
+  }, [googlePhotosAlbumItems]);
+
+  // Fetch showcase items from existing showcase system
+  const { data: showcases = [], isLoading: showcasesLoading, error: showcasesError, refetch } = useQuery({
+    queryKey: [`/api/showcase/profession/${profession}`, effectiveUserId, sessionIdd],
+    queryFn: async () => {
+      let url = `/api/showcase/profession/${profession}?userId=${effectiveUserId}`;
+      if (clientMode && sessionIdd) {
+        url += `&sessionIdd=${sessionIdd}`;
+  }
+      const response = await fetch(url, {
+        headers: {
+          'X-Google-Impersonation' : 'true','X-User-Email': user?.email || ','
+        }
+      });
+      if (!response.ok) {
+        throw new Error('Kunne ikke laste prosjekter. Prøv igjen senere.');
+      }
+      return response.json();
+},
+    enabled: !!effectiveUserId
+});
+
+  // Fetch business info for copyright
+  const { data: businessInfo } = useQuery({
+    queryKey: ['/api/branding/business-info', effectiveUserId, profession],
+    queryFn: () => apiRequest(`/api/branding/business-info?userId=${effectiveUserId}&profession=${profession}`),
+    enabled: !!effectiveUserId && !!profession,
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+  });
+
+  // Fetch custom categories for Lightroom plugin integration
+  const { data: categoriesData, isLoading: categoriesLoading } = useQuery({
+    queryKey: ['/api/showcase/categories', profession, effectiveUserId],
+    queryFn: async () => {
+      const response = await fetch(`/api/showcase/categories?profession=${profession}&userId=${effectiveUserId}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch categories');
+      }
+      return response.json();
+},
+    enabled: !!effectiveUserId && !!profession,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+});
+
+  const apiCategories = categoriesData?.categories || [];
+
+  // Fetch client session data if in client mode (includes projectState)
+  const { data: clientSession, isLoading: sessionLoading } = useQuery({
+    queryKey: [`/api/showcase/client-session/${sessionIdd}`, clientEmail],
+    queryFn: async () => {
+      const response = await fetch(`/api/showcase/client-session/${sessionIdd}?clientEmail=${clientEmail}`);
+      if (!response.ok) {
+        throw new Error('Kunne ikke laste galleri-session.');
+      }
+      return response.json();
+},
+    enabled: !!(clientMode && sessionIdd && clientEmail)
+});
+
+  // Get project state from session data (default to 'in_review' for safety)
+  const projectState = (clientSession?.projectState || clientSession?.project_state || 'in_review') as 'delivered' | 'in_review';
+
+  // Fetch client's existing selections
+  const { data: existingSelections = [], refetch: refetchSelections } = useQuery({
+    queryKey: [`/api/showcase/client-selections/${sessionIdd}`, clientEmail],
+    queryFn: async () => {
+      const response = await fetch(`/api/showcase/client-selections/${sessionIdd}?clientEmail=${clientEmail}`);
+      if (!response.ok) {
+        return [];
+      }
+      return response.json();
+},
+    enabled: !!(clientMode && sessionIdd && clientEmail)
+});
+
+  // FASE 1: Fetch proofing session data for deadline and selection limits
+  const { data: proofingSessionData, refetch: refetchProofingSession } = useQuery({
+    queryKey: [`/api/proofing/sessions/${sessionIdd || 'default'}`],
+    queryFn: async () => {
+      const response = await fetch(`/api/proofing/sessions/${sessionIdd}`);
+      if (!response.ok) throw new Error('Kunne ikke laste proofing session');
+      return response.json();
+},
+    enabled: !!(clientMode && sessionIdd),
+    refetchInterval: 30000 // Update every 30 seconds to show remaining time
+});
+
+  // Showcase Sharing and Overage Management Mutations
+  const shareShowcaseMutation = useMutation({
+    mutationFn: async (shareData: {
+      showcaseId: string;
+      clientEmail: string;
+      clientName: string;
+      message?: string;
+      photographerName: string;
+      photographerCompany: string;
+      projectState?: 'delivered' | 'in_review';
+      projectId?: string | null;
+}) => {
+      return apiRequest('/api/showcase/email', {
+      method: 'POST',
+      headers: { 'Content-Type' : 'application/json' },
+        body: JSON.stringify(shareData)
+});
+},
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/showcase', ],});
+}
+});
+
+  const overageEmailMutation = useMutation({
+    mutationFn: async (overageData: {
+      showcaseId: string;
+      clientEmail: string;
+      clientName: string;
+      projectName: string;
+      totalImages: number;
+      contractLimit: number;
+      pricePerImage: number;
+}) => {
+      return apiRequest('/api/showcase/send-overage-email', {
+      method: 'POST',
+      headers: { 'Content-Type' : 'application/json' },
+        body: JSON.stringify(overageData)
+});
+},
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/showcase', ],});
+}
+});
+
+  // Project State Update Mutation
+  const updateProjectStateMutation = useMutation({
+    mutationFn: async (data: {
+      sessionId: string;
+      projectState: 'delivered' | 'in_review';
+      projectId?: string;
+    }) => {
+      return apiRequest(`/api/showcase/client-session/${data.sessionId}/project-state`, {
+        method: 'PUT',
+        headers: { 'Content-Type' : 'application/json' },
+        body: JSON.stringify({
+          projectState: data.projectState,
+          projectId: data.projectId,
+        }),
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/showcase/client-session/${sessionIdd}`, clientEmail] });
+      queryClient.invalidateQueries({ queryKey: ['/api/showcase'] });
+      addNotification({
+        type: 'success',
+        message: 'Project state updated successfully',
+      });
+    },
+    onError: (error: any) => {
+      addNotification({
+        type: 'error',
+        message: error?.message || 'Failed to update project state',
+      });
+    },
+  });
+
+  // Custom Categories and Sets Mutations
+  const createCategoryMutation = useMutation({
+    mutationFn: async (categoryData: {
+      name: string;
+      description?: string;
+      icon?: string;
+      color?: string;
+      parentId?: string;
+      sortOrder?: number;
+      profession: string;
+      userId: string;
+}) => {
+      return apiRequest('/api/showcase/categories', {
+      method: 'POST',
+      headers: { 'Content-Type' : 'application/json' },
+        body: JSON.stringify(categoryData)
+});
+},
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/showcase/categories', ],});
+      setCustomCategoriesDialogOpen(false);
+      setNewCategoryForm({
+        name: '',
+        description: '',
+        icon: '📁',
+        color: '#ff8c00',
+        parentId: '',
+        sortOrder: 0 });
+}
+});
+
+  const createSetMutation = useMutation({
+    mutationFn: async (setData: {
+      name: string;
+      description?: string;
+      categoryId: string;
+      coverImageId?: string;
+      sortOrder?: number;
+      profession: string;
+      userId: string;
+}) => {
+      return apiRequest('/api/showcase/sets', {
+      method: 'POST',
+      headers: { 'Content-Type' : 'application/json' },
+        body: JSON.stringify(setData)
+});
+},
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/showcase/sets', ],});
+      setCustomSetsDialogOpen(false);
+      setNewSetForm({
+        name: '',
+        description: '',
+        categoryId: '',
+        coverImageId: '',
+        sortOrder: 0 });
+}
+});
+
+  // Will be defined later after Google Photos data is transformed
+
+  // Session data state
+  const [sessionData, setSessionData] = useState<ClientSession | null>(null);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Quick Preview: Space bar (when item is hovered/focused)
+      if (e.key === ', ' && !e.metaKey && !e.ctrlKey && !quickPreviewOpen && selectedItem) {
+        e.preventDefault();
+        const itemIndex = filteredItems.findIndex(item => item.id === selectedItem.id);
+        if (itemIndex !== -1) {
+          setQuickPreviewIndex(itemIndex);
+          setQuickPreviewOpen(true);
+        }
+        return;
+      }
+      
+      // Show Keyboard Shortcuts Guide: ? key
+      if (e.key === '?' && !e.metaKey && !e.ctrlKey && !e.shiftKey && !quickPreviewOpen) {
+        e.preventDefault();
+        setShowKeyboardShortcuts(true);
+        return;
+      }
+      
+      // Command Palette: Cmd/Ctrl + K
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k' && !quickPreviewOpen) {
+        e.preventDefault();
+        setCommandPaletteOpen(true);
+}
+      // Batch select all: Cmd/Ctrl + A
+      if ((e.metaKey || e.ctrlKey) && e.key === 'a' && batchMode) {
+        e.preventDefault();
+        const allItemIds = new Set(items.map(item => item.id));
+        setSelectedBatchItems(allItemIds);
+}
+      // Toggle batch mode: Cmd/Ctrl + B
+      if ((e.metaKey || e.ctrlKey) && e.key === 'b') {
+        e.preventDefault();
+        setBatchMode(!batchMode);
+}
+      // Undo: Cmd/Ctrl + Z
+      if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        handleUndo();
+}
+      // Redo: Cmd/Ctrl + Shift + Z
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'z') {
+        e.preventDefault();
+        handleRedo();
+}
+      // Escape key - clear selections or close dialogs
+      if (e.key === 'Escape') {
+        if (quickPreviewOpen) {
+          setQuickPreviewOpen(false);
+        } else if (showKeyboardShortcuts) {
+          setShowKeyboardShortcuts(false);
+        } else if (batchMode && selectedBatchItems.size > 0) {
+          setSelectedBatchItems(new Set());
+        } else if (commandPaletteOpen) {
+          setCommandPaletteOpen(false);
+        } else if (selectedItem) {
+          setSelectedItem(null);
+        }
+      }
+};
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [batchMode, selectedBatchItems, commandPaletteOpen, selectedItem, showKeyboardShortcuts, quickPreviewOpen]);
+
+  // Export video with preset function
+  const exportVideoWithPreset = async (preset: string) => {
+    try {
+      const response = await fetch('/api/video/export', {
+      method: 'POST',
+      headers: { 'Content-Type' : 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          videoId: selectedItem?.id,
+          preset,
+          version: videoVersion,
+          lut: selectedLUT,
+          audioTrack: selectedAudioFormat
+  })
+  });
+
+      if (!response.ok) throw new Error('Failed to export video');
+      
+      const exportJob = await response.json();
+      // Video export started successfully
+      
+      // Show success notification with actions
+        showToastWithActions(
+          `Video eksporteres for ${preset}. Du vil få en e-post når eksporten er ferdig.`, 'success',
+        [
+          {
+            label: 'Se Status',
+            action: () => {
+              // Navigate to export status page
+              window.open('/admin/exports', '_blank');
+            }
+          },
+          {
+            label: 'E-post Innstillinger',
+            action: () => {
+              // Open email settings
+              window.open('/admin/settings/notifications', '_blank');
+            }
+          }
+        ]
+      );
+} catch (error) {
+      // Error exporting video - handled by error boundary
+      showErrorToast('Feil ved eksport av video. Prøv igjen.');
+}
+};
+
+  // Handle command palette commands
+  const handleCommand = useCallback((command: string) => {
+    switch (command) {
+      case 'new-collection':
+        setShowCreateCollection(true);
+        break;
+      case 'batch-select':
+        setBatchMode(true);
+        break;
+      case 'filter':
+        setSidebarOpen(true);
+        break;
+      case 'grid-view':
+        setLayoutMode('grid');
+        break;
+      case 'masonry-view':
+        setLayoutMode('masonry');
+        break;
+      case 'list-view':
+        setViewMode('list');
+        break;
+      case 'duplicate-detection':
+        findDuplicates();
+        break;
+      case 'batch-archive':
+        if (selectedBatchItems.size > 0) {
+          // Archive selected items
+          // Archiving items
+        }
+        break;
+      case 'batch-download':
+        if (selectedBatchItems.size > 0) {
+          // Download selected items
+          // Downloading items
+        }
+        break;
+      case 'batch-move':
+        if (selectedBatchItems.size > 0) {
+          setShowMoveDialog(true);
+        }
+        break;
+      // AI commands
+      case 'auto-tag':
+        if (profession === 'photographer' || profession === 'videographer') {
+          setShowAutoTagDialog(true);
+        }
+        break;
+      case 'auto-curate':
+        if (profession === 'photographer' || profession === 'videographer') {
+          setShowAutoCurateDialog(true);
+    }
+        break;
+      // Videographer specific
+      case 'generate-thumbnails':
+        if (profession === 'videographer' && selectedItem?.fileType === 'video') {
+          generateVideoThumbnails(selectedItem.id);
+        }
+        break;
+      case 'add-chapters':
+        if (profession === 'videographer' && selectedItem?.fileType === 'video') {
+          setShowChapterDialog(true);
+    }
+        break;
+      case 'add-subtitles':
+        if (profession === 'videographer' && selectedItem?.fileType === 'video') {
+          setShowSubtitleDialog(true);
+    }
+        break;
+      // Social media export
+      case 'export-instagram':
+        if (selectedItem) {
+          exportVideoWithPreset('instagram');
+        }
+        break;
+      case 'export-youtube':
+        if (selectedItem?.fileType === 'video') {
+          exportVideoWithPreset('youtube');
+        }
+        break;
+      case 'export-tiktok':
+        if (selectedItem?.fileType === 'video') {
+          exportVideoWithPreset('tiktok');
+    }
+        break;
+      case 'undo':
+        handleUndo();
+        break;
+      case 'redo':
+        handleRedo();
+        break;
+      case 'bulk-create':
+        setShowBulkFolderUpload(true);
+        break;
+      case 'bulk-upload':
+        setShowBulkFolderUpload(true);
+        break;
+      default: // Command not implemented
+    }
+}, [selectedBatchItems, profession, selectedItem, exportVideoWithPreset]);
+
+  // Undo/Redo functionality
+  const handleUndo = useCallback(() => {
+    if (undoStack.length > 0) {
+      const action = undoStack[undoStack.length - 1];
+      action();
+      setUndoStack(prev => prev.slice(0, -1));
+    }
+}, [undoStack]);
+
+  const handleRedo = useCallback(() => {
+    if (redoStack.length > 0) {
+      const action = redoStack[redoStack.length - 1];
+      action();
+      setRedoStack(prev => prev.slice(0, -1));
+}
+}, [redoStack]);
+
+  // Transform Google Photos items into showcase format
+  const googlePhotosShowcaseItems = googlePhotosItems.map((photo: { id: string; url: string; title?: string; description?: string; filename?: string; baseUrl?: string; tags?: string[]; brandLogoUrl?: string }) => ({
+    id: `google-photos-${photo.id}`,
+    title: photo.filename || `Google Photos Bilde ${photo.id}`,
+    fileType: 'photo' as const,
+    thumbnailUrl: photo.baseUrl,
+    fileUrl: photo.baseUrl,
+    description: photo.description,
+    tags: photo.tags || [],
+    brandLogoUrl: photo.brandLogoUrl
+}));
+
+  // Transform showcases into profession-specific items - only use real data
+  const transformedShowcaseItems = showcases.map((showcase: { id: string; title: string; url: string; type: string; createdAt: string; thumbnailUrl?: string; fileUrl?: string; description?: string; clientName?: string; category?: string; isFeatured?: boolean; viewCount?: number; likeCount?: number; downloadCount?: number; tags?: string[]; brandLogoUrl?: string }) => ({
+    id: showcase.id,
+    title: showcase.title,
+    fileType: profession === 'photographer' ? 'photo' : profession === 'videographer' ? 'video' : profession === 'music_producer' ? 'audio' : 'document',
+    thumbnailUrl: showcase.thumbnailUrl,
+    fileUrl: showcase.fileUrl,
+    description: showcase.description,
+    clientName: showcase.clientName,
+    category: showcase.category,
+    createdAt: showcase.createdAt,
+    isFeatured: showcase.isFeatured,
+    stats: {
+      views: showcase.viewCount,
+      likes: showcase.likeCount || 0,
+      downloads: showcase.downloadCount || 0 },
+    tags: showcase.tags || [],
+    brandLogoUrl: showcase.brandLogoUrl
+}));
+
+  // Combine showcase items with Google Photos items
+  const items: ShowcaseItem[] = useMemo(() => {
+    return [...transformedShowcaseItems, ...(googlePhotosConnected ? googlePhotosShowcaseItems : [])];
+}, [transformedShowcaseItems, googlePhotosConnected, googlePhotosShowcaseItems]);
+
+  // Find duplicate items based on checksum/similarity hash
+  const findDuplicates = useCallback(() => {
+    const duplicateMap = new Map<string, string[]>();
+    items.forEach(item => {
+      if (item.checksum) {
+        if (!duplicateMap.has(item.checksum)) {
+          duplicateMap.set(item.checksum, []);
+        }
+        duplicateMap.get(item.checksum)!.push(item.id);
+      }
+    });
+    // Only keep checksums with duplicates
+    const actualDuplicates = new Map(
+      Array.from(duplicateMap.entries()).filter(([_, ids]) => ids.length > 1)
+    );
+    setDuplicates(actualDuplicates);
+}, [items]);
+
+  // Update client selections state when data loads
+  useEffect(() => {
+    if (existingSelections?.length > 0) {
+      setClientSelections(existingSelections.map((s: { showcaseItemId: string }) => s.showcaseItemId));
+    }
+    if (clientSession) {
+      setSessionData(clientSession);
+    }
+    // FASE 1: Update proofing session data
+    if (proofingSessionData) {
+      setProofingSession(proofingSessionData);
+      setSelectionCount(proofingSessionData.currentSelections || 0);
+      setTimeRemaining(proofingSessionData.timeRemaining || 0);
+
+      // Show deadline warning if less than 24 hours remaining
+      if (proofingSessionData.timeRemaining < 24 * 60 * 60 * 1000) {
+        setShowDeadlineWarning(true);
+      }
+    }
+}, [existingSelections, clientSession, proofingSessionData]);
+
+  // Fetch day categories for multi-day projects - SEPARATE from client selections to prevent infinite loops
+  const dayCategoriesFetchedRef = React.useRef<string | null>(null);
+  const dayCategoriesFetchingRef = React.useRef<boolean>(false);
+  useEffect(() => {
+    const cacheKey = `${userId}-${profession}`;
+    // Only fetch once per userId/profession combination - also check if currently fetching
+    if (!userId || !profession || dayCategoriesFetchedRef.current === cacheKey || dayCategoriesFetchingRef.current) return;
+
+    // Mark as fetching BEFORE the async call to prevent duplicate fetches
+    dayCategoriesFetchingRef.current = true;
+
+    const fetchDayCategories = async () => {
+      try {
+        const response = await fetch(`/api/showcase/day-categories?userId=${userId}&profession=${profession}`, {
+          credentials: 'include'
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          setDayCategories(data.dayCategories || []);
+          setShowMultiDayView(data.dayCategories && data.dayCategories.length > 0);
+          dayCategoriesFetchedRef.current = cacheKey;
+        }
+      } catch (_error) {
+        // Error fetching day categories - handled by error boundary
+      } finally {
+        dayCategoriesFetchingRef.current = false;
+      }
+    };
+
+    fetchDayCategories();
+}, [userId, profession]);
+
+
+
+
+  // In client mode, only wait for showcases and session (Google Photos queries are disabled)
+  // Note: sessionLoading will be false when query is disabled (no sessionIdd/clientEmail)
+  const isFetchingData = clientMode
+    ? (showcasesLoading || (sessionIdd && clientEmail && sessionLoading))
+    : (showcasesLoading || googlePhotosStatusLoading || googlePhotosAlbumsLoading || googlePhotosItemsLoading);
+
+  // Debug: Log loading states in client mode (disabled to prevent console spam)
+  // console.log('[Showcase Debug]', {
+  //   clientMode,
+  //   isFetchingData,
+  //   showcasesLoading,
+  //   sessionLoading,
+  //   sessionIdd,
+  //   clientEmail,
+  //   showcasesCount: showcases?.length,
+  //   effectiveUserId
+  // });
+
+  // Google Photos Sync Function
+  const syncWithGooglePhotos = async () => {
+    if (!selectedGoogleAlbum) return;
+    
+    setShowGooglePhotosSync(true);
+    setGooglePhotosSyncProgress(0);
+    
+    try {
+      // Sync Google Photos items to showcase
+      const response = await fetch('/api/showcase/sync-google-photos', {
+      method: 'POST',
+      headers: { 'Content-Type' : 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          albumId: selectedGoogleAlbum,
+          profession,
+          userId,
+          items: googlePhotosItems
+  })
+  });
+      
+      if (!response.ok) throw new Error('Synkronisering med Google Photos feilet');
+      
+      const result = await response.json();
+      // Google Photos synchronized successfully
+      
+      // Refresh showcase data
+      window.location.reload();
+      
+} catch (error) {
+      // Google Photos sync error - handled by error boundary
+} finally {
+      setShowGooglePhotosSync(false);
+      setGooglePhotosSyncProgress(0);
+}
+};
+
+  // Handle Google Photos Import
+  const handleGooglePhotosImport = async (photoIds: string[]) => {
+    if (!photoIds.length) return;
+    
+    try {
+      const response = await fetch('/api/showcase/import-google-photos', {
+      method: 'POST',
+      headers: { 'Content-Type' : 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          photoIds,
+          profession,
+          userId,
+          albumId: selectedGoogleAlbum
+  })
+  });
+      
+      if (!response.ok) throw new Error('Import fra Google Photos feilet');
+      
+      const result = await response.json();
+      // Images imported from Google Photos successfully  // Refresh data window.location.reload();
+      
+} catch (error) {
+      // Google Photos import error - handled by error boundary
+}
+};
+
+  // Handle Google Photos Edit - NEW FUNCTION with Project ID integration
+  const handleGooglePhotosEdit = async (imageIds: string[]) => {
+    if (!imageIds.length) return;
+    
+    try {
+      setIsLoadingGooglePhotos(true);
+      
+      // Get current project info from memory card session or dashboard
+      let projectInfo = null;
+      let albumName = `CreatorHub Editing - ${new Date().toLocaleDateString('')}`;
+      
+      // Try to get active memory card session first (from project creation)
+      const memoryCardResponse = await fetch(`/api/memory-card/active-session/${userId}`, {
+        credentials: 'include'
+});
+      
+      if (memoryCardResponse.ok) {
+        const sessionData = await memoryCardResponse.json();
+        if (sessionData.project) {
+          projectInfo = {
+            id: sessionData.project.d,
+            name: sessionData.project.title || sessionData.project.clientName,
+            type: sessionData.project.projectType,
+            clientName: sessionData.project.clientName,
+            eventDate: sessionData.project.eventDate,
+            location: sessionData.project.location,
+            weddingCulture: sessionData.project.weddingCulture
+    };
+          
+          // Create descriptive album name with memory card context
+          albumName = `${projectInfo?.clientName} - ${projectInfo?.name} - Redigering (${projectInfo?.type}) - ${new Date().toLocaleDateString('no-NO')}`;
+          // Using memory card session project
+    }
+  } else {
+        // Fallback to dashboard project data
+        const projectResponse = await fetch(`/api/dashboard/${profession}/${userId}`, {
+          credentials: 'include'
+  });
+        
+        if (projectResponse.ok) {
+          const dashboardData = await projectResponse.json();
+          const currentProject = dashboardData.projects?.[0]; // Get most recent project
+          
+          if (currentProject) {
+            projectInfo = {
+              id: currentProject.d,
+              name: currentProject.name || currentProject.clientName,
+              type: currentProject.type,
+              clientName: currentProject.clientName,
+              eventDate: currentProject.eventDate,
+              location: currentProject.location,
+              weddingCulture: currentProject.weddingCulture
+      };
+            
+            // Create more descriptive album name with project context
+            albumName = `${projectInfo?.name} - Redigering (${projectInfo?.type}) - ${new Date().toLocaleDateString('no-NO')}`;
+      }
+    }
+  }
+
+      // PRIORITET: Hent prosjektdata fra ProjectCreationWithMemoryCards (server-first, fallback sessionStorage)
+      try {
+        const r = await fetch('/api/user/kv/currentProjectContext', { credentials: 'include' });
+        const j = r.ok ? await r.json().catch(() => null) : null;
+        const serverCtx = j && typeof j === 'object' && 'value' in j ? j.value : (j?.data ?? j);
+        if (serverCtx) {
+          projectInfo = {
+            id: serverCtx.projectId,
+            name: serverCtx.projectName,
+            type: serverCtx.projectType,
+            clientName: serverCtx.clientName,
+            eventDate: serverCtx.eventDate,
+            location: serverCtx.location,
+            weddingCulture: serverCtx.weddingCulture,
+          };
+          albumName = `${serverCtx.clientName} - ${serverCtx.projectName} - Redigering`;
+        } else {
+          const storedProjectContext = sessionStorage.getItem('currentProjectContext');
+          if (storedProjectContext) {
+            try {
+              const projectContext = JSON.parse(storedProjectContext);
+              projectInfo = {
+                id: projectContext.projectId,
+                name: projectContext.projectName,
+                type: projectContext.projectType,
+                clientName: projectContext.clientName,
+                eventDate: projectContext.eventDate,
+                location: projectContext.location,
+                weddingCulture: projectContext.weddingCulture
+              };
+              albumName = `${projectContext.clientName} - ${projectContext.projectName} - Redigering`;
+            } catch {}
+          }
+        }
+      } catch {
+        const storedProjectContext = sessionStorage.getItem('currentProjectContext');
+        if (storedProjectContext) {
+          try {
+            const projectContext = JSON.parse(storedProjectContext);
+            projectInfo = {
+              id: projectContext.projectId,
+              name: projectContext.projectName,
+              type: projectContext.projectType,
+              clientName: projectContext.clientName,
+              eventDate: projectContext.eventDate,
+              location: projectContext.location,
+              weddingCulture: projectContext.weddingCulture
+            };
+            albumName = `${projectContext.clientName} - ${projectContext.projectName} - Redigering`;
+          } catch {}
+        }
+      }
+      
+      // Upload selected images to Google Photos for editing
+      const response = await fetch('/api/google-photos/upload-for-edit', {
+      method: 'POST',
+      headers: { 'Content-Type' : 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          imageIds,
+          profession,
+          userId,
+          projectId: projectInfo?.id,
+          projectName: projectInfo?.name,
+          projectType: projectInfo?.type,
+          clientName: projectInfo?.clientName,
+          eventDate: projectInfo?.eventDate,
+          location: projectInfo?.location,
+          weddingCulture: projectInfo?.weddingCulture,
+          albumName
+    })
+  });
+      
+      if (!response.ok) throw new Error('Failed to upload to Google Photos');
+      
+      const uploadResult = await response.json();
+      // Google Photos upload successful with project context
+      
+      // Open Google Photos album in new tab for editing
+      if (uploadResult.albumUrl) {
+        window.open(uploadResult.albumUrl, '_blank');
+  }
+      
+      // Show enhanced success message with detailed project context
+      let successMessage = `✅ ${imageIds.length} bilde${imageIds.length !== 1 ? 'r' : ','} er sendt til Google Photos for redigering!`;
+      
+      if (projectInfo) {
+        successMessage += `\n\n📁 Prosjekt: ${projectInfo?.name}`;
+        if (projectInfo?.clientName) {
+          successMessage += `\n👤 Klient: ${projectInfo.clientName}`;
+    }
+        if (projectInfo?.eventDate) {
+          successMessage += `\n📅 Dato: ${new Date(projectInfo.eventDate).toLocaleDateString('')}`;
+    }
+        if (projectInfo?.location) {
+          successMessage += `\n📍 Sted: ${projectInfo.location}`;
+    }
+        successMessage += `\n\n🎯 Bildene er nå tilgjengelige i Google Photos med full prosjektkontext for redigering.`;
+  }
+      
+        showToastWithActions(
+          successMessage, 'success',
+        [
+          {
+            label: 'Åpne Google Photos',
+            action: () => {
+              window.open('https://photos.google.com', '_blank');
+            }
+          },
+          {
+            label: 'Se Prosjekt',
+            action: () => {
+              // Navigate to project view
+              if (selectedProject?.id) {
+                window.location.href = `/projects/${selectedProject.id}`;
+          }
+        }
+      }
+        ]
+    );
+      
+} catch (error) {
+      // Error uploading to Google Photos for editing - handled by error boundary
+      showErrorToast('Feil ved opplasting til Google Photos. Prøv igjen senere.');
+} finally {
+      setIsLoadingGooglePhotos(false);
+}
+};
+
+  // FASE 2: Handle client authentication success
+  const handleAuthenticationSuccess = (sessionData: { sessionIdd: string; userId: string; isAuthenticated: boolean; currentSelections?: number }) => {
+    setIsAuthenticated(true);
+    setAuthSessionData(sessionData);
+    setShowAuthDialog(false);
+    
+    // Update proofing session with authenticated data
+    if (sessionData) {
+      setProofingSession(sessionData);
+      setSelectionCount(sessionData.currentSelections || 0);
+}
+};
+
+  // Check if client session requires authentication on mount
+  useEffect(() => {
+    if (clientMode && sessionIdd && !isAuthenticated) {
+      // Check if session requires PIN/password authentication
+      const checkSessionAuth = async () => {
+        try {
+          const response = await fetch(`/api/proofing/session-info/${sessionIdd}`);
+          const data = await response.json();
+          
+          if (data.requiresAuth) {
+            setSessionRequiresAuth(true);
+            setShowAuthDialog(true);
+      } else {
+            setIsAuthenticated(true);
+      }
+    } catch (error) {
+          // Session auth check failed
+          setShowAuthDialog(true); // Default to showing auth dialog on error
+    }
+  };
+      
+      checkSessionAuth();
+}
+}, [clientMode, sessionIdd, isAuthenticated]);
+
+  // Handle client selection toggle
+  const handleClientSelection = async (itemId: string) => {
+    if (!clientMode || !sessionIdd || !clientEmail) return;
+
+    const isSelected = clientSelections.includes(itemId);
+    
+    try {
+      if (isSelected) {
+        // Remove selection
+        const response = await fetch('/api/showcase/client-selections', {
+      method: 'DELETE',
+      headers: { 'Content-Type' : 'application/json' },
+          body: JSON.stringify({
+            sessionIdd,
+            showcaseItemId: itemId,
+            clientEmail
+      })
+    });
+        
+        if (response.ok) {
+          setClientSelections(prev => prev.filter(id => id !== itemId));
+          
+          // Emit real-time event for deselection
+          if (isConnected) {
+            emitEvent('item_selected', {
+              itemId,
+              userId: user?.d,
+              userName: (user as any)?.firstName || 'User',
+              action: 'deselected'
+      });
+      }
+    }
+  } else {
+        // Check selection limits
+        if (sessionData?.maxSelections && clientSelections.length >= sessionData.maxSelections) {
+          showWarningToast(`Du kan maksimalt velge ${sessionData.maxSelections} bilder.`);
+          return;
+    }
+
+        // Add selection
+        const response = await fetch('/api/showcase/client-selections', {
+      method: 'POST',
+      headers: { 'Content-Type' : 'application/json' },
+          body: JSON.stringify({
+            sessionIdd,
+            showcaseItemId: itemId,
+            clientEmail,
+            clientComment: clientComment
+    })
+    });
+        
+        if (response.ok) {
+          setClientSelections(prev => [...prev, itemId]);
+          
+          // Emit real-time event for selection
+          if (isConnected) {
+            emitEvent('item_selected', {
+              itemId,
+              userId: user?.d,
+              userName: (user as any)?.firstName || 'User',
+              action: 'selected'
+      });
+      }
+    }
+  }
+      
+      refetchSelections();
+} catch (error) {
+      // Error updating selection - handled by error boundary
+}
+};
+  
+  // Pricing integration state
+  const [selectedImages, setSelectedImages] = useState<Set<string>>(new Set());
+  const [pricingData, setPricingData] = useState<any>(null);
+  const [showPricing, setShowPricing] = useState(false);
+  
+  // CreatorHub Photo Enhancer state
+  const [showPhotoEnhancer, setShowPhotoEnhancer] = useState(false);
+  const [enhancementPresets, setEnhancementPresets] = useState<any>({});
+  const [selectedPhotoPreset, setSelectedPhotoPreset] = useState('portrait');
+  const [customEnhancementOptions, setCustomEnhancementOptions] = useState({
+    brightness:  0,
+    contrast: 1.0,
+    saturation:  0,
+    sharpening: 1.0,
+    noiseReduction: false,
+    autoTone: false
+});
+  const [isEnhancing, setIsEnhancing] = useState(false);
+  const [enhancementProgress, setEnhancementProgress] = useState(0);
+
+  // Watermark state - Professional Photographer Setup
+  const [showWatermarkDialog, setShowWatermarkDialog] = useState(false);
+  const [watermarkText, setWatermarkText] = useState('© Ditt Fotografnavn');
+  const [watermarkPosition, setWatermarkPosition] = useState('bottom-right');
+  const [watermarkOpacity, setWatermarkOpacity] = useState(0.5);
+  const [watermarkLogo, setWatermarkLogo] = useState<File | null>(null);
+  const [watermarkType, setWatermarkType] = useState<'text' | 'logo' | 'both'>('text');
+  const [isApplyingWatermark, setIsApplyingWatermark] = useState(false);
+
+  // Photo Editor & Crop state - CreatorHub Photo Enhancer Integration
+  const [showPhotoEditor, setShowPhotoEditor] = useState(false);
+  const [showCropDialog, setShowCropDialog] = useState(false);
+  const [cropAspectRatio, setCropAspectRatio] = useState<string>('free');
+  const [compositionOverlay, setCompositionOverlay] = useState<string>('none');
+  const [cropData, setCropData] = useState({
+    x:  0,
+    y:  0,
+    width: 10,
+    height: 10,
+    aspectRatio: null as number | null
+});
+  const [isProcessingEdit, setIsProcessingEdit] = useState(false);
+
+  // Copy/Move state
+  const [showCopyMoveDialog, setShowCopyMoveDialog] = useState(false);
+  const [copyMoveAction, setCopyMoveAction] = useState<'copy' | 'move'>('copy');
+  const [availableProjects, setAvailableProjects] = useState<any[]>([]);
+  const [availableCategories, setAvailableCategories] = useState<string[]>([]);
+  const [selectedTargetProject, setSelectedTargetProject] = useState('');
+  const [selectedTargetCategory, setSelectedTargetCategory] = useState('');
+  const [isCopyingMoving, setIsCopyingMoving] = useState(false);
+
+  // Additional image operations state
+  const [showBulkOperationsDialog, setShowBulkOperationsDialog] = useState(false);
+  const [isProcessingBulkOperation, setIsProcessingBulkOperation] = useState(false);
+  const [bulkOperationProgress, setBulkOperationProgress] = useState(0);
+  const [showMetadataEditor, setShowMetadataEditor] = useState(false);
+  const [bulkMetadata, setBulkMetadata] = useState({
+    title: '',
+    description: '',
+    tags: '',
+    location: '',
+    copyright: '© CreatorHub Norge' // Will be updated from business info when editor opens
+  });
+  const [displayPreferences, setDisplayPreferences] = useState({
+    showExif: true,
+    showCameraInfo: true,
+    showLocation: true,
+    showTags: true,
+    showCopyright: true,
+  });
+  
+  // Client proofing state (already defined above)
+  const [clientComment, setClientComment] = useState('');
+  
+  // Load pricing data based on profession
+  useEffect(() => {
+    const loadPricingData = async () => {
+      try {
+        const response = await fetch(`/api/showcase/pricing/${profession}`, {
+          credentials: 'include'
+  });
+        if (response.ok) {
+          const pricing = await response.json();
+          setPricingData(pricing);
+    }
+  } catch (error) {
+        // Could not load pricing data
+  }
+};
+    
+    loadPricingData();
+}, [profession]);
+
+  // Load enhancement presets
+  useEffect(() => {
+    const loadEnhancementPresets = async () => {
+      try {
+        const response = await fetch('/api/showcase/enhancement-presets', {
+          credentials: 'include'
+  });
+        if (response.ok) {
+          const data = await response.json();
+          if (data.presets) {
+            setEnhancementPresets(data.presets);
+      }
+    }
+  } catch (error) {
+        // Could not load enhancement presets
+  }
+};
+    
+    loadEnhancementPresets();
+}, []);
+
+  // NOTE: Day categories loading is already handled in the useEffect above (around line 3534)
+  // that handles existingSelections, clientSession, proofingSessionData - removed duplicate to prevent infinite loops
+
+  // Handle image selection for pricing
+  const handleImageSelect = (imageId: string) => {
+    setSelectedImages(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(imageId)) {
+        newSet.delete(imageId);
+      } else {
+        newSet.add(imageId);
+      }
+      return newSet;
+    });
+};
+
+  // Calculate total price for selected images
+  const calculatePrice = () => {
+    if (!pricingData || selectedImages.size === 0) return 0;
+    
+    const extraImages = Math.max(0, selectedImages.size - (pricingData.projectPricing?.contracted_images || 0));
+    // Use centralized pricing service for per-image pricing
+    let pricePerImage = 150; // Default fallback
+    try {
+      if (pricingData.projectPricing?.per_image) {
+        pricePerImage = pricingData.projectPricing.per_image;
+      } else if (pricingData.pricing?.perImage) {
+        pricePerImage = pricingData.pricing.perImage;
+      } else {
+        // Use default fallback pricing
+        pricePerImage = 50; // Default NOK 50 per image
+      }
+    } catch (error) {
+      console.warn('Could not fetch per-image pricing, using fallback:', error);
+    }
+    
+    return extraImages * pricePerImage;
+};
+
+  // Show pricing modal
+  const openPricingModal = () => {
+    setShowPricing(true);
+};
+
+  // Handle purchase/checkout
+  const handleCheckout = async () => {
+    if (selectedImages.size === 0) return;
+    
+    try {
+      const response = await fetch('/api/showcase/calculate-selection-price', {
+      method: 'POST',
+      headers: { 'Content-Type' : 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          showcaseId: items[0]?.id, // Use first showcase item ID as reference
+          selectedImages: Array.from(selectedImages),
+          clientEmail: 'kunde@example.com', // This should come from authenticated user
+          pricingOption: 'per_image'
+  })
+  });
+
+      if (response.ok) {
+        const result = await response.json();
+        showInfoToast(`Totalpris: ${result.calculation.totalCost} NOK for ${selectedImages.size} bilder`);
+        setShowPricing(false);
+        setSelectedImages(new Set());
+      }
+    } catch (error) {
+      // Checkout error - handled by error boundary
+      showErrorToast('Feil ved bestilling. Prøv igjen.');
+    }
+};
+
+  // CreatorHub Photo Enhancer functions
+  const openPhotoEnhancer = () => {
+    if (selectedImages.size === 0) {
+      showWarningToast('Velg bilder først for å åpne CreatorHub Photo Enhancer');
+      return;
+    }
+    setShowPhotoEnhancer(true);
+};
+
+  // Additional image operation handlers
+  const openWatermarkDialog = () => {
+    if (selectedImages.size === 0) {
+      showWarningToast('Velg bilder først');
+      return;
+    }
+    setShowWatermarkDialog(true);
+};
+
+
+
+  const openCopyMoveDialog = (action: 'copy' | 'move') => {
+    if (selectedImages.size === 0) {
+      showWarningToast('Velg bilder først');
+      return;
+    }
+    setCopyMoveAction(action);
+    setShowCopyMoveDialog(true);
+};
+
+  const executeCopyMove = async () => {
+    if (!selectedTargetProject && !selectedTargetCategory) {
+      showWarningToast('Velg destinasjon');
+      return;
+}
+
+    setIsCopyingMoving(true);
+    try {
+      const imageIds = Array.from(selectedImages);
+      
+      const response = await fetch(`/api/showcase/${copyMoveAction}-images`, {
+      method: 'POST',
+      headers: { 'Content-Type' : 'application/json' },
+        body: JSON.stringify({
+          imageIds,
+          targetProject: selectedTargetProject,
+          targetCategory: selectedTargetCategory
+  })
+  });
+
+      if (response.ok) {
+        showSuccessToast(`${imageIds.length} bilder ${copyMoveAction === 'copy' ? 'kopiert' : 'flyttet'}!`);
+        setShowCopyMoveDialog(false);
+        setSelectedImages(new Set());
+        refetch();
+  } else {
+        throw new Error(`Feil under ${copyMoveAction === 'copy' ? 'kopiering' : 'flytting'}`);
+  }
+} catch (error) {
+      // Copy/move operation failed - handled by error boundary
+      showErrorToast(`Feil under ${copyMoveAction === 'copy' ? 'kopiering' : 'flytting'}`);
+} finally {
+      setIsCopyingMoving(false);
+}
+};
+
+  // Bulk Folder Upload - Create Collections Handler
+  const handleBulkCreateCollections = useCallback(async (
+    folders: Array<{
+      id: string;
+      name: string;
+      path: string;
+      files: File[];
+      fileCount: number;
+      totalSize: number;
+    }>,
+    settings: {
+      enablePassword: boolean;
+      password: string;
+      enableDownloads: boolean;
+      enableComments: boolean;
+      enableFavorites: boolean;
+      visibility: 'private' | 'team' | 'public';
+      watermarkEnabled: boolean;
+    }
+  ) => {
+    try {
+      // Create collections for each folder
+      for (const folder of folders) {
+        // 1. Create the collection using apiRequest for auth
+        const collection = await apiRequest('/api/showcase/collections', {
+          method: 'POST',
+          body: JSON.stringify({
+            name: folder.name,
+            description: `Bulk imported from ${folder.path}`,
+            visibility: settings.visibility,
+            settings: {
+              enablePassword: settings.enablePassword,
+              password: settings.enablePassword ? settings.password : undefined,
+              enableDownloads: settings.enableDownloads,
+              enableComments: settings.enableComments,
+              enableFavorites: settings.enableFavorites,
+              watermarkEnabled: settings.watermarkEnabled,
+            },
+            parentFolderId: currentParentFolderId,
+            userId: effectiveUserId,
+            profession: profession,
+          }),
+        });
+
+        // 2. Upload files to the collection
+        const formData = new FormData();
+        folder.files.forEach((file) => {
+          formData.append('files', file);
+        });
+        formData.append('collectionId', collection.collection?.id || collection.id);
+        formData.append('userId', effectiveUserId);
+        formData.append('profession', profession);
+
+        // Use fetch for multipart/form-data (apiRequest adds Content-Type header which breaks FormData)
+        const uploadResponse = await fetch('/api/showcase/bulk-upload', {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (!uploadResponse.ok) {
+          console.error(`Failed to upload files to collection: ${folder.name}`);
+        }
+      }
+
+      showSuccessToast(`${folders.length} collections created successfully!`);
+      refetch();
+    } catch (error) {
+      console.error('Bulk collection creation error:', error);
+      showErrorToast('Failed to create collections. Please try again.');
+      throw error;
+    }
+  }, [currentParentFolderId, effectiveUserId, profession, refetch, showSuccessToast, showErrorToast]);
+
+  // Professional Photo Editing Functions
+  const openPhotoEditor = () => {
+    if (selectedImages.size === 0) {
+      showWarningToast('Velg bilder først for redigering');
+      return;
+}
+    setShowPhotoEditor(true);
+};
+
+  const openCropDialog = () => {
+    if (selectedImages.size === 0) {
+      showWarningToast('Velg bilder først for beskjæring');
+      return;
+}
+    setShowCropDialog(true);
+};
+
+
+
+  const applyPhotoEnhancements = async () => {
+    if (selectedImages.size === 0) return;
+
+    setIsEnhancing(true);
+    setEnhancementProgress(0);
+    try {
+      const imageIds = Array.from(selectedImages);
+      const totalImages = imageIds.length;
+      
+      for (let i = 0; i < totalImages; i++) {
+        const response = await fetch('/api/showcase/enhance-photo', {
+          method: 'POST',
+          headers: { 'Content-Type' : 'application/json' },
+          body: JSON.stringify({
+            imageId: imageIds[i],
+            preset: selectedPhotoPreset,
+            customOptions: customEnhancementOptions
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error(`Feil ved forbedring av bilde ${i + 1}`);
+    }
+
+        setEnhancementProgress(((i + 1) / totalImages) * 100);
+        await new Promise(resolve => setTimeout(resolve, 500));
+  }
+
+      showSuccessToast(`${totalImages} bilder forbedret med CreatorHub Photo Enhancer!`);
+      setShowPhotoEditor(false);
+      setSelectedImages(new Set());
+      refetch();
+} catch (error) {
+      // Enhancement failed - handled by error boundary
+      showErrorToast('Feil under forbedring av bilder');
+} finally {
+      setIsEnhancing(false);
+      setEnhancementProgress(0);
+}
+};
+
+  // Professional Crop Handler with Composition Guides
+  const applyCropToImages = async () => {
+    setIsProcessingEdit(true);
+    
+    try {
+      const imageIds = Array.from(selectedImages);
+      
+      const response = await fetch('/api/showcase/crop', {
+      method: 'POST',
+      headers: { 'Content-Type' : 'application/json' },
+        body: JSON.stringify({
+          itemIds: imageIds,
+          aspectRatio: cropAspectRatio,
+          compositionOverlay,
+          userId
+    })
+  });
+
+      if (!response.ok) {
+        throw new Error('Beskjæring feilet');
+  }
+
+      const result = await response.json();
+      
+      if (result.success) {
+        showSuccessToast(`${result.summary.successful} av ${result.summary.total} bilder beskåret med komposisjonsguider!`);
+        setShowCropDialog(false);
+        setSelectedImages(new Set());
+        refetch();
+  } else {
+        throw new Error('Beskjæring feilet');
+  }
+} catch (error) {
+      // Crop failed - handled by error boundary
+      showErrorToast('Feil under beskjæring av bilder');
+} finally {
+      setIsProcessingEdit(false);
+}
+};
+
+  // Professional Watermark Handler
+  const applyWatermark = async () => {
+    setIsApplyingWatermark(true);
+    
+    try {
+      const imageIds = Array.from(selectedImages);
+      
+      const response = await fetch('/api/showcase/watermark', {
+      method: 'POST',
+      headers: { 'Content-Type' : 'application/json' },
+        body: JSON.stringify({
+          itemIds: imageIds,
+          watermarkType,
+          text: watermarkText,
+          position: watermarkPosition,
+          opacity: watermarkOpacity,
+          userId
+    })
+  });
+
+      if (!response.ok) {
+        throw new Error('Vannmerking feilet');
+  }
+
+      const result = await response.json();
+      
+      if (result.success) {
+        showSuccessToast(`${result.summary.successful} av ${result.summary.total} bilder vannmerket!`);
+        setShowWatermarkDialog(false);
+        setSelectedImages(new Set());
+        refetch();
+  } else {
+        throw new Error('Vannmerking feilet');
+  }
+} catch (error) {
+      // Watermark failed - handled by error boundary
+      showErrorToast('Feil under vannmerking av bilder');
+} finally {
+      setIsApplyingWatermark(false);
+}
+};
+
+  const openMetadataEditor = () => {
+    if (selectedImages.size === 0) {
+      showWarningToast('Velg bilder først');
+      return;
+    }
+    
+    // Load existing metadata from selected items if available
+    const imageIds = Array.from(selectedImages);
+    if (imageIds.length > 0) {
+      try {
+        // Try to get metadata from first selected item to pre-populate
+        const firstItem = showcaseItems?.find((item: any) => item.id === imageIds[0]);
+        if (firstItem) {
+          const existingCropData = firstItem.cropData 
+            ? (typeof firstItem.cropData === 'string' ? JSON.parse(firstItem.cropData) : firstItem.cropData)
+            : {};
+          
+          // Get default copyright from business info or use existing
+          const defaultCopyright = businessInfo?.businessInfo?.businessName 
+            ? `© ${businessInfo.businessInfo.businessName}` 
+            : '© CreatorHub Norge';
+          
+          setBulkMetadata({
+            title: firstItem.title?.replace('Forbedret:', ', ') || ',',
+            description: firstItem.description || '',
+            tags: existingCropData.tags || '',
+            location: existingCropData.location || '',
+            copyright: existingCropData.copyright || defaultCopyright
+          });
+        } else {
+          // Use business name from settings if available
+          const defaultCopyright = businessInfo?.businessInfo?.businessName 
+            ? `© ${businessInfo.businessInfo.businessName}` 
+            : '© CreatorHub Norge';
+          setBulkMetadata(prev => ({
+            ...prev,
+            copyright: defaultCopyright
+          }));
+        }
+      } catch (error) {
+        console.error('Error loading existing metadata:', error);
+        // Fallback to business name or default
+        const defaultCopyright = businessInfo?.businessInfo?.businessName 
+          ? `© ${businessInfo.businessInfo.businessName}` 
+          : '© CreatorHub Norge';
+        setBulkMetadata(prev => ({
+          ...prev,
+          copyright: defaultCopyright
+        }));
+      }
+    } else {
+      // Use business name from settings if available
+      const defaultCopyright = businessInfo?.businessInfo?.businessName 
+        ? `© ${businessInfo.businessInfo.businessName}` 
+        : '© CreatorHub Norge';
+      setBulkMetadata(prev => ({
+        ...prev,
+        copyright: defaultCopyright
+      }));
+    }
+    
+    setShowMetadataEditor(true);
+  };
+
+  const applyBulkMetadata = async () => {
+    setIsProcessingBulkOperation(true);
+    setBulkOperationProgress(0);
+
+    try {
+      const imageIds = Array.from(selectedImages);
+      const totalImages = imageIds.length;
+      
+      for (let i = 0; i < totalImages; i++) {
+        // Update basic metadata
+        const metadataResponse = await fetch(`/api/showcase/update-metadata/${imageIds[i]}`, {
+          method: 'PUT',
+          headers: { 'Content-Type' : 'application/json' },
+          body: JSON.stringify(bulkMetadata)
+        });
+
+        if (!metadataResponse.ok) {
+          throw new Error(`Feil ved oppdatering av metadata for bilde ${i + 1}`);
+        }
+
+        // Update display preferences
+        const preferencesResponse = await fetch(`/api/showcase/items/${imageIds[i]}`, {
+          method: 'PUT',
+          headers: { 'Content-Type' : 'application/json' },
+          body: JSON.stringify({
+            displayPreferences: displayPreferences
+          })
+        });
+
+        if (!preferencesResponse.ok) {
+          console.warn(`Could not update display preferences for image ${i + 1}`);
+        }
+
+        setBulkOperationProgress(((i + 1) / totalImages) * 100);
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+
+      showSuccessToast(`Metadata og visningsinnstillinger oppdatert for ${totalImages} bilder!`);
+      setShowMetadataEditor(false);
+      setSelectedImages(new Set());
+      refetch();
+    } catch (error) {
+      // Bulk metadata update failed - handled by error boundary
+      showErrorToast('Feil under oppdatering av metadata');
+    } finally {
+      setIsProcessingBulkOperation(false);
+      setBulkOperationProgress(0);
+    }
+  };
+
+  const executeBulkOperation = async (operation: string) => {
+    if (selectedImages.size === 0) {
+      showWarningToast('Velg bilder først');
+      return;
+    }
+
+    const imageIds = Array.from(selectedImages);
+    
+    try {
+      switch (operation) {
+        case 'bulk-download':
+          const downloadResponse = await fetch('/api/showcase/bulk-download', {
+      method: 'POST',
+      headers: { 'Content-Type' : 'application/json' },
+            body: JSON.stringify({ imageIds })
+      });
+          
+          if (downloadResponse.ok) {
+            const blob = await downloadResponse.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `selected-images-${Date.now()}.zip`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+      }
+          break;
+
+        case 'toggle-favorite':
+          await fetch('/api/showcase/toggle-favorite', {
+      method: 'POST',
+      headers: { 'Content-Type' : 'application/json' },
+            body: JSON.stringify({ imageIds })
+      });
+          break;
+
+        case 'archive':
+          await fetch('/api/showcase/archive-images', {
+      method: 'POST',
+      headers: { 'Content-Type' : 'application/json' },
+            body: JSON.stringify({ imageIds })
+      });
+          break;
+
+        case 'delete':
+          await fetch('/api/showcase/delete-images', {
+      method: 'DELETE',
+      headers: { 'Content-Type' : 'application/json' },
+            body: JSON.stringify({ imageIds })
+      });
+          break;
+
+        case 'rotate-left':
+        case 'flip-horizontal':
+          await fetch('/api/showcase/quick-transform', {
+      method: 'POST',
+      headers: { 'Content-Type' : 'application/json' },
+            body: JSON.stringify({ imageIds, operation })
+      });
+          break;
+
+        default: // Unknown operation
+          return;
+}
+
+      const operationNames: Record<string, string> = {
+        'bulk-download':'lastet ned','toggle-favorite':'favoritt-status endret for','archive':'arkivert','delete':'slettet','rotate-left':'rotert','flip-horizontal':'speilet','auto-crop' : 'beskåret'
+      };
+
+      showSuccessToast(`${imageIds.length} bilder ${operationNames[operation]}!`);
+      setSelectedImages(new Set());
+
+      if (['archive','delete'].includes(operation)) {
+        refetch();
+  }
+} catch (error) {
+      // Bulk operation failed - handled by error boundary
+      showErrorToast(`Feil under utførelse av operasjon: ${operation}`);
+}
+};
+
+  const executeEnhancement = async () => {
+    if (selectedImages.size === 0) return;
+    
+    setIsEnhancing(true);
+    setEnhancementProgress(0);
+    
+    try {
+      const preset = enhancementPresets[selectedPreset];
+      const enhancementOptions = selectedPreset === 'custom' 
+        ? customEnhancementOptions 
+        : preset?.options;
+      
+      const response = await fetch('/api/showcase/batch-operations', {
+      method: 'POST',
+      headers: { 'Content-Type' : 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          operation: 'bulk-photo-enhance',
+          itemIds: Array.from(selectedImages),
+          enhancementOptions,
+          profession,
+          userId: 'demo-user' // This should come from authenticated user
+  })
+  });
+
+      if (response.ok) {
+        const result = await response.json();
+        // Enhancement completed successfully
+        setEnhancementProgress(100);
+        setShowPhotoEnhancer(false);
+        setSelectedImages(new Set());
+        // Trigger a refresh of the showcase
+        window.location.reload();
+  } else {
+        throw new Error('Enhancement failed');
+  }
+} catch (error) {
+      // Enhancement error - handled by error boundary
+      showErrorToast('Feil ved bildeforbedring. Prøv igjen.');
+} finally {
+      setIsEnhancing(false);
+      setEnhancementProgress(0);
+}
+};
+
+  // Video-specific functions for videographer profession
+  const addTimecodedComment = async (timecode: number, comment: string) => {
+    try {
+      const response = await fetch('/api/video/timecoded-comments', {
+      method: 'POST',
+      headers: { 'Content-Type' : 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          videoId: selectedItem?.id,
+          timecode,
+          comment,
+          version: videoVersion,
+          userId
+    })
+  });
+
+      if (!response.ok) throw new Error('Failed to add timecoded comment');
+      
+      const newComment = await response.json();
+      setTimecodedComments(prev => [...prev, newComment]);
+} catch (error) {
+      // Error adding timecoded comment - handled by error boundary
+}
+};
+
+  const createVideoSequence = async (sequenceName: string, chapters: string[]) => {
+    try {
+      const response = await fetch('/api/video/sequences', {
+      method: 'POST',
+      headers: { 'Content-Type' : 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          projectId: selectedItem?.id,
+          sequenceName,
+          chapters,
+          version: videoVersion
+  })
+  });
+
+      if (!response.ok) throw new Error('Failed to create video sequence');
+      
+      const sequence = await response.json();
+      // Video sequence created successfully
+} catch (error) {
+      // Error creating video sequence - handled by error boundary
+}
+};
+
+  const generateVideoThumbnails = async (videoId: string) => {
+    try {
+      const response = await fetch('/api/video/generate-thumbnails', {
+      method: 'POST',
+      headers: { 'Content-Type' : 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          videoId,
+          count:  5, // Generate 5 thumbnails at different timestamps
+          useAI: true // Use AI to select best frames
+  })
+  });
+
+      if (!response.ok) throw new Error('Failed to generate thumbnails');
+      
+      const thumbnails = await response.json();
+      // Thumbnails generated successfully
+      showSuccessToast('Thumbnails generert! Du kan nå velge den beste.');
+    } catch (error) {
+      // Error generating thumbnails - handled by error boundary
+      showErrorToast('Feil ved generering av thumbnails. Prøv igjen.');
+    }
+  };
+
+
+  const loadProjectsAndCategories = async () => {
+    try {
+      // Load available projects
+      const projectsResponse = await fetch('/api/projects', {
+        credentials: 'include'
+      });
+      if (projectsResponse.ok) {
+        const projects = await projectsResponse.json();
+        setAvailableProjects(projects);
+      }
+
+      // Load available categories
+      const categoriesResponse = await fetch('/api/showcase/categories', {
+        credentials: 'include'
+      });
+      if (categoriesResponse.ok) {
+        const categories = await categoriesResponse.json();
+        setAvailableCategories(categories);
+      }
+    } catch (error) {
+      // Could not load projects/categories
+    }
+  };
+
+
+
+
+
+
+
+
+
+
+
+  // Fetch comments for selected showcase
+  const { data: comments = [], isLoading: commentsLoading } = useQuery({
+    queryKey: [`/api/showcase/${selectedItem?.id}/comments`],
+    queryFn: async () => {
+      if (!selectedItem?.id) return [];
+      const response = await fetch(`/api/showcase/${selectedItem.id}/comments`);
+      if (!response.ok) return [];
+      return response.json();
+},
+    enabled: !!selectedItem && showComments
+});
+
+  const getProfessionConfig = () => {
+    // Use profession configuration from the hook
+    if (professionConfig) {
+      return {
+        title: getTerm(''),
+        primaryColor: professionConfig.color,
+        gradientColor: `linear-gradient(135deg, ${professionConfig.color} 0%, ${professionConfig.color}80 100%)`,
+        icon: profession === 'photographer' ? <PhotoLibrary /> :
+              profession === 'videographer' ? <VideoLibrary /> :
+              profession === 'music_producer' ? <LibraryMusic /> :
+              <Description />,
+        fileTypes: (professionConfig as any).settings?.supportedFileTypes || ['photo','design'],
+        defaultType: (professionConfig as any).settings?.defaultFileTypes?.[0] || 'photo'
+      };
+    }
+
+    // Fallback to hardcoded configs if profession config is not loaded
+    switch (profession) {
+      case 'photographer':
+        return {
+          title: 'Fotogalleri',
+          primaryColor: '#FF6B35',
+          gradientColor: 'linear-gradient(135deg, #FF6B35 0%, #F7931E 100%)',
+          icon: <PhotoLibrary />,
+          fileTypes: ['photo','design'],
+          defaultType: 'photo'
+        };
+      case 'videographer':
+        return {
+          title: 'Video Portfolio',
+          primaryColor: '#E74C3C',
+          gradientColor: 'linear-gradient(135deg, #E74C3C 0%, #C0392B 100%)',
+          icon: <VideoLibrary />,
+          fileTypes: ['video'],
+          defaultType: 'video'
+        };
+      case 'music_producer':
+        return {
+          title: 'Musikk Portfolio',
+          primaryColor: '#9B59B6',
+          gradientColor: 'linear-gradient(135deg, #9B59B6 0%, #8E44AD 100%)',
+          icon: <LibraryMusic />,
+          fileTypes: ['audio'],
+          defaultType: 'audio'
+        };
+      case 'vendor':
+        return {
+          title: 'Produktkatalog',
+          primaryColor: '#3498DB',
+          gradientColor: 'linear-gradient(135deg, #3498DB 0%, #2980B9 100%)',
+          icon: <Description />,
+          fileTypes: ['photo','document','design'],
+          defaultType: 'photo'
+        };
+      default:
+        return {
+          title: 'Showcase',
+          primaryColor: '#FF6B35',
+          gradientColor: 'linear-gradient(135deg, #FF6B35 0%, #F7931E 100%)',
+          icon: <PhotoLibrary />,
+          fileTypes: ['photo','design'],
+          defaultType: 'photo'
+        };
+    }
+  };
+
+  const config = getProfessionConfig();
+
+  // Get profession-specific categories for sidebar navigation
+  const getProfessionCategories = () => {
+    // Use profession configuration if available
+    if (professionConfig && (professionConfig as any).settings?.allowedCategories) {
+      const baseCategory = `Alle ${getTerm('media').toLowerCase()}`;
+        return [baseCategory, 'Fremhevet', ...(professionConfig as any).settings.allowedCategories];
+    }
+
+    // Fallback to hardcoded categories
+    const baseCategory = profession === 'photographer' ? 'Alle bilder' :
+                        profession === 'videographer' ? 'Alle videoer' :
+                        profession === 'music_producer' ? 'Alle låter' : 'Alle elementer';
+
+      const professionCategories = {
+        photographer: [baseCategory, 'Fremhevet','Bryllup','Portretter','Events','Kommersielt'],
+        videographer: [baseCategory, 'Fremhevet','Bryllup','Bedrift','Dokumentar','Reklame'],
+        music_producer: [baseCategory, 'Fremhevet','Album','Single','Reklame','Soundtrack'],
+        vendor: [baseCategory, 'Fremhevet','Utstyr','Tjenester','Portfolio']
+    };
+
+    return professionCategories[profession] || professionCategories.photographer;
+  };
+  // Fetch user branding for client-facing showcase
+  const { data: userBranding } = useQuery({
+    queryKey: [`/api/branding/settings`, userId],
+    queryFn: async () => {
+      const response = await fetch(`/api/branding/settings?userId=${userId}`);
+      if (!response.ok) return null;
+      return response.json();
+},
+    enabled: !!userId
+});
+
+  const filteredItems = items.filter((item: ShowcaseItem) => {
+    if (filter === 'all') return true;
+    if (filter === 'featured') return item.featured;
+    return item.fileType === filter;
+});
+
+  const currentFeaturedItem = items.find((item: ShowcaseItem) => item.featured) || items[0];
+
+  const toggleFavorite = (itemId: string) => {
+    setFavorites(prev => {
+      const newFavorites = new Set(prev);
+      if (newFavorites.has(itemId)) {
+        newFavorites.delete(itemId);
+      } else {
+        newFavorites.add(itemId);
+      }
+      return newFavorites;
+    });
+  };
+
+  // Format timestamp for video comments
+  const formatTimestamp = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  // Add comment with timestamp
+  const handleAddComment = async () => {
+    if (!newComment.trim() || !selectedItem) return;
+
+    const commentData = {
+      showcaseItemId: selectedItem.id,
+      userId,
+      userName: 'Daniel CreatorHub',
+      userEmail: 'user?.id || user?.email || "unknown-user"',
+      comment: newComment,
+      commentType: 'general',
+      isPrivate: false,
+      parentCommentId: replyingTo,
+      timestamp: selectedItem.type === 'video' ? currentVideoTime : null
+    };
+
+    try {
+      // Add comment via API
+      const response = await fetch(`/api/showcase/${selectedItem.id}/comments`, {
+        method: 'POST',
+        headers: { 'Content-Type' : 'application/json' },
+        body: JSON.stringify(commentData)
+      });
+
+      if (response.ok) {
+        setNewComment('');
+        setReplyingTo(null);
+        // Refresh comments (will trigger via query invalidation)
+      }
+    } catch (error) {
+      // Failed to add comment - handled by error boundary
+    }
+  };
+
+  // Toggle comment like
+  const handleToggleCommentLike = async (commentId: string) => {
+    try {
+      const response = await fetch(`/api/showcase/comments/${commentId}/like`, {
+        method: 'POST',
+        headers: { 'Content-Type' : 'application/json' },
+        body: JSON.stringify({ userId })
+      });
+
+      if (response.ok) {
+        // Refresh comments
+      }
+    } catch (error) {
+      // Failed to toggle like - handled by error boundary
+    }
+  };
+
+  const getFileIcon = (fileType: string) => {
+    switch (fileType) {
+      case 'video': return <VideoLibrary />;
+      case 'photo': return <PhotoLibrary />;
+      case 'audio': return <LibraryMusic />;
+      case 'document': return <Description />;
+      case 'design': return <Palette />;
+      default: return <Description />;
+    }
+  };
+
+  if (isFetchingData) {
+    return (
+      <MuiCard sx={{ 
+        background: config.gradientColor,
+        color: '#fff',
+        borderRadius: 3,
+        minHeight: compact ? 200 : 400,
+        display: 'flex',
+          alignItems: 'center',
+        justifyContent: 'center'
+      }}>
+        <Typography variant="h6">
+          {clientMode 
+            ? 'Laster ditt bildegalleri...' 
+            : `Laster ${config.title.toLowerCase()}...`
+          }
+        </Typography>
+      </MuiCard>
+  );
+}
+
+  // Client Mode Status Bar
+  const renderClientStatusBar = () => {
+    if (!clientMode || !sessionData) return null;
+
+    const selectionCount = clientSelections.length;
+    const maxSelections = sessionData.maxSelections;
+    const deadline = sessionData.selectionDeadline ? new Date(sessionData.selectionDeadline) : null;
+    const isExpired = deadline && new Date() > deadline;
+    
+    return (
+      <Paper
+        sx={{
+          background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)',
+          borderRadius: 2,
+          p: 3,
+          mb: 3,
+          border: '1px solid rgba(2, 5, 5, 107, 53, 0.2)',
+          color: '#fff'}}
+      >
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'center' }}>
+          <Box sx={{ flex: { xs: '1 1 100%', md: '1 1 25%' }, maxWidth: { xs: '100%', md: '25%' } }}>
+            <Typography variant="h6" sx={{ mb: 1, color: theming.colors.primary }}>
+              {sessionData.sessionName}
+            </Typography>
+            <Chip 
+              label={`Runde ${sessionData.proofingRound}`}
+              size="small"
+              sx={{ 
+                backgroundColor: accentColor,
+                color: '#fff'}}
+            />
+          </Box>
+          
+          <Box sx={{ flex: { xs: '1 1 100%', md: '1 1 25%' }, maxWidth: { xs: '100%', md: '25%' } }}>
+            <Typography variant="body2" sx={{ color: '#999', mb: 0.5 }}>
+              Valgte bilder
+            </Typography>
+            <Typography variant="h4" sx={{ color: accentColor }}>
+              {selectionCount}
+              {maxSelections && (
+                <Typography 
+                  component="span" 
+                  variant="body1" 
+                  sx={{ color: '#999', ml: 1 }}
+                >
+                  / {maxSelections}
+                </Typography>
+              )}
+            </Typography>
+          </Box>
+
+          <Box sx={{ flex: { xs: '1 1 100%', md: '1 1 25%' }, maxWidth: { xs: '100%', md: '25%' } }}>
+            <Typography variant="body2" sx={{ color: '#999', mb: 0.5 }}>
+              Status
+            </Typography>
+            <Chip 
+              label={
+                isExpired ? 'Utløpt' :
+                sessionData.status === 'active' ? 'Aktivt utvalg' :
+                sessionData.status === 'selections_made' ? 'Utvalg gjort' :
+                'Venter'
+          }
+              color={
+                isExpired ? 'error' :
+                sessionData.status === 'active' ? 'success' :
+                sessionData.status === 'selections_made' ? 'warning' :
+                'default'
+          }
+              size="small"
+            />
+          </Box>
+
+          <Box sx={{ flex: { xs: '1 1 100%', md: '1 1 25%' }, maxWidth: { xs: '100%', md: '25%' } }}>
+            {deadline && !isExpired && (
+              <>
+                <Typography variant="body2" sx={{ color: '#999', mb: 0.5 }}>
+                  Frist
+                </Typography>
+                <Typography variant="body1">
+                  {deadline.toLocaleDateString('nb-NO')}
+                </Typography>
+              </>
+            )}
+          </Box>
+        </Box>
+
+        {sessionData.description && (
+          <Typography 
+            variant="body2" 
+            sx={{ 
+              color: '#999', 
+              mt: 2,
+              fontStyle: 'italic'
+            }}
+          >
+            {sessionData.description}
+          </Typography>
+        )}
+      </Paper>
+  );
+};
+
+  // Showcase Sharing Dialog Component
+  const ShowcaseSharingDialog = ({ 
+    open, 
+    onClose,
+    prefilledClient,
+    showcases,
+    shareShowcaseMutation,
+    user,
+    profession
+}: {
+    open: boolean;
+    onClose: () => void;
+    prefilledClient?: { email: string; name: string };
+    showcases: any[];
+    shareShowcaseMutation: any;
+    user: any;
+    profession: string;
+}) => {
+    const [shareForm, setShareForm] = useState({
+      selectedShowcase: '',
+      clientEmail: prefilledClient?.email || '',
+      clientName: prefilledClient?.name || '',
+      message: prefilledClient ? `Hei ${prefilledClient.name}! Takk for din interesse. Her er ditt ${getTerm('showcase').toLowerCase()} som du kan se og laste ned.` : ',',
+      photographerName: user?.name || '',
+      photographerCompany: '',
+      projectState: 'in_review' as 'delivered' | 'in_review',
+      projectId: null as string | null
+    });
+
+    // Update projectId when showcase is selected
+    useEffect(() => {
+      if (shareForm.selectedShowcase) {
+        const showcase = showcases.find((s: any) => s.id === shareForm.selectedShowcase);
+        if (showcase?.projectId) {
+          setShareForm(prev => ({ ...prev, projectId: showcase.projectId }));
+        }
+      }
+    }, [shareForm.selectedShowcase, showcases]);
+
+    const handleShareShowcase = async () => {
+      try {
+        const showcase = showcases.find((s: any) => s.id === shareForm.selectedShowcase);
+        if (!showcase) return;
+
+        await shareShowcaseMutation.mutateAsync({
+          showcaseId: shareForm.selectedShowcase,
+          clientEmail: shareForm.clientEmail,
+          clientName: shareForm.clientName,
+          message: shareForm.message,
+          photographerName: shareForm.photographerName,
+          photographerCompany: shareForm.photographerCompany,
+          projectState: shareForm.projectState,
+          projectId: showcase.projectId || shareForm.projectId
+        });
+        
+        onClose();
+      } catch (error) {
+        console.error('Error sharing showcase:', error);
+      }
+    };
+
+    return (
+      <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+        <DialogTitle>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Image color="primary" />
+            <Typography variant="h6">Share {getTerm('showcase')} with {getTerm('client')}</Typography>
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ mt: 2 }}>
+            {/* Showcase Selection */}
+            <Box sx={{ mb: 3 }}>
+              <FormControl fullWidth>
+                <InputLabel>Select {getTerm('showcase')}</InputLabel>
+                <Select
+                  value={shareForm.selectedShowcase}
+                  label={`Select ${getTerm('showcase')}`}
+                  onChange={(e) => setShareForm(prev => ({ ...prev, selectedShowcase: e.target.value }))}
+                >
+                  {showcases.map((showcase: any) => (
+                    <MenuItem key={showcase.id} value={showcase.id}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                        <Avatar sx={{ bgcolor: '#ff8c00', width: 32, height: 32 }}>
+                          <Camera fontSize="small" />
+                        </Avatar>
+                        <Box>
+                          <Typography variant="subtitle2">{showcase.title || `Showcase ${showcase.id.slice(-8)}`}</Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {showcase.photos?.length || 0} photos
+                          </Typography>
+                        </Box>
+                      </Box>
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Box>
+
+            {/* Client Information */}
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, mb: 3 }}>
+              <Box sx={{ flex: '1 1 300px', minWidth: 300 }}>
+                <TextField
+                  fullWidth
+                  label={`${getTerm('client')} Email`}
+                  type="email"
+                  value={shareForm.clientEmail}
+                  onChange={(e) => setShareForm(prev => ({ ...prev, clientEmail: e.target.value }))}
+                  required
+                />
+              </Box>
+              <Box sx={{ flex: '1 1 300px', minWidth: 300 }}>
+                <TextField
+                  fullWidth
+                  label={`${getTerm('client')} Name`}
+                  value={shareForm.clientName}
+                  onChange={(e) => setShareForm(prev => ({ ...prev, clientName: e.target.value }))}
+                  required
+                />
+              </Box>
+            </Box>
+
+            {/* Photographer Information */}
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, mb: 3 }}>
+              <Box sx={{ flex: '1 1 300px', minWidth: 300 }}>
+                <TextField
+                  fullWidth
+                  label="Photographer Name"
+                  value={shareForm.photographerName}
+                  onChange={(e) => setShareForm(prev => ({ ...prev, photographerName: e.target.value }))}
+                  required
+                />
+              </Box>
+              <Box sx={{ flex: '1 1 300px', minWidth: 300 }}>
+                <TextField
+                  fullWidth
+                  label="Company Name"
+                  value={shareForm.photographerCompany}
+                  onChange={(e) => setShareForm(prev => ({ ...prev, photographerCompany: e.target.value }))}
+                  required
+                />
+              </Box>
+            </Box>
+
+            {/* Custom Message */}
+            <TextField
+              fullWidth
+              label="Custom Message (Optional)"
+              multiline
+              rows={3}
+              value={shareForm.message}
+              onChange={(e) => setShareForm(prev => ({ ...prev, message: e.target.value }))}
+              placeholder="Add a personal message to include with the showcase..."
+              sx={{ mb: 3 }}
+            />
+
+            {/* Project Linking - Show when no project is linked */}
+            {shareForm.selectedShowcase && !shareForm.projectId && (
+              <Box sx={{ mb: 3 }}>
+                <Paper sx={{ p: 2, bgcolor: 'info.light', border: '1px solid', borderColor: 'info.main' }}>
+                  <Typography variant="subtitle2" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Info fontSize="small" />
+                    Link to Project (Optional)
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                    Link this showcase to a project to enable project state management and timeline tracking.
+                  </Typography>
+                  <ProjectSelectorModal
+                    onSelectProject={(project) => {
+                      setShareForm(prev => ({ ...prev, projectId: project.id }));
+                    }}
+                    trigger={
+                      <Button variant="outlined" size="small" startIcon={<Add />}>
+                        Link to Project
+                      </Button>
+                    }
+                  />
+                </Paper>
+              </Box>
+            )}
+
+            {/* Project State Selection - Only show when project is linked */}
+            {shareForm.projectId && (
+              <FormControl fullWidth sx={{ mb: 2 }}>
+                <FormLabel>Project State</FormLabel>
+                <RadioGroup
+                  value={shareForm.projectState}
+                  onChange={(e) => setShareForm(prev => ({ ...prev, projectState: e.target.value as 'delivered' | 'in_review' }))}
+                >
+                  <FormControlLabel 
+                    value="in_review" 
+                    control={<Radio />} 
+                    label="In Client Review" 
+                  />
+                  <FormControlLabel 
+                    value="delivered" 
+                    control={<Radio />} 
+                    label="Delivered" 
+                  />
+                </RadioGroup>
+                
+                {/* State Information Box */}
+                <Paper sx={{ 
+                  p: 2, 
+                  mt: 2, 
+                  bgcolor: shareForm.projectState === 'delivered' ? 'rgba(76, 175, 80, 0.1)' : 'rgba(255, 152, 0, 0.1)',
+                  border: `1px solid ${shareForm.projectState === 'delivered' ? 'rgba(76, 175, 80, 0.3)' : 'rgba(255, 152, 0, 0.3)'}`
+                }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
+                    You have chosen that the project is {shareForm.projectState === 'delivered' ? 'delivered' : 'in review'}
+                  </Typography>
+                  <Typography variant="body2" component="div">
+                    This means:
+                    <Box component="ul" sx={{ mt: 1, pl: 2, mb: 0 }}>
+                      {shareForm.projectState === 'delivered' ? (
+                        <>
+                          <li>The content is watermark free</li>
+                          <li>The client can't comment anymore</li>
+                          <li>The content can be downloaded by the client</li>
+                          <li>The project is completed</li>
+                        </>
+                      ) : (
+                        <>
+                          <li>The content is watermarked</li>
+                          <li>The client can comment</li>
+                          <li>The content can't be downloaded by the client</li>
+                          <li>(If photos) the client has to choose photos, based on the contract agreement and add more photos that exceeds the agreed amount. The client will get back to you.</li>
+                          <li>The project awaits client approval</li>
+                        </>
+                      )}
+                    </Box>
+                  </Typography>
+                </Paper>
+              </FormControl>
+            )}
+
+            {/* Info message when no project is linked */}
+            {shareForm.selectedShowcase && !shareForm.projectId && (
+              <Paper sx={{ p: 2, mb: 2, bgcolor: 'grey.100' }}>
+                <Typography variant="body2" color="text.secondary">
+                  <Info fontSize="small" sx={{ verticalAlign: 'middle', mr: 0.5 }} />
+                  No project linked. Project state management is only available when a project is linked.
+                </Typography>
+              </Paper>
+            )}
+
+            {/* Preview */}
+            {shareForm.selectedShowcase && (
+              <Paper sx={{ p: 2, bgcolor: '#f5f5f5' }}>
+                <Typography variant="subtitle2" gutterBottom>
+                  Preview: </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {shareForm.message || 'Your showcase is ready! Click the link below to view your photos.'}
+                </Typography>
+              </Paper>
+            )}
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button onClick={handleShareShowcase}
+            variant="contained"
+            color="primary"
+            disabled={shareShowcaseMutation.isPending || !shareForm.selectedShowcase || !shareForm.clientEmail || !shareForm.clientName}
+            sx={{ bgcolor: '#ff8c00','&:hover': { bgcolor: '#e67c00' } }}
+          >
+            {shareShowcaseMutation.isPending ? 'Sending...' : `Share ${getTerm('showcase')}`}
+          </Button>
+        </DialogActions>
+      </Dialog>
+  );
+};
+
+  // Overage Management Dialog Component
+  const OverageManagementDialog = ({ 
+    open, 
+    onClose, 
+    showcaseData,
+    overageEmailMutation
+}: {
+    open: boolean;
+    onClose: () => void;
+    showcaseData?: any;
+    overageEmailMutation: any;
+}) => {
+    const [overageForm, setOverageForm] = useState({
+      clientEmail: '',
+      clientName: '',
+      projectName: '',
+      totalImages:  0,
+      contractLimit:  50,
+      pricePerImage: 30,
+      customMessage: ''
+});
+
+    useEffect(() => {
+      if (showcaseData) {
+        setOverageForm(prev => ({
+          ...prev,
+          clientEmail: showcaseData.clientEmail || '',
+          clientName: showcaseData.clientName || '',
+          projectName: showcaseData.projectName || '',
+          totalImages: showcaseData.totalImages || 0,
+          contractLimit: showcaseData.contractLimit || 50,
+          pricePerImage: showcaseData.pricePerImage || 300 }));
+      }
+    }, [showcaseData]);
+
+    const handleSendOverageEmail = async () => {
+      try {
+        await overageEmailMutation.mutateAsync({
+          showcaseId: showcaseData?.showcaseId || 'temp',
+          clientEmail: overageForm.clientEmail,
+          clientName: overageForm.clientName,
+          projectName: overageForm.projectName,
+          totalImages: overageForm.totalImages,
+          contractLimit: overageForm.contractLimit,
+          pricePerImage: overageForm.pricePerImage
+        });
+        onClose();
+      } catch (error) {
+        console.error('Error sending overage email:', error);
+      }
+    };
+
+    const overageImages = Math.max(0, overageForm.totalImages - overageForm.contractLimit);
+    const totalOverageCost = overageImages * overageForm.pricePerImage;
+
+    return (
+      <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+        <DialogTitle>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Warning color="warning" />
+            <Typography variant="h6">Send {getTerm('overage')} Notification</Typography>
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ mt: 2 }}>
+            {/* Contract Summary */}
+            <Paper sx={{ p: 2, mb: 3, bgcolor: '#fff3e0', border: '1px solid #ff6f00' }}>
+              <Typography variant="h6" color="#ff6f00" gutterBottom>
+                📊 Contract Summary
+              </Typography>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
+                <Box sx={{ flex: '1 1 200px', minWidth: 200 }}>
+                  <Typography variant="body2" color="text.secondary">
+                    Total Images Delivered: </Typography>
+                  <Typography variant="h6" color="#ff6f00">
+                    {overageForm.totalImages}
+                  </Typography>
+                </Box>
+                <Box sx={{ flex: '1 1 200px', minWidth: 200 }}>
+                  <Typography variant="body2" color="text.secondary">
+                    Contract Limit: </Typography>
+                  <Typography variant="h6" color="text.primary">
+                    {overageForm.contractLimit}
+                  </Typography>
+                </Box>
+                <Box sx={{ flex: '1 1 200px', minWidth: 200 }}>
+                  <Typography variant="body2" color="text.secondary">
+                    Overage Images: </Typography>
+                  <Typography variant="h6" color={overageImages > 0 ? "#e65100" : "#4caf50"}>
+                    {overageImages}
+                  </Typography>
+                </Box>
+                <Box sx={{ flex: '1 1 200px', minWidth: 200 }}>
+                  <Typography variant="body2" color="text.secondary">
+                    Total Overage Cost: </Typography>
+                  <Typography variant="h6" color="#e65100">
+                    NOK {totalOverageCost}
+                  </Typography>
+                </Box>
+              </Box>
+            </Paper>
+
+            {/* Form Fields */}
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
+              <Box sx={{ flex: '1 1 300px', minWidth: 300 }}>
+                <TextField
+                  fullWidth
+                  label="Client Email"
+                  type="email"
+                  value={overageForm.clientEmail}
+                  onChange={(e) => setOverageForm(prev => ({ ...prev, clientEmail: e.target.value }))}
+                  required
+                />
+              </Box>
+              <Box sx={{ flex: '1 1 300px', minWidth: 300 }}>
+                <TextField
+                  fullWidth
+                  label="Client Name"
+                  value={overageForm.clientName}
+                  onChange={(e) => setOverageForm(prev => ({ ...prev, clientName: e.target.value }))}
+                  required
+                />
+              </Box>
+              <Box sx={{ flex: '1 1 100%', minWidth: '100%' }}>
+                <TextField
+                  fullWidth
+                  label="Project Name"
+                  value={overageForm.projectName}
+                  onChange={(e) => setOverageForm(prev => ({ ...prev, projectName: e.target.value }))}
+                  required
+                />
+              </Box>
+              <Box sx={{ flex: '1 1 200px', minWidth: 200 }}>
+                <TextField
+                  fullWidth
+                  label="Total Images"
+                  type="number"
+                  value={overageForm.totalImages}
+                  onChange={(e) => setOverageForm(prev => ({ ...prev, totalImages: parseInt(e.target.value) || 0 }))}
+                  required
+                />
+              </Box>
+              <Box sx={{ flex: '1 1 200px', minWidth: 200 }}>
+                <TextField
+                  fullWidth
+                  label="Contract Limit"
+                  type="number"
+                  value={overageForm.contractLimit}
+                  onChange={(e) => setOverageForm(prev => ({ ...prev, contractLimit: parseInt(e.target.value) || 0 }))}
+                  required
+                />
+              </Box>
+              <Box sx={{ flex: '1 1 200px', minWidth: 200 }}>
+                <TextField
+                  fullWidth
+                  label="Price per Image (NOK)"
+                  type="number"
+                  value={overageForm.pricePerImage}
+                  onChange={(e) => setOverageForm(prev => ({ ...prev, pricePerImage: parseInt(e.target.value) || 300 }))}
+                  required
+                />
+              </Box>
+              <Box sx={{ flex: '1 1 100%', minWidth: '100%' }}>
+                <TextField
+                  fullWidth
+                  label="Custom Message (Optional)"
+                  multiline
+                  rows={3}
+                  value={overageForm.customMessage}
+                  onChange={(e) => setOverageForm(prev => ({ ...prev, customMessage: e.target.value }))}
+                  placeholder="Add any custom message to include in the email..."
+                />
+              </Box>
+            </Box>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button onClick={handleSendOverageEmail}
+            variant="contained"
+            color="warning"
+            disabled={overageEmailMutation.isPending || !overageForm.clientEmail || !overageForm.clientName}
+          >
+            {overageEmailMutation.isPending ? 'Sending...' : 'Send Overage Email'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+  );
+};
+
+  // Lightroom Plugin Dialog Component
+  const LightroomPluginDialog = ({ 
+    open, 
+    onClose,
+    profession
+}: {
+    open: boolean;
+    onClose: () => void;
+    profession: string;
+}) => {
+    const [installStep, setInstallStep] = useState(0);
+    const [isDownloading, setIsDownloading] = useState(false);
+
+    const professionConfig = getProfessionConfig();
+    const professionCategories = getProfessionCategories();
+
+    const handleDownloadPlugin = async () => {
+      setIsDownloading(true);
+      try {
+        const response = await fetch('/api/lightroom-routes/download-plugin');
+        if (response.ok) {
+          const blob = await response.blob();
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = 'CreatorHubNorge.lrplugin';
+          document.body.appendChild(a);
+          a.click();
+          window.URL.revokeObjectURL(url);
+          document.body.removeChild(a);
+          
+          setInstallStep(1); // Move to installation step
+    } else {
+          console.error('Failed to download plugin');
+    }
+  } catch (error) {
+        console.error('Download error:', error);
+  } finally {
+        setIsDownloading(false);
+  }
+};
+
+    const installSteps = [
+      {
+        title: "Last ned Plugin",
+        description: "Klikk på 'Last ned' for å få CreatorHub Norge Lightroom plugin",
+        content: (
+          <Box sx={{ textAlign: 'center', py: 4 }}>
+            <Typography variant="h6" gutterBottom>
+              📸 CreatorHub Norge Lightroom Plugin v2.0
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Direkte integrasjon mellom Lightroom og CreatorHub Norge showcase system
+            </Typography>
+            <Button variant="contained"
+              onClick={handleDownloadPlugin}
+              disabled={isDownloading}
+              sx={{ mt: 2 }}
+            >
+              {isDownloading ? 'Laster ned...' : 'Last ned Plugin'}
+            </Button>
+          </Box>
+        )
+  },
+      {
+        title: "Installer i Lightroom",
+        description: "Følg disse trinnene for å installere plugin i Lightroom Classic",
+        content: (
+          <Box sx={{ py: 2 }}>
+            <Typography variant="h6" gutterBottom>
+              Installasjonsveiledning
+            </Typography>
+            <Box component="ol" sx={{ pl: 2 }}>
+              <li>
+                <Typography variant="body2" sx={{ mb: 2 }}>
+                  Åpne Adobe Lightroom Classic
+                </Typography>
+              </li>
+              <li>
+                <Typography variant="body2" sx={{ mb: 2 }}>
+                  Gå til: <strong>File → Plug-in Manager...</strong>
+                </Typography>
+              </li>
+              <li>
+                <Typography variant="body2" sx={{ mb: 2 }}>
+                  Klikk <strong>Add</strong> knappen
+                </Typography>
+              </li>
+              <li>
+                <Typography variant="body2" sx={{ mb: 2 }}>
+                  Velg den nedlastede <strong>CreatorHubNorge.lrplugin</strong> filen
+                </Typography>
+              </li>
+              <li>
+                <Typography variant="body2" sx={{ mb: 2 }}>
+                  Klikk <strong>Done</strong> for å lukke Plugin Manager
+                </Typography>
+              </li>
+            </Box>
+          </Box>
+        )
+},
+      {
+        title: "Konfigurer Plugin",
+        description: "Sett opp plugin med dine innstillinger",
+        content: (
+          <Box sx={{ py: 2 }}>
+            <Typography variant="h6" gutterBottom>
+              Plugin Konfigurasjon
+            </Typography>
+            <Box component="ol" sx={{ pl: 2 }}>
+              <li>
+                <Typography variant="body2" sx={{ mb: 2 }}>
+                  I Library modulen, se etter <strong>"CreatorHub Norge"</strong> i Publish Services panel
+                </Typography>
+              </li>
+              <li>
+                <Typography variant="body2" sx={{ mb: 2 }}>
+                  Høyreklikk og velg <strong>"Edit Settings..."</strong>
+                </Typography>
+              </li>
+                <li>
+                  <Typography variant="body2" sx={{ mb: 2 }}>
+                    Velg din profession: <strong>{professionConfig.title}</strong>
+                  </Typography>
+                </li>
+                <li>
+                  <Typography variant="body2" sx={{ mb: 2 }}>
+                    Velg kategori: <strong>{professionCategories[0]}</strong>
+                  </Typography>
+                </li>
+              <li>
+                <Typography variant="body2" sx={{ mb: 2 }}>
+                  Aktiver <strong>Overage Management</strong> og <strong>Showcase Sharing</strong>
+                </Typography>
+              </li>
+            </Box>
+          </Box>
+        )
+  },
+      {
+        title: "Bruk Plugin",
+        description: "Start å publisere til CreatorHub Norge showcase",
+        content: (
+          <Box sx={{ py: 2 }}>
+            <Typography variant="h6" gutterBottom>
+              Hvordan bruke Plugin
+            </Typography>
+            <Box component="ol" sx={{ pl: 2 }}>
+              <li>
+                <Typography variant="body2" sx={{ mb: 2 }}>
+                  Høyreklikk på <strong>"CreatorHub Norge"</strong> i Publish Services
+                </Typography>
+              </li>
+              <li>
+                <Typography variant="body2" sx={{ mb: 2 }}>
+                  Velg <strong>"Create Collection..."</strong> (dette lager en Showcase)
+                </Typography>
+              </li>
+              <li>
+                <Typography variant="body2" sx={{ mb: 2 }}>
+                  Navngi din showcase (f.eks. "Johnson Wedding Showcase")
+                </Typography>
+              </li>
+              <li>
+                <Typography variant="body2" sx={{ mb: 2 }}>
+                  Dra bilder fra Lightroom biblioteket til showcase sets
+                </Typography>
+              </li>
+              <li>
+                <Typography variant="body2" sx={{ mb: 2 }}>
+                  Klikk <strong>"Publish"</strong> for å laste opp til CreatorHub Norge
+                </Typography>
+              </li>
+            </Box>
+          </Box>
+        )
+  }
+    ];
+
+    return (
+      <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, bgcolor: '#ff8c00', color: 'white' }}>
+          <CloudUpload />
+          CreatorHub Norge Lightroom Plugin
+        </DialogTitle>
+        <DialogContent sx={{ p: 0 }}>
+          <Box sx={{ p: 3 }}>
+            {/* Progress Indicator */}
+            <Box sx={{ mb: 3 }}>
+              <LinearProgress 
+                variant="determinate" 
+                value={(installStep + 1) * 25} 
+                sx={{ height: 8, borderRadius: 4 }}
+              />
+              <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                Steg {installStep + 1} av {installSteps.length}: {installSteps[installStep]?.title}
+              </Typography>
+            </Box>
+
+            {/* Current Step Content */}
+            {installSteps[installStep] && (
+              <>
+                <Typography variant="h5" gutterBottom>
+                  {installSteps[installStep].title}
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  {installSteps[installStep].description}
+                </Typography>
+                {installSteps[installStep].content}
+              </>
+            )}
+
+            {/* Benefits Section */}
+            <Box sx={{ mt: 4, p: 3, bgcolor: 'rgba(2, 5, 5, 140, 0, 0.05)', borderRadius: 2 }}>
+              <Typography variant="h6" gutterBottom>
+                🚀 Fordeler med CreatorHub Norge Plugin
+              </Typography>
+              <Box component="ul" sx={{ pl: 2 }}>
+                <li>
+                  <Typography variant="body2">
+                    <strong>Direkte publisering: </strong> Publiser direkte fra Lightroom til CreatorHub showcase
+                  </Typography>
+                </li>
+                <li>
+                  <Typography variant="body2">
+                    <strong>Overage Management:</strong> Automatisk deteksjon og e-post ved overskudd av bilder
+                  </Typography>
+                </li>
+                <li>
+                  <Typography variant="body2">
+                    <strong>Showcase Sharing:</strong> Automatisk deling med kunder via e-post
+                  </Typography>
+                </li>
+                <li>
+                  <Typography variant="body2">
+                    <strong>Profession Configuration:</strong> Tilpasset terminologi for {professionConfig.title}
+                  </Typography>
+                </li>
+                <li>
+                  <Typography variant="body2">
+                    <strong>Metadata Preservation: </strong> Bevarer all EXIF og metadata
+                  </Typography>
+                </li>
+                <li>
+                  <Typography variant="body2">
+                    <strong>Batch Processing:</strong> Håndterer flere bilder samtidig
+                  </Typography>
+                </li>
+                <li>
+                  <Typography variant="body2">
+                    <strong>Real-time Sync:</strong> Øyeblikkelig synkronisering med CreatorHub
+                  </Typography>
+                </li>
+              </Box>
+            </Box>
+
+            {/* Profession-specific Categories */}
+            <Box sx={{ mt: 3, p: 3, bgcolor: 'rgba(33, 150, 243, 0.05)', borderRadius: 2 }}>
+              <Typography variant="h6" gutterBottom>
+                📁 Tilgjengelige Kategorier for {professionConfig.title}
+              </Typography>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                {professionCategories.map((category, index) => (
+                  <Chip
+                    key={index}
+                    label={`📁 ${category}`}
+                    variant="outlined"
+                    size="small"
+                    sx={{ mb: 1 }}
+                  />
+                ))}
+              </Box>
+            </Box>
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ p: 3 }}>
+          {installStep > 0 && (
+            <Button onClick={() => setInstallStep(installStep - 1)}>
+              Forrige
+            </Button>
+          )}
+          <Box sx={{ flex: 1 }} />
+          {installStep < installSteps.length - 1 ? (
+            <Button variant="contained" 
+              onClick={() => setInstallStep(installStep + 1)}
+              disabled={installStep === 0 && !isDownloading}
+            >
+              Neste
+            </Button>
+          ) : (
+            <Button variant="contained" onClick={onClose}>
+              Ferdig
+            </Button>
+          )}
+          <Button onClick={onClose}>Lukk</Button>
+        </DialogActions>
+      </Dialog>
+  );
+};
+
+  // Custom Categories Dialog Component
+  const CustomCategoriesDialog = ({ 
+    open, 
+    onClose,
+    profession,
+    userId
+}: {
+    open: boolean;
+    onClose: () => void;
+    profession: string;
+    userId: string;
+}) => {
+    const [availableIcons] = useState([
+      '📁','📸','🎥','🎵','💒','👤','🌿','🏙️','🎉','💼','🎨','🏞️','🌅','🌆','🌃','🏖️','🏔️','🌊','🌸','🍂'
+    ]);
+
+    const [availableColors] = useState([
+      '#ff8c00','#2196f3','#4caf50','#f44336','#9c27b0','#ff9800','#00bcd4','#8bc34a','#e91e63','#3f51b5'
+    ]);
+
+    const handleCreateCategory = async () => {
+      if (!newCategoryForm.name.trim()) return;
+
+      await createCategoryMutation.mutateAsync({
+        ...newCategoryForm,
+        profession,
+        userId
+      });
+    };
+
+    return (
+      <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, bgcolor: '#ff8c00', color: 'white' }}>
+          <Category />
+          Lag ny kategori
+        </DialogTitle>
+        <DialogContent sx={{ p: 3 }}>
+          <Grid container spacing={3}>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Kategorinavn"
+                value={newCategoryForm.name}
+                onChange={(e) => setNewCategoryForm(prev => ({ ...prev, name: e.target.value }))}
+                required
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Beskrivelse"
+                value={newCategoryForm.description}
+                onChange={(e) => setNewCategoryForm(prev => ({ ...prev, description: e.target.value }))}
+                multiline
+                rows={2}
+              />
+            </Grid>
+            
+            <Grid item xs={12}>
+              <Typography variant="subtitle2" gutterBottom>
+                Velg ikon
+              </Typography>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 2 }}>
+                {availableIcons.map((icon) => (
+                  <Button
+                    key={icon}
+                    variant={newCategoryForm.icon === icon ? "contained" : "outlined"}
+                    onClick={() => setNewCategoryForm(prev => ({ ...prev, icon }))}
+                    sx={{ minWidth: 'auto', p: 1 }}
+                  >
+                    {icon}
+                  </Button>
+                ))}
+              </Box>
+            </Grid>
+
+            <Grid item xs={12}>
+              <Typography variant="subtitle2" gutterBottom>
+                Velg farge
+              </Typography>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 2 }}>
+                {availableColors.map((color) => (
+                  <Button
+                    key={color}
+                    variant={newCategoryForm.color === color ? "contained" : "outlined"}
+                    onClick={() => setNewCategoryForm(prev => ({ ...prev, color }))}
+                    sx={{ 
+                      minWidth: 'auto', 
+                      width: 40,
+                      height: 40,
+                      backgroundColor: color,
+                      borderColor: color, '&:hover': {
+                        backgroundColor: color,
+                        opacity: 0.8
+                      }
+                    }}
+                  />
+                ))}
+              </Box>
+            </Grid>
+
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Sorteringsrekkefølge"
+                type="number"
+                value={newCategoryForm.sortOrder}
+                onChange={(e) => setNewCategoryForm(prev => ({ ...prev, sortOrder: parseInt(e.target.value) || 0 }))}
+                inputProps={{ min: 0 }}
+              />
+            </Grid>
+          </Grid>
+
+          {/* Preview */}
+          <Box sx={{ mt: 3, p: 2, bgcolor: 'rgba(2, 5, 5, 140, 0, 0.05)', borderRadius: 2 }}>
+            <Typography variant="subtitle2" gutterBottom>
+              Forhåndsvisning
+            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <Box sx={{ 
+                width: 40, 
+                height: 40, 
+                borderRadius: 2,
+                backgroundColor: newCategoryForm.color,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '1.2rem'
+              }}>
+                {newCategoryForm.icon}
+              </Box>
+              <Box>
+                <Typography variant="subtitle1" sx={{ color: newCategoryForm.color }}>
+                  {newCategoryForm.name || 'Kategorinavn'}
+                </Typography>
+                {newCategoryForm.description && (
+                  <Typography variant="body2" color="text.secondary">
+                    {newCategoryForm.description}
+                  </Typography>
+                )}
+              </Box>
+            </Box>
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ p: 3 }}>
+          <Button onClick={onClose}>Avbryt</Button>
+          <Button variant="contained" 
+            onClick={handleCreateCategory}
+            disabled={!newCategoryForm.name.trim() || createCategoryMutation.isPending}
+          >
+            {createCategoryMutation.isPending ? 'Lager...' : 'Lag kategori'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+  );
+};
+
+  // Custom Sets Dialog Component
+  const CustomSetsDialog = ({ 
+    open, 
+    onClose,
+    profession,
+    userId,
+    availableCategories
+}: {
+    open: boolean;
+    onClose: () => void;
+    profession: string;
+    userId: string;
+    availableCategories: any[];
+}) => {
+    const handleCreateSet = async () => {
+      if (!newSetForm.name.trim() || !newSetForm.categoryId) return;
+
+      await createSetMutation.mutateAsync({
+        ...newSetForm,
+        profession,
+        userId
+      });
+    };
+
+    return (
+      <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, bgcolor: '#2196f3', color: 'white' }}>
+          <FolderSpecial />
+          Lag ny show
+        </DialogTitle>
+        <DialogContent sx={{ p: 3 }}>
+          <Grid container spacing={3}>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Samlingsnavn"
+                value={newSetForm.name}
+                onChange={(e) => setNewSetForm(prev => ({ ...prev, name: e.target.value }))}
+                required
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <FormControl fullWidth required>
+                <InputLabel>Kategori</InputLabel>
+                <Select
+                  value={newSetForm.categoryId}
+                  label="Kategori"
+                  onChange={(e) => setNewSetForm(prev => ({ ...prev, categoryId: e.target.value }))}
+                >
+                  {availableCategories.map((category) => (
+                    <MenuItem key={category.id} value={category.id}>
+                      {category.icon} {category.name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Beskrivelse"
+                value={newSetForm.description}
+                onChange={(e) => setNewSetForm(prev => ({ ...prev, description: e.target.value }))}
+                multiline
+                rows={3}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Sorteringsrekkefølge"
+                type="number"
+                value={newSetForm.sortOrder}
+                onChange={(e) => setNewSetForm(prev => ({ ...prev, sortOrder: parseInt(e.target.value) || 0 }))}
+                inputProps={{ min: 0 }}
+              />
+            </Grid>
+          </Grid>
+
+          {/* Preview */}
+          <Box sx={{ mt: 3, p: 2, bgcolor: 'rgba(33, 150, 243, 0.05)', borderRadius: 2 }}>
+            <Typography variant="subtitle2" gutterBottom>
+              Forhåndsvisning
+            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <Box sx={{ 
+                width: 40, 
+                height: 40, 
+                borderRadius: 2,
+                backgroundColor: '#2196f3',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '1.2rem'
+              }}>
+                <FolderSpecial />
+              </Box>
+              <Box>
+                <Typography variant="subtitle1" color="#2196f3">
+                  {newSetForm.name || 'Samlingsnavn'}
+                </Typography>
+                {newSetForm.description && (
+                  <Typography variant="body2" color="text.secondary">
+                    {newSetForm.description}
+                  </Typography>
+                )}
+                {newSetForm.categoryId && (
+                  <Typography variant="caption" color="text.secondary">
+                    Kategori: {availableCategories.find(c => c.id === newSetForm.categoryId)?.name}
+                  </Typography>
+                )}
+              </Box>
+            </Box>
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ p: 3 }}>
+          <Button onClick={onClose}>Avbryt</Button>
+          <Button variant="contained" 
+            onClick={handleCreateSet}
+            disabled={!newSetForm.name.trim() || !newSetForm.categoryId || createSetMutation.isPending}
+          >
+            {createSetMutation.isPending ? 'Lager...' : 'Lag samling'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+    );
+  };
+
+  // Publish to Academy Dialog Component - Pro Plan Feature
+  const PublishToAcademyDialog = ({ 
+    open, 
+    onClose,
+    item,
+    profession
+}: {
+    open: boolean;
+    onClose: () => void;
+    item: ShowcaseItem | null;
+    profession: string;
+}) => {
+    const [availableCourses, setAvailableCourses] = useState<any[]>([]);
+    const [isPublishing, setIsPublishing] = useState(false);
+
+    // Fetch available Academy courses
+    useEffect(() => {
+      const fetchCourses = async () => {
+        try {
+          const response = await fetch(`/api/academy/courses?profession=${profession}`);
+          if (response.ok) {
+            const courses = await response.json();
+            setAvailableCourses(courses);
+          }
+        } catch (error) {
+          console.error('Failed to fetch courses:', error);
+        }
+      };
+      
+      if (open) {
+        fetchCourses();
+      }
+    }, [open, profession]);
+
+    const handlePublishToAcademy = async () => {
+      if (!item) return;
+      
+      setIsPublishing(true);
+      try {
+        if (publishToAcademyMode === 'existing') {
+          // Publish to existing course
+          if (!selectedCourseForPublish) {
+            showWarningToast('Velg et kurs først');
+            return;
+          }
+          
+          const response = await fetch('/api/academy/courses/add-content', {
+            method: 'POST',
+            headers: { 'Content-Type' : 'application/json' },
+            body: JSON.stringify({
+              courseId: selectedCourseForPublish,
+              contentType: item.fileType,
+              contentUrl: item.fileUrl,
+              thumbnailUrl: item.thumbnailUrl,
+              title: item.title,
+              description: item.description,
+              profession,
+              userId: effectiveUserId
+            })
+          });
+          
+          if (response.ok) {
+            showSuccessToast(`"${item.title}," publisert til Academy kurs!`);
+            onClose();
+          } else {
+            throw new Error('Failed to publish to course');
+          }
+        } else {
+          // Create new course and publish
+          if (!newCourseData.title.trim() || !newCourseData.moduleTitle.trim()) {
+            showWarningToast('Fyll ut kursnavn og modulnavn');
+            return;
+          }
+          
+          const response = await fetch('/api/academy/courses', {
+            method: 'POST',
+            headers: { 'Content-Type' : 'application/json' },
+            body: JSON.stringify({
+              title: newCourseData.title,
+              description: newCourseData.description,
+              category: newCourseData.category,
+              difficulty: newCourseData.difficulty,
+              profession,
+              userId: effectiveUserId,
+              initialContent: {
+                moduleTitle: newCourseData.moduleTitle,
+                contentType: item.fileType,
+                contentUrl: item.fileUrl,
+                thumbnailUrl: item.thumbnailUrl,
+                title: item.title,
+                description: item.description
+              }
+            })
+          });
+          
+          if (response.ok) {
+            const result = await response.json();
+            showSuccessToast(`Nytt kurs "${newCourseData.title}," opprettet med "${item.title},"!`);
+            onClose();
+            // Reset form
+            setNewCourseData({
+              title: '',
+              description: '',
+              category: 'photography',
+              difficulty: 'beginner',
+              moduleTitle: ''
+            });
+          } else {
+            throw new Error('Failed to create course');
+          }
+        }
+      } catch (error) {
+        console.error('Publish to Academy error:', error);
+        showErrorToast('Feil ved publisering til Academy. Prøv igjen.');
+      } finally {
+        setIsPublishing(false);
+      }
+    };
+
+    return (
+      <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, bgcolor: '#ff8c00', color: 'white' }}>
+          <School />
+          Publiser til Academy
+          <Chip label="PRO" size="small" sx={{ ml: 'auto', bgcolor: 'rgba(2, 5, 5,255,255,0.3)', color: 'white' }} />
+        </DialogTitle>
+        <DialogContent sx={{ p: 3 }}>
+          <Box sx={{ mt: 2 }}>
+            {/* Selected Item Preview */}
+            {item && (
+              <Paper sx={{ p: 2, mb: 3, bgcolor: 'rgba(2, 5, 5, 140, 0, 0.05)', border: '1px solid rgba(2, 5, 5, 140, 0, 0.2)' }}>
+                <Typography variant="subtitle2" gutterBottom sx={{ color: '#ff8c00', fontWeight: 600}}>
+                  📄 Valgt innhold
+                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                  <Box 
+                    component="img" 
+                    src={item.thumbnailUrl || 'https://images.unsplash.com/photo-1542038784456-1ea8e935640e?w=60&h=60&fit=crop'}
+                    alt={item.title}
+                    sx={{ width: 60, height: 60, borderRadius: 1, objectFit: 'cover' }}
+                  />
+                  <Box>
+                    <Typography variant="subtitle1" fontWeight="600">{item.title}</Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Type: {item.fileType} • {item.description?.substring(0, 50)}
+                    </Typography>
+                  </Box>
+                </Box>
+              </Paper>
+            )}
+
+            {/* Mode Selection */}
+            <Box sx={{ mb: 3 }}>
+              <Typography variant="subtitle1" gutterBottom fontWeight="600">
+                Velg publiseringsmåte
+              </Typography>
+              <ToggleButtonGroup
+                value={publishToAcademyMode}
+                exclusive
+                onChange={(_, value) => value && setPublishToAcademyMode(value)}
+                fullWidth
+              >
+                <ToggleButton value="existing" sx={{ textTransform: 'none', py: 1.5 }}>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0.5 }}>
+                    <Collections fontSize="small" />
+                    <Typography variant="body2">Eksisterende kurs</Typography>
+                  </Box>
+                </ToggleButton>
+                <ToggleButton value="new" sx={{ textTransform: 'none', py: 1.5 }}>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0.5 }}>
+                    <AddCircle fontSize="small" />
+                    <Typography variant="body2">Nytt kurs</Typography>
+                  </Box>
+                </ToggleButton>
+              </ToggleButtonGroup>
+            </Box>
+
+            {/* Existing Course Selection */}
+            {publishToAcademyMode === 'existing' ? (
+              <Box>
+                <FormControl fullWidth>
+                  <InputLabel>Velg kurs</InputLabel>
+                  <Select
+                    value={selectedCourseForPublish}
+                    onChange={(e) => setSelectedCourseForPublish(e.target.value)}
+                    label="Velg kurs"
+                  >
+                    {availableCourses.length === 0 ? (
+                      <MenuItem disabled>
+                        <em>Ingen kurs funnet. Opprett et nytt kurs.</em>
+                      </MenuItem>
+                    ) : (
+                      availableCourses.map((course) => (
+                        <MenuItem key={course.id} value={course.id}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                            <School fontSize="small" />
+                            <Box>
+                              <Typography variant="body2">{course.title}</Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                {course.modules?.length || 0} moduler • {course.difficulty}
+                              </Typography>
+                            </Box>
+                          </Box>
+                        </MenuItem>
+                      ))
+                    )}
+                  </Select>
+                </FormControl>
+              </Box>
+            ) : (
+              <Box>
+                {/* New Course Form */}
+                <Grid container spacing={2}>
+                  <Grid item xs={12}>
+                    <TextField
+                      fullWidth
+                      label="Kurstittel"
+                      value={newCourseData.title}
+                      onChange={(e) => setNewCourseData(prev => ({ ...prev, title: e.target.value }))}
+                      required
+                      placeholder="f.eks. Bryllupsfotografering Masterclass"
+                    />
+                  </Grid>
+                  <Grid item xs={12}>
+                    <TextField
+                      fullWidth
+                      label="Kursbeskrivelse"
+                      value={newCourseData.description}
+                      onChange={(e) => setNewCourseData(prev => ({ ...prev, description: e.target.value }))}
+                      multiline
+                      rows={3}
+                      placeholder="Beskriv hva kurset handler om..."
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <FormControl fullWidth>
+                      <InputLabel>Kategori</InputLabel>
+                      <Select
+                        value={newCourseData.category}
+                        onChange={(e) => setNewCourseData(prev => ({ ...prev, category: e.target.value }))}
+                        label="Kategori"
+                      >
+                        <MenuItem value="photography">📸 Fotografering</MenuItem>
+                        <MenuItem value="videography">🎥 Videografi</MenuItem>
+                        <MenuItem value="music-production">🎵 Musikkproduksjon</MenuItem>
+                        <MenuItem value="business">💼 Business & Marketing</MenuItem>
+                        <MenuItem value="editing">✂️ Redigering</MenuItem>
+                        <MenuItem value="equipment">📷 Utstyr</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <FormControl fullWidth>
+                      <InputLabel>Vanskelighetsgrad</InputLabel>
+                      <Select
+                        value={newCourseData.difficulty}
+                        onChange={(e) => setNewCourseData(prev => ({ ...prev, difficulty: e.target.value as 'beginner' | 'intermediate' | 'advanced' }))}
+                        label="Vanskelighetsgrad"
+                      >
+                        <MenuItem value="beginner">🌱 Nybegynner</MenuItem>
+                        <MenuItem value="intermediate">📈 Middels</MenuItem>
+                        <MenuItem value="advanced">🎓 Avansert</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  <Grid item xs={12}>
+                    <TextField
+                      fullWidth
+                      label="Første modulnavn"
+                      value={newCourseData.moduleTitle}
+                      onChange={(e) => setNewCourseData(prev => ({ ...prev, moduleTitle: e.target.value }))}
+                      required
+                      placeholder="f.eks. Introduksjon til bryllupsfotografering"
+                    />
+                  </Grid>
+                </Grid>
+
+                {/* Preview */}
+                <Paper sx={{ p: 2, mt: 3, bgcolor: 'rgba(2, 5, 5, 140, 0, 0.05)', border: '1px solid rgba(2, 5, 5, 140, 0, 0.2)' }}>
+                  <Typography variant="subtitle2" gutterBottom sx={{ color: '#ff8c00' }}>
+                    📚 Kursforhåndsvisning
+                  </Typography>
+                  <Typography variant="h6">{newCourseData.title || 'Kurstittel'}</Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                    {newCourseData.description || 'Kursbeskrivelse...'}
+                  </Typography>
+                  <Box sx={{ display: 'flex', gap: 1 }}>
+                    <Chip label={newCourseData.category} size="small" />
+                    <Chip label={newCourseData.difficulty} size="small" color="primary" />
+                  </Box>
+                </Paper>
+              </Box>
+            )}
+
+            {/* Publishing Info */}
+            <Paper sx={{ p: 2, mt: 3, bgcolor: 'rgba(33, 150, 243, 0.05)', border: '1px solid rgba(33, 150, 243, 0.2)' }}>
+              <Typography variant="subtitle2" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Info fontSize="small" color="info" />
+                Om publisering til Academy
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                {publishToAcademyMode === 'existing' 
+                  ? 'Dette innholdet vil bli lagt til som en ny leksjon i det valgte kurset. Studenter vil få tilgang umiddelbart.'
+                  : 'Et nytt kurs vil bli opprettet med dette innholdet som første leksjon. Du kan legge til flere moduler senere.'}
+              </Typography>
+            </Paper>
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ p: 3 }}>
+          <Button onClick={onClose} disabled={isPublishing}>
+            Avbryt
+          </Button>
+          <Button 
+            variant="contained" 
+            onClick={handlePublishToAcademy}
+            disabled={
+              isPublishing || 
+              (publishToAcademyMode === 'existing' && !selectedCourseForPublish) ||
+              (publishToAcademyMode === 'new' && (!newCourseData.title.trim() || !newCourseData.moduleTitle.trim()))
+            }
+            startIcon={isPublishing ? <CircularProgress size={20} /> : <School />}
+            sx={{ 
+              bgcolor: '#ff8c00','&:hover': { bgcolor: '#f57c00' }
+            }}
+          >
+            {isPublishing ? 'Publiserer...' : 
+             publishToAcademyMode === 'existing' ? 'Publiser til kurs' : 'Opprett kurs og publiser'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+    );
+  };
+
+  // Get profession-specific theme (moved inside component scope)
+  const professionTheme = getProfessionTheme(profession as any);
+  const componentTheme = getComponentTheme('showcase');
+
+  return (
+    <Box sx={{ 
+      minHeight: '100vh',
+      bgcolor: '#0f1419',
+      background: 'linear-gradient(135deg, #0f1419 0%, #1a1f2e 50%, #2a1810 100%)',
+      color: textPrimary,
+      display: 'flex',
+      position: 'relative',
+      fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif',
+      // Apply profession-specific styling
+      '& .showcase-header': {
+        background: `linear-gradient(135deg, ${professionTheme?.primaryColor || customTheme.palette.primary.main}20, ${professionTheme?.secondaryColor || customTheme.palette.secondary.main}20)`,
+        borderRadius: (customTheme.shape.borderRadius as number) * 2,
+        padding: customTheme.spacing(2),
+        marginBottom: customTheme.spacing(3)
+        }, '& .showcase-card': {
+          '&:hover': {
+          transform: 'translateY(-4px)',
+          boxShadow: `0 8px 25px ${professionTheme?.accentColor || customTheme.palette.primary.main}30`,
+          transition: 'all 0.3s ease-in-out'
+        }
+      }, '& .selection-indicator': {
+        backgroundColor: professionTheme?.accentColor || customTheme.palette.primary.main,
+        color: customTheme.palette.getContrastText(professionTheme?.accentColor || customTheme.palette.primary.main)
+      }
+    }}>
+      {/* FASE 1: Client Proofing Status Bar - Enhanced */}
+      {clientMode && (
+        <Box sx={{ 
+          position: 'fixed', 
+          top: 0,
+          left: 0,
+          right: 0,
+          zIndex: 110,
+          p: 2,
+          bgcolor: proofingSession ? 'rgba(2, 5, 5, 107, 53, 0.1)' : 'rgba(15, 20, 25, 0.95)',
+          borderBottom: proofingSession ? '2px solid #ff6b35' : 'none',
+          backdropFilter: 'blur(20px)'
+        }}>
+          {proofingSession ? (
+            <Stack direction="row" justifyContent="space-between" alignItems="center">
+              <Box>
+                <Typography variant="h6" sx={{ color: '#ff6b35', fontWeight: 'bold' }}>
+                  Velg {proofingSession.maxSelections || 60} bilder til album
+                </Typography>
+                <Typography variant="body2" sx={{ color: textSecondary }}>
+                  {selectionCount} av {proofingSession.maxSelections || 60} valgt • Round {proofingSession.round || 1}
+                </Typography>
+              </Box>
+              
+              <Box textAlign="center">
+                <LinearProgress 
+                  variant="determinate" 
+                  value={(selectionCount / (proofingSession.maxSelections || 60)) * 100}
+                  sx={{
+                    width: 200,
+                    height: 8,
+                    borderRadius: 4,
+                      bgcolor: alpha('#ff6b35', 0.2), '& .MuiLinearProgress-bar': {
+                      bgcolor: '#ff6b35'
+                    }
+                  }}
+                />
+                <Typography variant="caption" sx={{ color: textSecondary, display: 'block', mt: 0.5 }}>
+                  {Math.round((selectionCount / (proofingSession.maxSelections || 60)) * 100)}% fullført
+                </Typography>
+              </Box>
+              
+              <Box textAlign="right">
+                <Typography variant="h6" sx={{ color: showDeadlineWarning ? '#ff4444' : '#ff6b35' }}>
+                  Frist: {proofingSession.deadline ? new Date(proofingSession.deadline).toLocaleDateString('no-NO') : 'Ikke satt'}
+                </Typography>
+                {showDeadlineWarning && (
+                  <Typography variant="body2" sx={{ color: '#ff4444' }}>
+                    ⚠️ Mindre enn 24 timer igjen!
+                  </Typography>
+                )}
+              </Box>
+            </Stack>
+          ) : (
+            renderClientStatusBar()
+          )}
+        </Box>
+      )}
+      
+      {/* Professional Background Overlay */}
+      <Box sx={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        background: 'radial-gradient(circle at 20% 8%, rgba(2, 5, 5, 107, 53, 0.1) 0%, transparent 50%), radial-gradient(circle at 80% 20%, rgba(2, 4, 7, 147, 30, 0.08) 0%, transparent 50%)',
+        pointerEvents: 'none'
+      }} />
+
+      {/* Advanced Professional Sidebar */}
+      <Box sx={{ 
+        width: sidebarOpen ? 320 : 80,
+        bgcolor: 'rgba(0, 15, 26, 0.95)',
+        backdropFilter: 'blur(20px)',
+        borderRight: '1px solid rgba(2, 5, 5, 107, 53, 0.2)',
+        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+        display: 'flex',
+        flexDirection: 'column',
+        position: 'fixed',
+        height: '100vh',
+        zIndex: 12,
+        boxShadow: sidebarOpen ? '8px 0 32px rgba(0,0,0,0.3)' : '4px 0 16px rgba(0,0,0,0.2)'
+      }}>
+        {/* Premium Sidebar Header */}
+        <Box sx={{ 
+          p: sidebarOpen ? 3 : 2,
+          borderBottom: '1px solid rgba(2, 5, 5, 107, 53, 0.15)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: sidebarOpen ? 'space-between' : 'center',
+          background: 'linear-gradient(135deg, rgba(2, 5, 5, 107, 53, 0.1) 0%, rgba(2, 4, 7, 147, 30, 0.05) 100%)'
+        }}>
+          {sidebarOpen && (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <Box sx={{
+                width: 40,
+                height: 40,
+                borderRadius: '12px',
+                background: `linear-gradient(45deg, ${accentColor}, #f7931e)`,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxShadow: '0 4px 16px rgba(2, 5, 5, 107, 53, 0.3)'
+              }}>
+                {                 profession === 'photographer' ? <CameraAlt sx={{ color: '#fff', fontSize: 20 }} /> :
+                 profession === 'videographer' ? <VideoLibrary sx={{ color: '#fff', fontSize: 20 }} /> :
+                 <LibraryMusic sx={{ color: '#fff', fontSize: 20 }} />}
+              </Box>
+              <Typography variant="h6" sx={{ 
+                fontWeight: 70, 
+                fontSize: '1.1rem',
+                color: textPrimary,
+                textShadow: '0 2px 4px rgba(0,0,0,0.3)'
+              }}>
+                Showcase Pro
+              </Typography>
+            </Box>
+          )}
+          <IconButton 
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+            sx={{ 
+              color: textSecondary,
+              bgcolor: 'rgba(2, 5, 5, 107, 53, 0.1)',
+              border: '1px solid rgba(2, 5, 5, 107, 53, 0.2)','&:hover': { 
+                color: accentColor,
+                bgcolor: 'rgba(2, 5, 5, 107, 53, 0.2)',
+                borderColor: accentColor
+              }
+            }}
+          >
+            {sidebarOpen ? <ChevronLeft /> : <MenuIcon />}
+          </IconButton>
+        </Box>
+
+        {/* Professional Navigation Categories */}
+        <Box sx={{ flex: 1, p: sidebarOpen ? 2.5 : 1, pt: 3 }}>
+          {sidebarOpen && (
+            <Typography variant="overline" sx={{ 
+              color: 'rgba(2, 5, 5, 107, 53, 0.8)', 
+              fontSize: '0.7rem', 
+              fontWeight: 70,
+              letterSpacing: '0.15em',
+              mb: 3,
+              display: 'block',
+              textShadow: '0 1px 2px rgba(0,0,0,0.5)'
+            }}>
+              PORTFOLIO KATEGORIER
+            </Typography>
+          )}
+          
+          {getProfessionCategories().map((category, index) => (
+            <Tooltip 
+              key={category}
+              title={!sidebarOpen ? category : ''}
+              placement="right"
+            >
+              <Box 
+                onClick={() => setFilter(index === 0 ? 'all' : category.toLowerCase())}
+                sx={{ 
+                  p: sidebarOpen ? 2 : 1.5,
+                  mb: 1,
+                  borderRadius: '12px',
+                  cursor: 'pointer',
+                  bgcolor: (filter === 'all' && index === 0) || filter === category.toLowerCase() 
+                    ? 'rgba(2, 5, 5, 107, 53, 0.2)' 
+                    : 'rgba(2, 5, 5,255,255,0.02)',
+                  border: (filter === 'all' && index === 0) || filter === category.toLowerCase()
+                    ? `2px solid ${accentColor}`
+                    : '2px solid transparent','&:hover': { 
+                    bgcolor: 'rgba(2, 5, 5, 107, 53, 0.15)',
+                    border: `2px solid ${accentColor}`,
+                    transform: 'translateX(4px)'
+                  },
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: sidebarOpen ? 'flex-start' : 'center',
+                  gap: sidebarOpen ? 2 : 0,
+                  transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
+                }}
+              >
+                {/* Professional Category Icons */}
+                <Box sx={{ 
+                  minWidth: sidebarOpen ? 20 : 24, 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center'
+                }}>
+                  {index === 0 ? (
+                    <Home sx={{ fontSize: sidebarOpen ? 16 : 20, color: accentColor }} />
+                  ) : index === 1 ? (
+                    <Star sx={{ fontSize: sidebarOpen ? 16 : 20, color: textSecondary }} />
+                  ) : (
+                    <Collections sx={{ fontSize: sidebarOpen ? 16 : 20, color: textSecondary }} />
+                  )}
+                </Box>
+                
+                {sidebarOpen && (
+                  <Typography 
+                    variant="body2" 
+                    sx={{ 
+                      color: (filter === 'all' && index === 0) || filter === category.toLowerCase() 
+                        ? textPrimary 
+                        : textSecondary,
+                        fontWeight: ((filter === 'all' && index === 0) || filter === category.toLowerCase()) ? 600 : 400,
+                      fontSize: '0.875rem'
+                    }}
+                  >
+                    {category}
+                  </Typography>
+                )}
+              </Box>
+            </Tooltip>
+          ))}
+        </Box>
+
+        {/* User Profile */}
+        <Box sx={{ 
+          p: 2,
+          bgcolor: 'rgba(2, 5, 5,255,255,0.05)',
+          borderRadius: 2,
+          border: '1px solid rgba(2, 5, 5,255,255,0.1)'
+        }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Avatar sx={{ width: 32, height: 32, bgcolor: config.primaryColor }}>
+              D
+            </Avatar>
+            <Box>
+              <Typography variant="body2" sx={{ fontWeight: 600, color: '#fff'}}>
+                Daniel CreatorHub
+              </Typography>
+              <Typography variant="caption" sx={{ color: 'rgba(2, 5, 5,255,255,0.5)' }}>
+                {getProfessionDisplayName(profession)}
+              </Typography>
+            </Box>
+          </Box>
+        </Box>
+      </Box>
+
+      {/* Contextual Action Bar - Appears when items selected */}
+      {selectedImages.size > 0 && (
+        <ContextualActionBar
+          profession={profession}
+          selectedCount={selectedImages.size}
+          accentColor={accentColor}
+          onClearSelection={() => setSelectedImages(new Set())}
+          onUndo={handleUndo}
+          onRedo={handleRedo}
+          canUndo={undoStack.length > 0}
+          canRedo={redoStack.length > 0}
+          // Photographer actions
+          onEnhance={openPhotoEnhancer}
+          onWatermark={openWatermarkDialog}
+          onDownload={() => executeBulkOperation('bulk-download')}
+          onDelete={() => executeBulkOperation('delete')}
+          onCopy={() => openCopyMoveDialog('copy')}
+          onMove={() => openCopyMoveDialog('move')}
+          onEdit={openPhotoEditor}
+          onShare={() => setShareShowcaseDialogOpen(true)}
+          onSetPrice={openPricingModal}
+          // Videographer actions
+          onAddToSequence={() => setShowSequenceManager(true)}
+          onGenerateProxy={() => setShowProxyGenerator(true)}
+          onExportSocial={() => setShowExportDialog(true)}
+          onRenderPresets={() => setShowRenderPresets(true)}
+          // Music producer actions
+          onExtractStems={() => console.log('Extract stems')}
+          onAudioWatermark={() => console.log('Audio watermark')}
+          onAnalyzeAudio={() => selectedItem && analyzeAudioContent(selectedItem)}
+          onAddToSamplePack={() => console.log('Add to sample pack')}
+          // Vendor actions
+          onAddToBundle={() => console.log('Add to bundle')}
+          onEditPricing={() => console.log('Edit pricing')}
+          onAddVariants={() => console.log('Add variants')}
+          onUpdateInventory={() => console.log('Update inventory')}
+        />
+      )}
+
+      {/* Premium Main Content Area */}
+      <Box sx={{ 
+        flex: 1,
+        display: 'flex', 
+        flexDirection: 'column',
+        marginLeft: sidebarOpen ? '320px' : '80px',
+        marginTop: clientMode ? '200px' : (selectedImages.size > 0 ? '70px' : '0'),
+        transition: 'margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+        position: 'relative',
+        zIndex: 1}}>
+        {/* Navigation Buttons */}
+        <Box sx={{ textAlign: 'center', p: 2, borderBottom: '1px solid rgba(2, 5, 5, 107, 53, 0.15)', display: 'flex', gap: 2, justifyContent: 'center' }}>
+          <Button variant="contained"
+            startIcon={<AcademyIcon />}
+            onClick={() => setShowAcademy(true)}
+            sx={{ 
+              bgcolor: '#ff8c00',
+              color: 'white',
+              px: 4,
+              py: 1.5,
+              fontSize: '1.1rem',
+              fontWeight: 600,
+              borderRadius: 3,
+              boxShadow: '0 4px 15px rgba(2, 5, 5, 152, 0, 0.3)','&:hover': { 
+                bgcolor: '#f57c00',
+                transform: 'translateY(-2px)',
+                boxShadow: '0 6px 20px rgba(2, 5, 5, 152, 0, 0.4)'
+              }
+            }}
+          >
+            GÅ TIL ACADEMY
+          </Button>
+          
+          <Button variant="contained"
+            startIcon={<DashboardIcon />}
+            onClick={() => setShowDashboard(true)}
+            sx={{ 
+              bgcolor: '#4caf50',
+              color: 'white',
+              px: 4,
+              py: 1.5,
+              fontSize: '1.1rem',
+              fontWeight: 600,
+              borderRadius: 3,
+              boxShadow: '0 4px 15px rgba(6, 175, 80, 0.3)','&:hover': { 
+              bgcolor: '#388e3c',
+              transform: 'translateY(-2px)',
+              boxShadow: '0 6px 20px rgba(56, 142, 60, 0.4)'
+              }
+            }}
+          >
+            GÅ TIL DASHBOARD
+          </Button>
+        </Box>
+
+        {/* Professional Header Bar */}
+        <Box sx={{ 
+          p: 3,
+          borderBottom: '1px solid rgba(2, 5, 5, 107, 53, 0.15)',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          background: 'linear-gradient(135deg, rgba(2, 5, 5, 107, 53, 0.05) 0%, rgba(2, 4, 7, 147, 30, 0.02) 100%)',
+          backdropFilter: 'blur(10px)'
+        }}>
+          <Box>
+            <Typography variant="h4" sx={{ 
+              fontWeight: 70, 
+              color: textPrimary, 
+              mb: 0.5,
+              background: `linear-gradient(45deg, ${accentColor}, #f7931e)`,
+              backgroundClip: 'text',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent'
+            }}>
+              {config.title}
+            </Typography>
+            
+            {/* Feature Analytics Display */}
+            <Box sx={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: 1,
+              mt: 1 }}>
+              <Typography variant="caption" sx={{ color: textSecondary }}>
+                Features: {features.getFeatureAnalytics().enabledFeatures}/{features.getFeatureAnalytics().totalFeatures}
+              </Typography>
+              <Chip 
+                label={`${Math.round(features.getFeatureAnalytics().featureAdoptionRate * 100)}%`}
+                size="small"
+                variant="outlined"
+                sx={{ 
+                  fontSize: '10px', 
+                  height: 18,
+                  color: textSecondary,
+                  borderColor: 'rgba(2, 5, 5,255,255,0.3)'
+                }}
+              />
+            </Box>
+              <Typography variant="body1" sx={{ 
+                color: textSecondary,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1 }}>
+                <Box sx={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: '50%',
+                  bgcolor: accentColor,
+                  animation: 'pulse 2s infinite'
+                }} />
+                {items.length} {profession === 'photographer' ? 'bilder' : profession === 'videographer' ? 'videoer' : profession === 'music_producer' ? 'låter' : 'elementer'} tilgjengelig
+                {selectedProject && (
+                  <>
+                    <Box sx={{ mx: 1, color: 'rgba(2, 5, 5, 255, 255, 0.3)' }}>•</Box>
+                    <Box sx={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: 0.5,
+                      bgcolor: 'rgba(2, 5, 5, 107, 53, 0.1)',
+                      px: 1,
+                      py: 0.5,
+                      borderRadius: 1,
+                      border: '1px solid rgba(2, 5, 5, 107, 53, 0.3)'
+                }}>
+                      <FolderOpen sx={{ fontSize: 14, color: accentColor }} />
+                      <Typography variant="caption" sx={{ color: accentColor }}>
+                        {selectedProject.title}
+                      </Typography>
+                      <IconButton
+                        size="small"
+                        onClick={() => {
+                          setSelectedProject(null);
+                          setShowUploadComponent(false);
+                        }}
+                        sx={{
+                          p: 0.5,
+                          ml: 0.5,
+                          '&:hover': { bgcolor: 'rgba(255, 107, 53, 0.2)' }
+                        }}
+                      >
+                        <Delete sx={{ fontSize: 12, color: accentColor }} />
+                      </IconButton>
+                    </Box>
+                  </>
+                )}
+              </Typography>
+          </Box>
+          
+          <Stack direction="row" spacing={2}>
+            <Button
+              startIcon={<Search />}
+              variant="outlined"
+              sx={{ 
+                color: textSecondary,
+                borderColor: 'rgba(2, 5, 5, 107, 53, 0.3)','&:hover': {
+                  borderColor: accentColor,
+                  bgcolor: 'rgba(2, 5, 5, 107, 53, 0.1)'
+                }
+              }}
+            >
+              Søk
+            </Button>
+            <Button
+              startIcon={<FilterList />}
+              variant="outlined"
+              sx={{ 
+                color: textSecondary,
+                borderColor: 'rgba(2, 5, 5, 107, 53, 0.3)','&:hover': {
+                  borderColor: accentColor,
+                  bgcolor: 'rgba(2, 5, 5, 107, 53, 0.1)'
+                }
+              }}
+            >
+              Filter
+            </Button>
+            
+            {/* Admin & Owner Controls */}
+            {(isOwner || adminMode) && (
+              <>
+                <FileStatusWrapper showFileSystem showGoogleDrive showGooglePhotos>
+                  <Button startIcon={<Add />}
+                    variant="contained"
+                    sx={{
+                      bgcolor: accentColor,
+                      color: '#fff','&:hover': {
+                        bgcolor: '#e64100'
+                }
+                }}
+                    onClick={() => setProjectSelectorOpen(true)}
+                  >
+                    Legg til
+                  </Button>
+                </FileStatusWrapper>
+
+                {/* Bulk Create Collections Button */}
+                <Button
+                  startIcon={<CreateNewFolder />}
+                  variant="outlined"
+                  onClick={() => {
+                    setCurrentParentFolderId(selectedProject?.id?.toString());
+                    setShowBulkFolderUpload(true);
+                  }}
+                  sx={{
+                    borderColor: 'rgba(255, 107, 53, 0.5)',
+                    color: accentColor, '&:hover': {
+                      borderColor: accentColor,
+                      bgcolor: 'rgba(255, 107, 53, 0.1)'
+                    }
+                  }}
+                >
+                  Bulk Create
+                </Button>
+
+                {/* Toggle Upload Component Button - Shows when project is selected */}
+                {selectedProject && (
+                  <Button
+                    variant="outlined"
+                    startIcon={<CloudUpload />}
+                    onClick={() => setShowUploadComponent(!showUploadComponent)}
+                    sx={{
+                      borderColor: showUploadComponent ? accentColor : 'rgba(255, 107, 53, 0.3)',
+                      color: showUploadComponent ? accentColor : textSecondary, '&:hover': {
+                        borderColor: accentColor,
+                        bgcolor: 'rgba(255, 107, 53, 0.1)'
+                      }
+                    }}
+                  >
+                    {showUploadComponent ? 'Skjul opplasting' : 'Vis opplasting'}
+                  </Button>
+                )}
+
+                {/* Showcase Sharing Button */}
+                <Button
+                  startIcon={<Image />}
+                  variant="outlined"
+                  onClick={() => {
+                    setPrefilledClient(undefined);
+                    setShareShowcaseDialogOpen(true);
+              }}
+                  sx={{ 
+                    borderColor: '#', 
+                    color: '#','&:hover': { 
+                      borderColor: '#', 
+                      bgcolor: '#e3f2fd' 
+              } 
+              }}
+                >
+                  Share {getTerm('showcase')}
+                </Button>
+
+        {/* Overage Management Button */}
+        <Button
+          startIcon={<Warning />}
+          variant="outlined"
+          onClick={() => {
+            setSelectedShowcaseData(null);
+            setOverageDialogOpen(true);
+      }}
+          sx={{ 
+            borderColor: '#ff6f00', 
+            color: '#ff6f00','&:hover': { 
+              borderColor: '#', 
+              bgcolor: '#fff3e0' 
+      } 
+      }}
+        >
+          {getTerm('overage')} Email
+        </Button>
+
+        {/* Lightroom Plugin Button */}
+        <FileStatusWrapper showFileSystem showGoogleDrive showGooglePhotos>
+          <Button
+            startIcon={<CloudUpload />}
+            variant="outlined"
+            onClick={() => setLightroomPluginDialogOpen(true)}
+          sx={{ 
+            borderColor: '#31A8FF', 
+            color: '#31A8FF','&:hover': { 
+              borderColor: '#', 
+              bgcolor: '#f3e5f5' 
+      } 
+      }}
+        >
+          Lightroom Plugin
+        </Button>
+        </FileStatusWrapper>
+
+        {/* Create Custom Category Button */}
+        <Button
+          startIcon={<Category />}
+          variant="outlined"
+          onClick={() => setCustomCategoriesDialogOpen(true)}
+          sx={{ 
+            borderColor: '#4caf50', 
+            color: '#4caf50','&:hover': { 
+              borderColor: '#388e30', 
+              bgcolor: '#e8f5e8' 
+      } 
+      }}
+        >
+          Lag kategori
+        </Button>
+
+        {/* Create Custom Set Button */}
+        <Button
+          startIcon={<FolderSpecial />}
+          variant="outlined"
+          onClick={() => setCustomSetsDialogOpen(true)}
+          sx={{ 
+            borderColor: '#31A8FF', 
+            color: '#31A8FF','&:hover': { 
+              borderColor: '#', 
+              bgcolor: '#e3f2fd' 
+      } 
+      }}
+        >
+          Lag samling
+        </Button>
+                
+                {/* Google Photos Integration Button */}
+                <Button
+                  startIcon={
+                    <Box 
+                      component="img" 
+                      src="https://fonts.gstatic.com/s/i/productlogos/photos/v14/24px.svg"
+                      alt="Google Photos"
+                      sx={{ width: 20, height: 20 }}
+                    />
+              }
+                  variant="outlined"
+                  sx={{ 
+                    color: googlePhotosConnected ? theme.palette.primary.main : textSecondary,
+                    borderColor: googlePhotosConnected ? theme.palette.primary.main : 'rgba(2, 5, 5, 107, 53, 0.3)','&:hover': {
+                      borderColor: theme.palette.primary.main,
+                      bgcolor: 'rgba(6, 133, 244, 0.1)'
+                }
+              }}
+                  onClick={() => setShowGooglePhotosDialog(true)}
+                >
+                  {googlePhotosConnected ? 'Google Photos' : 'Koble til Google'}
+                </Button>
+
+                {/* Google Drive Sync Button with Folder Structure Info */}
+                {enableGoogleDriveSync && (
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Button
+                      startIcon={
+                        <Box 
+                          component="img" 
+                          src="https://fonts.gstatic.com/s/i/productlogos/drive/v16/24px.svg"
+                          alt="Google Drive"
+                          sx={{ width: 20, height: 20 }}
+                        />
+                  }
+                      variant="outlined"
+                      disabled={googleDriveSyncStatus === 'syncing'}
+                      sx={{ 
+                        color: googleDriveSyncStatus === 'success' ? theme.palette.success.main : textSecondary,
+                        borderColor: googleDriveSyncStatus === 'success' ? theme.palette.success.main : 'rgba(6, 133, 244, 0.3)','&:hover': {
+                          borderColor: theme.palette.success.main,
+                          bgcolor: 'rgba(6, 175, 80, 0.1)'
+                    }
+                  }}
+                      onClick={syncToGoogleDrive}
+                    >
+                      {googleDriveSyncStatus === 'syncing' ? 'Synkroniserer...' : 
+                       googleDriveSyncStatus === 'success' ? 'Google Drive' : 'Sync til Drive'}
+                    </Button>
+                    <Tooltip title="Synkroniserer til 08_Showcase mappen i prosjektets 8-mappestruktur">
+                      <Chip 
+                        label="08_Showcase" 
+                        size="small" 
+                        variant="outlined"
+                        sx={{ 
+                          fontSize: '0.7rem',
+                          height: 20,
+                          color: theme.palette.primary.main,
+                          borderColor: theme.palette.primary.main
+                  }}
+                      />
+                    </Tooltip>
+                  </Box>
+                )}
+
+                {/* Google Contacts Sync Button */}
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Button
+                    startIcon={
+                      <Box 
+                        component="img" 
+                        src="https://fonts.gstatic.com/s/i/productlogos/contacts/v14/24px.svg"
+                        alt="Google Contacts"
+                        sx={{ width: 20, height: 20 }}
+                      />
+                }
+                    variant="outlined"
+                    disabled={googleContactsStatus === 'syncing'}
+                    sx={{ 
+                      color: googleContactsStatus === 'success' ? theme.palette.success.main : textSecondary,
+                      borderColor: googleContactsStatus === 'success' ? theme.palette.success.main : 'rgba(6, 133, 244, 0.3)','&:hover': {
+                        borderColor: theme.palette.success.main,
+                        bgcolor: 'rgba(6, 175, 80, 0.1)'
+                  }
+                }}
+                    onClick={syncGoogleContacts}
+                  >
+                    {googleContactsStatus === 'syncing' ? 'Synkroniserer...' : 
+                     googleContactsStatus === 'success' ? 'Google Contacts' : 'Sync Contacts'}
+                  </Button>
+                  <Tooltip title="Synkroniserer kontakter fra Google People API for prosjektkollegaer og kunder">
+                    <Chip 
+                      label="Google People" 
+                      size="small" 
+                      variant="outlined"
+                      sx={{ 
+                        fontSize: '0.7rem',
+                        height: 20,
+                        color: theme.palette.secondary.main,
+                        borderColor: theme.palette.secondary.main
+                }}
+                    />
+                  </Tooltip>
+                </Box>
+
+                {/* AI Analysis Button for Music Producers */}
+                {profession === 'music_producer' && enableAIAnalysis && (
+                  <Button
+                    startIcon={isAnalyzing ? <CircularProgress size={16} /> : <AutoFixHigh />}
+                    variant="outlined"
+                    disabled={isAnalyzing || !selectedItem}
+                    sx={{ 
+                      color: textSecondary,
+                      borderColor: 'rgba(16, 39, 176, 0.3)','&:hover': {
+                        borderColor: theme.palette.secondary.main,
+                        bgcolor: 'rgba(16, 39, 176, 0.1)'
+                      }
+                    }}
+                    onClick={() => selectedItem && analyzeAudioContent(selectedItem)}
+                  >
+                    {isAnalyzing ? 'Analyserer...' : 'AI Analyse'}
+                  </Button>
+                )}
+
+                {/* Real-time Collaboration Indicator */}
+                {enableRealTimeSync && (
+                  <Chip
+                    icon={<Chat />}
+                    label={`${activeCollaborators.size} aktive`}
+                    color="primary"
+                    variant="outlined"
+                    size="small"
+                  />
+                )}
+                
+                {adminMode && (
+                  <Button
+                    startIcon={<Settings />}
+                    variant="outlined"
+                    sx={{ 
+                      color: textSecondary,
+                      borderColor: 'rgba(2, 5, 5, 107, 53, 0.3)','&:hover': {
+                        borderColor: accentColor,
+                        bgcolor: 'rgba(2, 5, 5, 107, 53, 0.1)'
+                  }
+                }}
+                  >
+                    Admin
+                  </Button>
+                )}
+              </>
+            )}
+            <IconButton 
+              onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')}
+              sx={{ color: 'rgba(2, 5, 5,255,255,0.7)' }}
+            >
+              {viewMode === 'grid' ? <ViewList /> : <GridView />}
+            </IconButton>
+            
+            {/* Workflow Executor Button */}
+            <Tooltip title="One-Click Workflows">
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={<PlayArrow />}
+                onClick={() => setShowWorkflowExecutor(true)}
+                sx={{
+                  borderColor: accentColor,
+                  color: accentColor,
+                  textTransform: 'none','&:hover': {
+                    borderColor: accentColor,
+                    bgcolor: `${accentColor}20`
+                  }
+                }}
+              >
+                Workflows
+              </Button>
+            </Tooltip>
+            
+            {/* Activity Feed Button */}
+            <Tooltip title="Activity Feed">
+              <IconButton
+                size="small"
+                onClick={() => setActivityFeedOpen(true)}
+                sx={{
+                  color: 'rgba(2, 5, 5,255,255,0.7)','&:hover': {
+                    color: accentColor,
+                    bgcolor: `${accentColor}20`
+                  }
+                }}
+              >
+                <Notifications />
+              </IconButton>
+            </Tooltip>
+            
+            {/* Comparison View Button */}
+            <Tooltip title="Compare Items">
+              <IconButton
+                size="small"
+                onClick={() => setComparisonViewOpen(true)}
+                disabled={selectedImages.size < 2}
+                sx={{
+                  color: selectedImages.size >= 2 ? 'rgba(2, 5, 5,255,255,0.7)' : 'rgba(2, 5, 5,255,255,0.3)','&:hover': {
+                    color: accentColor,
+                    bgcolor: `${accentColor}20`
+                  }
+                }}
+              >
+                <Compare />
+              </IconButton>
+            </Tooltip>
+            
+            {/* Keyboard Shortcuts Hint */}
+            <Tooltip title="Press ? for keyboard shortcuts">
+              <Chip
+                label="?"
+                size="small"
+                onClick={() => setShowKeyboardShortcuts(true)}
+                sx={{
+                  bgcolor: 'rgba(255, 107, 53, 0.1)',
+                  color: accentColor,
+                  border: `1px solid ${accentColor}40`,
+                  cursor: 'pointer',
+                  fontFamily: 'monospace',
+                  fontWeight: 70, '&:hover': {
+                    bgcolor: 'rgba(255, 107, 53, 0.2)',
+                    borderColor: accentColor
+                  }
+                }}
+              />
+            </Tooltip>
+          </Stack>
+        </Box>
+
+        {/* Client Activity Section */}
+        {showClientActivity && (
+          <Box sx={{ p: 3 }}>
+            <ClientActivityPanel
+              profession={profession}
+              accentColor={accentColor}
+              userId={userId}
+              onActivityClick={(activity) => {
+                // Handle activity click - navigate to relevant item
+                console.log('Activity clicked:', activity);
+                setShowClientActivity(false);
+              }}
+            />
+          </Box>
+        )}
+        
+        {/* Smart Collections Section */}
+        {showSmartCollections && !showClientActivity && (
+          <SmartCollections
+            items={filteredItems}
+            profession={profession}
+            accentColor={accentColor}
+            onCollectionSelect={(collection) => {
+              // Filter items based on collection
+              setShowSmartCollections(false);
+            }}
+            onItemSelect={(item) => {
+              setSelectedItem(item as any);
+              setShowSmartCollections(false);
+            }}
+          />
+        )}
+        
+        {/* Featured Media Display */}
+        {currentFeaturedItem && !showSmartCollections && !showClientActivity && (
+          <Box sx={{ p: 3, borderBottom: '1px solid rgba(2, 5, 5,255,255,0.1)' }}>
+            <Box sx={{ 
+              position: 'relative',
+              borderRadius: 2,
+              overflow: 'hidden',
+              bgcolor: '#00',
+              height: 400 }}>
+              {profession === 'photographer' ? (
+                <img
+                  src={currentFeaturedItem.fileUrl || currentFeaturedItem.thumbnailUrl || 'https://images.unsplash.com/photo-1516035069371-29a1b244cc32?w=400&h=300&fit=crop'}
+                  alt={currentFeaturedItem.title}
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'cover'
+                  }}
+                />
+              ) : profession === 'videographer' ? (
+                <ElegantVideoPlayer
+                  videoUrl={currentFeaturedItem.fileUrl || 'https://sample-videos.com/zip/10/mp4/SampleVideo_1280x720_1mb.mp'}
+                  title={currentFeaturedItem.title}
+                  description={currentFeaturedItem.description}
+                  thumbnailUrl={currentFeaturedItem.thumbnailUrl}
+                  autoPlay={false}
+                />
+              ) : (
+                <Box sx={{
+                  width: '100%',
+                  height: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  bgcolor: '#1a1f2e'
+                }}>
+                  {config.icon}
+                  <Typography variant="h6" sx={{ ml: 2, color: '#fff'}}>
+                    {currentFeaturedItem.title}
+                  </Typography>
+                </Box>
+              )}
+              
+              {/* Video Info Overlay */}
+              <Box sx={{
+                position: 'absolute',
+                bottom: 0,
+                left: 0,
+                right: 0,
+                background: 'linear-gradient(transparent, rgba(0,0,0,0.8))',
+                p: 3,
+                color: '#fff'}}>
+                <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>
+                  {currentFeaturedItem.title}
+                </Typography>
+                <Typography variant="body2" sx={{ opacity: 0.7, mb: 2 }}>
+                  {currentFeaturedItem.description}
+                </Typography>
+                
+                <Stack direction="row" spacing={1}>
+                  {currentFeaturedItem.tags?.slice(0, 3).map(tag => (
+                    <Chip 
+                      key={tag}
+                      label={tag}
+                      size="small"
+                      sx={{ 
+                        bgcolor: 'rgba(2, 5, 5,255,255,0.2)',
+                        color: '#fff',
+                        fontSize: '0.7rem'
+                      }}
+                    />
+                  ))}
+                </Stack>
+              </Box>
+            </Box>
+          </Box>
+        )}
+
+        {/* Multi-Day Categories Display */}
+        {showMultiDayView && dayCategories.length > 0 && (
+          <Box sx={{ 
+            p: 3, 
+            borderBottom: '1px solid rgba(2, 5, 5, 107, 53, 0.15)',
+            background: 'linear-gradient(135deg, rgba(2, 5, 5, 107, 53, 0.03) 0%, rgba(2, 4, 7, 147, 30, 0.01) 100%)'
+      }}>
+            <Typography variant="h6" sx={{ 
+              fontWeight: 600, 
+              color: textPrimary, 
+              mb: 2,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 1 }}>
+              <CalendarMonth sx={{ color: accentColor }} />
+              Multi-dag Prosjekter ({dayCategories.length})
+            </Typography>
+            
+            <Stack spacing={2}>
+              {dayCategories.map((categoryGroup, index) => (
+                <Box key={index} sx={{ 
+                  bgcolor: 'rgba(25, 255, 255, 0.03)',
+                  borderRadius: 2,
+                  p: 2,
+                  border: '1px solid rgba(2, 5, 5, 107, 53, 0.1)'
+            }}>
+                  <Typography variant="subtitle1" sx={{ 
+                    fontWeight: 600, 
+                    color: textPrimary, 
+                    mb: 1 }}>
+                    {categoryGroup.baseCategory}
+                  </Typography>
+                  
+                  <Stack direction="row" spacing={1} flexWrap="wrap">
+                    {categoryGroup.days.map((day: any, dayIndex: number) => (
+                      <Chip
+                        key={dayIndex}
+                        label={`${day.name} (${day.hours}t)`}
+                        variant={selectedDayCategory === day.id ? "filled" : "outlined"}
+                        onClick={() => setSelectedDayCategory(
+                          selectedDayCategory === day.id ? null : day.id
+                        )}
+                        sx={{
+                          color: selectedDayCategory === day.id ? '#fff' : textSecondary,
+                          bgcolor: selectedDayCategory === day.id ? accentColor : 'transparent',
+                          borderColor: accentColor, '&:hover': {
+                            bgcolor: selectedDayCategory === day.id ? '#e64100' : 'rgba(255, 107, 53, 0.1)'
+                          },
+                          fontSize: '0.8rem',
+                          mb: 0.5
+                        }}
+                      />
+                    ))}
+                  </Stack>
+                </Box>
+              ))}
+            </Stack>
+          </Box>
+        )}
+
+        {/* Professional Content Grid */}
+        <Box sx={{ p: 3, flex: 1 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+            <Typography variant="h5" sx={{ 
+              fontWeight: 70, 
+              color: textPrimary,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 2 }}>
+              <Box sx={{
+                width:  3,
+                height:  24,
+                bgcolor: accentColor,
+                borderRadius: '2px'
+        }} />
+              {profession === 'photographer' ? 'Portefølje Galeri' : 
+               profession === 'videographer' ? 'Video Produksjoner' : 
+               profession === 'music_producer' ? 'Musikk Katalog' : 'Kreative Arbeider'}
+            </Typography>
+            
+            <Stack direction="row" spacing={1}>
+              {profession === 'photographer' && pricingData && (
+                <Button startIcon={<AttachMoney />}
+                  onClick={openPricingModal}
+                  variant="contained"
+                  color="primary"
+                  sx={{ 
+                    bgcolor: 'success.main','&:hover': { bgcolor: 'success.dark',}
+              }}
+                >
+                  Prisadministrasjon
+                </Button>
+              )}
+              <Button
+                startIcon={viewMode === 'grid' ? <ViewList /> : <GridView />}
+                onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')}
+                variant="outlined"
+                sx={{ 
+                  color: textSecondary,
+                  borderColor: 'rgba(2, 5, 5, 107, 53, 0.3)','&:hover': {
+                    borderColor: accentColor,
+                    bgcolor: 'rgba(2, 5, 5, 107, 53, 0.1)'
+              }
+            }}
+              >
+                {viewMode === 'grid' ? 'Liste' : 'Grid'}
+              </Button>
+            </Stack>
+          </Box>
+          
+          {/* File Upload Component - Shows after project selection */}
+          {showUploadComponent && selectedProject && (
+            <Box sx={{ 
+              p: 3, 
+              mb: 3, 
+              bgcolor: 'rgba(2, 5, 5, 107, 53, 0.05)', 
+              borderRadius: 2,
+              border: '1px solid rgba(2, 5, 5, 107, 53, 0.2)',
+              mx: 2 }}>
+              <Typography variant="h6" sx={{ mb: 2, color: accentColor, display: 'flex', alignItems: 'center', gap: 1 }}>
+                <CloudUpload />
+                Last opp filer til: {selectedProject.title}
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Prosjekt: {selectedProject.category} • {selectedProject.driveUrl ? 'Google Drive synkronisert' : 'Lokal lagring'}
+              </Typography>
+              
+              <UniversalFileUpload
+                profession={profession}
+                userId={effectiveUserId}
+                projectId={selectedProject.id.toString()}
+                enableGoogleDriveSync={!!selectedProject.driveUrl}
+                googleDriveFolderId={selectedProject.driveFolderId}
+                enableBackgroundUpload={true}
+                enableAdvancedQueue={true}
+                showStorageInfo={true}
+                showQueueStatus={true}
+                onUploadComplete={() => {
+                  console.log('Files uploaded successfully');
+                  // Try to use template-specific toast, fallback to custom
+                  showTemplateToast('showcase-upload-success', `Filer lastet opp vellykket!`);
+                  // Refresh showcase data
+                  queryClient.invalidateQueries({ queryKey: [`/api/showcase/profession/${profession}`] });
+            }}
+                onUploadError={(error, file) => {
+                  console.error('Upload error:', error, file);
+            }}
+              />
+            </Box>
+          )}
+          
+          {items.length === 0 ? (
+            <Box sx={{ 
+              textAlign: 'center', 
+              py: 12,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 4,
+              background: 'radial-gradient(ellipse at center, rgba(2, 5, 5, 107, 53, 0.05) 0%, transparent 70%)',
+              borderRadius: 3,
+              mx: 2 }}>
+              {/* Elegant profession icon with floating animation */}
+              <Box sx={{
+                width: 10,
+                height: 10,
+                borderRadius: '50%',
+                background: 'linear-gradient(135deg, rgba(2, 5, 5, 107, 53, 0.15), rgba(2, 5, 5, 140, 0, 0.1))',
+                border: '3px solid rgba(2, 5, 5, 107, 53, 0.3)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#ff6b35',
+                fontSize: '3rem',
+                boxShadow: '0 8px 32px rgba(2, 5, 5, 107, 53, 0.2), inset 0 1px 0 rgba(2, 5, 5, 255, 255, 0.1)',
+                position: 'relative','&::before': {
+                  content: ', ""',
+                  position: 'absolute',
+                  inset: -2,
+                  borderRadius: '50%',
+                  background: 'linear-gradient(45deg, rgba(255, 107, 53, 0.4), transparent, rgba(255, 140, 0, 0.4))',
+                    zIndex: -1,
+                  animation: 'rotate 3s linear infinite'
+                }, '@keyframes rotate': {
+                  '0%': { transform: 'rotate(0deg)' }, '100%': { transform: 'rotate(360deg)' }
+                }
+              }}>
+                {config.icon}
+              </Box>
+
+              {/* Elegant empty state messages with glassmorphism */}
+              <Paper elevation={0} sx={{ 
+                textAlign: 'center', 
+                maxWidth: 50,
+                background: 'rgba(25, 255, 255, 0.05)',
+                backdropFilter: 'blur(20px)',
+                border: '1px solid rgba(25, 255, 255, 0.1)',
+                borderRadius: 3,
+                p: 4 }}>
+                <Typography variant="h4" sx={{ 
+                  fontWeight: 70, 
+                  color: '#fff', 
+                  mb: 2,
+                  background: 'linear-gradient(135deg, #ff6b35, #ff8c00)',
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent'
+          }}>
+                  Bygg din profesjonelle portefølje
+                </Typography>
+                <Typography variant="h6" sx={{ 
+                  color: 'rgba(2, 5, 5,255,255,0.8)',
+                  mb: 4,
+                  lineHeight: 1.7,
+                  fontWeight: 300}}>
+                  {profession === 'photographer' ? 
+                    'Vis dine beste fotografier til kunder med vårt avanserte galleri-system. Automatisk prissetting og kundevalg inkludert.' : 
+                   profession === 'videographer' ? 
+                    'Presenter dine videoprosjekter profesjonelt med elegant video-player og kundetilgang.' : 
+                   profession === 'music_producer' ?
+                    'Del dine musikalske kreasjoner med artister gjennom vårt lydgalleri-system.' :
+                    'Bygg en imponerende digital portefølje som viser ditt profesjonelle arbeid.'}
+                </Typography>
+
+                {/* Enhanced CTA Button */}
+                <Button variant="contained"
+                  size="large"
+                  startIcon={<Add />}
+                  sx={{
+                    background: 'linear-gradient(135deg, #ff6b35, #ff8c00, #ffa500)',
+                    color: 'white',
+                    py: 2,
+                    px: 6,
+                    borderRadius: 3,
+                    fontWeight: 70,
+                    fontSize: '1.2rem',
+                    textTransform: 'none',
+                    boxShadow: '0 8px 32px rgba(255, 107, 53, 0.4), 0 4px 16px rgba(255, 140, 0, 0.3)',
+                    border: '1px solid rgba(255, 255, 255, 0.2)',
+                    position: 'relative',
+                    overflow: 'hidden','&:hover': {
+                      background: 'linear-gradient(135deg, #ff8c00, #ffa500, #ff6b35)',
+                      transform: 'translateY(-3px) scale(1.02)',
+                      boxShadow: '0 12px 40px rgba(255, 107, 53, 0.5), 0 6px 20px rgba(255, 140, 0, 0.4)'
+                    }, '&:active': {
+                      transform: 'translateY(-1px) scale(1.01)'
+                    }, '&::before': {
+                      content: '""',
+                      position: 'absolute',
+                      top: 0,
+                      left: '-100%',
+                      width: '100%',
+                      height: '100%',
+                      background: 'linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent)',
+                      transition: 'left 0.5s'
+                    }, '&:hover::before': {
+                      left: '100%'
+                    },
+                    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
+                  }}
+                  onClick={() => setProjectSelectorOpen(true)}
+                >
+                  Kom i gang med showcase
+                </Button>
+
+                {/* Feature highlights */}
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3, mt: 4 }}>
+                  <Box sx={{ flex: { xs: '1 1 33.333%' }, maxWidth: { xs: '33.333%' } }}>
+                    <Box sx={{ textAlign: 'center' }}>
+                      <AttachMoney sx={{ fontSize: 32, color: '#ff6b35', mb: 1 }} />
+                      <Typography variant="caption" sx={{ color: 'rgba(2, 5, 5,255,255,0.7)', display: 'block' }}>
+                        Automatisk prissetting
+                      </Typography>
+                    </Box>
+                  </Box>
+                  <Box sx={{ flex: { xs: '1 1 33.333%' }, maxWidth: { xs: '33.333%' } }}>
+                    <Box sx={{ textAlign: 'center' }}>
+                      <Visibility sx={{ fontSize: 32, color: '#ff8c00', mb: 1 }} />
+                      <Typography variant="caption" sx={{ color: 'rgba(2, 5, 5,255,255,0.7)', display: 'block' }}>
+                        Profesjonell visning
+                      </Typography>
+                    </Box>
+                  </Box>
+                  <Box sx={{ flex: { xs: '1 1 33.333%' }, maxWidth: { xs: '33.333%' } }}>
+                    <Box sx={{ textAlign: 'center' }}>
+                      <ShoppingCart sx={{ fontSize: 32, color: '#4caf50', mb: 1 }} />
+                      <Typography variant="caption" sx={{ color: 'rgba(2, 5, 5,255,255,0.7)', display: 'block' }}>
+                        Kunde-selv-tjeneste
+                      </Typography>
+                    </Box>
+                  </Box>
+                </Box>
+              </Paper>
+            </Box>
+          ) : showcasesError ? (
+            <Box sx={{ 
+              textAlign: 'center', 
+              py: 8,
+              color: 'rgba(2, 5, 5,255,255,0.7)'
+        }}>
+              <Typography variant="h6" sx={{ mb: 2 }}>
+                Kunne ikke laste prosjekter. Prøv igjen senere.
+              </Typography>
+              <Button 
+                variant="outlined" 
+                onClick={() => window.location.reload()}
+                sx={{ 
+                  borderColor: '#ff8c00',
+                  color: '#ff8c00','&:hover': {
+                    borderColor: '#ff6b35',
+                    color: '#ff6b35'
+                  }
+                }}
+              >
+                Prøv igjen
+              </Button>
+            </Box>
+          ) : (
+            <Box sx={{
+              display: 'grid',
+              gridTemplateColumns: `repeat(${showcaseSettings.gridColumns}, 1fr)`,
+              gap: (showcaseSettings.cardSpacing as string) === 'tight' ? 1 :
+                     (showcaseSettings.cardSpacing as string) === 'normal' ? 2 : 3, '@media (max-width: 768px)': {
+                gridTemplateColumns: `repeat(${showcaseSettings.mobileColumns}, 1fr)`,
+                gap: (showcaseSettings.cardSpacing as string) === 'tight' ? 0.5 :
+                     (showcaseSettings.cardSpacing as string) === 'normal' ? 1 : 2
+              }
+            }}>
+              {filteredItems.slice(1, (showcaseSettings.maxItemsPerPage as number) === 999 ? filteredItems.length : (showcaseSettings.maxItemsPerPage as number)).map((item: ShowcaseItem) => (
+                <ShowcaseCard
+                  adminMode={adminMode}
+                  onOpenProject={handleOpenProjectFromShowcase}
+                  key={item.id}
+                  item={item}
+                  profession={profession}
+                  accentColor={accentColor}
+                  clientMode={clientMode}
+                  clientSelections={clientSelections}
+                  handleClientSelection={handleClientSelection}
+                  favorites={favorites}
+                  toggleFavorite={toggleFavorite}
+                  showComments={showComments}
+                  setShowComments={setShowComments}
+                  setSelectedItem={setSelectedItem}
+                  handleDownload={handleDownload}
+                  showcaseSettings={showcaseSettings}
+                  analytics={analytics}
+                  effectiveUserId={effectiveUserId}
+                  addNotification={addNotification}
+                  features={features}
+                  setSelectedItemForPublish={setSelectedItemForPublish}
+                  setShowPublishToAcademyDialog={setShowPublishToAcademyDialog}
+                  setSelectedItemForCommunityShare={setSelectedItemForCommunityShare}
+                  setShowShareToCommunityDialog={setShowShareToCommunityDialog}
+                  projectState={projectState}
+                />
+              ))}
+            </Box>
+          )}
+          
+          {/* Client Submission Actions */}
+          {clientMode && sessionData && clientSelections.length > 0 && (
+            <Box sx={{
+          position: 'fixed',
+          bottom: 20,
+          left: '50%',
+          transform: 'translateX(-50%)',
+          zIndex: 12,
+          display: 'flex',
+          gap: 2,
+          bgcolor: 'rgba(6, 31, 46, 0.95)',
+          backdropFilter: 'blur(20px)',
+                borderRadius: 3,
+          p: 2,
+          border: '1px solid rgba(2, 5, 5, 107, 53, 0.3)',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.3)'
+        }}>
+          <Typography variant="body1" sx={{ 
+            color: '#fff', 
+            alignSelf: 'center',
+            mr: 2 }}>
+            {clientSelections.length} bilder valgt
+          </Typography>
+          
+          <Button variant="contained"
+            size="large"
+            onClick={async () => {
+              try {
+                const response = await fetch('/api/showcase/client-submissions', {
+                  method: 'POST',
+                  headers: { 'Content-Type' : 'application/json' },
+                  body: JSON.stringify({
+                    sessionId: proofingSession?.id,
+                    clientEmail,
+                    submissionComment: clientComment,
+                    selectedItems: clientSelections
+                  })
+                });
+                
+                if (response.ok) {
+                  showToastWithActions(
+                    'Ditt utvalg er sendt til fotografen!','success',
+                    [
+                      {
+                        label: 'Se Utvalg',
+                        action: () => {
+                          // Show selected items - scroll to selections
+                          window.scrollTo({ top: 0, behavior: 'smooth' });
+                        }
+                      },
+                      {
+                        label: 'Legg til Kommentar',
+                        action: () => {
+                          // Open comment dialog - focus on comment input
+                          const commentInput = document.querySelector('input[placeholder*="kommentar"]') as HTMLInputElement;
+                          if (commentInput) {
+                            commentInput.focus();
+                          }
+                        }
+                      }
+                    ]
+                  );
+                  // Optionally reload or redirect
+                }
+              } catch (error) {
+                // Error submitting selections - handled by error boundary
+                showErrorToast('Feil ved innsending av utvalg. Prøv igjen.');
+              }
+            }}
+            sx={{
+              bgcolor: accentColor,
+              color: '#fff',
+              px: 4,
+              py: 1.5,
+              borderRadius: 2,
+              fontWeight: 600, '&:hover': {
+                bgcolor: '#e64100'
+              }
+            }}
+          >
+            Send utvalg til fotograf
+            </Button>
+            </Box>
+          )}
+        </Box>
+      </Box>
+
+      {/* Project Selector Modal */}
+      <ProjectSelectorModal
+        open={projectSelectorOpen}
+        onOpenChange={setProjectSelectorOpen}
+        profession={profession}
+        onProjectSelected={handleProjectSelected}
+      />
+      
+      {/* Pricing Modal - Integrated pricing administration */}
+      <Dialog open={showPricing} onClose={() => setShowPricing(false)} maxWidth="md" fullWidth>
+        <DialogContent>
+          <Box sx={{ p: 2 }}>
+            <Typography variant="h5" sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <AttachMoney />
+              Prisadministrasjon - {profession === 'photographer' ? 'Bildekjøp' : 'Innholdskjøp'}
+            </Typography>
+            
+            {/* Selected Images Summary */}
+            <Paper sx={{ p: 2, mb: 3, bgcolor: 'background.paper' }}>
+              <Typography variant="h6" gutterBottom>Valgte elementer</Typography>
+              <Typography variant="body1">
+                {selectedImages.size} {profession === 'photographer' ? 'bilder' : 'elementer'} valgt
+              </Typography>
+              
+              {pricingData && (
+                <Box sx={{ mt: 2 }}>
+                  <Typography variant="body2" color="text.secondary">
+                    Inkludert i kontrakt: {pricingData.projectPricing?.contracted_images || 0}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Ekstra: {Math.max(0, selectedImages.size - (pricingData.projectPricing?.contracted_images || 0))}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Pris per ekstra: {(() => {
+                      try {
+                        if (pricingData.projectPricing?.per_image) {
+                          return formatCurrency(pricingData.projectPricing.per_image, 'NOK');
+                        } else if (pricingData.pricing?.perImage) {
+                            return formatCurrency(pricingData.pricing.perImage, 'NOK');
+                        } else {
+                          // Use default fallback pricing
+                          return formatCurrency(150, 'NOK');
+                        }
+                      } catch (error) {
+                        return '150 NOK';
+                      }
+                })()}
+                  </Typography>
+                </Box>
+              )}
+            </Paper>
+            
+            {/* Price Calculation */}
+            <Paper sx={{ p: 2, mb: 3, bgcolor: 'success.light', color: 'success.contrastText' }}>
+              <Typography variant="h6">
+                Totalpris: {calculatePrice()} NOK
+              </Typography>
+              <Typography variant="body2">
+                {selectedImages.size > (pricingData?.projectPricing?.contracted_images || 0) 
+                  ? `Inkluderer ${Math.max(0, selectedImages.size - (pricingData?.projectPricing?.contracted_images || 0))} ekstra ${profession === 'photographer' ? 'bilder' : 'elementer'}`
+                  : 'Alle valgte elementer er inkludert i kontrakten'
+                }
+              </Typography>
+            </Paper>
+            
+            {/* Package Options */}
+            {pricingData?.pricing?.packages && (
+              <Paper sx={{ p: 2, mb: 3 }}>
+                <Typography variant="h6" gutterBottom>Pakketilbud</Typography>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
+                  {pricingData.pricing.packages.map((pkg: { id: string; name: string; price: number; description: string; images?: number; minutes?: number; tracks?: number; savings?: number }) => (
+                    <Box sx={{ flex: { xs: '1 1 100%', md: '1 1 33.333%' }, maxWidth: { xs: '100%', md: '33.333%' } }} key={pkg.id}>
+                      <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'background.default' }}>
+                        <Typography variant="subtitle1" fontWeight="bold">
+                          {profession === 'photographer' ? `${pkg.images} bilder` : `${pkg.minutes || pkg.tracks} ${profession === 'videographer' ? 'minutter' : 'låter'}`}
+                        </Typography>
+                        <Typography variant="h6" color="primary">
+                          {pkg.price} NOK
+                        </Typography>
+                        {(pkg.savings || 0) > 0 && (
+                          <Chip label={`Spar ${pkg.savings} NOK`} color="success" size="small" sx={{ mt: 1 }} />
+                        )}
+                      </Paper>
+                    </Box>
+                  ))}
+                </Box>
+              </Paper>
+            )}
+            
+            {/* Action Buttons */}
+            <Stack direction="row" spacing={2} sx={{ mt: 3 }}>
+              <Button
+                variant="outlined"
+                onClick={() => setShowPricing(false)}
+                fullWidth
+              >
+                Avbryt
+              </Button>
+              <Button variant="contained"
+                onClick={handleCheckout}
+                disabled={selectedImages.size === 0}
+                startIcon={<Payment />}
+                fullWidth
+              >
+                Bestill ({calculatePrice()} NOK)
+              </Button>
+            </Stack>
+          </Box>
+        </DialogContent>
+      </Dialog>
+      
+      {/* CreatorHub Photo Enhancer Dialog */}
+      <Dialog open={showPhotoEnhancer} onClose={() => setShowPhotoEnhancer(false)} maxWidth="md" fullWidth>
+        <DialogContent>
+          <Box sx={{ p: 2 }}>
+            <Typography variant="h5" sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Palette />
+              CreatorHub Photo Enhancer
+            </Typography>
+            
+            {/* Selected Images Summary */}
+            <Paper sx={{ p: 2, mb: 3, bgcolor: 'background.paper' }}>
+              <Typography variant="h6" gutterBottom>Valgte bilder</Typography>
+              <Typography variant="body1">
+                {selectedImages.size === 1 
+                  ? '1 bilde valgt for forbedring'
+                  : `${selectedImages.size} bilder valgt for forbedring`
+            }
+              </Typography>
+            </Paper>
+            
+            {/* Enhancement Presets */}
+            <Paper sx={{ p: 2, mb: 3 }}>
+              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <AutoFixHigh />
+                Forhåndsinnstillinger
+              </Typography>
+              <FormControl fullWidth sx={{ mb: 2 }}>
+                <InputLabel>Velg type fotografi</InputLabel>
+                <Select
+                  value={selectedPhotoPreset}
+                  onChange={(e) => setSelectedPhotoPreset((e.target as HTMLSelectElement).value)}
+                  label="Velg type fotografi"
+                >
+                  <MenuItem value="portrait">Portrett</MenuItem>
+                  <MenuItem value="wedding">Bryllup</MenuItem>
+                  <MenuItem value="landscape">Landskap</MenuItem>
+                  <MenuItem value="product">Produkt</MenuItem>
+                  <MenuItem value="event">Event</MenuItem>
+                  <MenuItem value="custom">Tilpasset</MenuItem>
+                </Select>
+              </FormControl>
+              
+              {enhancementPresets[selectedPreset] && (
+                <Typography variant="body2" color="text.secondary">
+                  {enhancementPresets[selectedPreset].description}
+                </Typography>
+              )}
+            </Paper>
+            
+            {/* Custom Enhancement Options - Only visible when custom is selected */}
+            {selectedPreset === 'custom' && (
+              <Paper sx={{ p: 2, mb: 3 }}>
+                <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Tune />
+                  Tilpassede innstillinger
+                </Typography>
+                
+                <Box sx={{ mb: 2 }}>
+                  <Typography gutterBottom>Lysstyrke</Typography>
+                  <Slider
+                    value={customEnhancementOptions.brightness}
+                    onChange={(_, value) => setCustomEnhancementOptions(prev => ({ ...prev, brightness: value as number }))}
+                    min={-50}
+                    max={50}
+                    step={1}
+                    valueLabelDisplay="auto"
+                  />
+                </Box>
+                
+                <Box sx={{ mb: 2 }}>
+                  <Typography gutterBottom>Kontrast</Typography>
+                  <Slider
+                    value={customEnhancementOptions.contrast}
+                    onChange={(_, value) => setCustomEnhancementOptions(prev => ({ ...prev, contrast: value as number }))}
+                    min={0.5}
+                    max={2.0}
+                    step={0.1}
+                    valueLabelDisplay="auto"
+                  />
+                </Box>
+                
+                <Box sx={{ mb: 2 }}>
+                  <Typography gutterBottom>Metning</Typography>
+                  <Slider
+                    value={customEnhancementOptions.saturation}
+                    onChange={(_, value) => setCustomEnhancementOptions(prev => ({ ...prev, saturation: value as number }))}
+                    min={-50}
+                    max={50}
+                    step={1}
+                    valueLabelDisplay="auto"
+                  />
+                </Box>
+                
+                <Box sx={{ mb: 2 }}>
+                  <Typography gutterBottom>Skarphet</Typography>
+                  <Slider
+                    value={customEnhancementOptions.sharpening}
+                    onChange={(_, value) => setCustomEnhancementOptions(prev => ({ ...prev, sharpening: value as number }))}
+                    min={0.5}
+                    max={2.0}
+                    step={0.1}
+                    valueLabelDisplay="auto"
+                  />
+                </Box>
+                
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={customEnhancementOptions.noiseReduction}
+                      onChange={(e) => setCustomEnhancementOptions(prev => ({ ...prev, noiseReduction: e.target.checked }))}
+                    />
+              }
+                  label="Støyreduksjon"
+                />
+                
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={customEnhancementOptions.autoTone}
+                      onChange={(e) => setCustomEnhancementOptions(prev => ({ ...prev, autoTone: e.target.checked }))}
+                    />
+              }
+                  label="Automatisk tonejustering"
+                />
+              </Paper>
+            )}
+            
+            {/* Progress Indicator */}
+            {isEnhancing && (
+              <Paper sx={{ p: 2, mb: 3, bgcolor: 'primary.light' }}>
+                <Typography variant="h6" gutterBottom>Forbedrer bilder...</Typography>
+                <LinearProgress 
+                  variant="determinate" 
+                  value={enhancementProgress}
+                  sx={{ mb: 1 }}
+                />
+                <Typography variant="body2" color="text.secondary">
+                  {enhancementProgress}% fullført
+                </Typography>
+              </Paper>
+            )}
+            
+            {/* Action Buttons */}
+            <Stack direction="row" spacing={2} sx={{ mt: 3 }}>
+              <Button
+                variant="outlined"
+                onClick={() => setShowPhotoEnhancer(false)}
+                disabled={isEnhancing}
+                fullWidth
+              >
+                Avbryt
+              </Button>
+              <Button variant="contained"
+                onClick={executeEnhancement}
+                disabled={selectedImages.size === 0 || isEnhancing}
+                startIcon={isEnhancing ? <CircularProgress size={20} /> : <AutoFixHigh />}
+                sx={{ bgcolor: '#ff6f00','&:hover': { bgcolor: '#e65100' } }}
+                fullWidth
+              >
+                {isEnhancing 
+                  ? 'Forbedrer...' 
+                  : `Forbedre ${selectedImages.size} ${selectedImages.size === 1 ? 'bilde' : 'bilder'}`
+                }
+              </Button>
+            </Stack>
+          </Box>
+        </DialogContent>
+      </Dialog>
+
+      {/* Watermark Dialog */}
+      <Dialog open={showWatermarkDialog} onClose={() => setShowWatermarkDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Copyright />
+          Sett vannmerke på {selectedImages.size} bilde{selectedImages.size !== 1 ? 'r' : ','}
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ pt: 2 }}>
+            <TextField
+              fullWidth
+              label="Vannmerke tekst"
+              value={watermarkText}
+              onChange={(e) => setWatermarkText((e.target as HTMLInputElement).value)}
+              sx={{ mb: 3 }}
+            />
+            
+            <FormControl fullWidth sx={{ mb: 3 }}>
+              <InputLabel>Posisjon</InputLabel>
+              <Select
+                value={watermarkPosition}
+                onChange={(e) => setWatermarkPosition(e.target.value)}
+                label="Posisjon"
+              >
+                <MenuItem value="top-left">Øverst til venstre</MenuItem>
+                <MenuItem value="top-right">Øverst til høyre</MenuItem>
+                <MenuItem value="bottom-left">Nederst til venstre</MenuItem>
+                <MenuItem value="bottom-right">Nederst til høyre</MenuItem>
+                <MenuItem value="center">Midt på bildet</MenuItem>
+              </Select>
+            </FormControl>
+            
+            <Box sx={{ mb: 2 }}>
+              <Typography gutterBottom>Gjennomsiktighet</Typography>
+              <Slider
+                value={watermarkOpacity}
+                onChange={(_, value) => setWatermarkOpacity(value as number)}
+                min={0.1}
+                max={1.0}
+                step={0.1}
+                valueLabelDisplay="auto"
+                valueLabelFormat={(value) => `${Math.round(value * 100)}%`}
+              />
+            </Box>
+            
+            {isApplyingWatermark && (
+              <LinearProgress sx={{ mb: 2 }} />
+            )}
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowWatermarkDialog(false)} disabled={isApplyingWatermark}>
+            Avbryt
+          </Button>
+          <Button onClick={applyWatermark}
+            variant="contained" 
+            disabled={isApplyingWatermark || !watermarkText.trim()}
+            startIcon={isApplyingWatermark ? <CircularProgress size={20} /> : <Copyright />}
+          >
+            {isApplyingWatermark ? 'Setter vannmerke...' : 'Sett vannmerke'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Copy/Move Dialog */}
+      <Dialog open={showCopyMoveDialog} onClose={() => setShowCopyMoveDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          {copyMoveAction === 'copy' ? <ContentCopy /> : <DriveFileMove />}
+          {copyMoveAction === 'copy' ? 'Kopier' : 'Flytt'} {selectedImages.size} bilde{selectedImages.size !== 1 ? 'r' : ','}
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ pt: 2 }}>
+            <Typography variant="subtitle1" gutterBottom>
+              Velg destinasjon for {copyMoveAction === 'copy' ? 'kopiering' : 'flytting'}:
+            </Typography>
+            
+            <FormControl fullWidth sx={{ mb: 3 }}>
+              <InputLabel>Velg prosjekt</InputLabel>
+              <Select
+                value={selectedTargetProject}
+                onChange={(e) => setSelectedTargetProject(e.target.value)}
+                label="Velg prosjekt"
+              >
+                <MenuItem value="">
+                  <em>Velg prosjekt...</em>
+                </MenuItem>
+                {availableProjects.map((project) => (
+                  <MenuItem key={project.id} value={project.id}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <FolderOpen sx={{ fontSize: 16 }} />
+                      {project.name}
+                    </Box>
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            
+            <FormControl fullWidth sx={{ mb: 3 }}>
+              <InputLabel>Velg kategori</InputLabel>
+              <Select
+                value={selectedTargetCategory}
+                onChange={(e) => setSelectedTargetCategory(e.target.value)}
+                label="Velg kategori"
+              >
+                <MenuItem value="">
+                  <em>Velg kategori...</em>
+                </MenuItem>
+                {availableCategories.map((category) => (
+                  <MenuItem key={category} value={category}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Label sx={{ fontSize: 16 }} />
+                      {category}
+                    </Box>
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            
+            {isCopyingMoving && (
+              <LinearProgress sx={{ mb: 2 }} />
+            )}
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowCopyMoveDialog(false)} disabled={isCopyingMoving}>
+            Avbryt
+          </Button>
+          <Button onClick={executeCopyMove}
+            variant="contained" 
+            disabled={isCopyingMoving || (!selectedTargetProject && !selectedTargetCategory)}
+            startIcon={isCopyingMoving ? <CircularProgress size={20} /> : (copyMoveAction === 'copy' ? <ContentCopy /> : <DriveFileMove />)}
+          >
+            {isCopyingMoving ? 
+              (copyMoveAction === 'copy' ? 'Kopierer...' : 'Flytter...') : 
+              (copyMoveAction === 'copy' ? 'Kopier' : 'Flytt')
+            }
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Metadata Editor Dialog */}
+      <Dialog open={showMetadataEditor} onClose={() => setShowMetadataEditor(false)} maxWidth="md" fullWidth>
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Edit />
+          Rediger metadata for {selectedImages.size} bilde{selectedImages.size !== 1 ? 'r' : ','}
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ pt: 2 }}>
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
+              <Box sx={{ flex: { xs: '1 1 100%', sm: '1 1 50%' }, maxWidth: { xs: '100%', sm: '50%' } }}>
+                <TextField
+                  fullWidth
+                  label="Tittel"
+                  value={bulkMetadata.title}
+                  onChange={(e) => setBulkMetadata(prev => ({ ...prev, title: e.target.value }))}
+                  sx={{ mb: 2 }}
+                />
+              </Box>
+              <Box sx={{ flex: { xs: '1 1 100%', sm: '1 1 50%' }, maxWidth: { xs: '100%', sm: '50%' } }}>
+                <TextField
+                  fullWidth
+                  label="Lokasjon"
+                  value={bulkMetadata.location}
+                  onChange={(e) => setBulkMetadata(prev => ({ ...prev, location: e.target.value }))}
+                  sx={{ mb: 2 }}
+                />
+              </Box>
+              <Box sx={{ flex: { xs: '1 1 100%',}, maxWidth: { xs: '100%',} }}>
+                <TextField
+                  fullWidth
+                  multiline
+                  rows={3}
+                  label="Beskrivelse"
+                  value={bulkMetadata.description}
+                  onChange={(e) => setBulkMetadata(prev => ({ ...prev, description: e.target.value }))}
+                  sx={{ mb: 2 }}
+                />
+              </Box>
+              <Box sx={{ flex: { xs: '1 1 100%', sm: '1 1 50%' }, maxWidth: { xs: '100%', sm: '50%' } }}>
+                <TextField
+                  fullWidth
+                  label="Tags (separert med komma)"
+                  value={bulkMetadata.tags}
+                  onChange={(e) => setBulkMetadata(prev => ({ ...prev, tags: e.target.value }))}
+                  sx={{ mb: 2 }}
+                  placeholder="bryllup, portrett, utendørs"
+                />
+              </Box>
+              <Box sx={{ flex: { xs: '1 1 100%', sm: '1 1 50%' }, maxWidth: { xs: '100%', sm: '50%' } }}>
+                <TextField
+                  fullWidth
+                  label="Copyright"
+                  value={bulkMetadata.copyright}
+                  onChange={(e) => setBulkMetadata(prev => ({ ...prev, copyright: e.target.value }))}
+                  sx={{ mb: 2 }}
+                />
+              </Box>
+            </Box>
+            
+            <Divider sx={{ my: 3 }} />
+            
+            <Typography variant="h6" sx={{ mb: 2 }}>
+              Visningsinnstillinger - Velg hva som skal vises
+            </Typography>
+            <FormGroup>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={displayPreferences.showExif}
+                    onChange={(e) => setDisplayPreferences(prev => ({ ...prev, showExif: e.target.checked }))}
+                  />
+                }
+                label="Vis EXIF-data (kamera, ISO, blender, etc.)"
+              />
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={displayPreferences.showCameraInfo}
+                    onChange={(e) => setDisplayPreferences(prev => ({ ...prev, showCameraInfo: e.target.checked }))}
+                  />
+                }
+                label="Vis kamerainformasjon"
+              />
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={displayPreferences.showLocation}
+                    onChange={(e) => setDisplayPreferences(prev => ({ ...prev, showLocation: e.target.checked }))}
+                  />
+                }
+                label="Vis lokasjon"
+              />
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={displayPreferences.showTags}
+                    onChange={(e) => setDisplayPreferences(prev => ({ ...prev, showTags: e.target.checked }))}
+                  />
+                }
+                label="Vis tags"
+              />
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={displayPreferences.showCopyright}
+                    onChange={(e) => setDisplayPreferences(prev => ({ ...prev, showCopyright: e.target.checked }))}
+                  />
+                }
+                label="Vis copyright"
+              />
+            </FormGroup>
+            
+            {isProcessingBulkOperation && (
+              <Box sx={{ mt: 2 }}>
+                <LinearProgress variant="determinate" value={bulkOperationProgress} />
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                  {bulkOperationProgress}% fullført
+                </Typography>
+              </Box>
+            )}
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowMetadataEditor(false)} disabled={isProcessingBulkOperation}>
+            Avbryt
+          </Button>
+          <Button onClick={applyBulkMetadata}
+            variant="contained" 
+            disabled={isProcessingBulkOperation}
+            startIcon={isProcessingBulkOperation ? <CircularProgress size={20} /> : <Edit />}
+          >
+            {isProcessingBulkOperation ? 'Oppdaterer...' : 'Oppdater metadata'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+      
+      {/* Enhanced Floating Action Panel - Profession-Specific Management Suite */}
+      {selectedImages.size > 0 && profession === 'photographer' && (
+        <Box
+          sx={{
+            position: 'fixed',
+            top:  20,
+            right:  20,
+            zIndex: 14,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 1.5,
+            background: 'linear-gradient(135deg, rgba(2, 5, 5,255,255,0.95) 0%, rgba(2, 4, 8,250,252,0.95) 100%)',
+            backdropFilter: 'blur(20px)',
+                borderRadius: 3,
+            padding:  3,
+            boxShadow: '0 8px 32px blur\(\s*([0-9]+px)\s*,\s*\), 0,0,0,0.12)',
+            border: '1px solid rgba(2, 5, 5,255,255,0.2)',
+            minWidth: 30,
+            maxWidth: 30,
+            maxHeight: '80vh',
+            overflowY: 'auto'
+    }}
+        >
+          <Typography variant="h6" 
+            sx={{ 
+              fontWeight: 600,
+              background: 'linear-gradient(45deg, #FFA726, #FF7043)',
+              backgroundClip: 'text',
+              WebkitBackgroundClip: 'text',
+              color: 'transparent',
+              mb: 1,
+              textAlign: 'center'
+      }}
+>
+            {selectedImages.size} bilde{selectedImages.size !== 1 ? 'r' : ','} valgt
+          </Typography>
+
+          {/* Primary Enhancement Actions */}
+          <Button fullWidth
+            variant="contained"
+            startIcon={<AutoFixHigh />}
+            onClick={openPhotoEnhancer}
+            sx={{
+              background: 'linear-gradient(45deg, #FF7043, #FFA726)',
+              color: 'white',
+              fontWeight: 600,
+              textTransform: 'none',
+              boxShadow: '0 4px 20px rgba(2, 5, 5, 112, 67, 0.3)','&:hover': {
+                background: 'linear-gradient(45deg, #F4511E, #FF8F00)',
+                transform: 'translateY(-2px)',
+                boxShadow: '0 6px 25px rgba(2, 5, 5, 112, 67, 0.4)'
+              },
+              transition: 'all 0.3s ease',
+              mb: 1 }}
+          >
+            {selectedImages.size === 1 
+              ? 'Åpne i CreatorHub Photo Enhancer'
+              : `Rediger ${selectedImages.size} bilder i CreatorHub Photo Enhancer`
+            }
+          </Button>
+
+          {/* Google Photos Integration with Project Context */}
+          <Box sx={{ mb: 1 }}>
+            
+            <Button fullWidth
+              variant="contained"
+              startIcon={<PhotoLibrary />}
+              onClick={() => handleGooglePhotosEdit(Array.from(selectedImages))}
+              sx={{
+                background: `linear-gradient(45deg, ${theme.palette.primary.main}, ${theme.palette.success.main})`,
+                color: 'white',
+                fontWeight: 600,
+                textTransform: 'none',
+                boxShadow: '0 4px 20px rgba(66, 133, 244, 0.3)','&:hover': {
+                  background: 'linear-gradient(45deg, #3367D6, #137333)',
+                  transform: 'translateY(-2px)',
+                  boxShadow: '0 6px 25px rgba(66, 133, 244, 0.4)'
+                },
+                transition: 'all 0.3s ease'
+              }}
+            >
+              {selectedImages.size === 1 
+                ? `Rediger i Google Photos`
+                : `Send ${selectedImages.size} bilder til Google Photos`
+              }
+            </Button>
+          </Box>
+
+          <Divider sx={{ my: 1 }} />
+
+          {/* Image Management Operations */}
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+            <Box sx={{ flex: { xs: '1 1 50%' }, maxWidth: { xs: '50%' } }}>
+              <Button
+                fullWidth
+                variant="outlined"
+                startIcon={<Copyright />}
+                onClick={openWatermarkDialog}
+                size="small"
+                sx={{
+                  textTransform: 'none',
+                  fontWeight: 5,
+                  color: '#',
+                  borderColor: '#1976d2'
+          }}
+              >
+                {selectedImages.size === 1 ? 'Vannmerke' : `Vannmerke ${selectedImages.size}`}
+              </Button>
+            </Box>
+            <Box sx={{ flex: { xs: '1 1 50%' }, maxWidth: { xs: '50%' } }}>
+              <Button
+                fullWidth
+                variant="outlined"
+                startIcon={<ContentCopy />}
+                onClick={() => openCopyMoveDialog('copy')}
+                size="small"
+                sx={{
+                  textTransform: 'none',
+                  fontWeight: 5,
+                  color: '#388e30',
+                  borderColor: '#388e3c'
+          }}
+              >
+                Kopier
+              </Button>
+            </Box>
+            <Box sx={{ flex: { xs: '1 1 50%' }, maxWidth: { xs: '50%' } }}>
+              <Button
+                fullWidth
+                variant="outlined"
+                startIcon={<DriveFileMove />}
+                onClick={() => openCopyMoveDialog('move')}
+                size="small"
+                sx={{
+                  textTransform: 'none',
+                  fontWeight: 5,
+                  color: '#f57c00',
+                  borderColor: '#f57c00'
+          }}
+              >
+                Flytt
+              </Button>
+            </Box>
+            <Box sx={{ flex: { xs: '1 1 50%' }, maxWidth: { xs: '50%' } }}>
+              <Button
+                fullWidth
+                variant="outlined"
+                startIcon={<CloudDownload />}
+                onClick={() => executeBulkOperation('bulk-download')}
+                size="small"
+                sx={{
+                  textTransform: 'none',
+                  fontWeight: 5,
+                  color: '#',
+                  borderColor: '#7b1fa2'
+          }}
+              >
+                Last ned
+              </Button>
+            </Box>
+            <Box sx={{ flex: { xs: '1 1 50%' }, maxWidth: { xs: '50%' } }}>
+              <Button
+                fullWidth
+                variant="outlined"
+                startIcon={<Favorite />}
+                onClick={() => executeBulkOperation('toggle-favorite')}
+                size="small"
+                sx={{
+                  textTransform: 'none',
+                  fontWeight: 5,
+                  color: '#e91e63',
+                  borderColor: '#e91e63'
+          }}
+              >
+                Favoritt
+              </Button>
+            </Box>
+            <Box sx={{ flex: { xs: '1 1 50%' }, maxWidth: { xs: '50%' } }}>
+              <Button
+                fullWidth
+                variant="outlined"
+                startIcon={<Copyright />}
+                onClick={openWatermarkDialog}
+                size="small"
+                sx={{
+                  textTransform: 'none',
+                  fontWeight: 5,
+                  color: '#007960',
+                  borderColor: '#00796b'
+          }}
+              >
+                Vannmerke
+              </Button>
+            </Box>
+            <Box sx={{ flex: { xs: '1 1 50%' }, maxWidth: { xs: '50%' } }}>
+              <Button
+                fullWidth
+                variant="outlined"
+                startIcon={<Edit />}
+                onClick={openPhotoEditor}
+                size="small"
+                sx={{
+                  textTransform: 'none',
+                  fontWeight: 5,
+                  color: '#',
+                  borderColor: '#5e35b1'
+          }}
+              >
+                Rediger
+              </Button>
+            </Box>
+            <Box sx={{ flex: { xs: '1 1 50%' }, maxWidth: { xs: '50%' } }}>
+              <Button
+                fullWidth
+                variant="outlined"
+                startIcon={<Archive />}
+                onClick={() => executeBulkOperation('archive')}
+                size="small"
+                sx={{
+                  textTransform: 'none',
+                  fontWeight: 5,
+                  color: '#',
+                  borderColor: '#616161'
+          }}
+              >
+                Arkiver
+              </Button>
+            </Box>
+            <Box sx={{ flex: { xs: '1 1 50%' }, maxWidth: { xs: '50%' } }}>
+              <Button
+                fullWidth
+                variant="outlined"
+                startIcon={<Label />}
+                onClick={() => setShowBulkOperationsDialog(true)}
+                size="small"
+                sx={{
+                  textTransform: 'none',
+                  fontWeight: 5,
+                  color: '#007960',
+                  borderColor: '#00796b'
+          }}
+              >
+                Tagg
+              </Button>
+            </Box>
+          </Box>
+
+          <Divider sx={{ my: 1 }} />
+
+          {/* Quick Transform Operations */}
+          <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#666', mb: 1 }}>
+            Hurtigtransform
+          </Typography>
+          
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+            <Box sx={{ flex: { xs: '1 1 33.333%' }, maxWidth: { xs: '33.333%' } }}>
+              <Button
+                fullWidth
+                variant="text"
+                startIcon={<Rotate90DegreesCcw />}
+                onClick={() => executeBulkOperation('rotate-left')}
+                size="small"
+                sx={{
+                  textTransform: 'none',
+                  fontSize: '0.75rem',
+                  color: '#424242'
+          }}
+              >
+                Roter
+              </Button>
+            </Box>
+            <Box sx={{ flex: { xs: '1 1 33.333%' }, maxWidth: { xs: '33.333%' } }}>
+              <Button
+                fullWidth
+                variant="text"
+                startIcon={<Flip />}
+                onClick={() => executeBulkOperation('flip-horizontal')}
+                size="small"
+                sx={{
+                  textTransform: 'none',
+                  fontSize: '0.75rem',
+                  color: '#424242'
+          }}
+              >
+                Speil
+              </Button>
+            </Box>
+            <Box sx={{ flex: { xs: '1 1 33.333%' }, maxWidth: { xs: '33.333%' } }}>
+              <Button
+                fullWidth
+                variant="text"
+                startIcon={<Crop />}
+                onClick={openCropDialog}
+                size="small"
+                sx={{
+                  textTransform: 'none',
+                  fontSize: '0.75rem',
+                  color: '#424242'
+          }}
+              >
+                Beskjær
+              </Button>
+            </Box>
+          </Box>
+
+          <Divider sx={{ my: 1 }} />
+
+          {/* Pricing Section for photographers */}
+          {profession === 'photographer' && (
+            <>
+              <Button fullWidth
+                variant="contained"
+                startIcon={<ShoppingCart />}
+                onClick={openPricingModal}
+                sx={{
+                  bgcolor: 'success.main','&:hover': { bgcolor: 'success.dark' },
+                  textTransform: 'none',
+                  fontWeight: 600,
+                  mb: 1 }}
+              >
+                Se priser for valgte bilder
+              </Button>
+              <Divider sx={{ my: 1 }} />
+            </>
+          )}
+
+          <Button
+            fullWidth
+            variant="outlined"
+            color="error"
+            startIcon={<Delete />}
+            onClick={() => {
+              if (confirm(`Er du sikker på at du vil slette ${selectedImages.size} bilde${selectedImages.size !== 1 ? 'r' : ','}?`)) {
+                executeBulkOperation('delete');
+          }
+        }}
+            sx={{
+              textTransform: 'none',
+              fontWeight: 5,
+              mb: 1 }}
+          >
+            Slett valgte bilder
+          </Button>
+
+          <Button
+            fullWidth
+            variant="text"
+            onClick={() => setSelectedImages(new Set())}
+            sx={{
+              color: '#66',
+              textTransform: 'none',
+              fontWeight: 500}}
+          >
+            Avbryt valg
+          </Button>
+        </Box>
+      )}
+
+      {/* AI Processing Panel for Videographer */}
+      {profession === 'videographer' && (
+        <Box
+          sx={{
+            position: 'fixed',
+            bottom: 10,
+            right:  20,
+            zIndex: 13,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 1,
+            p: 2,
+            bgcolor: 'rgba(21,76,60,0.95)',
+            backdropFilter: 'blur(10px)',
+                  borderRadius: 2,
+            boxShadow: '0 4px 20px rgba(21,76,60,0.3)',
+            border: '1px solid rgba(2, 5, 5,255,255,0.2)',
+            minWidth: 250 }}
+        >
+          <Typography variant="subtitle2" sx={{ color: 'white', fontWeight: 600, mb: 1 }}>
+            AI Video Processing
+          </Typography>
+          
+          <Button
+            size="small"
+            startIcon={<AutoFixHigh />}
+            onClick={() => setShowAutoTagDialog(true)}
+            sx={{
+              color: 'white',
+              justifyContent: 'flex-start','&:hover': { bgcolor: 'rgba(2, 5, 5,255,255,0.1)' }
+        }}
+          >
+            Auto-tag videoer
+          </Button>
+          
+          <Button
+            size="small"
+            startIcon={<Movie />}
+            onClick={() => generateVideoThumbnails(selectedItem?.id || '')}
+            disabled={!selectedItem || selectedItem.fileType !== 'video'}
+            sx={{
+              color: 'white',
+              justifyContent: 'flex-start','&:hover': { bgcolor: 'rgba(2, 5, 5,255,255,0.1)' }
+        }}
+          >
+            Generer thumbnails
+          </Button>
+          
+          <Button
+            size="small"
+            startIcon={<Subtitles />}
+            onClick={() => setShowSubtitleDialog(true)}
+            sx={{
+              color: 'white',
+              justifyContent: 'flex-start','&:hover': { bgcolor: 'rgba(2, 5, 5,255,255,0.1)' }
+        }}
+          >
+            Auto-undertekster
+          </Button>
+          
+          <Divider sx={{ my: 1, borderColor: 'rgba(2, 5, 5,255,255,0.3)' }} />
+          
+          <Typography variant="caption" sx={{ color: 'rgba(2, 5, 5,255,255,0.8)', mb: 0.5 }}>
+            Social Media Export
+          </Typography>
+          
+          <Button
+            size="small"
+            onClick={() => exportVideoWithPreset('instagram')}
+            sx={{
+              color: 'white',
+              fontSize: '0.75rem',
+              justifyContent: 'flex-start','&:hover': { bgcolor: 'rgba(2, 5, 5,255,255,0.1)' }
+        }}
+          >
+            Instagram (4: 5)
+          </Button>
+          
+          <Button
+            size="small"
+            onClick={() => exportVideoWithPreset('')}
+            sx={{
+              color: 'white',
+              fontSize: '0.75rem',
+              justifyContent: 'flex-start','&:hover': { bgcolor: 'rgba(2, 5, 5,255,255,0.1)' }
+        }}
+          >
+            TikTok (9: 16)
+          </Button>
+          
+          <Button
+            size="small"
+            onClick={() => exportVideoWithPreset('')}
+            sx={{
+              color: 'white',
+              fontSize: '0.75rem',
+              justifyContent: 'flex-start','&:hover': { bgcolor: 'rgba(2, 5, 5,255,255,0.1)' }
+        }}
+          >
+            YouTube (16: 9)
+          </Button>
+        </Box>
+     )}
+
+      {/* Enhanced Video Action Panel - Complete Video Management Suite for Videographer */}
+      {selectedImages.size > 0 && profession === 'videographer' && (
+        <Box
+          sx={{
+            position: 'fixed',
+            top:  20,
+            right:  20,
+            zIndex: 14,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 1.5,
+            background: 'linear-gradient(135deg, rgba(2, 3, 1,76,60,0.95) 0%, rgba(1, 9, 2,57,43,0.95) 100%)',
+            backdropFilter: 'blur(20px)',
+                borderRadius: 3,
+            padding:  3,
+            boxShadow: '0 8px 32px rgba(21,76,60,0.3)',
+            border: '1px solid rgba(2, 5, 5,255,255,0.2)',
+            minWidth: 30,
+            maxWidth: 30,
+            maxHeight: '80vh',
+            overflowY: 'auto'
+    }}
+        >
+          <Typography variant="h6" 
+            sx={{ 
+              fontWeight: 600,
+              color: 'white',
+              mb: 1,
+              textAlign: 'center',
+              textShadow: '0 2px 4px blur\(\s*([0-9]+px)\s*,\s*\), 0,0,0,0.3)'
+        }}
+>
+            {selectedImages.size} video{selectedImages.size !== 1 ? 'er' : ','} valgt
+          </Typography>
+
+          {/* Video Version Control */}
+          <FormControl fullWidth sx={{ mb: 2 }}>
+            <InputLabel sx={{ color: 'white'}}>Versjon</InputLabel>
+            <Select 
+              value={videoVersion}
+              onChange={(e) => setVideoVersion(e.target.value as 'R1' | 'R2' | 'R3' | 'Final')}
+              sx={{
+                color: 'white','& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255, 255, 255, 0.5)' }, '& .MuiSvgIcon-root': { color: 'white' }
+              }}
+            >
+              <MenuItem value="R1">R1 - Første utkast</MenuItem>
+              <MenuItem value="R2">R2 - Revisjon</MenuItem>
+              <MenuItem value="R3">R3 - Finpuss</MenuItem>
+              <MenuItem value="Final">Final - Ferdig versjon</MenuItem>
+            </Select>
+          </FormControl>
+
+          {/* Primary Video Actions */}
+          <Button fullWidth
+            variant="contained"
+            startIcon={<MovieCreation />}
+            onClick={() => setShowVideoEditor(true)}
+            sx={{
+              bgcolor: 'rgba(2, 5, 5,255,255,0.2)',
+              color: 'white',
+              fontWeight: 600,
+              textTransform: 'none',
+              border: '1px solid rgba(2, 5, 5,255,255,0.3)','&:hover': {
+                bgcolor: 'rgba(25,255,255,0.3)',
+                transform: 'translateY(-2px)',
+          },
+              transition: 'all 0.3s ease',
+              mb: 1 }}
+          >
+            {profession === 'videographer' ? 'Åpne CreatorHub Video Suite' : 'Åpne CreatorHub Photo Suite'}
+          </Button>
+
+          <Button fullWidth
+            variant="contained"
+            startIcon={<TimelineIcon />}
+            onClick={() => setShowSequenceManager(true)}
+            sx={{
+              bgcolor: 'rgba(2, 5, 5,255,255,0.2)',
+              color: 'white',
+              fontWeight: 600,
+              textTransform: 'none',
+              border: '1px solid rgba(2, 5, 5,255,255,0.3)','&:hover': {
+                bgcolor: 'rgba(2, 5, 5,255,255,0.3)'
+              },
+              mb: 1 }}
+          >
+            Sekvens & Kapittel Manager
+          </Button>
+
+          <Divider sx={{ my: 1, borderColor: 'rgba(2, 5, 5,255,255,0.3)' }} />
+
+          {/* Video Management Operations */}
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+            <Box sx={{ flex: { xs: '1 1 50%' }, maxWidth: { xs: '50%' } }}>
+              <Button
+                fullWidth
+                variant="outlined"
+                startIcon={<HighQuality />}
+                onClick={() => setShowRenderPresets(true)}
+                size="small"
+                sx={{
+                  textTransform: 'none',
+                  fontWeight: 5,
+                  color: 'white',
+                  borderColor: 'rgba(25,255,255,0.5)','&:hover': { borderColor: 'white',}
+            }}
+              >
+                Render
+              </Button>
+            </Box>
+            <Box sx={{ flex: { xs: '1 1 50%' }, maxWidth: { xs: '50%' } }}>
+              <Button
+                fullWidth
+                variant="outlined"
+                startIcon={<Copyright />}
+                onClick={() => setShowVideoWatermarkDialog(true)}
+                size="small"
+                sx={{
+                  textTransform: 'none',
+                  fontWeight: 5,
+                  color: 'white',
+                  borderColor: 'rgba(25,255,255,0.5)','&:hover': { borderColor: 'white',}
+            }}
+              >
+                Vannmerke
+              </Button>
+            </Box>
+            <Box sx={{ flex: { xs: '1 1 50%' }, maxWidth: { xs: '50%' } }}>
+              <Button
+                fullWidth
+                variant="outlined"
+                startIcon={<Layers />}
+                onClick={() => setShowProxyGenerator(true)}
+                size="small"
+                sx={{
+                  textTransform: 'none',
+                  fontWeight: 5,
+                  color: 'white',
+                  borderColor: 'rgba(25,255,255,0.5)','&:hover': { borderColor: 'white',}
+            }}
+              >
+                Proxy
+              </Button>
+            </Box>
+            <Box sx={{ flex: { xs: '1 1 50%' }, maxWidth: { xs: '50%' } }}>
+              <Button
+                fullWidth
+                variant="outlined"
+                startIcon={<VolumeUp />}
+                onClick={() => setShowMulticamSync(true)}
+                size="small"
+                sx={{
+                  textTransform: 'none',
+                  fontWeight: 5,
+                  color: 'white',
+                  borderColor: 'rgba(25,255,255,0.5)','&:hover': { borderColor: 'white',}
+            }}
+              >
+                Multicam
+              </Button>
+            </Box>
+            <Box sx={{ flex: { xs: '1 1 50%' }, maxWidth: { xs: '50%' } }}>
+              <Button
+                fullWidth
+                variant="outlined"
+                startIcon={<Subtitles />}
+                onClick={() => setShowChapterMarker(true)}
+                size="small"
+                sx={{
+                  textTransform: 'none',
+                  fontWeight: 5,
+                  color: 'white',
+                  borderColor: 'rgba(25,255,255,0.5)','&:hover': { borderColor: 'white',}
+            }}
+              >
+                Kapitler
+              </Button>
+            </Box>
+            <Box sx={{ flex: { xs: '1 1 50%' }, maxWidth: { xs: '50%' } }}>
+              <Button
+                fullWidth
+                variant="outlined"
+                startIcon={<TimelineIcon />}
+                onClick={() => setShowVersionComparison(true)}
+                size="small"
+                sx={{
+                  textTransform: 'none',
+                  fontWeight: 5,
+                  color: 'white',
+                  borderColor: 'rgba(25,255,255,0.5)','&:hover': { borderColor: 'white',}
+            }}
+              >
+                Sammenlign
+              </Button>
+            </Box>
+          </Box>
+
+          <Divider sx={{ my: 1, borderColor: 'rgba(2, 5, 5,255,255,0.3)' }} />
+
+          {/* Bryllup & Streaming Operations */}
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+            <Box sx={{ flex: { xs: '1 1 50%' }, maxWidth: { xs: '50%' } }}>
+              <Button
+                fullWidth
+                variant="outlined"
+                startIcon={<Favorite />}
+                onClick={() => setShowWeddingPackages(true)}
+                size="small"
+                sx={{
+                  textTransform: 'none',
+                  fontWeight: 5,
+                  color: 'white',
+                  borderColor: 'rgba(25,255,255,0.5)','&:hover': { borderColor: 'white',}
+            }}
+              >
+                Bryllup
+              </Button>
+            </Box>
+            <Box sx={{ flex: { xs: '1 1 50%' }, maxWidth: { xs: '50%' } }}>
+              <Button
+                fullWidth
+                variant="outlined"
+                startIcon={<OpenInNew />}
+                onClick={() => setShowStreamingSetup(true)}
+                size="small"
+                sx={{
+                  textTransform: 'none',
+                  fontWeight: 5,
+                  color: 'white',
+                  borderColor: 'rgba(25,255,255,0.5)','&:hover': { borderColor: 'white',}
+            }}
+              >
+                Streaming
+              </Button>
+            </Box>
+            <Box sx={{ flex: { xs: '1 1 100%',}, maxWidth: { xs: '100%',} }}>
+              <Button
+                fullWidth
+                variant="outlined"
+                startIcon={<CloudDownload />}
+                onClick={() => setShowAnalytics(true)}
+                size="small"
+                sx={{
+                  textTransform: 'none',
+                  fontWeight: 5,
+                  color: 'white',
+                  borderColor: 'rgba(25,255,255,0.5)','&:hover': { borderColor: 'white',}
+            }}
+              >
+                Analyse & Rapporter
+              </Button>
+            </Box>
+          </Box>
+
+          <Divider sx={{ my: 1, borderColor: 'rgba(2, 5, 5,255,255,0.3)' }} />
+
+          {/* LUT and Audio Controls */}
+          <Typography variant="subtitle2" sx={{ fontWeight: 600, color: 'white', mb: 1 }}>
+            LUT & Lydspor
+          </Typography>
+          
+          <FormControl fullWidth sx={{ mb: 1 }}>
+            <InputLabel sx={{ color: 'white'}}>LUT</InputLabel>
+            <Select 
+              value={selectedLUT}
+              onChange={(e) => setSelectedLUT(e.target.value)}
+              size="small"
+              sx={{
+                color: 'white','& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255, 255, 255, 0.5)' }, '& .MuiSvgIcon-root': { color: 'white' }
+              }}
+            >
+              <MenuItem value="rec709">Rec.709</MenuItem>
+              <MenuItem value="log">Log</MenuItem>
+              <MenuItem value="cinematic">Cinematic</MenuItem>
+              <MenuItem value="natural">Natural</MenuItem>
+            </Select>
+          </FormControl>
+
+          <FormControl fullWidth sx={{ mb: 2 }}>
+            <InputLabel sx={{ color: 'white'}}>Lydspor</InputLabel>
+            <Select 
+              value={selectedAudioFormat}
+              onChange={(e) => setSelectedAudioFormat(e.target.value)}
+              size="small"
+              sx={{
+                color: 'white','& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255, 255, 255, 0.5)' }, '& .MuiSvgIcon-root': { color: 'white' }
+              }}
+            >
+              <MenuItem value="master">Master</MenuItem>
+              <MenuItem value="multicam">Multicam Sync</MenuItem>
+              <MenuItem value="ambient">Ambient</MenuItem>
+              <MenuItem value="music">Musikk</MenuItem>
+            </Select>
+          </FormControl>
+
+          <Button
+            fullWidth
+            variant="outlined"
+            color="error"
+            startIcon={<Delete />}
+            onClick={() => {
+              if (confirm(`Er du sikker på at du vil slette ${selectedImages.size} video${selectedImages.size !== 1 ? 'er' : ','}?`)) {
+                executeBulkOperation('delete');
+          }
+        }}
+            sx={{
+              textTransform: 'none',
+              fontWeight: 5,
+              mb: 1,
+              borderColor: 'rgba(25,255,255,0.5)',
+              color: 'white','&:hover': { borderColor: '#', backgroundColor: 'rgba(25,205,210,0.1)' }
+        }}
+          >
+            Slett valgte videoer
+          </Button>
+
+          <Button
+            fullWidth
+            variant="text"
+            onClick={() => setSelectedImages(new Set())}
+            sx={{
+              color: 'rgba(25,255,255,0.8)',
+              textTransform: 'none',
+              fontWeight: 500}}
+          >
+            Avbryt valg
+          </Button>
+        </Box>
+      )}
+
+      {/* Floating Pricing Button - Simplified version */}
+      {profession === 'photographer' && selectedImages.size === 0 && (
+        <Paper
+          elevation={8}
+          sx={{
+            position: 'fixed',
+            bottom: 20,
+            right:  20,
+            p: 2,
+            bgcolor: 'primary.main',
+            color: 'primary.contrastText',
+                  borderRadius: 2,
+            zIndex: 10,
+            minWidth: 280 }}
+        >
+          <Stack spacing={1}>
+            <Stack direction="row" alignItems="center" spacing={1}>
+              <ShoppingCart />
+              <Typography variant="body2">
+                Velg bilder for å se priser
+              </Typography>
+            </Stack>
+            
+            <Stack direction="row" spacing={1}>
+              <Button variant="contained"
+                size="small"
+                onClick={() => showWarningToast('Velg bilder først')}
+                sx={{ bgcolor: 'success.main','&:hover': { bgcolor: 'success.dark' } }}
+              >
+                Se pris
+              </Button>
+              <Button variant="contained"
+                size="small"
+                onClick={() => showWarningToast('Velg bilder først')}
+                startIcon={<Palette />}
+                sx={{ 
+                  bgcolor: '#ff6f00',
+                  color: '#fff','&:hover': { bgcolor: '#e65100' },
+                  fontSize: '0.75rem'
+          }}
+              >
+                {(selectedImages.size as number) === 1 
+                  ? 'Åpne i CreatorHub Photo Enhancer'
+                  : `Rediger ${selectedImages.size} i CreatorHub Photo Enhancer`
+            }
+              </Button>
+            </Stack>
+          </Stack>
+        </Paper>
+      )}
+      
+      {/* Professional Photo Editor Dialog - CreatorHub Photo Enhancer Integration */}
+      <Dialog 
+        open={showPhotoEditor}
+        onClose={() => setShowPhotoEditor(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogContent sx={{ p: 3 }}>
+          <Typography variant="h6" sx={{ mb: 3, fontWeight: 600}}>
+            CreatorHub Photo Enhancer
+          </Typography>
+          
+          <Typography variant="body2" sx={{ mb: 2, color: 'text.secondary' }}>
+            Valgte bilder: {selectedImages.size}
+          </Typography>
+
+          <FormControl fullWidth sx={{ mb: 2 }}>
+            <InputLabel>Forbedringspreset</InputLabel>
+            <Select 
+              value={selectedPreset}
+              onChange={(e) => setSelectedPreset((e.target as HTMLSelectElement).value as '4k-master' | 'web-h264' | 'social-vertical' | 'custom')}
+            >
+              <MenuItem value="portrait">Portrett</MenuItem>
+              <MenuItem value="landscape">Landskap</MenuItem>
+              <MenuItem value="product">Produkt</MenuItem>
+              <MenuItem value="wedding">Bryllup</MenuItem>
+              <MenuItem value="custom">Tilpasset</MenuItem>
+            </Select>
+          </FormControl>
+
+          {selectedPreset === 'custom' && (
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="subtitle2" sx={{ mb: 1 }}>Tilpassede innstillinger: </Typography>
+              <TextField
+                label="Lysstyrke"
+                type="number"
+                value={customEnhancementOptions.brightness}
+                onChange={(e) => setCustomEnhancementOptions(prev => ({
+                  ...prev, brightness: parseInt(e.target.value) || 0 }))}
+                fullWidth
+                sx={{ mb: 1 }}
+              />
+              <TextField
+                label="Kontrast"
+                type="number"
+                value={customEnhancementOptions.contrast}
+                onChange={(e) => setCustomEnhancementOptions(prev => ({
+                  ...prev, contrast: parseFloat(e.target.value) || 1.0 }))}
+                fullWidth
+                sx={{ mb: 1 }}
+              />
+            </Box>
+          )}
+
+          {isEnhancing && (
+            <LinearProgress 
+              variant="determinate" 
+              value={enhancementProgress}
+              sx={{ mb: 2 }}
+            />
+          )}
+
+          <Stack direction="row" spacing={2} justifyContent="flex-end">
+            <Button onClick={() => setShowPhotoEditor(false)}>
+              Avbryt
+            </Button>
+            <Button variant="contained" 
+              onClick={applyPhotoEnhancements}
+              disabled={isEnhancing}
+            >
+              {isEnhancing ? 'Forbedrer...' : 'Forbedre bilder'}
+            </Button>
+          </Stack>
+        </DialogContent>
+      </Dialog>
+
+      {/* Professional Crop Dialog with Composition Guides */}
+      <Dialog 
+        open={showCropDialog}
+        onClose={() => setShowCropDialog(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogContent sx={{ p: 3 }}>
+          <Typography variant="h6" sx={{ mb: 3, fontWeight: 600}}>
+            Avansert beskjæring med komposisjonsguider
+          </Typography>
+          
+          <Typography variant="body2" sx={{ mb: 2, color: 'text.secondary' }}>
+            Valgte bilder: {selectedImages.size}
+          </Typography>
+
+          <FormControl fullWidth sx={{ mb: 2 }}>
+            <InputLabel>Sideforhold</InputLabel>
+            <Select 
+              value={cropAspectRatio}
+              onChange={(e) => setCropAspectRatio(e.target.value)}
+            >
+              <MenuItem value="free">Fri beskjæring</MenuItem>
+              <MenuItem value="1: 1">1:1 (Kvadrat)</MenuItem>
+              <MenuItem value="4:3">4:3 (Standard)</MenuItem>
+              <MenuItem value="16:9">16:9 (Widescreen)</MenuItem>
+              <MenuItem value="3:2">3:2 (Foto standard)</MenuItem>
+              <MenuItem value="5:4">5:4 (Print)</MenuItem>
+            </Select>
+          </FormControl>
+
+          <FormControl fullWidth sx={{ mb: 2 }}>
+            <InputLabel>Komposisjonsguider</InputLabel>
+            <Select 
+              value={compositionOverlay}
+              onChange={(e) => setCompositionOverlay(e.target.value)}
+            >
+              <MenuItem value="none">Ingen</MenuItem>
+              <MenuItem value="rule-of-thirds">Tredjedelsregelen</MenuItem>
+              <MenuItem value="golden-ratio">Gylne snitt</MenuItem>
+              <MenuItem value="diagonals">Diagonaler</MenuItem>
+              <MenuItem value="center">Senter linjer</MenuItem>
+            </Select>
+          </FormControl>
+
+          {isProcessingEdit && (
+            <LinearProgress sx={{ mb: 2 }} />
+          )}
+
+          <Stack direction="row" spacing={2} justifyContent="flex-end">
+            <Button onClick={() => setShowCropDialog(false)}>
+              Avbryt
+            </Button>
+            <Button variant="contained" 
+              onClick={applyCropToImages}
+              disabled={isProcessingEdit}
+            >
+              {isProcessingEdit ? 'Beskjærer...' : 'Beskjær bilder'}
+            </Button>
+          </Stack>
+        </DialogContent>
+      </Dialog>
+
+      {/* Professional Watermark Dialog */}
+      <Dialog 
+        open={showWatermarkDialog}
+        onClose={() => setShowWatermarkDialog(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogContent sx={{ p: 3 }}>
+          <Typography variant="h6" sx={{ mb: 3, fontWeight: 600}}>
+            Profesjonell vannmerking
+          </Typography>
+          
+          <Typography variant="body2" sx={{ mb: 2, color: 'text.secondary' }}>
+            Valgte bilder: {selectedImages.size}
+          </Typography>
+
+          <FormControl fullWidth sx={{ mb: 2 }}>
+            <InputLabel>Vannmerke type</InputLabel>
+            <Select 
+              value={watermarkType}
+              onChange={(e) => setWatermarkType(e.target.value as 'text' | 'logo' | 'both')}
+            >
+              <MenuItem value="text">Kun tekst</MenuItem>
+              <MenuItem value="logo">Kun logo</MenuItem>
+              <MenuItem value="both">Tekst og logo</MenuItem>
+            </Select>
+          </FormControl>
+
+          {(watermarkType === 'text' || watermarkType === 'both') && (
+            <TextField
+              label="Vannmerke tekst"
+              value={watermarkText}
+              onChange={(e) => setWatermarkText((e.target as HTMLInputElement).value)}
+              fullWidth
+              sx={{ mb: 2 }}
+              placeholder="© Ditt Fotografnavn"
+            />
+          )}
+
+          {(watermarkType === 'logo' || watermarkType === 'both') && (
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="subtitle2" sx={{ mb: 1 }}>Last opp logo: </Typography>
+              <input 
+                type="file" 
+                accept="image/*"
+                onChange={(e) => setWatermarkLogo(e.target.files?.[0] || null)}
+              />
+            </Box>
+          )}
+
+          <FormControl fullWidth sx={{ mb: 2 }}>
+            <InputLabel>Posisjon</InputLabel>
+            <Select 
+              value={watermarkPosition}
+              onChange={(e) => setWatermarkPosition(e.target.value)}
+            >
+              <MenuItem value="top-left">Øverst til venstre</MenuItem>
+              <MenuItem value="top-right">Øverst til høyre</MenuItem>
+              <MenuItem value="bottom-left">Nederst til venstre</MenuItem>
+              <MenuItem value="bottom-right">Nederst til høyre</MenuItem>
+              <MenuItem value="center">Senter</MenuItem>
+            </Select>
+          </FormControl>
+
+          <Typography variant="subtitle2" sx={{ mb: 1 }}>
+            Gjennomsiktighet: {Math.round(watermarkOpacity * 10)}%
+          </Typography>
+          <Slider
+            value={watermarkOpacity}
+            onChange={(_, value) => setWatermarkOpacity(value as number)}
+            min={0.1}
+            max={1}
+            step={0.1}
+            sx={{ mb: 2 }}
+          />
+
+          {isApplyingWatermark && (
+            <LinearProgress sx={{ mb: 2 }} />
+          )}
+
+          <Stack direction="row" spacing={2} justifyContent="flex-end">
+            <Button onClick={() => setShowWatermarkDialog(false)}>
+              Avbryt
+            </Button>
+            <Button variant="contained" 
+              onClick={applyWatermark}
+              disabled={isApplyingWatermark}
+            >
+              {isApplyingWatermark ? 'Setter vannmerke...' : 'Sett vannmerke'}
+            </Button>
+          </Stack>
+        </DialogContent>
+      </Dialog>
+
+      {/* Video Editor Dialog - Videographer Professional Tools */}
+      <Dialog 
+        open={showVideoEditor}
+        onClose={() => setShowVideoEditor(false)}
+        maxWidth="lg"
+        fullWidth
+      >
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, bgcolor: '#E74C3C', color: 'white' }}>
+          <MovieCreation />
+          CreatorHub Video Editor - Versjon {videoVersion}
+        </DialogTitle>
+        <DialogContent sx={{ p: 3 }}>
+          <Typography variant="h6" sx={{ mb: 3, fontWeight: 600}}>
+            Profesjonell video redigering
+          </Typography>
+          
+          <Typography variant="body2" sx={{ mb: 2, color: 'text.secondary' }}>
+            Valgte videoer: {selectedImages.size}
+          </Typography>
+
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
+            <Box sx={{ flex: { xs: '1 1 100%', md: '1 1 33.333%' }, maxWidth: { xs: '100%', md: '33.333%' } }}>
+              <FormControl fullWidth sx={{ mb: 2 }}>
+                <InputLabel>Sekvens</InputLabel>
+                <Select 
+                  value={selectedSequence || ''}
+                  onChange={(e) => setSelectedSequence(e.target.value)}
+                >
+                  <MenuItem value="sequence1">Intro Sekvens</MenuItem>
+                  <MenuItem value="sequence2">Hovedinnhold</MenuItem>
+                  <MenuItem value="sequence3">Avslutning</MenuItem>
+                  <MenuItem value="new"><AddCircle sx={{ fontSize:  16, mr:  1 }} />Ny sekvens</MenuItem>
+                </Select>
+              </FormControl>
+            </Box>
+            <Box sx={{ flex: { xs: '1 1 100%', md: '1 1 33.333%' }, maxWidth: { xs: '100%', md: '33.333%' } }}>
+              <FormControl fullWidth sx={{ mb: 2 }}>
+                <InputLabel>Kapittel</InputLabel>
+                <Select 
+                  value={selectedChapter || ''}
+                  onChange={(e) => setSelectedChapter(e.target.value)}
+                >
+                  <MenuItem value="chapter1">Kapittel 1</MenuItem>
+                  <MenuItem value="chapter2">Kapittel 2</MenuItem>
+                  <MenuItem value="chapter3">Kapittel 3</MenuItem>
+                  <MenuItem value="new"><AddCircle sx={{ fontSize:  16, mr:  1 }} />Nytt kapittel</MenuItem>
+                </Select>
+              </FormControl>
+            </Box>
+            <Box sx={{ flex: { xs: '1 1 100%', md: '1 1 33.333%' }, maxWidth: { xs: '100%', md: '33.333%' } }}>
+              <FormControl fullWidth sx={{ mb: 2 }}>
+                <InputLabel>LUT</InputLabel>
+                <Select 
+                  value={selectedLUT}
+                  onChange={(e) => setSelectedLUT(e.target.value)}
+                >
+                  <MenuItem value="rec709">Rec.709 Standard</MenuItem>
+                  <MenuItem value="log">Log Profile</MenuItem>
+                  <MenuItem value="cinematic">Cinematic Look</MenuItem>
+                  <MenuItem value="natural">Natural Color</MenuItem>
+                  <MenuItem value="custom">Custom LUT</MenuItem>
+                </Select>
+              </FormControl>
+            </Box>
+          </Box>
+
+          <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 600}}>
+            Tidskodede kommentarer
+          </Typography>
+          
+          <Box sx={{ mb: 2, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
+            <Typography variant="body2" sx={{ mb: 1 }}>
+              Klikk på ønsket tidspunkt i videoen for å legge til kommentarer: </Typography>
+            <TextField
+              fullWidth
+              size="small"
+              placeholder="Skriv kommentar her og trykk Enter"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  const target = e.target as HTMLInputElement;
+                  addTimecodedComment(videoCurrentTime, target.value);
+                  target.value = '';
+            }
+          }}
+            />
+          </Box>
+
+          {timecodedComments.length > 0 && (
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="subtitle2" sx={{ mb: 1 }}>Eksisterende kommentarer: </Typography>
+              {timecodedComments.map((comment, index) => (
+                <Chip 
+                  key={index}
+                  label={`${comment.timecode}s: ${comment.comment}`}
+                  size="small"
+                  sx={{ mr: 1, mb: 1 }}
+                />
+              ))}
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowVideoEditor(false)}>
+            Lukk
+          </Button>
+          <Button variant="contained" 
+            startIcon={<MovieCreation />}
+            sx={{ bgcolor: '#E74C3C' }}
+          >
+            Åpne i DaVinci Resolve
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Sequence Manager Dialog */}
+      <Dialog 
+        open={showSequenceManager}
+        onClose={() => setShowSequenceManager(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, bgcolor: '#E74C3C', color: 'white' }}>
+          <TimelineIcon />
+          Sekvens & Kapittel Manager
+        </DialogTitle>
+        <DialogContent sx={{ p: 3 }}>
+          <Typography variant="h6" sx={{ mb: 3, fontWeight: 600}}>
+            Prosjektstruktur: Sekvenser → Kapitler
+          </Typography>
+          
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
+            <Box sx={{ flex: { xs: '1 1 100%', md: '1 1 50%' }, maxWidth: { xs: '100%', md: '50%' } }}>
+              <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 600}}>
+                Sekvenser
+              </Typography>
+              <List>
+                <ListItem>
+                  <ListItemText primary="Intro Sekvens" secondary="0: 00 - 0:30" />
+                  <IconButton><Edit /></IconButton>
+                </ListItem>
+                <ListItem>
+                  <ListItemText primary="Hovedinnhold" secondary="0: 30 - 5:00" />
+                  <IconButton><Edit /></IconButton>
+                </ListItem>
+                <ListItem>
+                  <ListItemText primary="Avslutning" secondary="5: 00 - 5:30" />
+                  <IconButton><Edit /></IconButton>
+                </ListItem>
+              </List>
+              <Button 
+                startIcon={<Add />}
+                onClick={() => createVideoSequence('Ny sekvens', [])}
+                sx={{ mt: 1 }}
+              >
+                Legg til sekvens
+              </Button>
+            </Box>
+            <Box sx={{ flex: { xs: '1 1 100%', md: '1 1 50%' }, maxWidth: { xs: '100%', md: '50%' } }}>
+              <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 600}}>
+                Kapitler i valgt sekvens
+              </Typography>
+              <List>
+                <ListItem>
+                  <ListItemText primary="Kapittel 1" secondary="Scene setup" />
+                  <IconButton><Edit /></IconButton>
+                </ListItem>
+                <ListItem>
+                  <ListItemText primary="Kapittel 2" secondary="Main action" />
+                  <IconButton><Edit /></IconButton>
+                </ListItem>
+              </List>
+              <Button startIcon={<Add />} sx={{ mt: 1 }}>
+                Legg til kapittel
+              </Button>
+            </Box>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowSequenceManager(false)}>
+            Lukk
+          </Button>
+          <Button variant="contained" sx={{ bgcolor: '#E74C3C' }}>
+            Lagre struktur
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Video Export Dialog */}
+      <Dialog 
+        open={showExportDialog}
+        onClose={() => setShowExportDialog(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, bgcolor: '#E74C3C', color: 'white' }}>
+          <HighQuality />
+          Video Eksport - {videoVersion}
+        </DialogTitle>
+        <DialogContent sx={{ p: 3 }}>
+          <Typography variant="h6" sx={{ mb: 3, fontWeight: 600}}>
+            Eksport innstillinger
+          </Typography>
+          
+          <FormControl fullWidth sx={{ mb: 2 }}>
+            <InputLabel>Kvalitet preset</InputLabel>
+            <Select defaultValue="4k">
+              <MenuItem value="4k">4K UHD (3840x2160)</MenuItem>
+              <MenuItem value="1080p">Full HD (1920x1080)</MenuItem>
+              <MenuItem value="720p">HD (1280x720)</MenuItem>
+              <MenuItem value="proxy">Proxy (640x360)</MenuItem>
+            </Select>
+          </FormControl>
+
+          <FormControl fullWidth sx={{ mb: 2 }}>
+            <InputLabel>Codec</InputLabel>
+            <Select defaultValue="h264">
+              <MenuItem value="h264">H.264 (MP4)</MenuItem>
+              <MenuItem value="h265">H.265 (HEVC)</MenuItem>
+              <MenuItem value="prores">Apple ProRes</MenuItem>
+              <MenuItem value="dnxhd">Avid DNxHD</MenuItem>
+            </Select>
+          </FormControl>
+
+          <FormControl fullWidth sx={{ mb: 2 }}>
+            <InputLabel>Bitrate</InputLabel>
+            <Select defaultValue="high">
+              <MenuItem value="high">Høy kvalitet (50 Mbps)</MenuItem>
+              <MenuItem value="medium">Medium kvalitet (25 Mbps)</MenuItem>
+              <MenuItem value="low">Lav kvalitet (10 Mbps)</MenuItem>
+              <MenuItem value="custom">Tilpasset</MenuItem>
+            </Select>
+          </FormControl>
+
+          <FormControlLabel
+            control={<Checkbox defaultChecked />}
+            label="Inkluder tidskodede kommentarer som undertekster"
+            sx={{ mb: 2 }}
+          />
+
+          <FormControlLabel
+            control={<Checkbox />}
+            label="Eksporter til YouTube samtidig"
+            sx={{ mb: 2 }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowExportDialog(false)}>
+            Avbryt
+          </Button>
+          <FileStatusWrapper showFileSystem showGoogleDrive>
+            <Button variant="contained" 
+              onClick={() => exportVideoWithPreset('4k')}
+              startIcon={<CloudUpload />}
+              sx={{ bgcolor: '#E74C3C' }}
+            >
+              Start eksport
+            </Button>
+          </FileStatusWrapper>
+        </DialogActions>
+      </Dialog>
+      
+      {/* NEW ADVANCED VIDEOGRAPHER DIALOGS */}
+
+      {/* Proxy Generator Dialog */}
+      <Dialog open={showProxyGenerator} onClose={() => setShowProxyGenerator(false)} maxWidth="md" fullWidth>
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, bgcolor: '#E74C3C', color: 'white' }}>
+          <Layers />
+          Automatisk Proxy-generering
+        </DialogTitle>
+        <DialogContent sx={{ p: 3 }}>
+          <Typography variant="body1" sx={{ mb: 3 }}>
+            Generer lette proxy-filer for smidig redigering av {selectedImages.size} video{selectedImages.size !== 1 ? 'er' : ','}
+          </Typography>
+          
+          <FormControl fullWidth sx={{ mb: 2 }}>
+            <InputLabel>Proxy Kvalitet</InputLabel>
+            <Select value="720p-prores" label="Proxy Kvalitet">
+              <MenuItem value="480p-h264">480p H.264 (Rask)</MenuItem>
+              <MenuItem value="720p-h264">720p H.264 (Balansert)</MenuItem>
+              <MenuItem value="720p-prores">720p ProRes Proxy (Anbefalt)</MenuItem>
+              <MenuItem value="1080p-h264">1080p H.264 (Høy kvalitet)</MenuItem>
+            </Select>
+          </FormControl>
+
+          <FormControlLabel
+            control={<Switch defaultChecked />}
+            label="Behold original filer"
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowProxyGenerator(false)}>Avbryt</Button>
+          <Button variant="contained" sx={{ bgcolor: '#E74C3C' }}>
+            Generer Proxy-filer
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Multicam Sync Dialog */}
+      <Dialog open={showMulticamSync} onClose={() => setShowMulticamSync(false)} maxWidth="md" fullWidth>
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, bgcolor: '#E74C3C', color: 'white' }}>
+          <VolumeUp />
+          Multicam Audio Sync
+        </DialogTitle>
+        <DialogContent sx={{ p: 3 }}>
+          <Typography variant="body1" sx={{ mb: 3 }}>
+            Synkroniser {selectedImages.size} kamera{selectedImages.size !== 1 ? 'er' : ', '} basert på audio waveform matching
+          </Typography>
+          
+          <FormControl fullWidth sx={{ mb: 2 }}>
+            <InputLabel>Master Audio Kilde</InputLabel>
+            <Select value="camera1" label="Master Audio Kilde">
+              <MenuItem value="camera1">Kamera 1</MenuItem>
+              <MenuItem value="camera2">Kamera 2</MenuItem>
+              <MenuItem value="external">Ekstern opptaker</MenuItem>
+              <MenuItem value="auto">Auto-detect</MenuItem>
+            </Select>
+          </FormControl>
+
+          <Box sx={{ mb:  2 }}>
+            <Typography gutterBottom>Sync Presisjon</Typography>
+            <Slider
+              defaultValue={95}
+              min={80}
+              max={100}
+              step={1}
+              valueLabelDisplay="auto"
+              valueLabelFormat={(value) => `${value}%`}
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowMulticamSync(false)}>Avbryt</Button>
+          <Button variant="contained" sx={{ bgcolor: '#E74C3C' }}>
+            Synkroniser Cameras
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Chapter Marker Dialog */}
+      <Dialog open={showChapterMarker} onClose={() => setShowChapterMarker(false)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, bgcolor: '#E74C3C', color: 'white' }}>
+          <Subtitles />
+          Kapittelmarkører & Auto-splitt
+        </DialogTitle>
+        <DialogContent sx={{ p: 3 }}>
+          <Typography variant="body1" sx={{ mb: 3 }}>
+            Lag automatiske kapittelmarkører for {selectedImages.size} video{selectedImages.size !== 1 ? 'er' : ', '}
+          </Typography>
+          
+          <FormControl fullWidth sx={{ mb: 2 }}>
+            <InputLabel>Bryllup Kategori</InputLabel>
+            <Select value={selectedWeddingPackage} onChange={(e) => setSelectedWeddingPackage(e.target.value as any)} label="Bryllup Kategori">
+              <MenuItem value="highlight">Highlight Reel</MenuItem>
+              <MenuItem value="feature">Feature Film</MenuItem>
+              <MenuItem value="ceremony">Seremoni full</MenuItem>
+              <MenuItem value="speeches">Taler og takk</MenuItem>
+              <MenuItem value="teaser">Teaser/Trailer</MenuItem>
+            </Select>
+          </FormControl>
+
+          <Box sx={{ mb:  2 }}>
+            <Typography gutterBottom>Minimum kapittel-lengde (sekunder)</Typography>
+            <Slider
+              defaultValue={30}
+              min={10}
+              max={120}
+              step={10}
+              valueLabelDisplay="auto"
+              marks={[
+                { value:  10, label: '10s',},
+                { value:  30, label: '30s',},
+                { value:  60, label: '1m',},
+                { value: 10, label: '2m',}
+              ]}
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowChapterMarker(false)}>Avbryt</Button>
+          <Button variant="contained" sx={{ bgcolor: '#E74C3C' }}>
+            Opprett Kapitler
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Version Comparison Dialog */}
+      <Dialog open={showVersionComparison} onClose={() => setShowVersionComparison(false)} maxWidth="lg" fullWidth>
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, bgcolor: '#E74C3C', color: 'white' }}>
+          <TimelineIcon />
+          Side-by-side Versjon Sammenligning
+        </DialogTitle>
+        <DialogContent sx={{ p: 3 }}>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
+            <Box sx={{ flex: { xs: '1 1 50%' }, maxWidth: { xs: '50%' } }}>
+              <Typography variant="h6" gutterBottom>Versjon A - {videoVersion}</Typography>
+              <Box sx={{ bgcolor: '#000', aspectRatio: '16/9', borderRadius: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Typography color="white">Video Player A</Typography>
+              </Box>
+              <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
+                <Button size="small" variant="outlined">Frame-kommentar</Button>
+                <Button size="small" variant="outlined">@Mention</Button>
+              </Stack>
+            </Box>
+            <Box sx={{ flex: { xs: '1 1 50%' }, maxWidth: { xs: '50%' } }}>
+              <Typography variant="h6" gutterBottom>Versjon B - Final</Typography>
+              <Box sx={{ bgcolor: '#000', aspectRatio: '16/9', borderRadius: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Typography color="white">Video Player B</Typography>
+              </Box>
+              <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
+                <Button size="small" variant="outlined">Frame-kommentar</Button>
+                <Button size="small" variant="outlined">@Mention</Button>
+              </Stack>
+            </Box>
+          </Box>
+          
+          <Box sx={{ mt: 3 }}>
+            <Typography variant="h6" gutterBottom>Endringsrunder</Typography>
+            <List>
+              <ListItem>
+                <Chip label="Åpen" color="error" size="small" sx={{ mr: 1 }} />
+                <ListItemText primary="Juster fargebalanse ved 2: 15" secondary="@daniel - Fra klient feedback" />
+              </ListItem>
+              <ListItem>
+                <Chip label="Under arbeid" color="warning" size="small" sx={{ mr: 1 }} />
+                <ListItemText primary="Kortere intro sekvens" secondary="@fotograf - Reduser til 10 sekunder" />
+              </ListItem>
+              <ListItem>
+                <Chip label="Løst" color="success" size="small" sx={{ mr: 1 }} />
+                <ListItemText primary="Legg til musikk fade-out" secondary="Fullført i R3" />
+              </ListItem>
+            </List>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowVersionComparison(false)}>Lukk</Button>
+          <Button variant="contained" sx={{ bgcolor: '#E74C3C' }}>
+            Eksporter Sammenligning
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Render Presets Dialog */}
+      <Dialog open={showRenderPresets} onClose={() => setShowRenderPresets(false)} maxWidth="md" fullWidth>
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, bgcolor: '#E74C3C', color: 'white' }}>
+          <HighQuality />
+          Render Presets & Eksport
+        </DialogTitle>
+        <DialogContent sx={{ p: 3 }}>
+          <Typography variant="body1" sx={{ mb: 3 }}>
+            Velg render preset for {selectedImages.size} video{selectedImages.size !== 1 ? 'er' : ', '}
+          </Typography>
+          
+                <FormControl fullWidth sx={{ mb: 3 }}>
+            <InputLabel>Render Preset</InputLabel>
+            <Select value={selectedPreset} onChange={(e) => setSelectedPreset((e.target as HTMLSelectElement).value as '4k-master' | 'web-h264' | 'social-vertical' | 'custom')} label="Render Preset">
+              <MenuItem value="4k-master">4K Master (Production)</MenuItem>
+              <MenuItem value="web-h264">Web H.264 (YouTube/Vimeo)</MenuItem>
+              <MenuItem value="social-vertical">SoMe Vertikal (Instagram/TikTok)</MenuItem>
+              <MenuItem value="custom">Tilpasset</MenuItem>
+            </Select>
+          </FormControl>
+
+          {selectedPreset === '4k-master' && (
+            <Paper sx={{ p: 2, mb: 2, bgcolor: 'info.light' }}>
+              <Typography variant="body2">
+                4K Master: ProRes 422 Q, 3840x2160, 23.98fps - For arkiv og fremtidig redigering
+              </Typography>
+            </Paper>
+          )}
+
+          {isProcessingVideo && (
+            <Box sx={{ mt: 2 }}>
+              <LinearProgress variant="determinate" value={processingProgress} sx={{ mb: 1 }} />
+              <Typography variant="body2" color="text.secondary">
+                Prosesserer: {processingProgress}% fullført
+              </Typography>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowRenderPresets(false)} disabled={isProcessingVideo}>Avbryt</Button>
+          <Button variant="contained" 
+            sx={{ bgcolor: '#E74C3C' }}
+            disabled={isProcessingVideo}
+            startIcon={isProcessingVideo ? <CircularProgress size={20} /> : <HighQuality />}
+          >
+            {isProcessingVideo ? 'Rendrer...' : 'Start Rendering'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Streaming Setup Dialog */}
+      <Dialog open={showStreamingSetup} onClose={() => setShowStreamingSetup(false)} maxWidth="md" fullWidth>
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, bgcolor: '#E74C3C', color: 'white' }}>
+          <OpenInNew />
+          Streaming Setup (HLS/DASH)
+        </DialogTitle>
+        <DialogContent sx={{ p: 3 }}>
+          <Typography variant="body1" sx={{ mb: 3 }}>
+            Konfigurer streaming for {selectedImages.size} video{selectedImages.size !== 1 ? 'er' : ', '}
+          </Typography>
+          
+          <FormControl fullWidth sx={{ mb: 2 }}>
+            <InputLabel>Streaming Protocol</InputLabel>
+            <Select defaultValue="hls" label="Streaming Protocol">
+              <MenuItem value="hls">HLS (HTTP Live Streaming)</MenuItem>
+              <MenuItem value="dash">DASH (Dynamic Adaptive Streaming)</MenuItem>
+              <MenuItem value="webrtc">WebRTC (Sanntid)</MenuItem>
+            </Select>
+          </FormControl>
+
+          <Typography variant="h6" sx={{ mb: 2 }}>Adaptive Bitrate Ladder</Typography>
+          <List>
+            <ListItem>
+              <Checkbox defaultChecked />
+              <ListItemText primary="4K - 25 Mbps" secondary="For høyhastighets forbindelser" />
+            </ListItem>
+            <ListItem>
+              <Checkbox defaultChecked />
+              <ListItemText primary="1080p - 8 Mbps" secondary="Standard HD streaming" />
+            </ListItem>
+            <ListItem>
+              <Checkbox defaultChecked />
+              <ListItemText primary="720p - 3 Mbps" secondary="For mobile enheter" />
+            </ListItem>
+          </List>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowStreamingSetup(false)}>Avbryt</Button>
+          <Button variant="contained" sx={{ bgcolor: '#E74C3C' }}>
+            Konfigurer Streaming
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Wedding Packages Dialog */}
+      <Dialog open={showWeddingPackages} onClose={() => setShowWeddingPackages(false)} maxWidth="md" fullWidth>
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, bgcolor: '#E74C3C', color: 'white' }}>
+          <Favorite />
+          Bryllup Pakker & Kategorier
+        </DialogTitle>
+        <DialogContent sx={{ p: 3 }}>
+          <Typography variant="body1" sx={{ mb: 3 }}>
+            Organiser {selectedImages.size} video{selectedImages.size !== 1 ? 'er' : ', '} i bryllup-spesifikke kategorier
+          </Typography>
+          
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
+            <Box sx={{ flex: { xs: '1 1 100%', md: '1 1 50%' }, maxWidth: { xs: '100%', md: '50%' } }}>
+              <Paper sx={{ p: 2, mb: 2 }}>
+                <Typography variant="h6" gutterBottom>Highlight Reel</Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  3-5 minutters sammendrag av høydepunktene
+                </Typography>
+                <Stack direction="row" spacing={1}>
+                  <Chip label="Musikk" size="small" />
+                  <Chip label="Fast tempo" size="small" />
+                  <Chip label="Følelser" size="small" />
+                </Stack>
+              </Paper>
+            </Box>
+
+            <Box sx={{ flex: { xs: '1 1 100%', md: '1 1 50%' }, maxWidth: { xs: '100%', md: '50%' } }}>
+              <Paper sx={{ p: 2, mb: 2 }}>
+                <Typography variant="h6" gutterBottom>Feature Film</Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  15-30 minutters dokumentarisk film
+                </Typography>
+                <Stack direction="row" spacing={1}>
+                  <Chip label="Fortelling" size="small" />
+                  <Chip label="Taler" size="small" />
+                  <Chip label="Seremoni" size="small" />
+                </Stack>
+              </Paper>
+            </Box>
+
+            <Box sx={{ flex: { xs: '1 1 100%', md: '1 1 50%' }, maxWidth: { xs: '100%', md: '50%' } }}>
+              <Paper sx={{ p: 2, mb: 2 }}>
+                <Typography variant="h6" gutterBottom>Seremoni Full</Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  Komplett seremoni uten redigering
+                </Typography>
+                <Stack direction="row" spacing={1}>
+                  <Chip label="Uklippt" size="small" />
+                  <Chip label="Arkiv" size="small" />
+                  <Chip label="Familie" size="small" />
+                </Stack>
+              </Paper>
+            </Box>
+
+            <Box sx={{ flex: { xs: '1 1 100%', md: '1 1 50%' }, maxWidth: { xs: '100%', md: '50%' } }}>
+              <Paper sx={{ p: 2, mb: 2 }}>
+                <Typography variant="h6" gutterBottom>Taler & Takk</Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  Alle taler og takk separat
+                </Typography>
+                <Stack direction="row" spacing={1}>
+                  <Chip label="Audio focus" size="small" />
+                  <Chip label="Undertekster" size="small" />
+                  <Chip label="Chaptered" size="small" />
+                </Stack>
+              </Paper>
+            </Box>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowWeddingPackages(false)}>Lukk</Button>
+          <Button variant="contained" sx={{ bgcolor: '#E74C3C' }}>
+            Organiser i Pakker
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Analytics Dialog */}
+      <Dialog open={showAnalytics} onClose={() => setShowAnalytics(false)} maxWidth="lg" fullWidth>
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, bgcolor: '#E74C3C', color: 'white' }}>
+          <CloudDownload />
+          Video Analyse & Rapporter
+        </DialogTitle>
+        <DialogContent sx={{ p: 3 }}>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+            <Box sx={{ flex: { xs: '1 1 100%', md: '1 1 33.333%' }, maxWidth: { xs: '100%', md: '33.333%' } }}>
+              <Paper sx={{ p: 2, textAlign: 'center' }}>
+                <Typography variant="h4" color="primary">
+                  {selectedImages.size}
+                </Typography>
+                <Typography variant="body2">Videoer analysert</Typography>
+              </Paper>
+            </Box>
+            <Box sx={{ flex: { xs: '1 1 100%', md: '1 1 33.333%' }, maxWidth: { xs: '100%', md: '33.333%' } }}>
+              <Paper sx={{ p: 2, textAlign: 'center' }}>
+                <Typography variant="h4" color="success.main">
+                  142 min
+                </Typography>
+                <Typography variant="body2">Total lengde</Typography>
+              </Paper>
+            </Box>
+            <Box sx={{ flex: { xs: '1 1 100%', md: '1 1 33.333%' }, maxWidth: { xs: '100%', md: '33.333%' } }}>
+              <Paper sx={{ p: 2, textAlign: 'center' }}>
+                <Typography variant="h4" color="warning.main">
+                  23.98 fps
+                </Typography>
+                <Typography variant="body2">Gjennomsnittlig framerate</Typography>
+              </Paper>
+            </Box>
+          </Box>
+
+          <Typography variant="h6" sx={{ mt: 3, mb: 2 }}>Kvalitetsmetrikker</Typography>
+          <List>
+            <ListItem>
+              <ListItemText 
+                primary="Audio Nivåer" 
+                secondary="Gjennomsnitt: -18 LUFS (Optimal for broadcast)"
+              />
+              <Chip label="✓ OK" color="success" size="small" />
+            </ListItem>
+            <ListItem>
+              <ListItemText 
+                primary="Fargeområde" 
+                secondary="Rec.709 (100% coverage)"
+              />
+              <Chip label="✓ OK" color="success" size="small" />
+            </ListItem>
+            <ListItem>
+              <ListItemText 
+                primary="Stabilitet" 
+                secondary="Gjennomsnittlig shake: 2.1px (Lav)"
+              />
+              <Chip label="✓ Stabil" color="success" size="small" />
+            </ListItem>
+          </List>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowAnalytics(false)}>Lukk</Button>
+          <Button variant="contained" sx={{ bgcolor: '#E74C3C' }}>
+            Eksporter Rapport
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* FASE 2: Client Authentication Dialog , *, /}
+      {showAuthDialog && (
+        <React.Suspense fallback={<div>Laster autentisering...</div>}>
+          <ClientAuthDialog
+            open={showAuthDialog}
+            onClose={() => setShowAuthDialog(false)}
+            onAuthenticated={handleAuthenticationSuccess}
+            sessionToken={sessionIdd || ', '}
+            requiresPin={sessionRequiresAuth}
+            requiresPassword={authSessionData?.requiresPassword || false}
+            lockoutUntil={authSessionData?.lockoutUntil}
+            maxAttempts={authSessionData?.maxLoginAttempts || 3}
+          />
+        </React.Suspense>
+      )}
+
+      {/* CreatorHub Video Suite Dialog */}
+      {showVideoEditor && profession === 'videographer' && (
+        <React.Suspense fallback={<div>Laster CreatorHub Video Suite...</div>}>
+          <VideographerVideoSuite
+            selectedVideoFiles={Array.from(selectedImages).filter(img => 
+              img.endsWith('.mp4') || img.endsWith('.mov') || img.endsWith('.avi') || 
+              img.endsWith('.mkv') || img.endsWith('.webm')
+            )}
+            onClose={() => setShowVideoEditor(false)}
+          />
+        </React.Suspense>
+      )}
+
+      {/* CreatorHub Photo Suite Dialog */}
+      {showVideoEditor && profession === 'photographer' && (
+        <React.Suspense fallback={<div>Laster CreatorHub Photo Suite...</div>}>
+          <PhotographerPhotoSuite
+            selectedPhotoFiles={Array.from(selectedImages).filter(img => 
+              img.endsWith('.jpg') || img.endsWith('.jpeg') || img.endsWith('.png') || 
+              img.endsWith('.webp') || img.endsWith('.tiff') || img.endsWith('.raw')
+            )}
+            onClose={() => setShowVideoEditor(false)}
+            selectedProject={selectedProject}
+          />
+        </React.Suspense>
+      )}
+
+      {/* Google Photos Integration Dialog */}
+      <Dialog 
+        open={showGooglePhotosDialog}
+        onClose={() => setShowGooglePhotosDialog(false)}
+        maxWidth="md" 
+        fullWidth
+      >
+        <DialogContent sx={{ p: 0 }}>
+          <AppBar position="static" sx={{ bgcolor: theme.palette.primary.main }}>
+            <Toolbar>
+              <Box 
+                component="img" 
+                src="https://fonts.gstatic.com/s/i/productlogos/photos/v14/24px.svg"
+                alt="Google Photos"
+                sx={{ width: 24, height: 24, mr: 2 }}
+              />
+              <Typography variant="h6" sx={{ flexGrow: 1 }}>
+                Google Photos Integrasjon
+              </Typography>
+              <IconButton color="inherit" onClick={() => setShowGooglePhotosDialog(false)}>
+                <Close />
+              </IconButton>
+            </Toolbar>
+          </AppBar>
+          
+          <Container sx={{ py: 3 }}>
+            {!googlePhotosConnected ? (
+              <Box textAlign="center" sx={{ py: 4 }}>
+                <Box 
+                  component="img" 
+                  src="https://fonts.gstatic.com/s/i/productlogos/photos/v14/192px.svg"
+                  alt="Google Photos"
+                  sx={{ width: 64, height: 64, mb: 2 }}
+                />
+                <Typography variant="h6" gutterBottom>
+                  Koble til Google Photos
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                  Synkroniser bilder fra Google Photos direkte til din showcase
+                </Typography>
+                <Button variant="contained"
+                  size="large"
+                  startIcon={
+                    <Box 
+                      component="img" 
+                      src="https://fonts.gstatic.com/s/i/productlogos/photos/v14/24px.svg"
+                      alt="Google Photos"
+                      sx={{ width: 20, height: 20 }}
+                    />
+                  }
+                  sx={{
+                    bgcolor: theme.palette.primary.main,
+                    '&:hover': { bgcolor: '#3367d6' },
+                    fontWeight: 50,
+                    textTransform: 'none'
+                  }}
+                  onClick={async () => {
+                    try {
+                      const response = await fetch('/api/google-photos/auth');
+                      const data = await response.json();
+                      if (data.authUrl) {
+                        window.open(data.authUrl, '_blank');
+                      }
+                    } catch (error) {
+                      // Auth error - handled by error boundary
+                    }
+                  }}
+                >
+                  Autoriser Google Photos
+                </Button>
+              </Box>
+            ) : (
+              <Box>
+                <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Box 
+                    component="img" 
+                    src="https://fonts.gstatic.com/s/i/productlogos/photos/v14/24px.svg"
+                    alt="Google Photos"
+                    sx={{ width: 24, height: 24 }}
+                  />
+                  Google Photos tilkoblet
+                  <CheckCircle sx={{ color: 'success.main', ml: 1 }} />
+                </Typography>
+                
+                {/* Album Selection */}
+                <FormControl fullWidth sx={{ mb: 3 }}>
+                  <InputLabel>Velg Album</InputLabel>
+                  <Select
+                    value={selectedGoogleAlbum || ', '}
+                    onChange={(e) => setSelectedGoogleAlbum(e.target.value)}
+                    label="Velg Album"
+                  >
+                    {googlePhotosAlbums.map((album: { id: string; title: string; count: number; mediaItemsCount?: number }) => (
+                      <MenuItem key={album.id} value={album.id}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                          <Box 
+                            component="img" 
+                            src="https://fonts.gstatic.com/s/i/productlogos/photos/v14/24px.svg"
+                            alt="Google Photos"
+                            sx={{ width: 20, height: 20 }}
+                          />
+                          <Box>
+                            <Typography variant="body1">{album.title}</Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              {album.mediaItemsCount} bilder
+                            </Typography>
+                          </Box>
+                        </Box>
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+
+                {/* Photos Grid */}
+                {selectedGoogleAlbum && googlePhotosItems.length > 0 && (
+                  <Box>
+                    <Typography variant="h6" gutterBottom>
+                      Bilder fra album ({googlePhotosItems.length})
+                    </Typography>
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, maxHeight: 400, overflow: 'auto', mb: 3 }}>
+                      {googlePhotosItems.slice(0, 12).map((photo: { id: string; baseUrl: string; filename?: string }) => (
+                        <Box sx={{ flex: { xs: '1 1 50%', sm: '1 1 33.333%', md: '1 1 25%' }, maxWidth: { xs: '50%', sm: '33.333%', md: '25%' } }} key={photo.id}>
+                          <Card sx={{ cursor: 'pointer','&:hover': { transform: 'scale(1.05)' } }}>
+                            <CardMedia
+                              component="img"
+                              height="120"
+                              image={photo.baseUrl}
+                              alt={`Google Photos: ${photo.filename || 'Bilde'} - Importert fra Google Photos`}
+                              loading="lazy"
+                              sx={{ 
+                                objectFit: 'cover',
+                                transition: 'opacity 0.3s ease'
+                              }}
+                              onError={(e) => {
+                                const target = e.target as HTMLImageElement;
+                                target.src = 'https://images.unsplash.com/photo-1542038784456-1ea8e935640e?w=120&h=120&fit=crop';
+                              }}
+                            />
+                          </Card>
+                        </Box>
+                      ))}
+                    </Box>
+                    
+                    <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center' }}>
+                      <Button variant="contained"
+                        startIcon={
+                          <Box 
+                            component="img" 
+                            src="https://fonts.gstatic.com/s/i/productlogos/photos/v14/24px.svg"
+                            alt="Google Photos"
+                            sx={{ width: 20, height: 20 }}
+                          />
+                        }
+                        onClick={syncWithGooglePhotos}
+                        disabled={showGooglePhotosSync}
+                        sx={{ 
+                          bgcolor: theme.palette.primary.main,
+                          fontWeight: 50,
+                          textTransform: 'none','&:hover': { bgcolor: '#3367d6' }
+                        }}
+                      >
+                        {showGooglePhotosSync ? 'Synkroniserer...' : 'Synkroniser alle'}
+                      </Button>
+                      
+                      <Button
+                        variant="outlined"
+                        startIcon={<Add />}
+                        onClick={() => handleGooglePhotosImport(googlePhotosItems.map(p => p.id))}
+                      >
+                        Importer valgte
+                      </Button>
+                    </Box>
+
+                    {showGooglePhotosSync && (
+                      <Box sx={{ mt: 2 }}>
+                        <LinearProgress 
+                          variant="determinate" 
+                          value={googlePhotosSyncProgress}
+                          sx={{ mb: 1 }}
+                        />
+                        <Typography variant="body2" color="text.secondary" textAlign="center">
+                          Synkroniserer: {googlePhotosSyncProgress}% fullført
+                        </Typography>
+                      </Box>
+                    )}
+                  </Box>
+                )}
+              </Box>
+            )}
+          </Container>
+        </DialogContent>
+      </Dialog>
+
+      {/* Command Palette */}
+      <CommandPalette
+        open={commandPaletteOpen}
+        onClose={() => setCommandPaletteOpen(false)}
+        onCommand={handleCommand}
+        profession={profession}
+      />
+      
+      {/* Keyboard Shortcuts Guide */}
+      <KeyboardShortcutsGuide
+        open={showKeyboardShortcuts}
+        onClose={() => setShowKeyboardShortcuts(false)}
+        profession={profession}
+      />
+      
+      {/* Workflow Executor */}
+      <WorkflowExecutor
+        open={showWorkflowExecutor}
+        onClose={() => setShowWorkflowExecutor(false)}
+        profession={profession}
+        selectedItems={Array.from(selectedImages)}
+        onWorkflowComplete={(workflowId) => {
+          console.log('Workflow completed:', workflowId);
+          // Refresh data
+          refetch();
+        }}
+      />
+      
+      {/* Quick Preview */}
+      <QuickPreview
+        open={quickPreviewOpen}
+        items={filteredItems}
+        currentIndex={quickPreviewIndex}
+        profession={profession}
+        accentColor={accentColor}
+        onClose={() => setQuickPreviewOpen(false)}
+        onNavigate={(direction) => {
+          if (direction === 'next' && quickPreviewIndex < filteredItems.length - 1) {
+            setQuickPreviewIndex(quickPreviewIndex + 1);
+          } else if (direction === 'prev' && quickPreviewIndex > 0) {
+            setQuickPreviewIndex(quickPreviewIndex - 1);
+          }
+        }}
+        onDownload={handleDownload}
+        onFavorite={toggleFavorite}
+        onEdit={(item) => setSelectedItem(item)}
+        favorites={favorites}
+      />
+      
+      {/* Activity Feed */}
+      <ActivityFeed
+        open={activityFeedOpen}
+        onClose={() => setActivityFeedOpen(false)}
+        profession={profession}
+        accentColor={accentColor}
+      />
+      
+      {/* Comparison View */}
+      <ComparisonView
+        open={comparisonViewOpen}
+        items={filteredItems}
+        profession={profession}
+        accentColor={accentColor}
+        onClose={() => setComparisonViewOpen(false)}
+        onPrefer={(itemId) => {
+          addNotification({
+            message: 'Item marked as preferred!',
+            type: 'success',
+            duration: 2000 });
+        }}
+        onDownload={handleDownload}
+        favorites={favorites}
+        onFavorite={toggleFavorite}
+      />
+
+      {/* Showcase Sharing Dialog */}
+      <ShowcaseSharingDialog
+        open={shareShowcaseDialogOpen}
+        onClose={() => {
+          setShareShowcaseDialogOpen(false);
+          setPrefilledClient(undefined);
+    }}
+        prefilledClient={prefilledClient}
+        showcases={showcases}
+        shareShowcaseMutation={shareShowcaseMutation}
+        user={user}
+        profession={profession}
+      />
+
+      {/* Overage Management Dialog */}
+      <OverageManagementDialog 
+        open={overageDialogOpen}
+        onClose={() => setOverageDialogOpen(false)}
+        showcaseData={selectedShowcaseData}
+        overageEmailMutation={overageEmailMutation}
+      />
+
+      {/* Lightroom Plugin Dialog */}
+      <LightroomPluginDialog 
+        open={lightroomPluginDialogOpen}
+        onClose={() => setLightroomPluginDialogOpen(false)}
+        profession={profession}
+      />
+
+      {/* Custom Categories Dialog */}
+      <CustomCategoriesDialog 
+        open={customCategoriesDialogOpen}
+        onClose={() => setCustomCategoriesDialogOpen(false)}
+        profession={profession}
+        userId={effectiveUserId}
+      />
+
+      {/* Custom Sets Dialog */}
+      <CustomSetsDialog 
+        open={customSetsDialogOpen}
+        onClose={() => setCustomSetsDialogOpen(false)}
+        profession={profession}
+        userId={effectiveUserId}
+        availableCategories={apiCategories || []}
+      />
+      
+      {/* Publish to Academy Dialog - Pro Plan Feature */}
+      <PublishToAcademyDialog
+        open={showPublishToAcademyDialog}
+        onClose={() => {
+          setShowPublishToAcademyDialog(false);
+          setSelectedItemForPublish(null);
+        }}
+        item={selectedItemForPublish}
+        profession={profession}
+      />
+
+      {/* Share to Community Dialog */}
+      <ShareToCommunityDialog
+        open={showShareToCommunityDialog}
+        onClose={() => {
+          setShowShareToCommunityDialog(false);
+          setSelectedItemForCommunityShare(null);
+          setSelectedItemsForCommunityShare([]);
+        }}
+        item={selectedItemForCommunityShare}
+        items={selectedItemsForCommunityShare}
+        userId={effectiveUserId}
+        profession={profession}
+        onShareSuccess={(messageId, channelId) => {
+          addNotification({
+            type: 'success',
+            title: 'Delt til Community',
+            message: 'Innholdet ditt er nå delt med community!',
+          });
+        }}
+      />
+
+      {/* Bulk Folder Upload Dialog */}
+      <BulkFolderUpload
+        open={showBulkFolderUpload}
+        onClose={() => setShowBulkFolderUpload(false)}
+        onCreateCollections={handleBulkCreateCollections}
+        profession={profession}
+        accentColor={accentColor}
+        parentFolderId={currentParentFolderId}
+      />
+
+      {/* Project Overview Dialog - Only in Admin Mode */}
+      {adminMode && (
+        <>
+          <Dialog
+            open={projectOverviewOpen}
+            onClose={() => setProjectOverviewOpen(false)}
+            maxWidth="md"
+            fullWidth
+            PaperProps={{
+              sx: {
+                background: 'linear-gradient(135deg, rgba(2, 5, 5,255,255,0.95) 0%, rgba(2, 5, 5,255,255,0.98) 100%)',
+                backdropFilter: 'blur(10px)',
+              }
+            }}
+          >
+            <DialogTitle sx={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'space-between',
+              borderBottom: 1,
+              borderColor: 'divider',
+              pb: 2
+            }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                {selectedProjectForOverview?.projectType === 'story-arc' && <MovieCreation sx={{ color: theming.colors.primary }} />}
+                {selectedProjectForOverview?.projectType === 'photo' && <CameraAlt sx={{ color: theming.colors.primary }} />}
+                {selectedProjectForOverview?.projectType === 'audio' && <LibraryMusic sx={{ color: theming.colors.primary }} />}
+                {selectedProjectForOverview?.projectType === 'timeline' && <TimelineIcon sx={{ color: theming.colors.primary }} />}
+                <Typography variant="h6" sx={{ fontWeight: 700}}>
+                  {selectedProjectForOverview?.storyArcName || 
+                   selectedProjectForOverview?.name || 
+                   selectedProjectForOverview?.title || 
+                   'Project Details'}
+                </Typography>
+              </Box>
+              <IconButton onClick={() => setProjectOverviewOpen(false)}>
+                <Close />
+              </IconButton>
+            </DialogTitle>
+            
+            <DialogContent sx={{ mt: 2 }}>
+              {selectedProjectForOverview && (
+                <Grid container spacing={3}>
+                  {/* Project Information Card */}
+                  <Grid item xs={12}>
+                    <MuiCard variant="outlined">
+                      <CardContent>
+                        <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
+                          Project Information
+                        </Typography>
+                        
+                        {/* Story Arc Specific */}
+                        {selectedProjectForOverview.projectType === 'story-arc' && (
+                          <Stack spacing={2}>
+                            <Box>
+                              <Typography variant="caption" color="text.secondary">Template Type</Typography>
+                              <Typography variant="body1">{selectedProjectForOverview.templateType}</Typography>
+                            </Box>
+                            <Box>
+                              <Typography variant="caption" color="text.secondary">Status</Typography>
+                              <Chip label={selectedProjectForOverview.status} size="small" />
+                            </Box>
+                            <Box>
+                              <Typography variant="caption" color="text.secondary">Created</Typography>
+                              <Typography variant="body1">
+                                {new Date(selectedProjectForOverview.createdAt).toLocaleDateString()}
+                              </Typography>
+                            </Box>
+                          </Stack>
+                        )}
+                        
+                        {/* Photo Project Specific */}
+                        {selectedProjectForOverview.projectType === 'photo' && (
+                          <Stack spacing={2}>
+                            <Box>
+                              <Typography variant="caption" color="text.secondary">Client</Typography>
+                              <Typography variant="body1">{selectedProjectForOverview.clientName || 'N/A'}</Typography>
+                            </Box>
+                            <Box>
+                              <Typography variant="caption" color="text.secondary">Event Date</Typography>
+                              <Typography variant="body1">
+                                {selectedProjectForOverview.eventDate 
+                                  ? new Date(selectedProjectForOverview.eventDate).toLocaleDateString()
+                                  : 'N/A'}
+                              </Typography>
+                            </Box>
+                          </Stack>
+                        )}
+                        
+                        {/* Timeline Project Specific */}
+                        {selectedProjectForOverview.projectType === 'timeline' && (
+                          <Stack spacing={2}>
+                            <Box>
+                              <Typography variant="caption" color="text.secondary">Project ID</Typography>
+                              <Typography variant="body1">{selectedProjectForOverview.id}</Typography>
+                            </Box>
+                          </Stack>
+                        )}
+                      </CardContent>
+                    </MuiCard>
+                  </Grid>
+                  
+                  {/* Action Buttons */}
+                  <Grid item xs={12}>
+                    <Stack direction="row" spacing={2} justifyContent="flex-end">
+                      <Button
+                        variant="outlined"
+                        onClick={() => setProjectOverviewOpen(false)}
+                      >
+                        Close
+                      </Button>
+                      <Button
+                        variant="contained"
+                        startIcon={<TimelineIcon />}
+                        onClick={() => handleOpenProjectTimeline(selectedProjectForOverview)}
+                        sx={{
+                          backgroundColor: theming.colors.primary,
+                          '&:hover': { backgroundColor: alpha(theming.colors.primary, 0.8) }
+                        }}
+                      >
+                        View Project Timeline
+                      </Button>
+                      <Button
+                        variant="contained"
+                        startIcon={<OpenInNew />}
+                        onClick={handleOpenInNewTab}
+                        sx={{
+                          backgroundColor: theming.colors.primary,
+                          '&:hover': { backgroundColor: alpha(theming.colors.primary, 0.8) }
+                        }}
+                      >
+                        Open in New Tab
+                      </Button>
+                      <Button
+                        variant="contained"
+                        startIcon={selectedProjectForOverview?.projectType === 'story-arc' ? <MovieCreation /> : <Edit />}
+                        onClick={handleOpenInEditor}
+                          sx={{
+                            backgroundColor: theming.colors.primary, '&:hover': { backgroundColor: alpha(theming.colors.primary, 0.8) }
+                        }}
+                      >
+                        {selectedProjectForOverview?.projectType === 'story-arc' 
+                          ? 'Open in Story Arc Studio' 
+                          : selectedProjectForOverview?.projectType === 'photo'
+                          ? 'Open in Photo Enhancement'
+                          : selectedProjectForOverview?.projectType === 'audio'
+                          ? 'Open in Audio Enhancement'
+                          : 'Open in Editor'}
+                      </Button>
+                    </Stack>
+                  </Grid>
+                </Grid>
+              )}
+            </DialogContent>
+          </Dialog>
+
+          {/* Project Timeline Overview Dialog */}
+          <Dialog
+            open={projectTimelineOpen}
+            onClose={() => setProjectTimelineOpen(false)}
+            maxWidth="lg"
+            fullWidth
+            PaperProps={{
+              sx: {
+                background: 'linear-gradient(135deg, rgba(2, 5, 5,255,255,0.95) 0%, rgba(2, 5, 5,255,255,0.98) 100%)',
+                backdropFilter: 'blur(10px)',
+              }
+            }}
+          >
+            <DialogTitle sx={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'space-between',
+              borderBottom: 1,
+              borderColor: 'divider',
+              pb: 2
+            }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                <TimelineIcon sx={{ color: theming.colors.primary }} />
+                <Typography variant="h6" sx={{ fontWeight: 700}}>
+                  Project Timeline: {selectedProjectForTimeline?.name || selectedProjectForTimeline?.title || 'Project'}
+                </Typography>
+              </Box>
+              <IconButton onClick={() => setProjectTimelineOpen(false)}>
+                <Close />
+              </IconButton>
+            </DialogTitle>
+            
+            <DialogContent sx={{ mt: 2 }}>
+              {selectedProjectForTimeline && (
+                <Box>
+                  {/* Embed ProjectTimeline component */}
+                  <ProjectTimeline
+                    projectId={selectedProjectForTimeline.id}
+                    selectedProject={selectedProjectForTimeline}
+                    profession={profession as 'photographer' | 'videographer' | 'music_producer' | 'vendor'}
+                  />
+                </Box>
+              )}
+            </DialogContent>
+          </Dialog>
+        </>
+      )}
+
+      {/* Academy Overlay */}
+      {showAcademy && (
+        <Box sx={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 999, bgcolor: 'background.default' }}>
+          <Box sx={{ position: 'absolute', top: 16, right: 16, zIndex: 10000}}>
+            <Button variant="contained"
+              startIcon={<ArrowBack />}
+              onClick={() => setShowAcademy(false)}
+              sx={{ 
+                bgcolor: '#ff8c00', '&:hover': { 
+                  bgcolor: '#f57c00'
+                }
+              }}
+            >
+              TILBAKE TIL SHOWCASE
+            </Button>
+          </Box>
+          <AcademyDashboard />
+        </Box>
+      )}
+
+      {/* Dashboard Overlay */}
+      {showDashboard && (
+        <Box sx={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 999, bgcolor: 'background.default' }}>
+          <Box sx={{ position: 'absolute', top: 16, right: 16, zIndex: 10000}}>
+            <Button variant="contained"
+              startIcon={<ArrowBack />}
+              onClick={() => setShowDashboard(false)}
+              sx={{ 
+                bgcolor: '#4caf50', '&:hover': { 
+                  bgcolor: '#388e3c'
+                }
+              }}
+            >
+              TILBAKE TIL SHOWCASE
+            </Button>
+          </Box>
+          <UniversalDashboard profession={profession} />
+        </Box>
+      )}
+
+      {/* Project State Update Dialog */}
+      <Dialog
+        open={projectStateUpdateOpen}
+        onClose={() => setProjectStateUpdateOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <CheckCircle color="primary" />
+            <Typography variant="h6">Update Project State</Typography>
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ mt: 2 }}>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Current state: <strong>{projectState === 'delivered' ? 'Delivered' : 'In Client Review'}</strong>
+            </Typography>
+            <FormControl fullWidth>
+              <FormLabel>New Project State</FormLabel>
+              <RadioGroup
+                value={newProjectState}
+                onChange={(e) => setNewProjectState(e.target.value as 'delivered' | 'in_review')}
+              >
+                <FormControlLabel 
+                  value="in_review" 
+                  control={<Radio />} 
+                  label="In Client Review" 
+                />
+                <FormControlLabel 
+                  value="delivered" 
+                  control={<Radio />} 
+                  label="Delivered" 
+                />
+              </RadioGroup>
+            </FormControl>
+            <Paper sx={{ p: 2, mt: 2, bgcolor: newProjectState === 'delivered' ? 'rgba(76, 175, 80, 0.1)' : 'rgba(255, 152, 0, 0.1)' }}>
+              <Typography variant="body2">
+                Changing to <strong>{newProjectState === 'delivered' ? 'Delivered' : 'In Client Review'}</strong> will:
+              </Typography>
+              <Box component="ul" sx={{ mt: 1, pl: 2, mb: 0 }}>
+                {newProjectState === 'delivered' ? (
+                  <>
+                    <li>Remove watermarks</li>
+                    <li>Disable comments</li>
+                    <li>Enable downloads</li>
+                    <li>Mark project as completed</li>
+                  </>
+                ) : (
+                  <>
+                    <li>Add watermarks</li>
+                    <li>Enable comments</li>
+                    <li>Disable downloads</li>
+                    <li>Mark project as awaiting approval</li>
+                  </>
+                )}
+              </Box>
+            </Paper>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setProjectStateUpdateOpen(false)}>Cancel</Button>
+          <Button
+            variant="contained"
+            onClick={async () => {
+              if (selectedItemForStateUpdate && clientSession) {
+                try {
+                  await updateProjectStateMutation.mutateAsync({
+                    sessionId: sessionIdd || clientSession.id,
+                    projectState: newProjectState,
+                    projectId: selectedItemForStateUpdate.projectId,
+                  });
+                  setProjectStateUpdateOpen(false);
+                } catch (error) {
+                  console.error('Failed to update project state:', error);
+                }
+              }
+            }}
+            disabled={updateProjectStateMutation.isPending || newProjectState === projectState}
+          >
+            {updateProjectStateMutation.isPending ? 'Updating...': 'Update State'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Pro Tools Integration Dialog - Music Producer Only */}
+      {profession === 'music_producer' && (
+        <Dialog
+          open={showProToolsDialog}
+          onClose={() => setShowProToolsDialog(false)}
+          maxWidth="lg"
+          fullWidth
+          PaperProps={{
+            sx: {
+              minHeight: '600px',
+            }}}
+        >
+          <DialogTitle>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Typography variant="h6">Pro Tools Integration</Typography>
+              <IconButton onClick={() => setShowProToolsDialog(false)} size="small">
+                <Close />
+              </IconButton>
+            </Box>
+          </DialogTitle>
+          <DialogContent>
+            <Grid container spacing={2}>
+              <Grid item xs={12}>
+                <ProToolsConnection
+                  onSessionSelected={(sessionId) => setProToolsSessionId(sessionId)}
+                  selectedSessionId={proToolsSessionId}
+                />
+              </Grid>
+              {proToolsSessionId && (
+                <>
+                  <Grid item xs={12} md={6}>
+                    <PlayheadSync
+                      sessionId={proToolsSessionId}
+                      currentTime={0}
+                      duration={selectedItem?.duration}
+                      onTimeChange={(time) => {
+                        // Update playback time if audio/video is playing
+                        // This would integrate with the media player
+                      }}
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <ProToolsCommentsPanel
+                      sessionId={proToolsSessionId}
+                      currentTimecode={undefined}
+                      onCommentClick={(comment) => {
+                        // Seek to comment timecode
+                        if (comment.timecodeReference) {
+                          const seconds = timecodeToSeconds(comment.timecodeReference);
+                          // Update playback position - would integrate with media player
+                          addNotification({
+                            message: `Seeking to ${comment.timecodeReference}`,
+                            type: 'info',
+                          });
+                        }
+                      }}
+                    />
+                  </Grid>
+                </>
+              )}
+            </Grid>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setShowProToolsDialog(false)}>Close</Button>
+          </DialogActions>
+        </Dialog>
+      )}
+
+      {/* Notification Snackbar */}
+      <Snackbar
+        open={notificationOpen}
+        autoHideDuration={6000}
+        onClose={handleCloseNotification}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+      >
+        <Alert
+          onClose={handleCloseNotification}
+          severity={notification?.type || 'info'}
+          sx={{ width:'100%' }}
+        >
+          {notification?.message}
+        </Alert>
+      </Snackbar>
+    </Box>
+  );
+};
+
+export default React.memo(UniversalShowcase);

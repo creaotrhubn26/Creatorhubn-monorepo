@@ -1,0 +1,284 @@
+/**
+ * Enhanced Loading Components for CreatorHub Norge
+ * Provides skeleton loading, progress indicators, and error states
+ * Material UI compliant with Norwegian text support
+ */
+
+import { useTheming } from '../../utils/theming-helper';
+import React from 'react';
+import {
+  Box,
+  Skeleton,
+  Alert,
+  CircularProgress,
+  Typography,
+  Button,
+  LinearProgress,
+  Card,
+  CardContent,
+  Stack
+} from '@mui/material';
+import {
+  Refresh as RefreshIcon,
+  ErrorOutline as ErrorIcon,
+  Warning as WarningIcon,
+  Info as InfoIcon
+} from '@mui/icons-material';
+
+interface EnhancedLoadingProps {
+  variant?: 'skeleton' | 'spinner' | 'progress';
+  rows?: number;
+  height?: number | string;
+  width?: number | string;
+  message?: string;
+}
+
+interface ErrorStateProps {
+  error: Error | string;
+  onRetry?: () => void;
+  severity?: 'error' | 'warning' | 'info';
+  retryText?: string;
+}
+
+interface ProgressLoadingProps {
+  progress?: number;
+  message?: string;
+  indeterminate?: boolean;
+}
+
+// Enhanced skeleton loading component
+export function SkeletonLoader({ 
+  rows = 3, 
+  height = 60, 
+  width = "100%", 
+  message = "Laster innhold..." 
+}: EnhancedLoadingProps) {
+  return (
+    <Box sx={{ width, p: 2 }}>
+      {message && (
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          {message}
+        </Typography>
+      )}
+      <Stack spacing={1}>
+        {Array.from({ length: rows }).map((_, index) => (
+          <Skeleton
+            key={index}
+            variant="rectangular"
+            height={height}
+            animation="wave"
+            sx={{ 
+              borderRadius: 1,
+              bgcolor: 'grey.100'
+          }}
+          />
+        ))}
+      </Stack>
+    </Box>
+  );
+}
+
+// Enhanced spinner loading component  
+export function SpinnerLoader({ 
+  message = "Laster...", 
+  height = 200 
+}: EnhancedLoadingProps & { height?: number }) {
+  return (
+    <Box
+      sx={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        height,
+        p: 3
+    }}
+    >
+      <CircularProgress 
+        sx={{ 
+          mb: 2,
+          color: 'primary.main'
+      }}
+      />
+      <Typography variant="body1" color="text.secondary" textAlign="center">
+        {message}
+      </Typography>
+    </Box>
+  );
+}
+
+// Enhanced progress loading component
+export function ProgressLoader({ 
+  progress = 0, 
+  message = "Behandler data...", 
+  indeterminate = false 
+}: ProgressLoadingProps) {
+  return (
+    <Card elevation={1} sx={{ m: 2 }}>
+      <CardContent>
+        <Stack spacing={2}>
+          <Typography variant="h6" color="text.primary">
+            {message}
+          </Typography>
+          <LinearProgress
+            variant={indeterminate ? "indeterminate" : "determinate"}
+            value={indeterminate ? undefined : progress}
+            sx={{
+              height: 8,
+              borderRadius: 4,
+              backgroundColor: 'grey.200',
+              '& .MuiLinearProgress-bar': {
+                borderRadius: 4,
+            },
+          }}
+          />
+          {!indeterminate && (
+            <Typography variant="body2" color="text.secondary">
+              {Math.round(progress)}% fullført
+            </Typography>
+          )}
+        </Stack>
+      </CardContent>
+    </Card>
+  );
+}
+
+// Enhanced error state component
+export function ErrorState({ 
+  error, 
+  onRetry, 
+  severity = 'error',
+  retryText = "Prøv igjen" 
+}: ErrorStateProps) {
+  const errorMessage = typeof error === 'string' ? error : error.message;
+  const isConnectionError = errorMessage.toLowerCase().includes('network') || 
+                           errorMessage.toLowerCase().includes('connection');
+  
+  const getIcon = () => {
+    switch (severity) {
+      case 'warning':
+        return <WarningIcon />;
+      case 'info':
+        return <InfoIcon />;
+      default: return <ErrorIcon />;
+  }
+};
+
+  const getTitle = () => {
+    if (isConnectionError) return "Tilkoblingsproblem";
+    switch (severity) {
+      case 'warning':
+        return "Advarsel";
+      case 'info':
+        return "Informasjon";
+      default: return "Noe gikk galt";
+  }
+};
+
+  return (
+    <Box sx={{ p: 3 }}>
+      <Alert 
+        severity={severity}
+        icon={getIcon()}
+        sx={{ 
+          mb: 2,
+          '& .MuiAlert-message': {
+            width: '100%'
+        }
+      }}
+      >
+        <Typography variant="h6" sx={{ mb: 1 }}>
+          {getTitle()}
+        </Typography>
+        <Typography variant="body2" sx={{ mb: onRetry ? 2 : 0 }}>
+          {isConnectionError 
+            ? "Kan ikke koble til serveren. Sjekk internettforbindelsen din."
+            : errorMessage
+        }
+        </Typography>
+        {onRetry && (
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={<RefreshIcon />}
+            onClick={onRetry}
+            sx={{ mt: 1 }}
+          >
+            {retryText}
+          </Button>
+        )}
+      </Alert>
+    </Box>
+  );
+}
+
+// Enhanced loading wrapper that handles all loading states
+interface LoadingWrapperProps {
+  loading: boolean;
+  error?: Error | string | null;
+  onRetry?: () => void;
+  loadingComponent?: React.ReactNode;
+  children: React.ReactNode;
+  minHeight?: number;
+}
+
+export function LoadingWrapper({
+  loading,
+  error,
+  onRetry,
+  loadingComponent,
+  children,
+  minHeight = 200
+}: LoadingWrapperProps) {
+  if (loading) {
+    return loadingComponent || <SpinnerLoader height={minHeight} />;
+}
+
+  if (error) {
+    return <ErrorState error={error} onRetry={onRetry} />;
+}
+
+  return <>{children}</>;
+}
+
+// Data table skeleton loader
+export function TableSkeletonLoader({ rows = 5, columns = 4 }: { rows?: number; columns?: number }) {
+  return (
+    <Stack spacing={1} sx={{ p: 2 }}>
+      {Array.from({ length: rows }).map((_, rowIndex) => (
+        <Box key={rowIndex} sx={{ display: 'flex', gap: 2 }}>
+          {Array.from({ length: columns }).map((_, colIndex) => (
+            <Skeleton
+              key={colIndex}
+              variant="rectangular"
+              height={40}
+              sx={{ 
+                flex: 1,
+                borderRadius: 1,
+                bgcolor: 'grey.100'
+            }}
+            />
+          ))}
+        </Box>
+      ))}
+    </Stack>
+  );
+}
+
+// Card content skeleton loader
+export function CardSkeletonLoader() {
+  return (
+    <Card sx={{ m: 1 }}>
+      <CardContent>
+        <Stack spacing={2}>
+          <Skeleton variant="text" height={32} width="60%" />
+          <Skeleton variant="rectangular" height={100} />
+          <Stack direction="row" spacing={1}>
+            <Skeleton variant="rectangular" height={36} width={80} />
+            <Skeleton variant="rectangular" height={36} width={80} />
+          </Stack>
+        </Stack>
+      </CardContent>
+    </Card>
+  );
+}

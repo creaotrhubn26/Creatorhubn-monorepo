@@ -1,0 +1,619 @@
+/**
+ * Real-time Context - Live collaboration and real-time updates
+ * Provides real-time features for collaboration and live updates
+ */
+
+import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode, useRef } from 'react';
+import { useAuth } from '../hooks/useAuth';
+import { useDynamicProfessions } from '../components/universal/hooks/useDynamicProfessions';
+import { useProfessionConfigs } from '../hooks/useProfessionConfigs';
+import { useProfessionAdapter } from '../hooks/useProfessionAdapter';
+import getProfessionIcon from '../utils/profession-icons';
+
+// Real-time event types
+export type RealTimeEventType = 
+  | 'project_updated'
+  | 'showcase_updated'
+  | 'item_selected'
+  | 'item_updated'
+  | 'item_deleted'
+  | 'comment_added'
+  | 'comment_updated'
+  | 'comment_deleted'
+  | 'user_joined'
+  | 'user_left'
+  | 'cursor_moved'
+  | 'selection_changed'
+  | 'file_uploaded'
+  | 'file_downloaded'
+  | 'status_changed'
+  | 'notification_sent'
+  | 'error_occurred';
+
+// Real-time event interface
+export interface RealTimeEvent {
+  id: string;
+  type: RealTimeEventType;
+  timestamp: Date;
+  userId: string;
+  sessionId: string;
+  data: any;
+  metadata?: {
+    source: string;
+    version: string;
+    priority: 'low' | 'medium' | 'high' | 'critical';
+};
+}
+
+// Collaboration session interface
+export interface CollaborationSession {
+  id: string;
+  name: string;
+  type: 'project' | 'showcase' | 'meeting' | 'review';
+  participants: CollaborationParticipant[];
+  status: 'active' | 'paused' | 'ended';
+  createdAt: Date;
+  updatedAt: Date;
+  createdBy: string;
+  settings: {
+    allowAnonymous: boolean;
+    maxParticipants: number;
+    requireApproval: boolean;
+    enableScreenShare: boolean;
+    enableVoiceChat: boolean;
+    enableVideoChat: boolean;
+    enableWhiteboard: boolean;
+    enableComments: boolean;
+    enableCursors: boolean;
+    enableLiveEditing: boolean;
+};
+}
+
+// Collaboration participant interface
+export interface CollaborationParticipant {
+  id: string;
+  userId: string;
+  name: string;
+  email: string;
+  avatar?: string;
+  role: 'owner' | 'editor' | 'viewer' | 'commenter';
+  status: 'online' | 'away' | 'busy' | 'offline';
+  lastSeen: Date;
+  cursor?: {
+    x: number;
+    y: number;
+    element?: string;
+};
+  selections?: string[];
+  permissions: {
+    canEdit: boolean;
+    canComment: boolean;
+    canShare: boolean;
+    canDelete: boolean;
+    canInvite: boolean;
+};
+}
+
+// Real-time context type
+export interface RealTimeContextType {
+  // Connection status
+  isConnected: boolean;
+  isConnecting: boolean;
+  connectionError: string | null;
+  
+  // Current session
+  currentSession: CollaborationSession | null;
+  participants: CollaborationParticipant[];
+  localParticipant: CollaborationParticipant | null;
+  
+  // Real-time events
+  events: RealTimeEvent[];
+  addEvent: (event: Omit<RealTimeEvent, 'id' | 'timestamp'>) => void;
+  clearEvents: () => void;
+  
+  // Event handling
+  onEvent: (eventType: RealTimeEventType, callback: (event: RealTimeEvent) => void) => void;
+  offEvent: (eventType: RealTimeEventType, callback: (event: RealTimeEvent) => void) => void;
+  emitEvent: (eventType: RealTimeEventType, data: any) => void;
+  
+  // Session management
+  createSession: (sessionData: Partial<CollaborationSession>) => Promise<CollaborationSession>;
+  joinSession: (sessionId: string) => Promise<void>;
+  leaveSession: () => Promise<void>;
+  endSession: () => Promise<void>;
+  
+  // Participant management
+  inviteParticipant: (email: string, role: CollaborationParticipant['role']) => Promise<void>;
+  updateParticipantRole: (participantId: string, role: CollaborationParticipant['role']) => Promise<void>;
+  removeParticipant: (participantId: string) => Promise<void>;
+  updateParticipantStatus: (status: CollaborationParticipant['status']) => void;
+  updateParticipantCursor: (cursor: CollaborationParticipant['cursor']) => void;
+  updateParticipantSelections: (selections: string[]) => void;
+  
+  // Real-time features
+  enableLiveEditing: boolean;
+  setLiveEditing: (enabled: boolean) => void;
+  enableCursors: boolean;
+  setCursors: (enabled: boolean) => void;
+  enableComments: boolean;
+  setComments: (enabled: boolean) => void;
+  
+  // Conflict resolution
+  resolveConflict: (conflictId: string, resolution: 'accept' | 'reject' | 'merge') => void;
+  conflicts: any[];
+  
+  // Performance monitoring
+  latency: number;
+  bandwidth: number;
+  packetLoss: number;
+  
+  // Connection management
+  connect: () => Promise<void>;
+  disconnect: () => void;
+  reconnect: () => Promise<void>;
+  
+  // State management
+  isLoading: boolean;
+  error: string | null;
+  setError: (error: string | null) => void;
+}
+
+// Create context
+const RealTimeContext = createContext<RealTimeContextType | undefined>(undefined);
+
+// Real-time provider component
+export const RealTimeProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const { user } = useAuth();
+  
+  // Profession system hooks
+  const { professionConfigs, getUserProfessionColor } = useDynamicProfessions();
+  const { professionConfigs: apiProfessionConfigs } = useProfessionConfigs();
+  const professionAdapter = useProfessionAdapter();
+  const currentProfession = professionAdapter.profession || 'photographer';
+  const professionIcon = getProfessionIcon(currentProfession);
+  const professionConfig = professionConfigs?.[currentProfession];
+  const enhancedProfessionConfig = apiProfessionConfigs?.[currentProfession] || professionConfig;
+  const professionColor = getUserProfessionColor(currentProfession) || '#FF6B35';
+  
+  const [isConnected, setIsConnected] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [currentSession, setCurrentSession] = useState<CollaborationSession | null>(null);
+  const [participants, setParticipants] = useState<CollaborationParticipant[]>([]);
+  const [localParticipant, setLocalParticipant] = useState<CollaborationParticipant | null>(null);
+  const [events, setEvents] = useState<RealTimeEvent[]>([]);
+  const [enableLiveEditing, setEnableLiveEditing] = useState(false);
+  const [enableCursors, setEnableCursors] = useState(true);
+  const [enableComments, setEnableComments] = useState(true);
+  const [conflicts, setConflicts] = useState<any[]>([]);
+  const [latency, setLatency] = useState(0);
+  const [bandwidth, setBandwidth] = useState(0);
+  const [packetLoss, setPacketLoss] = useState(0);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // WebSocket connection
+  const wsRef = useRef<WebSocket | null>(null);
+  const eventHandlersRef = useRef<Map<RealTimeEventType, Set<(event: RealTimeEvent) => void>>>(new Map());
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const heartbeatIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Initialize event handlers map
+  useEffect(() => {
+    const eventTypes: RealTimeEventType[] = [
+      'project_updated','showcase_updated','item_selected','item_updated','item_deleted','comment_added','comment_updated','comment_deleted','user_joined','user_left','cursor_moved','selection_changed','file_uploaded','file_downloaded','status_changed','notification_sent','error_occurred'
+    ];
+    
+    eventTypes.forEach(eventType => {
+      eventHandlersRef.current.set(eventType, new Set());
+  });
+}, []);
+
+  // Connect to WebSocket
+  const connect = useCallback(async (): Promise<void> => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) return;
+
+    setIsConnecting(true);
+    setConnectionError(null);
+
+    try {
+      const ws = new WebSocket(`${process.env.REACT_APP_WS_URL || 'ws://localhost:3000'}/realtime`);
+      
+      ws.onopen = () => {
+        setIsConnected(true);
+        setIsConnecting(false);
+        setConnectionError(null);
+        
+        // Send authentication
+        ws.send(JSON.stringify({
+          type: 'auth',
+          userId: user?.id,
+          token: user?.id // In a real app, use proper JWT token
+      }));
+        
+        // Start heartbeat
+        startHeartbeat();
+    };
+
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          handleWebSocketMessage(data);
+      } catch (error) {
+          console.error('Failed to parse WebSocket message: ', error);
+      }
+    };
+
+      ws.onclose = () => {
+        setIsConnected(false);
+        setIsConnecting(false);
+        
+        // Attempt to reconnect
+        if (reconnectTimeoutRef.current) {
+          clearTimeout(reconnectTimeoutRef.current);
+      }
+        
+        reconnectTimeoutRef.current = setTimeout(() => {
+          if (!isConnected) {
+            reconnect();
+        }
+      }, 5000);
+    };
+
+      ws.onerror = (error) => {
+        setConnectionError('WebSocket connection error');
+        setIsConnecting(false);
+    };
+
+      wsRef.current = ws;
+  } catch (error) {
+      setConnectionError('Failed to connect to real-time service');
+      setIsConnecting(false);
+  }
+}, [user, isConnected]);
+
+  // Disconnect from WebSocket
+  const disconnect = useCallback(() => {
+    if (wsRef.current) {
+      wsRef.current.close();
+      wsRef.current = null;
+  }
+    
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
+  }
+    
+    if (heartbeatIntervalRef.current) {
+      clearInterval(heartbeatIntervalRef.current);
+      heartbeatIntervalRef.current = null;
+  }
+    
+    setIsConnected(false);
+    setIsConnecting(false);
+}, []);
+
+  // Reconnect to WebSocket
+  const reconnect = useCallback(async (): Promise<void> => {
+    disconnect();
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    await connect();
+}, [disconnect, connect]);
+
+  // Start heartbeat
+  const startHeartbeat = useCallback(() => {
+    if (heartbeatIntervalRef.current) {
+      clearInterval(heartbeatIntervalRef.current);
+  }
+    
+    heartbeatIntervalRef.current = setInterval(() => {
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({ type: 'ping',}));
+    }
+  }, 30000);
+}, []);
+
+  // Handle WebSocket messages
+  const handleWebSocketMessage = useCallback((data: any) => {
+    switch (data.type) {
+      case 'pong':
+        setLatency(Date.now() - data.timestamp);
+        break;
+      case 'event':
+        handleRealTimeEvent(data.event);
+        break;
+      case 'participant_joined':
+        setParticipants(prev => [...prev, data.participant]);
+        break;
+      case 'participant_left':
+        setParticipants(prev => prev.filter(p => p.id !== data.participantId));
+        break;
+      case 'participant_updated':
+        setParticipants(prev => prev.map(p => p.id === data.participantId ? { ...p, ...data.updates } : p));
+        break;
+      case 'session_updated':
+        setCurrentSession(data.session);
+        break;
+      case 'conflict':
+        setConflicts(prev => [...prev, data.conflict]);
+        break;
+      case 'error':
+        setError(data.message);
+        break;
+  }
+}, []);
+
+  // Handle real-time events
+  const handleRealTimeEvent = useCallback((event: RealTimeEvent) => {
+    setEvents(prev => [...prev.slice(-99), event]); // Keep last 100 events
+    
+    const handlers = eventHandlersRef.current.get(event.type);
+    if (handlers) {
+      handlers.forEach(handler => handler(event));
+  }
+}, []);
+
+  // Add event
+  const addEvent = useCallback((eventData: Omit<RealTimeEvent, 'id' | 'timestamp'>) => {
+    const event: RealTimeEvent = {
+      ...eventData,
+      id: Math.random().toString(36).substr(2, 9),
+      timestamp: new Date(),
+  };
+    
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        type: 'event',
+        event,
+    }));
+  }
+    
+    handleRealTimeEvent(event);
+}, [handleRealTimeEvent]);
+
+  // Clear events
+  const clearEvents = useCallback(() => {
+    setEvents([]);
+}, []);
+
+  // On event
+  const onEvent = useCallback((eventType: RealTimeEventType, callback: (event: RealTimeEvent) => void) => {
+    const handlers = eventHandlersRef.current.get(eventType);
+    if (handlers) {
+      handlers.add(callback);
+  }
+}, []);
+
+  // Off event
+  const offEvent = useCallback((eventType: RealTimeEventType, callback: (event: RealTimeEvent) => void) => {
+    const handlers = eventHandlersRef.current.get(eventType);
+    if (handlers) {
+      handlers.delete(callback);
+  }
+}, []);
+
+  // Emit event
+  const emitEvent = useCallback((eventType: RealTimeEventType, data: any) => {
+    addEvent({
+      type: eventType,
+      userId: user?.id || 'anonymous',
+      sessionId: currentSession?.id || 'global',
+      data,
+  });
+}, [addEvent, user, currentSession]);
+
+  // Create session
+  const createSession = useCallback(async (sessionData: Partial<CollaborationSession>): Promise<CollaborationSession> => {
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch('/api/collaboration/sessions', {
+        method: 'POST',
+        headers: {
+          'Content-Type' : 'application/json', 'Authorization': `Bearer ${user?.id}`,
+      },
+        body: JSON.stringify(sessionData),
+    });
+
+      if (!response.ok) {
+        throw new Error('Failed to create session');
+    }
+
+      const session = await response.json();
+      setCurrentSession(session);
+      
+      // Join the session
+      await joinSession(session.id);
+      
+      return session;
+  } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to create session';
+      setError(errorMessage);
+      throw new Error(errorMessage);
+  } finally {
+      setIsLoading(false);
+  }
+}, [user]);
+
+  // Join session
+  const joinSession = useCallback(async (sessionId: string): Promise<void> => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        type: 'join_session',
+        sessionId,
+    }));
+  }
+}, []);
+
+  // Leave session
+  const leaveSession = useCallback(async (): Promise<void> => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        type: 'leave_session',
+    }));
+  }
+    
+    setCurrentSession(null);
+    setParticipants([]);
+}, []);
+
+  // End session
+  const endSession = useCallback(async (): Promise<void> => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        type: 'end_session',
+    }));
+  }
+    
+    setCurrentSession(null);
+    setParticipants([]);
+}, []);
+
+  // Invite participant
+  const inviteParticipant = useCallback(async (email: string, role: CollaborationParticipant['role']): Promise<void> => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        type: 'invite_participant',
+        email,
+        role,
+    }));
+  }
+}, []);
+
+  // Update participant role
+  const updateParticipantRole = useCallback(async (participantId: string, role: CollaborationParticipant['role']): Promise<void> => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        type: 'update_participant_role',
+        participantId,
+        role,
+    }));
+  }
+}, []);
+
+  // Remove participant
+  const removeParticipant = useCallback(async (participantId: string): Promise<void> => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        type: 'remove_participant',
+        participantId,
+    }));
+  }
+}, []);
+
+  // Update participant status
+  const updateParticipantStatus = useCallback((status: CollaborationParticipant['status']) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        type: 'update_participant_status',
+        status,
+    }));
+  }
+}, []);
+
+  // Update participant cursor
+  const updateParticipantCursor = useCallback((cursor: CollaborationParticipant['cursor']) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        type: 'update_participant_cursor',
+        cursor,
+    }));
+  }
+}, []);
+
+  // Update participant selections
+  const updateParticipantSelections = useCallback((selections: string[]) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        type: 'update_participant_selections',
+        selections,
+    }));
+  }
+}, []);
+
+  // Resolve conflict
+  const resolveConflict = useCallback((conflictId: string, resolution: 'accept' | 'reject' | 'merge') => {
+    setConflicts(prev => prev.filter(c => c.id !== conflictId));
+    
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        type:'resolve_conflict',
+        conflictId,
+        resolution,
+    }));
+  }
+}, []);
+
+  // Connect on mount
+  useEffect(() => {
+    if (user) {
+      connect();
+  }
+
+    return () => {
+      disconnect();
+  };
+}, [user, connect, disconnect]);
+
+  const contextValue: RealTimeContextType = {
+    isConnected,
+    isConnecting,
+    connectionError,
+    currentSession,
+    participants,
+    localParticipant,
+    events,
+    addEvent,
+    clearEvents,
+    onEvent,
+    offEvent,
+    emitEvent,
+    createSession,
+    joinSession,
+    leaveSession,
+    endSession,
+    inviteParticipant,
+    updateParticipantRole,
+    removeParticipant,
+    updateParticipantStatus,
+    updateParticipantCursor,
+    updateParticipantSelections,
+    enableLiveEditing,
+    setLiveEditing: setEnableLiveEditing,
+    enableCursors,
+    setCursors: setEnableCursors,
+    enableComments,
+    setComments: setEnableComments,
+    resolveConflict,
+    conflicts,
+    latency,
+    bandwidth,
+    packetLoss,
+    connect,
+    disconnect,
+    reconnect,
+    isLoading,
+    error,
+    setError,
+};
+
+  return (
+    <RealTimeContext.Provider value={contextValue}>
+      {children}
+    </RealTimeContext.Provider>
+  );
+};
+
+// Hook to use real-time context
+export const useRealTime = (): RealTimeContextType => {
+  const context = useContext(RealTimeContext);
+  if (context === undefined) {
+    throw new Error('useRealTime must be used within a RealTimeProvider');
+}
+  return context;
+};
+
+export default RealTimeContext;
+
+

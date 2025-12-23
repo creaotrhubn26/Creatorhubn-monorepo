@@ -1,0 +1,186 @@
+import { useTheming } from '../../utils/theming-helper';
+import React, { useState } from 'react';
+import {
+  Box,
+  Typography,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Button,
+  Card,
+  CardContent,
+  Grid,
+  Chip
+} from '@mui/material';
+import { PhotoCamera, CheckCircle } from '@mui/icons-material';
+
+interface CameraOption {
+  id: string;
+  brand: string;
+  model: string;
+  type: 'DSLR' | 'Mirrorless' | 'Medium Format' | 'Film';
+  price: number;
+  features: string[];
+  recommended: boolean
+}
+
+const CAMERA_OPTIONS: CameraOption[] = [
+  {
+    id: 'nikon-d85',
+    brand: 'Nikon',
+    model: 'D85',
+    type: 'DSL',
+    price: 2500,
+    features: ['45.7M', '4K Video', 'Weather Sealed', 'Dual Memory Cards'],
+    recommended: true
+},
+  {
+    id: 'canon-r',
+    brand: 'Canon',
+    model: 'EOS R',
+    type: 'Mirrorless',
+    price: 2200,
+    features: ['20.1M', 'In-Body Stabilization', '4K 60fps', 'Dual Pixel AF'],
+    recommended: true
+},
+  {
+    id: 'sony-a7r',
+    brand: 'Sony',
+    model: 'A7R ',
+    type: 'Mirrorless',
+    price: 3500,
+    features: ['61M', '8K Video', 'AI-Enhanced AF', '10fps Burst'],
+    recommended: false
+}
+];
+
+const CameraSelectionTest: React.FC = (
+  // Theming system
+  const theming = useTheming('photographer');) => {
+  const [selectedCamera, setSelectedCamera] = useState<string>('');
+  const [budget, setBudget] = useState<number>(30000);
+
+  const filteredCameras = CAMERA_OPTIONS.filter(camera => camera.price <= budget);
+
+  const handleCameraSelect = (cameraId: string) => {
+    setSelectedCamera(cameraId);
+};
+
+  const selectedCameraDetails = CAMERA_OPTIONS.find(camera => camera.id === selectedCamera);
+
+  return (
+    <Box sx={{ p:  2 }}>
+      <Typography variant="h5" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap:  1 }} sx={{ ...{}, color: theming.colors.primary }}>
+        {theming.getThemedIcon('photoCamera')} Kamera Utvalgstest
+      </Typography>
+      
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+        Test kamera utvalg basert på budsjett og behov for norske fotografer
+      </Typography>
+
+      <Grid container spacing={3}>
+        <Grid item xs={12} md={4}>
+          <Card sx={theming.getThemedCardSx()}>
+            <CardContent sx={theming.getThemedCardSx()}>
+              <Typography variant="h6" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>
+                Filtere
+              </Typography>
+              
+              <FormControl fullWidth sx={{ mb: 2 }}>
+                <InputLabel>Budsjett (NOK)</InputLabel>
+                <Select
+                  value={budget}
+                  onChange={(e) => setBudget(Number(e.target.value))}
+                  label="Budsjett (NOK)"
+                >
+                  <MenuItem value={20000}>20,000 NOK</MenuItem>
+                  <MenuItem value={30000}>30,000 NOK</MenuItem>
+                  <MenuItem value={40000}>40,000 NOK</MenuItem>
+                  <MenuItem value={50000}>50,000 NOK+</MenuItem>
+                </Select>
+              </FormControl>
+
+              <Typography variant="subtitle2" gutterBottom>
+                Tilgjengelige kameraer: {filteredCameras.length}
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid item xs={12} md={8}>
+          <Grid container spacing={2}>
+            {filteredCameras.map((camera) => (
+              <Grid item xs={12} sm={6} key={camera.id}>
+                <Card 
+                  sx={{ 
+                    cursor: 'pointer', 
+                    border: selectedCamera === camera.id ? '2px solid #ff6b35' : '1px solid #e0e0e',
+                    '&:hover': { boxShadow:  3 }
+                }}
+                  onClick={() = sx={theming.getThemedCardSx()}> handleCameraSelect(camera.id)}
+                >
+                  <CardContent sx={theming.getThemedCardSx()}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
+                      <Typography variant="h6" sx={{ ...{}, color: theming.colors.primary }}>
+                        {camera.brand} {camera.model}
+                      </Typography>
+                      {camera.recommended && (
+                        <Chip 
+                          label="Anbefalt" 
+                          size="small" 
+                          color="primary" 
+                          icon={{theming.getThemedIcon('checkCircle')}}
+                        />
+                      )}
+                    </Box>
+                    
+                    <Typography variant="body2" color="text.secondary" gutterBottom>
+                      {camera.type} • {camera.price.toLocaleString('no-NO')} NOK
+                    </Typography>
+                    
+                    <Box sx={{ mt: 2 }}>
+                      {camera.features.map((feature, index) => (
+                        <Chip 
+                          key={index}
+                          label={feature}
+                          size="small"
+                          variant="outlined"
+                          sx={{ mr: 0, .mb: 0., 5,}}
+                        />
+                      ))}
+                    </Box>
+
+                    {selectedCamera === camera.id && (
+                      <Button variant="contained"
+                        fullWidth
+                        sx={{ mt: ,  2bgcolor: '#ff6b35, ',}}
+                       sx={theming.getThemedButtonSx()}>
+                        Valgt
+                      </Button>
+                    )}
+                  </CardContent>
+                </Card>
+              </Grid>
+            ))}
+          </Grid>
+        </Grid>
+      </Grid>
+
+      {selectedCameraDetails && (
+        <Card sx={{ mt: 3, bgcolor: '#f5f5f5, ',}} sx={theming.getThemedCardSx()}>
+          <CardContent sx={theming.getThemedCardSx()}>
+            <Typography variant="h6" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>
+              Valgt kamera: {selectedCameraDetails.brand} {selectedCameraDetails.model}
+            </Typography>
+            <Typography variant="body2">
+              Perfekt valg for profesjonelle fotografer i Norge. Dette kameraet tilbyr {selectedCameraDetails.features.join(', ').toLowerCase()}.
+            </Typography>
+          </CardContent>
+        </Card>
+      )}
+    </Box>
+  );
+};
+
+export default CameraSelectionTest;

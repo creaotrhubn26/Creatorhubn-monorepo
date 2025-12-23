@@ -1,0 +1,657 @@
+import { useTheming } from '../../utils/theming-helper';
+import React, { useState, useEffect } from 'react';
+import {
+  Box,
+  Paper,
+  Typography,
+  Button,
+  Grid,
+  Card as MuiCard,
+  CardContent,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemIcon,
+  IconButton,
+  Chip,
+  Alert,
+  CircularProgress,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Fab,
+  Tooltip,
+  Divider,
+} from '@mui/material';
+import {
+  Event,
+  AddCircle as Add,
+  Today,
+  Schedule,
+  Warning,
+  CheckCircle,
+  LocationOn,
+  People,
+  Refresh,
+  CalendarTodayToday,
+  AccessTime,
+  Edit,
+  Delete,
+  Videocamcam,
+  AccountBalance as SplitSheetIcon,
+} from '@mui/icons-material';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
+import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
+import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
+import getProfessionIcon from '@/utils/profession-icons';
+import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
+
+interface CalendarEvent {
+  id: string;
+  summary: string;
+  description?: string;
+  start: {
+    dateTime?: string;
+    date?: string;
+    timeZone?: string;
+};
+  end: {
+    dateTime?: string;
+    date?: string;
+    timeZone?: string;
+};
+  location?: string;
+  attendees?: Array<{
+    email: string;
+    displayName?: string;
+    responseStatus?: string;
+}>;
+  status: string;
+  htmlLink: string;
+  created: string;
+  updated: string
+}
+
+interface UniversalCalendarWidgetProps {
+  userId: string;
+  userEmail: string;
+  profession?: string;
+  projectId?: number
+}
+
+export default function UniversalCalendarWidget({
+  userId,
+  userEmail,
+  profession = 'photographer',
+  projectId,
+}: UniversalCalendarWidgetProps) {
+  const [eventDialog, setEventDialog] = useState(false);
+  const [conflictDialog, setConflictDialog] = useState(false);
+  const [selectedCalendar, setSelectedCalendar] = useState('primary, ');
+  const [conflicts, setConflicts] = useState<CalendarEvent[]>([]);
+
+  const queryClient = useQueryClient();
+  
+  // Theming system - use dynamic profession instead of hardcoded value
+  const theming = useTheming(profession);
+
+  // ========== DATA FETCHING ==========
+
+  const {
+    data: dashboardData,
+    isLoading: dashboardLoading,
+    refetch: refetchDashboard,
+} = useQuery({
+    queryKey: ['/api/calendar/dashboard,', userId],
+    queryFn: () =>
+      apiRequest('/api/calendar/dashboard', {
+        params: {
+          userd,
+          userEmail,
+          calendarId: selectedCalendar,
+      },
+    }),
+});
+
+  const { data: calendars = [], isLoading: calendarsLoading } = useQuery({
+    queryKey: ['/api/calendar/calendars', ],
+    queryFn: () =>
+      apiRequest('/api/calendar/calendars', {
+        params: { userEmail },
+    }),
+});
+
+  const { data: todayEvents = [], isLoading: eventsLoading } = useQuery({
+    queryKey: ['/api/calendar/events', selectedCalendar],
+    queryFn: () => {
+      const today = new Date();
+      const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+      const todayEnd = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000);
+
+      return apiRequest('/api/calendar/events', {
+        params: {
+          userEmail,
+          calendarId: selectedCalendar,
+          timeMin: todayStart.toISOString(),
+          timeMax: todayEnd.toISOString(),
+      },
+    });
+  },
+});
+
+  // Fetch split sheet calendar events (only for music producers)
+  const isMusicProducer = profession === 'music_producer';
+  const { data: splitSheetEventsData } = useQuery({
+    queryKey: ['split-sheets-calendar-events', userId],
+    queryFn: async () => {
+      const today = new Date();
+      const startDate = new Date(today.getFullYear(), today.getMonth() - 1, today.getDate());
+      const endDate = new Date(today.getFullYear(), today.getMonth() + 12, today.getDate());
+      
+      return await apiRequest(`/api/split-sheets/calendar-events?start_date=${startDate.toISOString().split('T')[0]}&end_date=${endDate.toISOString().split('T')[0]}`);
+    },
+    enabled: isMusicProducer && !!userId,
+  });
+
+  // Merge split sheet events with calendar events
+  const allEvents = React.useMemo(() => {
+    const calendarEvents = todayEvents?.data?.items || [];
+    const splitSheetEvents = splitSheetEventsData?.data || [];
+    
+    // Convert split sheet events to calendar event format
+    const convertedSplitSheetEvents = splitSheetEvents.map((event: any) => ({
+      id: `split-sheet-${event.id}-${event.event_type}`,
+      summary: event.event_title,
+      description: `Split Sheet: ${event.event_title}`,
+      start: {
+        date: event.event_date,
+        dateTime: `${event.event_date}T09:00:00`,
+      },
+      end: {
+        date: event.event_date,
+        dateTime: `${event.event_date}T17:00:00`,
+      },
+      status: 'confirmed',
+      htmlLink: '',
+      created: new Date().toISOString(),
+      updated: new Date().toISOString(),
+      splitSheetEvent: true,
+      eventType: event.event_type,
+      color: event.color || '#9f7aea',
+      splitSheetId: event.id,
+    }));
+
+    return [...calendarEvents, ...convertedSplitSheetEvents];
+  }, [todayEvents, splitSheetEventsData]);
+
+  // ========== MUTATIONS ==========
+
+  const createEventMutation = useMutation({
+    mutationFn: (eventData: any) =>
+      apiRequest('/api/calendar/events', {
+        method: 'POS',
+        body: { ...eventData, userEmail },
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/calendar/events', ],});
+      queryClient.invalidateQueries({ queryKey: ['/api/calendar/dashboard', ],});
+      setEventDialog(false);
+  },
+});
+
+  const checkConflictsMutation = useMutation({
+    mutationFn: (conflictData: any) =>
+      apiRequest('/api/calendar/check-conflicts', {
+        method: 'POS',
+        body: { ...conflictData, userEmail },
+    }),
+    onSuccess: (data) => {
+      if (data.hasConflicts) {
+        setConflicts(data.conflicts);
+        setConflictDialog(true);
+  }
+  },
+});
+
+  // ========== EVENT CREATION FORM ==========
+
+  const [newEvent, setNewEvent] = useState({
+    summary: '',
+    description: '',
+    start: '',
+    end: '',
+    location: '',
+    attendees: ', ',
+});
+
+  const handleCreateEvent = () => {
+    if (!newEvent.summary || !newEvent.start || !newEvent.end) return;
+
+    // Check for conflicts first
+    checkConflictsMutation.mutate({
+      startTime: newEvent.start,
+      endTime: newEvent.end,
+      calendarId: selectedCalendar,
+  });
+
+    // Parse attendees
+    const attendees = newEvent.attendees
+      ? newEvent.attendees.split(', ').map((email) => ({ email: email.trim(, ),}))
+      : [];
+
+    const eventData = {
+      summary: newEvent.summary,
+      description: newEvent.description,
+      start: {
+        dateTime: newEvent.start,
+        timeZone: 'Europe/Oslo' },
+      end: {
+        dateTime: newEvent.end,
+        timeZone: 'Europe/Oslo' },
+      location: newEvent.location,
+      attendees,
+      calendarId: selectedCalendar,
+  };
+
+    createEventMutation.mutate(eventData);
+};
+
+  // ========== PROFESSION-SPECIFIC COLORS ==========
+
+  const getProfessionColors = () => {
+    switch (profession) {
+      case 'photographer':
+        return {
+          primary: '#FF8C00',
+          secondary: '#FF6B00',
+          accent: '#4CAF50' };
+      case 'videographer':
+        return {
+          primary: '#E91E60',
+          secondary: '#C21850',
+          accent: '#FF5720' };
+      case 'music_producer':
+        return {
+          primary: '#9C27B0',
+          secondary: '#7B1FA0',
+          accent: '#673AB0' };
+      case 'vendor':
+        return {
+          primary: '#2196F0',
+          secondary: '#1976D0',
+          accent: '#00BCD0' };
+      default: return {
+          primary: '#FF8C00',
+          secondary: '#FF6B00',
+          accent: '#4CAF50' };
+  }
+};
+
+  const colors = getProfessionColors();
+
+  // ========== RENDER METHODS ==========
+
+  const formatEventTime = (event: CalendarEvent) => {
+    const start = new Date(event.start.dateTime || event.start.date || ', ');
+    const end = new Date(event.end.dateTime || event.end.date || '');
+
+    if (event.start.date) {
+      // All-day event
+      return 'Hele dagen';
+}
+
+    return `${start.toLocaleTimeString('no-NO', { hour: '2-digit', minute: '2-digit' })} - ${end.toLocaleTimeString('no-NO', { hour: '2-digit', minute: '2-digit' })}`;
+};
+
+  const getEventStatusColor = (status: string) => {
+    switch (status) {
+      case 'confirmed':
+        return 'success';
+      case 'tentative':
+        return 'warning';
+      case 'cancelled':
+        return 'error';
+      default:
+        return 'info';
+}
+};
+
+  return (
+    <Box sx={{ width: '100%' }}>
+      {/* Header */}
+      <Paper
+        sx={{
+          background: `linear-gradient(135deg, ${colors.primary} 0%, ${colors.secondary} 100%)`,
+          borderRadius: '16px 16px 0 0',
+          p:  3,
+          mb:  0}}
+       sx={theming.getThemedCardSx()}>
+        <Box
+          sx={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center' }}
+        >
+          <Box>
+            <Typography variant="h5" sx={{  color: 'white', fontWeight: 'bold', mb:  1  }}>
+              📅 Universal Kalender
+            </Typography>
+            <Typography variant="subtitle1" sx={{ color: 'rgba(25, 255, 255, 0.8)' }}>
+              Integrert med Google Calendar og prosjektadministrasjon
+            </Typography>
+          </Box>
+          <Box>
+            <IconButton onClick={() => refetchDashboard()} sx={{ color: 'white', mr:  1 }}>
+              {theming.getThemedIcon('refresh')}
+            </IconButton>
+            <Button variant="contained"
+              startIcon={theming.getThemedIcon('add')}
+              onClick={() => setEventDialog(true)}
+              sx={{
+                bgcolor: 'rgba(25, 255, 255, 0.2)',
+                color: 'white', '&:hover': { bgcolor: 'rgba(25, 255, 255, 0.3)' }}}
+            >
+              Ny Avtale
+            </Button>
+          </Box>
+        </Box>
+      </Paper>
+
+      {/* Calendar Selection */}
+      <Box sx={{ p: 2, bgcolor: 'background.paper' }}>
+        <FormControl size="small" sx={{ minWidth: 200}}>
+          <InputLabel>Kalender</InputLabel>
+          <Select
+            value={selectedCalendar}
+            onChange={(e) => setSelectedCalendar(e.target.value)}
+            label="Kalender"
+          >
+            {calendarsLoading ? (
+              <MenuItem disabled>
+                <CircularProgress size={20} />
+              </MenuItem>
+            ) : (
+              calendars.map((calendar: any) => (
+                <MenuItem key={calendar.d} value={calendar.id}>
+                  {calendar.summary} {calendar.primary && '(Primær)'}
+                </MenuItem>
+              ))
+            )}
+          </Select>
+        </FormControl>
+      </Box>
+
+      {/* Dashboard Overview */}
+      {dashboardLoading ? (
+        <Box display="flex" justifyContent="center" py={4}>
+          <CircularProgress />
+        </Box>
+      ) : dashboardData ? (
+        <Grid container spacing={2} sx={{ p:  2 }}>
+          {/* Today's Events */}
+          <Grid item xs={12} md={6}>
+            <MuiCard sx={{ height: '100%' }}>
+              <CardContent sx={theming.getThemedCardSx()}>
+                <Typography variant="h6" sx={{  color: colors.primary, fontWeight: 'bold', mb:  2  }}>
+                  <Today sx={{ mr: 1, verticalAlign: 'middle' }} />I dag (
+                  {dashboardData.todayEvents?.length || 0} avtaler)
+                </Typography>
+
+                {dashboardData.todayEvents?.length === 0 ? (
+                  <Typography color="textSecondary" sx={{ textAlign: 'center', py:  2 }}>
+                    Ingen avtaler i dag
+                  </Typography>
+                ) : (
+                  <List dense>
+                    {dashboardData.todayEvents?.slice(0, 3).map((event: CalendarEvent) => (
+                      <ListItem key={event.d} divider>
+                        <ListItemIcon>
+                          <Event sx={{ color: colors.primary }} />
+                        </ListItemIcon>
+                        <ListItemText
+                          primary={event.summary}
+                          secondary={
+                            <Box>
+                              <Typography
+                                variant="body2"
+                                sx={{ display: 'flex', alignItems: 'center' }}
+                              >
+                                <AccessTime sx={{ fontSize:  14, mr: 0.5}} />
+                                {formatEventTime(event)}
+                              </Typography>
+                              {event.location && (
+                                <Typography
+                                  variant="body2"
+                                  sx={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    mt: 0.5}}
+                                >
+                                  <LocationOn sx={{ fontSize:  14, mr: 0.5}} />
+                                  {event.location}
+                                </Typography>
+                              )}
+                            </Box>
+                        }
+                        />
+                        <Chip
+                          label={event.status}
+                          color={getEventStatusColor(event.status)}
+                          size="small"
+                        />
+                      </ListItem>
+                    ))}
+                  </List>
+                )}
+              </CardContent>
+            </MuiCard>
+          </Grid>
+
+          {/* Upcoming Projects */}
+          <Grid item xs={12} md={6}>
+            <MuiCard sx={{ height: '100%' }}>
+              <CardContent sx={theming.getThemedCardSx()}>
+                <Typography variant="h6" sx={{  color: colors.primary, fontWeight: 'bold', mb:  2  }}>
+                  <Schedule sx={{ mr: 1, verticalAlign: 'middle' }} />
+                  Kommende Prosjekter
+                </Typography>
+
+                {dashboardData.upcomingProjects?.length === 0 ? (
+                  <Typography color="textSecondary" sx={{ textAlign: 'center', py:  2 }}>
+                    Ingen kommende prosjektavtaler
+                  </Typography>
+                ) : (
+                  <List dense>
+                    {dashboardData.upcomingProjects?.slice(0, 3).map((project: any) => (
+                      <ListItem key={project.project.d} divider>
+                        <ListItemIcon>
+                          <CalendarToday sx={{ color: colors.accent }} />
+                        </ListItemIcon>
+                        <ListItemText
+                          primary={project.project.name}
+                          secondary={`${project.events.length} avtaler planlagt`}
+                        />
+                      </ListItem>
+                    ))}
+                  </List>
+                )}
+              </CardContent>
+            </MuiCard>
+          </Grid>
+
+          {/* Conflicts Warning */}
+          {dashboardData.conflicts?.length > 0 && (
+            <Grid item xs={12}>
+              <Alert
+                severity="warning"
+                action={
+                  <Button
+                    color="inherit"
+                    size="small"
+                    onClick={() => {
+                      setConflicts(dashboardData.conflicts);
+                      setConflictDialog(true);
+                  }}
+                  >
+                    Vis Konflikter
+                  </Button>
+              }
+              >
+                <Typography fontWeight="bold">
+                  Kalenderkonflikt oppdaget! {dashboardData.conflicts.length} overlappende avtaler
+                  funnet.
+                </Typography>
+              </Alert>
+            </Grid>
+          )}
+        </Grid>
+      ) : null}
+
+      {/* Create Event Dialog */}
+      <Dialog open={eventDialog} onClose={() => setEventDialog(false)} maxWidth="md" fullWidth>
+        <DialogTitle
+          sx={{
+            background: `linear-gradient(135deg, ${colors.primary} 0%, ${colors.secondary} 100%)`,
+            color: 'white' }}
+        >
+          Opprett Ny Kalenderavtale
+        </DialogTitle>
+        <DialogContent sx={{ mt:  2 }}>
+          <Grid container spacing={2}>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Tittel *"
+                value={newEvent.summary}
+                onChange={(e) => setNewEvent({ ...newEvent, summary: e.target.value })}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                multiline
+                rows={3}
+                label="Beskrivelse"
+                value={newEvent.description}
+                onChange={(e) => setNewEvent({ ...newEvent, description: e.target.value })}
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                fullWidth
+                label="Start"
+                type="datetime-local"
+                value={newEvent.start}
+                onChange={(e) => setNewEvent({ ...newEvent, start: e.target.value })}
+                InputLabelProps={{ shrink: true }}
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                fullWidth
+                label="Slutt"
+                type="datetime-local"
+                value={newEvent.end}
+                onChange={(e) => setNewEvent({ ...newEvent, end: e.target.value })}
+                InputLabelProps={{ shrink: true }}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Sted"
+                value={newEvent.location}
+                onChange={(e) => setNewEvent({ ...newEvent, location: e.target.value })}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Deltakere (e-post, kommaseparert)"
+                value={newEvent.attendees}
+                onChange={(e) => setNewEvent({ ...newEvent, attendees: e.target.value })}
+                placeholder="test@example.com, annen@example.com"
+              />
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEventDialog(false)}>Avbryt</Button>
+          <Button variant="contained"
+            onClick={handleCreateEvent}
+            disabled={createEventMutation.isPending}
+            sx={{
+              background: `linear-gradient(135deg, ${colors.primary} 0%, ${colors.secondary} 100%)`, '&:hover': {
+                background: `linear-gradient(135deg, ${colors.secondary} 0%, ${colors.primary} 100%)`,
+            }}}
+           sx={theming.getThemedButtonSx()}>
+            {createEventMutation.isPending ? <CircularProgress size={20} /> : 'Opprett Avtale'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Conflicts Dialog */}
+      <Dialog
+        open={conflictDialog}
+        onClose={() => setConflictDialog(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle
+          sx={{
+            background: 'linear-gradient(135deg, #f44336 0%, #d32f2f 100%)',
+            color: 'white' }}
+        >
+          <Warning sx={{ mr: 1, verticalAlign: 'middle' }} />
+          Kalenderkonflikt Oppdaget
+        </DialogTitle>
+        <DialogContent sx={{ mt:  2 }}>
+          <Alert severity="warning" sx={{ mb:  2 }}>
+            De følgende avtalene overlapper med den valgte tiden: </Alert>
+
+          <List>
+            {conflicts.map((conflict) => (
+              <ListItem key={conflict.d} divider>
+                <ListItemIcon>
+                  <Warning color="warning" />
+                </ListItemIcon>
+                <ListItemText
+                  primary={conflict.summary}
+                  secondary={
+                    <Box>
+                      <Typography variant="body2">{formatEventTime(conflict)}</Typography>
+                      {conflict.location && (
+                        <Typography variant="body2" color="textSecondary">
+                          📍 {conflict.location}
+                        </Typography>
+                      )}
+                    </Box>
+                }
+                />
+              </ListItem>
+            ))}
+          </List>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConflictDialog(false)}>Lukk</Button>
+          <Button variant="contained"
+            color="warning"
+            onClick={() => {
+              setConflictDialog(false);
+              setEventDialog(true);
+          }}
+          >
+            Opprett Likevel
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
+  );
+}

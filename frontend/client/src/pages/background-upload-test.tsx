@@ -1,0 +1,486 @@
+/**
+ * Background Upload Test Page
+ * Demonstrates the new background upload system functionality
+ */
+
+import { useTheming } from '../utils/theming-helper';
+import React, { useState, useEffect } from 'react';
+import {
+  Box,
+  Container,
+  Typography,
+  Paper,
+  Grid,
+  Card,
+  CardContent,
+  Chip,
+  Button,
+  LinearProgress,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemSecondaryAction,
+  IconButton,
+  Divider,
+  Alert,
+} from '@mui/material';
+import {
+  CloudUpload as UploadIcon,
+  Refresh as RefreshIcon,
+  Delete as DeleteIcon,
+  Pause as PauseIcon,
+  PlayArrow as PlayIcon,
+  Stop as StopIcon,
+} from '@mui/icons-material';
+import { motion } from 'framer-motion';
+import { UniversalFileUpload } from '../components/universal/UniversalFileUpload';
+import backgroundUploadService, {
+  UploadStats,
+  UploadTask,
+} from '../services/BackgroundUploadService';
+
+export default function BackgroundUploadTest() {
+  // Theming system
+  const theming = useTheming('photographer');
+  const [uploadStats, setUploadStats] = useState<UploadStats | null>(null);
+  const [allTasks, setAllTasks] = useState<UploadTask[]>([]);
+
+  // Update data from background service
+  const updateData = () => {
+    const stats = backgroundUploadService.getStats();
+    const tasks = backgroundUploadService.getAllTasks();
+    setUploadStats(stats);
+    setAllTasks(tasks);
+};
+
+  useEffect(() => {
+    // Initial load
+    updateData();
+
+    // Listen to all upload events
+    const handleUpdate = () => updateData();
+
+    backgroundUploadService.on('tasksAdded', handleUpdate);
+    backgroundUploadService.on('taskStarted', handleUpdate);
+    backgroundUploadService.on('taskProgress', handleUpdate);
+    backgroundUploadService.on('taskCompleted', handleUpdate);
+    backgroundUploadService.on('taskFailed', handleUpdate);
+    backgroundUploadService.on('taskRetried', handleUpdate);
+    backgroundUploadService.on('taskPaused', handleUpdate);
+    backgroundUploadService.on('taskResumed', handleUpdate);
+    backgroundUploadService.on('taskCancelled', handleUpdate);
+    backgroundUploadService.on('completedTasksCleared', handleUpdate);
+
+    // Real-time updates
+    const interval = setInterval(updateData, 1000);
+
+    return () => {
+      backgroundUploadService.removeAllListeners();
+      clearInterval(interval);
+  };
+}, []);
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'uploading':
+        return 'primary';
+      case 'completed':
+        return 'success';
+      case 'failed':
+        return 'error';
+      case 'paused':
+        return 'warning';
+      case 'retrying':
+        return 'info';
+      case 'queued':
+      default:
+        return 'default';
+}
+};
+
+  const formatFileSize = (bytes: number): string => {
+    const units = ['B','KB','MB','GB'];
+    let size = bytes;
+    let unitIndex = 0;
+
+    while (size >= 1024 && unitIndex < units.length - 1) {
+      size /= 1024;
+      unitIndex++;
+  }
+
+    return `${size.toFixed(1)} ${units[unitIndex]}`;
+};
+
+  const activeTasks = allTasks.filter((task) =>
+    ['queued','uploading', 'retrying','paused'].includes(task.status),
+  );
+  const completedTasks = allTasks.filter((task) => task.status === 'completed');
+  const failedTasks = allTasks.filter((task) => task.status === 'failed');
+
+  return (
+    <Container maxWidth="lg" sx={{ py:  4 }}>
+      <motion.div
+        initial={{ opacity: 0, y: 20,}}
+        animate={{ opacity: 1, y:  0 }}
+        transition={{ duration: 0.5,}}
+      >
+        {/* Header */}
+        <Box sx={{ mb:  4, textAlign: 'center',}}>
+          <Typography variant="h3"
+            fontWeight="bold"
+            sx={{ 
+              background: 'linear-gradient(45deg, #FF6B35 30%, #FFA726 90%)',
+              backgroundClip: 'text',
+              WebkitBackgroundClip: 'text',
+              color: 'transparent',
+              mb:  2 }}>
+            Background Upload System Test
+          </Typography>
+          <Typography variant="subtitle1" color="text.secondary">
+            Test den nye background upload funksjonaliteten med persistent progress tracking
+          </Typography>
+        </Box>
+
+        {/* Upload Stats Cards */}
+        {uploadStats && (
+          <Grid container spacing={3} sx={{ mb:  4 }}>
+            <Grid item xs={12} sm={6} md={3}>
+              <Card
+                sx={{
+                  background: 'linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%)',
+                  border: '1px solid rgba(3, 150, 243, 0.2)',
+              }}
+               sx={theming.getThemedCardSx()}>
+                <CardContent sx={{ textAlign: 'center',  ...theming.getThemedCardSx() }}>
+                  <Typography variant="h4" color="primary" fontWeight="bold" sx={{ color: theming.colors.primary }}>
+                    {uploadStats.totalTasks}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Totalt antall filer
+                  </Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+
+            <Grid item xs={12} sm={6} md={3}>
+              <Card
+                sx={{
+                  background: 'linear-gradient(135deg, #e8f5e8 0%, #c8e6c9 100%)',
+                  border: '1px solid rgba(6, 175, 80, 0.2)',
+              }}
+               sx={theming.getThemedCardSx()}>
+                <CardContent sx={{ textAlign: 'center',  ...theming.getThemedCardSx() }}>
+                  <Typography variant="h4" color="success.main" fontWeight="bold" sx={{ color: theming.colors.primary }}>
+                    {uploadStats.completed}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Fullført
+                  </Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+
+            <Grid item xs={12} sm={6} md={3}>
+              <Card
+                sx={{
+                  background: 'linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%)',
+                  border: '1px solid rgba(25, 1520.2)',
+              }}
+               sx={theming.getThemedCardSx()}>
+                <CardContent sx={{ textAlign: 'center',  ...theming.getThemedCardSx() }}>
+                  <Typography variant="h4" color="warning.main" fontWeight="bold" sx={{ color: theming.colors.primary }}>
+                    {uploadStats.uploading}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Laster opp
+                  </Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+
+            <Grid item xs={12} sm={6} md={3}>
+              <Card
+                sx={{
+                  background: 'linear-gradient(135deg, #ffebee 0%, #ffcdd2 100%)',
+                  border: '1px solid rgba(24, 67, 54, 0.2)',
+              }}
+               sx={theming.getThemedCardSx()}>
+                <CardContent sx={{ textAlign: 'center',  ...theming.getThemedCardSx() }}>
+                  <Typography variant="h4" color="error.main" fontWeight="bold" sx={{ color: theming.colors.primary }}>
+                    {uploadStats.failed}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Feilet
+                  </Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+          </Grid>
+        )}
+
+        {/* Overall Progress */}
+        {uploadStats && uploadStats.totalBytes > 0 && (
+          <Paper sx={{ p:  3, mb:  4 ,  ...theming.getThemedCardSx() }}>
+            <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+              Total fremgang
+            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+              <LinearProgress
+                variant="determinate"
+                value={uploadStats.overallProgress}
+                sx={{ flexGrow: 1, height:  10, borderRadius:  5 }}
+              />
+              <Typography variant="body2" fontWeight="bold">
+                {uploadStats.overallProgress}%
+              </Typography>
+            </Box>
+            <Typography variant="body2" color="text.secondary">
+              {formatFileSize(uploadStats.uploadedBytes)} / {formatFileSize(uploadStats.totalBytes)}
+            </Typography>
+          </Paper>
+        )}
+
+        {/* Upload Component */}
+        <Paper sx={{ p:  3, mb:  4 ,  ...theming.getThemedCardSx() }}>
+          <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+            Last opp nye filer
+          </Typography>
+          <Alert severity="info" sx={{ mb:  3 }}>
+            <strong>Background Upload: </strong> Filene vil lastes opp i bakgrunnen. Du kan jobbe
+            videre mens opplastingen pågår!
+          </Alert>
+
+          <UniversalFileUpload
+            onFilesSelected={(files) => {
+              console.log('Files selected, :', files);
+          }}
+            onUploadComplete={(results) => {
+              console.log('Batch upload completed: ', results);
+              alert(`${results.length} filer fullført!`);
+          }}
+            onUploadError={(error, file) => {
+              console.error('Upload error:', error, file);
+          }}
+            maxFiles={20}
+            maxFileSizeMB={100}
+            allowedTypes="all"
+            profession="photographer"
+            enableBackgroundUpload={true}
+            maxRetries={3}
+            uploadEndpoint="/api/test/upload"
+            additionalMetadata={{
+              uploadType: 'test_upload',
+              testSession: Date.now().toString(),
+          }}
+          />
+        </Paper>
+
+        {/* Active Tasks */}
+        {activeTasks.length > 0 && (
+          <Paper sx={{ p:  3, mb:  4 ,  ...theming.getThemedCardSx() }}>
+            <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+              Aktive opplastinger ({activeTasks.length})
+            </Typography>
+            <List>
+              {activeTasks.map((task) => (
+                <React.Fragment key={task.id}>
+                  <ListItem>
+                    <ListItemText
+                      primary={
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
+                          <Typography variant="body1" noWrap>
+                            {task.fileName}
+                          </Typography>
+                          <Chip
+                            label={task.status}
+                            size="small"
+                            color={getStatusColor(task.status) as any}
+                            variant="outlined"
+                          />
+                        </Box>
+                    }
+                      secondary={
+                        <Box>
+                          <Typography variant="body2" color="text.secondary">
+                            {formatFileSize(task.fileSize)}
+                            {task.uploadSpeed && task.status === 'uploading' && (
+                              <> • {backgroundUploadService.formatSpeed(task.uploadSpeed)}</>
+                            )}
+                            {task.estimatedTimeRemaining && task.status === 'uploading' && (
+                              <>
+                                {' '}
+                                •{' '}
+                                {backgroundUploadService.formatTimeRemaining(
+                                  task.estimatedTimeRemaining,
+                                )},{''}
+                                igjen
+                              </>
+                            )}
+                          </Typography>
+                          {(task.status === 'uploading' || task.status === 'retrying') && (
+                            <LinearProgress
+                              variant="determinate"
+                              value={task.progress}
+                              sx={{ mt: 1, height:  4, borderRadius:  2 }}
+                            />
+                          )}
+                          {task.error && (
+                            <Typography variant="body2" color="error" sx={{ mt: 0.5,}}>
+                              {task.error} (Forsøk {task.retryCount}/{task.maxRetries})
+                            </Typography>
+                          )}
+                        </Box>
+                    }
+                    />
+                    <ListItemSecondaryAction>
+                      <Box sx={{ display: 'flex', gap: 0.5,}}>
+                        {task.status === 'uploading' && (
+                          <IconButton
+                            size="small"
+                            onClick={() => backgroundUploadService.pauseTask(task.id)}
+                            color="warning"
+                          >
+                            <PauseIcon />
+                          </IconButton>
+                        )}
+                        {task.status === 'paused' && (
+                          <IconButton
+                            size="small"
+                            onClick={() => backgroundUploadService.resumeTask(task.id)}
+                            color="primary"
+                          >
+                            <PlayIcon />
+                          </IconButton>
+                        )}
+                        {task.status === 'failed' && (
+                          <IconButton
+                            size="small"
+                            onClick={() => backgroundUploadService.retryTask(task.id)}
+                            color="info"
+                          >
+                            <RefreshIcon />
+                          </IconButton>
+                        )}
+                        <IconButton
+                          size="small"
+                          onClick={() => backgroundUploadService.cancelTask(task.id)}
+                          color="error"
+                        >
+                          <DeleteIcon />
+                        </IconButton>
+                      </Box>
+                    </ListItemSecondaryAction>
+                  </ListItem>
+                  <Divider />
+                </React.Fragment>
+              ))}
+            </List>
+          </Paper>
+        )}
+
+        {/* Completed and Failed Tasks */}
+        {(completedTasks.length > 0 || failedTasks.length > 0) && (
+          <Paper sx={{ p:  3 ,  ...theming.getThemedCardSx() }}>
+            <Box
+              sx={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                mb:  2,
+            }}
+            >
+              <Typography variant="h6" sx={{ color: theming.colors.primary }}>Fullførte og feilede opplastinger</Typography>
+              <Box sx={{ display: 'flex', gap:  1 }}>
+                <Button
+                  size="small"
+                  onClick={() => backgroundUploadService.clearCompleted()}
+                  disabled={completedTasks.length === 0}
+                  startIcon={<DeleteIcon />}
+                >
+                  Fjern fullførte
+                </Button>
+                <Button
+                  size="small"
+                  onClick={() =>
+                    failedTasks.forEach((task) => backgroundUploadService.retryTask(task.id))
+                }
+                  disabled={failedTasks.length === 0}
+                  startIcon={<RefreshIcon />}
+                >
+                  Prøv alle igjen
+                </Button>
+              </Box>
+            </Box>
+
+            <Grid container spacing={2}>
+              {completedTasks.length > 0 && (
+                <Grid item xs={12} md={6}>
+                  <Typography variant="subtitle2" color="success.main" gutterBottom>
+                    Fullført ({completedTasks.length})
+                  </Typography>
+                  <List dense>
+                    {completedTasks.slice(-5).map((task) => (
+                      <ListItem key={task.id}>
+                        <ListItemText
+                          primary={task.fileName}
+                          secondary={`${formatFileSize(task.fileSize)} • Fullført ${task.completedTime ? new Date(task.completedTime).toLocaleTimeString() : ', '}`}
+                        />
+                      </ListItem>
+                    ))}
+                    {completedTasks.length > 5 && (
+                      <Typography variant="body2" color="text.secondary" sx={{ ml:  2 }}>
+                        ...og {completedTasks.length - 5} til
+                      </Typography>
+                    )}
+                  </List>
+                </Grid>
+              )}
+
+              {failedTasks.length > 0 && (
+                <Grid item xs={12} md={6}>
+                  <Typography variant="subtitle2" color="error.main" gutterBottom>
+                    Feilet ({failedTasks.length})
+                  </Typography>
+                  <List dense>
+                    {failedTasks.map((task) => (
+                      <ListItem key={task.id}>
+                        <ListItemText
+                          primary={task.fileName}
+                          secondary={`${formatFileSize(task.fileSize)} • ${task.error}`}
+                        />
+                        <ListItemSecondaryAction>
+                          <IconButton
+                            size="small"
+                            onClick={() => backgroundUploadService.retryTask(task.id)}
+                            color="info"
+                          >
+                            <RefreshIcon />
+                          </IconButton>
+                        </ListItemSecondaryAction>
+                      </ListItem>
+                    ))}
+                  </List>
+                </Grid>
+              )}
+            </Grid>
+          </Paper>
+        )}
+
+        {/* Empty State */}
+        {allTasks.length === 0 && (
+          <Paper sx={{ p:  6, textAlign: 'center',  ...theming.getThemedCardSx() }}>
+            <UploadIcon sx={{ fontSize:  64, color:'text.secondary', mb:  2 }} />
+            <Typography variant="h6" color="text.secondary" gutterBottom sx={{ color: theming.colors.primary }}>
+              Ingen opplastinger ennå
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Last opp filer for å teste background upload systemet
+            </Typography>
+          </Paper>
+        )}
+      </motion.div>
+    </Container>
+  );
+};
+
+export default BackgroundUploadTest;

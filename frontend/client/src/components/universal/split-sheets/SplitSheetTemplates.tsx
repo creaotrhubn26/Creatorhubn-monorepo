@@ -1,0 +1,443 @@
+/**
+ * Split Sheet Templates
+ * Template library for creating split sheets from pre-built templates
+ * Now with profession-specific filtering and theming
+ */
+
+import React, { useState, useMemo } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
+import {
+  Box,
+  Typography,
+  Card,
+  CardContent,
+  Grid,
+  Button,
+  Chip,
+  Stack,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  FormControlLabel,
+  Switch,
+  IconButton,
+  Alert,
+  Tabs,
+  Tab,
+  alpha
+} from '@mui/material';
+import {
+  Add as AddIcon,
+  Delete as DeleteIcon,
+  Edit as EditIcon,
+  Star as StarIcon,
+  Public as PublicIcon,
+  Person as PersonIcon
+} from '@mui/icons-material';
+import { useDynamicProfessions } from '../hooks/useDynamicProfessions';
+import getProfessionIcon from '@/utils/profession-icons';
+import type { SplitSheetContributor, ContributorRole } from './types';
+
+interface SplitSheetTemplate {
+  id?: string;
+  user_id?: string | null;
+  name: string;
+  description?: string | null;
+  is_system_template?: boolean;
+  is_public?: boolean;
+  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  contributors: Omit<SplitSheetContributor, 'id' | 'split_sheet_id' | 'created_at' | 'updated_at'>[];
+  usage_count?: number;
+  created_at?: string;
+}
+
+interface SplitSheetTemplatesProps {
+  onSelectTemplate?: (template: SplitSheetTemplate) => void;
+  showCreateButton?: boolean;
+  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+}
+
+export default function SplitSheetTemplates({
+  onSelectTemplate,
+  showCreateButton = true,
+  profession = 'music_producer'
+}: SplitSheetTemplatesProps) {
+  const queryClient = useQueryClient();
+  const [tabValue, setTabValue] = useState(0);
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [newTemplate, setNewTemplate] = useState<Partial<SplitSheetTemplate>>({
+    name: '',
+    description: '',
+    is_public: false,
+    profession: profession,
+    contributors: []
+  });
+  
+  // Get profession-specific styling
+  const { getUserProfessionColor, getProfessionDisplayName } = useDynamicProfessions();
+  const professionColor = getUserProfessionColor(profession);
+  const professionDisplayName = getProfessionDisplayName(profession);
+  const professionIcon = getProfessionIcon(profession);
+  
+  // Get profession-specific default roles for templates
+  const getDefaultRolesForProfession = (): ContributorRole[] => {
+    switch (profession) {
+      case 'music_producer':
+        return ['producer','artist','songwriter','mix_engineer'];
+      case 'photographer':
+        return ['collaborator','second_shooter','photo_editor','assistant'];
+      case 'videographer':
+        return ['collaborator','video_editor','cinematographer','sound_engineer'];
+      default:
+        return ['collaborator','other'];
+    }
+  };
+  
+  // Profession-specific template labels
+  const getTemplateLabels = () => {
+    switch (profession) {
+      case 'music_producer':
+        return {
+          title: 'Maler',
+          description: 'Velg en mal for rask opprettelse av split sheets',
+          systemTemplates: 'Systemmaler for musikk',
+          myTemplates: 'Mine maler',
+          createLabel: 'Lag ny mal',
+        };
+      case 'photographer':
+        return {
+          title: 'Prosjektmaler',
+          description: 'Velg en mal for fotoprosjekt-samarbeid',
+          systemTemplates: 'Systemmaler for foto',
+          myTemplates: 'Mine maler',
+          createLabel: 'Lag ny mal',
+        };
+      case 'videographer':
+        return {
+          title: 'Produksjonsmaler',
+          description: 'Velg en mal for videoproduksjon-crew',
+          systemTemplates: 'Systemmaler for video',
+          myTemplates: 'Mine maler',
+          createLabel: 'Lag ny mal',
+        };
+      default:
+        return {
+          title: 'Maler',
+          description: 'Velg en mal',
+          systemTemplates: 'Systemmaler',
+          myTemplates: 'Mine maler',
+          createLabel: 'Lag ny mal',
+        };
+    }
+  };
+  
+  const templateLabels = getTemplateLabels();
+
+  // Fetch templates
+  const { data: templatesData, isLoading } = useQuery({
+    queryKey: ['split-sheet-templates, '],
+    queryFn: async () => {
+      const response = await apiRequest('/api/split-sheets/templates?include_public=true');
+      return response;
+    }
+  });
+
+  const templates: SplitSheetTemplate[] = templatesData?.data || [];
+  const systemTemplates = templates.filter(t => t.is_system_template);
+  const customTemplates = templates.filter(t => !t.is_system_template);
+
+  // Delete mutation
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest(`/api/split-sheets/templates/${id}`, { method: 'DELETE' });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['split-sheet-templates'] });
+    }
+  });
+
+  // Create mutation
+  const createMutation = useMutation({
+    mutationFn: async (template: Partial<SplitSheetTemplate>) => {
+      const response = await apiRequest('/api/split-sheets/templates', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: template.name,
+          description: template.description,
+          contributors: template.contributors || [],
+          is_public: template.is_public || false
+        })
+      });
+      return response;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['split-sheet-templates'] });
+      setShowCreateDialog(false);
+      setNewTemplate({
+        name: ', ',
+        description: '',
+        is_public: false,
+        contributors: []
+      });
+    }
+  });
+
+  const handleSelectTemplate = (template: SplitSheetTemplate) => {
+    // Track usage
+    if (template.id) {
+      apiRequest(`/api/split-sheets/templates/${template.id}/use, `, { method: 'POST' }).catch(() => {});
+    }
+    
+    if (onSelectTemplate) {
+      onSelectTemplate(template);
+    }
+  };
+
+  const handleDeleteTemplate = (template: SplitSheetTemplate) => {
+    if (window.confirm(`Er du sikker på at du vil slette malen "${template.name},"?`)) {
+      if (template.id) {
+        deleteMutation.mutate(template.id);
+      }
+    }
+  };
+
+  const renderTemplateCard = (template: SplitSheetTemplate) => {
+    const totalPercentage = template.contributors.reduce((sum, c) => sum + (c.percentage || 0), 0);
+    
+    return (
+      <Card
+        key={template.id}
+        sx={{
+          height: '100%',
+          display: 'flex',
+          flexDirection: 'column','&:hover': {
+            boxShadow: 4,
+            transform: 'translateY(-2px)',
+            transition: 'all 0.2s'
+          }
+        }}
+      >
+        <CardContent sx={{ flexGrow: 1 }}>
+          <Stack direction="row" justifyContent="space-between" alignItems="flex-start" sx={{ mb: 2 }}>
+            <Box sx={{ flexGrow: 1 }}>
+              <Typography variant="h6" sx={{ fontWeight: 600, mb: 0.5 }}>
+                {template.name}
+              </Typography>
+              {template.is_system_template && (
+                <Chip
+                  icon={<StarIcon />}
+                  label="System"
+                  size="small"
+                  sx={{ bgcolor: '#ffd70020', color: '#ff8c00', mb: 1 }}
+                />
+              )}
+              {template.is_public && !template.is_system_template && (
+                <Chip
+                  icon={<PublicIcon />}
+                  label="Delt"
+                  size="small"
+                  sx={{ bgcolor: '#2196f320', color: '#2196f3', mb: 1, ml: 1 }}
+                />
+              )}
+            </Box>
+            {!template.is_system_template && (
+              <IconButton
+                size="small"
+                color="error"
+                onClick={() => handleDeleteTemplate(template)}
+              >
+                <DeleteIcon fontSize="small" />
+              </IconButton>
+            )}
+          </Stack>
+
+          {template.description && (
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              {template.description}
+            </Typography>
+          )}
+
+          <Box sx={{ mb: 2 }}>
+            <Typography variant="caption" color="text.secondary" gutterBottom>
+              Bidragsytere ({template.contributors.length}):
+            </Typography>
+            <Stack spacing={0.5} sx={{ mt: 1 }}>
+              {template.contributors.map((contributor, index) => (
+                <Box key={index} sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <Typography variant="body2">
+                    {contributor.name || `Bidragsyter ${index + 1}`} ({contributor.role})
+                  </Typography>
+                  <Typography variant="body2" sx={{ fontWeight: 600}}>
+                    {contributor.percentage}%
+                  </Typography>
+                </Box>
+              ))}
+            </Stack>
+            <Box sx={{ mt: 1, pt: 1, borderTop: '1px solid', borderColor: 'divider' }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                <Typography variant="body2" sx={{ fontWeight: 600}}>
+                  Totalt:
+                </Typography>
+                <Typography variant="body2" sx={{ fontWeight: 600, color: totalPercentage === 100 ? 'success.main' : 'error.main' }}>
+                  {totalPercentage.toFixed(2)}%
+                </Typography>
+              </Box>
+            </Box>
+          </Box>
+
+          {template.usage_count !== undefined && template.usage_count > 0 && (
+            <Typography variant="caption" color="text.secondary">
+              Brukt {template.usage_count} gang(er)
+            </Typography>
+          )}
+        </CardContent>
+        <Box sx={{ p: 2, pt: 0 }}>
+          <Button
+            variant="contained"
+            fullWidth
+            onClick={() => handleSelectTemplate(template)}
+            sx={{ bgcolor: '#9f7aea','&:hover': { bgcolor: '#8e6ed6' } }}
+          >
+            Bruk mal
+          </Button>
+        </Box>
+      </Card>
+    );
+  };
+
+  return (
+    <Box>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+        <Typography variant="h5" sx={{ fontWeight: 700}}>
+          Split Sheet Maler
+        </Typography>
+        {showCreateButton && (
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={() => setShowCreateDialog(true)}
+            sx={{ bgcolor: '#9f7aea', '&:hover': { bgcolor: '#8e6ed6' } }}
+          >
+            Opprett mal
+          </Button>
+        )}
+      </Box>
+
+      <Tabs value={tabValue} onChange={(_, v) => setTabValue(v)} sx={{ mb: 3 }}>
+        <Tab label={`System (${systemTemplates.length})`} />
+        <Tab label={`Mine maler (${customTemplates.length})`} />
+      </Tabs>
+
+      {tabValue === 0 && (
+        <Grid container spacing={2}>
+          {systemTemplates.length === 0 ? (
+            <Grid item xs={12}>
+              <Alert severity="info">Ingen systemmaler tilgjengelig</Alert>
+            </Grid>
+          ) : (
+            systemTemplates.map(template => (
+              <Grid item xs={12} sm={6} md={4} key={template.id}>
+                {renderTemplateCard(template)}
+              </Grid>
+            ))
+          )}
+        </Grid>
+      )}
+
+      {tabValue === 1 && (
+        <Grid container spacing={2}>
+          {customTemplates.length === 0 ? (
+            <Grid item xs={12}>
+              <Card>
+                <CardContent sx={{ textAlign: 'center', py: 4 }}>
+                  <PersonIcon sx={{ fontSize: 48, color: 'text.secondary', mb: 2 }} />
+                  <Typography variant="body1" color="text.secondary" gutterBottom>
+                    Ingen egendefinerte maler
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                    Opprett din første mal for å spare tid
+                  </Typography>
+                  <Button
+                    variant="outlined"
+                    startIcon={<AddIcon />}
+                    onClick={() => setShowCreateDialog(true)}
+                  >
+                    Opprett mal
+                  </Button>
+                </CardContent>
+              </Card>
+            </Grid>
+          ) : (
+            customTemplates.map(template => (
+              <Grid item xs={12} sm={6} md={4} key={template.id}>
+                {renderTemplateCard(template)}
+              </Grid>
+            ))
+          )}
+        </Grid>
+      )}
+
+      {/* Create Template Dialog - Simplified for now */}
+      <Dialog
+        open={showCreateDialog}
+        onClose={() => setShowCreateDialog(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Opprett ny mal</DialogTitle>
+        <DialogContent>
+          <Alert severity="info" sx={{ mb: 2 }}>
+            For å opprette en mal, opprett først en split sheet med ønsket konfigurasjon, 
+            deretter kan du lagre den som en mal fra split sheet-visningen.
+          </Alert>
+          <TextField
+            label="Navn"
+            value={newTemplate.name}
+            onChange={(e) => setNewTemplate({ ...newTemplate, name: e.target.value })}
+            fullWidth
+            sx={{ mb: 2 }}
+          />
+          <TextField
+            label="Beskrivelse"
+            value={newTemplate.description}
+            onChange={(e) => setNewTemplate({ ...newTemplate, description: e.target.value })}
+            fullWidth
+            multiline
+            rows={2}
+            sx={{ mb: 2 }}
+          />
+          <FormControlLabel
+            control={
+              <Switch
+                checked={newTemplate.is_public || false}
+                onChange={(e) => setNewTemplate({ ...newTemplate, is_public: e.target.checked })}
+              />
+            }
+            label="Del med andre brukere"
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowCreateDialog(false)}>Avbryt</Button>
+          <Button
+            variant="contained"
+            onClick={() => {
+              // This would need full contributor setup - for now just close
+              setShowCreateDialog(false);
+            }}
+            sx={{ bgcolor: '#9f7aea' }}
+          >
+            Opprett
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
+  );
+}
+
+
+
+
+

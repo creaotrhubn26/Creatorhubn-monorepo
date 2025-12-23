@@ -1,0 +1,88 @@
+/**
+ * Type definitions for specialized video showcase components
+ */
+
+export interface MusicVideo { id: string;
+  title: string;
+  artist: string;
+  description: string;
+  thumbnail: string;
+  videoUrl: string;
+  audioUrl: string;
+  duration: string;
+  views: number;
+  likes: number;
+  genre: string;
+  bpm: number;
+  key: string;
+  producer: string;
+  studio: string;
+  releaseDate: string;
+  isExplicit: boolean;
+  collaborators: string[];
+  awards: string[];
+  chartPosition?: number;
+  isFavorite: boolean;
+  hasLyrics: boolean;
+  sonicVisualization?: boolean }
+
+export interface WeddingVideo { id: string;
+  title: string;
+  couple: {
+    bride: string;
+    groom: string }
+  description: string;
+  thumbnail: string;
+  videoUrl: string;
+  duration: string;
+  views: number;
+  likes: number;
+  weddingDate: string;
+  location: { venue: string;
+    city: string;
+    region: string }
+  style: string;
+  videographer: string;
+  highlights: string[];
+  guestCount: number;
+  season: 'spring' | 'summer' | 'autumn' |'winter';
+  traditions: string[];
+  awards: string[];
+  isNorwegianTradition: boolean;
+  hasAerialFootage: boolean;
+  hasCeremonyAudio: boolean;
+  isFavorite: boolean;
+  packages: string[]
+}
+
+export interface CommercialVideo { id: string;
+  title: string;
+  client: {
+    name: string;
+    industry: string;
+    logo?: string }
+  description: string;
+  thumbnail: string;
+  videoUrl: string;
+  duration: string;
+  views: number;
+  likes: number;
+  projectType: string;
+  videoType: string;
+  budget: string;
+  agency: string;
+  director: string;
+  productionDate: string;
+  campaignGoals: string[];
+  targetAudience: string;
+  metrics: { engagementRate: number;
+    conversions: number;
+    reach: number }
+  awards: string[];
+  equipment: string[];
+  isInternational: boolean;
+  hasSubtitles: boolean;
+  hasVoiceover: boolean;
+  isFavorite: boolean;
+  caseStudyAvailable: boolean
+}

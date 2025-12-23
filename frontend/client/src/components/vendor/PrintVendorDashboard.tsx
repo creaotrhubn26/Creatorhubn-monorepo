@@ -1,0 +1,806 @@
+import { useTheming } from '../../utils/theming-helper';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
+import { useDemoMode } from '@/contexts/DemoModeContext';
+import {
+  Box,
+  Container,
+  Typography,
+  Grid,
+  Avatar,
+  Button,
+  Tabs as MuiTabs,
+  Tab,
+  Badge,
+  IconButton,
+  Chip,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemIcon,
+  ListItemAvatar,
+  Divider,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Paper,
+  Tooltip,
+  Fab,
+  useTheme,
+  useMediaQuery,
+  Stack,
+  LinearProgress,
+  alpha,
+  Fade,
+  Collapse,
+  Skeleton,
+  Switch,
+  FormControlLabel,
+  Card,
+  CardContent,
+  CardActions,
+  Alert,
+  CircularProgress,
+} from '@mui/material';
+import {
+  Store,
+  Add,
+  Assessment,
+  Settings,
+  AttachMoney,
+  TrendingUp,
+  Event,
+  Visibility,
+  DirectionsBusiness,
+  Email,
+  Notifications,
+  CloudDone,
+  Article,
+  FolderOpen,
+  AddCircle,
+  Storage,
+  Star,
+  Chat,
+  Person,
+  Phone,
+  MoreVert,
+  AccessTime,
+  LocationOn,
+  Payment,
+  Keyboard,
+  Schedule,
+  Palette,
+  CheckCircle,
+  HelpCenter,
+  Quiz,
+  PriorityHigh,
+  Delete,
+  Launch,
+  PhotoLibrary,
+  Edit,
+  Circle,
+  AccountCircle,
+  Collections,
+  Brightness1,
+  WbWbSunnyny,
+  Print,
+  LocalPrintshop,
+  PrintDisabled,
+  PrintPreview,
+  PrintOutlined,
+  Inventory,
+  ShoppingDirectionsCart,
+  Receipt,
+  Analytics,
+  Timeline,
+  Dashboard,
+  BoxChart,
+  BoxChart,
+  ShowChart,
+  TrendingDown,
+  TrendingFlat,
+  Speed,
+  SpeedOutlined,
+  SpeedSharp,
+  SpeedRounded,
+  SpeedTwoTone,
+  SpeedIcon,
+  SpeedOutlinedIcon,
+  SpeedSharpIcon,
+  SpeedRoundedIcon,
+  SpeedTwoToneIcon,
+} from '@mui/icons-material';
+
+interface TabPanelProps {
+  children?: React.ReactNode;
+  index: number;
+  value: number
+}
+
+function TabPanel(props: TabPanelProps) {
+  const { children, value, index, ...other } = props;
+  return (
+    <div
+      role="tabpanel"
+      hidden={value !== index}
+      id={`vendor-tabpanel-${index}`}
+      aria-labelledby={`vendor-tab-${index}`}
+      {...other}
+    >
+      {value === index && <Box sx={{ p:  3 }}>{children}</Box>}
+    </div>
+  );
+}
+
+interface Product {
+  id: string;
+  name: string;
+  price: number;
+  status: 'active' | 'inactive' | 'draft';
+  category: string;
+  description?: string;
+  imageUrl?: string;
+  createdAt: string;
+  updatedAt: string
+}
+
+interface Order {
+  id: string;
+  customerName: string;
+  customerEmail: string;
+  total: number;
+  status: 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
+  items: Array<{
+    productId: string;
+    productName: string;
+    quantity: number;
+    price: number;
+}>;
+  createdAt: string;
+  updatedAt: string
+}
+
+interface VendorStats {
+  totalProducts: number;
+  activeOrders: number;
+  totalRevenue: number;
+  monthlyRevenue: number;
+  pluginDownloads: number;
+  topPlugins: Array<{
+    name: string;
+    downloads: number;
+}>;
+  maxDownloads: number
+}
+
+export default function PrintVendorDashboard() {
+  const queryClient = useQueryClient();
+  
+  // Theming system
+  const theming = useTheming('vendor');
+  const { isDemoMode } = useDemoMode();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down(, 'md,'));
+
+  // State management
+  const [tabValue, setTabValue] = useState(0);
+  const [showProductModal, setShowProductModal] = useState(false);
+  const [showOrderModal, setShowOrderModal] = useState(false);
+  const [showAnalyticsModal, setShowAnalyticsModal] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [proEditorMode, setProEditorMode] = useState(false);
+
+  // Data fetching
+  const { data: vendorStats, isLoading: statsLoading, error: statsError } = useQuery({
+    queryKey: ['/api/vendor/stats','demo-user'],
+    queryFn: () => apiRequest('/api/vendor/stats/demo-user', ),
+    retry: false,
+});
+
+  const { data: products = [], isLoading: productsLoading, error: productsError } = useQuery({
+    queryKey: ['/api/vendor/products','demo-user'],
+    queryFn: () => apiRequest('/api/vendor/products/demo-user', ),
+    retry: false,
+});
+
+  const { data: orders = [], isLoading: ordersLoading, error: ordersError } = useQuery({
+    queryKey: ['/api/vendor/orders','demo-user'],
+    queryFn: () => apiRequest('/api/vendor/orders/demo-user', ),
+    retry: false,
+});
+
+  const { data: pluginMetrics, isLoading: metricsLoading, error: metricsError } = useQuery({
+    queryKey: ['/api/vendor/plugin-metrics','demo-user'],
+    queryFn: () => apiRequest('/api/vendor/plugin-metrics/demo-user', ),
+    retry: false,
+});
+
+  // Mutations
+  const updateProductMutation = useMutation({
+    mutationFn: async (data: any) =>
+      apiRequest('/api/vendor/products/update', {
+        method: 'POS',
+        body: JSON.stringify(data),
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/vendor/products', ],});
+  },
+});
+
+  const updateOrderMutation = useMutation({
+    mutationFn: async (data: any) =>
+      apiRequest('/api/vendor/orders/update', {
+        method: 'POS',
+        body: JSON.stringify(data),
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/vendor/orders', ],});
+  },
+});
+
+  const isLoading = statsLoading || productsLoading || ordersLoading || metricsLoading;
+  const hasError = statsError || productsError || ordersError || metricsError;
+
+  // Mock data for demo mode
+  const mockProducts: Product[] = [
+    {
+      id: '',
+      name: 'Premium Wedding Album',
+      price: 299.9,
+      status: 'active',
+      category: 'Albums',
+      description: 'High-quality wedding album with premium materials',
+      imageUrl: '/images/products/wedding-album.jpg',
+      createdAt: '2024-01-15T10:00:00',
+      updatedAt: '2024-01-15T10:00:00',
+  },
+    {
+      id: '',
+      name: 'Photo Canvas Print',
+      price: 89.9,
+      status: 'active',
+      category: 'Prints',
+      description: 'Gallery-quality canvas print',
+      imageUrl: '/images/products/canvas-print.jpg',
+      createdAt: '2024-01-10T14:30:00',
+      updatedAt: '2024-01-10T14:30:00',
+  },
+    {
+      id: '',
+      name: 'Custom Photo Book',
+      price: 149.9,
+      status: 'draft',
+      category: 'Books',
+      description: 'Personalized photo book with custom layout',
+      imageUrl: '/images/products/photo-book.jpg',
+      createdAt: '2024-01-05T09:15:00',
+      updatedAt: '2024-01-05T09:15:00',
+  },
+  ];
+
+  const mockOrders: Order[] = [
+    {
+      id: 'ORD-00',
+      customerName: 'John Smith',
+      customerEmail: 'john@example.com',
+      total: 299.9,
+      status: 'processing',
+      items: [
+        { productId: ', ', productName: 'Premium Wedding Album', quantity: 1, price: 299.9, 9,}
+      ],
+      createdAt: '2024-01-20T10:00:00',
+      updatedAt: '2024-01-20T10:00:00',
+  },
+    {
+      id: 'ORD-00',
+      customerName: 'Sarah Johnson',
+      customerEmail: 'sarah@example.com',
+      total: 89.9,
+      status: 'shipped',
+      items: [
+        { productId: '', productName: 'Photo Canvas Print', quantity: 1, price: 89.9, 9,}
+      ],
+      createdAt: '2024-01-18T14:30:00',
+      updatedAt: '2024-01-19T16:45:00',
+  },
+  ];
+
+  const displayProducts = isDemoMode ? mockProducts : products;
+  const displayOrders = isDemoMode ? mockOrders : orders;
+
+  const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
+    setTabValue(newValue);
+};
+
+  const handleProductClick = (product: Product) => {
+    setSelectedProduct(product);
+    setShowProductModal(true);
+};
+
+  const handleOrderClick = (order: Order) => {
+    setSelectedOrder(order);
+    setShowOrderModal(true);
+};
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'active':
+      case 'shipped':
+      case 'delivered':
+        return 'success';
+      case 'processing':
+        return 'warning';
+      case 'pending':
+        return 'info';
+      case 'inactive':
+      case 'cancelled':
+        return 'error';
+      default:
+        return 'default';
+}
+};
+
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'active':
+        return theming.getThemedIcon(', ');
+      case 'processing':
+        return theming.getThemedIcon('schedule');
+      case 'shipped':
+        return <LocalPrintshop />;
+      case 'delivered':
+        return theming.getThemedIcon('checkCircle');
+      case 'pending':
+        return theming.getThemedIcon('time');
+      case 'cancelled':
+        return theming.getThemedIcon('delete');
+      default: return theming.getThemedIcon(', ');
+  }
+};
+
+  if (hasError) {
+    return (
+      <Container maxWidth="xl" sx={{ py:  3 }}>
+        <Alert severity="error" sx={{ mb:  3 }}>
+          Failed to load vendor dashboard data. Please try again.
+        </Alert>
+      </Container>
+    );
+}
+
+  return (
+    <Container maxWidth="xl" sx={{ py:  3 }}>
+      {/* Header */}
+      <Box sx={{ mb:  4 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', mb:  2 }}>
+          <Avatar sx={{ bgcolor: 'primary.main', mr:  2 }}>
+            <Print />
+          </Avatar>
+          <Box>
+            <Typography variant="h4" component="h1" sx={{ color: theming.colors.primary }}>
+              Print Vendor Dashboard
+            </Typography>
+            <Typography variant="body1" color="text.secondary">
+              Manage your print products, orders, and analytics
+            </Typography>
+          </Box>
+        </Box>
+
+        {/* Quick Stats */}
+        <Grid container spacing={3} sx={{ mb:  3 }}>
+          <Grid item >
+            <Card sx={{ bgcolor: alpha(theme.palette.primary.main, 0.1) ,  ...theming.getThemedCardSx() }}>
+              <CardContent sx={theming.getThemedCardSx()}>
+                <Box sx={{ display: 'flex', alignItems: 'center', mb:  1 }}>
+                  <Inventory color="primary" sx={{ mr:  1 }} />
+                  <Typography variant="h6" sx={{ color: theming.colors.primary }}>Products</Typography>
+                </Box>
+                <Typography variant="h4" color="primary" sx={{ color: theming.colors.primary }}>
+                  {isLoading ? <Skeleton width={60} /> : (vendorStats?.totalProducts || displayProducts.length)}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Total Products
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+
+          <Grid item >
+            <Card sx={{ bgcolor: alpha(theme.palette.success.main, 0.1) ,  ...theming.getThemedCardSx() }}>
+              <CardContent sx={theming.getThemedCardSx()}>
+                <Box sx={{ display: 'flex', alignItems: 'center', mb:  1 }}>
+                  <ShoppingCart color="success" sx={{ mr:  1 }} />
+                  <Typography variant="h6" sx={{ color: theming.colors.primary }}>Orders</Typography>
+                </Box>
+                <Typography variant="h4" color="success.main" sx={{ color: theming.colors.primary }}>
+                  {isLoading ? <Skeleton width={60} /> : (vendorStats?.activeOrders || displayOrders.length)}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Active Orders
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+
+          <Grid item >
+            <Card sx={{ bgcolor: alpha(theme.palette.warning.main, 0.1) ,  ...theming.getThemedCardSx() }}>
+              <CardContent sx={theming.getThemedCardSx()}>
+                <Box sx={{ display: 'flex', alignItems: 'center', mb:  1 }}>
+                  <AttachMoney color="warning" sx={{ mr:  1 }} />
+                  <Typography variant="h6" sx={{ color: theming.colors.primary }}>Revenue</Typography>
+                </Box>
+                <Typography variant="h4" color="warning.main" sx={{ color: theming.colors.primary }}>
+                  {isLoading ? <Skeleton width={80} /> : `$${vendorStats?.totalRevenue || 0}`}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Total Revenue
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+
+          <Grid item >
+            <Card sx={{ bgcolor: alpha(theme.palette.info.main, 0.1) ,  ...theming.getThemedCardSx() }}>
+              <CardContent sx={theming.getThemedCardSx()}>
+                <Box sx={{ display: 'flex', alignItems: 'center', mb:  1 }}>
+                  <TrendingUp color="info" sx={{ mr:  1 }} />
+                  <Typography variant="h6" sx={{ color: theming.colors.primary }}>Growth</Typography>
+                </Box>
+                <Typography variant="h4" color="info.main" sx={{ color: theming.colors.primary }}>
+                  {isLoading ? <Skeleton width={60} /> : '+12%'}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  This Month
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+        </Grid>
+
+        {/* Tabs */}
+        <Paper sx={{ mb:  3 ,  ...theming.getThemedCardSx() }}>
+          <MuiTabs
+            value={tabValue}
+            onChange={handleTabChange}
+            variant={isMobile ? 'scrollable' : 'standard'}
+            scrollButtons="auto"
+            sx={{ borderBottom: 1, borderColor: 'divider'}}
+          >
+            <Tab
+              icon={<Inventory />}
+              label="Products"
+              iconPosition="start"
+            />
+            <Tab
+              icon={<ShoppingCart />}
+              label="Orders"
+              iconPosition="start"
+            />
+            <Tab
+              icon={theming.getThemedIcon('analytics')}}
+              label="Analytics"
+              iconPosition="start"
+            />
+            <Tab
+              icon={theming.getThemedIcon('settings')}}
+              label="Settings"
+              iconPosition="start"
+            />
+          </MuiTabs>
+        </Paper>
+      </Box>
+
+      {/* Tab Panels */}
+      <TabPanel value={tabValue} index={0}>
+        {/* Products Tab */}
+        <Box sx={{ mb:  3, display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+          <Typography variant="h6" sx={{ color: theming.colors.primary }}>Products ({displayProducts.length})</Typography>
+          <Button variant="contained"
+            startIcon={theming.getThemedIcon('add')}
+            onClick={() => setShowProductModal(true)}
+          >
+            Add Product
+          </Button>
+        </Box>
+
+        <Grid container spacing={3}>
+          {isLoading ? (
+            Array.from({ length:  6 }).map((_, index) => (
+              <Grid item  key={index}>
+                <Card sx={theming.getThemedCardSx()}>
+                  <Skeleton variant="rectangular" height={200} />
+                  <CardContent sx={theming.getThemedCardSx()}>
+                    <Skeleton variant="text" height={32} />
+                    <Skeleton variant="text" height={24} />
+                    <Skeleton variant="text" height={20} />
+                  </CardContent>
+                </Card>
+              </Grid>
+            ))
+          ) : displayProducts.length === 0 ? (
+            <Grid item >
+              <Card sx={{ textAlign: 'center', py:  4 ,  ...theming.getThemedCardSx() }}>
+                <Typography variant="h6" color="text.secondary" gutterBottom sx={{ color: theming.colors.primary }}>
+                  No products found
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb:  2 }}>
+                  Get started by adding your first product
+                </Typography>
+                <Button variant="contained"
+                  startIcon={theming.getThemedIcon('add')}
+                  onClick={() => setShowProductModal(true)}
+                >
+                  Add Product
+                </Button>
+              </Card>
+            </Grid>
+          ) : (
+            displayProducts.map((product) => (
+              <Grid item  key={product.id}>
+                <Card
+                  sx={{
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease-in-out', '&:hover': {
+                      transform: 'translateY(-4px)',
+                      boxShadow: theme.shadows[],
+                  }}}
+                  onClick={() => handleProductClick(product)}
+                >
+                  <Box sx={{ position: 'relative'}}>
+                    <Box
+                      sx={{
+                        height: 20,
+                        bgcolor: 'grey.10',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        backgroundImage: product.imageUrl ? `url(${product.imageUl})` : 'none',
+                        backgroundSize: 'cover',
+                        backgroundPosition: 'center'}}
+                    >
+                      {!product.imageUrl && (
+                        <PhotoLibrary sx={{ fontSize:  48, color: 'grey.400'}} />
+                      )}
+                    </Box>
+                    <Chip
+                      label={product.status}
+                      color={getStatusColor(product.status) as any}
+                      size="small"
+                      sx={{ position: 'absolute', top:  8, right:  8 }}
+                    />
+                  </Box>
+                  <CardContent sx={theming.getThemedCardSx()}>
+                    <Typography variant="h6" gutterBottom noWrap sx={{ color: theming.colors.primary }}>
+                      {product.name}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb:  1 }}>
+                      {product.category}
+                    </Typography>
+                    <Typography variant="h6" color="primary" sx={{ color: theming.colors.primary }}>
+                      ${product.price}
+                    </Typography>
+                  </CardContent>
+                  <CardActions sx={theming.getThemedCardSx()}>
+                    <Button size="small" startIcon={theming.getThemedIcon('edit')}>
+                      Edit
+                    </Button>
+                    <Button size="small" startIcon={theming.getThemedIcon('visibility')}>
+                      View
+                    </Button>
+                  </CardActions>
+                </Card>
+              </Grid>
+            ))
+          )}
+        </Grid>
+      </TabPanel>
+
+      <TabPanel value={tabValue} index={1}>
+        {/* Orders Tab */}
+        <Box sx={{ mb:  3, display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+          <Typography variant="h6" sx={{ color: theming.colors.primary }}>Recent Orders ({displayOrders.length})</Typography>
+          <Button
+            variant="outlined"
+            startIcon={<Receipt />}
+            onClick={() => setShowOrderModal(true)}
+          >
+            View All Orders
+          </Button>
+        </Box>
+
+        <Card sx={theming.getThemedCardSx()}>
+          <List>
+            {isLoading ? (
+              Array.from({ length:  5 }).map((_, index) => (
+                <ListItem key={index}>
+                  <ListItemAvatar>
+                    <Skeleton variant="circular" width={40} height={40} />
+                  </ListItemAvatar>
+                  <ListItemText
+                    primary={<Skeleton variant="text" width="60%" />}
+                    secondary={<Skeleton variant="text" width="40%" />}
+                  />
+                </ListItem>
+              ))
+            ) : displayOrders.length === 0 ? (
+              <ListItem>
+                <ListItemText
+                  primary="No orders found"
+                  secondary="Orders will appear here when customers make purchases"
+                />
+              </ListItem>
+            ) : (
+              displayOrders.map((order, index) => (
+                <React.Fragment key={order.id}>
+                  <ListItem
+                    sx={{ cursor: 'pointer'}}
+                    onClick={() => handleOrderClick(order)}
+                  >
+                    <ListItemAvatar>
+                      <Avatar sx={{ bgcolor: 'primary.main'}}>
+                        <Receipt />
+                      </Avatar>
+                    </ListItemAvatar>
+                    <ListItemText
+                      primary={
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
+                          <Typography variant="subtitle1">
+                            {order.customerName}
+                          </Typography>
+                          <Chip
+                            label={order.status}
+                            color={getStatusColor(order.status) as any}
+                            size="small"
+                            icon={getStatusIcon(order.status)}
+                          />
+                        </Box>
+                    }
+                      secondary={
+                        <Box>
+                          <Typography variant="body2" color="text.secondary">
+                            {order.customerEmail}
+                          </Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            Total: ${order.total} • {new Date(order.createdAt).toLocaleDateString()}
+                          </Typography>
+                        </Box>
+                    }
+                    />
+                    <IconButton>
+                      {theming.getThemedIcon('moreVert')}
+                    </IconButton>
+                  </ListItem>
+                  {index < displayOrders.length - 1 && <Divider />}
+                </React.Fragment>
+              ))
+            )}
+          </List>
+        </Card>
+      </TabPanel>
+
+      <TabPanel value={tabValue} index={2}>
+        {/* Analytics Tab */}
+        <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+          Analytics & Performance
+        </Typography>
+        <Grid container spacing={3}>
+          <Grid item >
+            <Card sx={theming.getThemedCardSx()}>
+              <CardContent sx={theming.getThemedCardSx()}>
+                <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                  Sales Performance
+                </Typography>
+                <Box sx={{ height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
+                  <Typography variant="body2" color="text.secondary">
+                    Chart placeholder - Sales data visualization
+                  </Typography>
+                </Box>
+              </CardContent>
+            </Card>
+          </Grid>
+          <Grid item >
+            <Card sx={theming.getThemedCardSx()}>
+              <CardContent sx={theming.getThemedCardSx()}>
+                <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                  Top Products
+                </Typography>
+                <List>
+                  {displayProducts.slice(0, 3).map((product, index) => (
+                    <ListItem key={product.id}>
+                      <ListItemText
+                        primary={product.name}
+                        secondary={`$${product.price}`}
+                      />
+                      <Chip label={`#${index + 1}`} size="small" />
+                    </ListItem>
+                  ))}
+                </List>
+              </CardContent>
+            </Card>
+          </Grid>
+        </Grid>
+      </TabPanel>
+
+      <TabPanel value={tabValue} index={3}>
+        {/* Settings Tab */}
+        <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+          Vendor Settings
+        </Typography>
+        <Card sx={theming.getThemedCardSx()}>
+          <CardContent sx={theming.getThemedCardSx()}>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={proEditorMode}
+                  onChange={(e) => setProEditorMode(e.target.checked)}
+                />
+            }
+              label="Pro Editor Mode"
+            />
+            <Typography variant="body2" color="text.secondary" sx={{ mt:  1 }}>
+              Enable advanced editing features and professional tools
+            </Typography>
+          </CardContent>
+        </Card>
+      </TabPanel>
+
+      {/* Floating Action Button */}
+      <Fab
+        color="primary"
+        sx={{
+          position: 'fixed',
+          bottom:  16,
+          right:  16}}
+        onClick={() => setShowProductModal(true)}
+      >
+        {theming.getThemedIcon('add')}
+      </Fab>
+
+      {/* Product Modal */}
+      <Dialog
+        open={showProductModal}
+        onClose={() => setShowProductModal(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          {selectedProduct ? 'Edit Product' : 'Add New Product'}
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary">
+            Product management form would go here
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowProductModal(false)}>Cancel</Button>
+          <Button variant="contained" onClick={() => setShowProductModal(false)}>
+            {selectedProduct ? 'Update' : 'Create'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Order Modal */}
+      <Dialog
+        open={showOrderModal}
+        onClose={() => setShowOrderModal(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          {selectedOrder ? `Order ${selectedOrder.id}` :'All Orders'}
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary">
+            Order details and management would go here
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowOrderModal(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
+    </Container>
+  );
+}

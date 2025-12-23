@@ -1,0 +1,61 @@
+/**
+ * Client-side Google Impersonation Authentication
+ * Uses Workload Identity Federation to impersonate service account
+ * Shared authentication method across entire platform
+ */
+
+import { GoogleAuth, Impersonated } from "google-auth-library";
+import { google } from 'googleapis';
+
+const TARGET_SA = process.env.IMPERSONATE_SA || process.env.GOOGLE_CLOUD_SERVICE_ACCOUNT_EMAIL || "drive-uploader@creatorhubn-com.iam.gserviceaccount.com";
+const DEFAULT_SCOPES = (process.env.GOOGLE_SCOPES || "https://www.googleapis.com/auth/cloud-platform").split(",");
+const LIFETIME = Number(process.env.GOOGLE_TOKEN_LIFETIME || 300); // 5 min
+
+let cachedToken = { token: "", exp: 0 };
+
+export async function getImpersonatedAccessToken(scopes: string[] = DEFAULT_SCOPES): Promise<string> {
+  const now = Math.floor(Date.now() / 1000);
+  if (cachedToken.token && cachedToken.exp > now + 30) return cachedToken.token;
+
+  const sourceClient = await new GoogleAuth({ scopes: ["https://www.googleapis.com/auth/cloud-platform"] }).getClient();
+  const imp = new Impersonated({
+    sourceClient,
+    targetPrincipal: TARGET_SA,
+    lifetime: LIFETIME,
+    delegates: [],
+    targetScopes: scopes,
+});
+
+  const { token, res } = await imp.getAccessToken() as any;
+  if (!token) throw new Error("Failed to obtain impersonated access token");
+
+  // Try to parse expiry from response if present; otherwise set short cache
+  const exp = now + Math.max(60, Math.min(LIFETIME - 10, 300));
+  cachedToken = { token, exp };
+  return token;
+}
+
+export async function getAuthHeader(scopes?: string[]) {
+  const token = await getImpersonatedAccessToken(scopes);
+  return { Authorization: `Bearer ${token}` };
+}
+
+/**
+ * Get authenticated Google API client
+ * Returns OAuth2 client with impersonated credentials
+ * Used by GA4 Data API and other Google services
+ */
+export async function getAuthenticatedClient(scopes: string[] = DEFAULT_SCOPES) {
+  try {
+    const accessToken = await getImpersonatedAccessToken(scopes);
+    
+    // Create OAuth2 client with the impersonated token
+    const auth = new google.auth.OAuth2();
+    auth.setCredentials({ access_token: accessToken });
+    
+    return auth;
+  } catch (error) {
+    console.error('Failed to get authenticated client:', error);
+    throw error;
+  }
+}

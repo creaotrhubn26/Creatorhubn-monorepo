@@ -1,0 +1,556 @@
+import { useTheming } from '../../utils/theming-helper';
+import React, { useState, useRef, useEffect } from 'react';
+import { 
+  Box, 
+  Typography, 
+  Paper, 
+  Grid, 
+  Button, 
+  LinearProgress,
+  Card,
+  CardContent,
+  Chip,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemIcon,
+  Checkbox,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Slider,
+  Switch,
+  FormControlLabel,
+  Divider,
+  Stack,
+  Alert,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions
+} from '@mui/material';
+import { 
+  Photo, 
+  Speed, 
+  AutoFixHigh, 
+  Download, 
+  Delete, 
+  Refresh,
+  PlayArrow,
+  Pause,
+  Stop,
+  Settings,
+  CheckCircle,
+  Error,
+  Warning
+} from '@mui/icons-material';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
+
+interface PhotoFile {
+  id: string;
+  name: string;
+  url: string;
+  size: number;
+  type: string;
+  status: 'pending' | 'processing' | 'completed' | 'error';
+  progress: number;
+  error?: string;
+  processedUrl?: string;
+  enhancementType?: string;
+  quality?: number; 
+}
+
+interface BatchProcessingJob {
+  id: string;
+  name: string;
+  photos: PhotoFile[];
+  settings: {
+    enhancementType: string;
+    quality: number;
+    preserveOriginals: boolean;
+    autoColorCorrection: boolean;
+    highQualityMode: boolean;
+	  };
+  status: 'idle' | 'running' | 'paused' | 'completed' | 'error';
+  progress: number;
+  startTime?: Date;
+  endTime?: Date; 
+}
+
+interface PhotoBatchProcessorProps {
+  photos?: PhotoFile[];
+  onPhotosProcessed?: (processedPhotos: PhotoFile[]) => void;
+  onJobCreated?: (job: BatchProcessingJob) => void;
+  onJobUpdated?: (job: BatchProcessingJob) => void; 
+}
+
+export default function PhotoBatchProcessor({ 
+  photos = [], 
+  onPhotosProcessed,
+  onJobCreated,
+  onJobUpdated
+}: PhotoBatchProcessorProps) {
+  const queryClient = useQueryClient();
+  
+  // Theming system
+  const theming = useTheming('photographer');
+  const [selectedPhotos, setSelectedPhotos] = useState<PhotoFile[]>([]);
+  const [currentJob, setCurrentJob] = useState<BatchProcessingJob | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [processingProgress, setProcessingProgress] = useState(0);
+  const [settings, setSettings] = useState({
+    enhancementType: 'comprehensive',
+    quality:  85,
+    preserveOriginals: true,
+    autoColorCorrection: true,
+    highQualityMode: false
+,});
+  const [showSettings, setShowSettings] = useState(false);
+
+  // Fetch batch processing jobs
+  const { data: jobs, isLoading: jobsLoading } = useQuery({
+    queryKey: ['/api/batch-processing/jobs', ],
+    queryFn: () => apiRequest('/api/batch-processing/jobs', ),
+    retry: false,
+});
+
+  // Fetch AI models status
+  const { data: modelsStatus } = useQuery({
+    queryKey: ['/api/ai/models/status', ],
+    queryFn: () => apiRequest('/api/ai/models/status', ),
+    retry: false,
+});
+
+  // Mutation for creating batch job
+  const createBatchJob = useMutation({
+    mutationFn: async (jobData: any) =>
+      apiRequest('/api/batch-processing/create', {
+        method: 'POS',
+        body: JSON.stringify(jobData),
+    }),
+    onSuccess: (response) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/batch-processing', ],});
+      onJobCreated?.(response);
+  },
+});
+
+  // Mutation for starting batch processing
+  const startBatchProcessing = useMutation({
+    mutationFn: async (jobId: string) =>
+      apiRequest(`/api/batch-processing/${jobd}/start`, {
+        method: 'POS',
+    }),
+    onSuccess: (response) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/batch-processing', ],});
+      onJobUpdated?.(response);
+  },
+});
+
+  // Mutation for updating batch job
+  const updateBatchJob = useMutation({
+    mutationFn: async (data: any) =>
+      apiRequest('/api/batch-processing/update', {
+        method: 'POS',
+        body: JSON.stringify(data),
+    }),
+    onSuccess: (response) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/batch-processing', ],});
+      onJobUpdated?.(response);
+  },
+});
+
+  // Initialize with provided photos
+  useEffect(() => {
+    if (photos.length > 0) {
+      const initializedPhotos = photos.map(photo => ({
+        ...photo,
+        status: 'pending' as const,
+        progress: 0
+    ,}));
+      setSelectedPhotos(initializedPhotos);
+  }
+}, [photos]);
+
+  // Handle photo selection
+  const handlePhotoSelect = (photo: PhotoFile, selected: boolean) => {
+    if (selected) {
+      setSelectedPhotos(prev => [...prev, photo]);
+  } else {
+      setSelectedPhotos(prev => prev.filter(p => p.id !== photo.id));
+  }
+};
+
+  // Create batch processing job
+  const createJob = () => {
+    if (selectedPhotos.length === 0) return;
+
+    const job: BatchProcessingJob = {
+      id: `job_${Date.now()}`,
+      name: `Batch Job ${new Date().toLocaleString()}`,
+      photos: selectedPhotos,
+      settings,
+      status: 'idle',
+      progress: 0
+	    };
+
+    setCurrentJob(job);
+    createBatchJob.mutate(job);
+};
+
+  // Start batch processing
+  const startProcessing = async () => {
+    if (!currentJob) return;
+
+    setIsProcessing(true);
+    setProcessingProgress(0);
+    
+	    // Update job status
+	    const updatedJob: BatchProcessingJob = {
+	      ...currentJob,
+	      status: 'running',
+	      startTime: new Date(),
+	    };
+    setCurrentJob(updatedJob);
+    updateBatchJob.mutate(updatedJob);
+
+    // Simulate batch processing
+    const totalPhotos = selectedPhotos.length;
+    let completedPhotos = 0;
+
+    for (let i = 0; i < selectedPhotos.length; i++) {
+      const photo = selectedPhotos[i];
+      
+      // Update photo status to processing
+      const processingPhoto = { ...photo, status: 'processing' as const };
+      setSelectedPhotos(prev => 
+        prev.map(p => p.id === photo.id ? processingPhoto : p)
+      );
+
+      // Simulate processing time
+      await new Promise(resolve => setTimeout(resolve, 2000 + Math.random() * 3000));
+
+      // Simulate success/failure
+      const success = Math.random() > 0.1; // 90% success rate
+
+      if (success) {
+        const processedPhoto = {
+          ...processingPhoto,
+          status: 'completed' as const,
+	          progress: 100,
+          processedUrl: `${photo.url}?processed=${Date.now()}`,
+          enhancementType: settings.enhancementType,
+          quality: settings.quality
+	        };
+
+        setSelectedPhotos(prev => 
+          prev.map(p => p.id === photo.id ? processedPhoto : p)
+        );
+        completedPhotos++;
+    } else {
+        const errorPhoto = {
+          ...processingPhoto,
+          status: 'error' as const,
+          error: 'Processing failed - AI model error'
+	        };
+
+        setSelectedPhotos(prev => 
+          prev.map(p => p.id === photo.id ? errorPhoto : p)
+        );
+    }
+
+      // Update overall progress
+      const progress = Math.round(((i + 1) / totalPhotos) * 100);
+      setProcessingProgress(progress);
+  }
+
+    // Complete job
+    const finalJob = {
+      ...updatedJob,
+      status: 'completed' as const,
+	      progress: 100,
+      endTime: new Date()
+	    };
+    setCurrentJob(finalJob);
+    updateBatchJob.mutate(finalJob);
+
+    // Notify parent component
+    const processedPhotos = selectedPhotos.filter(p => p.status === 'completed');
+    onPhotosProcessed?.(processedPhotos);
+
+    setIsProcessing(false);
+};
+
+  // Pause processing
+  const pauseProcessing = () => {
+    if (currentJob) {
+      const pausedJob = { ...currentJob, status: 'paused' as const };
+      setCurrentJob(pausedJob);
+      updateBatchJob.mutate(pausedJob);
+  }
+    setIsProcessing(false);
+};
+
+  // Stop processing
+  const stopProcessing = () => {
+    if (currentJob) {
+      const stoppedJob = { ...currentJob, status: 'idle' as const };
+      setCurrentJob(stoppedJob);
+      updateBatchJob.mutate(stoppedJob);
+  }
+    setIsProcessing(false);
+    setProcessingProgress(0);
+};
+
+  // Get status color
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'completed': return 'success';
+      case 'processing': return 'primary';
+      case 'error': return 'error';
+      default: return 'default';
+	  }
+};
+
+  // Get status icon
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'completed': return theming.getThemedIcon(', ');
+      case 'processing': return <Refresh className="animate-spin" />;
+      case 'error': return theming.getThemedIcon('error');
+      default: return <Photo />;
+	  }
+};
+
+  const completedCount = selectedPhotos.filter(p => p.status === 'completed').length;
+  const errorCount = selectedPhotos.filter(p => p.status === 'error').length;
+  const processingCount = selectedPhotos.filter(p => p.status === 'processing').length;
+
+  return (
+    <Box sx={{ p:  2 }}>
+      <Typography variant="h6" sx={{  mb: 2, display: 'flex', alignItems: 'center', gap:  1  }}>
+        {theming.getThemedIcon('speed')}
+        Batch Photo Processing
+      </Typography>
+
+      {/* AI Models Status */}
+      {modelsStatus && (
+        <Alert 
+          severity={modelsStatus.initialized ? "success" : "warning"} 
+          sx={{ mb:  2 }}
+        >
+          AI Models: {modelsStatus.initialized ? "Ready" : "Loading..."} 
+          {modelsStatus.initialized && ` (${modelsStatus.modelCount || 0} models loaded)`}
+        </Alert>
+      )}
+
+      {/* Job Controls */}
+      <Paper sx={{ p: 2, mb: 2 ,  ...theming.getThemedCardSx() }}>
+        <Grid container spacing={2} alignItems="center">
+          <Grid item xs={12} sm={6} md={3}>
+            <Button variant="contained"
+              startIcon={theming.getThemedIcon('play')}
+              onClick={startProcessing}
+              disabled={!currentJob || isProcessing || selectedPhotos.length === 0}
+              fullWidth
+             sx={theming.getThemedButtonSx()}>
+              {isProcessing ? 'Processing...' : 'Start Processing'}
+            </Button>
+          </Grid>
+          
+          <Grid item xs={12} sm={6} md={3}>
+            <Button
+              variant="outlined"
+              startIcon={theming.getThemedIcon('pause')}
+              onClick={pauseProcessing}
+              disabled={!isProcessing}
+              fullWidth
+            >
+              Pause
+            </Button>
+          </Grid>
+          
+          <Grid item xs={12} sm={6} md={3}>
+            <Button
+              variant="outlined"
+              startIcon={theming.getThemedIcon('stop')}
+              onClick={stopProcessing}
+              disabled={!isProcessing && !currentJob}
+              fullWidth
+            >
+              Stop
+            </Button>
+          </Grid>
+          
+          <Grid item xs={12} sm={6} md={3}>
+            <Button
+              variant="outlined"
+              startIcon={theming.getThemedIcon('settings')}
+              onClick={() => setShowSettings(true)}
+              fullWidth
+            >
+              Settings
+            </Button>
+          </Grid>
+        </Grid>
+      </Paper>
+
+      {/* Processing Progress */}
+      {isProcessing && (
+        <Paper sx={{ p: 2, mb: 2 ,  ...theming.getThemedCardSx() }}>
+          <Typography variant="body2" sx={{ mb:  1 }}>
+            Processing photos... {processingProgress}%
+          </Typography>
+          <LinearProgress variant="determinate" value={processingProgress} />
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block'}}>
+            {completedCount} completed • {processingCount} processing • {errorCount} errors
+          </Typography>
+        </Paper>
+      )}
+
+      {/* Photo List */}
+      <Paper sx={{ p: 2, mb: 2 ,  ...theming.getThemedCardSx() }}>
+        <Typography variant="h6" sx={{  mb:  2  }}>
+          Selected Photos ({selectedPhotos.length})
+        </Typography>
+        
+        <List>
+          {selectedPhotos.map((photo) => (
+            <ListItem key={photo.id} divider>
+              <ListItemIcon>
+                <Checkbox
+                  checked={true}
+                  onChange={(e) => handlePhotoSelect(photo, e.target.checked)}
+                />
+              </ListItemIcon>
+              <ListItemIcon>
+                {getStatusIcon(photo.status)}
+              </ListItemIcon>
+              <ListItemText
+                primary={photo.name}
+                secondary={
+                  <Box>
+                    <Typography variant="body2" color="text.secondary">
+                      Size: {(photo.size / 1024 / 1024).toFixed()} MB
+                    </Typography>
+                    {photo.status === 'processing' && (
+                      <LinearProgress 
+                        variant="determinate" 
+                        value={photo.progress} 
+                        sx={{ mt: 1, width: 200}}
+                      />
+                    )}
+                    {photo.error && (
+                      <Typography variant="body2" color="error">
+                        {photo.error}
+                      </Typography>
+                    )}
+                  </Box>
+              }
+              />
+              <Box sx={{ display: 'flex', gap:  1 }}>
+                <Chip 
+                  label={photo.status} 
+                  color={getStatusColor(photo.status) as any}
+                  size="small"
+                />
+	                {photo.processedUrl && (
+	                  <Button
+	                    size="small"
+	                    startIcon={theming.getThemedIcon('download')}
+	                    onClick={() => window.open(photo.processedUrl, '_blank')}
+	                  >
+	                    Download
+	                  </Button>
+	                )}
+              </Box>
+            </ListItem>
+          ))}
+        </List>
+      </Paper>
+
+      {/* Settings Dialog */}
+      <Dialog open={showSettings} onClose={() => setShowSettings(false)} maxWidth="md" fullWidth>
+        <DialogTitle>Batch Processing Settings</DialogTitle>
+        <DialogContent>
+          <Grid container spacing={2} sx={{ mt:  1 }}>
+            <Grid item xs={12} sm={6}>
+              <FormControl fullWidth>
+                <InputLabel>Enhancement Type</InputLabel>
+                <Select
+                  value={settings.enhancementType}
+                  onChange={(e) => setSettings(prev => ({ ...prev, enhancementType: e.target.value }))}
+                >
+                  <MenuItem value="comprehensive">Comprehensive Analysis</MenuItem>
+                  <MenuItem value="face_restoration">Face Restoration</MenuItem>
+                  <MenuItem value="super_resolution">Super Resolution</MenuItem>
+                  <MenuItem value="noise_reduction">Noise Reduction</MenuItem>
+                  <MenuItem value="color_enhancement">Color Enhancement</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            
+            <Grid item xs={12} sm={6}>
+              <Typography gutterBottom>Quality: {settings.quality}%</Typography>
+              <Slider
+                value={settings.quality}
+                onChange={(e, value) => setSettings(prev => ({ ...prev, quality: value as number }))}
+                min={50}
+                max={100}
+                valueLabelDisplay="auto"
+              />
+            </Grid>
+            
+            <Grid item xs={12}>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={settings.preserveOriginals}
+                    onChange={(e) => setSettings(prev => ({ ...prev, preserveOriginals: e.target.checked }))}
+                  />
+              }
+                label="Preserve Original Files"
+              />
+            </Grid>
+            
+            <Grid item xs={12}>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={settings.autoColorCorrection}
+                    onChange={(e) => setSettings(prev => ({ ...prev, autoColorCorrection: e.target.checked }))}
+                  />
+              }
+                label="Automatic Color Correction"
+              />
+            </Grid>
+            
+            <Grid item xs={12}>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={settings.highQualityMode}
+                    onChange={(e) => setSettings(prev => ({ ...prev, highQualityMode: e.target.checked }))}
+                  />
+              }
+                label="High Quality Mode (Slower)"
+              />
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowSettings(false)}>Cancel</Button>
+          <Button variant="contained" 
+            onClick={() => {
+              createJob();
+              setShowSettings(false);
+          }}
+          >
+            Create Job
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
+  );
+}

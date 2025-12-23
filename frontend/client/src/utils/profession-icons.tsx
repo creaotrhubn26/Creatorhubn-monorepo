@@ -1,0 +1,237 @@
+/**
+ * Smart Material UI Icons System for Dynamic Professions
+ * Handles icon mapping and provides fallbacks
+ */
+
+import React from 'react';
+import {
+  PhotographyIcon,
+  VideographyIcon,
+  MusicProductionIcon,
+  CorporateIcon
+} from '../components/shared/CreatorHubIcons';
+import {
+  Brush,
+  Palette,
+  Build,
+  Computer,
+  Assignment,
+  Work,
+  Person,
+  Star,
+  Create,
+  AccountBalance,
+  Home,
+  Pets,
+  SportsBaseball,
+  Code
+} from '@mui/icons-material';
+import {
+  DesignServices,
+  Engineering,
+  School,
+  LocalHospital,
+  DirectionsCar,
+  LocalFlorist,
+  Restaurant,
+  CameraAlt,
+  VideoLibrary,
+  LibraryMusic,
+  Business,
+  Lightbulb,
+  Favorite,
+  Inventory,
+  Edit,
+  TrendingUp,
+  ShowChart,
+  RocketLaunch,
+  BarChart,
+} from '@mui/icons-material';
+
+// Icon mapping for profession types
+const PROFESSION_ICON_MAP: Record<string, React.ReactElement> = {
+  // Core professions
+  photographer: <PhotographyIcon />,
+  fotograf: <PhotographyIcon />,
+  videographer: <VideographyIcon />,
+  videograf: <VideographyIcon />,
+  musicproducer: <MusicProductionIcon />,
+  musikkprodusent: <MusicProductionIcon />,
+  music_producer: <MusicProductionIcon />,
+  vendor: <CorporateIcon />,
+  leverandør: <CorporateIcon />,
+  leverandor: <CorporateIcon />,
+
+  // Extended profession categories
+  business: <CorporateIcon />,
+  forretning: <CorporateIcon />,
+  design: <DesignServices />,
+  designer: <Brush />,
+  artist: <Palette />,
+  kunstner: <Palette />,
+  florist: <LocalFlorist />,
+  blomsterdekoratør: <LocalFlorist />,
+  restaurant: <Restaurant />,
+  restaurantowner: <Restaurant />,
+  builder: <Build />,
+  bygger: <Build />,
+  developer: <Code />,
+  utvikler: <Code />,
+  engineer: <Engineering />,
+  ingeniør: <Engineering />,
+  teacher: <School />,
+  lærer: <School />,
+  doctor: <LocalHospital />,
+  lege: <LocalHospital />,
+  lawyer: <AccountBalance />,
+  advokat: <AccountBalance />,
+  realtor: <Home />,
+  eiendomsmegler: <Home />,
+  mechanic: <DirectionsCar />,
+  mekaniker: <DirectionsCar />,
+  veterinarian: <Pets />,
+  veterinær: <Pets />,
+  athlete: <SportsBaseball />,
+  idrettsutøver: <SportsBaseball />,
+  consultant: <Assignment />,
+  konsulent: <Assignment />,
+  freelancer: <Work />,
+  frilanser: <Work />,
+
+  // Fallback icons
+  default: <Person />,
+  other: <Star />,
+  custom: <Create />,
+};
+
+// Smart icon resolver
+export function getProfessionIcon(professionName: string): React.ReactElement {
+  // Clean and normalize profession name
+  const cleanName = professionName
+    .toLowerCase()
+    .replace(/\s+/g, '')
+    .replace(/[æøå]/g, (char) => {
+      const replacements: Record<string, string> = { æ: 'ae', ø: 'o', å: 'a' };
+      return replacements[char] || char;
+  });
+
+  // Try exact match first
+  if (PROFESSION_ICON_MAP[cleanName]) {
+    return PROFESSION_ICON_MAP[cleanName];
+}
+
+  // Try partial matches
+  const partialMatches = Object.keys(PROFESSION_ICON_MAP).filter(
+    (key) => cleanName.includes(key) || key.includes(cleanName),
+  );
+
+  if (partialMatches.length > 0) {
+    return PROFESSION_ICON_MAP[partialMatches[0]];
+}
+
+  // Category-based fallbacks
+  if (cleanName.includes('photo') || cleanName.includes('bilde') || cleanName.includes('kamera')) {
+    return <PhotographyIcon />;
+}
+  if (cleanName.includes('video') || cleanName.includes('film') || cleanName.includes('media')) {
+    return <VideographyIcon />;
+}
+  if (cleanName.includes('music') || cleanName.includes('lyd') || cleanName.includes('audio')) {
+    return <MusicProductionIcon />;
+}
+  if (cleanName.includes('shop') || cleanName.includes('butik') || cleanName.includes('salg')) {
+    return <CorporateIcon />;
+}
+
+  // Default fallback
+  return PROFESSION_ICON_MAP.default;
+}
+
+// Helper to get all available icons (for admin interface)
+export function getAvailableIcons(): Record<string, React.ReactElement> {
+  return PROFESSION_ICON_MAP;
+}
+
+// Helper to add new icon mapping (for dynamic profession creation)
+export function addIconMapping(professionName: string, icon: React.ReactElement): void {
+  PROFESSION_ICON_MAP[professionName.toLowerCase()] = icon;
+}
+
+// Icon categories for admin interface
+export const ICON_CATEGORIES = {
+  creative: {
+    name: 'Kreative',
+    icons: {
+      PhotoCamera: <PhotographyIcon />,
+      Videocam: <VideographyIcon />,
+      LibraryMusic: <MusicProductionIcon />,
+      Brush: <Brush />,
+      DesignServices: <DesignServices />,
+      Palette: <Palette />,
+  },
+},
+  business: {
+    name: 'Forretning',
+    icons: {
+      Business: <CorporateIcon />,
+      Store: <CorporateIcon />,
+      Work: <Work />,
+      Assignment: <Assignment />,
+      AccountBalance: <AccountBalance />,
+  },
+},
+  technical: {
+    name: 'Teknisk',
+    icons: {
+      Code: <Code />,
+      Engineering: <Engineering />,
+      Computer: <Computer />,
+      Build: <Build />,
+  },
+},
+  service: {
+    name: 'Service',
+    icons: {
+      LocalHospital: <LocalHospital />,
+      School: <School />,
+      Restaurant: <Restaurant />,
+      DirectionsCar: <DirectionsCar />,
+  },
+},
+};
+
+// Course Category Icon Mapping (consistent with landing pages)
+export const COURSE_CATEGORY_ICONS: Record<string, React.ReactElement> = {
+  photography: <CameraAlt />,
+  videography: <VideoLibrary />,
+  music_production: <LibraryMusic />,
+  music: <LibraryMusic />,
+  business: <Business />,
+  editing: <Edit />,
+  equipment: <Inventory />,
+  lighting: <Lightbulb />,
+  wedding: <Favorite />,
+  techniques: <Build />,
+  default: <School />,
+};
+
+// Course Level Icon Mapping
+export const COURSE_LEVEL_ICONS: Record<string, React.ReactElement> = {
+  beginner: <TrendingUp />,
+  intermediate: <ShowChart />,
+  advanced: <RocketLaunch />,
+  default: <BarChart />,
+};
+
+// Helper functions for course icons
+export function getCourseCategoryIcon(category: string): React.ReactElement {
+  const cleanCategory = category?.toLowerCase().replace(/\s+/g, '_') || 'default';
+  return COURSE_CATEGORY_ICONS[cleanCategory] || COURSE_CATEGORY_ICONS.default;
+}
+
+export function getCourseLevelIcon(level: string): React.ReactElement {
+  const cleanLevel = level?.toLowerCase() ||'default';
+  return COURSE_LEVEL_ICONS[cleanLevel] || COURSE_LEVEL_ICONS.default;
+}
+
+export default getProfessionIcon;

@@ -1,0 +1,1368 @@
+<!doctype html>
+<html lang="no">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CreatorHub Virtual Studio - Customer Journey Builder Demo</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family:
+          'Inter',
+          -apple-system,
+          system-ui,
+          sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        padding: 20px;
+      }
+
+      .container {
+        max-width: 1400px;
+        margin: 0 auto;
+      }
+
+      /* Header */
+      .header {
+        text-align: center;
+        color: white;
+        margin-bottom: 40px;
+      }
+
+      .header h1 {
+        font-size: 2.5rem;
+        font-weight: 700;
+        margin-bottom: 10px;
+      }
+
+      .header h2 {
+        font-size: 2rem;
+        font-weight: 700;
+        color: #fbbf24;
+        margin-bottom: 20px;
+      }
+
+      .header p {
+        font-size: 1.25rem;
+        opacity: 0.9;
+      }
+
+      /* Persona Selector */
+      .persona-selector {
+        background: white;
+        border-radius: 12px;
+        padding: 30px;
+        margin-bottom: 30px;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      }
+
+      .persona-tabs {
+        display: flex;
+        gap: 20px;
+        margin-bottom: 30px;
+      }
+
+      .persona-tab {
+        flex: 1;
+        padding: 30px;
+        border: 3px solid #e5e7eb;
+        border-radius: 12px;
+        cursor: pointer;
+        transition: all 0.3s;
+        text-align: center;
+      }
+
+      .persona-tab:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+      }
+
+      .persona-tab.active {
+        border-color: #6366f1;
+        background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+        color: white;
+      }
+
+      .persona-icon {
+        font-size: 3rem;
+        margin-bottom: 10px;
+      }
+
+      .persona-name {
+        font-size: 1.5rem;
+        font-weight: 700;
+        margin-bottom: 5px;
+      }
+
+      .persona-role {
+        font-size: 0.875rem;
+        opacity: 0.8;
+      }
+
+      .persona-info {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 30px;
+      }
+
+      .info-section h3 {
+        font-size: 1.25rem;
+        margin-bottom: 15px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .info-list {
+        list-style: none;
+      }
+
+      .info-list li {
+        padding: 10px;
+        margin-bottom: 8px;
+        background: #f9fafb;
+        border-radius: 6px;
+        display: flex;
+        align-items: start;
+        gap: 10px;
+      }
+
+      .info-list li::before {
+        content: '•';
+        font-size: 1.5rem;
+        font-weight: bold;
+      }
+
+      .goals li::before {
+        color: #10b981;
+      }
+      .pain-points li::before {
+        color: #ef4444;
+      }
+
+      /* Journey Container */
+      .journey-container {
+        display: grid;
+        grid-template-columns: 350px 1fr;
+        gap: 30px;
+      }
+
+      /* Sidebar */
+      .sidebar {
+        background: white;
+        border-radius: 12px;
+        padding: 25px;
+        height: fit-content;
+        position: sticky;
+        top: 20px;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      }
+
+      .sidebar h3 {
+        font-size: 1.25rem;
+        margin-bottom: 20px;
+        color: #1f2937;
+      }
+
+      .stage-list {
+        list-style: none;
+      }
+
+      .stage-item {
+        padding: 15px;
+        margin-bottom: 10px;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: all 0.3s;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        border-left: 4px solid transparent;
+      }
+
+      .stage-item:hover {
+        background: #f3f4f6;
+      }
+
+      .stage-item.active {
+        background: linear-gradient(135deg, #ede9fe 0%, #ddd6fe 100%);
+        border-left-color: #6366f1;
+        font-weight: 600;
+      }
+
+      .stage-item.completed {
+        opacity: 0.7;
+      }
+
+      .stage-icon {
+        font-size: 1.5rem;
+        width: 40px;
+        height: 40px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+        background: #e5e7eb;
+      }
+
+      .stage-item.active .stage-icon {
+        background: #6366f1;
+        color: white;
+      }
+
+      .stage-item.completed .stage-icon {
+        background: #10b981;
+        color: white;
+      }
+
+      .roi-card {
+        margin-top: 30px;
+        padding: 20px;
+        background: linear-gradient(135deg, #ede9fe 0%, #ddd6fe 100%);
+        border-radius: 12px;
+      }
+
+      .roi-card h4 {
+        font-size: 1.125rem;
+        margin-bottom: 15px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .roi-item {
+        margin-bottom: 15px;
+      }
+
+      .roi-label {
+        font-size: 0.875rem;
+        color: #6b7280;
+        margin-bottom: 5px;
+      }
+
+      .roi-value {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: #10b981;
+      }
+
+      /* Main Content */
+      .main-content {
+        background: white;
+        border-radius: 12px;
+        padding: 40px;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      }
+
+      .stage-header {
+        margin-bottom: 30px;
+      }
+
+      .stage-chip {
+        display: inline-block;
+        padding: 6px 16px;
+        background: #e5e7eb;
+        border-radius: 20px;
+        font-size: 0.875rem;
+        margin-bottom: 15px;
+      }
+
+      .stage-title {
+        font-size: 2rem;
+        font-weight: 700;
+        margin-bottom: 15px;
+      }
+
+      .progress-bar {
+        height: 8px;
+        background: #e5e7eb;
+        border-radius: 4px;
+        overflow: hidden;
+        margin-bottom: 30px;
+      }
+
+      .progress-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #6366f1 0%, #8b5cf6 100%);
+        transition: width 0.5s ease;
+      }
+
+      /* Cards */
+      .info-card {
+        padding: 25px;
+        margin-bottom: 20px;
+        border-radius: 12px;
+        border-left: 4px solid;
+      }
+
+      .problem-card {
+        background: #fef2f2;
+        border-left-color: #ef4444;
+      }
+
+      .solution-card {
+        background: #f0fdf4;
+        border-left-color: #10b981;
+      }
+
+      .video-card {
+        background: #f3e5f5;
+        border-left-color: #8b5cf6;
+      }
+
+      .info-card h4 {
+        font-size: 1.25rem;
+        font-weight: 700;
+        margin-bottom: 15px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .problem-card h4 {
+        color: #ef4444;
+      }
+      .solution-card h4 {
+        color: #10b981;
+      }
+      .video-card h4 {
+        color: #8b5cf6;
+      }
+
+      .features-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+        margin-bottom: 20px;
+      }
+
+      .feature-box h5 {
+        font-size: 1.125rem;
+        font-weight: 600;
+        margin-bottom: 15px;
+      }
+
+      .feature-list {
+        list-style: none;
+      }
+
+      .feature-list li {
+        padding: 10px;
+        margin-bottom: 8px;
+        display: flex;
+        align-items: start;
+        gap: 10px;
+      }
+
+      .feature-list li::before {
+        content: '✓';
+        font-weight: bold;
+        font-size: 1.25rem;
+      }
+
+      .features-box li::before {
+        color: #6366f1;
+      }
+      .benefits-box li::before {
+        color: #10b981;
+      }
+
+      .time-card {
+        padding: 20px;
+        background: rgba(99, 102, 241, 0.1);
+        border-radius: 12px;
+        margin-bottom: 20px;
+      }
+
+      .time-card h5 {
+        font-size: 1.125rem;
+        margin-bottom: 10px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .time-value {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: #10b981;
+      }
+
+      /* Buttons */
+      .button-group {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 30px;
+      }
+
+      .btn {
+        padding: 12px 32px;
+        border: none;
+        border-radius: 8px;
+        font-size: 1rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+      }
+
+      .btn-primary {
+        background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+        color: white;
+      }
+
+      .btn-secondary {
+        background: white;
+        color: #6366f1;
+        border: 2px solid #6366f1;
+      }
+
+      .btn-video {
+        background: linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%);
+        color: white;
+        width: 100%;
+        justify-content: center;
+        font-size: 1.125rem;
+        padding: 16px;
+      }
+
+      .btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
+      /* Success Screen */
+      .success-screen {
+        text-align: center;
+        padding: 60px 20px;
+      }
+
+      .success-icon {
+        font-size: 5rem;
+        margin-bottom: 20px;
+      }
+
+      .success-screen h2 {
+        font-size: 2rem;
+        font-weight: 700;
+        margin-bottom: 20px;
+      }
+
+      .success-screen p {
+        font-size: 1.125rem;
+        color: #6b7280;
+        margin-bottom: 40px;
+        max-width: 800px;
+        margin-left: auto;
+        margin-right: auto;
+      }
+
+      .success-screen strong {
+        color: #10b981;
+      }
+
+      /* Modal */
+      .modal {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.8);
+        z-index: 1000;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .modal.active {
+        display: flex;
+      }
+
+      .modal-content {
+        background: white;
+        border-radius: 12px;
+        padding: 40px;
+        max-width: 600px;
+        width: 90%;
+        text-align: center;
+      }
+
+      .modal-content h3 {
+        font-size: 1.75rem;
+        margin-bottom: 20px;
+        color: #8b5cf6;
+      }
+
+      .modal-content p {
+        font-size: 1rem;
+        color: #6b7280;
+        margin-bottom: 30px;
+      }
+
+      .video-placeholder {
+        width: 100%;
+        height: 300px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-bottom: 20px;
+        color: white;
+        font-size: 4rem;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .video-placeholder.generating::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: -100%;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+        animation: shimmer 2s infinite;
+      }
+
+      @keyframes shimmer {
+        to {
+          left: 100%;
+        }
+      }
+
+      .video-frame {
+        width: 100%;
+        height: 100%;
+        border-radius: 8px;
+        background: #000;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        padding: 20px;
+        text-align: center;
+      }
+
+      .video-frame h4 {
+        font-size: 1.5rem;
+        margin-bottom: 10px;
+      }
+
+      .video-frame p {
+        font-size: 1rem;
+        opacity: 0.8;
+        margin-bottom: 20px;
+      }
+
+      .play-button {
+        width: 60px;
+        height: 60px;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.2);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 2rem;
+        cursor: pointer;
+        transition: all 0.3s;
+      }
+
+      .play-button:hover {
+        background: rgba(255, 255, 255, 0.4);
+        transform: scale(1.1);
+      }
+
+      .progress-steps {
+        margin: 20px 0;
+        padding: 15px;
+        background: #f9fafb;
+        border-radius: 8px;
+      }
+
+      .progress-steps .step {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 0;
+        font-size: 0.875rem;
+      }
+
+      .progress-steps .step.active {
+        color: #6366f1;
+        font-weight: 600;
+      }
+
+      .progress-steps .step.completed {
+        color: #10b981;
+      }
+
+      .progress-steps .step-icon {
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.75rem;
+      }
+
+      .progress-steps .step.active .step-icon {
+        background: #6366f1;
+        color: white;
+      }
+
+      .progress-steps .step.completed .step-icon {
+        background: #10b981;
+        color: white;
+      }
+
+      .progress-steps .step:not(.active):not(.completed) .step-icon {
+        background: #e5e7eb;
+        color: #9ca3af;
+      }
+
+      .hidden {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <!-- Header -->
+      <div class="header">
+        <h1>Hvordan CreatorHub Virtual Studio</h1>
+        <h2>Transformerer Din Arbeidsflyt</h2>
+        <p>
+          Se nøyaktig hvordan fotografer og videografer sparer tid, reduserer kostnader, og leverer
+          bedre resultater
+        </p>
+      </div>
+
+      <!-- Persona Selector -->
+      <div class="persona-selector">
+        <div class="persona-tabs">
+          <div class="persona-tab active" data-persona="photographer">
+            <div class="persona-icon">📸</div>
+            <div class="persona-name">Ingrid Solberg</div>
+            <div class="persona-role">Profesjonell Fotograf</div>
+          </div>
+          <div class="persona-tab" data-persona="videographer">
+            <div class="persona-icon">🎬</div>
+            <div class="persona-name">Lars Andersen</div>
+            <div class="persona-role">Kommersiell Videograf</div>
+          </div>
+        </div>
+
+        <div class="persona-info" id="personaInfo"></div>
+      </div>
+
+      <!-- Journey Container -->
+      <div class="journey-container">
+        <!-- Sidebar -->
+        <div class="sidebar">
+          <h3>Reisestadier</h3>
+          <ul class="stage-list" id="stageList"></ul>
+
+          <div class="roi-card">
+            <h4>💰 Din ROI</h4>
+            <div class="roi-item">
+              <div class="roi-label">Tid Spart Per Måned</div>
+              <div class="roi-value" id="roiTime">90+ timer</div>
+            </div>
+            <div class="roi-item">
+              <div class="roi-label">Inntektspotensial</div>
+              <div class="roi-value" id="roiRevenue">13,500 kr/mnd</div>
+            </div>
+            <div class="roi-item">
+              <div class="roi-label">Årlig Gevinst</div>
+              <div class="roi-value" id="roiAnnual">162,000 kr</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content" id="mainContent"></div>
+      </div>
+    </div>
+
+    <!-- Video Modal -->
+    <div class="modal" id="videoModal">
+      <div class="modal-content">
+        <h3 id="modalTitle">🎬 AI Video Generering</h3>
+        <p id="modalDescription">Genererer profesjonell video for dette stadiet...</p>
+
+        <div class="video-placeholder" id="videoPlaceholder">
+          <span id="videoIcon">🎥</span>
+        </div>
+
+        <div class="progress-steps" id="progressSteps" style="display: none">
+          <div class="step" data-step="1">
+            <div class="step-icon">1</div>
+            <span>Analyzing journey stage content...</span>
+          </div>
+          <div class="step" data-step="2">
+            <div class="step-icon">2</div>
+            <span>Generating AI script and storyboard...</span>
+          </div>
+          <div class="step" data-step="3">
+            <div class="step-icon">3</div>
+            <span>Creating video scenes and transitions...</span>
+          </div>
+          <div class="step" data-step="4">
+            <div class="step-icon">4</div>
+            <span>Adding voiceover and music...</span>
+          </div>
+          <div class="step" data-step="5">
+            <div class="step-icon">5</div>
+            <span>Rendering final video...</span>
+          </div>
+        </div>
+
+        <div id="videoDetails" style="display: none">
+          <p><strong>Video vil bli generert med AI basert på:</strong></p>
+          <p
+            id="videoContext"
+            style="
+              text-align: left;
+              padding: 20px;
+              background: #f9fafb;
+              border-radius: 8px;
+              margin-bottom: 20px;
+            "
+          ></p>
+        </div>
+
+        <button class="btn btn-primary" id="modalButton" onclick="closeVideoModal()">Lukk</button>
+      </div>
+    </div>
+
+    <script>
+      // Data
+      const personas = {
+        photographer: {
+          name: 'Ingrid Solberg',
+          role: 'Profesjonell Fotograf',
+          icon: '📸',
+          goals: [
+            'Øke bookingrate',
+            'Redusere forberedelsestid',
+            'Levere konsekvent kvalitet',
+            'Skalere til flere kunder',
+          ],
+          painPoints: [
+            'Studiooppsett tar for lang tid',
+            'Dyre lokasjonsbesøk',
+            'Kunderevisjon tar tid',
+            'Inkonsistent lysresultat',
+          ],
+          roi: { time: '90+', revenue: '13,500', annual: '162,000' },
+          journey: [
+            {
+              title: 'Pre-Production Planning',
+              icon: '💡',
+              problem:
+                'Spending hours setting up physical studios, testing lighting, and planning shoots. Expensive location scouting and setup costs.',
+              solution:
+                'Plan everything virtually before the actual shoot. Test different lighting setups, backgrounds, and camera angles in minutes.',
+              features: [
+                'Virtual studio environments',
+                'Lighting simulation',
+                'Camera angle preview',
+                'Equipment inventory planning',
+              ],
+              benefits: [
+                'Save 5-8 hours per shoot',
+                'Reduce location costs by 60%',
+                'Test unlimited setups',
+                'Share previews with clients',
+              ],
+              timeEstimate: '30 mins vs 4-6 hours traditional',
+            },
+            {
+              title: 'Scene Composition',
+              icon: '🎨',
+              problem:
+                'Difficult to visualize final composition. Multiple trial-and-error iterations waste time and client patience.',
+              solution:
+                'Create perfect compositions in 3D. See exactly how your shot will look before pressing the shutter.',
+              features: [
+                '3D scene builder',
+                'Real-time camera preview',
+                'Rule of thirds overlay',
+                'Golden ratio guides',
+              ],
+              benefits: [
+                'Perfect composition every time',
+                'Reduce shoot time by 40%',
+                'Impress clients with previews',
+                'Save on reshoot costs',
+              ],
+              timeEstimate: '15 mins vs 1-2 hours on location',
+            },
+            {
+              title: 'Lighting Design',
+              icon: '💡',
+              problem:
+                'Expensive lighting equipment. Complex setups. Inconsistent results. Need professional gaffer for complex scenes.',
+              solution:
+                'Design and test lighting virtually. Export exact specifications for real-world setup.',
+              features: [
+                '627 professional LUTs',
+                'Virtual lighting tools',
+                'Light meter simulation',
+                'HDRI environments',
+              ],
+              benefits: [
+                'Test lighting before buying gear',
+                'Reproduce setups consistently',
+                'No gaffer needed',
+                'Professional color grading',
+              ],
+              timeEstimate: 'Instant vs 2-3 hours setup',
+            },
+            {
+              title: 'Client Presentation',
+              icon: '🤝',
+              problem:
+                "Hard to explain vision to clients. Mood boards don't capture the exact look. Miscommunication leads to revisions.",
+              solution:
+                "Show clients exactly what they're getting. Interactive 3D previews they can explore.",
+              features: [
+                'Real-time scene preview',
+                'Export preview images',
+                'Share links with clients',
+                'Collaborative feedback',
+              ],
+              benefits: [
+                'Get approval 2x faster',
+                'Reduce revision requests by 70%',
+                'Win more projects',
+                'Higher client satisfaction',
+              ],
+              timeEstimate: '10 mins vs multiple revision rounds',
+            },
+            {
+              title: 'Post-Production',
+              icon: '✨',
+              problem:
+                'Hours of editing. Color grading guesswork. Inconsistent look across series.',
+              solution:
+                'Apply professional LUTs and color grades. Export with watermarks. Maintain consistency.',
+              features: [
+                'GPU-accelerated LUT processing',
+                'Batch export',
+                'Watermark branding',
+                'Cloud backup',
+              ],
+              benefits: [
+                'Reduce editing time by 50%',
+                'Consistent professional look',
+                'Branded exports',
+                'Never lose work',
+              ],
+              timeEstimate: '30 mins vs 3-4 hours',
+            },
+          ],
+        },
+        videographer: {
+          name: 'Lars Andersen',
+          role: 'Kommersiell Videograf',
+          icon: '🎬',
+          goals: [
+            'Vinne større produksjoner',
+            'Redusere produksjonskostnader',
+            'Perfeksjonere komplekse kamerabevegelser',
+            'Raskere postproduksjon',
+          ],
+          painPoints: [
+            'Pre-visualisering er tidkrevende',
+            'Dyrt utstyrtest',
+            'Tapte opptak under produksjon',
+            'Lang fargegradingsprosess',
+          ],
+          roi: { time: '110+', revenue: '27,500', annual: '330,000' },
+          journey: [
+            {
+              title: 'Pre-Visualization',
+              icon: '🎥',
+              problem:
+                "Storyboards don't show exact camera movements. Hard to plan complex shots. Expensive to rent equipment for testing.",
+              solution:
+                'Create animated previsualization with exact camera paths. Test movements before the shoot.',
+              features: [
+                'Camera path recording',
+                'Timeline animation',
+                'Keyframe editor',
+                'Movement preview',
+              ],
+              benefits: [
+                'Plan perfect camera moves',
+                'Share animatics with team',
+                'Reduce shoot days by 30%',
+                'Test before renting gear',
+              ],
+              timeEstimate: '1 hour vs 1-2 shoot days',
+            },
+            {
+              title: 'Shot List Creation',
+              icon: '📋',
+              problem:
+                'Static shot lists miss crucial details. Hard to communicate with crew. Shots get missed on set.',
+              solution:
+                'Build interactive 3D shot list. Every shot is a saved scene with exact specifications.',
+              features: [
+                'Scene templates',
+                'Shot list management',
+                'Equipment requirements',
+                'Time estimates per shot',
+              ],
+              benefits: [
+                'Never miss a shot',
+                'Efficient crew communication',
+                'Accurate time estimates',
+                'Professional organization',
+              ],
+              timeEstimate: '45 mins vs day-of confusion',
+            },
+            {
+              title: 'Camera Movement Planning',
+              icon: '🎬',
+              problem:
+                'Complex moves require expensive motion control. Multiple takes waste time and budget. Difficult to replicate shots.',
+              solution: 'Record perfect camera paths. Export motion data. Replay exact movements.',
+              features: [
+                'Smooth camera paths',
+                'Curve editor for precision',
+                'Path replay',
+                'Export to motion control',
+              ],
+              benefits: [
+                'Perfect moves every time',
+                'Reduce takes by 60%',
+                'Replicate shots easily',
+                'Save motion control costs',
+              ],
+              timeEstimate: 'One-take perfection vs 10+ takes',
+            },
+            {
+              title: 'Multi-Angle Setup',
+              icon: '📹',
+              problem:
+                'Planning multi-camera shoots is complex. Expensive to rent multiple cameras. Coverage gaps discovered too late.',
+              solution:
+                'Plan all camera angles virtually. Ensure complete coverage. Optimize camera count.',
+              features: [
+                'Multiple camera preview',
+                'Coverage analysis',
+                'Optimal positioning',
+                'Real-time switching',
+              ],
+              benefits: [
+                'Optimize camera count',
+                'Ensure complete coverage',
+                'Reduce camera rental costs',
+                'Faster multi-cam setup',
+              ],
+              timeEstimate: '20 mins vs 2-3 hours on set',
+            },
+            {
+              title: 'Color Grading & Export',
+              icon: '🎨',
+              problem:
+                'Inconsistent color across clips. Time-consuming grading. Client revisions slow delivery.',
+              solution: 'Apply professional LUTs. Real-time preview. Export with branding.',
+              features: [
+                '627 cinema-grade LUTs',
+                'Real-time color preview',
+                'Batch processing',
+                'Branded watermarks',
+              ],
+              benefits: [
+                'Cinematic look instantly',
+                'Consistent color palette',
+                'Deliver 2x faster',
+                'Professional branding',
+              ],
+              timeEstimate: '1 hour vs 8-12 hours grading',
+            },
+            {
+              title: 'Collaboration & Delivery',
+              icon: '☁️',
+              problem:
+                'Sharing large files is slow. Client feedback is scattered. Version control issues.',
+              solution: 'Cloud sync projects. Share preview links. Track changes automatically.',
+              features: [
+                'Google Drive integration',
+                'Project versioning',
+                'Share links with clients',
+                'Automatic backups',
+              ],
+              benefits: [
+                'Seamless collaboration',
+                'Faster client approvals',
+                'Never lose work',
+                'Professional delivery',
+              ],
+              timeEstimate: 'Instant sharing vs file transfer delays',
+            },
+          ],
+        },
+      };
+
+      // State
+      let currentPersona = 'photographer';
+      let currentStage = 0;
+
+      // Initialize
+      function init() {
+        updatePersonaInfo();
+        renderStageList();
+        renderStageContent();
+        setupEventListeners();
+      }
+
+      // Update persona info
+      function updatePersonaInfo() {
+        const persona = personas[currentPersona];
+        const html = `
+                <div class="info-section">
+                    <h3>🎯 Mål</h3>
+                    <ul class="info-list goals">
+                        ${persona.goals.map((goal) => `<li>${goal}</li>`).join('')}
+                    </ul>
+                </div>
+                <div class="info-section">
+                    <h3>⚠️ Utfordringer</h3>
+                    <ul class="info-list pain-points">
+                        ${persona.painPoints.map((point) => `<li>${point}</li>`).join('')}
+                    </ul>
+                </div>
+            `;
+        document.getElementById('personaInfo').innerHTML = html;
+
+        // Update ROI
+        document.getElementById('roiTime').textContent = `${persona.roi.time} timer`;
+        document.getElementById('roiRevenue').textContent = `${persona.roi.revenue} kr/mnd`;
+        document.getElementById('roiAnnual').textContent = `${persona.roi.annual} kr`;
+      }
+
+      // Render stage list
+      function renderStageList() {
+        const persona = personas[currentPersona];
+        const html = persona.journey
+          .map(
+            (stage, index) => `
+                <li class="stage-item ${index === currentStage ? 'active' : ''} ${index < currentStage ? 'completed' : ''}" 
+                    data-stage="${index}">
+                    <div class="stage-icon">${stage.icon}</div>
+                    <div>${stage.title}</div>
+                </li>
+            `,
+          )
+          .join('');
+        document.getElementById('stageList').innerHTML = html;
+      }
+
+      // Render stage content
+      function renderStageContent() {
+        const persona = personas[currentPersona];
+        const stage = persona.journey[currentStage];
+        const progress = ((currentStage + 1) / persona.journey.length) * 100;
+
+        const isLastStage = currentStage === persona.journey.length - 1;
+
+        if (isLastStage) {
+          // Success screen
+          const html = `
+                    <div class="success-screen">
+                        <div class="success-icon">🎉</div>
+                        <h2>Suksess! ${persona.name} Transformerer Sin Virksomhet</h2>
+                        <p>
+                            Ved å bruke CreatorHub Virtual Studio gjennom hele arbeidsflyten, sparer ${persona.name}
+                            <strong>${persona.roi.time} timer per måned</strong>, genererer
+                            <strong>${persona.roi.revenue} kr mer månedlig inntekt</strong>, og leverer
+                            konsekvent profesjonelle resultater som gleder kunder.
+                        </p>
+                        <div class="button-group" style="justify-content: center; gap: 20px;">
+                            <button class="btn btn-primary" onclick="window.location.reload()">
+                                Start Din Reise
+                            </button>
+                            <button class="btn btn-secondary" onclick="currentStage = 0; renderStageList(); renderStageContent();">
+                                Se Reisen Igjen
+                            </button>
+                        </div>
+                    </div>
+                `;
+          document.getElementById('mainContent').innerHTML = html;
+          return;
+        }
+
+        const html = `
+                <div class="stage-header">
+                    <div class="stage-chip">Stage ${currentStage + 1} av ${persona.journey.length}</div>
+                    <h2 class="stage-title">${stage.title}</h2>
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width: ${progress}%"></div>
+                    </div>
+                </div>
+
+                <div class="info-card problem-card">
+                    <h4>❌ Problemet</h4>
+                    <p>${stage.problem}</p>
+                </div>
+
+                <div class="info-card solution-card">
+                    <h4>✅ Virtual Studio Løsning</h4>
+                    <p>${stage.solution}</p>
+                </div>
+
+                <div class="features-grid">
+                    <div class="feature-box features-box">
+                        <h5>🛠️ Funksjoner Du Bruker</h5>
+                        <ul class="feature-list">
+                            ${stage.features.map((f) => `<li>${f}</li>`).join('')}
+                        </ul>
+                    </div>
+                    <div class="feature-box benefits-box">
+                        <h5>💎 Fordeler Du Får</h5>
+                        <ul class="feature-list">
+                            ${stage.benefits.map((b) => `<li>${b}</li>`).join('')}
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="time-card">
+                    <h5>⚡ Tidssammenligning</h5>
+                    <div class="time-value">${stage.timeEstimate}</div>
+                </div>
+
+                <div class="info-card video-card">
+                    <h4>🎬 Generer AI Video</h4>
+                    <p>Lag en profesjonell video som viser denne fasen av reisen din.<br>
+                    <em>Create a professional video showcasing this journey stage.</em></p>
+                    <button class="btn btn-video" onclick="generateVideo()">
+                        🎥 Generer Video for Denne Fasen
+                    </button>
+                </div>
+
+                <div class="button-group">
+                    <button class="btn btn-secondary" onclick="previousStage()" ${currentStage === 0 ? 'disabled' : ''}>
+                        ← Forrige
+                    </button>
+                    <button class="btn btn-primary" onclick="nextStage()">
+                        ${currentStage === persona.journey.length - 2 ? 'Fullfør Reisen' : 'Neste'} →
+                    </button>
+                </div>
+            `;
+
+        document.getElementById('mainContent').innerHTML = html;
+      }
+
+      // Navigation
+      function nextStage() {
+        const persona = personas[currentPersona];
+        if (currentStage < persona.journey.length - 1) {
+          currentStage++;
+          renderStageList();
+          renderStageContent();
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+      }
+
+      function previousStage() {
+        if (currentStage > 0) {
+          currentStage--;
+          renderStageList();
+          renderStageContent();
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+      }
+
+      // Generate video
+      let isGenerating = false;
+      let currentGenerationStep = 0;
+
+      function generateVideo() {
+        const persona = personas[currentPersona];
+        const stage = persona.journey[currentStage];
+
+        const context = `
+                <strong>Persona:</strong> ${persona.name}<br>
+                <strong>Stage:</strong> ${stage.title}<br><br>
+                <strong>Content:</strong><br>
+                ${stage.problem}<br><br>
+                ${stage.solution}<br><br>
+                <strong>Features:</strong> ${stage.features.join(', ')}
+            `;
+
+        document.getElementById('videoContext').innerHTML = context;
+        document.getElementById('videoModal').classList.add('active');
+
+        // Start generation
+        startVideoGeneration();
+      }
+
+      function startVideoGeneration() {
+        isGenerating = true;
+        currentGenerationStep = 0;
+
+        // Show progress
+        document.getElementById('modalTitle').textContent = '🎬 Genererer AI Video...';
+        document.getElementById('modalDescription').textContent = 'AI-drevet videoproduksjon pågår';
+        document.getElementById('progressSteps').style.display = 'block';
+        document.getElementById('videoDetails').style.display = 'block';
+        document.getElementById('modalButton').textContent = 'Vennligst vent...';
+        document.getElementById('modalButton').disabled = true;
+        document.getElementById('videoPlaceholder').classList.add('generating');
+
+        // Simulate generation steps
+        const steps = document.querySelectorAll('.progress-steps .step');
+
+        function processStep(index) {
+          if (index > 0) {
+            steps[index - 1].classList.remove('active');
+            steps[index - 1].classList.add('completed');
+          }
+
+          if (index < steps.length) {
+            steps[index].classList.add('active');
+            currentGenerationStep = index + 1;
+
+            // Random delay between 1-3 seconds per step
+            const delay = 1000 + Math.random() * 2000;
+            setTimeout(() => processStep(index + 1), delay);
+          } else {
+            // Generation complete!
+            completeVideoGeneration();
+          }
+        }
+
+        processStep(0);
+      }
+
+      function completeVideoGeneration() {
+        const persona = personas[currentPersona];
+        const stage = persona.journey[currentStage];
+
+        isGenerating = false;
+        document.getElementById('videoPlaceholder').classList.remove('generating');
+
+        // Show completed video
+        const videoHTML = `
+                <div class="video-frame">
+                    <h4>${stage.title}</h4>
+                    <p>${persona.name} - ${persona.role}</p>
+                    <div class="play-button" onclick="alert('Video would play here in production!\\n\\nThis demo shows the generation process.\\nIn the real app, the video would be playable.')">
+                        ▶️
+                    </div>
+                    <p style="margin-top: 20px; font-size: 0.875rem;">2:30 minutter</p>
+                </div>
+            `;
+
+        document.getElementById('videoPlaceholder').innerHTML = videoHTML;
+        document.getElementById('modalTitle').textContent = '✅ Video Generert!';
+        document.getElementById('modalDescription').textContent =
+          'Din profesjonelle AI-video er klar';
+        document.getElementById('modalButton').textContent = 'Lukk';
+        document.getElementById('modalButton').disabled = false;
+
+        // Show success message
+        setTimeout(() => {
+          document.getElementById('progressSteps').innerHTML =
+            '<div style="text-align: center; color: #10b981; font-weight: 600; padding: 20px;">✅ Video generert med AI i 8.3 sekunder</div>';
+        }, 500);
+      }
+
+      function closeVideoModal() {
+        document.getElementById('videoModal').classList.remove('active');
+
+        // Reset modal
+        setTimeout(() => {
+          document.getElementById('modalTitle').textContent = '🎬 AI Video Generering';
+          document.getElementById('modalDescription').textContent =
+            'Genererer profesjonell video for dette stadiet...';
+          document.getElementById('videoPlaceholder').innerHTML = '<span id="videoIcon">🎥</span>';
+          document.getElementById('videoPlaceholder').classList.remove('generating');
+          document.getElementById('progressSteps').style.display = 'none';
+          document.getElementById('videoDetails').style.display = 'none';
+          document.getElementById('modalButton').textContent = 'Lukk';
+          document.getElementById('modalButton').disabled = false;
+
+          // Reset progress steps
+          document.querySelectorAll('.progress-steps .step').forEach((step) => {
+            step.classList.remove('active', 'completed');
+          });
+
+          // Recreate progress steps
+          document.getElementById('progressSteps').innerHTML = `
+                    <div class="step" data-step="1">
+                        <div class="step-icon">1</div>
+                        <span>Analyzing journey stage content...</span>
+                    </div>
+                    <div class="step" data-step="2">
+                        <div class="step-icon">2</div>
+                        <span>Generating AI script and storyboard...</span>
+                    </div>
+                    <div class="step" data-step="3">
+                        <div class="step-icon">3</div>
+                        <span>Creating video scenes and transitions...</span>
+                    </div>
+                    <div class="step" data-step="4">
+                        <div class="step-icon">4</div>
+                        <span>Adding voiceover and music...</span>
+                    </div>
+                    <div class="step" data-step="5">
+                        <div class="step-icon">5</div>
+                        <span>Rendering final video...</span>
+                    </div>
+                `;
+        }, 300);
+      }
+
+      // Event listeners
+      function setupEventListeners() {
+        // Persona tabs
+        document.querySelectorAll('.persona-tab').forEach((tab) => {
+          tab.addEventListener('click', () => {
+            document.querySelectorAll('.persona-tab').forEach((t) => t.classList.remove('active'));
+            tab.classList.add('active');
+            currentPersona = tab.dataset.persona;
+            currentStage = 0;
+            updatePersonaInfo();
+            renderStageList();
+            renderStageContent();
+          });
+        });
+
+        // Stage list items
+        document.addEventListener('click', (e) => {
+          const stageItem = e.target.closest('.stage-item');
+          if (stageItem) {
+            currentStage = parseInt(stageItem.dataset.stage);
+            renderStageList();
+            renderStageContent();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }
+        });
+      }
+
+      // Start
+      init();
+    </script>
+  </body>
+</html>

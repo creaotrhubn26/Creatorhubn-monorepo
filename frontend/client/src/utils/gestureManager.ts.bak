@@ -1,0 +1,994 @@
+/**
+ * Gesture Manager
+ * Manages touch gesture support for mobile devices
+ */
+
+export interface GestureConfig {
+  enableGestures: boolean;
+  enableTouchGestures: boolean;
+  enableMouseGestures: boolean;
+  enableKeyboardGestures: boolean;
+  enableAccessibility: boolean;
+  enableHapticFeedback: boolean;
+  enableGestureRecognition: boolean;
+  enableGestureValidation: boolean;
+  enableGestureOptimization: boolean;
+  enableGestureAnalytics: boolean;
+  enableGestureDebugging: boolean;
+  enableGestureLogging: boolean;
+  enableGestureMetrics: boolean;
+  enableGestureTesting: boolean;
+  enableGestureSharing: boolean;
+  enableGesturePersistence: boolean;
+  enableGestureCustomization: boolean;
+  enableGestureOverrides: boolean;
+  enableGestureConflicts: boolean;
+  enableGestureHelp: boolean;
+  debug: boolean
+}
+
+export interface Gesture {
+  id: string;
+  name: string;
+  description: string;
+  type: 'tap' | 'double-tap' | 'long-press' | 'swipe' | 'pinch' | 'rotate' | 'pan' | 'custom';
+  direction?: 'up' | 'down' | 'left' | 'right' | 'diagonal' | 'any';
+  fingers: number;
+  duration?: number;
+  distance?: number;
+  threshold: number;
+  tolerance: number;
+  element: HTMLElement;
+  handler: (event: GestureEvent) => void;
+  enabled: boolean;
+  preventDefault: boolean;
+  stopPropagation: boolean;
+  priority: number;
+  metadata: {
+    created: number;
+    modified: number;
+    version: string;
+    author: string;
+    tags: string[];
+    usageCount: number;
+    lastUsed: number;
+    successCount: number;
+    errorCount: number;
+    performance: {
+      recognitionTime: number;
+      executionTime: number;
+      accuracy: number;
+};
+};
+  config: Record<string, any>;
+}
+
+export interface GestureEvent {
+  type: string;
+  gesture: Gesture;
+  touches: Touch[];
+  center: { x: number; y: number };
+  distance: number;
+  angle: number;
+  velocity: { x: number; y: number };
+  direction: string;
+  duration: number;
+  timestamp: number;
+  element: HTMLElement;
+  originalEvent: TouchEvent | MouseEvent | KeyboardEvent
+}
+
+export interface GestureState {
+  isEnabled: boolean;
+  isInitialized: boolean;
+  hasError: boolean;
+  error: string | null;
+  gestures: Map<string, Gesture>;
+  activeGestures: Map<string, Gesture>;
+  lastUpdate: number;
+  totalGestures: number;
+  totalRecognitions: number;
+  successfulRecognitions: number;
+  failedRecognitions: number;
+  averageRecognitionTime: number;
+  averageExecutionTime: number;
+  averageAccuracy: number;
+  totalErrors: number;
+  totalConflicts: number;
+  totalOverrides: number
+}
+
+class GestureManager {
+  private config: GestureConfig;
+  private state: GestureState;
+  private eventListeners: Map<string, Function[]> = new Map();
+  private isInitialized = false;
+  private touchStartHandler: ((event: TouchEvent) => void) | null = null;
+  private touchMoveHandler: ((event: TouchEvent) => void) | null = null;
+  private touchEndHandler: ((event: TouchEvent) => void) | null = null;
+  private mouseDownHandler: ((event: MouseEvent) => void) | null = null;
+  private mouseMoveHandler: ((event: MouseEvent) => void) | null = null;
+  private mouseUpHandler: ((event: MouseEvent) => void) | null = null;
+  private keyDownHandler: ((event: KeyboardEvent) => void) | null = null;
+  private keyUpHandler: ((event: KeyboardEvent) => void) | null = null;
+  private gestureRecognitionTimeout: NodeJS.Timeout | null = null;
+  private gestureData: {
+    startTouches: Touch[];
+    currentTouches: Touch[];
+    startTime: number;
+    startCenter: { x: number; y: number };
+    currentCenter: { x: number; y: number };
+    startDistance: number;
+    currentDistance: number;
+    startAngle: number;
+    currentAngle: number;
+    velocity: { x: number; y: number };
+    direction: string;
+    duration: number;
+} | null = null;
+
+  constructor(config: Partial<GestureConfig> = {}) {
+    this.config = {
+      enableGestures: true,
+      enableTouchGestures: true,
+      enableMouseGestures: true,
+      enableKeyboardGestures: true,
+      enableAccessibility: true,
+      enableHapticFeedback: true,
+      enableGestureRecognition: true,
+      enableGestureValidation: true,
+      enableGestureOptimization: true,
+      enableGestureAnalytics: true,
+      enableGestureDebugging: true,
+      enableGestureLogging: true,
+      enableGestureMetrics: true,
+      enableGestureTesting: true,
+      enableGestureSharing: true,
+      enableGesturePersistence: true,
+      enableGestureCustomization: true,
+      enableGestureOverrides: true,
+      enableGestureConflicts: true,
+      enableGestureHelp: true,
+      debug: false,
+      ...config
+};
+
+    this.state = {
+      isEnabled: false,
+      isInitialized: false,
+      hasError: false,
+      error: null,
+      gestures: new Map(),
+      activeGestures: new Map(),
+      lastUpdate:  0,
+      totalGestures:  0,
+      totalRecognitions:  0,
+      successfulRecognitions:  0,
+      failedRecognitions:  0,
+      averageRecognitionTime:  0,
+      averageExecutionTime:  0,
+      averageAccuracy:  0,
+      totalErrors:  0,
+      totalConflicts:  0,
+      totalOverrides: 0
+};
+
+    this.initializeGestureManager();
+}
+
+  /**
+   * Initialize gesture manager
+   */
+  private initializeGestureManager(): void {
+    if (!this.config.enableGestures) return;
+
+    try {
+      this.setupEventListeners();
+      this.loadDefaultGestures();
+      this.state.isEnabled = true;
+      this.state.isInitialized = true;
+      this.emit('initialized');
+} catch (error) {
+      this.state.hasError = true;
+      this.state.error = error instanceof Error ? error.message : 'Unknown error';
+      this.emit('error', { error: this.state.error });
+}
+}
+
+  /**
+   * Setup event listeners
+   */
+  private setupEventListeners(): void {
+    if (!this.config.enableGestures) return;
+
+    // Touch events
+    if (this.config.enableTouchGestures) {
+      this.touchStartHandler = this.handleTouchStart.bind(this);
+      this.touchMoveHandler = this.handleTouchMove.bind(this);
+      this.touchEndHandler = this.handleTouchEnd.bind(this);
+
+      document.addEventListener('touchstart', this.touchStartHandler, { passive: false });
+      document.addEventListener('touchmove', this.touchMoveHandler, { passive: false });
+      document.addEventListener('touchend', this.touchEndHandler, { passive: false });
+}
+
+    // Mouse events
+    if (this.config.enableMouseGestures) {
+      this.mouseDownHandler = this.handleMouseDown.bind(this);
+      this.mouseMoveHandler = this.handleMouseMove.bind(this);
+      this.mouseUpHandler = this.handleMouseUp.bind(this);
+
+      document.addEventListener('mousedown', this.mouseDownHandler);
+      document.addEventListener('mousemove', this.mouseMoveHandler);
+      document.addEventListener('mouseup', this.mouseUpHandler);
+}
+
+    // Keyboard events
+    if (this.config.enableKeyboardGestures) {
+      this.keyDownHandler = this.handleKeyDown.bind(this);
+      this.keyUpHandler = this.handleKeyUp.bind(this);
+
+      document.addEventListener('keydown', this.keyDownHandler);
+      document.addEventListener('keyup', this.keyUpHandler);
+}
+}
+
+  /**
+   * Load default gestures
+   */
+  private loadDefaultGestures(): void {
+    const defaultGestures: Partial<Gesture>[] = [
+      {
+        id: 'tap',
+        name: 'Tap',
+        description: 'Single finger tap',
+        type: 'tap',
+        fingers:  1,
+        threshold:  10,
+        tolerance:  5,
+        handler: (event) => this.emit('gesture_tap', event),
+        enabled: true,
+        preventDefault: true,
+        stopPropagation: false,
+        priority: 1
+},
+      {
+        id: 'double-tap',
+        name: 'Double Tap',
+        description: 'Two quick taps',
+        type: 'double-tap',
+        fingers:  1,
+        duration: 30,
+        threshold:  10,
+        tolerance:  5,
+        handler: (event) => this.emit('gesture_double_tap', event),
+        enabled: true,
+        preventDefault: true,
+        stopPropagation: false,
+        priority: 2
+},
+      {
+        id: 'long-press',
+        name: 'Long Press',
+        description: 'Press and hold',
+        type: 'long-press',
+        fingers:  1,
+        duration: 50,
+        threshold:  10,
+        tolerance:  5,
+        handler: (event) => this.emit('gesture_long_press', event),
+        enabled: true,
+        preventDefault: true,
+        stopPropagation: false,
+        priority: 3
+},
+      {
+        id: 'swipe-up',
+        name: 'Swipe U',
+        description: 'Swipe up gesture',
+        type: 'swipe',
+        direction: 'up',
+        fingers:  1,
+        distance:  50,
+        threshold:  10,
+        tolerance:  5,
+        handler: (event) => this.emit('gesture_swipe_up', event),
+        enabled: true,
+        preventDefault: true,
+        stopPropagation: false,
+        priority: 4
+},
+      {
+        id: 'swipe-down',
+        name: 'Swipe Down',
+        description: 'Swipe down gesture',
+        type: 'swipe',
+        direction: 'down',
+        fingers:  1,
+        distance:  50,
+        threshold:  10,
+        tolerance:  5,
+        handler: (event) => this.emit('gesture_swipe_down', event),
+        enabled: true,
+        preventDefault: true,
+        stopPropagation: false,
+        priority: 4
+},
+      {
+        id: 'swipe-left',
+        name: 'Swipe Left',
+        description: 'Swipe left gesture',
+        type: 'swipe',
+        direction: 'left',
+        fingers:  1,
+        distance:  50,
+        threshold:  10,
+        tolerance:  5,
+        handler: (event) => this.emit('gesture_swipe_left', event),
+        enabled: true,
+        preventDefault: true,
+        stopPropagation: false,
+        priority: 4
+},
+      {
+        id: 'swipe-right',
+        name: 'Swipe Right',
+        description: 'Swipe right gesture',
+        type: 'swipe',
+        direction: 'right',
+        fingers:  1,
+        distance:  50,
+        threshold:  10,
+        tolerance:  5,
+        handler: (event) => this.emit('gesture_swipe_right', event),
+        enabled: true,
+        preventDefault: true,
+        stopPropagation: false,
+        priority: 4
+},
+      {
+        id: 'pinch',
+        name: 'Pinch',
+        description: 'Two finger pinch gesture',
+        type: 'pinch',
+        fingers:  2,
+        threshold:  10,
+        tolerance:  5,
+        handler: (event) => this.emit('gesture_pinch', event),
+        enabled: true,
+        preventDefault: true,
+        stopPropagation: false,
+        priority: 5
+},
+      {
+        id: 'rotate',
+        name: 'Rotate',
+        description: 'Two finger rotate gesture',
+        type: 'rotate',
+        fingers:  2,
+        threshold:  10,
+        tolerance:  5,
+        handler: (event) => this.emit('gesture_rotate', event),
+        enabled: true,
+        preventDefault: true,
+        stopPropagation: false,
+        priority: 5
+},
+      {
+        id: 'pan',
+        name: 'Pan',
+        description: 'Pan gesture',
+        type: 'pan',
+        fingers:  1,
+        threshold:  10,
+        tolerance:  5,
+        handler: (event) => this.emit('gesture_pan', event),
+        enabled: true,
+        preventDefault: true,
+        stopPropagation: false,
+        priority: 6
+}
+    ];
+
+    defaultGestures.forEach(gestureData => {
+      this.createGesture(gestureData);
+});
+}
+
+  /**
+   * Create gesture
+   */
+  async createGesture(gestureData: Partial<Gesture>): Promise<Gesture> {
+    if (!this.state.isEnabled) throw new Error('Gestures are not enabled');
+
+    const gesture: Gesture = {
+      id: gestureData.id || this.generateId, (, ),
+      name: gestureData.name || 'Untitled Gesture',
+      description: gestureData.description ||'',
+      type: gestureData.type || 'custom',
+      direction: gestureData.direction,
+      fingers: gestureData.fingers ||,  , 1,
+      duration: gestureData.duration,
+      distance: gestureData.distance,
+      threshold: gestureData.threshold || 10,
+      tolerance: gestureData.tolerance ||,  , 5,
+      element: gestureData.element || document.body,
+      handler: gestureData.handler || (() =>,  , {}),
+      enabled: gestureData.enabled !== undefined ? gestureData.enabled : true,
+      preventDefault: gestureData.preventDefault !== undefined ? gestureData.preventDefault : true,
+      stopPropagation: gestureData.stopPropagation !== undefined ? gestureData.stopPropagation : false,
+      priority: gestureData.priority ||,  , 1,
+      metadata: {
+        created: Date.now(),
+        modified: Date.now(),
+        version: '1.0.',
+        author: 'User',
+        tags: [''],
+        usageCount:  0,
+        lastUsed:  0,
+        successCount:  0,
+        errorCount:  0,
+        performance: {
+          recognitionTime:,  , 0,
+          executionTime:  0,
+          accuracy: 0
+  }
+  },
+      config: gestureData.config ||,  , {}
+};
+
+    try {
+      // Validate gesture
+      if (this.config.enableGestureValidation) {
+        await this.validateGesture(gesture);
+  }
+
+      // Update state
+      this.state.gestures.set(gesture.id, gesture);
+      this.state.totalGestures++;
+      this.state.lastUpdate = Date.now();
+
+      this.emit('gesture_created', { gesture });
+      return gesture;
+
+} catch (error) {
+      this.state.totalErrors++;
+      this.state.hasError = true;
+      this.state.error = error instanceof Error ? error.message : 'Unknown error';
+      
+      this.emit('gesture_create_failed', { gesture, error: this.state.error });
+      throw error;
+}
+}
+
+  /**
+   * Recognize gesture
+   */
+  async recognizeGesture(event: TouchEvent | MouseEvent | KeyboardEvent): Promise<Gesture | null> {
+    if (!this.state.isEnabled) return null;
+
+    try {
+      const startTime = Date.now();
+      const recognizedGesture = await this.processGesture(event);
+      
+      if (recognizedGesture) {
+        // Update metadata
+        recognizedGesture.metadata.usageCount++;
+        recognizedGesture.metadata.lastUsed = Date.now();
+        recognizedGesture.metadata.successCount++;
+        recognizedGesture.metadata.performance.recognitionTime = Date.now() - startTime;
+
+        // Update state
+        this.state.totalRecognitions++;
+        this.state.successfulRecognitions++;
+        this.state.lastUpdate = Date.now();
+
+        // Execute gesture
+        await this.executeGesture(recognizedGesture, event);
+
+        this.emit('gesture_recognized', { gesture: recognizedGesture, event });
+        return recognizedGesture;
+  }
+
+      return null;
+
+} catch (error) {
+      this.state.totalErrors++;
+      this.state.failedRecognitions++;
+      this.state.hasError = true;
+      this.state.error = error instanceof Error ? error.message : 'Unknown error';
+      
+      this.emit('gesture_recognition_failed', { event, error: this.state.error });
+      throw error;
+}
+}
+
+  /**
+   * Process gesture
+   */
+  private async processGesture(event: TouchEvent | MouseEvent | KeyboardEvent): Promise<Gesture | null> {
+    if (!this.config.enableGestureRecognition) return null;
+
+    // Find matching gestures
+    const matchingGestures = this.findMatchingGestures(event);
+    
+    if (matchingGestures.length === 0) return null;
+
+    // Sort by priority (higher priority first)
+    matchingGestures.sort(, (b) => b.priority - a.priority);
+
+    // Return the highest priority gesture
+    return matchingGestures[0];
+}
+
+  /**
+   * Find matching gestures
+   */
+  private findMatchingGestures(event: TouchEvent | MouseEvent | KeyboardEvent): Gesture[] {
+    const matching: Gesture[] = [];
+    
+    for (const gesture of this.state.gestures.values()) {
+      if (!gesture.enabled) continue;
+      
+      // Check if gesture matches event
+      if (this.gestureMatches(gesture, event)) {
+        matching.push(gesture);
+  }
+}
+    
+    return matching;
+}
+
+  /**
+   * Check if gesture matches event
+   */
+  private gestureMatches(gesture: Gesture, event: TouchEvent | MouseEvent | KeyboardEvent): boolean {
+    // Check event type
+    if (event instanceof TouchEvent && gesture.type !== 'custom') {
+      if (gesture.fingers !== event.touches.length) return false;
+} else if (event instanceof MouseEvent && gesture.type !== 'custom') {
+      if (gesture.fingers !== 1) return false;
+} else if (event instanceof KeyboardEvent && gesture.type !== 'custom') {
+      return false; // Keyboard gestures are handled separately
+}
+
+    // Check specific gesture types
+    switch (gesture.type) {
+      case 'tap':
+        return this.isTapGesture(gesture, event);
+      case 'double-tap':
+        return this.isDoubleTapGesture(gesture, event);
+      case 'long-press':
+        return this.isLongPressGesture(gesture, event);
+      case 'swipe':
+        return this.isSwipeGesture(gesture, event);
+      case 'pinch':
+        return this.isPinchGesture(gesture, event);
+      case 'rotate':
+        return this.isRotateGesture(gesture, event);
+      case 'pan':
+        return this.isPanGesture(gesture, event);
+      default: return false;
+}
+}
+
+  /**
+   * Check if event is a tap gesture
+   */
+  private isTapGesture(gesture: Gesture, event: TouchEvent | MouseEvent): boolean {
+    if (event instanceof TouchEvent) {
+      return event.touches.length === 1 && event.type === 'touchend';
+} else if (event instanceof MouseEvent) {
+      return event.type === 'mouseup';
+}
+    return false;
+}
+
+  /**
+   * Check if event is a double tap gesture
+   */
+  private isDoubleTapGesture(gesture: Gesture, event: TouchEvent | MouseEvent): boolean {
+    // Implementation depends on double tap detection strategy
+    return false;
+}
+
+  /**
+   * Check if event is a long press gesture
+   */
+  private isLongPressGesture(gesture: Gesture, event: TouchEvent | MouseEvent): boolean {
+    // Implementation depends on long press detection strategy
+    return false;
+}
+
+  /**
+   * Check if event is a swipe gesture
+   */
+  private isSwipeGesture(gesture: Gesture, event: TouchEvent | MouseEvent): boolean {
+    // Implementation depends on swipe detection strategy
+    return false;
+}
+
+  /**
+   * Check if event is a pinch gesture
+   */
+  private isPinchGesture(gesture: Gesture, event: TouchEvent): boolean {
+    if (event instanceof TouchEvent) {
+      return event.touches.length === 2 && event.type === 'touchmove';
+}
+    return false;
+}
+
+  /**
+   * Check if event is a rotate gesture
+   */
+  private isRotateGesture(gesture: Gesture, event: TouchEvent): boolean {
+    if (event instanceof TouchEvent) {
+      return event.touches.length === 2 && event.type === 'touchmove';
+}
+    return false;
+}
+
+  /**
+   * Check if event is a pan gesture
+   */
+  private isPanGesture(gesture: Gesture, event: TouchEvent | MouseEvent): boolean {
+    if (event instanceof TouchEvent) {
+      return event.touches.length === 1 && event.type === 'touchmove';
+} else if (event instanceof MouseEvent) {
+      return event.type === 'mousemove' && event.buttons === 1;
+}
+    return false;
+}
+
+  /**
+   * Execute gesture
+   */
+  private async executeGesture(gesture: Gesture, event: TouchEvent | MouseEvent | KeyboardEvent): Promise<void> {
+    try {
+      const startTime = Date.now();
+
+      // Create gesture event
+      const gestureEvent: GestureEvent = {
+        type: gesture.type,
+        gesture,
+        touches: event instanceof TouchEvent ? Array.from(event.touches) : [],
+        center: this.calculateCenter(event),
+        distance: this.calculateDistance(event),
+        angle: this.calculateAngle(event),
+        velocity: this.calculateVelocity(event),
+        direction: this.calculateDirection(event),
+        duration: this.calculateDuration(event),
+        timestamp: Date.now(),
+        element: gesture.element,
+        originalEvent: event
+};
+
+      // Execute handler
+      await gesture.handler(gestureEvent);
+
+      // Update performance
+      gesture.metadata.performance.executionTime = Date.now() - startTime;
+
+      // Emit event
+      this.emit('gesture_executed', { gesture, event: gestureEvent });
+
+} catch (error) {
+      gesture.metadata.errorCount++;
+      this.state.totalErrors++;
+      this.state.hasError = true;
+      this.state.error = error instanceof Error ? error.message : 'Unknown error';
+      
+      this.emit('gesture_execution_failed', { gesture, event, error: this.state.error });
+      throw error;
+}
+}
+
+  /**
+   * Calculate center point
+   */
+  private calculateCenter(event: TouchEvent | MouseEvent): { x: number; y: number } {
+    if (event instanceof TouchEvent) {
+      const touches = Array.from(event.touches);
+      if (touches.length === 0) return { x:  ,  0y:  0 };
+      
+      const sum = touches.reduce((acc, touch) => ({
+        x: acc.x + touch.clientX,
+        y: acc.y + touch.clientY
+}), { x:  ,  0y:  0 });
+      
+      return {
+        x: sum.x / touches.length,
+        y: sum.y / touches.length
+};
+} else if (event instanceof MouseEvent) {
+      return { x: event.clientX, y: event.client, Y,};
+}
+    return { x:  ,  0y:  0 };
+}
+
+  /**
+   * Calculate distance
+   */
+  private calculateDistance(event: TouchEvent | MouseEvent): number {
+    if (event instanceof TouchEvent) {
+      const touches = Array.from(event.touches);
+      if (touches.length < 2) return 0;
+      
+      const touch1 = touches[0];
+      const touch2 = touches[1];
+      
+      const dx = touch2.clientX - touch1.clientX;
+      const dy = touch2.clientY - touch1.clientY;
+      
+      return Math.sqrt(dx * dx + dy * dy);
+}
+    return 0;
+}
+
+  /**
+   * Calculate angle
+   */
+  private calculateAngle(event: TouchEvent | MouseEvent): number {
+    if (event instanceof TouchEvent) {
+      const touches = Array.from(event.touches);
+      if (touches.length < 2) return 0;
+      
+      const touch1 = touches[0];
+      const touch2 = touches[1];
+      
+      const dx = touch2.clientX - touch1.clientX;
+      const dy = touch2.clientY - touch1.clientY;
+      
+      return Math.atan2(, dydx) * 180 / Math.PI;
+}
+    return 0;
+}
+
+  /**
+   * Calculate velocity
+   */
+  private calculateVelocity(event: TouchEvent | MouseEvent): { x: number; y: number } {
+    // Implementation depends on velocity calculation strategy
+    return { x:  ,  0y:  0 };
+}
+
+  /**
+   * Calculate direction
+   */
+  private calculateDirection(event: TouchEvent | MouseEvent): string {
+    // Implementation depends on direction calculation strategy
+    return 'any';
+}
+
+  /**
+   * Calculate duration
+   */
+  private calculateDuration(event: TouchEvent | MouseEvent): number {
+    // Implementation depends on duration calculation strategy
+    return 0;
+}
+
+  /**
+   * Handle touch start
+   */
+  private handleTouchStart(event: TouchEvent): void {
+    if (!this.state.isEnabled) return;
+
+    this.gestureData = {
+      startTouches: Array.from(event.touches),
+      currentTouches: Array.from(event.touches),
+      startTime: Date.now(),
+      startCenter: this.calculateCenter(event),
+      currentCenter: this.calculateCenter(event),
+      startDistance: this.calculateDistance(event),
+      currentDistance: this.calculateDistance(event),
+      startAngle: this.calculateAngle(event),
+      currentAngle: this.calculateAngle(event),
+      velocity: { x:,  0y:  0 },
+      direction: 'any',
+      duration: 0
+};
+
+    this.recognizeGesture(event);
+}
+
+  /**
+   * Handle touch move
+   */
+  private handleTouchMove(event: TouchEvent): void {
+    if (!this.state.isEnabled || !this.gestureData) return;
+
+    this.gestureData.currentTouches = Array.from(event.touches);
+    this.gestureData.currentCenter = this.calculateCenter(event);
+    this.gestureData.currentDistance = this.calculateDistance(event);
+    this.gestureData.currentAngle = this.calculateAngle(event);
+    this.gestureData.duration = Date.now() - this.gestureData.startTime;
+
+    this.recognizeGesture(event);
+}
+
+  /**
+   * Handle touch end
+   */
+  private handleTouchEnd(event: TouchEvent): void {
+    if (!this.state.isEnabled || !this.gestureData) return;
+
+    this.gestureData.duration = Date.now() - this.gestureData.startTime;
+
+    this.recognizeGesture(event);
+    this.gestureData = null;
+}
+
+  /**
+   * Handle mouse down
+   */
+  private handleMouseDown(event: MouseEvent): void {
+    if (!this.state.isEnabled) return;
+
+    this.recognizeGesture(event);
+}
+
+  /**
+   * Handle mouse move
+   */
+  private handleMouseMove(event: MouseEvent): void {
+    if (!this.state.isEnabled) return;
+
+    this.recognizeGesture(event);
+}
+
+  /**
+   * Handle mouse up
+   */
+  private handleMouseUp(event: MouseEvent): void {
+    if (!this.state.isEnabled) return;
+
+    this.recognizeGesture(event);
+}
+
+  /**
+   * Handle key down
+   */
+  private handleKeyDown(event: KeyboardEvent): void {
+    if (!this.state.isEnabled) return;
+
+    this.recognizeGesture(event);
+}
+
+  /**
+   * Handle key up
+   */
+  private handleKeyUp(event: KeyboardEvent): void {
+    if (!this.state.isEnabled) return;
+
+    this.recognizeGesture(event);
+}
+
+  /**
+   * Validate gesture
+   */
+  private async validateGesture(gesture: Gesture): Promise<void> {
+    // Implementation depends on validation strategy
+}
+
+  /**
+   * Generate ID
+   */
+  private generateId(): string {
+    return Math.random().toString(36).substr(2, 9) + Date.now().toString(36);
+}
+
+  /**
+   * Add event listener
+   */
+  on(event: string, callback: Function): void {
+    if (!this.eventListeners.has(event)) {
+      this.eventListeners.set(event, []);
+}
+    this.eventListeners.get(event)!.push(callback);
+}
+
+  /**
+   * Remove event listener
+   */
+  off(event: string, callback: Function): void {
+    const listeners = this.eventListeners.get(event);
+    if (listeners) {
+      const index = listeners.indexOf(callback);
+      if (index > -1) {
+        listeners.splice(index, 1);
+  }
+}
+}
+
+  /**
+   * Emit event
+   */
+  private emit(event: string, data?: any): void {
+    const listeners = this.eventListeners.get(event);
+    if (listeners) {
+      listeners.forEach(callback => {
+        try {
+          callback(data);
+    } catch (error) {
+          console.error('Error in gesture event listener:', error);
+    }
+  });
+}
+}
+
+  /**
+   * Get state
+   */
+  getState(): GestureState {
+    return { ...this.state };
+}
+
+  /**
+   * Get configuration
+   */
+  getConfig(): GestureConfig {
+    return { ...this.config };
+}
+
+  /**
+   * Update configuration
+   */
+  updateConfig(newConfig: Partial<GestureConfig>): void {
+    this.config = { ...this.config, ...newConfig };
+}
+
+  /**
+   * Get gestures
+   */
+  getGestures(): Gesture[] {
+    return Array.from(this.state.gestures.values());
+}
+
+  /**
+   * Cleanup
+   */
+  destroy(): void {
+    if (this.touchStartHandler) {
+      document.removeEventListener('touchstart', this.touchStartHandler);
+}
+    if (this.touchMoveHandler) {
+      document.removeEventListener('touchmove', this.touchMoveHandler);
+}
+    if (this.touchEndHandler) {
+      document.removeEventListener('touchend', this.touchEndHandler);
+}
+    if (this.mouseDownHandler) {
+      document.removeEventListener('mousedown', this.mouseDownHandler);
+}
+    if (this.mouseMoveHandler) {
+      document.removeEventListener('mousemove', this.mouseMoveHandler);
+}
+    if (this.mouseUpHandler) {
+      document.removeEventListener('mouseup', this.mouseUpHandler);
+}
+    if (this.keyDownHandler) {
+      document.removeEventListener('keydown', this.keyDownHandler);
+}
+    if (this.keyUpHandler) {
+      document.removeEventListener('keyup', this.keyUpHandler);
+}
+    if (this.gestureRecognitionTimeout) {
+      clearTimeout(this.gestureRecognitionTimeout);
+}
+    this.state.gestures.clear();
+    this.state.activeGestures.clear();
+    this.eventListeners.clear();
+    this.state.isEnabled = false;
+}
+}
+
+// Create singleton instance
+export const gestureManager = new GestureManager();
+
+export default gestureManager;
+
+
+
+
+

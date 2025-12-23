@@ -1,0 +1,669 @@
+import { useTheming } from '../../utils/theming-helper';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import {
+  Box,
+  Paper,
+  Typography,
+  Grid,
+  Card,
+  CardContent,
+  CardHeader,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemIcon,
+  Chip,
+  Button,
+  IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Stack,
+  LinearProgress,
+  Divider,
+  Tooltip,
+  Badge,
+  Avatar,
+  Tabs,
+  Tab,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
+  Alert,
+  AlertTitle,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  TextField,
+} from '@mui/material';
+import { CREATOR_HUB_ICONS } from '../shared/CreatorHubIcons';
+
+// Types
+interface ProgressGoal {
+  id: string;
+  title: string;
+  description: string;
+  category: 'content' | 'interaction' | 'collaboration' | 'learning' | 'performance';
+  target: number;
+  current: number;
+  unit: string;
+  deadline?: Date;
+  priority: 'low' | 'medium' | 'high';
+  status: 'active' | 'completed' | 'paused' | 'cancelled';
+  createdAt: Date;
+  completedAt?: Date
+}
+
+interface ProgressMilestone {
+  id: string;
+  title: string;
+  description: string;
+  goalId: string;
+  targetValue: number;
+  achieved: boolean;
+  achievedAt?: Date;
+  reward: {
+    type: 'points' | 'badge' | 'achievement';
+    value: number;
+    name?: string;
+};
+}
+
+interface ProgressSession {
+  id: string;
+  goalId: string;
+  startTime: Date;
+  endTime: Date;
+  duration: number; // in minutes
+  progress: number;
+  notes?: string
+}
+
+interface ProgressStats {
+  totalGoals: number;
+  completedGoals: number;
+  activeGoals: number;
+  totalProgress: number;
+  averageCompletion: number;
+  streak: number;
+  totalTimeSpent: number
+}
+
+interface ProgressTrackingProps {
+  className?: string;
+  onGoalCompleted?: (goal: ProgressGoal) => void;
+  onMilestoneReached?: (milestone: ProgressMilestone) => void;
+  onProgressUpdate?: (goal: ProgressGoal, progress: number) => void
+}
+
+// Mock data
+
+
+
+
+
+
+const ProgressTracking: React.FC<ProgressTrackingProps> = ({
+  className ='',
+  onGoalCompleted,
+  onMilestoneReached,
+  onProgressUpdate
+}) => {
+  // State
+  const [activeTab, setActiveTab] = useState(false);
+  
+  // Theming system
+  const theming = useTheming('photographer');
+  const [selectedGoal, setSelectedGoal] = useState<ProgressGoal | null>(null);
+  const [showGoalDialog, setShowGoalDialog] = useState(false);
+  const [showAddGoalDialog, setShowAddGoalDialog] = useState(false);
+  const [goals, setGoals] = useState<ProgressGoal[]>(mockGoals);
+  const [milestones, setMilestones] = useState<ProgressMilestone[]>(mockMilestones);
+  const [sessions, setSessions] = useState<ProgressSession[]>(mockSessions);
+  const [timeRange, setTimeRange] = useState<'7d' | '30d' | '90d' | '1y'>('30d');
+
+  // Handlers
+  const handleGoalClick = useCallback((goal: ProgressGoal) => {
+    setSelectedGoal(goal);
+    setShowGoalDialog(true);
+}, []);
+
+  const handleProgressUpdate = useCallback((goalId: string, progress: number) => {
+    setGoals(prev => prev.map(goal => {
+      if (goal.id === goalId) {
+        const newCurrent = Math.min(goal.current + progress, goal.target);
+        const updatedGoal = { ...goal, current: newCurrent };
+        
+        if (newCurrent >= goal.target && goal.status === 'active') {
+          updatedGoal.status = 'completed';
+          updatedGoal.completedAt = new Date();
+          onGoalCompleted?.(updatedGoal);
+      }
+        
+        onProgressUpdate?.(updatedGoal, progress);
+        return updatedGoal;
+    }
+      return goal;
+  }));
+}, [onGoalCompleted, onProgressUpdate]);
+
+  const handleMilestoneCheck = useCallback((goalId: string) => {
+    const goal = goals.find(g => g.id === goalId);
+    if (!goal) return;
+
+    const goalMilestones = milestones.filter(m => m.goalId === goalId);
+    goalMilestones.forEach(milestone => {
+      if (!milestone.achieved && goal.current >= milestone.targetValue) {
+        setMilestones(prev => prev.map(m => 
+          m.id === milestone.id 
+            ? { .., .achieved: true, achievedAt: new Date(),}
+            : m
+        ));
+        onMilestoneReached?.(milestone);
+    }
+  });
+}, [goals, milestones, onMilestoneReached]);
+
+  const getCategoryIcon = useCallback((category: string) => {
+    switch (category) {
+      case 'content': return <CREATOR_HUB_ICONS.article />;
+      case 'interaction': return <CREATOR_HUB_ICONS.smartToy />;
+      case 'collaboration': return <CREATOR_HUB_ICONS.group />;
+      case 'learning': return <CREATOR_HUB_ICONS.psychology />;
+      case 'performance': return <CREATOR_HUB_ICONS.assessment />;
+      default: return <CREATOR_HUB_ICONS.timeline />;
+}
+}, []);
+
+  const getPriorityColor = useCallback((priority: string) => {
+    switch (priority) {
+      case 'high': return 'error';
+      case 'medium': return 'warning';
+      case 'low': return 'success';
+      default: return 'default';
+}
+}, []);
+
+  const getStatusColor = useCallback((status: string) => {
+    switch (status) {
+      case 'active': return 'primary';
+      case 'completed': return 'success';
+      case 'paused': return 'warning';
+      case 'cancelled': return 'error';
+      default: return 'default';
+}
+}, []);
+
+  const formatDuration = useCallback((minutes: number) => {
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    if (hours > 0) {
+      return `${hours}h ${mins}m`;
+  }
+    return `${mins}m`;
+}, []);
+
+  const getProgressPercentage = useCallback((goal: ProgressGoal) => {
+    return Math.min((goal.current / goal.target) * 10, 100);
+}, []);
+
+  const getDaysRemaining = useCallback((deadline: Date) => {
+    const now = new Date();
+    const diffTime = deadline.getTime() - now.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays;
+}, []);
+
+  // Memoized data
+  const stats: ProgressStats = useMemo(() => {
+    const totalGoals = goals.length;
+    const completedGoals = goals.filter(g => g.status === 'completed').length;
+    const activeGoals = goals.filter(g => g.status === 'active').length;
+    const totalProgress = goals.reduce((sum, goal) => sum + getProgressPercentage(goal), 0);
+    const averageCompletion = totalGoals > 0 ? totalProgress / totalGoals : 0;
+    const totalTimeSpent = sessions.reduce((sum, session) => sum + session.duration, 0);
+    
+    return {
+      totalGoals,
+      completedGoals,
+      activeGoals,
+      totalProgress,
+      averageCompletion,
+      streak:  7, // Mock streak
+      totalTimeSpent
+  };
+}, [goals, sessions, getProgressPercentage]);
+
+  const activeGoals = useMemo(() => {
+    return goals.filter(g => g.status === 'active');
+}, [goals]);
+
+  const completedGoals = useMemo(() => {
+    return goals.filter(g => g.status === 'completed');
+}, [goals]);
+
+  const upcomingDeadlines = useMemo(() => {
+    return goals
+      .filter(g => g.deadline && g.status === 'active')
+      .sort((a, b) => (a.deadline?.getTime() || 0) - (b.deadline?.getTime() || 0))
+      .slice(0, 5);
+}, [goals]);
+
+  // Auto-check milestones
+  useEffect(() => {
+    goals.forEach(goal => {
+      if (goal.status === 'active') {
+        handleMilestoneCheck(goal.id);
+    }
+  });
+}, [goals, handleMilestoneCheck]);
+
+  return (
+    <Box className={className} sx={{ width: '100%'}}>
+      {/* Header */}
+      <Paper elevation={2} sx={{ p: 2, mb: 2 ,  ...theming.getThemedCardSx() }}>
+        <Stack direction="row" spacing={2} alignItems="center" justifyContent="space-between">
+          <Stack direction="row" spacing={2} alignItems="center">
+            <CREATOR_HUB_ICONS.timeline sx={{ fontSize:  32, color: 'primary.main'}} />
+            <Box>
+              <Typography variant="h6" sx={{ color: theming.colors.primary }}>Progress Tracking</Typography>
+              <Typography variant="body2" color="text.secondary">
+                Set goals and track your progress
+              </Typography>
+            </Box>
+          </Stack>
+          <Stack direction="row" spacing={1}>
+            <FormControl size="small" sx={{ minWidth: 120}}>
+              <InputLabel>Time Range</InputLabel>
+              <Select
+                value={timeRange}
+                onChange={(e) => setTimeRange(e.target.value as any)}
+              >
+                <MenuItem value="7d">Last 7 Days</MenuItem>
+                <MenuItem value="30d">Last 30 Days</MenuItem>
+                <MenuItem value="90d">Last 90 Days</MenuItem>
+                <MenuItem value="1y">Last Year</MenuItem>
+              </Select>
+            </FormControl>
+            <Button variant="contained"
+              startIcon={<CREATOR_HUB_ICONS.add sx={theming.getThemedButtonSx()} />}
+              onClick={() => setShowAddGoalDialog(true)}
+            >
+              Add Goal
+            </Button>
+          </Stack>
+        </Stack>
+      </Paper>
+
+      {/* Stats Overview */}
+      <Grid container spacing={2} sx={{ mb:  2 }}>
+        <Grid item xs={12} sm={6} md={3}>
+          <Card sx={theming.getThemedCardSx()}>
+            <CardContent sx={theming.getThemedCardSx()}>
+              <Stack direction="row" alignItems="center" spacing={2}>
+                <CREATOR_HUB_ICONS.timeline color="primary" />
+                <Box>
+                  <Typography variant="h4" sx={{ color: theming.colors.primary }}>{stats.totalGoals}</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Total Goals
+                  </Typography>
+                </Box>
+              </Stack>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <Card sx={theming.getThemedCardSx()}>
+            <CardContent sx={theming.getThemedCardSx()}>
+              <Stack direction="row" alignItems="center" spacing={2}>
+                <CREATOR_HUB_ICONS.checkCircle color="success" />
+                <Box>
+                  <Typography variant="h4" sx={{ color: theming.colors.primary }}>{stats.completedGoals}</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Completed
+                  </Typography>
+                </Box>
+              </Stack>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <Card sx={theming.getThemedCardSx()}>
+            <CardContent sx={theming.getThemedCardSx()}>
+              <Stack direction="row" alignItems="center" spacing={2}>
+                <CREATOR_HUB_ICONS.assessment color="info" />
+                <Box>
+                  <Typography variant="h4" sx={{ color: theming.colors.primary }}>{stats.averageCompletion.toFixed(1)}%</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Avg Progress
+                  </Typography>
+                </Box>
+              </Stack>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <Card sx={theming.getThemedCardSx()}>
+            <CardContent sx={theming.getThemedCardSx()}>
+              <Stack direction="row" alignItems="center" spacing={2}>
+                <CREATOR_HUB_ICONS.timeline color="warning" />
+                <Box>
+                  <Typography variant="h4" sx={{ color: theming.colors.primary }}>{formatDuration(stats.totalTimeSpent)}</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Time Spent
+                  </Typography>
+                </Box>
+              </Stack>
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
+
+      {/* Main Content */}
+      <Tabs value={activeTab} onChange={(_, newValue) => setActiveTab(newValue)} sx={{ mb:  2 }}>
+        <Tab label="Active Goals" icon={<CREATOR_HUB_ICONS.timeline />} />
+        <Tab label="Completed Goals" icon={<CREATOR_HUB_ICONS.checkCircle />} />
+        <Tab label="Milestones" icon={<CREATOR_HUB_ICONS.star />} />
+        <Tab label="Sessions" icon={<CREATOR_HUB_ICONS.assessment />} />
+      </Tabs>
+
+      {/* Active Goals Tab */}
+      {activeTab === 0 && (
+        <Grid container spacing={2}>
+          {activeGoals.map((goal) => (
+            <Grid item xs={12} md={6} key={goal.id}>
+              <Card 
+                sx={{ 
+                  cursor: 'pointer', '&:hover': { elevation:  4 },
+                  transition: 'all 0.2s'
+            }}
+                onClick={() => handleGoalClick(goal)} sx={theming.getThemedCardSx()}
+              >
+                <CardContent sx={theming.getThemedCardSx()}>
+                  <Stack direction="row" spacing={2} alignItems="flex-start">
+                    {getCategoryIcon(goal.category)}
+                    <Box sx={{ flex:  1 }}>
+                      <Stack direction="row" justifyContent="space-between" alignItems="flex-start" sx={{ mb:  1 }}>
+                        <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                          {goal.title}
+                        </Typography>
+                        <Stack direction="row" spacing={1}>
+                          <Chip 
+                            label={goal.priority}
+                            size="small" 
+                            color={getPriorityColor(goal.priority)}
+                          />
+                          <Chip 
+                            label={goal.status}
+                            size="small" 
+                            color={getStatusColor(goal.status)}
+                          />
+                        </Stack>
+                      </Stack>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                        {goal.description}
+                      </Typography>
+                      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb:  1 }}>
+                        <Typography variant="body2">
+                          {goal.current} / {goal.target} {goal.unit}
+                        </Typography>
+                        <Typography variant="body2" color="primary">
+                          {getProgressPercentage(goal).toFixed(1)}%
+                        </Typography>
+                      </Stack>
+                      <LinearProgress 
+                        variant="determinate" 
+                        value={getProgressPercentage(goal)}
+                        sx={{ height:  8, borderRadius:  4, mb:  1 }}
+                      />
+                      {goal.deadline && (
+                        <Typography variant="caption" color="text.secondary">
+                          {getDaysRemaining(goal.deadline)} days remaining
+                        </Typography>
+                      )}
+                    </Box>
+                  </Stack>
+                </CardContent>
+              </Card>
+            </Grid>
+          ))}
+        </Grid>
+      )}
+
+      {/* Completed Goals Tab */}
+      {activeTab === 1 && (
+        <Grid container spacing={2}>
+          {completedGoals.map((goal) => (
+            <Grid item xs={12} md={6} key={goal.id}>
+              <Card sx={{ opacity: 0.9,  ...theming.getThemedCardSx() }}>
+                <CardContent sx={theming.getThemedCardSx()}>
+                  <Stack direction="row" spacing={2} alignItems="flex-start">
+                    <CREATOR_HUB_ICONS.checkCircle color="success" />
+                    <Box sx={{ flex:  1 }}>
+                      <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                        {goal.title}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                        {goal.description}
+                      </Typography>
+                      <Stack direction="row" justifyContent="space-between" alignItems="center">
+                        <Typography variant="body2">
+                          Completed {goal.completedAt?.toLocaleDateString()}
+                        </Typography>
+                        <Chip 
+                          label="Completed" 
+                          size="small" 
+                          color="success"
+                        />
+                      </Stack>
+                    </Box>
+                  </Stack>
+                </CardContent>
+              </Card>
+            </Grid>
+          ))}
+        </Grid>
+      )}
+
+      {/* Milestones Tab */}
+      {activeTab === 2 && (
+        <Grid container spacing={2}>
+          {milestones.map((milestone) => (
+            <Grid item xs={12} md={6} key={milestone.id}>
+              <Card sx={{ opacity: milestone.achieved ? 1 : 0.8,  ...theming.getThemedCardSx() }}>
+                <CardContent sx={theming.getThemedCardSx()}>
+                  <Stack direction="row" spacing={2} alignItems="flex-start">
+                    <Box sx={{ position: 'relative'}}>
+                      <CREATOR_HUB_ICONS.star color={milestone.achieved ? 'warning' : 'disabled'} />
+                      {milestone.achieved && (
+                        <Badge
+                          overlap="circular"
+                          anchorOrigin={{ vertical: 'bottom', horizontal: 'right'}}
+                          badgeContent={<CREATOR_HUB_ICONS.checkCircle color="success" />}
+                        />
+                      )}
+                    </Box>
+                    <Box sx={{ flex:  1 }}>
+                      <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                        {milestone.title}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                        {milestone.description}
+                      </Typography>
+                      <Stack direction="row" justifyContent="space-between" alignItems="center">
+                        <Typography variant="body2">
+                          Target: {milestone.targetValue}
+                        </Typography>
+                        <Chip 
+                          label={milestone.achieved ? 'Achieved' : 'Pending'}
+                          size="small" 
+                          color={milestone.achieved ? 'success' : 'default'}
+                        />
+                      </Stack>
+                      {milestone.achieved && milestone.achievedAt && (
+                        <Typography variant="caption" color="text.secondary">
+                          Achieved {milestone.achievedAt.toLocaleDateString()}
+                        </Typography>
+                      )}
+                    </Box>
+                  </Stack>
+                </CardContent>
+              </Card>
+            </Grid>
+          ))}
+        </Grid>
+      )}
+
+      {/* Sessions Tab */}
+      {activeTab === 3 && (
+        <Paper elevation={1} sx={{ p:  2 ,  ...theming.getThemedCardSx() }}>
+          <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+            Recent Sessions
+          </Typography>
+          <List>
+            {sessions.map((session) => {
+              const goal = goals.find(g => g.id === session.goalId);
+              return (
+                <ListItem key={session.id}>
+                  <ListItemIcon>
+                    <CREATOR_HUB_ICONS.assessment />
+                  </ListItemIcon>
+                  <ListItemText
+                    primary={
+                      <Stack direction="row" spacing={2} alignItems="center">
+                        <Typography variant="subtitle1">
+                          {goal?.title || 'Unknown Goal'}
+                        </Typography>
+                        <Chip 
+                          label={`+${session.progress}`}
+                          size="small" 
+                          color="success"
+                        />
+                      </Stack>
+                  }
+                    secondary={
+                      <Stack spacing={1}>
+                        <Typography variant="body2">
+                          {session.startTime.toLocaleString()} - {formatDuration(session.duration)}
+                        </Typography>
+                        {session.notes && (
+                          <Typography variant="body2" color="text.secondary">
+                            {session.notes}
+                          </Typography>
+                        )}
+                      </Stack>
+                  }
+                  />
+                </ListItem>
+              );
+          })}
+          </List>
+        </Paper>
+      )}
+
+      {/* Goal Dialog */}
+      <Dialog open={showGoalDialog} onClose={() => setShowGoalDialog(false)} maxWidth="md" fullWidth>
+        <DialogTitle>
+          <Stack direction="row" spacing={2} alignItems="center">
+            {selectedGoal && getCategoryIcon(selectedGoal.category)}
+            <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+              {selectedGoal?.title}
+            </Typography>
+          </Stack>
+        </DialogTitle>
+        <DialogContent>
+          {selectedGoal && (
+            <Stack spacing={3}>
+              <Typography variant="body1">
+                {selectedGoal.description}
+              </Typography>
+              
+              <Box>
+                <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb:  1 }}>
+                  <Typography variant="subtitle2">Progress</Typography>
+                  <Typography variant="body2">
+                    {selectedGoal.current} / {selectedGoal.target} {selectedGoal.unit}
+                  </Typography>
+                </Stack>
+                <LinearProgress 
+                  variant="determinate" 
+                  value={getProgressPercentage(selectedGoal)}
+                  sx={{ height:  8, borderRadius:  4 }}
+                />
+                <Typography variant="caption" color="text.secondary">
+                  {getProgressPercentage(selectedGoal).toFixed(1)}% complete
+                </Typography>
+              </Box>
+
+              <Grid container spacing={2}>
+                <Grid item xs={6}>
+                  <Typography variant="subtitle2" gutterBottom>Priority</Typography>
+                  <Chip 
+                    label={selectedGoal.priority}
+                    color={getPriorityColor(selectedGoal.priority)}
+                  />
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="subtitle2" gutterBottom>Status</Typography>
+                  <Chip 
+                    label={selectedGoal.status}
+                    color={getStatusColor(selectedGoal.status)}
+                  />
+                </Grid>
+                {selectedGoal.deadline && (
+                  <Grid item xs={12}>
+                    <Typography variant="subtitle2" gutterBottom>Deadline</Typography>
+                    <Typography variant="body2">
+                      {selectedGoal.deadline.toLocaleDateString()}
+                      ({getDaysRemaining(selectedGoal.deadline)} days remaining)
+                    </Typography>
+                  </Grid>
+                )}
+              </Grid>
+
+              <Box>
+                <Typography variant="subtitle2" gutterBottom>Milestones</Typography>
+                <Stack spacing={1}>
+                  {milestones
+                    .filter(m => m.goalId === selectedGoal.id)
+                    .map((milestone) => (
+                      <Box key={milestone.id}>
+                        <Stack direction="row" justifyContent="space-between" alignItems="center">
+                          <Typography variant="body2">{milestone.title}</Typography>
+                          <Chip 
+                            label={milestone.achieved ? 'Achieved' : 'Pending'}
+                            size="small" 
+                            color={milestone.achieved ? 'success' : 'default'}
+                          />
+                        </Stack>
+                      </Box>
+                    ))}
+                </Stack>
+              </Box>
+            </Stack>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowGoalDialog(false)}>
+            Close
+          </Button>
+          <Button variant="contained" 
+            onClick={() => {
+              if (selectedGoal) {
+                handleProgressUpdate(selectedGoal.id, 1);
+                setShowGoalDialog(false);
+            } sx={theming.getThemedButtonSx()}
+          }}
+          >
+            Update Progress
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
+  );
+};
+
+export default ProgressTracking;
+

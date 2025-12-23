@@ -1,0 +1,263 @@
+/**
+ * useAnalytics Hook
+ * React hook for analytics and usage tracking
+ */
+
+import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
+import { 
+  analyticsManager, 
+  AnalyticsConfig, 
+  AnalyticsState, 
+  AnalyticsEvent 
+} from '../utils/analyticsManager';
+
+export interface UseAnalyticsOptions {
+  config?: Partial<AnalyticsConfig>;
+  onEventTracked?: (event: AnalyticsEvent) => void;
+  onSessionStarted?: (session: any) => void;
+  onSessionEnded?: (session: any) => void;
+  onEventsFlushed?: (data: { count: number }) => void;
+  onError?: (error: string) => void;
+  onInitialized?: () => void
+}
+
+export interface UseAnalyticsReturn {
+  trackEvent: (type: string, category: string, action: string, properties?: Record<string, any>) => void;
+  trackPageView: (page: string, properties?: Record<string, any>) => void;
+  trackClick: (element: string, properties?: Record<string, any>) => void;
+  trackScroll: (depth: number, properties?: Record<string, any>) => void;
+  trackFormSubmit: (formName: string, properties?: Record<string, any>) => void;
+  trackCustomEvent: (name: string, properties?: Record<string, any>) => void;
+  trackError: (error: Error, properties?: Record<string, any>) => void;
+  trackPerformance: (metric: string, value: number, properties?: Record<string, any>) => void;
+  flush: () => Promise<void>;
+  state: AnalyticsState;
+  config: AnalyticsConfig;
+  updateConfig: (config: Partial<AnalyticsConfig>) => void;
+  isTracking: boolean;
+  isInitialized: boolean;
+  hasError: boolean;
+  error: string | null;
+  currentSession: any;
+  eventQueue: AnalyticsEvent[];
+  totalEvents: number;
+  totalSessions: number;
+}
+
+/**
+ * Hook for analytics functionality
+ */
+export const useAnalytics = (options: UseAnalyticsOptions = {}): UseAnalyticsReturn => {
+  const {
+    config = {},
+    onEventTracked,
+    onSessionStarted,
+    onSessionEnded,
+    onEventsFlushed,
+    onError,
+    onInitialized,
+  } = options || {};
+
+  const [state, setState] = useState<AnalyticsState>({
+    isTracking: false,
+    isInitialized: false,
+    hasError: false,
+    error: null,
+    currentSession: null,
+    eventQueue:  [],
+    totalEvents:  0,
+    totalSessions:  0,
+    lastFlush:  0,
+    retryCount: 0
+});
+
+  const stateIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const eventHandlersRef = useRef<Map<string, Function>>(new Map());
+
+  // Initialize analytics manager
+  useEffect(() => {
+    // Update configuration
+    if (Object.keys(config).length > 0) {
+      analyticsManager.updateConfig(config);
+  }
+
+    // Setup event handlers
+    const handleEventTracked = (event: AnalyticsEvent) => {
+      if (onEventTracked) {
+        onEventTracked(event);
+  }
+  };
+
+    const handleSessionStarted = (session: any) => {
+      if (onSessionStarted) {
+        onSessionStarted(session);
+  }
+  };
+
+    const handleSessionEnded = (session: any) => {
+      if (onSessionEnded) {
+        onSessionEnded(session);
+  }
+  };
+
+    const handleEventsFlushed = (data: { count: number }) => {
+      if (onEventsFlushed) {
+        onEventsFlushed(data);
+    }
+  };
+
+    const handleError = (data: { error: string }) => {
+      if (onError) {
+        onError(data.error);
+    }
+  };
+
+    const handleInitialized = () => {
+      if (onInitialized) {
+        onInitialized();
+    }
+  };
+
+    // Store event handlers
+    eventHandlersRef.current.set('event_tracked', handleEventTracked);
+    eventHandlersRef.current.set('session_started', handleSessionStarted);
+    eventHandlersRef.current.set('session_ended', handleSessionEnded);
+    eventHandlersRef.current.set('events_flushed', handleEventsFlushed);
+    eventHandlersRef.current.set('error', handleError);
+    eventHandlersRef.current.set('initialized', handleInitialized);
+
+    // Add event listeners
+    analyticsManager.on('event_tracked', handleEventTracked);
+    analyticsManager.on('session_started', handleSessionStarted);
+    analyticsManager.on('session_ended', handleSessionEnded);
+    analyticsManager.on('events_flushed', handleEventsFlushed);
+    analyticsManager.on('error', handleError);
+    analyticsManager.on('initialized', handleInitialized);
+
+    // Update initial state
+    setState(analyticsManager.getState());
+
+    return () => {
+      // Remove event listeners
+      eventHandlersRef.current.forEach((handler, event) => {
+        analyticsManager.off(event, handler);
+    });
+      eventHandlersRef.current.clear();
+  };
+}, [config, onEventTracked, onSessionStarted, onSessionEnded, onEventsFlushed, onError, onInitialized]);
+
+  // Setup state monitoring
+  useEffect(() => {
+    stateIntervalRef.current = setInterval(() => {
+      const currentState = analyticsManager.getState();
+      setState(currentState);
+  }, 100);
+
+    return () => {
+      if (stateIntervalRef.current) {
+        clearInterval(stateIntervalRef.current);
+    }
+  };
+}, []);
+
+  // Track event
+  const trackEvent = useCallback((type: string, category: string, action: string, properties: Record<string, any> = {}) => {
+    analyticsManager.trackEvent(type, category, action, properties);
+}, []);
+
+  // Track page view
+  const trackPageView = useCallback((page: string, properties: Record<string, any> = {}) => {
+    analyticsManager.trackPageView(page, properties);
+}, []);
+
+  // Track click
+  const trackClick = useCallback((element: string, properties: Record<string, any> = {}) => {
+    analyticsManager.trackClick(element, properties);
+}, []);
+
+  // Track scroll
+  const trackScroll = useCallback((depth: number, properties: Record<string, any> = {}) => {
+    analyticsManager.trackScroll(depth, properties);
+}, []);
+
+  // Track form submit
+  const trackFormSubmit = useCallback((formName: string, properties: Record<string, any> = {}) => {
+    analyticsManager.trackFormSubmit(formName, properties);
+}, []);
+
+  // Track custom event
+  const trackCustomEvent = useCallback((name: string, properties: Record<string, any> = {}) => {
+    analyticsManager.trackCustomEvent(name, properties);
+}, []);
+
+  // Track error
+  const trackError = useCallback((error: Error, properties: Record<string, any> = {}) => {
+    analyticsManager.trackError(error, properties);
+}, []);
+
+  // Track performance
+  const trackPerformance = useCallback((metric: string, value: number, properties: Record<string, any> = {}) => {
+    analyticsManager.trackPerformance(metric, value, properties);
+}, []);
+
+  // Flush events
+  const flush = useCallback(async () => {
+    await analyticsManager.flush();
+}, []);
+
+  // Update configuration
+  const updateConfig = useCallback((newConfig: Partial<AnalyticsConfig>) => {
+    analyticsManager.updateConfig(newConfig);
+}, []);
+
+  // Get configuration
+  const currentConfig = useMemo(() => {
+    return analyticsManager.getConfig();
+}, []);
+
+  // Memoized return value
+  const returnValue = useMemo(() => ({
+    trackEvent,
+    trackPageView,
+    trackClick,
+    trackScroll,
+    trackFormSubmit,
+    trackCustomEvent,
+    trackError,
+    trackPerformance,
+    flush,
+    state,
+    currentConfig,
+    updateConfig,
+    isTracking: state.isTracking,
+    isInitialized: state.isInitialized,
+    hasError: state.hasError,
+    error: state.error,
+    currentSession: state.currentSession,
+    eventQueue: state.eventQueue,
+    totalEvents: state.totalEvents,
+    totalSessions: state.totalSessions
+}), [
+    trackEvent,
+    trackPageView,
+    trackClick,
+    trackScroll,
+    trackFormSubmit,
+    trackCustomEvent,
+    trackError,
+    trackPerformance,
+    flush,
+    state,
+    currentConfig,
+    updateConfig
+  ]);
+
+  return returnValue;
+};
+
+export default useAnalytics;
+
+
+
+
+

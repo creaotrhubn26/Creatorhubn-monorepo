@@ -1,0 +1,696 @@
+import { useTheming } from '../../utils/theming-helper';
+import React, { useState, useEffect } from 'react';
+import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
+import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
+import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
+import getProfessionIcon from '@/utils/profession-icons';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
+import {
+  Box,
+  Card,
+  CardContent,
+  Typography,
+  Button,
+  Switch,
+  FormControlLabel,
+  Grid,
+  Chip,
+  Alert,
+  Tabs,
+  Tab,
+  LinearProgress,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Paper,
+  IconButton,
+  Tooltip,
+  Badge,
+  Divider,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
+} from '@mui/material';
+import {
+  Publish,
+  Undo,
+  History,
+  Compare,
+  Emergency,
+  CheckCircle,
+  Error,
+  Warning,
+  Info,
+  ExpandMore,
+  Refresh,
+  CloudUpload,
+  CloudDownload,
+  Timeline,
+  Settings,
+  Visibility,
+  VisibilityOff,
+} from '@mui/icons-material';
+import { apiRequest } from '@/lib/queryClient';
+
+interface FeatureFlag {
+  id: string;
+  featureName: string;
+  isEnabled: boolean;
+  rolloutPercentage: number;
+  environment: 'staging' | 'production';
+  publishedAt: string;
+  publishedBy: string;
+  version: number;
+  metadata: any;
+}
+
+interface PublishHistory {
+  version: number;
+  publishedAt: string;
+  publishedBy: string;
+  flagCount: number;
+  metadata: any;
+}
+
+interface EnvironmentDiff {
+  featureName: string;
+  staging: { enabled: boolean; rolloutPercentage: number };
+  production: { enabled: boolean; rolloutPercentage: number };
+  status: 'new_in_staging' | 'missing_in_staging' | 'different' | 'same';
+}
+
+export default function FeatureManagementWithPublish() {
+  const [tabValue, setTabValue] = useState(0);
+  const [publishDialogOpen, setPublishDialogOpen] = useState(false);
+  const [revertDialogOpen, setRevertDialogOpen] = useState(false);
+  const [emergencyDialogOpen, setEmergencyDialogOpen] = useState(false);
+  const [selectedEnvironment, setSelectedEnvironment] = useState<'staging' | 'production'>('staging');
+  const [publishMetadata, setPublishMetadata] = useState('');
+  const [revertReason, setRevertReason] = useState('');
+  const [emergencyReason, setEmergencyReason] = useState('');
+
+  const queryClient = useQueryClient();
+  const { auth } = useEnhancedMasterIntegration();
+
+  // Theming system
+  const theming = useTheming('prototype_tester');
+
+  // Fetch current feature flags for staging
+  const { data: stagingFlags, isLoading: stagingLoading } = useQuery({
+    queryKey: ['/api/feature-flags/status/staging'],
+    queryFn: async () => {
+      const headers = await auth.getAuthHeader();
+      return apiRequest('/api/feature-flags/status/staging', { headers });
+    },
+    refetchInterval: 3000, // Refresh every 30 seconds
+});
+
+  // Fetch current feature flags for production
+  const { data: productionFlags, isLoading: productionLoading } = useQuery({
+    queryKey: ['/api/feature-flags/status/production', ],
+    queryFn: async () => {
+      const headers = await auth.getAuthHeader();
+      return apiRequest('/api/feature-flags/status/production', { headers });
+    },
+    refetchInterval: 3000,
+});
+
+  // Fetch publish history
+  const { data: stagingHistory } = useQuery({
+    queryKey: ['/api/feature-flags/history/staging', ],
+    queryFn: async () => {
+      const headers = await auth.getAuthHeader();
+      return apiRequest('/api/feature-flags/history/staging', { headers });
+    },
+});
+
+  const { data: productionHistory } = useQuery({
+    queryKey: ['/api/feature-flags/history/production', ],
+    queryFn: async () => {
+      const headers = await auth.getAuthHeader();
+      return apiRequest('/api/feature-flags/history/production', { headers });
+    },
+});
+
+  // Fetch environment differences
+  const { data: environmentDiff } = useQuery({
+    queryKey: ['/api/feature-flags/diff/staging-production', ],
+    queryFn: async () => {
+      const headers = await auth.getAuthHeader();
+      return apiRequest('/api/feature-flags/diff/staging-production', { headers });
+    },
+});
+
+  // Publish to staging mutation
+  const publishToStaging = useMutation({
+    mutationFn: async (data: { featureFlags: any[]; publishedBy: string; metadata: any }) => {
+      const headers = await auth.getAuthHeader();
+      return apiRequest('/api/feature-flags/publish/staging', {
+        headers: {
+          ...headers,
+          "Content-Type" : "application/json"
+    },
+        method: 'POST',
+        body: JSON.stringify(data),
+    });
+  },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/feature-flags/status/staging', ],});
+      queryClient.invalidateQueries({ queryKey: ['/api/feature-flags/history/staging', ],});
+      queryClient.invalidateQueries({ queryKey: ['/api/feature-flags/diff/staging-production', ],});
+      setPublishDialogOpen(false);
+  },
+});
+
+  // Promote to production mutation
+  const promoteToProduction = useMutation({
+    mutationFn: async (data: { publishedBy: string; metadata: any }) => {
+      const headers = await auth.getAuthHeader();
+      return apiRequest('/api/feature-flags/promote/production', {
+        headers: {
+          ...headers,
+          "Content-Type" : "application/json"
+    },
+        method: 'POST',
+        body: JSON.stringify(data),
+    });
+  },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/feature-flags/status/production', ],});
+      queryClient.invalidateQueries({ queryKey: ['/api/feature-flags/history/production', ],});
+      queryClient.invalidateQueries({ queryKey: ['/api/feature-flags/diff/staging-production', ],});
+  },
+});
+
+  // Revert mutation
+  const revertFlags = useMutation({
+    mutationFn: async (data: { environment: string; publishedBy: string; revertToVersion?: number }) => {
+      const headers = await auth.getAuthHeader();
+      return apiRequest(`/api/feature-flags/revert/${data.environment}`, {
+        headers: {
+          ...headers,
+          "Content-Type" : "application/json"
+    },
+        method: 'POST',
+        body: JSON.stringify(data),
+    });
+  },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/feature-flags/status/staging', ],});
+      queryClient.invalidateQueries({ queryKey: ['/api/feature-flags/status/production', ],});
+      queryClient.invalidateQueries({ queryKey: ['/api/feature-flags/history/staging', ],});
+      queryClient.invalidateQueries({ queryKey: ['/api/feature-flags/history/production', ],});
+      setRevertDialogOpen(false);
+  },
+});
+
+  // Emergency rollback mutation
+  const emergencyRollback = useMutation({
+    mutationFn: async (data: { publishedBy: string; reason: string }) => {
+      const headers = await auth.getAuthHeader();
+      return apiRequest('/api/feature-flags/emergency-rollback', {
+        headers: {
+          ...headers,
+          "Content-Type" : "application/json"
+    },
+        method: 'POST',
+        body: JSON.stringify(data),
+    });
+  },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/feature-flags/status/production', ],});
+      queryClient.invalidateQueries({ queryKey: ['/api/feature-flags/history/production', ],});
+      setEmergencyDialogOpen(false);
+  },
+});
+
+  const handlePublishToStaging = () => {
+    const currentFlags = stagingFlags?.flags || [];
+    publishToStaging.mutate({
+      featureFlags: currentFlags,
+      publishedBy: 'admin', // In real app, get from auth context
+      metadata: { notes: publishMetadata, timestamp: new Date().toISOString() },
+  });
+};
+
+  const handlePromoteToProduction = () => {
+    promoteToProduction.mutate({
+      publishedBy: 'admin',
+      metadata: { notes: publishMetadata, timestamp: new Date().toISOString() },
+  });
+};
+
+  const handleRevert = () => {
+    revertFlags.mutate({
+      environment: selectedEnvironment,
+      publishedBy: 'admin',
+      revertToVersion: undefined, // Revert to previous version
+  });
+};
+
+  const handleEmergencyRollback = () => {
+    emergencyRollback.mutate({
+      publishedBy: 'admin',
+      reason: emergencyReason,
+  });
+};
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'new_in_staging': return 'success';
+      case 'missing_in_staging': return 'error';
+      case 'different': return 'warning';
+      case 'same': return 'default';
+      default: return 'default';
+}
+};
+
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'new_in_staging': return theming.getThemedIcon(',');
+      case 'missing_in_staging': return theming.getThemedIcon('error');
+      case 'different': return theming.getThemedIcon('warning');
+      case 'same': return theming.getThemedIcon('info');
+      default: return theming.getThemedIcon(', ');
+  }
+};
+
+  return (
+    <Box sx={{ p:  3 }}>
+      <Typography variant="h4" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+        {professionIcon && (
+          <Box sx={{ color: professionColor, display: 'flex', alignItems: 'center' }}>
+            {professionIcon}
+          </Box>
+        )}
+        {theming.getThemedIcon('settings')}
+        {enhancedProfessionConfig?.displayName || professionConfig?.displayName
+          ? `${enhancedProfessionConfig?.displayName || professionConfig.displayName} - Feature Flag Management & Deployment`
+          : 'Feature Flag Management & Deployment'}
+      </Typography>
+      <Typography variant="body1" color="text.secondary" sx={{ mb:  3 }}>
+        Manage feature flags across staging and production environments with publish/revert capabilities.
+      </Typography>
+
+      {/* Action Buttons */}
+      <Box sx={{ mb: 3, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+        <Button variant="contained"
+          startIcon={<Publish />}
+          onClick={() => setPublishDialogOpen(true)}
+          disabled={publishToStaging.isPending}
+        >
+          Publish to Staging
+        </Button>
+        <Button variant="contained"
+          color="success"
+          startIcon={theming.getThemedIcon('cloudUpload')}
+          onClick={handlePromoteToProduction}
+          disabled={promoteToProduction.isPending || !stagingFlags?.flags?.length}
+          sx={theming.getThemedButtonSx()}>
+          Promote to Production
+        </Button>
+        <Button
+          variant="outlined"
+          startIcon={theming.getThemedIcon('undo')}
+          onClick={() => setRevertDialogOpen(true)}
+          disabled={revertFlags.isPending}
+        >
+          Revert
+        </Button>
+        <Button
+          variant="outlined"
+          color="error"
+          startIcon={<Emergency />}
+          onClick={() => setEmergencyDialogOpen(true)}
+          disabled={emergencyRollback.isPending}
+        >
+          Emergency Rollback
+        </Button>
+        <Button
+          variant="outlined"
+          startIcon={theming.getThemedIcon('refresh')}
+          onClick={() => {
+            queryClient.invalidateQueries({ queryKey: ['/api/feature-flags'] });
+          }}
+        >
+          Refresh
+        </Button>
+      </Box>
+
+      {/* Environment Status Cards */}
+      <Grid container spacing={3} sx={{ mb:  3 }}>
+        <Grid item xs={12} md={6}>
+          <Card sx={theming.getThemedCardSx()}>
+            <CardContent sx={theming.getThemedCardSx()}>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb:  2 }}>
+                <Typography variant="h6" sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
+                  <CloudUpload color="primary" />
+                  Staging Environment
+                </Typography>
+                <Chip label="Latest" color="primary" size="small" />
+              </Box>
+              {stagingLoading ? (
+                <LinearProgress />
+              ) : (
+                <Box>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb:  1 }}>
+                    {stagingFlags?.flags?.length || 0} feature flags
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Last updated: {stagingFlags?.flags?.[0]?.publishedAt ? 
+                      new Date(stagingFlags.flags[0].publishedAt).toLocaleString() : 'Never'}
+                  </Typography>
+                </Box>
+              )}
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} md={6}>
+          <Card sx={theming.getThemedCardSx()}>
+            <CardContent sx={theming.getThemedCardSx()}>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb:  2 }}>
+                <Typography variant="h6" sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
+                  <CloudDownload color="success" />
+                  Production Environment
+                </Typography>
+                <Chip label="Live" color="success" size="small" />
+              </Box>
+              {productionLoading ? (
+                <LinearProgress />
+              ) : (
+                <Box>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb:  1 }}>
+                    {productionFlags?.flags?.length || 0} feature flags
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Last updated: {productionFlags?.flags?.[0]?.publishedAt ? 
+                      new Date(productionFlags.flags[0].publishedAt).toLocaleString() : 'Never'}
+                  </Typography>
+                </Box>
+              )}
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
+
+      {/* Main Content Tabs */}
+      <Card sx={theming.getThemedCardSx()}>
+        <Tabs
+          value={tabValue}
+          onChange={(e, newValue) => setTabValue(newValue)}
+          sx={{ borderBottom: 1, borderColor: 'divider'}}
+        >
+          <Tab label="Environment Comparison" icon={<Compare />} />
+          <Tab label="Publish History" icon={<History />} />
+          <Tab label="Feature Flags" icon={theming.getThemedIcon('settings')} />
+        </Tabs>
+
+        {/* Environment Comparison Tab */}
+        {tabValue === 0 && (
+          <Box sx={{ p:  3 }}>
+            <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+              Staging vs Production Differences
+            </Typography>
+            {environmentDiff?.summary && (
+              <Box sx={{ mb: 3, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                <Chip
+                  label={`${environmentDiff.summary.newInStaging} new in staging`}
+                  color="success"
+                  icon={theming.getThemedIcon('checkCircle')}
+                />
+                <Chip
+                  label={`${environmentDiff.summary.missingInStaging} missing in staging`}
+                  color="error"
+                  icon={theming.getThemedIcon('error')}
+                />
+                <Chip
+                  label={`${environmentDiff.summary.different} different`}
+                  color="warning"
+                  icon={theming.getThemedIcon('warning')}
+                />
+                <Chip
+                  label={`${environmentDiff.summary.same} same`}
+                  color="default"
+                  icon={theming.getThemedIcon('info')}
+                />
+              </Box>
+            )}
+            <TableContainer component={Paper}>
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Feature Name</TableCell>
+                    <TableCell>Staging</TableCell>
+                    <TableCell>Production</TableCell>
+                    <TableCell>Status</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {environmentDiff?.diff?.map((item, index) => (
+                    <TableRow key={index}>
+                      <TableCell>
+                        <Typography variant="body2" sx={{ fontWeight: 50}}>
+                          {item.featureName}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
+                          {item.staging.enabled ? <Visibility color="success" /> : <VisibilityOff color="error" />}
+                          <Typography variant="body2">
+                            {item.staging.enabled ? 'Enabled' : 'Disabled'} ({item.staging.rolloutPercentage}%)
+                          </Typography>
+                        </Box>
+                      </TableCell>
+                      <TableCell>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
+                          {item.production.enabled ? <Visibility color="success" /> : <VisibilityOff color="error" />}
+                          <Typography variant="body2">
+                            {item.production.enabled ? 'Enabled' : 'Disabled'} ({item.production.rolloutPercentage}%)
+                          </Typography>
+                        </Box>
+                      </TableCell>
+                      <TableCell>
+                        <Chip
+                          label={item.status.replace('_', ', ')}
+                          color={getStatusColor(item.status)}
+                          icon={getStatusIcon(item.status)}
+                          size="small"
+                        />
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </Box>
+        )}
+
+        {/* Publish History Tab */}
+        {tabValue === 1 && (
+          <Box sx={{ p:  3 }}>
+            <Grid container spacing={3}>
+              <Grid item xs={12} md={6}>
+                <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                  Staging History
+                </Typography>
+                {stagingHistory?.history?.map((entry, index) => (
+                  <Accordion key={index}>
+                    <AccordionSummary expandIcon={theming.getThemedIcon('expandMore')}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, width: '100%' }}>
+                        <Typography variant="body2" sx={{ fontWeight: 500}}>
+                          Version {entry.version}
+                        </Typography>
+                        <Chip label={entry.flagCount} size="small" />
+                        <Typography variant="caption" color="text.secondary">
+                          {new Date(entry.publishedAt).toLocaleString()}
+                        </Typography>
+                      </Box>
+                    </AccordionSummary>
+                    <AccordionDetails>
+                      <Typography variant="body2" color="text.secondary">
+                        Published by: {entry.publishedBy}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Flags: {entry.flagCount}
+                      </Typography>
+                      {entry.metadata?.notes && (
+                        <Typography variant="body2" color="text.secondary">
+                          Notes: {entry.metadata.notes}
+                        </Typography>
+                      )}
+                    </AccordionDetails>
+                  </Accordion>
+                ))}
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                  Production History
+                </Typography>
+                {productionHistory?.history?.map((entry, index) => (
+                  <Accordion key={index}>
+                    <AccordionSummary expandIcon={theming.getThemedIcon('expandMore')}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, width: '100%' }}>
+                        <Typography variant="body2" sx={{ fontWeight: 500}}>
+                          Version {entry.version}
+                        </Typography>
+                        <Chip label={entry.flagCount} size="small" />
+                        <Typography variant="caption" color="text.secondary">
+                          {new Date(entry.publishedAt).toLocaleString()}
+                        </Typography>
+                      </Box>
+                    </AccordionSummary>
+                    <AccordionDetails>
+                      <Typography variant="body2" color="text.secondary">
+                        Published by: {entry.publishedBy}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Flags: {entry.flagCount}
+                      </Typography>
+                      {entry.metadata?.notes && (
+                        <Typography variant="body2" color="text.secondary">
+                          Notes: {entry.metadata.notes}
+                        </Typography>
+                      )}
+                    </AccordionDetails>
+                  </Accordion>
+                ))}
+              </Grid>
+            </Grid>
+          </Box>
+        )}
+
+        {/* Feature Flags Tab */}
+        {tabValue === 2 && (
+          <Box sx={{ p:  3 }}>
+            <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+              Current Feature Flags
+            </Typography>
+            <Grid container spacing={2}>
+              {stagingFlags?.flags?.map((flag, index) => (
+                <Grid item xs={12} sm={6} md={4} key={index}>
+                  <Card variant="outlined" sx={theming.getThemedCardSx()}>
+                    <CardContent sx={theming.getThemedCardSx()}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb:  1 }}>
+                        <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                          {flag.featureName}
+                        </Typography>
+                        <Chip
+                          label={flag.isEnabled ? 'Enabled' : 'Disabled'}
+                          color={flag.isEnabled ? 'success' : 'error'}
+                          size="small"
+                        />
+                      </Box>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb:  1 }}>
+                        Rollout: {flag.rolloutPercentage}%
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        Version {flag.version} • {new Date(flag.publishedAt).toLocaleString()}
+                      </Typography>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              ))}
+            </Grid>
+          </Box>
+        )}
+      </Card>
+
+      {/* Publish Dialog */}
+      <Dialog open={publishDialogOpen} onClose={() => setPublishDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Publish to Staging</DialogTitle>
+        <DialogContent>
+          <TextField
+            fullWidth
+            multiline
+            rows={3}
+            label="Publish Notes"
+            value={publishMetadata}
+            onChange={(e) => setPublishMetadata(e.target.value)}
+            sx={{ mt:  2 }}
+            placeholder="Describe what changes you're publishing..."
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPublishDialogOpen(false)}>Cancel</Button>
+          <Button onClick={handlePublishToStaging} variant="contained" disabled={publishToStaging.isPending} sx={theming.getThemedButtonSx()}>
+            {publishToStaging.isPending ? 'Publishing...' : 'Publish'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Revert Dialog */}
+      <Dialog open={revertDialogOpen} onClose={() => setRevertDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Revert Feature Flags</DialogTitle>
+        <DialogContent>
+          <FormControl fullWidth sx={{ mt: 2, mb: 2 }}>
+            <InputLabel>Environment</InputLabel>
+            <Select
+              value={selectedEnvironment}
+              onChange={(e) => setSelectedEnvironment(e.target.value as 'staging' | 'production')}
+            >
+              <MenuItem value="staging">Staging</MenuItem>
+              <MenuItem value="production">Production</MenuItem>
+            </Select>
+          </FormControl>
+          <TextField
+            fullWidth
+            multiline
+            rows={3}
+            label="Revert Reason"
+            value={revertReason}
+            onChange={(e) => setRevertReason(e.target.value)}
+            placeholder="Why are you reverting these changes?"
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setRevertDialogOpen(false)}>Cancel</Button>
+          <Button onClick={handleRevert} variant="contained" color="warning" disabled={revertFlags.isPending} sx={theming.getThemedButtonSx()}>
+            {revertFlags.isPending ? 'Reverting...' : 'Revert'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Emergency Rollback Dialog */}
+      <Dialog open={emergencyDialogOpen} onClose={() => setEmergencyDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ color: 'error.main'}}>Emergency Rollback</DialogTitle>
+        <DialogContent>
+          <Alert severity="error" sx={{ mb:  2 }}>
+            This will immediately revert all production feature flags to the last known safe state.
+            Use only in case of critical issues.
+          </Alert>
+          <TextField
+            fullWidth
+            multiline
+            rows={3}
+            label="Emergency Reason"
+            value={emergencyReason}
+            onChange={(e) => setEmergencyReason(e.target.value)}
+            placeholder="Describe the critical issue requiring emergency rollback..."
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEmergencyDialogOpen(false)}>Cancel</Button>
+          <Button onClick={handleEmergencyRollback} variant="contained" color="error" disabled={emergencyRollback.isPending} sx={theming.getThemedButtonSx()}>
+            {emergencyRollback.isPending ? 'Rolling back...' : 'Emergency Rollback'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
+  );
+}
+
+
+

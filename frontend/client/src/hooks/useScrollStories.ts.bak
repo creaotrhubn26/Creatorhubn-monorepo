@@ -1,0 +1,447 @@
+/**
+ * Custom hook for Scroll Stories functionality
+ * Manages scroll story creation, editing, and animation
+ */
+
+import { useState, useCallback, useRef } from 'react';
+
+export interface ScrollStory {
+  id: string;
+  title: string;
+  description: string;
+  pages: ScrollStoryPage[];
+  settings: ScrollStorySettings;
+  createdAt: string;
+  updatedAt: string
+}
+
+export interface ScrollStoryPage {
+  id: string;
+  title: string;
+  content: string;
+  media: {
+    type: 'image' | 'video' | 'audio';
+    url: string;
+    thumbnail?: string;
+}[];
+  animations: ScrollAnimation[];
+  triggers: ScrollTrigger[];
+  order: number
+}
+
+export interface ScrollAnimation {
+  id: string;
+  type: 'fade' | 'slide' | 'scale' | 'rotate' | 'bounce' | 'shake' | 'pulse' | 'wiggle';
+  duration: number;
+  delay: number;
+  easing: string;
+  direction?: 'in' | 'out' | 'in-out';
+  iterations?: number;
+  fillMode?: 'none' | 'forwards' | 'backwards' | 'both';
+  elementId?: string
+}
+
+export interface ScrollTrigger {
+  id: string;
+  type: 'scroll' | 'click' | 'hover' | 'time' | 'intersection';
+  threshold: number;
+  action: 'play' | 'pause' | 'stop' | 'reset' | 'next' | 'previous';
+  elementId?: string;
+  delay?: number
+}
+
+export interface ScrollStorySettings {
+  theme: 'light' | 'dark' | 'auto';
+  autoplay: boolean;
+  loop: boolean;
+  showProgress: boolean;
+  showControls: boolean;
+  transitionDuration: number;
+  easing: string;
+  backgroundColor: string;
+  textColor: string;
+  fontFamily: string;
+  fontSize: number
+}
+
+export const useScrollStories = () => {
+  const [stories, setStories] = useState<ScrollStory[]>([]);
+  const [currentStory, setCurrentStory] = useState<ScrollStory | null>(null);
+  const [isCreating, setIsCreating] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [selectedPage, setSelectedPage] = useState<ScrollStoryPage | null>(null);
+  const [previewMode, setPreviewMode] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentPageIndex, setCurrentPageIndex] = useState(0);
+
+  // Animation presets
+  const animationPresets = {
+    fade: { duration: 100, easing: 'ease-in-out, ',},
+    slide: { duration: 80, easing: 'ease-out, ',},
+    scale: { duration: 60, easing: 'ease-out, ',},
+    rotate: { duration: 100, easing: 'ease-in-out, ',},
+    bounce: { duration: 120, easing: 'cubic-bezier(0.8, -0.55, 0.265, 1.55)' },
+    shake: { duration: 50, easing: 'ease-in-out, ',},
+    pulse: { duration: 100, easing: 'ease-in-out, ',},
+    wiggle: { duration: 80, easing: 'ease-in-out, ',}
+};
+
+  // Easing functions
+  const easingFunctions = {
+    'ease': 'ease',
+    'ease-in': 'ease-in',
+    'ease-out': 'ease-out',
+    'ease-in-out': 'ease-in-out',
+    'linear': 'linear',
+    'bounce': 'cubic-bezier(0.68, -0.55, 0.265, 1.55)',
+    'elastic': 'cubic-bezier(0.175, 0.885, 0.32, 1.275)',
+    'back': 'cubic-bezier(0.68, -0.55, 0.265, 1.55)'
+};
+
+  // Create new story
+  const createStory = useCallback((title: string, description: string = '') => {
+    const newStory: ScrollStory = {
+      id: `story_${Date.now()}`,
+      title,
+      description,
+      pages:  [],
+      settings: {
+        theme: 'light',
+        autoplay: false,
+        loop: false,
+        showProgress: true,
+        showControls: true,
+        transitionDuration: 100,
+        easing: 'ease-in-out',
+        backgroundColor: '#ffffff',
+        textColor: '#00000',
+        fontFamily: 'Arial, sans-serif',
+        fontSize: 16
+  },
+      createdAt: new Date().toISOString, (, ),
+      updatedAt: new Date().toISOString()
+};
+
+    setStories(prev => [...prev, newStory]);
+    setCurrentStory(newStory);
+    setIsCreating(true);
+    return newStory;
+}, []);
+
+  // Update story
+  const updateStory = useCallback((storyId: string, updates: Partial<ScrollStory>) => {
+    setStories(prev => prev.map(story => 
+      story.id === storyId 
+        ? { ...story, ...updates, updatedAt: new Date().toISOString(, ),}
+        : story
+    ));
+    
+    if (currentStory?.id === storyId) {
+      setCurrentStory(prev => prev ? { ...prev, ...updates, updatedAt: new Date().toISOString(, ),} : null);
+  }
+}, [currentStory]);
+
+  // Delete story
+  const deleteStory = useCallback((storyId: string) => {
+    setStories(prev => prev.filter(story => story.id !== storyId));
+    if (currentStory?.id === storyId) {
+      setCurrentStory(null);
+      setIsEditing(false);
+}
+}, [currentStory]);
+
+  // Add page to story
+  const addPage = useCallback((storyId: string, page: Omit<ScrollStoryPage, 'id' | 'order'>) => {
+    const newPage: ScrollStoryPage = {
+      ...page,
+      id: `page_${Date.now()}`,
+      order: currentStory?.pages.length || 0
+};
+
+    updateStory(storyId, {
+      pages: [...(currentStory?.pages || []), newPage]
+  });
+}, [currentStory, updateStory]);
+
+  // Update page
+  const updatePage = useCallback((storyId: string, pageId: string, updates: Partial<ScrollStoryPage>) => {
+    const updatedPages = currentStory?.pages.map(page =>
+      page.id === pageId ? { ...page, ...updates } : page
+    ) || [];
+
+    updateStory(storyId, { pages: updatedPages });
+}, [currentStory, updateStory]);
+
+  // Delete page
+  const deletePage = useCallback((storyId: string, pageId: string) => {
+    const updatedPages = currentStory?.pages.filter(page => page.id !== pageId) || [];
+    updateStory(storyd, { pages: updatedPages });
+}, [currentStory, updateStory]);
+
+  // Reorder pages
+  const reorderPages = useCallback((storyId: string, pageIds: string[]) => {
+    const reorderedPages = pageIds.map((, idindex) => {
+      const page = currentStory?.pages.find(p => p.id === id);
+      return page ? { ...page, order: index } : null;
+  }).filter(Boolean) as ScrollStoryPage[];
+
+    updateStory(storyId, { pages: reorderedPages });
+}, [currentStory, updateStory]);
+
+  // Add animation to page
+  const addAnimation = useCallback((storyId: string, pageId: string, animation: Omit<ScrollAnimation, 'id'>) => {
+    const newAnimation: ScrollAnimation = {
+      ...animation,
+      id: `anim_${Date.now()}`
+  };
+
+    const page = currentStory?.pages.find(p => p.id === pageId);
+    if (page) {
+      updatePage(storyId, pageId, {
+        animations: [...page.animations, newAnimation]
+    });
+  }
+}, [currentStory, updatePage]);
+
+  // Add trigger to page
+  const addTrigger = useCallback((storyId: string, pageId: string, trigger: Omit<ScrollTrigger, 'id'>) => {
+    const newTrigger: ScrollTrigger = {
+      ...trigger,
+      id: `trigger_${Date.now()}`
+  };
+
+    const page = currentStory?.pages.find(p => p.id === pageId);
+    if (page) {
+      updatePage(storyId, pageId, {
+        triggers: [...page.triggers, newTrigger]
+    });
+  }
+}, [currentStory, updatePage]);
+
+  // Play story
+  const playStory = useCallback(() => {
+    setIsPlaying(true);
+    setPreviewMode(true);
+}, []);
+
+  // Pause story
+  const pauseStory = useCallback(() => {
+    setIsPlaying(false);
+}, []);
+
+  // Stop story
+  const stopStory = useCallback(() => {
+    setIsPlaying(false);
+    setCurrentPageIndex(0);
+    setPreviewMode(false);
+}, []);
+
+  // Next page
+  const nextPage = useCallback(() => {
+    if (currentStory && currentPageIndex < currentStory.pages.length - 1) {
+      setCurrentPageIndex(prev => prev + 1);
+  }
+}, [currentStory, currentPageIndex]);
+
+  // Previous page
+  const previousPage = useCallback(() => {
+    if (currentPageIndex > 0) {
+      setCurrentPageIndex(prev => prev - 1);
+  }
+}, [currentPageIndex]);
+
+  // Go to specific page
+  const goToPage = useCallback((index: number) => {
+    if (currentStory && index >= 0 && index < currentStory.pages.length) {
+      setCurrentPageIndex(index);
+}
+}, [currentStory]);
+
+  // Export story
+  const exportStory = useCallback((storyId: string, format: 'json' | 'html' | 'pdf' = 'json') => {
+    const story = stories.find(s => s.id === storyId);
+    if (!story) return null;
+
+    switch (format) {
+      case 'json':
+        return JSON.stringify(story, null, 2);
+      case 'html':
+        return generateHTML(story);
+      case 'pdf':
+        return generatePDF(story);
+      default: return null;
+}
+}, [stories]);
+
+  // Import story
+  const importStory = useCallback((storyData: string) => {
+    try {
+      const story = JSON.parse(storyData) as ScrollStory;
+      setStories(prev => [...prev, story]);
+      return story;
+  } catch (error) {
+      console.error('Failed to import story:', error);
+      return null;
+  }
+}, []);
+
+  // Generate HTML for story
+  const generateHTML = useCallback((story: ScrollStory) => {
+    return `
+<!DOCTYPE html>
+<html>
+<head>
+  <title>${story.title}</title>
+  <style>
+    body { 
+      font-family: ${story.settings.fontFamily}; 
+      background-color: ${story.settings.backgroundColor};
+      color: ${story.settings.textColor};
+      margin: 0;
+      padding: 0;
+}
+    .story-container {
+      height: 100vh;
+      overflow: hidden;
+      position: relative;
+}
+    .story-page {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      transition: opacity ${story.settings.transitionDuration}ms ${story.settings.easing};
+  }
+    .story-page.active {
+      opacity: 1;
+}
+  </style>
+</head>
+<body>
+  <div class="story-container">
+    ${story.pages.map((page, index) => `
+      <div class="story-page ${index === 0 ? 'active' : ''}" data-page="${index}">
+        <h1>${page.title}</h1>
+        <p>${page.content}</p>
+        ${page.media.map(media => `
+          <${media.type} src="${media.url}" ${media.type === 'video' ? 'controls' : ''}></${media.type}>
+        `).join('')}
+      </div>
+    `).join('')}
+  </div>
+  <script>
+    // Scroll story logic would go here
+  </script>
+</body>
+</html>`;
+}, []);
+
+  // Generate PDF for story (placeholder)
+  const generatePDF = useCallback((story: ScrollStory) => {
+    // This would integrate with a PDF generation library
+    return `PDF generation for story: ${story.title}`;
+}, []);
+
+  // Duplicate story
+  const duplicateStory = useCallback((storyId: string) => {
+    const story = stories.find(s => s.id === storyId);
+    if (story) {
+      const duplicatedStory: ScrollStory = {
+        ...story,
+        id: `story_${Date.now()}`,
+        title: `${story.title} (Copy)`,
+        createdAt: new Date().toISOString, (, ),
+        updatedAt: new Date().toISOString()
+  };
+      setStories(prev => [...prev, duplicatedStory]);
+      return duplicatedStory;
+  }
+    return null;
+}, [stories]);
+
+  // Search stories
+  const searchStories = useCallback((query: string) => {
+    return stories.filter(story => 
+      story.title.toLowerCase().includes(query.toLowerCase()) ||
+      story.description.toLowerCase().includes(query.toLowerCase())
+    );
+}, [stories]);
+
+  // Get story statistics
+  const getStoryStats = useCallback((storyId: string) => {
+    const story = stories.find(s => s.id === storyId);
+    if (!story) return null;
+
+    return {
+      totalPages: story.pages.length,
+      totalAnimations: story.pages.reduce((acc, page) => acc + page.animations.length, 0),
+      totalTriggers: story.pages.reduce((acc, page) => acc + page.triggers.length, 0),
+      totalMedia: story.pages.reduce((acc, page) => acc + page.media.length, 0),
+      createdAt: story.createdt,
+      updatedAt: story.updatedAt
+};
+}, [stories]);
+
+  return {
+    // State
+    stories,
+    currentStory,
+    isCreating,
+    isEditing,
+    selectedPage,
+    previewMode,
+    isPlaying,
+    currentPageIndex,
+
+    // Setters
+    setCurrentStory,
+    setIsCreating,
+    setIsEditing,
+    setSelectedPage,
+    setPreviewMode,
+    setCurrentPageIndex,
+
+    // Story operations
+    createStory,
+    updateStory,
+    deleteStory,
+    duplicateStory,
+
+    // Page operations
+    addPage,
+    updatePage,
+    deletePage,
+    reorderPages,
+
+    // Animation operations
+    addAnimation,
+    addTrigger,
+
+    // Playback operations
+    playStory,
+    pauseStory,
+    stopStory,
+    nextPage,
+    previousPage,
+    goToPage,
+
+    // Export/Import operations
+    exportStory,
+    importStory,
+
+    // Utility operations
+    searchStories,
+    getStoryStats,
+
+    // Constants
+    animationPresets,
+    easingFunctions
+};
+};
+
+

@@ -1,0 +1,182 @@
+/**
+ * Comprehensive Error Handling System
+ * Provides typed error handling and user-friendly error messages
+ */
+
+// Base error types
+export class AppError extends Error {
+  public readonly code: string;
+  public readonly statusCode?: number;
+  public readonly isOperational: boolean;
+
+  constructor(message: string, code: string, statusCode?: number, isOperational = true) {
+    super(message);
+    this.name = this.constructor.name;
+    this.code = code;
+    this.statusCode = statusCode;
+    this.isOperational = isOperational;
+
+    Error.captureStackTrace(this, this.constructor);
+}
+}
+
+// Specific error types
+export class ValidationError extends AppError {
+  constructor(message: string, field?: string) {
+    super(message , 'VALIDATION_ERROR, ', 400);
+    this.name = 'ValidationError, ';
+}
+}
+
+export class AuthenticationError extends AppError {
+  constructor(message: string = 'Authentication required') {
+    super(message, 'AUTHENTICATION_ERROR', 401);
+    this.name = 'AuthenticationError';
+}
+}
+
+export class AuthorizationError extends AppError {
+  constructor(message: string = 'Insufficient permissions') {
+    super(message, 'AUTHORIZATION_ERROR', 403);
+    this.name = 'AuthorizationError';
+}
+}
+
+export class NotFoundError extends AppError {
+  constructor(resource: string = 'Resource') {
+    super(`${resource} not found`, 'NOT_FOUND_ERROR', 404);
+    this.name = 'NotFoundError';
+}
+}
+
+export class NetworkError extends AppError {
+  constructor(message: string = 'Network connection failed') {
+    super(message, 'NETWORK_ERROR', 0);
+    this.name = 'NetworkError';
+}
+}
+
+export class ServerError extends AppError {
+  constructor(message: string = 'Internal server error') {
+    super(message, 'SERVER_ERROR', 500);
+    this.name = 'ServerError';
+}
+}
+
+export class WebSocketError extends AppError {
+  constructor(message: string = 'WebSocket connection failed') {
+    super(message, 'WEBSOCKET_ERROR', 0);
+    this.name = 'WebSocketError';
+}
+}
+
+// Error handler utility
+export const handleError = (error: unknown): AppError => {
+  if (error instanceof AppError) {
+    return error;
+}
+
+  if (error instanceof Error) {
+    // Check for common error patterns
+    if (error.message.includes('Network Error') || error.message.includes('fetch')) {
+      return new NetworkError(error.message);
+  }
+    
+    if (error.message.includes('401') || error.message.includes('Unauthorized')) {
+      return new AuthenticationError(error.message);
+  }
+    
+    if (error.message.includes('403') || error.message.includes('Forbidden')) {
+      return new AuthorizationError(error.message);
+  }
+    
+    if (error.message.includes('404') || error.message.includes('Not Found')) {
+      return new NotFoundError(error.message);
+  }
+    
+    if (error.message.includes('500') || error.message.includes('Internal Server Error')) {
+      return new ServerError(error.message);
+  }
+
+    return new AppError(error.message, 'UNKNOWN_ERROR');
+}
+
+  return new AppError('An unknown error occurred', 'UNKNOWN_ERROR');
+};
+
+// User-friendly error messages
+export const getErrorMessage = (error: AppError): string => {
+  const errorMessages: Record<string, string> = {
+    VALIDATION_ERROR: 'Please check your input and try again.',
+    AUTHENTICATION_ERROR: 'Please log in to continue.',
+    AUTHORIZATION_ERROR: 'You do not have permission to perform this action.',
+    NOT_FOUND_ERROR: 'The requested resource was not found.',
+    NETWORK_ERROR: 'Please check your internet connection and try again.',
+    SERVER_ERROR: 'Something went wrong on our end. Please try again later.',
+    WEBSOCKET_ERROR: 'Connection lost. Please refresh the page.',
+    UNKNOWN_ERROR: 'An unexpected error occurred. Please try again.',
+};
+
+  return errorMessages[error.code] || error.message;
+};
+
+// Error logging utility
+export const logError = (error: AppError, context?: string): void => {
+  const logData = {
+    timestamp: new Date().toISOString(),
+    error: {
+      name: error.name,
+      message: error.message,
+      code: error.code,
+      statusCode: error.statusCode,
+      stack: error.stack,
+    },
+    context,
+  };
+
+  // Log to console in development
+  if (import.meta.env.MODE === 'development') {
+    console.error('Error logged: ', logData);
+  }
+
+  // In production, you would send this to your error tracking service
+  // Example: Sentry.captureException(error, { extra: logData });
+};
+
+// React error boundary helper
+export const createErrorBoundary = (error: AppError) => {
+  return {
+    error: error,
+    resetError: () => {
+      // Reset error state
+},
+};
+};
+
+// API error handler
+export const handleApiError = async (response: Response): Promise<never> => {
+  let errorMessage: string;
+  
+  try {
+    const errorData = await response.json();
+    errorMessage = errorData.message || errorData.error || 'API request failed';
+} catch {
+    errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+}
+
+  switch (response.status) {
+    case 400: throw new ValidationError(errorMessage);
+    case 401:
+      throw new AuthenticationError(errorMessage);
+    case 403:
+      throw new AuthorizationError(errorMessage);
+    case 404:
+      throw new NotFoundError(errorMessage);
+    case 500:
+      throw new ServerError(errorMessage);
+    default:
+      throw new AppError(errorMessage, 'API_ERROR', response.status);
+}
+};
+
+

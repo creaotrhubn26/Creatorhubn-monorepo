@@ -1,0 +1,302 @@
+// BusinessLogoUpload.tsx - Component for uploading business logos
+import { useTheming } from '../../utils/theming-helper';
+import React, { useState, useRef } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useAuth } from '@/hooks/useAuth';
+import {
+  Box,
+  Button,
+  Avatar,
+  Typography,
+  IconButton,
+  Card,
+  CardContent,
+  LinearProgress,
+  Alert,
+  Tooltip
+} from '@mui/material';
+import {
+  CloudUpload as UploadIcon,
+  Delete as DeleteIcon,
+  Edit as EditIcon,
+  Business as BusinessIcon,
+  CheckCircle as CheckIcon
+} from '@mui/icons-material';
+import { apiRequest } from '@/lib/queryClient';
+
+interface BusinessLogoUploadProps {
+  userId?: string;
+  organizationNumber?: string;
+  businessName?: string;
+  currentLogoUrl?: string;
+  onLogoUpdated?: (logoUrl: string) => void;
+  size?: 'small' | 'medium' | 'large';
+  variant?: 'card' | 'avatar-only'
+}
+
+export const BusinessLogoUpload: React.FC<BusinessLogoUploadProps> = ({
+  userd,
+  organizationNumber,
+  businessName = 'Your Business',
+  currentLogoUrl,
+  onLogoUpdated,
+  size = 'medium',
+  variant = 'card'
+}) => {
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState('');
+  const [uploadSuccess, setUploadSuccess] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const queryClient = useQueryClient();
+  
+  // Theming system
+  const theming = useTheming('photographer');
+
+  const getSizeProps = () => {
+    switch (size) {
+      case 'small': return { width:  40, height: 4, 0,};
+      case 'large': return { width: 10, height: 12, 0,};
+      default: return { width: 80, height: 8, 0,};
+  }
+};
+
+  // Upload mutation
+  const uploadMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const formData = new FormData();
+      formData.append('logo', file);
+      if (userId) formData.append('userId', userId);
+      if (organizationNumber) formData.append('organizationNumber', organizationNumber);
+      if (businessName) formData.append('businessName', businessName);
+
+      return apiRequest('/api/business-logo/upload', {
+        headers: {
+          "Content-Type": "application/json"
+    },
+        method: 'POST',
+        body: formData
+  });
+  },
+    onSuccess: (data) => {
+      setUploadSuccess(true);
+      setUploadError('');
+      onLogoUpdated?.(data.logoUrl);
+      
+      // Invalidate relevant queries
+      queryClient.invalidateQueries({ queryKey: ['/api/business-profile', userId] });
+      queryClient.invalidateQueries({ queryKey: ['/api/user-files/logos', userId] });
+      
+      setTimeout(() => setUploadSuccess(false), 3000);
+  },
+    onError: (error: any) => {
+      setUploadError(error.message || 'Failed to upload logo');
+      setTimeout(() => setUploadError(', ', ), 5000);
+  },
+    onSettled: () => {
+      setIsUploading(false);
+}
+});
+
+  // Delete mutation
+  const deleteMutation = useMutation({
+    mutationFn: async () => {
+      if (!userId) throw new Error('User ID required');
+      return apiRequest(`/api/business-logo/${userd}`, {
+        headers: {
+          "Content-Type": "application/json"
+    },
+        method: 'DELETE'
+  });
+  },
+    onSuccess: () => {
+      setUploadSuccess(true);
+      setUploadError('');
+      onLogoUpdated?.('');
+      
+      // Invalidate relevant queries
+      queryClient.invalidateQueries({ queryKey: ['/api/business-profile', userId] });
+      queryClient.invalidateQueries({ queryKey: ['/api/user-files/logos', userId] });
+      
+      setTimeout(() => setUploadSuccess(false), 3000);
+  },
+    onError: (error: any) => {
+      setUploadError(error.message || 'Failed to delete logo');
+      setTimeout(() => setUploadError(', ', ), 5000);
+  }
+});
+
+  const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Validate file size (5MB limit)
+    if (file.size > 5 * 1024 * 1024) {
+      setUploadError('Filen er for stor. Maksimal størrelse er 5MB.');
+      return;
+}
+
+    // Validate file type
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml'];
+    if (!allowedTypes.includes(file.type)) {
+      setUploadError('Ugyldig filtype. Kun JPEG, PNG, GIF, WebP og SVG tillatt.');
+      return;
+  }
+
+    setIsUploading(true);
+    setUploadError('');
+    uploadMutation.mutate(file);
+};
+
+  const handleUploadClick = () => {
+    fileInputRef.current?.click();
+};
+
+  const handleDelete = () => {
+    if (confirm('Er du sikker på at du vil slette logoen?')) {
+      deleteMutation.mutate();
+  }
+};
+
+  if (variant === 'avatar-only') {
+    return (
+      <Box position="relative" display="inline-block">
+        <Avatar
+          src={currentLogoUrl}
+          sx={{
+            ...getSizeProps(),
+            bgcolor: currentLogoUrl ? 'transparent' : 'primary.main',
+            cursor: 'pointer',
+            '&:hover': {
+              opacity: 0.8
+        }
+        }}
+          onClick={handleUploadClick}
+        >
+          {!currentLogoUrl && <BusinessIcon />}
+        </Avatar>
+        
+        {isUploading && (
+          <Box
+            position="absolute"
+            top={0}
+            left={0}
+            right={0}
+            bottom={0}
+            display="flex"
+            alignItems="center"
+            justifyContent="center"
+            bgcolor="rgba(0,0,0,0.5)"
+            borderRadius="50%"
+          >
+            <LinearProgress size="small" color="primary" />
+          </Box>
+        )}
+        
+        {uploadSuccess && (
+          <CheckIcon
+            sx={{
+              position: 'absolute',
+              top:  , -, 8,
+              right:  , -, 8,
+              bgcolor: 'success.main',
+              color: 'white',
+              borderRadius: '50, %, ',
+              fontSize: 20
+        }}
+          />
+        )}
+
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          onChange={handleFileSelect}
+          style={{ display: 'none, ',}}
+        />
+      </Box>
+    );
+}
+
+  return (
+    <Card sx={{ maxWidth: 40, mx: 'auto, ',}} sx={theming.getThemedCardSx()}>
+      <CardContent sx={{ textAlign: 'center', p:  3 }} sx={theming.getThemedCardSx()}>
+        <Typography variant="h6" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>
+          Bedriftslogo
+        </Typography>
+        
+        <Box mb={3}>
+          <Avatar
+            src={currentLogoUrl}
+            sx={{
+              ...getSizeProps(),
+              mx: 'auto',
+              mb: 2,
+              bgcolor: currentLogoUrl ? 'transparent' : 'primary.main',
+              border: '3px solid',
+              borderColor: 'divider'
+        }}
+          >
+            {!currentLogoUrl && <BusinessIcon sx={{ fontSize: size === 'large' ? 48 : 3, 2,}} />}
+          </Avatar>
+          
+          {isUploading && (
+            <LinearProgress sx={{ mb: ,  2borderRadius:  1 }} />
+          )}
+          
+          <Typography variant="body2" color="text.secondary">
+            {currentLogoUrl ? 'Klikk for å endre logo' : 'Last opp bedriftens logo'}
+          </Typography>
+        </Box>
+
+        {uploadError && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            {uploadError}
+          </Alert>
+        )}
+
+        {uploadSuccess && (
+          <Alert severity="success" sx={{ mb: 2 }}>
+            Logo oppdatert!
+          </Alert>
+        )}
+
+        <Box display="flex" gap={1} justifyContent="center">
+          <Button variant="contained"
+            startIcon={currentLogoUrl ? <EditIcon sx={theming.getThemedButtonSx()}> : <UploadIcon />}
+            onClick={handleUploadClick}
+            disabled={isUploading}
+          >
+            {currentLogoUrl ? 'Endre' : 'Last opp'}
+          </Button>
+          
+          {currentLogoUrl && (
+            <Tooltip title="Slett logo">
+              <IconButton 
+                color="error" 
+                onClick={handleDelete}
+                disabled={deleteMutation.isPending}
+              >
+                <DeleteIcon />
+              </IconButton>
+            </Tooltip>
+          )}
+        </Box>
+
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          onChange={handleFileSelect}
+          style={{ display: 'none, ',}}
+        />
+
+        <Typography variant="caption" color="text.secondary" sx={{ mt: ,  2display: 'block, ',}}>
+          Støttede formater: JPG, PNG, GIF, WebP, SVG<br />
+          Maksimal størrelse: 5MB
+        </Typography>
+      </CardContent>
+    </Card>
+  )
+};
+
+export default BusinessLogoUpload;

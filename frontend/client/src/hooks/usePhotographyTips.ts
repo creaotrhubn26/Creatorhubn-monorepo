@@ -1,0 +1,387 @@
+import { useState, useEffect, useCallback } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import {
+  PhotographyTip,
+  TipContext,
+  TipDisplaySettings,
+} from '../../../shared/photography-tips-schema';
+
+interface UsePhotographyTipsProps {
+  context?: TipContext;
+  userId?: string;
+  autoDetectContext?: boolean;
+}
+
+interface UsePhotographyTipsReturn {
+  tips: PhotographyTip[];
+  isLoading: boolean;
+  error: Error | null;
+  contextualTips: PhotographyTip[];
+  categories: any[];
+  searchTips: (query: string, category?: string) => Promise<PhotographyTip[]>;
+  trackInteraction: (tipId: string, interactionType: string) => void;
+  detectContext: () => TipContext;
+  displaySettings: TipDisplaySettings;
+  updateDisplaySettings: (settings: Partial<TipDisplaySettings>) => void;
+}
+
+export const usePhotographyTips = ({
+  context = {},
+  userId = 'photographer_user',
+  autoDetectContext = true,
+}: UsePhotographyTipsProps = {}): UsePhotographyTipsReturn => {
+  const [detectedContext, setDetectedContext] = useState<TipContext>(context);
+  const [displaySettings, setDisplaySettings] = useState<TipDisplaySettings>({
+    showOverlay: true,
+    overlayPosition: 'bottom-right',
+    autoHide: false,
+    autoHideDelay: 10,
+    showOnlyRelevant: true,
+    difficulty: 'all',
+    categories: [],
+});
+
+  // Fetch contextual tips
+  const {
+    data: tipsData,
+    isLoading,
+    error,
+} = useQuery({
+    queryKey: ['/api/photography-tips', detectedContext],
+});
+
+  // Fetch categories
+  const { data: categoriesData } = useQuery({
+    queryKey: ['/api/photography-tips/categories'],
+});
+
+  // Auto-detect context from current state
+  const detectContext = useCallback((): TipContext => {
+    const newContext: TipContext = { ...context };
+
+    // Detect current time of day
+    const hour = new Date().getHours();
+    if (hour >= 5 && hour <= 11) {
+      newContext.timeOfDay = 'morgen';
+    } else if (hour >= 12 && hour <= 17) {
+      newContext.timeOfDay = 'ettermiddag';
+    } else if (hour >= 18 && hour <= 21) {
+      newContext.timeOfDay = 'kveld';
+    } else {
+      newContext.timeOfDay = 'natt';
+    }
+
+    // Helper to read KV with fallback
+    const getKV = (key: string): string | null => {
+      const xhr = new XMLHttpRequest();
+      try {
+        xhr.open('GET', `/api/user/kv/${encodeURIComponent(key)}`, false);
+        xhr.withCredentials = true;
+        xhr.send(null);
+        if (xhr.status >= 200 && xhr.status < 300) {
+          const j = JSON.parse(xhr.responseText || 'null');
+          const v = j && typeof j === 'object' && 'value' in j ? j.value : j;
+          if (typeof v === 'string') return v;
+        }
+      } catch {}
+      try { return localStorage.getItem(key); } catch { return null; }
+    };
+
+    // Detect preferences from KV/local
+    const savedLocation = getKV('photography_location');
+    if (savedLocation) newContext.location = savedLocation as 'indoor' | 'outdoor' | 'studio';
+
+    const savedCamera = getKV('current_camera');
+    if (savedCamera) newContext.currentCamera = savedCamera;
+
+    const currentProject = getKV('current_project_type');
+    if (currentProject) newContext.projectType = currentProject;
+
+    const userLevel = getKV('photographer_level');
+    if (userLevel) newContext.userLevel = userLevel as 'beginner' | 'intermediate' | 'advanced';
+
+    return newContext;
+  }, [context]);
+
+  // Auto-detect context on mount and when autoDetectContext is enabled
+  useEffect(() => {
+    if (autoDetectContext) {
+      const detected = detectContext();
+      setDetectedContext(detected);
+  }
+}, [autoDetectContext, detectContext]);
+
+  // Search tips function
+  const searchTips = useCallback(
+    async (query: string, category?: string): Promise<PhotographyTip[]> => {
+      try {
+        const params = new URLSearchParams();
+        if (query) params.append('q', query);
+        if (category) params.append('category', category);
+
+        const response = await fetch(`/api/photography-tips/search?${params}`);
+        if (!response.ok) throw new Error('Failed to search tips');
+
+        const data = await response.json();
+        return data.results || [];
+    } catch (error) {
+        console.error('Error searching tips: ', error);
+        return [];
+    }
+  },
+    [],
+  );
+
+  // Track interaction function
+  const trackInteraction = useCallback(
+    (tipId: string, interactionType: string) => {
+      fetch('/api/photography-tips/interaction', {
+        method: 'POST',
+        headers: { 'Content-Type' : 'application/json' },
+        body: JSON.stringify({
+          tipId,
+          userId,
+          interactionType,
+          context: detectedContext,
+      }),
+    }).catch((error) => {
+        console.error('Error tracking interaction:', error);
+    });
+  },
+    [userId, detectedContext],
+  );
+
+  // Update display settings
+  const updateDisplaySettings = useCallback(
+    (settings: Partial<TipDisplaySettings>) => {
+      const newSettings = { ...displaySettings, ...settings };
+      setDisplaySettings(newSettings);
+      // Persist server-first, fallback local
+      fetch('/api/user/kv', {
+        method: 'POST', headers: { 'Content-Type' : 'application/json' }, credentials: 'include',
+        body: JSON.stringify({ key: 'photography_tips_settings', value: newSettings })
+      }).catch(() => {});
+      localStorage.setItem('photography_tips_settings', JSON.stringify(newSettings));
+  },
+    [displaySettings],
+  );
+
+  // Load settings (server-first) on mount
+  useEffect(() => {
+    fetch('/api/user/kv/photography_tips_settings', { credentials: 'include' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        const v = j && typeof j === 'object' && 'value' in j ? j.value : j;
+        if (v) {
+          setDisplaySettings((prev) => ({ ...prev, ...v }));
+        } else {
+          const savedSettings = localStorage.getItem('photography_tips_settings');
+          if (savedSettings) {
+            try { setDisplaySettings((prev) => ({ ...prev, ...JSON.parse(savedSettings) })); } catch {}
+          }
+        }
+      })
+      .catch(() => {
+        const savedSettings = localStorage.getItem('photography_tips_settings');
+        if (savedSettings) {
+          try { setDisplaySettings((prev) => ({ ...prev, ...JSON.parse(savedSettings) })); } catch {}
+        }
+      });
+  }, []);
+
+  const tips = (tipsData as any)?.tips || [];
+  const categories = (categoriesData as any)?.categories || [];
+
+  // Filter contextual tips based on detected context
+  const contextualTips = tips.filter((tip: PhotographyTip) => {
+    if (!displaySettings.showOnlyRelevant) return true;
+
+    const conditions = tip.conditions;
+    if (!conditions) return true;
+
+    // Filter by difficulty if set
+    if (
+      displaySettings.difficulty !== 'all' &&
+      conditions.difficulty !== displaySettings.difficulty
+    ) {
+      return false;
+  }
+
+    // Filter by categories if set
+    if (
+      displaySettings.categories.length > 0 &&
+      !displaySettings.categories.includes(tip.category || ', ')
+    ) {
+      return false;
+  }
+
+    return true;
+});
+
+  return {
+    tips,
+    isLoading,
+    error: error as Error | null,
+    contextualTips,
+    categories,
+    searchTips,
+    trackInteraction,
+    detectContext,
+    displaySettings,
+    updateDisplaySettings,
+};
+};
+
+// Context detection utilities
+export const PhotographyContextDetector = {
+  // Detect lighting conditions based on time and weather
+  detectLightingConditions: (): string => {
+    const hour = new Date().getHours();
+
+    if (hour >= 6 && hour <= 8) return 'gylne time';
+    if (hour >= 9 && hour <= 16) return 'naturlig lys';
+    if (hour >= 17 && hour <= 19) return 'gylne time';
+    if (hour >= 20 && hour <= 23) return 'blå time';
+
+    return 'kunstig lys';
+},
+
+  // Detect environment based on GPS or user input
+  detectEnvironment: async (): Promise<'indoor' | 'outdoor' | 'studio'> => {
+    // Check if geolocation is available
+    if ('geolocation' in navigator) {
+      try {
+        // For now, return saved preference or default
+        const saved = localStorage.getItem('photography_location');
+        return (saved as 'indoor' | 'outdoor' | 'studio') || 'outdoor';
+    } catch (error) {
+        console.error('Error detecting environment:', error);
+        return 'outdoor';
+    }
+  }
+    return 'outdoor';
+},
+
+  // Detect camera from EXIF data or user settings
+  detectCamera: async (): Promise<string | undefined> => {
+    // First check saved camera preference
+    const savedCamera = localStorage.getItem('current_camera');
+    if (savedCamera) return savedCamera;
+
+    // Try to detect from recent images in browser
+    try {
+      // Check if FileReader API is available
+      if (window.FileReader && window.File) {
+        // Look for recent camera data in localStorage
+        const recentCameraData = localStorage.getItem('recent_camera_exif');
+        if (recentCameraData) {
+          const parsed = JSON.parse(recentCameraData);
+          if (parsed.camera && parsed.timestamp > Date.now() - 24 * 60 * 60 * 1000) {
+            return parsed.camera;
+        }
+      }
+    }
+  } catch (error) {
+      console.log('EXIF detection not available:', error);
+  }
+
+    return undefined;
+},
+
+  // Extract camera info from EXIF data
+  extractCameraFromExif: (exifData: any): string | undefined => {
+    if (!exifData) return undefined;
+
+    // Common EXIF camera fields
+    const cameraFields = ['Make','Model','Camera','CameraModel'];
+    let camera = ', ';
+
+    for (const field of cameraFields) {
+      if (exifData[field]) {
+        if (field === 'Make') {
+          camera = exifData[field];
+      } else if (field === 'Model') {
+          camera += (camera ? ', ' : ', ') + exifData[field];
+      }
+    }
+  }
+
+    if (camera) {
+      // Save for future detection
+      localStorage.setItem(
+        'recent_camera_exif',
+        JSON.stringify({
+          camera: camera.trim(),
+          timestamp: Date.now(),
+      }),
+      );
+      return camera.trim();
+  }
+
+    return undefined;
+},
+
+  // Detect lens from EXIF data
+  detectLens: async (): Promise<string | undefined> => {
+    try {
+      const recentLensData = localStorage.getItem('recent_lens_exif');
+      if (recentLensData) {
+        const parsed = JSON.parse(recentLensData);
+        if (parsed.lens && parsed.timestamp > Date.now() - 24 * 60 * 60 * 1000) {
+          return parsed.lens;
+      }
+    }
+  } catch (error) {
+      console.log('Lens detection not available:', error);
+  }
+    return undefined;
+},
+
+  // Extract lens info from EXIF data
+  extractLensFromExif: (exifData: any): string | undefined => {
+    if (!exifData) return undefined;
+
+    const lensFields = ['LensModel','Lens','LensInfo','LensSpecification'];
+
+    for (const field of lensFields) {
+      if (exifData[field]) {
+        const lens = Array.isArray(exifData[field])
+          ? exifData[field].join('mm-') + 'mm'
+          : String(exifData[field]);
+
+        localStorage.setItem(
+          'recent_lens_exif',
+          JSON.stringify({
+            lens,
+            timestamp: Date.now(),
+        }),
+        );
+        return lens;
+    }
+  }
+
+    return undefined;
+},
+
+  // Detect project type from current context
+  detectProjectType: (): string => {
+    const currentProject = localStorage.getItem('current_project_type');
+    return currentProject || 'portrett';
+},
+
+  // Save context for future detection
+  saveContext: (context: Partial<TipContext>) => {
+    Object.entries(context).forEach(([key, value]) => {
+      if (value) {
+        localStorage.setItem(`photography_${key}`, String(value));
+    }
+  });
+},
+
+  // Clear saved context
+  clearContext: () => {
+    [
+      'photography_location','current_camera','current_project_type', 'photographer_level',
+    ].forEach((key) => localStorage.removeItem(key));
+},
+};

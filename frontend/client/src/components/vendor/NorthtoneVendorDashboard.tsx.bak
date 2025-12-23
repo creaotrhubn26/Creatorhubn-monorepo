@@ -1,0 +1,923 @@
+import { useTheming } from '../../utils/theming-helper';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
+import { useDemoMode } from '@/contexts/DemoModeContext';
+import {
+  Box,
+  Container,
+  Typography,
+  Grid,
+  Avatar,
+  Button,
+  Tabs as MuiTabs,
+  Tab,
+  Badge,
+  IconButton,
+  Chip,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemIcon,
+  ListItemAvatar,
+  Divider,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Paper,
+  Tooltip,
+  Fab,
+  useTheme,
+  useMediaQuery,
+  Stack,
+  LinearProgress,
+  alpha,
+  Fade,
+  Collapse,
+  Skeleton,
+  Switch,
+  FormControlLabel,
+  Card,
+  CardContent,
+  CardActions,
+  Alert,
+  CircularProgress,
+} from '@mui/material';
+import {
+  Store,
+  Add,
+  Assessment,
+  Settings,
+  AttachMoney,
+  TrendingUp,
+  Event,
+  Visibility,
+  Business,
+  Email,
+  Notifications,
+  CloudDone,
+  Article,
+  FolderOpen,
+  AddCircle,
+  Storage,
+  Star,
+  Chat,
+  Person,
+  Phone,
+  MoreVert,
+  AccessTime,
+  LocationOn,
+  Payment,
+  Keyboard,
+  Schedule,
+  Palette,
+  CheckCircle,
+  HelpCenter,
+  Quiz,
+  PriorityHigh,
+  Delete,
+  Launch,
+  PhotoLibrary,
+  Edit,
+  Circle,
+  AccountCircle,
+  Collections,
+  Brightness1,
+  WbSunny,
+  MusicNote,
+  LibraryMusic,
+  Headphones,
+  Equalizer,
+  GraphicEq,
+  Audiotrack,
+  VolumeUp,
+  Radio,
+  Mic,
+  MicNone,
+  MicOff,
+  PlayArrow,
+  Pause,
+  Stop,
+  SkipNext,
+  SkipPrevious,
+  Repeat,
+  Shuffle,
+  QueueMusic,
+  PlaylistPlay,
+  MusicOff,
+  MusicVideo,
+  Album,
+  DiscFull,
+  Speaker,
+  SpeakerGroup,
+  SurroundSound,
+  TheaterComedy,
+  TheaterComedyOutlined,
+  TheaterComedyRounded,
+  TheaterComedySharp,
+  TheaterComedyTwoTone,
+  Inventory,
+  ShoppingCart,
+  Receipt,
+  Analytics,
+  Timeline,
+  Dashboard,
+  BarChart,
+  ShowChart,
+  TrendingDown,
+  TrendingFlat,
+  Build,
+  OpenWith,
+} from '@mui/icons-material';
+
+interface TabPanelProps {
+  children?: React.ReactNode;
+  index: number;
+  value: number, ;, 
+}
+
+function TabPanel(props: TabPanelProps) {
+  const { children, value, index, ...other } = props;
+  return (
+    <div
+      role="tabpanel"
+      hidden={value !== index}
+      id={`northtone-vendor-tabpanel-${index}`}
+      aria-labelledby={`northtone-vendor-tab-${index}`}
+      {...other}
+    >
+      {value === index && <Box sx={{ p:  3 }}>{children}</Box>}
+    </div>
+  );
+}
+
+interface AcousticPanel {
+  id: string;
+  name: string;
+  price: number;
+  status: 'active' | 'inactive' | 'draft';
+  category: 'portable' | 'wall_mounted' | 'corner' | 'ceiling';
+  description?: string;
+  imageUrl?: string;
+  dimensions?: string;
+  material?: string;
+  color?: string;
+  nrc?: number; // Noise Reduction Coefficient
+  thickness?: number;
+  weight?: number;
+  createdAt: string;
+  updatedAt: string, ;, 
+}
+
+interface AcousticOrder {
+  id: string;
+  customerName: string;
+  customerEmail: string;
+  total: number;
+  status: 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
+  items: Array<{
+    productId: string;
+    productName: string;
+    quantity: number;
+    price: number;
+,  ,}>;
+  installationType: 'self_install' | 'professional' | 'consultation';
+  createdAt: string;
+  updatedAt: string, ;, 
+}
+
+interface AcousticStats {
+  totalProducts: number;
+  activeOrders: number;
+  totalRevenue: number;
+  monthlyRevenue: number;
+  totalInstallations: number;
+  topPanels: Array<{
+    name: string;
+    sales: number;
+,  ,}>;
+  maxSales: number, ;, 
+}
+
+export default function NorthtoneVendorDashboard() {
+  const queryClient = useQueryClient();
+  
+  // Theming system
+  const theming = useTheming('vendor');
+  const { isDemoMode } = useDemoMode();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+
+  // State management
+  const [tabValue, setTabValue] = useState(0);
+  const [showProductModal, setShowProductModal] = useState(false);
+  const [showOrderModal, setShowOrderModal] = useState(false);
+  const [showAnalyticsModal, setShowAnalyticsModal] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<AcousticPanel | null>(null);
+  const [selectedOrder, setSelectedOrder] = useState<AcousticOrder | null>(null);
+  const [proEditorMode, setProEditorMode] = useState(false);
+  const [isPlaying, setIsPlaying] = useState<string | null>(null);
+
+  // Data fetching
+  const { data: vendorStats, isLoading: statsLoading, error: statsError } = useQuery({
+    queryKey: ['/api/vendor/stats', 'demo-user'],
+    queryFn: () => apiRequest('/api/vendor/stats/demo-user, ', ),
+    retry: false,
+});
+
+  const { data: products = [], isLoading: productsLoading, error: productsError } = useQuery({
+    queryKey: ['/api/vendor/products', 'demo-user'],
+    queryFn: () => apiRequest('/api/vendor/products/demo-user, ', ),
+    retry: false,
+});
+
+  const { data: orders = [], isLoading: ordersLoading, error: ordersError } = useQuery({
+    queryKey: ['/api/vendor/orders', 'demo-user'],
+    queryFn: () => apiRequest('/api/vendor/orders/demo-user, ', ),
+    retry: false,
+});
+
+  const { data: pluginMetrics, isLoading: metricsLoading, error: metricsError } = useQuery({
+    queryKey: ['/api/vendor/plugin-metrics', 'demo-user'],
+    queryFn: () => apiRequest('/api/vendor/plugin-metrics/demo-user, ', ),
+    retry: false,
+});
+
+  // Mutations
+  const updateProductMutation = useMutation({
+    mutationFn: async (data: any) =>
+      apiRequest('/api/vendor/products/update', {
+        method: 'POST',
+        body: JSON.stringify(data),
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/vendor/products'],});
+  },
+});
+
+  const updateOrderMutation = useMutation({
+    mutationFn: async (data: any) =>
+      apiRequest('/api/vendor/orders/update', {
+        method: 'POST',
+        body: JSON.stringify(data),
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/vendor/orders'],});
+  },
+});
+
+  const isLoading = statsLoading || productsLoading || ordersLoading || metricsLoading;
+  const hasError = statsError || productsError || ordersError || metricsError;
+
+  // Mock data for demo mode
+  const mockAcousticPanels: AcousticPanel[] = [
+    {
+      id: '',
+      name: 'Portable Acoustic Panel Pro',
+      price: 299.9,
+      status: 'active',
+      category: 'portable',
+      description: 'Bærbart akustikkpanel for optimal lydkvalitet i alle miljøer',
+      imageUrl: '/images/products/portable-panel-pro.jpg',
+      dimensions: '60x40x10 cm',
+      material: 'High-density foam',
+      color: 'Charcoal',
+      nrc: 0.5,
+      thickness:  10,
+      weight: 2.5,
+      createdAt: '2024-01-15T10:00:00',
+      updatedAt: '2024-01-15T10:00:00',
+  },
+    {
+      id: '',
+      name: 'Wall Mount Acoustic Panel',
+      price: 199.9,
+      status: 'active',
+      category: 'wall_mounted',
+      description: 'Veggmontert panel for permanent lydforbedring',
+      imageUrl: '/images/products/wall-panel.jpg',
+      dimensions: '120x60x5 cm',
+      material: 'Acoustic fabric + foam',
+      color: 'Navy Blue',
+      nrc: 0.0,
+      thickness:  5,
+      weight: 3.2,
+      createdAt: '2024-01-10T14:30:00',
+      updatedAt: '2024-01-10T14:30:00',
+  },
+    {
+      id: '',
+      name: 'Corner Bass Trap',
+      price: 149.9,
+      status: 'draft',
+      category: 'corner',
+      description: 'Hjørnefelle for bassfrekvenser og ekko-reduksjon',
+      imageUrl: '/images/products/corner-bass-trap.jpg',
+      dimensions: '50x50x20 cm',
+      material: 'Mineral wool',
+      color: 'White',
+      nrc: 0.5,
+      thickness:  20,
+      weight: 4.1,
+      createdAt: '2024-01-05T09:15:00',
+      updatedAt: '2024-01-05T09:15:00',
+  },
+  ];
+
+  const mockAcousticOrders: AcousticOrder[] = [
+    {
+      id: 'ACO-00',
+      customerName: 'Yoga Studio Oslo',
+      customerEmail: 'studio@yogaoslo.no',
+      total: 599.8,
+      status: 'processing',
+      installationType: 'professional',
+      items: [
+        { productId: '', productName: 'Portable Acoustic Panel Pro', quantity:  ,  2price: 299.9, 9,}
+      ],
+      createdAt: '2024-01-20T10:00:00',
+      updatedAt: '2024-01-20T10:00:00',
+  },
+    {
+      id: 'ACO-00',
+      customerName: 'Podcast Studio Bergen',
+      customerEmail: 'info@podcastbergen.no',
+      total: 199.9,
+      status: 'delivered',
+      installationType: 'self_install',
+      items: [
+        { productId: '', productName: 'Wall Mount Acoustic Panel', quantity:  ,  1price: 199.9, 9,}
+      ],
+      createdAt: '2024-01-18T14:30:00',
+      updatedAt: '2024-01-19T16:45:00',
+  },
+  ];
+
+  const displayProducts = isDemoMode ? mockAcousticPanels : products;
+  const displayOrders = isDemoMode ? mockAcousticOrders : orders;
+
+  const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
+    setTabValue(newValue);
+,  ,};
+
+  const handleProductClick = (product: AcousticPanel) => {
+    setSelectedProduct(product);
+    setShowProductModal(true);
+,  ,};
+
+  const handleOrderClick = (order: AcousticOrder) => {
+    setSelectedOrder(order);
+    setShowOrderModal(true);
+,  ,};
+
+  const handlePlayPause = (productId: string) => {
+    setIsPlaying(isPlaying === productId ? null : productId);
+,  ,};
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'active':
+      case 'completed':
+        return 'success';
+      case 'processing':
+        return 'warning';
+      case 'pending':
+        return 'info';
+      case 'inactive':
+      case 'cancelled':
+        return 'error';
+      default:
+        return 'default';
+  ,  ,}
+};
+
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'active':
+        return {theming.getThemedIcon('')};
+      case 'processing':
+        return {theming.getThemedIcon('schedule')};
+      case 'completed':
+        return {theming.getThemedIcon('checkCircle')};
+      case 'pending':
+        return {theming.getThemedIcon('time')};
+      case 'cancelled':
+        return {theming.getThemedIcon('delete')};
+      default: return {theming.getThemedIcon('')};
+  }
+};
+
+  const getCategoryIcon = (category: string) => {
+    switch (category) {
+      case 'portable':
+        return <OpenWith />;
+      case 'wall_mounted':
+        return {theming.getThemedIcon('')};
+      case 'corner':
+        return <OpenWith />;
+      case 'ceiling':
+        return <OpenWith />;
+      default: return <OpenWith />;
+  ,  ,}
+};
+
+  const formatDuration = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+};
+
+  if (hasError) {
+    return (
+      <Container maxWidth="xl" sx={{ py: 3 }}>
+        <Alert severity="error" sx={{ mb: 3 }}>
+          Failed to load Northtone vendor dashboard data. Please try again.
+        </Alert>
+      </Container>
+    );
+}
+
+  return (
+    <Container maxWidth="xl" sx={{ py: 3 }}>
+      {/* Header */}
+      <Box sx={{ mb: 4 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+          <Avatar sx={{ bgcolor: 'primary.main', mr:  2 }}>
+            <OpenWith />
+          </Avatar>
+          <Box>
+            <Typography variant="h4" component="h1" sx={{ ...{}, color: theming.colors.primary }}>
+              Northtone Vendor Dashboard
+            </Typography>
+            <Typography variant="body1" color="text.secondary">
+              Manage your acoustic panels, orders, and sound improvement analytics
+            </Typography>
+          </Box>
+        </Box>
+
+        {/* Quick Stats */}
+        <Grid container spacing={3} sx={{ mb: 3 }}>
+          <Grid size={{ xs:  12, sm:  6, md:  3 }}>
+            <Card sx={{ bgcolor: alpha(theme.palette.primary.main, 0.1) }} sx={theming.getThemedCardSx()}>
+              <CardContent sx={theming.getThemedCardSx()}>
+                <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                  <OpenWith color="primary" sx={{ mr:  1 }} />
+                  <Typography variant="h6" sx={{ ...{}, color: theming.colors.primary }}>Panels</Typography>
+                </Box>
+                <Typography variant="h4" color="primary" sx={{ ...{}, color: theming.colors.primary }}>
+                  {isLoading ? <Skeleton width={60} /> : (vendorStats?.totalProducts || displayProducts.length)}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Acoustic Panels
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+
+          <Grid size={{ xs:  12, sm:  6, md:  3 }}>
+            <Card sx={{ bgcolor: alpha(theme.palette.success.main, 0.1) }} sx={theming.getThemedCardSx()}>
+              <CardContent sx={theming.getThemedCardSx()}>
+                <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                  <Receipt color="success" sx={{ mr:  1 }} />
+                  <Typography variant="h6" sx={{ ...{}, color: theming.colors.primary }}>Orders</Typography>
+                </Box>
+                <Typography variant="h4" color="success.main" sx={{ ...{}, color: theming.colors.primary }}>
+                  {isLoading ? <Skeleton width={60} /> : (vendorStats?.activeOrders || displayOrders.length)}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Active Orders
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+
+          <Grid size={{ xs:  12, sm:  6, md:  3 }}>
+            <Card sx={{ bgcolor: alpha(theme.palette.warning.main, 0.1) }} sx={theming.getThemedCardSx()}>
+              <CardContent sx={theming.getThemedCardSx()}>
+                <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                  <AttachMoney color="warning" sx={{ mr:  1 }} />
+                  <Typography variant="h6" sx={{ ...{}, color: theming.colors.primary }}>Revenue</Typography>
+                </Box>
+                <Typography variant="h4" color="warning.main" sx={{ ...{}, color: theming.colors.primary }}>
+                  {isLoading ? <Skeleton width={80} /> : `$${vendorStats?.totalRevenue || 0}`}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Total Revenue
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+
+          <Grid size={{ xs:  12, sm:  6, md:  3 }}>
+            <Card sx={{ bgcolor: alpha(theme.palette.info.main, 0.1) }} sx={theming.getThemedCardSx()}>
+              <CardContent sx={theming.getThemedCardSx()}>
+                <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                  <Build color="info" sx={{ mr:  1 }} />
+                  <Typography variant="h6" sx={{ ...{}, color: theming.colors.primary }}>Installations</Typography>
+                </Box>
+                <Typography variant="h4" color="info.main" sx={{ ...{}, color: theming.colors.primary }}>
+                  {isLoading ? <Skeleton width={60} /> : '24'}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Total Installations
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+        </Grid>
+
+        {/* Tabs */}
+        <Paper sx={{ mb: 3 }} sx={theming.getThemedCardSx()}>
+          <MuiTabs
+            value={tabValue}
+            onChange={handleTabChange}
+            variant={isMobile ? 'scrollable' : 'standard'}
+            scrollButtons="auto"
+            sx={{ borderBottom:  ,  1borderColor: 'divider, ',}}
+          >
+            <Tab
+              icon={<OpenWith />}
+              label="Panel Library"
+              iconPosition="start"
+            />
+            <Tab
+              icon={<Receipt />}
+              label="Orders"
+              iconPosition="start"
+            />
+            <Tab
+              icon={{theming.getThemedIcon('analytics')}}
+              label="Analytics"
+              iconPosition="start"
+            />
+            <Tab
+              icon={{theming.getThemedIcon('settings')}}
+              label="Settings"
+              iconPosition="start"
+            />
+          </MuiTabs>
+        </Paper>
+      </Box>
+
+      {/* Tab Panels */}
+      <TabPanel value={tabValue} index={0}>
+        {/* Panel Library Tab */}
+        <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center, ',}}>
+          <Typography variant="h6" sx={{ ...{}, color: theming.colors.primary }}>Panel Library ({displayProducts.length})</Typography>
+          <Button variant="contained"
+            startIcon={theming.getThemedIcon('add')}
+            onClick={() = sx={theming.getThemedButtonSx()}> setShowProductModal(true)}
+          >
+            Add Panel
+          </Button>
+        </Box>
+
+        <Grid container spacing={3}>
+          {isLoading ? (
+            Array.from({ length:  6 }).map((_, index) => (
+              <Grid size={{ xs:  12, sm:  6, md:  4 }} key={index}>
+                <Card sx={theming.getThemedCardSx()}>
+                  <Skeleton variant="rectangular" height={200} />
+                  <CardContent sx={theming.getThemedCardSx()}>
+                    <Skeleton variant="text" height={32} />
+                    <Skeleton variant="text" height={24} />
+                    <Skeleton variant="text" height={20} />
+                  </CardContent>
+                </Card>
+              </Grid>
+            ))
+          ) : displayProducts.length === 0 ? (
+            <Grid size={{ xs: 1, 2,}}>
+              <Card sx={{ textAlign: 'center', py: 4 }} sx={theming.getThemedCardSx()}>
+                <Typography variant="h6" color="text.secondary" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>
+                  No acoustic panels found
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  Get started by adding your first acoustic panel
+                </Typography>
+                <Button variant="contained"
+                  startIcon={theming.getThemedIcon('add')}
+                  onClick={() = sx={theming.getThemedButtonSx()}> setShowProductModal(true)}
+                >
+                  Add Panel
+                </Button>
+              </Card>
+            </Grid>
+          ) : (
+            displayProducts.map((product: any) => (
+              <Grid size={{ xs: 12, sm:  6, md:  4 }} key={product.id}>
+                <Card
+                  sx={{
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease-in-out',
+                    '&:hover': {
+                      transform: 'translateY(-4px, ), ',
+                      boxShadow: theme.shadows[],
+                  },
+                }}
+                  onClick={() = sx={theming.getThemedCardSx()}> handleProductClick(product)}
+                >
+                  <Box sx={{ position: 'relative, ',}}>
+                    <Box
+                      sx={{
+                        height: 20,
+                        bgcolor: 'grey.10',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        background: product.imageUrl ? `url(${product.imageUl})` : `linear-gradient(135deg, ${theme.palette.primary.main}20, ${theme.palette.secondary.main}20)`,
+                        backgroundSize: 'cover',
+                        backgroundPosition: 'center',
+                    }}
+                    >
+                      {!product.imageUrl && (
+                        <Box sx={{ textAlign: 'center, ',}}>
+                          {getCategoryIcon(product.category)}
+                          <Typography variant="h4" sx={{ mt: 1 }} sx={{ ...{}, color: theming.colors.primary }}>
+                            {product.category === 'portable' ? '📦' : product.category === 'wall_mounted' ? '🧱' : product.category === 'corner' ? '📐' : '🏠'}
+                          </Typography>
+                        </Box>
+                      )}
+                    </Box>
+                    <Chip
+                      label={product.status}
+                      color={getStatusColor(product.status) as any}
+                      size="small"
+                      sx={{ position: 'absolute', top:  8, right:  8 }}
+                    />
+                    <IconButton
+                      sx={{
+                        position: 'absolute',
+                        bottom:  8,
+                        right:  8,
+                        bgcolor: 'rgba, (, 0,0,0,0.7)',
+                        color: 'white',
+                        '&:hover': {
+                          bgcolor: 'rgba, (, 0,0,0,0.8)',
+                      },
+                    }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handlePlayPause(product.id);
+                    }}
+                    >
+                      {isPlaying === product.id ? {theming.getThemedIcon('pause')} : {theming.getThemedIcon('play')}}
+                    </IconButton>
+                  </Box>
+                  <CardContent sx={theming.getThemedCardSx()}>
+                    <Typography variant="h6" gutterBottom noWrap sx={{ ...{}, color: theming.colors.primary }}>
+                      {product.name}
+                    </Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap:  ,  1mb: 1 }}>
+                      {getCategoryIcon(product.category)}
+                      <Typography variant="body2" color="text.secondary">
+                        {product.category.replace('_', ' ').toUpperCase()}
+                      </Typography>
+                    </Box>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center, ',}}>
+                      <Typography variant="h6" color="primary" sx={{ ...{}, color: theming.colors.primary }}>
+                        ${product.price}
+                      </Typography>
+                      {product.dimensions && (
+                        <Typography variant="body2" color="text.secondary">
+                          {product.dimensions}
+                        </Typography>
+                      )}
+                    </Box>
+                    {product.nrc && (
+                      <Typography variant="body2" color="text.secondary">
+                        NRC: {product.nrc} • {product.material}
+                      </Typography>
+                    )}
+                  </CardContent>
+                  <CardActions sx={theming.getThemedCardSx()}>
+                    <Button size="small" startIcon={theming.getThemedIcon('edit')}>
+                      Edit
+                    </Button>
+                    <Button size="small" startIcon={theming.getThemedIcon('visibility')}>
+                      Preview
+                    </Button>
+                  </CardActions>
+                </Card>
+              </Grid>
+            ))
+          )}
+        </Grid>
+      </TabPanel>
+
+      <TabPanel value={tabValue} index={1}>
+        {/* Orders Tab */}
+        <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center, ',}}>
+          <Typography variant="h6" sx={{ ...{}, color: theming.colors.primary }}>Recent Orders ({displayOrders.length})</Typography>
+          <Button
+            variant="outlined"
+            startIcon={<Receipt />}
+            onClick={() => setShowOrderModal(true)}
+          >
+            View All Orders
+          </Button>
+        </Box>
+
+        <Card sx={theming.getThemedCardSx()}>
+          <List>
+            {isLoading ? (
+              Array.from({ length:  5 }).map((_, index) => (
+                <ListItem key={index}>
+                  <ListItemAvatar>
+                    <Skeleton variant="circular" width={40} height={40} />
+                  </ListItemAvatar>
+                  <ListItemText
+                    primary={<Skeleton variant="text" width="60%" />}
+                    secondary={<Skeleton variant="text" width="40%" />}
+                  />
+                </ListItem>
+              ))
+            ) : displayOrders.length === 0 ? (
+              <ListItem>
+                <ListItemText
+                  primary="No orders found"
+                  secondary="Orders will appear here when customers purchase acoustic panels"
+                />
+              </ListItem>
+            ) : (
+              displayOrders.map((order: any, index: number) => (
+                <React.Fragment key={order.d}>
+                  <ListItem
+                    sx={{ cursor: 'pointer, ',}}
+                    onClick={() => handleOrderClick(order)}
+                  >
+                    <ListItemAvatar>
+                      <Avatar sx={{ bgcolor: 'primary.main, ',}}>
+                        <Receipt />
+                      </Avatar>
+                    </ListItemAvatar>
+                    <ListItemText
+                      primary={
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
+                          <Typography variant="subtitle1">
+                            {order.customerName}
+                          </Typography>
+                          <Chip
+                            label={order.status}
+                            color={getStatusColor(order.status) as any}
+                            size="small"
+                            icon={getStatusIcon(order.status)}
+                          />
+                          <Chip
+                            label={order.installationType}
+                            color="info"
+                            size="small"
+                          />
+                        </Box>
+                    }
+                      secondary={
+                        <Box>
+                          <Typography variant="body2" color="text.secondary">
+                            {order.customerEmail}
+                          </Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            Total: ${order.total} • {new Date(order.createdAt).toLocaleDateString()}
+                          </Typography>
+                        </Box>
+                    }
+                    />
+                    <IconButton>
+                      {theming.getThemedIcon('moreVert')}
+                    </IconButton>
+                  </ListItem>
+                  {index < displayOrders.length - 1 && <Divider />}
+                </React.Fragment>
+              ))
+            )}
+          </List>
+        </Card>
+      </TabPanel>
+
+      <TabPanel value={tabValue} index={2}>
+        {/* Analytics Tab */}
+        <Typography variant="h6" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>
+          Acoustic Panel Analytics & Performance
+        </Typography>
+        <Grid container spacing={3}>
+          <Grid size={{ xs:  12, md:  6 }}>
+            <Card sx={theming.getThemedCardSx()}>
+              <CardContent sx={theming.getThemedCardSx()}>
+                <Typography variant="h6" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>
+                  Sales Performance
+                </Typography>
+                <Box sx={{ height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center, ',}}>
+                  <Typography variant="body2" color="text.secondary">
+                    Chart placeholder - Sales data visualization
+                  </Typography>
+                </Box>
+              </CardContent>
+            </Card>
+          </Grid>
+          <Grid size={{ xs:  12, md:  6 }}>
+            <Card sx={theming.getThemedCardSx()}>
+              <CardContent sx={theming.getThemedCardSx()}>
+                <Typography variant="h6" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>
+                  Top Panels
+                </Typography>
+                <List>
+                  {displayProducts.slice(0, 3).map((product: any, index: number) => (
+                    <ListItem key={product.d}>
+                      <ListItemIcon>
+                        {getCategoryIcon(product.category)}
+                      </ListItemIcon>
+                      <ListItemText
+                        primary={product.name}
+                        secondary={`$${product.price} • NRC: ${product.nrc}`}
+                      />
+                      <Chip label={`#${index + 1}`} size="small" />
+                    </ListItem>
+                  ))}
+                </List>
+              </CardContent>
+            </Card>
+          </Grid>
+        </Grid>
+      </TabPanel>
+
+      <TabPanel value={tabValue} index={3}>
+        {/* Settings Tab */}
+        <Typography variant="h6" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>
+          Acoustic Panel Vendor Settings
+        </Typography>
+        <Card sx={theming.getThemedCardSx()}>
+          <CardContent sx={theming.getThemedCardSx()}>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={proEditorMode}
+                  onChange={(e) => setProEditorMode(e.target.checked)}
+                />
+            }
+              label="Pro Installation Mode"
+            />
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+              Enable advanced installation features and professional acoustic consulting tools
+            </Typography>
+          </CardContent>
+        </Card>
+      </TabPanel>
+
+      {/* Floating Action Button */}
+      <Fab
+        color="primary"
+        sx={{
+          position: 'fixed',
+          bottom:  16,
+          right:  16,
+      }}
+        onClick={() => setShowProductModal(true)}
+      >
+        {theming.getThemedIcon('add')}
+      </Fab>
+
+      {/* Product Modal */}
+      <Dialog
+        open={showProductModal}
+        onClose={() => setShowProductModal(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          {selectedProduct ? 'Edit Acoustic Panel' : 'Add New Panel'}
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary">
+            Acoustic panel management form would go here
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowProductModal(false)}>Cancel</Button>
+          <Button variant="contained" onClick={() = sx={theming.getThemedButtonSx()}> setShowProductModal(false)}>
+            {selectedProduct ? 'Update' : 'Add'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Order Modal */}
+      <Dialog
+        open={showOrderModal}
+        onClose={() => setShowOrderModal(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          {selectedOrder ? `Order ${selectedOrder.id}` : 'All Orders'}
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary">
+            Order details and management would go here
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowOrderModal(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
+    </Container>
+  );
+}

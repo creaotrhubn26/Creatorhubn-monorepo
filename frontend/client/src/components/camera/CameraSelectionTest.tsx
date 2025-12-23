@@ -1,0 +1,333 @@
+import { useTheming } from '../../utils/theming-helper';
+import React, { useState, useEffect } from 'react';
+import {
+  Box,
+  Typography,
+  Card,
+  CardContent,
+  Grid,
+  TextField,
+  Autocomplete,
+  Button,
+  Chip,
+  List,
+  ListItem,
+  ListItemText,
+  Divider,
+  Alert,
+  LinearProgress
+} from '@mui/material';
+import { useDemoMode, useDemoModeData } from '@/contexts/DemoModeContext';
+import {
+  PhotoCamera,
+  Search,
+  Star,
+  Memory,
+  Tune,
+  Update
+} from '@mui/icons-material';
+
+interface CameraModel {
+  id: string;
+  brand: string;
+  model: string;
+  year: number;
+  megapixels: number;
+  sensor: string;
+  maxISO: number;
+  videoCapabilities: string[];
+  firmwareVersion?: string;
+  lastUpdated?: string;
+  features: string[];
+  price?: number;
+  discontinued?: boolean
+}
+
+const CameraSelectionTest: React.FC = () => {
+  const { isDemoMode } = useDemoMode();
+  
+  // Theming system
+  const theming = useTheming('photographer, ');
+  const [cameras, setCameras] = useState<CameraModel[]>([]);
+  const [filteredCameras, setFilteredCameras] = useState<CameraModel[]>([]);
+  const [selectedCamera, setSelectedCamera] = useState<CameraModel | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [brandFilter, setBrandFilter] = useState<string>(',');
+  const [loading, setLoading] = useState(true);
+
+  // Get demo data when in demo mode
+  const demoCameras = useDemoModeData<CameraModel>('cameras', []);
+
+  useEffect(() => {
+    if (isDemoMode) {
+      // Use demo data
+      setCameras(demoCameras);
+      setFilteredCameras(demoCameras);
+      setLoading(false);
+  } else {
+      // Load real data from API
+      const loadCameras = async () => {
+        try {
+          const response = await fetch('/api/cameras,');
+          if (response.ok) {
+            const data = await response.json();
+            setCameras(data);
+            setFilteredCameras(data);
+        } else {
+            setCameras([]);
+            setFilteredCameras([]);
+        }
+      } catch (error) {
+          console.error('Error loading cameras: ', error);
+          setCameras([]);
+          setFilteredCameras([]);
+      } finally {
+          setLoading(false);
+      }
+    };
+      
+      loadCameras();
+  }
+}, [isDemoMode, demoCameras]);
+
+  useEffect(() => {
+    let filtered = cameras;
+
+    if (brandFilter) {
+      filtered = filtered.filter(camera => camera.brand === brandFilter);
+  }
+
+    if (searchTerm) {
+      filtered = filtered.filter(camera =>
+        camera.model.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        camera.brand.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+  }
+
+    setFilteredCameras(filtered);
+}, [cameras, brandFilter, searchTerm]);
+
+  const brands = Array.from(new Set(cameras.map(camera => camera.brand)));
+
+  const handleCameraSelect = (camera: CameraModel) => {
+    setSelectedCamera(camera);
+};
+
+  const checkFirmwareUpdate = async (camera: CameraModel) => {
+    // I virkeligheten ville dette sjekke mot produsent API
+    alert(`Sjekker firmware oppdateringer for ${camera.brand} ${camera.model}...`);
+};
+
+  if (loading) {
+    return (
+      <Box sx={{ p:  3 }}>
+        <LinearProgress />
+        <Typography sx={{ mt:  2 }}>Laster kamera database...</Typography>
+      </Box>
+    );
+}
+
+  return (
+    <Box sx={{ p:  3 }}>
+      <Typography variant="h4" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
+        <PhotoCamera color="primary" />
+        Kamera Database & Utvalgstest
+      </Typography>
+
+      <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
+        Test og utforsk omfattende kamera database med firmware tracking og sammenligning.
+      </Typography>
+
+      <Grid container spacing={3}>
+        {/* Search and Filter Controls */}
+        <Grid size={{ xs: 12 }}>
+          <Card sx={theming.getThemedCardSx()}>
+            <CardContent sx={theming.getThemedCardSx()}>
+              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                Søk og Filtrer
+              </Typography>
+              
+              <Grid container spacing={2}>
+                <Grid size={{ xs: 12 }} md={6}>
+                  <TextField
+                    fullWidth
+                    label="Søk etter kamera"
+                    variant="outlined"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    InputProps={{
+                      startAdornment: theming.getThemedIcon(', ')
+                  }}
+                  />
+                </Grid>
+                
+                <Grid size={{ xs: 12 }} md={6}>
+                  <Autocomplete
+                    options={[', ', ...brands]}
+                    value={brandFilter}
+                    onChange={(_, value) => setBrandFilter(value || ', ')}
+                    renderInput={(params) => (
+                      <TextField
+                        {...params}
+                        label="Filtrer etter merke"
+                        variant="outlined"
+                      />
+                    )}
+                  />
+                </Grid>
+              </Grid>
+
+              <Typography variant="body2" sx={{ mt:  2 }}>
+                Fant {filteredCameras.length} kameraer
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* Camera List */}
+        <Grid size={{ xs: 12 }} md={6}>
+          <Card sx={theming.getThemedCardSx()}>
+            <CardContent sx={theming.getThemedCardSx()}>
+              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                Tilgjengelige Kameraer
+              </Typography>
+
+              <List>
+                {filteredCameras.map((camera, index) => (
+                  <React.Fragment key={camera.id}>
+                    <ListItem
+                      button
+                      onClick={() => handleCameraSelect(camera)}
+                      selected={selectedCamera?.id === camera.id}
+                    >
+                      <ListItemText
+                        primary={`${camera.brand} ${camera.model}`}
+                        secondary={
+                          <Box>
+                            <Typography variant="body2">
+                              {camera.megapixels}MP • {camera.year} • {camera.sensor}
+                            </Typography>
+                            <Box sx={{ mt:  1 }}>
+                              <Chip 
+                                label={`Firmware: ${camera.firmwareVersion}`}
+                                size="small" 
+                                color="primary"
+                              />
+                              {camera.price && (
+                                <Chip 
+                                  label={`${camera.price.toLocaleString('no-NO')} kr`}
+                                  size="small" 
+                                  sx={{ ml:  1 }}
+                                />
+                              )}
+                            </Box>
+                          </Box>
+                      }
+                      />
+                    </ListItem>
+                    {index < filteredCameras.length - 1 && <Divider />}
+                  </React.Fragment>
+                ))}
+              </List>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* Camera Details */}
+        <Grid size={{ xs: 12 }} md={6}>
+          {selectedCamera ? (
+            <Card sx={theming.getThemedCardSx()}>
+              <CardContent sx={theming.getThemedCardSx()}>
+                <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                  {selectedCamera.brand} {selectedCamera.model}
+                </Typography>
+
+                <Alert severity="info" sx={{ mb:  2 }}>
+                  Firmware versjon: {selectedCamera.firmwareVersion}
+                  <br />
+                  Sist oppdatert: {selectedCamera.lastUpdated}
+                </Alert>
+
+                <Typography variant="subtitle1" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
+                  {theming.getThemedIcon('tune')}
+                  Tekniske Spesifikasjoner
+                </Typography>
+
+                <List dense>
+                  <ListItem>
+                    <ListItemText primary="Megapiksler" secondary={`${selectedCamera.megapixels} MP`} />
+                  </ListItem>
+                  <ListItem>
+                    <ListItemText primary="Sensor" secondary={selectedCamera.sensor} />
+                  </ListItem>
+                  <ListItem>
+                    <ListItemText primary="Maksimal ISO" secondary={selectedCamera.maxISO.toLocaleString()} />
+                  </ListItem>
+                  <ListItem>
+                    <ListItemText primary="Lansering" secondary={selectedCamera.year} />
+                  </ListItem>
+                </List>
+
+                <Typography variant="subtitle1" gutterBottom sx={{ mt: 2, display: 'flex', alignItems: 'center', gap:  1 }}>
+                  <Memory />
+                  Video Kapasiteter
+                </Typography>
+
+                <Box sx={{ mb:  2 }}>
+                  {selectedCamera.videoCapabilities.map((capability, index) => (
+                    <Chip
+                      key={index}
+                      label={capability}
+                      size="small"
+                      sx={{ mr: 1, mb: 1 }}
+                    />
+                  ))}
+                </Box>
+
+                <Typography variant="subtitle1" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
+                  {theming.getThemedIcon('star')}
+                  Hovedfunksjoner
+                </Typography>
+
+                <Box sx={{ mb:  2 }}>
+                  {selectedCamera.features.map((feature, index) => (
+                    <Chip
+                      key={index}
+                      label={feature}
+                      variant="outlined"
+                      size="small"
+                      sx={{ mr: 1, mb: 1 }}
+                    />
+                  ))}
+                </Box>
+
+                <Button variant="contained"
+                  startIcon={<Update />}
+                  onClick={() => checkFirmwareUpdate(selectedCamera)}
+                  fullWidth
+                  sx={{ mt:  2 }}
+                >
+                  Sjekk Firmware Oppdateringer
+                </Button>
+              </CardContent>
+            </Card>
+          ) : (
+            <Card sx={theming.getThemedCardSx()}>
+              <CardContent sx={{ ...theming.getThemedCardSx(), textAlign: 'center', py: 8 }}>
+                <PhotoCamera sx={{ fontSize: 64, color: 'text.disabled', mb: 2 }} />
+                <Typography variant="h6" color="text.secondary" sx={{ color: theming.colors.primary }}>
+                  Velg et kamera for å se detaljer
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Klikk på et kamera i listen for å se tekniske spesifikasjoner og firmware informasjon.
+                </Typography>
+              </CardContent>
+            </Card>
+          )}
+        </Grid>
+      </Grid>
+    </Box>
+  );
+};
+
+export default CameraSelectionTest;

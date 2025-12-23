@@ -1,0 +1,286 @@
+/**
+ * Split Sheet SongFlow Integration
+ * Component for linking/unlinking split sheets with SongFlow tracks and projects
+ */
+
+import React, { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
+import {
+  Box,
+  Typography,
+  Card,
+  CardContent,
+  Button,
+  Stack,
+  Chip,
+  IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  Alert,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemSecondaryAction,
+  Divider,
+  Tooltip
+} from '@mui/material';
+import {
+  Link as LinkIcon,
+  LinkOff as UnlinkIcon,
+  Add as AddIcon,
+  MusicNote as MusicIcon,
+  AccountBalance as SplitSheetIcon
+} from '@mui/icons-material';
+import type { SplitSheet, SplitSheetSongFlowLink } from './types';
+
+interface SplitSheetSongFlowIntegrationProps {
+  splitSheetId: string;
+  onLinkCreated?: () => void;
+}
+
+export default function SplitSheetSongFlowIntegration({
+  splitSheetId,
+  onLinkCreated
+}: SplitSheetSongFlowIntegrationProps) {
+  const queryClient = useQueryClient();
+  const [showLinkDialog, setShowLinkDialog] = useState(false);
+  const [songflowTrackId, setSongflowTrackId] = useState('');
+  const [songflowProjectId, setSongflowProjectId] = useState('');
+
+  // Fetch existing links
+  const { data: linksData } = useQuery({
+    queryKey: ['split-sheet-songflow-links', splitSheetId],
+    queryFn: async () => {
+      const response = await apiRequest(`/api/split-sheets/${splitSheetId}/songflow`);
+      return response;
+    }
+  });
+
+  const links: SplitSheetSongFlowLink[] = linksData?.data || [];
+
+  // Link mutation
+  const linkMutation = useMutation({
+    mutationFn: async (data: { songflow_track_id?: string; songflow_project_id?: string }) => {
+      await apiRequest(`/api/split-sheets/${splitSheetId}/link-songflow`, {
+        method: 'POST',
+        body: JSON.stringify(data)
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['split-sheet-songflow-links', splitSheetId] });
+      queryClient.invalidateQueries({ queryKey: ['split-sheet', splitSheetId] });
+      setShowLinkDialog(false);
+      setSongflowTrackId('');
+      setSongflowProjectId('');
+      if (onLinkCreated) onLinkCreated();
+    }
+  });
+
+  // Unlink mutation
+  const unlinkMutation = useMutation({
+    mutationFn: async (params: { songflow_track_id?: string; songflow_project_id?: string }) => {
+      const queryParams = new URLSearchParams();
+      if (params.songflow_track_id) queryParams.append('songflow_track_id', params.songflow_track_id);
+      if (params.songflow_project_id) queryParams.append('songflow_project_id', params.songflow_project_id);
+      
+      await apiRequest(`/api/split-sheets/${splitSheetId}/unlink-songflow?${queryParams.toString()}`, {
+        method: 'DELETE'
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['split-sheet-songflow-links', splitSheetId] });
+      queryClient.invalidateQueries({ queryKey: ['split-sheet', splitSheetId] });
+    }
+  });
+
+  const handleLink = () => {
+    if (!songflowTrackId && !songflowProjectId) {
+      alert('Vennligst oppgi enten SongFlow track ID eller project ID');
+      return;
+    }
+    linkMutation.mutate({
+      songflow_track_id: songflowTrackId || undefined,
+      songflow_project_id: songflowProjectId || undefined
+    });
+  };
+
+  const handleUnlink = (link: SplitSheetSongFlowLink) => {
+    if (window.confirm('Er du sikker på at du vil fjerne koblingen til SongFlow?')) {
+      unlinkMutation.mutate({
+        songflow_track_id: link.songflow_track_id || undefined,
+        songflow_project_id: link.songflow_project_id || undefined
+      });
+    }
+  };
+
+  return (
+    <Box>
+      <Card>
+        <CardContent>
+          <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
+            <Box>
+              <Typography variant="h6" sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
+                <MusicIcon sx={{ color: '#9f7aea' }} />
+                SongFlow Integrasjon
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Koble split sheet til SongFlow tracks eller prosjekter
+              </Typography>
+            </Box>
+            <Button
+              variant="outlined"
+              startIcon={<LinkIcon />}
+              onClick={() => setShowLinkDialog(true)}
+            >
+              Koble til SongFlow
+            </Button>
+          </Stack>
+
+          {links.length === 0 ? (
+            <Alert severity="info">
+              Ingen SongFlow-koblinger. Koble til en SongFlow track eller prosjekt for å synkronisere data.
+            </Alert>
+          ) : (
+            <List>
+              {links.map((link, index) => (
+                <React.Fragment key={link.id || index}>
+                  <ListItem>
+                    <ListItemText
+                      primary={
+                        <Stack direction="row" spacing={1} alignItems="center">
+                          <Chip
+                            label={link.link_type === 'track' ? 'Track' : 'Prosjekt'}
+                            size="small"
+                            color="primary"
+                            variant="outlined"
+                          />
+                          {link.songflow_track_id && (
+                            <Typography variant="body2">
+                              Track ID: {link.songflow_track_id}
+                            </Typography>
+                          )}
+                          {link.songflow_project_id && (
+                            <Typography variant="body2">
+                              Prosjekt ID: {link.songflow_project_id}
+                            </Typography>
+                          )}
+                          {link.auto_created && (
+                            <Chip
+                              label="Auto-opprettet"
+                              size="small"
+                              color="success"
+                              variant="outlined"
+                            />
+                          )}
+                        </Stack>
+                      }
+                      secondary={
+                        link.linked_at
+                          ? `Koblet: ${new Date(link.linked_at).toLocaleDateString('no-NO')}`
+                          : undefined
+                      }
+                    />
+                    <ListItemSecondaryAction>
+                      <Tooltip title="Fjern kobling">
+                        <IconButton
+                          edge="end"
+                          onClick={() => handleUnlink(link)}
+                          color="error"
+                        >
+                          <UnlinkIcon />
+                        </IconButton>
+                      </Tooltip>
+                    </ListItemSecondaryAction>
+                  </ListItem>
+                  {index < links.length - 1 && <Divider />}
+                </React.Fragment>
+              ))}
+            </List>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Link Dialog */}
+      <Dialog
+        open={showLinkDialog}
+        onClose={() => {
+          setShowLinkDialog(false);
+          setSongflowTrackId(', ');
+          setSongflowProjectId(', ');
+        }}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Koble til SongFlow</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <Alert severity="info">
+              Oppgi enten SongFlow track ID eller prosjekt ID for å koble til split sheet.
+            </Alert>
+            <TextField
+              label="SongFlow Track ID (valgfritt)"
+              value={songflowTrackId}
+              onChange={(e) => setSongflowTrackId(e.target.value)}
+              fullWidth
+              placeholder="f.eks. track_123"
+            />
+            <TextField
+              label="SongFlow Prosjekt ID (valgfritt)"
+              value={songflowProjectId}
+              onChange={(e) => setSongflowProjectId(e.target.value)}
+              fullWidth
+              placeholder="f.eks. project_456"
+            />
+            <Alert severity="warning">
+              Du må oppgi minst én ID (track eller prosjekt).
+            </Alert>
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => {
+            setShowLinkDialog(false);
+            setSongflowTrackId(', ');
+            setSongflowProjectId('');
+          }}>
+            Avbryt
+          </Button>
+          <Button
+            variant="contained"
+            onClick={handleLink}
+            disabled={linkMutation.isPending || (!songflowTrackId && !songflowProjectId)}
+            sx={{ bgcolor: '#9f7aea' }}
+          >
+            {linkMutation.isPending ? 'Kobler...' : 'Koble til'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
+  );
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

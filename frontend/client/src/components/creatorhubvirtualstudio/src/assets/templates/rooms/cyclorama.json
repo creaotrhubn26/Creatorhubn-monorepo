@@ -1,0 +1,52 @@
+{
+  "id": "cyclorama",
+  "name": "Cyclorama Studio",
+  "description": "Seamless cyclorama (infinity wall) setup for clean backgrounds and product photography",
+  "dimensions": {
+    "width": 6,
+    "height": 3.5,
+    "depth": 6
+  },
+  "environment": {
+    "floor": {
+      "type": "plane",
+      "material": {
+        "color": "#ffffff",
+        "roughness": 0.8,
+        "metalness": 0.0
+      },
+      "position": [0, 0, 0],
+      "rotation": [-1.5708, 0, 0],
+      "size": [6, 6]
+    },
+    "cyclorama": {
+      "type": "curved",
+      "material": {
+        "color": "#ffffff",
+        "roughness": 0.9
+      },
+      "position": [0, 0, -2],
+      "curveRadius": 3,
+      "curveHeight": 3.5,
+      "curveWidth": 6
+    }
+  },
+  "defaultCamera": {
+    "position": [0, 1.6, 4],
+    "target": [0, 1.6, 0],
+    "fov": 50
+  },
+  "lightProbes": [
+    {
+      "position": [0, 1.6, 0],
+      "radius": 2.0
+    },
+    {
+      "position": [0, 0.5, 0],
+      "radius": 1.5
+    }
+  ],
+  "notes": "Cyclorama provides seamless background transition from floor to wall"
+}
+
+

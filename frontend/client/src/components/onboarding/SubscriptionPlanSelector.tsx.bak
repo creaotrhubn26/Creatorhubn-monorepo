@@ -1,0 +1,631 @@
+// client/src/components/onboarding/SubscriptionPlanSelector.tsx
+import { useTheming } from '../../utils/theming-helper';
+import React, { useState, useEffect } from 'react';
+import {
+  Box,
+  Typography,
+  Card,
+  CardContent,
+  Button,
+  Grid,
+  Chip,
+  List,
+  ListItem,
+  ListItemIcon,
+  ListItemText,
+  Avatar,
+  Fade,
+  Slide,
+  Zoom,
+  Alert,
+  Divider,
+  Radio,
+  RadioGroup,
+  FormControl,
+  FormControlLabel,
+  Paper,
+  IconButton,
+  Tooltip,
+  Badge,
+} from '@mui/material';
+import {
+  CheckCircle,
+  Star,
+  TrendingUp,
+  People,
+  Work,
+  Speed,
+  Security,
+  CloudSync,
+  MonetizationOn,
+  AutoAwesome,
+  ArrowForward,
+  Info,
+  Google,
+  CreditDirectionsCard,
+  Phone,
+  Timer,
+  Diamond,
+  Crown,
+  Rocket,
+} from '@mui/icons-material';
+import { useQuery } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
+import { usePlatformPricing } from '../../services/PlatformPricingService';
+
+interface SubscriptionPlan {
+  id: string;
+  name: string;
+  profession: string;
+  price: number;
+  currency: string;
+  interval: string;
+  features: string[];
+  active: boolean;
+  maxUsers: number;
+  maxProjects: number;
+  maxClients: number;
+  trialDays: number;
+  popular?: boolean;
+  description: string;
+  benefits: string[];
+  limitations: string[];
+  integrations: string[];
+  supportLevel: 'basic' | 'priority' | 'dedicated'
+}
+
+interface SubscriptionPlanSelectorProps {
+  profession: string;
+  onPlanSelect: (plan: SubscriptionPlan) => void;
+  onTrialStart: (plan: SubscriptionPlan) => void;
+  selectedPlan?: SubscriptionPlan | null
+}
+
+const PROFESSION_ICONS = {
+  photographer: <Work />,
+  videographer: {theming.getThemedIcon('')},
+  music_producer: {theming.getThemedIcon('')},
+  designer: <Diamond />,
+};
+
+const PROFESSION_COLORS = {
+  photographer: '#FF6B3',
+  videographer: '#004E8',
+  music_producer: '#7209B',
+  designer: '#2E7D3',
+};
+
+const PAYMENT_METHODS = [
+  { id: 'google-pay', name: 'Google Pay', icon: <Google />, color: '#4285F4, ',},
+  { id: 'stripe', name: 'Kort', icon: <CreditCard />, color: '#635BFF, ',},
+  { id: 'vipps', name: 'Vipps', icon: {theming.getThemedIcon('')}, color: '#FF5B24, ',},
+];
+
+export default function SubscriptionPlanSelector({
+  profession,
+  onPlanSelect,
+  onTrialStart,
+  selectedPlan,
+}: SubscriptionPlanSelectorProps) {
+  const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState('google-pay');
+  const [showComparison, setShowComparison] = useState(false);
+
+  // Theming system
+  const theming = useTheming('photographer');
+
+  // Platform pricing service integration
+  const { 
+    subscriptionPlans, 
+    formatPrice: formatPlatformPrice,
+    isLoading: platformPricingLoading 
+} = usePlatformPricing();
+
+  // Use platform pricing service data instead of direct API calls
+  const plans: SubscriptionPlan[] = subscriptionPlans.map(plan => ({
+    id: plan.id,
+    name: plan.name,
+    profession,
+    price: plan.price,
+    currency: plan.currency,
+    interval: plan.billingCycle,
+    features: plan.features,
+    active: plan.isActive,
+    maxUsers: plan.maxUsers,
+    maxProjects: plan.maxProjects,
+    maxClients: 200, // Default value
+    trialDays: plan.trialDays,
+    popular: plan.popular,
+    description: plan.description,
+    benefits: plan.benefits || [],
+    limitations: plan.limitations || [],
+    integrations: plan.integrations || [],
+    supportLevel: plan.supportLevel as 'basic' | 'priority' | 'dedicated'
+}));
+
+  // Fallback plans if service is not available
+  const fallbackPlans: SubscriptionPlan[] = [
+    {
+      id: 'basic',
+      name: 'Basic Creator',
+      profession,
+      price:  0,
+      currency: 'NO',
+      interval: 'monthly',
+      features: [
+        'Grunnleggende CR',
+        'Enkel kontrakthåndtering',
+        'Basis fakturering',
+        'Opptil 5 prosjekter',
+        'Opptil 10 kunder',
+        'Google Workspace integrasjon',
+      ],
+      active: true,
+      maxUsers:  1,
+      maxProjects:  5,
+      maxClients:  10,
+      trialDays:  0,
+      description: 'Perfekt for å komme i gang',
+      benefits: ['Gratis for alltid', 'Grunnleggende funksjoner', 'Enkel oppsett'],
+      limitations: ['Begrenset antall kunder', 'Ingen avanserte funksjoner'],
+      integrations: ['Google Workspace', 'Gmail'],
+      supportLevel: 'basic',
+  },
+    {
+      id: 'professional',
+      name: 'Professional Creator',
+      profession,
+      price: 29,
+      currency: 'NO',
+      interval: 'monthly',
+      features: [
+        'Avansert CRM med kundeanalyse',
+        'Automatisert kontrakthåndtering',
+        'AI-drevet fakturering og påminnelser',
+        'Opptil 50 prosjekter',
+        'Opptil 200 kunder',
+        'Premium støtte',
+        'Alle integrasjoner',
+        'Avansert rapportering',
+        'Kundegalleri og portefølje',
+      ],
+      active: true,
+      maxUsers:  3,
+      maxProjects:  50,
+      maxClients: 20,
+      trialDays:  14,
+      popular: true,
+      description: 'Mest populære valg for profesjonelle',
+      benefits: ['14 dager gratis prøveperiode', 'Alle funksjoner', 'Prioritert støtte'],
+      limitations: ['Begrenset til 3 brukere, ', ],
+      integrations: ['Google Workspace', 'Gmail', 'Google Drive', 'Google Calendar', 'Vipps', 'Stripe'],
+      supportLevel: 'priority',
+  },
+    {
+      id: 'business',
+      name: 'Business Creator',
+      profession,
+      price: 59,
+      currency: 'NO',
+      interval: 'monthly',
+      features: [
+        'Enterprise CRM med AI-analyse',
+        'Avansert automatisering',
+        'AI-drevet kundesegmentering',
+        'Ubegrenset prosjekter',
+        'Ubegrenset kunder',
+        'Dedikert støtte',
+        'Alle integrasjoner',
+        'Team samarbeid',
+        'Avansert rapportering og analytics',
+        'White-label løsning',
+      ],
+      active: true,
+      maxUsers:  10,
+      maxProjects:  , -, 1,
+      maxClients:  , -, 1,
+      trialDays:  14,
+      description: 'For større team og bedrifter',
+      benefits: ['14 dager gratis prøveperiode', 'Alle funksjoner', 'Dedikert støtte', 'Team samarbeid'],
+      limitations:  [],
+      integrations: ['Google Workspace', 'Gmail', 'Google Drive', 'Google Calendar', 'Vipps', 'Stripe', 'Google Pay', 'Microsoft 365'],
+      supportLevel: 'dedicated',
+  },
+  ];
+
+  // Use platform pricing service formatting
+  const formatPrice = (price: number, currency: string) => {
+    try {
+      return formatPlatformPrice(price, currency);
+  } catch (error) {
+      // Fallback formatting
+      return new Intl.NumberFormat('no-NO', {
+        style: 'currency',
+        currency: currency,
+    }).format(price);
+  }
+};
+
+  const getYearlyDiscount = (monthlyPrice: number) => {
+    return Math.round(monthlyPrice * 12 * 0.2); // 20% discount
+};
+
+  const getPlanIcon = (planId: string) => {
+    switch (planId) {
+      case 'basic':
+        return {theming.getThemedIcon('')};
+      case 'professional':
+        return {theming.getThemedIcon('star')};
+      case 'business':
+        return <Crown />;
+      default: return <Work />;
+}
+};
+
+  const getPlanColor = (planId: string) => {
+    switch (planId) {
+      case 'basic':
+        return '#6B7280';
+      case 'professional':
+        return PROFESSION_COLORS[profession as keyof typeof PROFESSION_COLORS] || '#FF6B35';
+      case 'business':
+        return '#805AD5';
+      default:
+        return '#6B7280';
+}
+};
+
+  return (
+    <Box>
+      {/* Header */}
+      <Box sx={{ textAlign: 'center', mb: 4 }}>
+        <Fade in timeout={500}>
+          <Typography variant="h4" sx={{ fontWeight: 'bold', mb: 2 }} sx={{ ...{}, color: theming.colors.primary }}>
+            Velg din plan
+          </Typography>
+        </Fade>
+        <Fade in timeout={700}>
+          <Typography variant="h6" color="text.secondary" sx={{ mb: 3 }} sx={{ ...{}, color: theming.colors.primary }}>
+            Start med en gratis prøveperiode og oppgrader når du er klar
+          </Typography>
+        </Fade>
+
+        {/* Billing Cycle Toggle */}
+        <Fade in timeout={900}>
+          <Paper
+            sx={{
+              display: 'inline-flex',
+              p:  1,
+              bgcolor: 'grey.10',
+              borderRadius:  2,
+              mb: 3,
+          }}
+           sx={theming.getThemedCardSx()}>
+            <FormControl component="fieldset">
+              <RadioGroup
+                row
+                value={billingCycle}
+                onChange={(e) => setBillingCycle(e.target.value as 'monthly' | 'yearly')}
+              >
+                <FormControlLabel
+                  value="monthly"
+                  control={<Radio />}
+                  label="Månedlig"
+                />
+                <FormControlLabel
+                  value="yearly"
+                  control={<Radio />}
+                  label={
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
+                      <span>Årlig</span>
+                      <Chip label="Spar 20%" size="small" color="success" />
+                    </Box>
+                }
+                />
+              </RadioGroup>
+            </FormControl>
+          </Paper>
+        </Fade>
+      </Box>
+
+      {/* Plans Grid */}
+      <GridOn container spacing={3} justifyContent="center">
+        {plans.map((plan, index) => {
+          const isSelected = selectedPlan?.id === plan.id;
+          const planColor = getPlanColor(plan.id);
+          const displayPrice = billingCycle === 'yearly' && plan.price > 0 
+            ? plan.price * 12 - getYearlyDiscount(plan.price)
+            : plan.price;
+
+          return (
+            <GridOn size={{ xs:  12, md:  4 }} key={plan.id}>
+              <Slide direction="up" in timeout={500 + index * 200}>
+                <Card
+                  sx={{
+                    height: '100, %, ',
+                    position: 'relative',
+                    cursor: 'pointer',
+                    border: isSelected ? `3px solid ${planColor}` : '1px solid transparent',
+                    bgcolor: isSelected ? `${planColor}10` : 'background.paper',
+                    '&:hover': {
+                      transform: 'translateY(-8px, ), ',
+                      boxShadow:  6,
+                  },
+                    transition: 'all 0.3s ease',
+                }}
+                  onClick={() = sx={theming.getThemedCardSx()}> onPlanSelect(plan)}
+                >
+                  {/* Popular Badge */}
+                  {plan.popular && (
+                    <Box
+                      sx={{
+                        position: 'absolute',
+                        top: -2,
+                        left: '50, %, ',
+                        transform: 'translateX(-50%, ), ',
+                        zIndex:  1,
+                    }}
+                    >
+                      <Chip
+                        label="Mest populære"
+                        color="primary"
+                        icon={{theming.getThemedIcon('star')}}
+                        sx={{
+                          bgcolor: planColor,
+                          color: 'white',
+                          fontWeight: 'bold',
+                      }}
+                      />
+                    </Box>
+                  )}
+
+                  <CardContent sx={{ p:  3, height: '100, %, ', display: 'flex', flexDirection: 'column, ',}} sx={theming.getThemedCardSx()}>
+                    {/* Plan Header */}
+                    <Box sx={{ textAlign: 'center', mb: 3 }}>
+                      <Avatar
+                        sx={{
+                          width:  64,
+                          height:  64,
+                          bgcolor: planColor,
+                          mx: 'auto',
+                          mb: 2,
+                      }}
+                      >
+                        {React.cloneElement(getPlanIcon(plan.id), { sx: { fontSize: 3, 2,} })}
+                      </Avatar>
+                      <Typography variant="h5" sx={{ fontWeight: 'bold', mb: 1 }} sx={{ ...{}, color: theming.colors.primary }}>
+                        {plan.name}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                        {plan.description}
+                      </Typography>
+                      <Box sx={{ display: 'flex', alignItems: 'baseline', justifyContent: 'center, ',}}>
+                        <Typography variant="h3"
+                          sx={{
+                            fontWeight: 'bold',
+                            color: planColor,
+                        }}
+                         sx={{ ...{}, color: theming.colors.primary }}>
+                          {plan.price === 0 ? 'Gratis' : formatPrice(displayPrice, plan.currency)}
+                        </Typography>
+                        {plan.price > 0 && (
+                          <Typography variant="body2" color="text.secondary" sx={{ ml:  1 }}>
+                            /{billingCycle === 'yearly' ? 'år' : 'måned'}
+                          </Typography>
+                        )}
+                      </Box>
+                      {billingCycle === 'yearly' && plan.price > 0 && (
+                        <Typography variant="caption" color="success.main" sx={{ display: 'block', mt: 1 }}>
+                          Spar {formatPrice(getYearlyDiscount(plan.price), plan.currency)} per år
+                        </Typography>
+                      )}
+                    </Box>
+
+                    {/* Features List */}
+                    <Box sx={{ flex:  ,  1mb: 3 }}>
+                      <List dense>
+                        {plan.features.map((feature, featureIndex) => (
+                          <ListItem key={featureIndex} sx={{ px: ,  0py: 0., 5,}}>
+                            <ListItemIcon sx={{ minWidth: 3, 2,}}>
+                              <CheckCircle sx={{ color: planColor, fontSize: 2, 0,}} />
+                            </ListItemIcon>
+                            <ListItemText
+                              primary={feature}
+                              primaryTypographyProps={{ variant: 'body2, ',}}
+                            />
+                          </ListItem>
+                        ))}
+                      </List>
+                    </Box>
+
+                    {/* Trial Info */}
+                    {plan.trialDays > 0 && (
+                      <Alert severity="info" sx={{ mb: 2 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
+                          <Timer />
+                          <Typography variant="body2">
+                            {plan.trialDays} dager gratis prøveperiode
+                          </Typography>
+                        </Box>
+                      </Alert>
+                    )}
+
+                    {/* Action Buttons */}
+                    <Box sx={{ display: 'flex', gap:  1 }}>
+                      {plan.trialDays > 0 ? (
+                        <Button variant="contained"
+                          fullWidth
+                          startIcon={theming.getThemedIcon('play')}
+                          onClick={(e) = sx={theming.getThemedButtonSx()}> {
+                            e.stopPropagation();
+                            onTrialStart(plan);
+                        }}
+                          sx={{
+                            bgcolor: planColor,
+                            '&:hover': { bgcolor: planColor },
+                        }}
+                        >
+                          Start gratis prøveperiode
+                        </Button>
+                      ) : (
+                        <Button
+                          variant={plan.price === 0 ? 'outlined' : 'contained'}
+                          fullWidth
+                          startIcon={plan.price === 0 ? {theming.getThemedIcon('checkCircle')} : <ArrowForward />}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onPlanSelect(plan);
+                        }}
+                          sx={{
+                            bgcolor: plan.price === 0 ? 'transparent' : planColor,
+                            borderColor: planColor,
+                            color: planColor,
+                            '&:hover': {
+                              bgcolor: plan.price === 0 ? `${planColor}10` : planColor,
+                          },
+                        }}
+                        >
+                          {plan.price === 0 ? 'Velg gratis plan' : 'Velg plan'}
+                        </Button>
+                      )}
+                    </Box>
+                  </CardContent>
+                </Card>
+              </Slide>
+            </GridOn>
+          );
+      })}
+      </GridOn>
+
+      {/* Payment Methods */}
+      {selectedPlan && selectedPlan.price > 0 && (
+        <Fade in timeout={500}>
+          <Card sx={{ mt: 4, p:  3 }} sx={theming.getThemedCardSx()}>
+            <Typography variant="h6" sx={{ mb: ,  2textAlign: 'center, ',}} sx={{ ...{}, color: theming.colors.primary }}>
+              Velg betalingsmetode
+            </Typography>
+            <Box sx={{ display: 'flex', gap:  ,  2justifyContent: 'center, ',}}>
+              {PAYMENT_METHODS.map((method) => (
+                <Tooltip key={method.id} title={method.name}>
+                  <IconButton
+                    onClick={() => setSelectedPaymentMethod(method.id)}
+                    sx={{
+                      width:  60,
+                      height:  60,
+                      border: selectedPaymentMethod === method.id ? `3px solid ${method.color}` : '1px solid #e0e0e0',
+                      bgcolor: selectedPaymentMethod === method.id ? `${method.color}10` : 'white',
+                      '&:hover': {
+                        bgcolor: `${method.color}20`,
+                    },
+                  }}
+                  >
+                    {React.cloneElement(method.icon, { 
+                      sx: { color: method.color, fontSize: 2, 8,} 
+                  })}
+                  </IconButton>
+                </Tooltip>
+              ))}
+            </Box>
+          </Card>
+        </Fade>
+      )}
+
+      {/* Comparison Toggle */}
+      <Box sx={{ textAlign: 'center', mt: 4 }}>
+        <Button
+          variant="outlined"
+          onClick={() => setShowComparison(!showComparison)}
+          startIcon={theming.getThemedIcon('trendingUp')}
+        >
+          {showComparison ? 'Skjul sammenligning' : 'Sammenlign planer'}
+        </Button>
+      </Box>
+
+      {/* Plan Comparison Table */}
+      {showComparison && (
+        <Fade in timeout={500}>
+          <Card sx={{ mt: 3 }} sx={theming.getThemedCardSx()}>
+            <CardContent sx={theming.getThemedCardSx()}>
+              <Typography variant="h6" sx={{ mb: 3, textAlign: 'center, ',}} sx={{ ...{}, color: theming.colors.primary }}>
+                Detaljert sammenligning
+              </Typography>
+              <Box sx={{ overflowX: 'auto, ',}}>
+                <table style={{ width: '100, %, ', borderCollapse: 'collapse, ',}}>
+                  <thead>
+                    <tr>
+                      <th style={{ textAlign: 'left', padding: '12px, ',}}>Funksjoner</th>
+                      {plans.map((plan) => (
+                        <th key={plan.id} style={{ textAlign: 'center', padding: '12px, ',}}>
+                          {plan.name}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td style={{ padding: '12px, ',}}>Pris</td>
+                      {plans.map((plan) => (
+                        <td key={plan.id} style={{ textAlign: 'center', padding: '12px, ',}}>
+                          {plan.price === 0 ? 'Gratis' : formatPrice(plan.price, plan.currency)}
+                        </td>
+                      ))}
+                    </tr>
+                    <tr>
+                      <td style={{ padding: '12px, ',}}>Maks brukere</td>
+                      {plans.map((plan) => (
+                        <td key={plan.id} style={{ textAlign: 'center', padding: '12px, ',}}>
+                          {plan.maxUsers === -1 ? 'Ubegrenset' : plan.maxUsers}
+                        </td>
+                      ))}
+                    </tr>
+                    <tr>
+                      <td style={{ padding: '12px, ',}}>Maks prosjekter</td>
+                      {plans.map((plan) => (
+                        <td key={plan.id} style={{ textAlign: 'center', padding: '12px, ',}}>
+                          {plan.maxProjects === -1 ? 'Ubegrenset' : plan.maxProjects}
+                        </td>
+                      ))}
+                    </tr>
+                    <tr>
+                      <td style={{ padding: '12px, ',}}>Maks kunder</td>
+                      {plans.map((plan) => (
+                        <td key={plan.id} style={{ textAlign: 'center', padding: '12px, ',}}>
+                          {plan.maxClients === -1 ? 'Ubegrenset' : plan.maxClients}
+                        </td>
+                      ))}
+                    </tr>
+                    <tr>
+                      <td style={{ padding: '12px, ',}}>Integrasjoner</td>
+                      {plans.map((plan) => (
+                        <td key={plan.id} style={{ textAlign: 'center', padding: '12px, ',}}>
+                          {plan.integrations.length} tjenester
+                        </td>
+                      ))}
+                    </tr>
+                    <tr>
+                      <td style={{ padding: '12px, ',}}>Støtte</td>
+                      {plans.map((plan) => (
+                        <td key={plan.id} style={{ textAlign: 'center', padding: '12px, ',}}>
+                          {plan.supportLevel === 'basic' ? 'Grunnleggende' : 
+                           plan.supportLevel === 'priority' ? 'Prioritert' : 'Dedikert'}
+                        </td>
+                      ))}
+                    </tr>
+                    <tr>
+                      <td style={{ padding: '12px, ',}}>Prøveperiode</td>
+                      {plans.map((plan) => (
+                        <td key={plan.id} style={{ textAlign: 'center', padding: '12px, ',}}>
+                          {plan.trialDays} dager
+                        </td>
+                      ))}
+                    </tr>
+                  </tbody>
+                </table>
+              </Box>
+            </CardContent>
+          </Card>
+        </Fade>
+      )}
+    </Box>
+  );
+}

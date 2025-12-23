@@ -1,0 +1,623 @@
+import { useTheming } from '../../utils/theming-helper';
+import React, { useState, useEffect } from 'react';
+import {
+  Box,
+  Paper,
+  Typography,
+  Button,
+  Stack,
+  IconButton,
+  Collapse,
+  Link,
+  Chip,
+  Switch,
+  FormControlLabel,
+  Divider,
+} from '@mui/material';
+import {
+  Close,
+  ExpandMore,
+  ExpandLess,
+  Analytics,
+  Security,
+  Cookie,
+  Info,
+  Policy,
+} from '@mui/icons-material';
+
+interface GdprNoticeProps {
+  position?: 'bottom' | 'top';
+}
+
+export function GdprNotice({ position = 'bottom' }: GdprNoticeProps) {
+  // Theming system
+  const theming = useTheming('photographer');
+  const [isVisible, setIsVisible] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [cookieSettings, setCookieSettings] = useState({
+    necessary: true, // Always required
+    analytics: false,
+    marketing: false,
+    preferences: false,
+  });
+
+  useEffect(() => {
+    // Check if user has already given consent
+    const hasConsent = localStorage.getItem('gdpr-consent');
+    const consentDate = localStorage.getItem('gdpr-consent-date');
+
+    // Show notice if no consent or consent is older than 12 months (Forbrukertilsynet requirement)
+    if (!hasConsent || !consentDate) {
+      setIsVisible(true);
+  } else {
+      const consentTime = new Date(consentDate);
+      const oneYearAgo = new Date();
+      oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+
+      if (consentTime < oneYearAgo) {
+        setIsVisible(true);
+    }
+  }
+}, []);
+
+  const handleAcceptAll = () => {
+    const allAccepted = {
+      necessary: true,
+      analytics: true,
+      marketing: true,
+      preferences: true,
+  };
+
+    localStorage.setItem('gdpr-consent', JSON.stringify(allAccepted));
+    localStorage.setItem('gdpr-consent-date', new Date().toISOString());
+    localStorage.setItem(
+      'gdpr-consent-details',
+      JSON.stringify({
+        consentMethod: 'accept_all',
+        userAgent: navigator.userAgent,
+        timestamp: new Date().toISOString(),
+        version: '1.0',
+      }),
+    );
+
+    setIsVisible(false);
+
+    // Configure Google Analytics based on consent
+    if (window.gtag) {
+      window.gtag('consent', 'update', {
+        analytics_storage: 'granted',
+        ad_storage: 'granted',
+        functionality_storage: 'granted',
+        personalization_storage: 'granted',
+    });
+  }
+};
+
+  const handleRejectAll = () => {
+    const onlyNecessary = {
+      necessary: true,
+      analytics: false,
+      marketing: false,
+      preferences: false,
+  };
+
+    localStorage.setItem('gdpr-consent', JSON.stringify(onlyNecessary));
+    localStorage.setItem('gdpr-consent-date', new Date().toISOString());
+    localStorage.setItem(
+      'gdpr-consent-details',
+      JSON.stringify({
+        consentMethod: 'reject_all',
+        userAgent: navigator.userAgent,
+        timestamp: new Date().toISOString(),
+        version: '1.0',
+      }),
+    );
+
+    setIsVisible(false);
+
+    // Deny all non-necessary cookies
+    if (window.gtag) {
+      window.gtag('consent', 'update', {
+        analytics_storage: 'denied',
+        ad_storage: 'denied',
+        functionality_storage: 'denied',
+        personalization_storage: 'denied',
+    });
+  }
+};
+
+  const handleSaveCustom = () => {
+    localStorage.setItem('gdpr-consent', JSON.stringify(cookieSettings));
+    localStorage.setItem('gdpr-consent-date', new Date().toISOString());
+    localStorage.setItem(
+      'gdpr-consent-details',
+      JSON.stringify({
+        consentMethod: 'custom',
+        settings: cookieSettings,
+        userAgent: navigator.userAgent,
+        timestamp: new Date().toISOString(),
+        version: '1.0',
+      }),
+    );
+
+    setIsVisible(false);
+
+    // Configure Google Analytics based on custom settings
+    if (window.gtag) {
+      window.gtag('consent', 'update', {
+        analytics_storage: cookieSettings.analytics ? 'granted' : 'denied',
+        ad_storage: cookieSettings.marketing ? 'granted' : 'denied',
+        functionality_storage: cookieSettings.preferences ? 'granted' : 'denied',
+        personalization_storage: cookieSettings.preferences ? 'granted' : 'denied',
+    });
+  }
+};
+
+  const handleCustomize = () => {
+    setIsExpanded(!isExpanded);
+};
+
+  if (!isVisible) return null;
+
+  return (
+    <Paper
+      elevation={8}
+      sx={{
+        position: 'fixed',
+        [position]: 20,
+        left:  20,
+        right:  20,
+        zIndex: 140,
+        maxWidth: '600px',
+        mx: 'auto',
+        borderRadius: '16px',
+        background: 'linear-gradient(145deg, rgba(255,255,255,0.98) 0%, rgba(255,248,235,0.98) 100%)',
+        backdropFilter: 'blur(20px)',
+        border: '1px solid rgba(25,140,0,0.3)',
+        boxShadow: '0 20px 60px rgba(25,140,0,0.2)',
+        overflow: 'hidden',
+      }}
+    >
+      <Box sx={{ p: 3 }}>
+        {/* Header */}
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            mb: 2,
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Box
+              sx={{
+                width: 40,
+                height: 40,
+                borderRadius: '10px',
+                background: 'linear-gradient(135deg, #ff8c00 0%, #e67c00 100%)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'white',
+              }}
+            >
+              <Cookie />
+            </Box>
+            <Box>
+              <Typography variant="h6" sx={{ fontWeight: 'bold', color: '#1f2937' }}>
+                Personvern og Cookies
+              </Typography>
+              <Typography variant="body2" sx={{ color: '#6b7280' }}>
+                CreatorHub Norge
+              </Typography>
+            </Box>
+          </Box>
+
+          <IconButton onClick={() => setIsVisible(false)} size="small" sx={{ color: '#6b7280' }}>
+            <Close />
+          </IconButton>
+        </Box>
+
+        {/* Main Content - Forbrukertilsynet compliant */}
+        <Typography variant="body2" sx={{ color: '#374151', mb: 2, lineHeight: 1.6 }}>
+          <strong>Vi respekterer ditt personvern.</strong> CreatorHub Norge bruker cookies og
+          lignende teknologier. Du har full kontroll over hvilke cookies du vil akseptere.
+          Nødvendige cookies kreves for at nettstedet skal fungere.
+        </Typography>
+
+        {/* Legal basis information */}
+        <Box
+          sx={{
+            p: 1.5,
+            backgroundColor: 'rgba(3, 150, 243, 0.1)',
+            borderRadius: '8px',
+            mb: 2,
+            border: '1px solid rgba(3, 150, 243, 0.2)',
+        }}
+        >
+          <Typography
+            variant="caption"
+            sx={{
+              color: '#1976d',
+              fontWeight: 'bold',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 0.5,
+              mb: 0.5,
+          }}
+          >
+            <Info sx={{ fontSize: 14 }} />
+            Rettslig grunnlag
+          </Typography>
+          <Typography
+            variant="caption"
+            sx={{ color: '#374151', display: 'block', lineHeight: 1.4 }}
+          >
+            Behandling av personopplysninger baseres på samtykke (GDPR art. 6.1.a) og berettiget
+            interesse (GDPR art. 6.1.f). Du kan når som helst trekke tilbake samtykket ditt.
+          </Typography>
+        </Box>
+
+        {/* Cookie Categories */}
+        <Stack direction="row" spacing={1} sx={{ mb: 3, flexWrap: 'wrap', gap:  1 }}>
+          <Chip
+            label="Nødvendige"
+            size="small"
+            variant="filled"
+            sx={{
+              backgroundColor: 'rgba(6, 125, 50, 0.9)',
+              color: 'white',
+              fontWeight: 'bold',
+          }}
+          />
+          <Chip
+            label="Analyse"
+            size="small"
+            variant="outlined"
+            sx={{
+              borderColor: '#1976d',
+              color: '#1976d',
+          }}
+          />
+          <Chip
+            label="Markedsføring"
+            size="small"
+            variant="outlined"
+            sx={{
+              borderColor: '#ed6c0',
+              color: '#ed6c0',
+          }}
+          />
+          <Chip
+            label="Preferanser"
+            size="small"
+            variant="outlined"
+            sx={{
+              borderColor: '#9c27b',
+              color: '#9c27b',
+          }}
+          />
+        </Stack>
+
+        {/* Detailed Cookie Settings */}
+        <Collapse in={isExpanded}>
+          <Box
+            sx={{
+              p:  2,
+              backgroundColor: 'rgba(25,255,255,0.7)',
+              borderRadius: '12px',
+              mb: 2,
+              border: '1px solid rgba(25,140,0,0.2)',
+          }}
+          >
+            <Typography
+              variant="subtitle2"
+              sx={{
+                fontWeight: 'bold',
+                mb: 2,
+                color: '#1f293',
+                display: 'flex',
+                alignItems: 'center',
+                gap:  1,
+            }}
+            >
+              <Cookie />
+              Tilpass cookie-innstillinger
+            </Typography>
+
+            <Stack spacing={3}>
+              {/* Necessary Cookies - Always on */}
+              <Box>
+                <Box
+                  sx={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    mb: 1,
+                }}
+                >
+            <Typography variant="body2" sx={{ fontWeight: 'bold', color: '#2e7d32' }}>
+              Nødvendige cookies
+            </Typography>
+                  <Switch checked={cookieSettings.necessary} disabled color="success" />
+                </Box>
+            <Typography variant="caption" sx={{ color: '#6b7280', display: 'block', mb: 1 }}>
+              Tekniske cookies som er nødvendige for at nettstedet skal fungere. Inkluderer
+              autentisering, sikkerhet og grunnleggende funksjonalitet. Kan ikke deaktiveres.
+            </Typography>
+            <Typography variant="caption" sx={{ color: '#9ca3af', fontSize: '10px' }}>
+              Lagring: Sesjon og lokal lagring • Formål: Sikkerhet og funksjonalitet
+            </Typography>
+          </Box>
+
+          <Divider />
+
+          {/* Analytics Cookies */}
+          <Box>
+            <Box
+              sx={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                mb: 1,
+              }}
+            >
+              <Typography variant="body2" sx={{ fontWeight: 'bold', color: '#1976d2' }}>
+                Analysecookies
+              </Typography>
+                  <Switch
+                    checked={cookieSettings.analytics}
+                    onChange={(e) =>
+                      setCookieSettings((prev) => ({
+                        ...prev,
+                        analytics: e.target.checked,
+                    }))
+                  }
+                    color="primary"
+                  />
+                </Box>
+              <Typography variant="caption" sx={{ color: '#6b7280', display: 'block', mb: 1 }}>
+                Google Analytics (GA4) for å forstå hvordan besøkende bruker nettstedet. Data
+                anonymiseres og deles ikke med tredjeparter til markedsføringsformål.
+              </Typography>
+              <Typography variant="caption" sx={{ color: '#9ca3af', fontSize: '10px' }}>
+                Tjeneste: Google Analytics • Lagring: 2 år • Overføring: EU/EØS og USA (adequacy
+                decision)
+              </Typography>
+            </Box>
+
+            <Divider />
+
+            {/* Marketing Cookies */}
+            <Box>
+              <Box
+                sx={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  mb: 1,
+                }}
+              >
+                <Typography variant="body2" sx={{ fontWeight: 'bold', color: '#ed6c02' }}>
+                  Markedsføringscookies
+                </Typography>
+                  <Switch
+                    checked={cookieSettings.marketing}
+                    onChange={(e) =>
+                      setCookieSettings((prev) => ({
+                        ...prev,
+                        marketing: e.target.checked,
+                    }))
+                  }
+                    color="warning"
+                  />
+                </Box>
+              <Typography variant="caption" sx={{ color: '#6b7280', display: 'block', mb: 1 }}>
+                For å vise relevante annonser og måle effektiviteten av markedsføringskampanjer.
+                Brukes til å bygge en profil av dine interesser.
+              </Typography>
+              <Typography variant="caption" sx={{ color: '#9ca3af', fontSize: '10px' }}>
+                Tjenester: Google Ads, Facebook • Lagring: 1-2 år • Rettslig grunnlag: Samtykke
+              </Typography>
+            </Box>
+
+            <Divider />
+
+            {/* Preference Cookies */}
+            <Box>
+              <Box
+                sx={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  mb: 1,
+                }}
+              >
+                <Typography variant="body2" sx={{ fontWeight: 'bold', color: '#9c27b0' }}>
+                  Preferansecookies
+                </Typography>
+                  <Switch
+                    checked={cookieSettings.preferences}
+                    onChange={(e) =>
+                      setCookieSettings((prev) => ({
+                        ...prev,
+                        preferences: e.target.checked,
+                    }))
+                  }
+                    color="secondary"
+                  />
+                </Box>
+              <Typography variant="caption" sx={{ color: '#6b7280', display: 'block', mb: 1 }}>
+                Husker dine innstillinger og preferanser for å tilpasse opplevelsen din, som
+                språkvalg og brukergrensesnitt-innstillinger.
+              </Typography>
+              <Typography variant="caption" sx={{ color: '#9ca3af', fontSize: '10px' }}>
+                Lagring: 1 år • Formål: Brukeropplevelse • Rettslig grunnlag: Berettiget interesse
+              </Typography>
+            </Box>
+          </Stack>
+        </Box>
+      </Collapse>
+
+      {/* Actions */}
+        <Stack spacing={2}>
+          {!isExpanded ? (
+            <Stack direction="row" spacing={2}>
+              <Button variant="contained"
+                onClick={handleAcceptAll}
+                sx={{
+                  flex:  1,
+                  background: 'linear-gradient(135deg, #ff8c00 0%, #e67c00 100%)',
+                  color: 'white',
+                  py: 1.2,
+                  borderRadius: '10px',
+                  textTransform: 'none',
+                  fontWeight: 'bold',
+                  fontSize: '14px',
+                  '&:hover': {
+                    background: 'linear-gradient(135deg, #e67c00 0%, #cc7000 100%)',
+                },
+              }}
+  >
+                Godta alle cookies
+              </Button>
+
+              <Button
+                variant="outlined"
+                onClick={handleRejectAll}
+                sx={{
+                  flex:  1,
+                  borderColor: '#6b728',
+                  color: '#6b728',
+                  py: 1.2,
+                  borderRadius: '10px',
+                  textTransform: 'none',
+                  fontSize: '14px',
+                  '&:hover': {
+                    borderColor: '#4b556',
+                    backgroundColor: 'rgba(17, 114, 128, 0.05)',
+                },
+              }}
+              >
+                Kun nødvendige
+              </Button>
+            </Stack>
+          ) : (
+            <Button variant="contained"
+              onClick={handleSaveCustom}
+              sx={{
+                background: 'linear-gradient(135deg, #2e7d32 0%, #4caf50 100%)',
+                color: 'white',
+                py: 1.2,
+                borderRadius: '10px',
+                textTransform: 'none',
+                fontWeight: 'bold',
+                fontSize: '14px',
+                '&:hover': {
+                  background: 'linear-gradient(135deg, #1b5e20 0%, #2e7d32 100%)',
+              },
+            }}
+>
+              Lagre mine valg
+            </Button>
+          )}
+
+          <Button
+            variant="text"
+            startIcon={isExpanded ? <ExpandLess /> : <ExpandMore />}
+            onClick={handleCustomize}
+            sx={{
+              color: '#6b7280',
+              textTransform: 'none',
+              py: 0.5,
+              fontSize: '13px',
+            }}
+          >
+            {isExpanded ? 'Skjul innstillinger' : 'Tilpass cookie-innstillinger'}
+          </Button>
+        </Stack>
+
+        {/* Footer Links - Forbrukertilsynet compliant */}
+        <Box
+          sx={{
+            mt: 2,
+            pt: 2,
+            borderTop: '1px solid rgba(255,140,0,0.2)',
+          }}
+        >
+          <Stack spacing={1}>
+            <Typography variant="caption" sx={{ color: '#9ca3af', textAlign: 'center' }}>
+              <Policy sx={{ fontSize: 12, mr: 0.5, verticalAlign: 'middle' }} />
+              Dine rettigheter etter GDPR: Innsyn, retting, sletting, begrensning, dataportabilitet
+              og innsigelse.
+            </Typography>
+
+            <Box
+              sx={{
+                display: 'flex',
+                justifyContent: 'center',
+                gap: 2,
+                flexWrap: 'wrap',
+              }}
+            >
+              <Link
+                href="/privacy-policy"
+                sx={{
+                  color: '#ff8c00',
+                  textDecoration: 'none',
+                  fontSize: '12px',
+                  fontWeight: 500,
+                }}
+              >
+                Personvernregler
+              </Link>
+              <Link
+                href="/cookie-policy"
+                sx={{
+                  color: '#ff8c00',
+                  textDecoration: 'none',
+                  fontSize: '12px',
+                  fontWeight: 500,
+                }}
+              >
+                Cookie-policy
+              </Link>
+              <Link
+                href="/gdpr-rettigheter"
+                sx={{
+                  color: '#ff8c00',
+                  textDecoration: 'none',
+                  fontSize: '12px',
+                  fontWeight: 500,
+                }}
+              >
+                Dine rettigheter
+              </Link>
+              <Link
+                href="mailto:personvern@creatorhubn.no"
+                sx={{
+                  color: '#ff8c00',
+                  textDecoration: 'none',
+                  fontSize: '12px',
+                  fontWeight: 500,
+                }}
+              >
+                Kontakt personvernombud
+              </Link>
+            </Box>
+
+            <Typography
+              variant="caption"
+              sx={{ color: '#9ca3af', textAlign: 'center', fontSize: '10px' }}
+            >
+              Behandlingsansvarlig: QAZI FOTOREEL • Org.nr: 833038222 • Personvernombud:
+              personvern@creatorhubn.no
+            </Typography>
+          </Stack>
+        </Box>
+      </Box>
+    </Paper>
+  );
+}
+
+export default GdprNotice;

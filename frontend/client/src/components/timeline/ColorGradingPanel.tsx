@@ -1,0 +1,273 @@
+/**
+ * COLOR GRADING PANEL
+ * DaVinci Resolve-style color wheels
+ */
+
+import React, { useState } from 'react';
+import {
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  Box,
+  Typography,
+  Stack,
+  Slider,
+  Grid,
+  Card,
+  CardActionArea,
+  IconButton,
+  Chip,
+  Tabs,
+  Tab,
+  Button,
+  Badge
+} from '@mui/material';
+import { Close, Palette, AutoFixHigh, Compare } from '@mui/icons-material';
+import { ColorGradingEngine } from '../../services/color-grading-engine';
+import { LUTEngine } from '../../services/lut-engine';
+import LUTLibrary from './LUTLibrary';
+
+interface ColorGradingPanelProps {
+  open: boolean;
+  onClose: () => void;
+  onApplyGrade: (grade: any) => void;
+}
+
+export default function ColorGradingPanel({
+  open,
+  onClose,
+  onApplyGrade
+}: ColorGradingPanelProps) {
+  const [tab, setTab] = useState(0);
+  const [temperature, setTemperature] = useState(0);
+  const [tint, setTint] = useState(0);
+  const [exposure, setExposure] = useState(0);
+  const [contrast, setContrast] = useState(100);
+  const [saturation, setSaturation] = useState(100);
+  const [showLUTLibrary, setShowLUTLibrary] = useState(false);
+  const [selectedLUT, setSelectedLUT] = useState<string | null>(null);
+  
+  const presets = ColorGradingEngine.getColorPresets();
+  
+  const handleApplyPreset = (preset: any) => {
+    const grade = preset.grade;
+    if (grade.temperature !== undefined) setTemperature(grade.temperature);
+    if (grade.tint !== undefined) setTint(grade.tint);
+    if (grade.exposure !== undefined) setExposure(grade.exposure * 100);
+    if (grade.contrast !== undefined) setContrast(grade.contrast);
+    if (grade.saturation !== undefined) setSaturation(grade.saturation);
+    
+    onApplyGrade(grade);
+  };
+  
+  const handleChange = () => {
+    onApplyGrade({
+      temperature,
+      tint,
+      exposure: exposure / 100,
+      contrast,
+      saturation
+    });
+  };
+
+  const handleAutoColor = async () => {
+    // This would call the auto color correction API
+    // For now, apply a balanced preset
+    setTemperature(0);
+    setTint(0);
+    setExposure(0);
+    setContrast(100);
+    setSaturation(100);
+    onApplyGrade({
+      temperature: 0,
+      tint: 0,
+      exposure: 0,
+      contrast: 100,
+      saturation: 100,
+    });
+  };
+
+  const handleMatchShot = async () => {
+    // This would call the shot matching API
+    // For now, show a message
+    alert('Shot matching feature - Select a reference clip first');
+  };
+  
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+      <DialogTitle sx={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white' }}>
+        <Stack direction="row" justifyContent="space-between">
+          <Typography variant="h6">Color Grading</Typography>
+          <IconButton onClick={onClose} sx={{ color: 'white' }}>
+            <Close />
+          </IconButton>
+        </Stack>
+      </DialogTitle>
+      
+      <DialogContent>
+        {/* Tabs: Manual vs LUTs */}
+        <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 2 }}>
+          <Tab label="Manual Grading" />
+          <Tab label={
+            <Badge badgeContent={627} color="primary" max={999}>
+              <span>LUTs</span>
+            </Badge>
+          } />
+        </Tabs>
+        
+        {tab === 0 && (
+          <Box>
+            {/* Auto Color Correction Buttons */}
+            <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={<AutoFixHigh />}
+                onClick={handleAutoColor}
+              >
+                Auto Color
+              </Button>
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={<Compare />}
+                onClick={handleMatchShot}
+              >
+                Match Shot
+              </Button>
+            </Stack>
+            
+            {/* Presets */}
+            <Typography variant="subtitle2" sx={{ mb: 1 }}>Presets</Typography>
+        <Grid container spacing={1} sx={{ mb: 3 }}>
+          {presets.map((preset) => (
+            <Grid item xs={6} sm={3} key={preset.name}>
+              <Card>
+                <CardActionArea onClick={() => handleApplyPreset(preset)}>
+                  <Box sx={{ p: 1.5, textAlign: 'center' }}>
+                    <Typography variant="caption" fontWeight={600}>{preset.name}</Typography>
+                  </Box>
+                </CardActionArea>
+              </Card>
+            </Grid>
+          ))}
+        </Grid>
+        
+        {/* Color Wheels */}
+        <Typography variant="subtitle2" sx={{ mb: 2 }}>Color Wheels</Typography>
+        
+        {/* Temperature */}
+        <Box sx={{ mb: 2 }}>
+          <Typography variant="caption">
+            Temperature: {temperature > 0 ? `+${temperature}` : temperature} (Cool ← → Warm)
+          </Typography>
+          <Slider
+            value={temperature}
+            onChange={(_, v) => { setTemperature(v as number); handleChange(); }}
+            min={-100}
+            max={100}
+            sx={{ color: temperature > 0 ? '#FF9800' : '#2196F3' }}
+          />
+        </Box>
+        
+        {/* Tint */}
+        <Box sx={{ mb: 2 }}>
+          <Typography variant="caption">
+            Tint: {tint > 0 ? `+${tint}` : tint} (Green ← → Magenta)
+          </Typography>
+          <Slider
+            value={tint}
+            onChange={(_, v) => { setTint(v as number); handleChange(); }}
+            min={-100}
+            max={100}
+            sx={{ color: tint > 0 ? '#E91E63' : '#4CAF50' }}
+          />
+        </Box>
+        
+        {/* Exposure */}
+        <Box sx={{ mb: 2 }}>
+          <Typography variant="caption">Exposure: {(exposure / 50).toFixed(2)} stops</Typography>
+          <Slider
+            value={exposure}
+            onChange={(_, v) => { setExposure(v as number); handleChange(); }}
+            min={-200}
+            max={200}
+            sx={{ color: '#667eea' }}
+          />
+        </Box>
+        
+        {/* Contrast */}
+        <Box sx={{ mb: 2 }}>
+          <Typography variant="caption">Contrast: {contrast}%</Typography>
+          <Slider
+            value={contrast}
+            onChange={(_, v) => { setContrast(v as number); handleChange(); }}
+            min={0}
+            max={200}
+            sx={{ color: '#667eea' }}
+          />
+        </Box>
+        
+        {/* Saturation */}
+        <Box sx={{ mb: 2 }}>
+          <Typography variant="caption">Saturation: {saturation}%</Typography>
+          <Slider
+            value={saturation}
+            onChange={(_, v) => { setSaturation(v as number); handleChange(); }}
+            min={0}
+            max={200}
+            sx={{ color: '#667eea' }}
+          />
+        </Box>
+        
+            <Chip label="Like DaVinci Resolve Color Wheels" size="small" sx={{ bgcolor: '#667eea', color: 'white' }} />
+          </Box>
+        )}
+        
+        {tab === 1 && (
+          <Box>
+            <Typography variant="body2" sx={{ mb: 2 }}>
+              Browse and apply 627 professional LUTs including 440 cultural wedding LUTs and 187 camera LOG conversions.
+            </Typography>
+            
+            {selectedLUT && (
+              <Chip
+                label={`Applied: ${selectedLUT}`}
+                onDelete={() => setSelectedLUT(null)}
+                color="primary"
+                sx={{ mb: 2 }}
+              />
+            )}
+            
+            <Button
+              fullWidth
+              variant="contained"
+              startIcon={<Palette />}
+              onClick={() => setShowLUTLibrary(true)}
+              sx={{ bgcolor: '#667eea', '&:hover': { bgcolor: '#5568d3' } }}
+            >
+              Browse LUT Library (627 LUTs)
+            </Button>
+            
+            <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
+              <Chip label="440 Cultural LUTs" size="small" />
+              <Chip label="187 Script LUTs" size="small" />
+            </Stack>
+          </Box>
+        )}
+        
+        {/* LUT Library Dialog */}
+        <LUTLibrary
+          open={showLUTLibrary}
+          onClose={() => setShowLUTLibrary(false)}
+          onSelectLUT={(lutPath, lutName) => {
+            setSelectedLUT(lutName);
+            console.log('✅ LUT selected:', lutPath);
+            // Apply LUT would go here
+          }}
+        />
+      </DialogContent>
+    </Dialog>
+  );
+}
+

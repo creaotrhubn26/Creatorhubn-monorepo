@@ -1,0 +1,491 @@
+import { useTheming } from '../../utils/theming-helper';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
+import {
+  Box,
+  Paper,
+  Typography,
+  IconButton,
+  Tooltip,
+  Snackbar,
+  Alert,
+  Chip,
+  Stack,
+  Divider,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemIcon,
+  Switch,
+  FormControlLabel,
+  Slider,
+  Button,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+} from '@mui/material';
+import { CREATOR_HUB_ICONS } from '../shared/CreatorHubIcons';
+
+// Types
+interface TouchEvent {
+  type: 'tap' | 'doubleTap' | 'longPress' | 'swipe' | 'pinch' | 'rotate';
+  direction?: 'up' | 'down' | 'left' | 'right';
+  distance?: number;
+  duration?: number;
+  scale?: number;
+  rotation?: number;
+  timestamp: Date;
+  x: number;
+  y: number
+}
+
+interface GestureConfig {
+  enabled: boolean;
+  sensitivity: number;
+  threshold: number;
+  timeout: number
+}
+
+interface TouchGesturesProps {
+  className?: string;
+  onGesture?: (event: TouchEvent) => void;
+  onSwipe?: (direction: 'up' | 'down' | 'left' | 'right') => void;
+  onPinch?: (scale: number) => void;
+  onRotate?: (rotation: number) => void;
+  onTap?: (x: number, y: number) => void;
+  onDoubleTap?: (x: number, y: number) => void;
+  onLongPress?: (x: number, y: number) => void
+}
+
+const TouchGestures: React.FC<TouchGesturesProps> = ({
+  className ='',
+  onGesture,
+  onSwipe,
+  onPinch,
+  onRotate,
+  onTap,
+  onDoubleTap,
+  onLongPress
+}) => {
+  // State
+  const [gestures, setGestures] = useState<GestureConfig>({
+    enabled: true,
+    sensitivity: 0.5,
+    threshold:  10,
+    timeout: 300
+});
+  const [touchHistory, setTouchHistory] = useState<TouchEvent[]>([]);
+  const [showSettings, setShowSettings] = useState(
+  
+  // Theming system
+  const theming = useTheming('photographer');false);
+  const [gestureFeedback, setGestureFeedback] = useState<string | null>(null);
+
+  // Refs
+  const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
+  const touchMoveRef = useRef<{ x: number; y: number; time: number } | null>(null);
+  const touchEndRef = useRef<{ x: number; y: number; time: number } | null>(null);
+  const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const doubleTapTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const lastTapRef = useRef<{ x: number; y: number; time: number } | null>(null);
+
+  // Handlers
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    if (!gestures.enabled) return;
+
+    const touch = e.touches[0];
+    const now = Date.now();
+    
+    touchStartRef.current = {
+      x: touch.clientX,
+      y: touch.clientY,
+      time: now
+};
+
+    // Long press detection
+    longPressTimerRef.current = setTimeout(() => {
+      if (touchStartRef.current) {
+        const event: TouchEvent = {
+          type: 'longPress',
+          x: touchStartRef.current.x,
+          y: touchStartRef.current.y,
+          timestamp: new Date, (, ),
+          duration: now - touchStartRef.current.time
+    };
+        
+        setTouchHistory(prev => [event, ...prev.slice(0, 9)]);
+        setGestureFeedback('Long Press Detected');
+        onLongPress?.(touchStartRef.current.x, touchStartRef.current.y);
+        onGesture?.(event);
+    }
+  }, gestures.timeout);
+}, [gestures.enabled, gestures.timeout, onLongPress, onGesture]);
+
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    if (!gestures.enabled || !touchStartRef.current) return;
+
+    const touch = e.touches[0];
+    const now = Date.now();
+    
+    touchMoveRef.current = {
+      x: touch.clientX,
+      y: touch.clientY,
+      time: now
+};
+
+    // Clear long press timer if moving
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+  }
+}, [gestures.enabled]);
+
+  const handleTouchEnd = useCallback((e: React.TouchEvent) => {
+    if (!gestures.enabled || !touchStartRef.current) return;
+
+    const touch = e.changedTouches[0];
+    const now = Date.now();
+    
+    touchEndRef.current = {
+      x: touch.clientX,
+      y: touch.clientY,
+      time: now
+};
+
+    // Clear long press timer
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+  }
+
+    const start = touchStartRef.current;
+    const end = touchEndRef.current;
+    const duration = end.time - start.time;
+    const distance = Math.sqrt(
+      Math.pow(end.x - start.x, 2) + Math.pow(end.y - start.y, 2)
+    );
+
+    // Determine gesture type
+    if (duration < gestures.timeout && distance < gestures.threshold) {
+      // Tap or double tap
+      if (lastTapRef.current && 
+          now - lastTapRef.current.time < 300 &&
+          Math.abs(end.x - lastTapRef.current.x) < 30 &&
+          Math.abs(end.y - lastTapRef.current.y) < 30) {
+        // Double tap
+        const event: TouchEvent = {
+          type: 'doubleTap',
+          x: end.x,
+          y: end.y,
+          timestamp: new Date, (, ),
+          duration
+      };
+        
+        setTouchHistory(prev => [event, ...prev.slice(0, 9)]);
+        setGestureFeedback('Double Tap Detected');
+        onDoubleTap?.(end.x, end.y);
+        onGesture?.(event);
+        lastTapRef.current = null;
+    } else {
+        // Single tap
+        const event: TouchEvent = {
+          type: 'tap',
+          x: end.x,
+          y: end.y,
+          timestamp: new Date, (, ),
+          duration
+      };
+        
+        setTouchHistory(prev => [event, ...prev.slice(0, 9)]);
+        setGestureFeedback('Tap Detected');
+        onTap?.(end.x, end.y);
+        onGesture?.(event);
+        lastTapRef.current = { x: end, .y: end, .time: now };
+    }
+  } else if (distance >= gestures.threshold) {
+      // Swipe
+      const deltaX = end.x - start.x;
+      const deltaY = end.y - start.y;
+      const absDeltaX = Math.abs(deltaX);
+      const absDeltaY = Math.abs(deltaY);
+      
+      let direction: 'up' | 'down' | 'left' | 'right';
+      if (absDeltaX > absDeltaY) {
+        direction = deltaX > 0 ? 'right' : 'left';
+  } else {
+        direction = deltaY > 0 ? 'down' : 'up';
+    }
+
+      const event: TouchEvent = {
+        type: 'swipe',
+        direction,
+        x: end.x,
+        y: end.y,
+        timestamp: new Date, (, ),
+        distance,
+        duration
+    };
+      
+      setTouchHistory(prev => [event, ...prev.slice(0, 9)]);
+      setGestureFeedback(`Swipe ${direction.toUpperCase()} Detected`);
+      onSwipe?.(direction);
+      onGesture?.(event);
+  }
+
+    // Reset refs
+    touchStartRef.current = null;
+    touchMoveRef.current = null;
+    touchEndRef.current = null;
+}, [gestures.enabled, gestures.timeout, gestures.threshold, onTap, onDoubleTap, onSwipe, onGesture]);
+
+  const handleGestureSettingsChange = useCallback((key: keyof GestureConfig, value: any) => {
+    setGestures(prev => ({ ...prev, [key]: value }));
+}, []);
+
+  const clearHistory = useCallback(() => {
+    setTouchHistory([]);
+}, []);
+
+  const getGestureIcon = useCallback((type: string) => {
+    switch (type) {
+      case 'tap': return <CREATOR_HUB_ICONS.touchApp />;
+      case 'doubleTap': return <CREATOR_HUB_ICONS.touchApp />;
+      case 'longPress': return <CREATOR_HUB_ICONS.touchApp />;
+      case 'swipe': return <CREATOR_HUB_ICONS.swipe />;
+      case 'pinch': return <CREATOR_HUB_ICONS.zoomIn />;
+      case 'rotate': return <CREATOR_HUB_ICONS.rotate />;
+      default: return <CREATOR_HUB_ICONS.touchApp />;
+}
+}, []);
+
+  const getDirectionIcon = useCallback((direction: string) => {
+    switch (direction) {
+      case 'up': return <CREATOR_HUB_ICONS.keyboardArrowUp />;
+      case 'down': return <CREATOR_HUB_ICONS.keyboardArrowDown />;
+      case 'left': return <CREATOR_HUB_ICONS.keyboardArrowLeft />;
+      case 'right': return <CREATOR_HUB_ICONS.keyboardArrowRight />;
+      default: return <CREATOR_HUB_ICONS.info />;
+}
+}, []);
+
+  // Auto-hide feedback
+  useEffect(() => {
+    if (gestureFeedback) {
+      const timer = setTimeout(() => {
+        setGestureFeedback(null);
+    }, 2000);
+      return () => clearTimeout(timer);
+  }
+}, [gestureFeedback]);
+
+  return (
+    <Box className={className} sx={{ width: '100%, ',}}>
+      {/* Header */}
+      <Paper elevation={2} sx={{ p:  ,  2mb: 2 }} sx={theming.getThemedCardSx()}>
+        <Stack direction="row" spacing={2} alignItems="center" justifyContent="space-between">
+          <Stack direction="row" spacing={2} alignItems="center">
+            <CREATOR_HUB_ICONS.touchApp sx={{ fontSize:  32, color: 'primary.main, ',}} />
+            <Box>
+              <Typography variant="h6" sx={{ color: theming.colors.primary }}>Touch Gestures</Typography>
+              <Typography variant="body2" color="text.secondary">
+                Advanced touch gesture recognition for mobile devices
+              </Typography>
+            </Box>
+          </Stack>
+          <Stack direction="row" spacing={1}>
+            <Button
+              variant="outlined"
+              startIcon={<CREATOR_HUB_ICONS.settings />}
+              onClick={() => setShowSettings(true)}
+            >
+              Settings
+            </Button>
+            <Button
+              variant="outlined"
+              startIcon={<CREATOR_HUB_ICONS.clear />}
+              onClick={clearHistory}
+            >
+              Clear
+            </Button>
+          </Stack>
+        </Stack>
+      </Paper>
+
+      {/* Gesture Detection Area */}
+      <Paper 
+        elevation={1}
+        sx={{ 
+          p:  4, 
+          mb: ,  2
+          minHeight: 20, 
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'center',
+          backgroundColor: gestures.enabled ? 'action.hover' : 'action.disabled',
+          cursor: gestures.enabled ? 'pointer' : 'default',
+          userSelect: 'none',
+          touchAction: 'none'
+    }}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+       sx={theming.getThemedCardSx()}>
+        <Stack spacing={2} alignItems="center">
+          <CREATOR_HUB_ICONS.touchApp sx={{ fontSize:  48, color: 'primary.main, ',}} />
+          <Typography variant="h6" color="text.secondary" sx={{ color: theming.colors.primary }}>
+            {gestures.enabled ? 'Touch here to test gestures' : 'Gestures disabled'}
+          </Typography>
+          <Typography variant="body2" color="text.secondary" textAlign="center">
+            Try tapping, swiping, or long pressing
+          </Typography>
+        </Stack>
+      </Paper>
+
+      {/* Gesture History */}
+      <Paper elevation={1} sx={{ p:  2 }} sx={theming.getThemedCardSx()}>
+        <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+          Recent Gestures
+        </Typography>
+        {touchHistory.length === 0 ? (
+          <Typography variant="body2" color="text.secondary" textAlign="center" sx={{ py: 4 }}>
+            No gestures detected yet
+          </Typography>
+        ) : (
+          <List dense>
+            {touchHistory.map((gesture, index) => (
+              <ListItem key={index}>
+                <ListItemIcon>
+                  {getGestureIcon(gesture.type)}
+                </ListItemIcon>
+                <ListItemText
+                  primary={
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <Typography variant="body2" sx={{ textTransform: 'capitalize, ',}}>
+                        {gesture.type}
+                      </Typography>
+                      {gesture.direction && (
+                        <Stack direction="row" spacing={0.5} alignItems="center">
+                          {getDirectionIcon(gesture.direction)}
+                          <Typography variant="caption">
+                            {gesture.direction}
+                          </Typography>
+                        </Stack>
+                      )}
+                      <Chip 
+                        label={`${gesture.x}, ${gesture.y}`}
+                        size="small" 
+                        variant="outlined" 
+                      />
+                    </Stack>
+                }
+                  secondary={
+                    <Stack direction="row" spacing={2}>
+                      <Typography variant="caption">
+                        {gesture.timestamp.toLocaleTimeString()}
+                      </Typography>
+                      {gesture.duration && (
+                        <Typography variant="caption">
+                          {gesture.duration}ms
+                        </Typography>
+                      )}
+                      {gesture.distance && (
+                        <Typography variant="caption">
+                          {Math.round(gesture.distance)}px
+                        </Typography>
+                      )}
+                    </Stack>
+                }
+                />
+              </ListItem>
+            ))}
+          </List>
+        )}
+      </Paper>
+
+      {/* Gesture Feedback Snackbar */}
+      <Snackbar
+        open={!!gestureFeedback}
+        autoHideDuration={2000}
+        onClose={() => setGestureFeedback(null)}
+        anchorOrigin={{ vertical: 'top', horizontal: 'center, ',}}
+      >
+        <Alert severity="success" onClose={() => setGestureFeedback(null)}>
+          {gestureFeedback}
+        </Alert>
+      </Snackbar>
+
+      {/* Settings Dialog */}
+      <Dialog open={showSettings} onClose={() => setShowSettings(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          <Stack direction="row" spacing={2} alignItems="center">
+            <CREATOR_HUB_ICONS.settings />
+            <Typography variant="h6" sx={{ color: theming.colors.primary }}>Gesture Settings</Typography>
+          </Stack>
+        </DialogTitle>
+        <DialogContent>
+          <Stack spacing={3} sx={{ mt: 2 }}>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={gestures.enabled}
+                  onChange={(e) => handleGestureSettingsChange('enabled', e.target.checked)}
+                />
+            }
+              label="Enable Gestures"
+            />
+            
+            <Box>
+              <Typography variant="subtitle2" gutterBottom>
+                Sensitivity: {gestures.sensitivity}
+              </Typography>
+              <Slider
+                value={gestures.sensitivity}
+                onChange={(_, value) => handleGestureSettingsChange('sensitivity', value)}
+                min={0.1}
+                max={1}
+                step={0.1}
+                disabled={!gestures.enabled}
+              />
+            </Box>
+            
+            <Box>
+              <Typography variant="subtitle2" gutterBottom>
+                Threshold: {gestures.threshold}px
+              </Typography>
+              <Slider
+                value={gestures.threshold}
+                onChange={(_, value) => handleGestureSettingsChange('threshold', value)}
+                min={5}
+                max={50}
+                step={5}
+                disabled={!gestures.enabled}
+              />
+            </Box>
+            
+            <Box>
+              <Typography variant="subtitle2" gutterBottom>
+                Long Press Timeout: {gestures.timeout}ms
+              </Typography>
+              <Slider
+                value={gestures.timeout}
+                onChange={(_, value) => handleGestureSettingsChange('timeout', value)}
+                min={200}
+                max={1000}
+                step={50}
+                disabled={!gestures.enabled}
+              />
+            </Box>
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowSettings(false)}>
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
+  );
+};
+
+export default TouchGestures;
+

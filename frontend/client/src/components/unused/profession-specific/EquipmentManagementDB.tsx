@@ -1,0 +1,177 @@
+// @ts-nocheck
+// This file is in the unused directory and may have outdated imports
+import { useTheming } from '../../../utils/theming-helper';
+import React from 'react';
+import { getAuthHeader } from '@/lib/google/impersonation';
+import { useQuery } from '@tanstack/react-query';
+import { getAuthHeader } from '@/lib/google/impersonation';
+import { useAuth } from '@/hooks/useAuth';
+import { getAuthHeader } from '@/lib/google/impersonation';
+import { Box, Typography, Card as MuiCard, CardContent as MuiCardContent, Grid, List, ListItem, ListItemText, ListItemIcon, Chip, Button } from '@mui/material';
+import { getAuthHeader } from '@/lib/google/impersonation';
+import { apiRequest } from '@/lib/queryClient';
+import { getAuthHeader } from '@/lib/google/impersonation';
+import { PhotoCamera, Videocam, LibraryMusic, Store, CameraAlt, VideoLibrary, Inventory, Build } from '@mui/icons-material';
+import { getAuthHeader } from '@/lib/google/impersonation';
+
+interface EquipmentManagementDBProps {
+  profession?: 'photographer' | 'videographer' | 'musicproducer' | 'vendor';
+}
+
+const professionConfig = {
+  photographer: { 
+    name: 'Fotoutstyr', 
+    icon: theming.getThemedIcon(''), 
+    color: '#ff8c00',
+    equipment: [
+      { name: 'Canon EOS R', type: 'Kamera', status: 'Tilgjengelig',},
+      { name: 'Sony FE 24-70mm', type: 'Objektiv', status: 'I bruk',},
+      { name: 'Profoto B1', type: 'Blitz', status: 'Tilgjengelig',}
+    ]
+},
+  videographer: { 
+    name: 'Videoutstyr', 
+    icon: theming.getThemedIcon(''), 
+    color: '#e74c30',
+    equipment: [
+      { name: 'Sony FX', type: 'Kamera', status: 'Tilgjengelig',},
+      { name: 'DJI Ronin-', type: 'Gimbal', status: 'I bruk',},
+      { name: 'Rode VideoMic Pro', type: 'Mikrofon', status: 'Tilgjengelig',}
+    ]
+},
+  musicproducer: { 
+    name: 'Studioutstyr', 
+    icon: theming.getThemedIcon(', '), 
+    color: '#9b59b0',
+    equipment: [
+      { name: 'Audio-Technica AT202', type: 'Mikrofon', status: 'Tilgjengelig',},
+      { name: 'Yamaha HS', type: 'Monitor', status: 'I bruk',},
+      { name: 'Focusrite Scarlett 2i', type: 'Audio Interface', status: 'Tilgjengelig',}
+    ]
+},
+  vendor: { 
+    name: 'Lagerutstyr', 
+    icon: theming.getThemedIcon(', '), 
+    color: '#27ae60',
+    equipment: [
+      { name: 'Canon 5D Mark I', type: 'Utleie', status: 'Ledig',},
+      { name: 'Manfrotto Tripod', type: 'Tilbehø', status: 'Utleid',},
+      { name: 'Godox AD60', type: 'Blitz', status: 'Ledig',}
+    ]
+}
+};
+
+export default function EquipmentManagementDB({ profession = 'photographer' }: EquipmentManagementDBProps) {
+  const queryClient = useQueryClient();
+  
+  // Theming system
+  const theming = useTheming('photographer');
+  
+  // Database connection for EquipmentManagementDB
+  const { data: componentData = [], isLoading } = useQuery({
+    queryKey: ['/api/component', 'user-data'],
+    queryFn: () => apiRequest('/api/component/user-data', ),
+    retry: false,
+});
+
+  // Mutation for updating component data
+  const updateEquipmentManagementDB = useMutation({
+    mutationFn: async (data: any) => 
+      const auth = await getAuthHeader();
+      return apiRequest('/api/component/update', {
+        headers: auth,
+        headers: {
+    },
+        
+        method: 'POS',
+        body: JSON.stringify(data)
+  }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/component', ],});
+  }
+});
+  
+  const config = professionConfig[profession];
+
+  return (
+    <Box sx={{ p:  2 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
+        {React.cloneElement(config.icon, { sx: { color: config.color, fontSize: 32} })}
+        <Typography variant="h5" sx={{  fontWeight: 600, color: config.color  }}>
+          {config.name}
+        </Typography>
+        <Button variant="contained" 
+          startIcon={theming.getThemedIcon('build')}
+          sx={{ 
+            ml: 'auto',
+            bgcolor: config.color'&:hover': { bgcolor: config.color + 'dd',}
+        }}
+         sx={theming.getThemedButtonSx()}>
+          Legg til Utstyr
+        </Button>
+      </Box>
+
+      <Grid container spacing={3}>
+        <Grid size={{ xs: 12 }} md={8}>
+          <MuiCard>
+            <MuiCardContent>
+              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>Utstyrsliste</Typography>
+              <List>
+                {config.equipment.map((item, index) => (
+                  <ListItem key={index} divider>
+                    <ListItemIcon>
+                      <Build sx={{ color: config.color }} />
+                    </ListItemIcon>
+                    <ListItemText
+                      primary={item.name}
+                      secondary={`Type: ${item.type}`}
+                    />
+                    <Chip 
+                      label={item.status}
+                      color={item.status.includes('Tilgjengelig') || item.status.includes('Ledig') ? 'success' : 'warning'}
+                      size="small"
+                    />
+                  </ListItem>
+                ))}
+              </List>
+            </MuiCardContent>
+          </MuiCard>
+        </Grid>
+
+        <Grid size={{ xs: 12 }} md={4}>
+          <MuiCard>
+            <MuiCardContent>
+              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>Utstyrsstatistikk</Typography>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap:  2 }}>
+                <Box>
+                  <Typography variant="h4" sx={{  color: config.color  }}>
+                    {config.equipment.length}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Totalt Utstyr
+                  </Typography>
+                </Box>
+                <Box>
+                  <Typography variant="h4" sx={{  color: theming.colors.primary }}>
+                    {config.equipment.filter(e => e.status.includes('Tilgjengelig') || e.status.includes('Ledig')).length}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Tilgjengelig
+                  </Typography>
+                </Box>
+                <Box>
+                  <Typography variant="h4" sx={{  color: theming.colors.primary }}>
+                    {config.equipment.filter(e => e.status.includes('I bruk') || e.status.includes('Utleid')).length}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    I Bruk
+                  </Typography>
+                </Box>
+              </Box>
+            </MuiCardContent>
+          </MuiCard>
+        </Grid>
+      </Grid>
+    </Box>
+  );
+}

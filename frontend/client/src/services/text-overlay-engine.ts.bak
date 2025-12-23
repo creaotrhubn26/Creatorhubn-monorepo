@@ -1,0 +1,206 @@
+/**
+ * TEXT OVERLAY ENGINE
+ * Using Fabric.js for rich text/title overlays
+ * Like Premiere Pro's Essential Graphics
+ */
+
+import { fabric } from 'fabric';
+
+export interface TextOverlay {
+  id: string;
+  text: string;
+  x: number;
+  y: number;
+  fontSize: number;
+  fontFamily: string;
+  fill: string;
+  stroke?: string;
+  strokeWidth?: number;
+  backgroundColor?: string;
+  shadow?: {
+    color: string;
+    blur: number;
+    offsetX: number;
+    offsetY: number;
+  };
+  animation?: {
+    type: 'fade_in' | 'fade_out' | 'slide_up' | 'slide_down' | 'zoom_in';
+    duration: number;
+    delay: number;
+  };
+  startTime: number; // When to show (seconds)
+  endTime: number;   // When to hide (seconds)
+}
+
+/**
+ * Text Overlay Engine using Fabric.js
+ */
+export class TextOverlayEngine {
+  private canvas: fabric.Canvas | null = null;
+  private overlays: Map<string, fabric.Text> = new Map();
+  
+  /**
+   * Initialize Fabric canvas
+   */
+  init(canvasElement: HTMLCanvasElement) {
+    this.canvas = new fabric.Canvas(canvasElement, {
+      width: canvasElement.width,
+      height: canvasElement.height,
+      backgroundColor: 'transparent',
+      selection: true,
+      renderOnAddRemove: true
+    });
+    
+    console.log('✅ Text Overlay Engine initialized');
+  }
+  
+  /**
+   * Add text overlay
+   */
+  addOverlay(overlay: TextOverlay) {
+    if (!this.canvas) return;
+    
+    const text = new fabric.Text(overlay.text, {
+      left: overlay.x,
+      top: overlay.y,
+      fontSize: overlay.fontSize,
+      fontFamily: overlay.fontFamily,
+      fill: overlay.fill,
+      stroke: overlay.stroke,
+      strokeWidth: overlay.strokeWidth || 0,
+      backgroundColor: overlay.backgroundColor,
+      shadow: overlay.shadow ? new fabric.Shadow({
+        color: overlay.shadow.color,
+        blur: overlay.shadow.blur,
+        offsetX: overlay.shadow.offsetX,
+        offsetY: overlay.shadow.offsetY
+      }) : undefined,
+      selectable: true,
+      editable: true
+    });
+    
+    this.overlays.set(overlay.id, text);
+    this.canvas.add(text);
+    this.canvas.renderAll();
+    
+    console.log('✅ Text overlay added:', overlay.id);
+  }
+  
+  /**
+   * Update overlay
+   */
+  updateOverlay(id: string, updates: Partial<TextOverlay>) {
+    const text = this.overlays.get(id);
+    if (!text || !this.canvas) return;
+    
+    if (updates.text !== undefined) text.set('text', updates.text);
+    if (updates.x !== undefined) text.set('left', updates.x);
+    if (updates.y !== undefined) text.set('top', updates.y);
+    if (updates.fontSize !== undefined) text.set('fontSize', updates.fontSize);
+    if (updates.fontFamily !== undefined) text.set('fontFamily', updates.fontFamily);
+    if (updates.fill !== undefined) text.set('fill', updates.fill);
+    
+    this.canvas.renderAll();
+  }
+  
+  /**
+   * Remove overlay
+   */
+  removeOverlay(id: string) {
+    const text = this.overlays.get(id);
+    if (!text || !this.canvas) return;
+    
+    this.canvas.remove(text);
+    this.overlays.delete(id);
+    this.canvas.renderAll();
+  }
+  
+  /**
+   * Get overlays visible at specific time
+   */
+  getVisibleOverlays(currentTime: number): string[] {
+    const visible: string[] = [];
+    
+    this.overlays.forEach((text, id) => {
+      // Would check startTime/endTime if stored
+      visible.push(id);
+    });
+    
+    return visible;
+  }
+  
+  /**
+   * Export canvas as image
+   */
+  exportAsImage(): string {
+    if (!this.canvas) return '';
+    return this.canvas.toDataURL({ format: 'png', quality: 1 });
+  }
+  
+  /**
+   * Text style presets (like Premiere Pro)
+   */
+  static getTextPresets(): Array<{ name: string; style: Partial<TextOverlay> }> {
+    return [
+      {
+        name: 'Title',
+        style: {
+          fontSize: 72,
+          fontFamily: 'Playfair Display, serif',
+          fill: '#ffffff',
+          stroke: '#000000',
+          strokeWidth: 2
+        }
+      },
+      {
+        name: 'Subtitle',
+        style: {
+          fontSize: 48,
+          fontFamily: 'Helvetica Neue, sans-serif',
+          fill: '#ffffff',
+          backgroundColor: 'rgba(0,0,0,0.7)'
+        }
+      },
+      {
+        name: 'Lower Third',
+        style: {
+          fontSize: 32,
+          fontFamily: 'Arial, sans-serif',
+          fill: '#ffffff',
+          backgroundColor: 'rgba(102, 126, 234, 0.9)'
+        }
+      },
+      {
+        name: 'Caption',
+        style: {
+          fontSize: 24,
+          fontFamily: 'Arial, sans-serif',
+          fill: '#ffffff',
+          stroke: '#000000',
+          strokeWidth: 3
+        }
+      },
+      {
+        name: 'End Credit',
+        style: {
+          fontSize: 36,
+          fontFamily: 'Georgia, serif',
+          fill: '#ffffff'
+        }
+      }
+    ];
+  }
+  
+  /**
+   * Cleanup
+   */
+  dispose() {
+    this.overlays.clear();
+    this.canvas?.dispose();
+    this.canvas = null;
+  }
+}
+
+export const textOverlayEngine = new TextOverlayEngine();
+
+

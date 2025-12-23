@@ -1,0 +1,1008 @@
+/**
+ * CreatorHub Norge - Advanced Media Protocols
+ * RTMP, HLS/MPEG-DASH, NDI, SRT implementasjon for video-streaming og filhåndtering
+ * ⚠️ KREATIV MEDIE- OG FILHÅNDTERING PROTOKOLL: Følger replit.md protokoller
+ */
+
+import { useTheming } from '../../utils/theming-helper';
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  Box,
+  Card,
+  CardContent,
+  Typography,
+  Button,
+  Switch,
+  FormControlLabel,
+  Tabs,
+  Tab,
+  TextField,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemIcon,
+  Avatar,
+  Chip,
+  IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Alert,
+  CircularProgress,
+  Tooltip,
+  Paper,
+  Divider,
+  Grid,
+  LinearProgress,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  Slider,
+} from '@mui/material';
+import {
+  VideocamCall as RtmpIcon,
+  Hd as HlsIcon,
+  Settings as NdiIcon,
+  Security as SrtIcon,
+  PlayArrowArrow,
+  Stop,
+  Pause,
+  VideoLibrary,
+  Stream,
+  HighQuality,
+  Speed,
+  Storage,
+  CloudUpload,
+  Refresh,
+  Info,
+  Warning,
+  CheckCircle,
+  Error,
+  Videocam,
+  AudioDescription,
+  Image,
+  OndemandVideo,
+  TrendingUp,
+} from '@mui/icons-material';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
+
+interface StreamConfiguration {
+  id: string;
+  protocol: 'rtmp' | 'hls' | 'ndi' | 'srt' | 'webdav';
+  name: string;
+  url: string;
+  status: 'active' | 'inactive' | 'streaming' | 'error';
+  quality: string;
+  bitrate: number;
+  resolution: string;
+  fps: number
+}
+
+interface MediaHandler {
+  protocol: string;
+  enabled: boolean;
+  config: Record<string, any>;
+  status: string;
+  performance?: {
+    throughput: number;
+    latency: number;
+    quality: number;
+};
+}
+
+interface TabPanelProps {
+  children?: React.ReactNode;
+  index: number;
+  value: number
+}
+
+function TabPanel(props: TabPanelProps) {
+  const { children, value, index, ...other } = props;
+  return (
+    <div
+      role="tabpanel"
+      hidden={value !== index}
+      id={`media-protocol-tabpanel-${index}`}
+      aria-labelledby={`media-protocol-tab-${index}`}
+      {...other}
+    >
+      {value === index && <Box sx={{ p:  3 }}>{children}</Box>}
+    </div>
+  );
+}
+
+export default function AdvancedMediaProtocols() {
+  const [currentTab, setCurrentTab] = useState(0);
+  const [streamingActive, setStreamingActive] = useState(false);
+  const [currentStream, setCurrentStream] = useState<StreamConfiguration | null>(null);
+  const queryClient = useQueryClient();
+  
+  // Theming system
+  const theming = useTheming('photographer');
+
+  // ⚠️ RTMP Streaming Configuration
+  const [rtmpConfig, setRtmpConfig] = useState({
+    serverUrl: 'rtmp://stream.creatorhub-norge.com/live,',
+    streamKey: '',
+    bitrate: 250,
+    resolution: '1920x108',
+    fps:  30,
+    audioCodec: 'aac',
+    videoCodec: 'h26' });
+
+  // ⚠️ HLS/DASH Configuration
+  const [hlsConfig, setHlsConfig] = useState({
+    manifestUrl: '',
+    segmentDuration:  6,
+    playlistLength:  5,
+    qualityLevels: ['360','720p','1080p','4K'],
+    adaptiveBitrate: true,
+    encryption: false,
+});
+
+  // ⚠️ NDI Configuration
+  const [ndiConfig, setNdiConfig] = useState({
+    sourceName: 'CreatorHub-NDI-Source',
+    networkInterface: 'auto',
+    bandwidth: 'highest',
+    compression: 'none',
+    audioChannels:  2,
+    colorSpace: 'rec70' });
+
+  // ⚠️ SRT Configuration
+  const [srtConfig, setSrtConfig] = useState({
+    mode: 'caller', // caller, listener, rendezvous
+    address: ', ',
+    port: 999,
+    passphrase: ', ',
+    latency: 20,
+    encryption: true,
+    fecType: 'auto' });
+
+  // Fetch media protocol handlers
+  const { data: mediaHandlers = [], isLoading } = useQuery({
+    queryKey: ['/api/media/protocols', ],
+    queryFn: () => apiRequest('/api/media/protocols', ),
+    refetchInterval: 500,
+});
+
+  // Start streaming mutation
+  const startStreaming = useMutation({
+    mutationFn: async ({ protocol, config }: { protocol: string; config: any }) => {
+      return apiRequest('/api/media/stream/start', {
+        method: 'POS',
+        body: JSON.stringify({ protocol, config }),
+    });
+  },
+    onSuccess: (data) => {
+      setStreamingActive(true);
+      setCurrentStream(data.stream);
+      queryClient.invalidateQueries({ queryKey: ['/api/media/protocols', ],});
+  },
+});
+
+  // Stop streaming mutation
+  const stopStreaming = useMutation({
+    mutationFn: async (streamId: string) => {
+      return apiRequest(`/api/media/stream/stop/${streamd}`, {
+        method: 'POS' });
+  },
+    onSuccess: () => {
+      setStreamingActive(false);
+      setCurrentStream(null);
+      queryClient.invalidateQueries({ queryKey: ['/api/media/protocols', ],});
+  },
+});
+
+  const getProtocolIcon = (protocol: string) => {
+    switch (protocol) {
+      case 'rtmp':
+        return <RtmpIcon />;
+      case 'hls':
+      case 'dash':
+        return <HlsIcon />;
+      case 'ndi':
+        return <NdiIcon />;
+      case 'srt':
+        return <SrtIcon />;
+      default:
+        return theming.getThemedIcon(', ');
+  }
+};
+
+  const getQualityColor = (quality: string) => {
+    if (quality.includes('4K')) return 'success';
+    if (quality.includes('1080p')) return 'primary';
+    if (quality.includes('720p')) return 'secondary';
+    return 'default';
+};
+
+  return (
+    <Card sx={{ maxWidth: 100, mx: 'auto', mt:  2 ,  ...theming.getThemedCardSx() }}>
+      <CardContent sx={theming.getThemedCardSx()}>
+        <Box sx={{ display: 'flex', alignItems: 'center', mb:  3 }}>
+          <Stream sx={{ mr: 2, color: '#ff8c00' }} />
+          <Typography variant="h5" component="h2" sx={{ color: theming.colors.primary }}>
+            Avanserte Media-Protokoller
+          </Typography>
+          <Chip label="PRO" size="small" color="primary" sx={{ ml:  2 }} />
+        </Box>
+
+        <Alert severity="info" sx={{ mb:  3 }}>
+          <strong>Media-Streaming Protokoller: </strong> Profesjonelle løsninger for live-streaming,
+          filhåndtering og sanntids videokommunikasjon. Inkluderer RTMP for direkte streaming,
+          HLS/MPEG-DASH for adaptiv avspilling, NDI for nettverks-video og SRT for sikker
+          overføring.
+        </Alert>
+
+        {/* Active Stream Status */}
+        {streamingActive && currentStream && (
+          <Paper
+            sx={{
+              p:  2,
+              mb:  3,
+              bgcolor: 'rgba(6, 175, 80, 0.1)',
+              border: '1px solid #4caf50' }}
+           sx={theming.getThemedCardSx()}>
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between' }}
+            >
+              <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                <Chip
+                  icon={theming.getThemedIcon('videoCall')}}
+                  label="LIVE STREAMING"
+                  color="success"
+                  sx={{ mr: 2, fontWeight: 'bold' }}
+                />
+                <Typography variant="h6" sx={{ color: theming.colors.primary }}>{currentStream.name}</Typography>
+              </Box>
+              <Button variant="contained"
+                color="error"
+                onClick={() => currentStream && stopStreaming.mutate(currentStream.id)}
+                disabled={stopStreaming.isPending}
+                startIcon={theming.getThemedIcon('stop')}
+              >
+                Stopp Stream
+              </Button>
+            </Box>
+            <Box
+              sx={{
+                mt:  2,
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+                gap:  2}}
+            >
+              <Box>
+                <Typography variant="body2" color="text.secondary">
+                  Protokoll
+                </Typography>
+                <Typography variant="h6" sx={{ color: theming.colors.primary }}>{currentStream.protocol.toUpperCase()}</Typography>
+              </Box>
+              <Box>
+                <Typography variant="body2" color="text.secondary">
+                  Kvalitet
+                </Typography>
+                <Typography variant="h6" sx={{ color: theming.colors.primary }}>{currentStream.resolution}</Typography>
+              </Box>
+              <Box>
+                <Typography variant="body2" color="text.secondary">
+                  Bitrate
+                </Typography>
+                <Typography variant="h6" sx={{ color: theming.colors.primary }}>{currentStream.bitrate} kbps</Typography>
+              </Box>
+              <Box>
+                <Typography variant="body2" color="text.secondary">
+                  FPS
+                </Typography>
+                <Typography variant="h6" sx={{ color: theming.colors.primary }}>{currentStream.fps}</Typography>
+              </Box>
+            </Box>
+          </Paper>
+        )}
+
+        <Tabs value={currentTab} onChange={(e, newValue) => setCurrentTab(newValue)} sx={{ mb:  3 }}>
+          <Tab
+            icon={<RtmpIcon />}
+            label="RTMP Streaming"
+            id="media-protocol-tab-0"
+            aria-controls="media-protocol-tabpanel-0"
+          />
+          <Tab
+            icon={<HlsIcon />}
+            label="HLS / MPEG-DASH"
+            id="media-protocol-tab-1"
+            aria-controls="media-protocol-tabpanel-1"
+          />
+          <Tab
+            icon={<NdiIcon />}
+            label="NDI Network"
+            id="media-protocol-tab-2"
+            aria-controls="media-protocol-tabpanel-2"
+          />
+          <Tab
+            icon={<SrtIcon />}
+            label="SRT Secure"
+            id="media-protocol-tab-3"
+            aria-controls="media-protocol-tabpanel-3"
+          />
+        </Tabs>
+
+        {/* RTMP Protocol Panel */}
+        <TabPanel value={currentTab} index={0}>
+          <Typography variant="h6" sx={{  mb:  2  }}>
+            RTMP (Real-Time Messaging Protocol)
+          </Typography>
+
+          <Grid container spacing={3}>
+            <Grid item xs={12} md={6}>
+              <Paper sx={{ p:  2 ,  ...theming.getThemedCardSx() }}>
+                <Typography variant="subtitle1" sx={{ mb:  2 }}>
+                  Stream Konfigurasjon
+                </Typography>
+
+                <TextField
+                  fullWidth
+                  label="RTMP Server URL"
+                  value={rtmpConfig.serverUrl}
+                  onChange={(e) =>
+                    setRtmpConfig((prev) => ({
+                      ...prev,
+                      serverUrl: e.target.value,
+                  }))
+                }
+                  sx={{ mb:  2 }}
+                />
+
+                <TextField
+                  fullWidth
+                  label="Stream Key"
+                  type="password"
+                  value={rtmpConfig.streamKey}
+                  onChange={(e) =>
+                    setRtmpConfig((prev) => ({
+                      ...prev,
+                      streamKey: e.target.value,
+                  }))
+                }
+                  sx={{ mb:  2 }}
+                />
+
+                <FormControl fullWidth sx={{ mb:  2 }}>
+                  <InputLabel>Oppløsning</InputLabel>
+                  <Select
+                    value={rtmpConfig.resolution}
+                    onChange={(e) =>
+                      setRtmpConfig((prev) => ({
+                        ...prev,
+                        resolution: e.target.value,
+                    }))
+                  }
+                  >
+                    <MenuItem value="1280x720">720p (HD)</MenuItem>
+                    <MenuItem value="1920x1080">1080p (Full HD)</MenuItem>
+                    <MenuItem value="3840x2160">4K (Ultra HD)</MenuItem>
+                  </Select>
+                </FormControl>
+
+                <Typography gutterBottom>Bitrate: {rtmpConfig.bitrate} kbps</Typography>
+                <Slider
+                  value={rtmpConfig.bitrate}
+                  onChange={(e, value) =>
+                    setRtmpConfig((prev) => ({
+                      ...prev,
+                      bitrate: value as number,
+                  }))
+                }
+                  min={500}
+                  max={8000}
+                  step={100}
+                  marks={[
+                    { value: 100, label: '1Mbps' },
+                    { value: 250, label: '2.5Mbps' },
+                    { value: 500, label: '5Mbps' },
+                  ]}
+                  sx={{ mb:  2 }}
+                />
+
+                <Button fullWidth
+                  variant="contained"
+                  onClick={() => sx={theming.getThemedButtonSx()}>
+                    startStreaming.mutate({
+                      protocol: 'rtmp',
+                      config: rtmpConfig,
+                  })
+                }
+                  disabled={startStreaming.isPending || !rtmpConfig.streamKey || streamingActive}
+                  startIcon={streamingActive ? theming.getThemedIcon('stop') : theming.getThemedIcon('play')}
+                  sx={{ bgcolor: '#ff8c00', '&:hover': { bgcolor: '#e67c00' } }}
+                >
+                  {streamingActive ? 'Streaming Aktiv' : 'Start RTMP Stream'}
+                </Button>
+              </Paper>
+            </Grid>
+
+            <Grid item xs={12} md={6}>
+              <Paper sx={{ p:  2 ,  ...theming.getThemedCardSx() }}>
+                <Typography variant="subtitle1" sx={{ mb:  2 }}>
+                  RTMP Funksjoner
+                </Typography>
+
+                <List>
+                  <ListItem>
+                    <ListItemIcon>
+                      <CheckCircle color="success" />
+                    </ListItemIcon>
+                    <ListItemText
+                      primary="Lav latency streaming"
+                      secondary="Optimal for live events og sanntids-interaksjon"
+                    />
+                  </ListItem>
+                  <ListItem>
+                    <ListItemIcon>
+                      <CheckCircle color="success" />
+                    </ListItemIcon>
+                    <ListItemText
+                      primary="H.264/AAC codec støtte"
+                      secondary="Industristandard for høy kvalitet og kompatibilitet"
+                    />
+                  </ListItem>
+                  <ListItem>
+                    <ListItemIcon>
+                      <CheckCircle color="success" />
+                    </ListItemIcon>
+                    <ListItemText
+                      primary="Automatisk kvalitetstilpasning"
+                      secondary="Tilpasser bitrate basert på nettverkskvalitet"
+                    />
+                  </ListItem>
+                  <ListItem>
+                    <ListItemIcon>
+                      <CheckCircle color="success" />
+                    </ListItemIcon>
+                    <ListItemText
+                      primary="Multi-platform distribusjon"
+                      secondary="YouTube Live, Facebook Live, Twitch kompatibel"
+                    />
+                  </ListItem>
+                </List>
+              </Paper>
+            </Grid>
+          </Grid>
+        </TabPanel>
+
+        {/* HLS/MPEG-DASH Protocol Panel */}
+        <TabPanel value={currentTab} index={1}>
+          <Typography variant="h6" sx={{  mb:  2  }}>
+            HLS / MPEG-DASH (Adaptive Bitrate Streaming)
+          </Typography>
+
+          <Grid container spacing={3}>
+            <Grid item xs={12} md={6}>
+              <Paper sx={{ p:  2 ,  ...theming.getThemedCardSx() }}>
+                <Typography variant="subtitle1" sx={{ mb:  2 }}>
+                  Adaptive Streaming Konfigurasjon
+                </Typography>
+
+                <TextField
+                  fullWidth
+                  label="Manifest URL"
+                  value={hlsConfig.manifestUrl}
+                  onChange={(e) =>
+                    setHlsConfig((prev) => ({
+                      ...prev,
+                      manifestUrl: e.target.value,
+                  }))
+                }
+                  placeholder="https: //stream.creatorhub-norge.com/playlist.m3u8"
+                  sx={{ mb: 2 }}
+                />
+
+                <Typography gutterBottom>
+                  Segment Varighet: {hlsConfig.segmentDuration} sekunder
+                </Typography>
+                <Slider
+                  value={hlsConfig.segmentDuration}
+                  onChange={(e, value) =>
+                    setHlsConfig((prev) => ({
+                      ...prev,
+                      segmentDuration: value as number,
+                  }))
+                }
+                  min={2}
+                  max={10}
+                  step={1}
+                  marks={[
+                    { value: 2, label: '2s' },
+                    { value:  6, label: '6s' },
+                    { value:  10, label: '10s' },
+                  ]}
+                  sx={{ mb:  2 }}
+                />
+
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={hlsConfig.adaptiveBitrate}
+                      onChange={(e) =>
+                        setHlsConfig((prev) => ({
+                          ...prev,
+                          adaptiveBitrate: e.target.checked,
+                      }))
+                    }
+                    />
+                }
+                  label="Adaptiv Bitrate"
+                  sx={{ mb:  2 }}
+                />
+
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={hlsConfig.encryption}
+                      onChange={(e) =>
+                        setHlsConfig((prev) => ({
+                          ...prev,
+                          encryption: e.target.checked,
+                      }))
+                    }
+                    />
+                }
+                  label="AES-128 Kryptering"
+                  sx={{ mb:  2 }}
+                />
+
+                <Button fullWidth
+                  variant="contained"
+                  onClick={() => sx={theming.getThemedButtonSx()}>
+                    startStreaming.mutate({
+                      protocol: 'hls',
+                      config: hlsConfig,
+                  })
+                }
+                  disabled={startStreaming.isPending || !hlsConfig.manifestUrl || streamingActive}
+                  startIcon={<OndemandVideo />}
+                  sx={{ bgcolor: '#1976d0','&:hover': { bgcolor: '#1565c0' } }}
+                >
+                  Aktiver HLS/DASH Streaming
+                </Button>
+              </Paper>
+            </Grid>
+
+            <Grid item xs={12} md={6}>
+              <Paper sx={{ p:  2 ,  ...theming.getThemedCardSx() }}>
+                <Typography variant="subtitle1" sx={{ mb:  2 }}>
+                  Kvalitetsnivåer
+                </Typography>
+
+                {hlsConfig.qualityLevels.map((quality, index) => (
+                  <Chip
+                    key={index}
+                    label={quality}
+                    color={getQualityColor(quality) as any}
+                    sx={{ mr: 1, mb: 1 }}
+                  />
+                ))}
+
+                <Divider sx={{ my:  2 }} />
+
+                <Typography variant="subtitle2" sx={{ mb:  1 }}>
+                  Fordeler med HLS/DASH: </Typography>
+                <Typography variant="body2" sx={{ mb: 1 }}>
+                  • Automatisk kvalitetstilpasning basert på båndbredde
+                </Typography>
+                <Typography variant="body2" sx={{ mb:  1 }}>
+                  • Bedre stabilitet over varierende nettverksforhold
+                </Typography>
+                <Typography variant="body2" sx={{ mb:  1 }}>
+                  • Innebygd støtte i moderne nettlesere
+                </Typography>
+                <Typography variant="body2" sx={{ mb:  1 }}>
+                  • Mulighet for offline caching av segmenter
+                </Typography>
+                <Typography variant="body2">• CDN-optimalisert for global distribusjon</Typography>
+              </Paper>
+            </Grid>
+          </Grid>
+        </TabPanel>
+
+        {/* NDI Protocol Panel */}
+        <TabPanel value={currentTab} index={2}>
+          <Typography variant="h6" sx={{  mb:  2  }}>
+            NDI (Network Device Interface)
+          </Typography>
+
+          <Alert severity="warning" sx={{ mb:  2 }}>
+            <strong>NDI Lizens: </strong> Krever NDI Runtime og muligens kommersielle lisenser for
+            profesjonell bruk.
+          </Alert>
+
+          <Grid container spacing={3}>
+            <Grid item xs={12} md={6}>
+              <Paper sx={{ p:  2 ,  ...theming.getThemedCardSx() }}>
+                <Typography variant="subtitle1" sx={{ mb:  2 }}>
+                  NDI Konfigurasjon
+                </Typography>
+
+                <TextField
+                  fullWidth
+                  label="NDI Kilde Navn"
+                  value={ndiConfig.sourceName}
+                  onChange={(e) =>
+                    setNdiConfig((prev) => ({
+                      ...prev,
+                      sourceName: e.target.value,
+                  }))
+                }
+                  sx={{ mb:  2 }}
+                />
+
+                <FormControl fullWidth sx={{ mb:  2 }}>
+                  <InputLabel>Nettverksgrensesnitt</InputLabel>
+                  <Select
+                    value={ndiConfig.networkInterface}
+                    onChange={(e) =>
+                      setNdiConfig((prev) => ({
+                        ...prev,
+                        networkInterface: e.target.value,
+                    }))
+                  }
+                  >
+                    <MenuItem value="auto">Automatisk</MenuItem>
+                    <MenuItem value="ethernet">Ethernet</MenuItem>
+                    <MenuItem value="wifi">Wi-Fi</MenuItem>
+                    <MenuItem value="custom">Tilpasset</MenuItem>
+                  </Select>
+                </FormControl>
+
+                <FormControl fullWidth sx={{ mb:  2 }}>
+                  <InputLabel>Båndbredde</InputLabel>
+                  <Select
+                    value={ndiConfig.bandwidth}
+                    onChange={(e) =>
+                      setNdiConfig((prev) => ({
+                        ...prev,
+                        bandwidth: e.target.value,
+                    }))
+                  }
+                  >
+                    <MenuItem value="highest">Høyest Kvalitet</MenuItem>
+                    <MenuItem value="high">Høy Kvalitet</MenuItem>
+                    <MenuItem value="medium">Medium Kvalitet</MenuItem>
+                    <MenuItem value="low">Lav Latency</MenuItem>
+                  </Select>
+                </FormControl>
+
+                <Button fullWidth
+                  variant="contained"
+                  onClick={() => sx={theming.getThemedButtonSx()}>
+                    startStreaming.mutate({
+                      protocol: 'ndi',
+                      config: ndiConfig,
+                  })
+                }
+                  disabled={startStreaming.isPending || streamingActive}
+                  startIcon={theming.getThemedIcon('settings')}
+                  sx={{ bgcolor: '#9c27b0','&:hover': { bgcolor: '#7b1fa2' } }}
+                >
+                  Aktiver NDI Kilde
+                </Button>
+              </Paper>
+            </Grid>
+
+            <Grid item xs={12} md={6}>
+              <Paper sx={{ p:  2 ,  ...theming.getThemedCardSx() }}>
+                <Typography variant="subtitle1" sx={{ mb:  2 }}>
+                  NDI Bruksområder
+                </Typography>
+
+                <List>
+                  <ListItem>
+                    <ListItemIcon>
+                      <Videocam color="primary" />
+                    </ListItemIcon>
+                    <ListItemText
+                      primary="Live produksjon"
+                      secondary="Sanntids video-mixing og switching"
+                    />
+                  </ListItem>
+                  <ListItem>
+                    <ListItemIcon>
+                      <Storage color="primary" />
+                    </ListItemIcon>
+                    <ListItemText
+                      primary="Nettverks-opptak"
+                      secondary="Opptak direkte fra nettverkskameraer"
+                    />
+                  </ListItem>
+                  <ListItem>
+                    <ListItemIcon>
+                      <TrendingUp color="primary" />
+                    </ListItemIcon>
+                    <ListItemText
+                      primary="Remote produksjon"
+                      secondary="Produsering av innhold over IP-nettverk"
+                    />
+                  </ListItem>
+                </List>
+
+                <Divider sx={{ my:  2 }} />
+
+                <Typography variant="body2" color="text.secondary">
+                  NDI muliggjør høykvalitets video over standard Ethernet-nettverk. Perfekt for
+                  profesjonelle studioer og live-produksjon.
+                </Typography>
+              </Paper>
+            </Grid>
+          </Grid>
+        </TabPanel>
+
+        {/* SRT Protocol Panel */}
+        <TabPanel value={currentTab} index={3}>
+          <Typography variant="h6" sx={{  mb:  2  }}>
+            SRT (Secure Reliable Transport)
+          </Typography>
+
+          <Grid container spacing={3}>
+            <Grid item xs={12} md={6}>
+              <Paper sx={{ p:  2 ,  ...theming.getThemedCardSx() }}>
+                <Typography variant="subtitle1" sx={{ mb:  2 }}>
+                  SRT Sikker Konfigurasjon
+                </Typography>
+
+                <FormControl fullWidth sx={{ mb:  2 }}>
+                  <InputLabel>SRT Modus</InputLabel>
+                  <Select
+                    value={srtConfig.mode}
+                    onChange={(e) =>
+                      setSrtConfig((prev) => ({
+                        ...prev,
+                        mode: e.target.value as any,
+                    }))
+                  }
+                  >
+                    <MenuItem value="caller">Caller (Klient)</MenuItem>
+                    <MenuItem value="listener">Listener (Server)</MenuItem>
+                    <MenuItem value="rendezvous">Rendezvous (P2P)</MenuItem>
+                  </Select>
+                </FormControl>
+
+                <TextField
+                  fullWidth
+                  label="Adresse"
+                  value={srtConfig.address}
+                  onChange={(e) =>
+                    setSrtConfig((prev) => ({
+                      ...prev,
+                      address: e.target.value,
+                  }))
+                }
+                  placeholder="stream.creatorhub-norge.com"
+                  sx={{ mb:  2 }}
+                />
+
+                <TextField
+                  fullWidth
+                  label="Port"
+                  type="number"
+                  value={srtConfig.port}
+                  onChange={(e) =>
+                    setSrtConfig((prev) => ({
+                      ...prev,
+                      port: parseInt(e.target.value),
+                  }))
+                }
+                  sx={{ mb:  2 }}
+                />
+
+                <TextField
+                  fullWidth
+                  label="Passphrase (Kryptering)"
+                  type="password"
+                  value={srtConfig.passphrase}
+                  onChange={(e) =>
+                    setSrtConfig((prev) => ({
+                      ...prev,
+                      passphrase: e.target.value,
+                  }))
+                }
+                  sx={{ mb:  2 }}
+                />
+
+                <Typography gutterBottom>Latency: {srtConfig.latency}ms</Typography>
+                <Slider
+                  value={srtConfig.latency}
+                  onChange={(e, value) =>
+                    setSrtConfig((prev) => ({
+                      ...prev,
+                      latency: value as number,
+                  }))
+                }
+                  min={20}
+                  max={8000}
+                  step={20}
+                  marks={[
+                    { value: 10, label: '120ms' },
+                    { value: 20, label: '200ms' },
+                    { value: 50, label: '500ms' },
+                  ]}
+                  sx={{ mb:  2 }}
+                />
+
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={srtConfig.encryption}
+                      onChange={(e) =>
+                        setSrtConfig((prev) => ({
+                          ...prev,
+                          encryption: e.target.checked,
+                      }))
+                    }
+                    />
+                }
+                  label="AES Kryptering"
+                  sx={{ mb:  2 }}
+                />
+
+                <Button fullWidth
+                  variant="contained"
+                  onClick={() => sx={theming.getThemedButtonSx()}>
+                    startStreaming.mutate({
+                      protocol: 'srt',
+                      config: srtConfig,
+                  })
+                }
+                  disabled={startStreaming.isPending || !srtConfig.address || streamingActive}
+                  startIcon={theming.getThemedIcon('security')}
+                  sx={{ bgcolor: '#4caf50', '&:hover': { bgcolor: '#45a049' } }}
+                >
+                  Aktiver SRT Streaming
+                </Button>
+              </Paper>
+            </Grid>
+
+            <Grid item xs={12} md={6}>
+              <Paper sx={{ p:  2 ,  ...theming.getThemedCardSx() }}>
+                <Typography variant="subtitle1" sx={{ mb:  2 }}>
+                  SRT Sikkerhetsfunksjoner
+                </Typography>
+
+                <List>
+                  <ListItem>
+                    <ListItemIcon>
+                      <Security color="success" />
+                    </ListItemIcon>
+                    <ListItemText
+                      primary="AES-256 Kryptering"
+                      secondary="Militær-grad sikkerhet for sensitive streams"
+                    />
+                  </ListItem>
+                  <ListItem>
+                    <ListItemIcon>
+                      <Speed color="success" />
+                    </ListItemIcon>
+                    <ListItemText
+                      primary="Automatisk ARQ"
+                      secondary="Automatisk gjenopprettelse av tapte pakker"
+                    />
+                  </ListItem>
+                  <ListItem>
+                    <ListItemIcon>
+                      <HighQuality color="success" />
+                    </ListItemIcon>
+                    <ListItemText
+                      primary="Adaptiv Bitrate"
+                      secondary="Dynamisk tilpasning til nettverkskvalitet"
+                    />
+                  </ListItem>
+                  <ListItem>
+                    <ListItemIcon>
+                      <CloudUpload color="success" />
+                    </ListItemIcon>
+                    <ListItemText
+                      primary="Firewall Traversal"
+                      secondary="Fungerer gjennom NAT og firewall"
+                    />
+                  </ListItem>
+                </List>
+
+                <Divider sx={{ my:  2 }} />
+
+                <Typography variant="body2" color="text.secondary">
+                  SRT kombinerer høy kvalitet med sikkerhet og pålitelighet. Ideell for kritiske
+                  streams hvor tap eller avbrudd ikke er akseptabelt.
+                </Typography>
+              </Paper>
+            </Grid>
+          </Grid>
+        </TabPanel>
+
+        {/* Protocol Comparison */}
+        <Divider sx={{ my:  3 }} />
+        <Typography variant="h6" sx={{  mb:  2  }}>
+          Protokoll Sammenligning
+        </Typography>
+        <Box
+          sx={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
+            gap:  2}}
+        >
+          <Paper sx={{ p: 2, border: '2px solid #ff8c00' ,  ...theming.getThemedCardSx() }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', mb:  2 }}>
+              <RtmpIcon sx={{ mr: 1, color: '#ff8c00' }} />
+              <Typography variant="h6" sx={{ color: theming.colors.primary }}>RTMP</Typography>
+            </Box>
+            <Typography variant="body2" sx={{ mb:  1 }}>
+              🎯 Lav latency (1-3 sekunder)
+            </Typography>
+            <Typography variant="body2" sx={{ mb:  1 }}>
+              ⚡ Sanntids interaksjon
+            </Typography>
+            <Typography variant="body2" sx={{ mb:  1 }}>
+              📺 Live streaming plattformer
+            </Typography>
+            <Typography variant="body2">⚠️ Ingen automatisk kvalitetstilpasning</Typography>
+          </Paper>
+
+          <Paper sx={{ p: 2, border: '2px solid #1976d2' ,  ...theming.getThemedCardSx() }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', mb:  2 }}>
+              <HlsIcon sx={{ mr: 1, color: '#1976d2' }} />
+              <Typography variant="h6" sx={{ color: theming.colors.primary }}>HLS/DASH</Typography>
+            </Box>
+            <Typography variant="body2" sx={{ mb:  1 }}>
+              📱 Universell nettleser-støtte
+            </Typography>
+            <Typography variant="body2" sx={{ mb:  1 }}>
+              🔄 Adaptiv bitrate streaming
+            </Typography>
+            <Typography variant="body2" sx={{ mb:  1 }}>
+              🌍 CDN-optimalisert
+            </Typography>
+            <Typography variant="body2">⏱️ Høyere latency (10-30s)</Typography>
+          </Paper>
+
+          <Paper sx={{ p: 2, border: '2px solid #9c27b0' ,  ...theming.getThemedCardSx() }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', mb:  2 }}>
+              <NdiIcon sx={{ mr: 1, color: '#9c27b0' }} />
+              <Typography variant="h6" sx={{ color: theming.colors.primary }}>NDI</Typography>
+            </Box>
+            <Typography variant="body2" sx={{ mb:  1 }}>
+              🎬 Profesjonell produksjon
+            </Typography>
+            <Typography variant="body2" sx={{ mb:  1 }}>
+              🖥️ Nettverks-video over IP
+            </Typography>
+            <Typography variant="body2" sx={{ mb:  1 }}>
+              ⚡ Minimal latency
+            </Typography>
+            <Typography variant="body2">💰 Krever lisens</Typography>
+          </Paper>
+
+          <Paper sx={{ p: 2, border: '2px solid #4caf50' ,  ...theming.getThemedCardSx() }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', mb:  2 }}>
+              <SrtIcon sx={{ mr: 1, color: '#4caf50' }} />
+              <Typography variant="h6" sx={{ color: theming.colors.primary }}>SRT</Typography>
+            </Box>
+            <Typography variant="body2" sx={{ mb:  1 }}>
+              🔒 AES-256 kryptering
+            </Typography>
+            <Typography variant="body2" sx={{ mb:  1 }}>
+              🛡️ Automatisk pakke-gjenoppretting
+            </Typography>
+            <Typography variant="body2" sx={{ mb:  1 }}>
+              🌐 Firewall traversal
+            </Typography>
+            <Typography variant="body2">📶 Lav latency + høy kvalitet</Typography>
+          </Paper>
+        </Box>
+      </CardContent>
+    </Card>
+  );
+}

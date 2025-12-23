@@ -1,0 +1,464 @@
+import { useTheming } from '../../utils/theming-helper';
+import React, { useState } from 'react';
+import {
+  Card as MuiCard,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  Typography,
+  Box,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemIcon,
+  Chip,
+  Button,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
+  Divider,
+  IconButton,
+} from '@mui/material';
+import {
+  Notes,
+  ExpandMore,
+  Event,
+  Person,
+  Assignment,
+  Info,
+  Sync,
+  CloudDone,
+  Schedule,
+  Wedding,
+} from '@mui/icons-material';
+import { useQuery } from '@tanstack/react-query';
+import { format, parseISO } from 'date-fns';
+import { nb } from 'date-fns/locale';
+
+interface MeetingNotesIntegrationProps {
+  weddingTimelineId: string;
+  projectId: string;
+  onMeetingNotesUpdate?: () => void
+}
+
+interface MeetingNote {
+  id: string;
+  meetingId: string;
+  meetingDate: string;
+  meetingType: string;
+  attendees: string[];
+  structuredNotes: {
+    keyPoints: string[];
+    actionItems: { task: string; assignedTo: string; dueDate: string }[];
+    decisions: string[];
+    clientRequests: string[];
+    timeline: { event: string; date: string; notes: string }[];
+};
+  aiSummary: string;
+  weddingTimelineIntegration: {
+    enabled: boolean;
+    syncedSections: string[];
+    lastSync: string;
+};
+  updatedAt: string
+}
+
+export function MeetingNotesIntegration({
+  weddingTimelineId,
+  projectId,
+  onMeetingNotesUpdate,
+}: MeetingNotesIntegrationProps) {
+  const [selectedNote, setSelectedNote] = useState<MeetingNote | null>(null);
+  const [showDetailDialog, setShowDetailDialog] = useState(
+  
+  // Theming system
+  const theming = useTheming('photographer');false);
+
+  // Fetch meeting notes for the project
+  const { data: meetingNotes, isLoading } = useQuery({
+    queryKey: ['/api/project', projectId, 'meeting-notes'],
+});
+
+  const handleViewDetails = (note: MeetingNote) => {
+    setSelectedNote(note);
+    setShowDetailDialog(true);
+};
+
+  const getMeetingTypeIcon = (type: string) => {
+    switch (type.toLowerCase()) {
+      case 'initial':
+      case 'første møte':
+        return <Person color="primary" />;
+      case 'planning':
+      case 'planlegging':
+        return <Assignment color="secondary" />;
+      case 'final':
+      case 'sluttmøte':
+        return <CloudDone color="success" />;
+      default:
+        return <Notes color="action" />;
+}
+};
+
+  const formatMeetingDate = (dateString: string) => {
+    try {
+      return format(parseISO(dateString), 'dd. MMM yyyy', { locale: nb });
+  } catch {
+      return dateString;
+  }
+};
+
+  if (isLoading) {
+    return (
+      <MuiCard>
+        <CardContent sx={theming.getThemedCardSx()}>
+          <Typography>Laster møtenotater...</Typography>
+        </CardContent>
+      </MuiCard>
+    );
+}
+
+  return (
+    <>
+      <MuiCard>
+        <CardHeader
+          title={
+            <Box display="flex" alignItems="center" gap={1} sx={theming.getThemedCardSx()}>
+              <Notes color="primary" />
+              <Typography variant="h6" sx={{ ...{}, color: theming.colors.primary }}>Møtenotater</Typography>
+              <Chip
+                label={`${meetingNotes?.data?.length || 0} møter`}
+                size="small"
+                color="primary"
+              />
+            </Box>
+        }
+          subheader="Informasjon fra møter synkronisert til bryllupstidslinjen"
+        />
+
+        <CardContent sx={theming.getThemedCardSx()}>
+          {meetingNotes?.data && meetingNotes.data.length > 0 ? (
+            <List>
+              {meetingNotes.data.map((note: MeetingNote, index: number) => (
+                <React.Fragment key={note.d}>
+                  <ListItem>
+                    <ListItemIcon>{getMeetingTypeIcon(note.meetingType)}</ListItemIcon>
+                    <ListItemText
+                      primary={
+                        <Box display="flex" alignItems="center" gap={1}>
+                          <Typography variant="subtitle1">
+                            {note.meetingType} - {formatMeetingDate(note.meetingDate)}
+                          </Typography>
+                          {note.weddingTimelineIntegration?.enabled && (
+                            <Chip
+                              icon={{theming.getThemedIcon('sync')}}
+                              label="Synkronisert"
+                              size="small"
+                              color="success"
+                              variant="outlined"
+                            />
+                          )}
+                        </Box>
+                    }
+                      secondary={
+                        <Box mt={1}>
+                          <Typography variant="body2" color="text.secondary" gutterBottom>
+                            Deltakere: {note.attendees?.join, (, ', ') || 'Ikke spesifisert'}
+                          </Typography>
+
+                          {/* Key points preview */}
+                          {note.structuredNotes?.keyPoints &&
+                            note.structuredNotes.keyPoints.length > 0 && (
+                              <Box mt={1}>
+                                <Typography variant="caption" color="primary" fontWeight="bold">
+                                  Hovedpunkter: </Typography>
+                                <List dense>
+                                  {note.structuredNotes.keyPoints.slice, (3).map((point, idx) => (
+                                    <ListItem key={idx} sx={{ py: ,  0pl:  2 }}>
+                                      <ListItemText
+                                        primary={`• ${point}`}
+                                        primaryTypographyProps={{
+                                          variant: 'body',
+                                          color: 'text.secondary',
+                                      }}
+                                      />
+                                    </ListItem>
+                                  ))}
+                                  {note.structuredNotes.keyPoints.length > 3 && (
+                                    <ListItem sx={{ py: ,  0pl:  2 }}>
+                                      <ListItemText
+                                        primary={`... og ${note.structuredNotes.keyPoints.length - 3} flere`}
+                                        primaryTypographyProps={{
+                                          variant: 'caption',
+                                          color: 'text.disabled',
+                                          fontStyle: 'italic',
+                                      }}
+                                      />
+                                    </ListItem>
+                                  )}
+                                </List>
+                              </Box>
+                            )}
+
+                          {/* Timeline events preview */}
+                          {note.structuredNotes?.timeline &&
+                            note.structuredNotes.timeline.length > 0 && (
+                              <Box mt={1}>
+                                <Typography variant="caption" color="secondary" fontWeight="bold">
+                                  Tidslinjeaktiviteter: {note.structuredNotes.timeline.length}{' '}
+                                  hendelser
+                                </Typography>
+                              </Box>
+                            )}
+
+                          <Box
+                            mt={1}
+                            display="flex"
+                            justifyContent="space-between"
+                            alignItems="center"
+                          >
+                            <Typography variant="caption" color="text.disabled">
+                              Sist oppdatert: {formatMeetingDate(note.updatedA)}
+                            </Typography>
+                            <Button
+                              size="small"
+                              onClick={() => handleViewDetails(note)}
+                              startIcon={theming.getThemedIcon('info')}
+                            >
+                              Se detaljer
+                            </Button>
+                          </Box>
+                        </Box>
+                    }
+                    />
+                  </ListItem>
+                  {index < meetingNotes.data.length - 1 && <Divider />}
+                </React.Fragment>
+              ))}
+            </List>
+          ) : (
+            <Box textAlign="center" py={4}>
+              <Notes sx={{ fontSize:  64, color: 'text.disabled', mb: 2 }} />
+              <Typography variant="h6" color="text.secondary" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>
+                Ingen møtenotater ennå
+              </Typography>
+              <Typography variant="body2" color="text.disabled">
+                Møtenotater vil vises her når de er opprettet og synkronisert
+              </Typography>
+            </Box>
+          )}
+        </CardContent>
+      </MuiCard>
+
+      {/* Meeting Details Dialog */}
+      <Dialog
+        open={showDetailDialog}
+        onClose={() => setShowDetailDialog(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          <Box display="flex" alignItems="center" gap={1}>
+            {selectedNote && getMeetingTypeIcon(selectedNote.meetingType)}
+            <Box>
+              <Typography variant="h6" sx={{ ...{}, color: theming.colors.primary }}>
+                {selectedNote?.meetingType} -{' '}
+                {selectedNote && formatMeetingDate(selectedNote.meetingDate)}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Deltakere: {selectedNote?.attendees?.join, (, ', ') || 'Ikke spesifisert'}
+              </Typography>
+            </Box>
+          </Box>
+        </DialogTitle>
+
+        <DialogContent>
+          {selectedNote && (
+            <Box>
+              {/* Intelligent Summary */}
+              {selectedNote.aiSummary && (
+                <Box mb={3}>
+                  <Typography variant="h6" gutterBottom color="primary" sx={{ ...{}, color: theming.colors.primary }}>
+                    Intelligent Sammendrag
+                  </Typography>
+                  <MuiCard variant="outlined">
+                    <CardContent sx={theming.getThemedCardSx()}>
+                      <Typography variant="body2" style={{ whiteSpace: 'pre-line, ',}}>
+                        {selectedNote.aiSummary}
+                      </Typography>
+                    </CardContent>
+                  </MuiCard>
+                </Box>
+              )}
+
+              {/* Structured Notes */}
+              <Box mb={3}>
+                <Typography variant="h6" gutterBottom color="primary" sx={{ ...{}, color: theming.colors.primary }}>
+                  Strukturerte Notater
+                </Typography>
+
+                {/* Key Points */}
+                {selectedNote.structuredNotes?.keyPoints &&
+                  selectedNote.structuredNotes.keyPoints.length > 0 && (
+                    <Accordion defaultExpanded>
+                      <AccordionSummary expandIcon={{theming.getThemedIcon('expandMore')}}>
+                        <Typography variant="subtitle1">
+                          Hovedpunkter ({selectedNote.structuredNotes.keyPoints.length})
+                        </Typography>
+                      </AccordionSummary>
+                      <AccordionDetails>
+                        <List>
+                          {selectedNote.structuredNotes.keyPoints.map((point, idx) => (
+                            <ListItem key={idx}>
+                              <ListItemText primary={`• ${point}`} />
+                            </ListItem>
+                          ))}
+                        </List>
+                      </AccordionDetails>
+                    </Accordion>
+                  )}
+
+                {/* Client Requests */}
+                {selectedNote.structuredNotes?.clientRequests &&
+                  selectedNote.structuredNotes.clientRequests.length > 0 && (
+                    <Accordion>
+                      <AccordionSummary expandIcon={{theming.getThemedIcon('expandMore')}}>
+                        <Typography variant="subtitle1">
+                          Klientønsker ({selectedNote.structuredNotes.clientRequests.length})
+                        </Typography>
+                      </AccordionSummary>
+                      <AccordionDetails>
+                        <List>
+                          {selectedNote.structuredNotes.clientRequests.map((request, idx) => (
+                            <ListItem key={idx}>
+                              <ListItemIcon>
+                                <Wedding color="secondary" />
+                              </ListItemIcon>
+                              <ListItemText primary={request} />
+                            </ListItem>
+                          ))}
+                        </List>
+                      </AccordionDetails>
+                    </Accordion>
+                  )}
+
+                {/* Timeline Events */}
+                {selectedNote.structuredNotes?.timeline &&
+                  selectedNote.structuredNotes.timeline.length > 0 && (
+                    <Accordion>
+                      <AccordionSummary expandIcon={{theming.getThemedIcon('expandMore')}}>
+                        <Typography variant="subtitle1">
+                          Tidslinjeaktiviteter ({selectedNote.structuredNotes.timeline.length})
+                        </Typography>
+                      </AccordionSummary>
+                      <AccordionDetails>
+                        <List>
+                          {selectedNote.structuredNotes.timeline.map((event, idx) => (
+                            <ListItem key={idx}>
+                              <ListItemIcon>
+                                <Event color="primary" />
+                              </ListItemIcon>
+                              <ListItemText
+                                primary={event.event}
+                                secondary={`${event.date} ${event.notes ? `• ${event.notes}` : ''}`}
+                              />
+                            </ListItem>
+                          ))}
+                        </List>
+                      </AccordionDetails>
+                    </Accordion>
+                  )}
+
+                {/* Action Items */}
+                {selectedNote.structuredNotes?.actionItems &&
+                  selectedNote.structuredNotes.actionItems.length > 0 && (
+                    <Accordion>
+                      <AccordionSummary expandIcon={{theming.getThemedIcon('expandMore')}}>
+                        <Typography variant="subtitle1">
+                          Handlingspunkter ({selectedNote.structuredNotes.actionItems.length})
+                        </Typography>
+                      </AccordionSummary>
+                      <AccordionDetails>
+                        <List>
+                          {selectedNote.structuredNotes.actionItems.map((action, idx) => (
+                            <ListItem key={idx}>
+                              <ListItemIcon>
+                                {theming.getThemedIcon('assignment')}
+                              </ListItemIcon>
+                              <ListItemText
+                                primary={action.task}
+                                secondary={`Ansvarlig: ${action.assignedo} • Frist: ${action.dueDate}`}
+                              />
+                            </ListItem>
+                          ))}
+                        </List>
+                      </AccordionDetails>
+                    </Accordion>
+                  )}
+              </Box>
+
+              {/* Sync Status */}
+              {selectedNote.weddingTimelineIntegration && (
+                <Box>
+                  <Typography variant="h6" gutterBottom color="primary" sx={{ ...{}, color: theming.colors.primary }}>
+                    Synkroniseringsstatus
+                  </Typography>
+                  <MuiCard variant="outlined">
+                    <CardContent sx={theming.getThemedCardSx()}>
+                      <Box display="flex" alignItems="center" gap={1} mb={1}>
+                        <Sync
+                          color={
+                            selectedNote.weddingTimelineIntegration.enabled ? 'success' : 'disabled'
+                        }
+                        />
+                        <Typography variant="body2">
+                          Status: {',  , '}
+                          {selectedNote.weddingTimelineIntegration.enabled
+                            ? 'Aktivert'
+                            : 'Deaktivert'}
+                        </Typography>
+                      </Box>
+                      {selectedNote.weddingTimelineIntegration.syncedSections?.length > 0 && (
+                        <Box mb={1}>
+                          <Typography variant="body2" gutterBottom>
+                            Synkroniserte seksjoner: </Typography>
+                          <Box display="flex" gap=, {, 1} flexWrap="wrap">
+                            {selectedNote.weddingTimelineIntegration.syncedSections.map(
+                              (section, idx) => (
+                                <Chip
+                                  key={idx}
+                                  label={section}
+                                  size="small"
+                                  color="primary"
+                                  variant="outlined"
+                                />
+                              ),
+                            )}
+                          </Box>
+                        </Box>
+                      )}
+                      {selectedNote.weddingTimelineIntegration.lastSync && (
+                        <Typography variant="caption" color="text.secondary">
+                          Sist synkronisert: {',  , '}
+                          {formatMeetingDate(selectedNote.weddingTimelineIntegration.lastSync)}
+                        </Typography>
+                      )}
+                    </CardContent>
+                  </MuiCard>
+                </Box>
+              )}
+            </Box>
+          )}
+        </DialogContent>
+
+        <DialogActions>
+          <Button onClick={() => setShowDetailDialog(false)}>Lukk</Button>
+        </DialogActions>
+      </Dialog>
+    </>
+  );
+}

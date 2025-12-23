@@ -1,0 +1,592 @@
+/**
+ * Contextual Help & Educational Content for Customer Journey Builder
+ * Provides detailed explanations, tips, and best practices for each element
+ */
+
+// 📚 Stage Contextual Information
+export const stageContextualInfo = {
+  awareness: {
+    name: 'Awareness Stage',
+    emoji: '👁️',
+    shortDescription: 'The customer discovers your brand or solution',
+    detailedDescription: `
+      This is the first stage where potential customers become aware of your business, 
+      product, or service. They may not know they have a problem yet, or they're just 
+      starting to research solutions.
+    `,
+    whatHappensHere: [
+      'Customer first encounters your brand', 'They recognize they have a need or problem','Initial brand impression is formed','They may not be ready to buy yet'
+    ],
+    bestPractices: [
+      '🎯 Focus on building brand recognition','📢 Use broad targeting to reach new audiences','💡 Educate rather than sell','🎨 Create memorable, engaging content','📱 Leverage social media and content marketing','🔍 Optimize for SEO and discoverability'
+    ],
+    commonTouchpoints: [
+      'Social media ads (Instagram, Facebook, TikTok)','Blog posts and SEO content','Podcast appearances','YouTube videos','Influencer partnerships','PR and media coverage','Word-of-mouth and referrals'
+    ],
+    messageType: 'Emotional & Educational',
+    messageExamples: [
+      '✨ "Struggling with [problem]? You\'re not alone..."','📖 "Here\'s what most people don\'t know about..."','🎬 Behind-the-scenes brand story','💭 "Imagine if you could..."'
+    ],
+    metrics: {
+      keyMetrics: ['Impressions','Reach','Brand awareness','Website traffic'],
+      successIndicators: ['Growing follower count','Increased search volume','Social shares']
+  },
+    commonMistakes: [
+      '❌ Being too salesy too soon','❌ Targeting too narrowly','❌ Ignoring brand storytelling','❌ Not tracking awareness metrics'
+    ],
+    customerMindset: '🤔 "What is this? Is this relevant to me?"',
+    goalForThisStage: 'Make a memorable first impression and spark interest'
+},
+
+  consideration: {
+    name: 'Consideration Stage',
+    emoji: '🔍',
+    shortDescription: 'Customer evaluates options and compares solutions',
+    detailedDescription: `
+      At this stage, the customer knows they have a problem and is actively researching 
+      solutions. They're comparing different options, reading reviews, and gathering 
+      information to make an informed decision.
+    `,
+    whatHappensHere: [
+      'Customer researches multiple solutions','They compare features, prices, and reviews','Trust and credibility become crucial','They\'re narrowing down their options'
+    ],
+    bestPractices: [
+      '📊 Provide detailed product information','⭐ Showcase social proof (reviews, testimonials)','📹 Create product demos and tutorials','📝 Offer comparison guides','🎓 Educate on your unique value proposition','💬 Enable easy communication (chat, FAQ)'
+    ],
+    commonTouchpoints: [
+      'Website product pages','Educational webinars','Email nurture sequences','Product comparison guides','Case studies and success stories','YouTube tutorials','Live chat support','Free resources (ebooks, templates)'
+    ],
+    messageType: 'Rational & Informative',
+    messageExamples: [
+      '📊 "Here\'s how we compare to [competitor]..."','✅ "Our customers see [specific results]..."','🎓 "Free guide: How to choose the right [solution]"','💡 "Top 5 features that matter most..."'
+    ],
+    metrics: {
+      keyMetrics: ['Time on site','Pages per session','Email open rates','Content downloads'],
+      successIndicators: ['Engaged website visitors','Email list growth','Demo requests']
+  },
+    commonMistakes: [
+      '❌ Not providing enough information','❌ Hiding pricing or being unclear','❌ Ignoring competitor comparisons','❌ Making it hard to contact you'
+    ],
+    customerMindset: '🤓 "Which option is best for me? Can I trust this brand?"',
+    goalForThisStage: 'Build trust and demonstrate why you\'re the best choice'
+},
+
+  decision: {
+    name: 'Decision Stage',
+    emoji: '🧠',
+    shortDescription: 'Customer is ready to make a purchase decision',
+    detailedDescription: `
+      The customer has narrowed down their options and is ready to make a decision. 
+      They may need a final push, reassurance, or incentive to convert. This is where 
+      you remove final objections and create urgency.
+    `,
+    whatHappensHere: [
+      'Customer is comparing final 2-3 options','They\'re looking for reasons to buy NOW','Final objections need to be addressed','They may need a small incentive or reassurance'
+    ],
+    bestPractices: [
+      '⏰ Create urgency (limited time offers)','💰 Offer incentives (discounts, bonuses)','🛡️ Reduce risk (money-back guarantee, free trial)','📞 Make it easy to contact sales','✨ Highlight unique differentiators','🎁 Add value (free shipping, extras)'
+    ],
+    commonTouchpoints: [
+      'Abandoned cart emails','Retargeting ads','Live demo or consultation calls','Free trial offers','Limited-time promotions','Personalized sales emails','Pricing page visits','FAQ page interactions'
+    ],
+    messageType: 'Urgency & Reassurance',
+    messageExamples: [
+      '⏰ "Limited time: Save 20% this week only"','🛡️ "Try it risk-free for 30 days"','💬 "Have questions? Our team is here to help"','🎁 "Order now and get [bonus] free"'
+    ],
+    metrics: {
+      keyMetrics: ['Add-to-cart rate','Abandoned cart rate','Demo bookings','Sales calls'],
+      successIndicators: ['Increased cart completions','Higher demo-to-sale conversion']
+  },
+    commonMistakes: [
+      '❌ Not addressing objections clearly','❌ Making checkout too complicated','❌ Not offering urgency or incentives','❌ Unclear or hidden costs'
+    ],
+    customerMindset: '⚖️ "Should I buy this now? What if I regret it?"',
+    goalForThisStage: 'Remove final objections and motivate immediate action'
+},
+
+  purchase: {
+    name: 'Purchase Stage',
+    emoji: '🛒',
+    shortDescription: 'Customer completes the transaction',
+    detailedDescription: `
+      The customer is actively purchasing. Your goal is to make this process as smooth, 
+      quick, and reassuring as possible. Any friction here can cause them to abandon 
+      at the last moment.
+    `,
+    whatHappensHere: [
+      'Customer enters payment information','They complete the transaction','Confirmation and thank you messages are sent','First impression of your service begins'
+    ],
+    bestPractices: [
+      '⚡ Simplify the checkout process','💳 Offer multiple payment options','🔒 Display security badges and trust signals','📧 Send immediate confirmation emails','✅ Set clear expectations for next steps','🎉 Celebrate the purchase with them'
+    ],
+    commonTouchpoints: [
+      'Checkout page','Payment gateway','Order confirmation email','Thank you page','Receipt and invoice','Shipping confirmation','Account creation','Welcome email sequence'
+    ],
+    messageType: 'Reassurance & Celebration',
+    messageExamples: [
+      '🎉 "Thank you! Your order is confirmed"','📦 "Here\'s what happens next..."','✉️ "Welcome to [brand name]! You made a great choice"','🔒 "Your payment is secure and processed"'
+    ],
+    metrics: {
+      keyMetrics: ['Conversion rate','Average order value','Cart abandonment','Checkout completion'],
+      successIndicators: ['High checkout completion rate','Low payment errors']
+  },
+    commonMistakes: [
+      '❌ Too many form fields','❌ Unexpected costs at checkout','❌ Limited payment options','❌ Slow or confusing checkout flow'
+    ],
+    customerMindset: '😰 "Is this secure? Am I making the right choice?"',
+    goalForThisStage: 'Make purchasing effortless and confirm their excellent decision'
+},
+
+  retention: {
+    name: 'Retention Stage',
+    emoji: '❤️',
+    shortDescription: 'Keep customers engaged and satisfied',
+    detailedDescription: `
+      After the purchase, your focus shifts to delivering value, ensuring satisfaction, 
+      and building a long-term relationship. Happy customers become repeat customers 
+      and eventually advocates.
+    `,
+    whatHappensHere: [
+      'Customer receives and uses your product/service','They form opinions based on experience','Support interactions shape satisfaction','Loyalty starts to build (or erode)'
+    ],
+    bestPractices: [
+      '🎓 Provide excellent onboarding','💬 Offer proactive customer support','📧 Send helpful tips and resources','🎁 Surprise and delight with extras','📊 Check in regularly for feedback','🔄 Make repeat purchases easy'
+    ],
+    commonTouchpoints: [
+      'Onboarding email sequences','Product tutorials and guides','Customer support (chat, email, phone)','Satisfaction surveys','Loyalty program communications','Exclusive offers for existing customers','Product update notifications','Community forums or groups'
+    ],
+    messageType: 'Supportive & Value-Adding',
+    messageExamples: [
+      '🎓 "Here are 5 tips to get the most out of [product]"','💡 "Did you know you can also..."','🎁 "As a thank you, here\'s an exclusive offer"','💬 "How are things going? Any questions?"'
+    ],
+    metrics: {
+      keyMetrics: ['Customer satisfaction','Repeat purchase rate','Churn rate','Support tickets'],
+      successIndicators: ['High NPS score','Increasing LTV','Low churn']
+  },
+    commonMistakes: [
+      '❌ Neglecting customers after purchase','❌ Poor or slow customer support','❌ Not providing enough product education','❌ Only contacting them to upsell'
+    ],
+    customerMindset: '🤔 "Am I getting value? Was this worth it?"',
+    goalForThisStage: 'Deliver exceptional value and build lasting loyalty'
+},
+
+  advocacy: {
+    name: 'Advocacy Stage',
+    emoji: '📣',
+    shortDescription: 'Turn customers into brand advocates',
+    detailedDescription: `
+      Satisfied customers naturally want to share their positive experiences. Your job 
+      is to make it easy for them to refer others, leave reviews, and become vocal 
+      supporters of your brand.
+    `,
+    whatHappensHere: [
+      'Customers share their experience with others','They leave reviews and testimonials','They participate in referral programs','They defend and promote your brand'
+    ],
+    bestPractices: [
+      '⭐ Ask for reviews at the right time','🎁 Create attractive referral programs','📸 Encourage user-generated content','🏆 Recognize and reward loyal customers','👥 Build a community around your brand','💬 Make sharing easy and rewarding'
+    ],
+    commonTouchpoints: [
+      'Referral program invitations','Review request emails','User-generated content campaigns','Case study interview requests','Ambassador or affiliate programs','Social media engagement','Community forums or Facebook groups','Customer spotlights or features'
+    ],
+    messageType: 'Gratitude & Empowerment',
+    messageExamples: [
+      '🎁 "Love our product? Get $20 for every friend you refer"','⭐ "Would you mind sharing your experience?"','📸 "Show us how you use [product] #brandhashtag"','🏆 "Join our VIP community of brand ambassadors"'
+    ],
+    metrics: {
+      keyMetrics: ['Referral rate','Review volume','NPS score','Social mentions','UGC volume'],
+      successIndicators: ['Growing referral traffic','Positive reviews','Viral social content']
+  },
+    commonMistakes: [
+      '❌ Not asking for referrals or reviews','❌ Making referral process too complicated','❌ Not rewarding advocates','❌ Ignoring negative feedback publicly'
+    ],
+    customerMindset: '😍 "I love this! I need to tell my friends!"',
+    goalForThisStage: 'Turn satisfied customers into active promoters of your brand'
+}
+};
+
+// 🎯 Touchpoint Contextual Information
+export const touchpointContextualInfo = {
+  social_ad: {
+    name: 'Social Media Ad',
+    icon: '📱',
+    description: 'Paid advertisements on social platforms',
+    platforms: ['Instagram','Facebook','TikTok','LinkedIn','Twitter','Pinterest'],
+    bestFor: ['Awareness','Consideration','Retargeting'],
+    costRange: '$10 - $1000+ per day',
+    avgConversionRate: '1-3%',
+    tips: [
+      'Use eye-catching visuals','Test multiple ad variations','Target specific audience segments','Include clear call-to-action','Use video when possible (higher engagement)'
+    ],
+    whenToUse: 'Early awareness stage or retargeting warm leads',
+    metrics: ['Impressions','Click-through rate','Cost per click','Conversions']
+},
+
+  website: {
+    name: 'Website Visit',
+    icon: '🌐',
+    description: 'Customer visits your website or specific pages',
+    platforms: ['Homepage','Product pages','Blog','About page'],
+    bestFor: ['Consideration','Decision'],
+    costRange: 'Domain + hosting ($10-100/month)',
+    avgConversionRate: '2-5%',
+    tips: [
+      'Ensure fast loading times','Mobile-responsive design is critical','Clear navigation and CTAs','Build trust with professional design','Use analytics to track behavior'
+    ],
+    whenToUse: 'Throughout the journey as the central hub',
+    metrics: ['Page views','Time on site','Bounce rate','Conversion rate']
+},
+
+  email: {
+    name: 'Email Marketing',
+    icon: '📧',
+    description: 'Targeted email communications and campaigns',
+    platforms: ['Mailchimp','Klaviyo','ConvertKit','ActiveCampaign'],
+    bestFor: ['Consideration','Decision','Retention','Advocacy'],
+    costRange: '$0 - $300+ per month',
+    avgConversionRate: '15-25% open rate, 2-5% click rate',
+    tips: [
+      'Segment your audience','Personalize subject lines and content','Optimize for mobile','A/B test everything','Maintain consistent sending schedule'
+    ],
+    whenToUse: 'Nurturing leads and maintaining customer relationships',
+    metrics: ['Open rate','Click rate','Conversion rate','Unsubscribe rate']
+},
+
+  video: {
+    name: 'Video Content',
+    icon: '📹',
+    description: 'Engaging video content on various platforms',
+    platforms: ['YouTube','Vimeo','Instagram Reels','TikTok'],
+    bestFor: ['Awareness','Consideration','Education'],
+    costRange: '$0 - $5000+ per video',
+    avgConversionRate: '4-5% (higher engagement than text)',
+    tips: [
+      'Hook viewers in first 3 seconds','Keep it concise and valuable','Include captions (80% watch on mute)','End with clear call-to-action','Optimize thumbnails for clicks'
+    ],
+    whenToUse: 'When complex concepts need visual explanation',
+    metrics: ['Views','Watch time','Engagement rate','Shares']
+},
+
+  landing_page: {
+    name: 'Landing Page',
+    icon: '🎯',
+    description: 'Dedicated page designed for a specific conversion goal',
+    platforms: ['Unbounce','Leadpages','Custom built'],
+    bestFor: ['Consideration','Decision'],
+    costRange: '$0 - $1000 per page',
+    avgConversionRate: '2-15% (varies widely)',
+    tips: [
+      'Single, clear call-to-action','Remove navigation distractions','Use compelling headlines','Include social proof','A/B test constantly'
+    ],
+    whenToUse: 'For targeted campaigns with specific conversion goals',
+    metrics: ['Conversion rate','Bounce rate','Time on page','Form submissions']
+},
+
+  store_visit: {
+    name: 'Physical Store Visit',
+    icon: '🏪',
+    description: 'Customer visits your physical location',
+    platforms: ['Retail store','Office','Pop-up shop','Event booth'],
+    bestFor: ['Decision','Purchase','Experience'],
+    costRange: 'Rent + operations ($1000+ per month)',
+    avgConversionRate: '20-40% (foot traffic to purchase)',
+    tips: [
+      'Create inviting store atmosphere','Train staff on customer service','Offer in-store experiences','Connect online and offline','Make it Instagram-worthy'
+    ],
+    whenToUse: 'For high-touch, experiential products/services',
+    metrics: ['Foot traffic','Dwell time','Conversion rate','Average transaction']
+},
+
+  phone_call: {
+    name: 'Phone Call',
+    icon: '📞',
+    description: 'Direct voice communication with prospects/customers',
+    platforms: ['Traditional phone','VoIP','Scheduled calls'],
+    bestFor: ['Decision','High-value sales','Support'],
+    costRange: '$0 - $100+ per month (phone system)',
+    avgConversionRate: '20-50% (for qualified leads)',
+    tips: [
+      'Have a clear call script/structure','Listen more than you talk','Take detailed notes','Follow up promptly after calls','Respect their time'
+    ],
+    whenToUse: 'For complex, high-value, or relationship-based sales',
+    metrics: ['Call duration','Conversion rate','Follow-up rate','Customer satisfaction']
+},
+
+  chat: {
+    name: 'Live Chat',
+    icon: '💬',
+    description: 'Real-time text-based communication on your website',
+    platforms: ['Intercom','Drift','LiveChat','Zendesk Chat'],
+    bestFor: ['Consideration','Decision','Support'],
+    costRange: '$0 - $500+ per month',
+    avgConversionRate: '10-15% of chat sessions convert',
+    tips: [
+      'Respond within 60 seconds','Use proactive chat triggers','Train chatbot for common questions','Capture email before long conversations','Make handoff to human seamless'
+    ],
+    whenToUse: 'When customers need quick answers or reassurance',
+    metrics: ['Response time','Resolution rate','CSAT score','Conversation to conversion']
+},
+
+  webinar: {
+    name: 'Webinar',
+    icon: '🎥',
+    description: 'Live or recorded educational online presentations',
+    platforms: ['Zoom','WebinarJam','GoToWebinar','Demio'],
+    bestFor: ['Consideration','Decision','Education'],
+    costRange: '$0 - $200+ per month',
+    avgConversionRate: '20-40% of attendees (to next step)',
+    tips: [
+      'Promise clear value in title','Keep it 45-60 minutes','Include Q&A session','Follow up with recording','Make offer at the end'
+    ],
+    whenToUse: 'For educating and building authority with prospects',
+    metrics: ['Registration rate','Attendance rate','Engagement','Conversion rate']
+},
+
+  content: {
+    name: 'Content Marketing',
+    icon: '📝',
+    description: 'Blog posts, articles, and SEO-optimized content',
+    platforms: ['Blog','Medium','LinkedIn Articles','Guest posts'],
+    bestFor: ['Awareness','Consideration','SEO'],
+    costRange: '$0 - $500+ per article',
+    avgConversionRate: '2-3% (readers to leads)',
+    tips: [
+      'Focus on solving problems','Optimize for SEO keywords','Include clear CTAs','Update old content regularly','Promote across channels'
+    ],
+    whenToUse: 'For long-term organic traffic and thought leadership',
+    metrics: ['Organic traffic','Time on page','Lead generation','Social shares']
+},
+
+  referral: {
+    name: 'Referral Program',
+    icon: '🎁',
+    description: 'Incentivized word-of-mouth marketing',
+    platforms: ['ReferralCandy','Viral Loops','Custom program'],
+    bestFor: ['Advocacy','Acquisition'],
+    costRange: 'Cost of incentives + software ($0-300/month)',
+    avgConversionRate: '25-30% (referred users convert)',
+    tips: [
+      'Make reward attractive','Keep process simple','Reward both referrer and referee','Promote program regularly','Track and optimize'
+    ],
+    whenToUse: 'When you have satisfied customers willing to advocate',
+    metrics: ['Referral rate','Viral coefficient','CAC for referred customers','LTV']
+},
+
+  event: {
+    name: 'Event / Conference',
+    icon: '🎪',
+    description: 'In-person or virtual industry events',
+    platforms: ['Trade shows','Conferences','Meetups','Virtual summits'],
+    bestFor: ['Awareness','Networking','Partnership'],
+    costRange: '$500 - $50,000+ (booth, travel, materials)',
+    avgConversionRate: '15-30% (attendees to qualified leads)',
+    tips: [
+      'Have clear goals before attending','Create engaging booth experience','Collect contact information systematically','Follow up within 48 hours','Measure ROI carefully'
+    ],
+    whenToUse: 'For B2B, networking, or experiential industries',
+    metrics: ['Leads collected','Meeting bookings','Brand awareness','ROI']
+},
+
+  demo: {
+    name: 'Product Demo',
+    icon: '🖥️',
+    description: 'Live demonstration of your product/service',
+    platforms: ['Zoom','Screen sharing','In-person demo'],
+    bestFor: ['Decision','High-value sales'],
+    costRange: 'Time + demo software ($0-100/month)',
+    avgConversionRate: '40-60% (demo to trial/purchase)',
+    tips: [
+      'Customize to their specific needs','Focus on value, not features','Keep it interactive','Handle objections proactively','Always book next step before ending'
+    ],
+    whenToUse: 'For complex products that require explanation',
+    metrics: ['Demo-to-trial rate','Demo-to-purchase rate','Time to close','No-show rate']
+},
+
+  trial: {
+    name: 'Free Trial',
+    icon: '🆓',
+    description: 'Limited-time access to full or partial product',
+    platforms: ['Your product','Demo environment'],
+    bestFor: ['Decision','Product-led growth'],
+    costRange: 'Server/hosting costs ($0-1000/month)',
+    avgConversionRate: '25-40% (trial to paid)',
+    tips: [
+      'Make signup frictionless','Set clear trial period','Send helpful onboarding emails','Track feature usage','Prompt upgrade at right time'
+    ],
+    whenToUse: 'For SaaS and digital products',
+    metrics: ['Trial signups','Activation rate','Trial-to-paid conversion','Engagement']
+},
+
+  onboarding: {
+    name: 'Customer Onboarding',
+    icon: '🎓',
+    description: 'Structured process to help customers get value quickly',
+    platforms: ['Email sequences','In-app tutorials','Welcome calls'],
+    bestFor: ['Retention','Product adoption'],
+    costRange: '$0 - $1000+ (software + time)',
+    avgConversionRate: 'Improves retention by 50%+',
+    tips: [
+      'Set clear expectations','Celebrate early wins','Provide step-by-step guidance','Offer multiple support channels','Check in regularly'
+    ],
+    whenToUse: 'Immediately after purchase/signup',
+    metrics: ['Activation rate','Time to value','Feature adoption','Retention rate']
+}
+};
+
+// 🧠 AI Feature Explanations
+export const aiFeatureContextualInfo = {
+  personaBuilder: {
+    name: 'AI Persona Builder',
+    icon: '🤖',
+    description: 'Generate realistic customer personas using AI',
+    howItWorks: `
+      Our AI analyzes your industry, target market, and business model to create 
+      detailed, realistic customer personas complete with demographics, psychographics, 
+      and behavioral patterns.
+    `,
+    benefits: [
+      'Save hours of research time','Get data-driven insights','Discover personas you might have missed','Continuously refine based on real data'
+    ],
+    whatYouGet: [
+      'Complete demographic profile','Motivations and pain points','Buying triggers and decision factors','Preferred communication channels','Behavioral patterns'
+    ],
+    powered: 'OpenAI GPT-4'
+},
+
+  messageCoach: {
+    name: 'AI Message Coach',
+    icon: '💬',
+    description: 'Get smart suggestions for the right message at each stage',
+    howItWorks: `
+      The AI analyzes your journey stage, persona, and touchpoint to suggest the 
+      optimal message type (emotional, rational, urgent, or social proof) and 
+      provide specific content recommendations.
+    `,
+    benefits: [
+      'Match message to customer mindset','Improve conversion at each stage','Learn what works through AI insights','Test multiple approaches quickly'
+    ],
+    messageTypes: {
+      emotional: {
+        name: 'Emotional',
+        when: 'Awareness & Advocacy stages',
+        example: 'Storytelling, aspirational content, brand values'
+    },
+      rational: {
+        name: 'Rational',
+        when: 'Consideration stage',
+        example: 'Feature comparisons, data, logic-driven content'
+    },
+      urgency: {
+        name: 'Urgency',
+        when: 'Decision stage',
+        example: 'Limited time offers, scarcity, FOMO triggers'
+    },
+      social_proof: {
+        name: 'Social Proof',
+        when: 'Decision & Purchase stages',
+        example: 'Testimonials, reviews, case studies, trust badges'
+    }
+  },
+    powered: 'OpenAI GPT-4 + Marketing Psychology'
+},
+
+  predictiveFlow: {
+    name: 'AI Predictive Flow',
+    icon: '📈',
+    description: 'Predict which path will drive highest conversions',
+    howItWorks: `
+      Machine learning analyzes your journey data, industry benchmarks, and customer 
+      behavior patterns to predict which touchpoint sequences will lead to the highest 
+      conversion rates for each persona.
+    `,
+    benefits: [
+      'Optimize journey before launching','Identify weak points in your funnel','Discover high-performing paths','Reduce customer acquisition cost'
+    ],
+    whatItPredicts: [
+      'Optimal touchpoint sequence','Expected conversion rates per step','Likely drop-off points','Best time to engage at each stage','Channel effectiveness by persona'
+    ],
+    accuracy: '75-85% prediction accuracy based on similar journeys',
+    powered: 'Machine Learning + Industry Benchmark Data'
+}
+};
+
+// 📊 General Journey Tips
+export const generalJourneyTips = {
+  title: 'Customer Journey Best Practices',
+  principles: [
+    {
+      name: 'Customer-Centric Thinking',
+      description: 'Always view the journey from the customer\'s perspective, not yours',
+      tip: 'For each touchpoint, ask: "What does the customer need RIGHT NOW?"'
+  },
+    {
+      name: 'Reduce Friction',
+      description: 'Every extra step, form field, or click reduces conversions',
+      tip: 'Audit your journey and remove anything that doesn\'t add value'
+  },
+    {
+      name: 'Build Trust Gradually',
+      description: 'Trust is earned step-by-step through consistent, valuable interactions',
+      tip: 'Don\'t ask for too much too soon. Small commitments first.'
+  },
+    {
+      name: 'Personalization Wins',
+      description: 'Generic messages perform poorly. Personalize based on behavior and stage',
+      tip: 'Use dynamic content that adapts to where they are in the journey'
+  },
+    {
+      name: 'Multi-Channel Approach',
+      description: 'Customers expect to interact across multiple channels seamlessly',
+      tip: 'Ensure consistency across all touchpoints and make it easy to switch channels'
+  },
+    {
+      name: 'Data-Driven Optimization',
+      description: 'Track, measure, and continuously improve based on real data',
+      tip: 'Set up analytics for every touchpoint and review monthly'
+  }
+  ]
+};
+
+// 🎯 Visualization Type Explanations
+export const visualizationContextualInfo = {
+  timeline: {
+    name: 'Timeline View',
+    icon: '➡️',
+    description: 'Linear left-to-right progression through stages',
+    bestFor: 'Traditional funnels with clear sequential stages',
+    visual: 'Awareness → Consideration → Decision → Purchase → Retention → Advocacy',
+    whenToUse: 'When your customer journey is primarily linear and sequential'
+},
+  funnel: {
+    name: 'Funnel View',
+    icon: '🔻',
+    description: 'Top-down pyramid showing narrowing of audience',
+    bestFor: 'Visualizing conversion rates and drop-off at each stage',
+    visual: 'Wide at top (awareness) → Narrow at bottom (advocacy)',
+    whenToUse: 'When you want to emphasize conversion optimization'
+},
+  circular: {
+    name: 'Circular View',
+    icon: '🔄',
+    description: 'Cyclical loop showing advocacy leading back to awareness',
+    bestFor: 'Subscription or repeat-purchase businesses',
+    visual: 'Continuous loop: Advocacy → feeds back into → Awareness',
+    whenToUse: 'When customer retention and referrals are core to your model'
+},
+  matrix: {
+    name: 'Matrix View',
+    icon: '📊',
+    description: 'Grid layout showing all touchpoints by stage and channel',
+    bestFor: 'Complex multi-channel journeys with many touchpoints',
+    visual: 'Rows (stages) × Columns (channels) = Full touchpoint map',
+    whenToUse: 'When you need to see the full complexity of your journey at once'
+}
+};
+
+export default {
+  stageContextualInfo,
+  touchpointContextualInfo,
+  aiFeatureContextualInfo,
+  generalJourneyTips,
+  visualizationContextualInfo
+};
+

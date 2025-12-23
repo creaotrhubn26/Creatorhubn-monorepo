@@ -1,0 +1,2019 @@
+import { useTheming } from '../utils/theming-helper';
+import React from "react";
+import { useLocation } from "wouter";
+import { GdprNotice } from "@/components/common/GdprNotice";
+
+// User interface definition
+interface User {
+  email?: string;
+  profession?: string;
+  userType?: string;
+  isAdmin?: boolean;
+}
+import {
+  Box,
+  Container,
+  Typography,
+  Button,
+  Card as MuiCard,
+  CardContent,
+  Stack,
+  Paper,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  Grid,
+  Drawer,
+  List,
+  ListItem,
+  ListItemButton,
+  ListItemIcon,
+  ListItemText,
+  Divider,
+  IconButton,
+} from "@mui/material";
+import {
+  Home,
+  VideoLibrary,
+  LibraryMusic,
+  Business,
+  CheckCircle,
+  Group,
+  Inventory,
+  PhotoCamera,
+  AutoAwesome,
+  Person,
+  Science,
+  MenuBook,
+  Email,
+  Phone,
+  LocationOn,
+  Menu,
+  Close,
+  Dashboard,
+  Settings,
+  Help,
+  Info,
+  CameraAlt,
+  Schedule,
+  Assessment,
+  Security,
+  RocketLaunch,
+  Adjust,
+} from "@mui/icons-material";
+import { useQuery } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
+
+// Lazy load non-critical components for performance
+const LoginModal = React.lazy(() => import("@/components/auth/LoginModal"));
+const InviteRequestForm = React.lazy(
+  () => import("@/components/InviteRequestForm"),
+);
+
+// Performance optimization - Asset preloading for critical resources
+const preloadCriticalAssets = () => {
+  if (typeof document !== "undefined") {
+    const preloadLinks = [
+      { rel: "preload", href: "/creatorhub-logo-amber.svg", as: "image" },
+      {
+        rel: "preload",
+        href: "https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap",
+        as: "style",
+    },
+    ];
+
+    preloadLinks.forEach((link) => {
+      const existingLink = document.querySelector(`link[href="${link.href}"]`);
+      if (!existingLink) {
+        const linkElement = document.createElement("link");
+        Object.assign(linkElement, link);
+        document.head.appendChild(linkElement);
+    }
+  });
+}
+};
+
+preloadCriticalAssets();
+
+// DynamicPlatformStats component for real-time platform statistics
+const DynamicPlatformStats: React.FC = () => {
+  const {
+    data: stats,
+    isLoading,
+    error,
+} = useQuery({
+    queryKey: ["/api/platform/stats"],
+    queryFn: () => apiRequest("/api/platform/stats"),
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+});
+
+  // Don't render anything while loading or if no data
+  if (isLoading || error || !stats?.showStats) {
+    return null;
+}
+
+  const formatNumber = (num: number): string => {
+    if (num >= 1000) {
+      return (num / 1000).toFixed(1) + "k+";
+}
+    return num.toString() + "+";
+};
+
+  return (
+    <Grid container spacing={3} sx={{ mt: 2 }}>
+      <Grid item xs={12} md={4}>
+        <Box sx={{ textAlign: "center" }}>
+          <Typography variant="h4"
+            sx={{ color: "#ff8c00", fontWeight: "bold" }}
+>
+            {formatNumber(stats.users.active)}
+          </Typography>
+          <Typography variant="body2" sx={{ color: "#374151" }}>
+            Aktive Brukere
+          </Typography>
+        </Box>
+      </Grid>
+      <Grid item xs={12} md={4}>
+        <Box sx={{ textAlign: "center" }}>
+          <Typography variant="h4"
+            sx={{ color: "#ff8c00", fontWeight: "bold" }}
+>
+            {formatNumber(stats.projects.completed)}
+          </Typography>
+          <Typography variant="body2" sx={{ color: "#374151" }}>
+            Prosjekter Fullført
+          </Typography>
+        </Box>
+      </Grid>
+      <Grid item xs={12} md={4}>
+        <Box sx={{ textAlign: "center" }}>
+          <Typography variant="h4"
+            sx={{ color: "#ff8c00", fontWeight: "bold" }}
+>
+            {stats.satisfaction.percentage}%
+          </Typography>
+          <Typography variant="body2" sx={{ color: "#374151" }}>
+            Kundetilfredshet
+          </Typography>
+        </Box>
+      </Grid>
+    </Grid>
+  );
+};
+
+// Optimized animations for 60fps performance
+const globalStyles = `
+  @keyframes float {
+    0%, 100% { transform: translateY(0px) translateZ(0) }
+    50% { transform: translateY(-20px) translateZ(0) }
+}
+  @keyframes shimmer {
+    0% { background-position: -200% 0 }
+    100% { background-position: 200% 0 }
+}
+  @keyframes fadeInUp {
+    0% { 
+      opacity: 0; 
+      transform: translateY(30px) translateZ(0); 
+}
+    100% { 
+      opacity: 1; 
+      transform: translateY(0px) translateZ(0); 
+}
+}
+  
+  .critical-load-priority {
+    will-change: transform, opacity;
+    backface-visibility: hidden;
+    perspective: 1000px;
+}
+  
+  .gpu-accelerated {
+    transform: translateZ(0);
+    will-change: transform;
+}
+  
+  .desktop-optimized-glass {
+    backdrop-filter: blur(15px);
+    -webkit-backdrop-filter: blur(15px);
+    transform: translateZ(0);
+}
+  
+  .fade-in-animation {
+    animation: fadeInUp 0.8s ease-out;
+}
+  
+  .staggered-animation {
+    opacity: 0;
+    animation: fadeInUp 0.8s ease-out forwards;
+}
+  
+  @media (prefers-reduced-motion: reduce) {
+    .staggered-animation,
+    .fade-in-animation {
+      animation: none;
+      opacity: 1;
+}
+    .gpu-accelerated {
+      transform: none;
+}
+}
+  
+  .staggered-animation: nth-child(1) { animation-delay: 0.1s }
+  .staggered-animation: nth-child(2) { animation-delay: 0.2s }
+  .staggered-animation: nth-child(3) { animation-delay: 0.3s }
+  .staggered-animation: nth-child(4) { animation-delay: 0.4s }
+`;
+
+// Glassmorphism design constants - Standardized values
+const GLASSMORPHISM_CONSTANTS = {
+  BLUR_LIGHT: "blur(10px, ), ",
+  BLUR_MEDIUM: "blur(15px, ), ",
+  BLUR_STRONG: "blur(25px, ), ",
+
+  ALPHA_LIGHT: 0.1,
+  ALPHA_MEDIUM: 0.5,
+  ALPHA_STRONG: 0.3,
+
+  BORDER_STANDARD: "1px solid rgba(25,140,0,0.3)",
+
+  BOX_SHADOW_LIGHT: "0 8px 32px rgba(25,140,0,0.15)",
+  BOX_SHADOW_MEDIUM: "0 15px 35px rgba(25,140,0,0.15)",
+  BOX_SHADOW_STRONG: "0 32px 64px rgba(25,140,0,0.15)",
+};
+
+// Inject styles
+if (
+  typeof document !== "undefined" &&
+  !document.getElementById("landing-desktop-styles")
+) {
+  const style = document.createElement("style");
+  style.id = "landing-desktop-styles";
+  style.textContent = globalStyles;
+  document.head.appendChild(style);
+}
+
+const LandingDesktop: React.FC = () => {
+  const [, setLocation] = useLocation();
+  
+  // Theming system
+  const theming = useTheming('photographer');
+  
+  // Fetch dynamic professions from wizard
+  const { data: dynamicProfessions, isLoading: professionsLoading } = useQuery({
+    queryKey: ['/api/professions/all'],
+    queryFn: () => apiRequest('/api/professions/all'),
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+    retry: 1
+  });
+  
+  // Merge dynamic professions with static fallback
+  const allProfessions = React.useMemo(() => {
+    const staticProfessions = [
+      { role: 'photographer', label: 'Fotograf', icon: <PhotoCamera />, color: '#2e7d32', description: 'Bryllup, portrett, events og mer', isStatic: false },
+      { role: 'videographer', label: 'Videograf', icon: <VideoLibrary />, color: '#1565c0', description: 'Produksjon, redigering og levering', isStatic: false },
+      { role: 'music_producer', label: 'Musikk Produsent', icon: <LibraryMusic />, color: '#7b1fa2', description: 'Opptak, miksing og mastering', isStatic: false },
+      { role: 'vendor', label: 'Leverandør', icon: <Business />, color: '#ff8c00', description: 'Utstyr, tjenester og produkter', isStatic: false }
+    ];
+    
+    // Prototype Tester - ALWAYS included as meta-profession (admin-controlled)
+    const prototypeTester = { 
+      role: 'prototype_tester', 
+      label: 'Prototype Tester', 
+      icon: <Science />, 
+      color: '#e65100', 
+      description: 'Test nye funksjoner (Krever admin-godkjenning)',
+      isStatic: true, // Always available
+      requiresApproval: true // Special access
+    };
+    
+    if (dynamicProfessions?.professions && dynamicProfessions.professions.length > 0) {
+      console.log('✅ Using dynamic professions from wizard:', dynamicProfessions.professions.length);
+      console.log('✅ Prototype Tester kept as static meta-profession');
+      
+      // Map dynamic professions to landing page format
+      const mapped = dynamicProfessions.professions.map((prof: any) => ({
+        role: prof.professionId,
+        label: prof.displayName || prof.professionId,
+        icon: <Work />, // Default icon, can be customized
+        color: prof.color || '#2196f3',
+        description: prof.description || 'Wizard-created profession',
+        isDynamic: true,
+        isStatic: false
+      }));
+      
+      // ALWAYS append Prototype Tester at the end
+      return [...mapped, prototypeTester];
+    }
+    
+    // Fallback: static professions + prototype tester
+    return [...staticProfessions, prototypeTester];
+  }, [dynamicProfessions]);
+
+  // SEO optimization with meta tags
+  React.useEffect(() => {
+    if (typeof document !== "undefined") {
+      document.documentElement.lang = "nb-NO";
+      document.title = "CreatorHub Norge - Profesjonell Kreativ Plattform";
+
+      let metaDescription = document.querySelector('meta[name="description"]');
+      if (!metaDescription) {
+        metaDescription = document.createElement("meta");
+        metaDescription.setAttribute("name", "description");
+        document.head.appendChild(metaDescription);
+    }
+      metaDescription.setAttribute(
+        "content",
+        "Profesjonell prosjektadministrasjon og kreative verktøy for norske fotografer, videografer og musikkprodusenter. Strømlinjeforme arbeidsflyt, forbedre samarbeid og lever skreddersydde opplevelser.",
+      );
+
+      const ogTags = [
+        {
+          property: "og:title",
+          content: "CreatorHub Norge - Profesjonell Kreativ Plattform",
+      },
+        {
+          property: "og:description",
+          content: "Profesjonell prosjektadministrasjon og kreative verktøy for norske fotografer, videografer og musikkprodusenter.",
+      },
+        { property: "og:type", content: "website" },
+        { property: "og:url", content: window.location.href },
+      ];
+
+      ogTags.forEach((tag) => {
+        let metaTag = document.querySelector(
+          `meta[property="${tag.property}"]`,
+        );
+        if (!metaTag) {
+          metaTag = document.createElement("meta");
+          metaTag.setAttribute("property", tag.property);
+          document.head.appendChild(metaTag);
+      }
+        metaTag.setAttribute("content", tag.content);
+    });
+  }
+}, []);
+
+  // Modal state management
+  const [modalState, setModalState] = React.useState({
+    showSidebar: false,
+    showRoleSelector: false,
+    showLoginModal: false,
+    showInviteRequest: false,
+    selectedRole: "",
+});
+
+  // Google Workspace dialog state
+  const [googleWorkspaceDialogOpen, setGoogleWorkspaceDialogOpen] =
+    React.useState(false);
+
+  // Comprehensive modal cleanup function
+  const resetAllModals = React.useCallback(() => {
+    setModalState({
+      showSidebar: false,
+      showRoleSelector: false,
+      showLoginModal: false,
+      showInviteRequest: false,
+      selectedRole: "",
+  });
+}, []);
+
+  // Escape key handler for consistent modal behavior
+  React.useEffect(() => {
+    const handleEscapeKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        if (modalState.showInviteRequest) {
+          setModalState((prev) => ({
+            ...prev,
+            showInviteRequest: false,
+            selectedRole: "",
+        }));
+      } else if (modalState.showRoleSelector) {
+          setModalState((prev) => ({
+            ...prev,
+            showRoleSelector: false,
+            selectedRole: "",
+        }));
+      } else if (modalState.showLoginModal) {
+          setModalState((prev) => ({ ...prev, showLoginModal: false }));
+      } else if (modalState.showSidebar) {
+          setModalState((prev) => ({ ...prev, showSidebar: false }));
+      }
+    }
+  };
+
+    document.addEventListener("keydown", handleEscapeKey);
+    return () => document.removeEventListener("keydown", handleEscapeKey);
+}, [modalState]);
+
+  // Navigation cleanup with consistent state management
+  const handleNavigationCleanup = React.useCallback(
+    (path: string) => {
+      setLocation(path);
+      resetAllModals();
+},
+    [setLocation, resetAllModals],
+  );
+
+  // Optimized user data fetching with aggressive caching
+  const { data: currentUser, isLoading: userLoading } = useQuery<User>({
+    queryKey: ["/api/auth/current-user"],
+    retry: false,
+    refetchOnWindowFocus: false,
+    staleTime: 5 * 60 * 100,
+    gcTime: 10 * 60 * 100,
+});
+
+  const isAuthenticated = !!currentUser;
+  const userProfession = currentUser?.profession || currentUser?.userType;
+  const isAdmin =
+    currentUser?.email === "daniel@creatorhubn.com" || currentUser?.isAdmin;
+
+  // Role-based access control
+  const canAccessProfession = (profession: string) => {
+    try {
+      if (isAdmin) {
+        console.log(
+          `Admin Access: ${currentUser?.email} accessing ${profession} dashboard`,
+        );
+        return true;
+    }
+
+      if (userLoading) {
+        return false;
+    }
+
+      const detectedProfession =
+        userProfession ||
+        currentUser?.profession ||
+        currentUser?.userType ||
+        "unknown";
+
+      if (detectedProfession === "unknown" && isAuthenticated) {
+        return false;
+    }
+
+      const hasAccess = detectedProfession === profession;
+      return hasAccess;
+  } catch (error) {
+      console.error(`Error in canAccessProfession(${profession}):`, error);
+      return false;
+  }
+};
+
+  const handleNavigation = (path: string) => {
+    handleNavigationCleanup(path);
+};
+
+  const handleGetStarted = () => {
+    setModalState((prev) => ({ ...prev, showRoleSelector: true }));
+};
+
+  const handleLogin = () => {
+    setModalState((prev) => ({ ...prev, showRoleSelector: true }));
+};
+
+  const handleJoinAsProfessional = () => {
+    setModalState((prev) => ({ ...prev, showRoleSelector: true }));
+};
+
+  const handleVendorNetwork = () => {
+    setModalState((prev) => ({
+      ...prev,
+      selectedRole: "vendor",
+      showInviteRequest: true,
+      showRoleSelector: false,
+  }));
+};
+
+  const handleRoleSelection = (role: string) => {
+    setModalState((prev) => ({
+      ...prev,
+      selectedRole: role,
+      showRoleSelector: false,
+      showInviteRequest: true,
+  }));
+};
+
+  const handleCloseModals = () => {
+    resetAllModals();
+};
+
+  return (
+    <Box
+      className="critical-load-priority fade-in-animation"
+      sx={{
+        minHeight: "100vh",
+        background: `
+          linear-gradient(135deg, #fff5e6 0%, #ffedd5 25%, #fed7aa 50%, #fdba74 75%, #f59e0b 100%),
+          radial-gradient(circle at 20% 80%, rgba(255,140,0,0.3) 0%, transparent 50%),
+          radial-gradient(circle at 80% 20%, rgba(255,179,71,0.25) 0%, transparent 50%),
+          radial-gradient(circle at 40% 40%, rgba(255,140,0,0.2) 0%, transparent 50%)
+        `,
+        position: "relative",
+        overflow: "hidden",
+        "&::before": {
+          content: '""',
+          position: "absolute",
+          top:  0,
+          left:  0,
+          right:  0,
+          bottom:  0,
+          background: "linear-gradient(45deg, transparent 30%, rgba(255,140,0,0.1) 50%, transparent 70%)",
+          zIndex:  1,
+          pointerEvents: "none",
+      },
+    }}
+    >
+      {/* Desktop-optimized floating background elements */}
+      <Box
+        sx={{
+          position: "absolute",
+          top: "15%",
+          left: "10%",
+          width: "400px",
+          height: "400px",
+          background: `radial-gradient(circle, rgba(255,140,0,0.4) 0%, rgba(255,179,71,0.2) 40%, transparent 70%)`,
+          borderRadius: "50%",
+          filter: GLASSMORPHISM_CONSTANTS.BLUR_STRONG,
+          animation: "float 12s ease-in-out infinite",
+          zIndex:  0,
+      }}
+      />
+      <Box
+        sx={{
+          position: "absolute",
+          bottom: "10%",
+          right: "15%",
+          width: "350px",
+          height: "350px",
+          background: `radial-gradient(circle, rgba(255,140,0,0.35) 0%, rgba(255,179,71,0.2) 40%, transparent 70%)`,
+          borderRadius: "50%",
+          filter: GLASSMORPHISM_CONSTANTS.BLUR_STRONG,
+          animation: "float 8s ease-in-out infinite reverse",
+          zIndex:  0,
+      }}
+      />
+
+      {/* Header */}
+      <Paper
+        elevation={0}
+        sx={{
+          background: `rgba(25,255,255,${GLASSMORPHISM_CONSTANTS.ALPHA_STRONG})`,
+          backdropFilter: GLASSMORPHISM_CONSTANTS.BLUR_LIGHT,
+          borderBottom: GLASSMORPHISM_CONSTANTS.BORDER_STANDARD,
+          position: "sticky",
+          top:  0,
+          zIndex: 100,
+          boxShadow: GLASSMORPHISM_CONSTANTS.BOX_SHADOW_LIGHT,
+      }}
+      >
+        <Container maxWidth="lg">
+          <Box
+            sx={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              py: 3,
+          }}
+          >
+            <Box>
+              <a 
+                href="https: //creatorhubn.com" 
+                style={{ 
+                  textDecoration: 'none',
+                  cursor: 'pointer'
+            }}
+              >
+                <img
+                  src="/creatorhub-logo-amber.svg"
+                  alt="CreatorHub Norge - Profesjonell kreativ plattform for norske fotografer, videografer og musikkprodusenter"
+                  style={{
+                    width: "280px",
+                    height: "auto",
+                    filter: "drop-shadow(0 4px 8px rgba(25,140,0,0.2))",
+                }}
+                />
+              </a>
+            </Box>
+
+            {/* Desktop Navigation */}
+            <Stack direction="row" spacing={2} alignItems="center">
+              {isAuthenticated ? (
+                <>
+                  <Button
+                    variant="text"
+                    onClick={() => handleNavigation("/about-us")}
+                    sx={{
+                      color: "#ff8c00",
+                      textTransform: "none",
+                      fontSize: "15px",
+                      fontWeight: "medium",
+                      "&:hover": {
+                        backgroundColor: "rgba(255,140,0,0.1)",
+                      },
+                    }}
+                  >
+                    Om Oss
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    onClick={() => handleNavigation("/dashboard")}
+                    aria-label="Gå til dashboard"
+                    sx={{
+                      borderColor: "#ff8c00",
+                      color: "#ff8c00",
+                      "&:hover": {
+                        borderColor: "#e67c00",
+                        backgroundColor: "rgba(25,140,0,0.1)",
+                    },
+                      "&:focus": {
+                        outline: "2px solid #ff8c0",
+                        outlineOffset: "2px",
+                    },
+                  }}
+                  >
+                    Dashboard
+                  </Button>
+                  {isAdmin && (
+                    <Button
+                      variant="outlined"
+                      onClick={() => handleNavigation("/admin")}
+                      sx={{
+                        borderColor: "#ff8c00",
+                        color: "#ff8c00",
+                        "&:hover": {
+                          borderColor: "#e67c00",
+                          backgroundColor: "rgba(25,140,0,0.1)",
+                      },
+                    }}
+                    >
+                      Admin
+                    </Button>
+                  )}
+                </>
+              ) : (
+                <>
+                  <Button
+                    variant="text"
+                    onClick={() => handleNavigation("/about-us")}
+                    sx={{
+                      color: "#ff8c00",
+                      textTransform: "none",
+                      fontSize: "15px",
+                      fontWeight: "medium",
+                      "&:hover": {
+                        backgroundColor: "rgba(255,140,0,0.1)",
+                      },
+                    }}
+                  >
+                    Om Oss
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    onClick={handleLogin}
+                    aria-label="Logg inn på din konto"
+                    sx={{
+                      borderColor: "#ff8c00",
+                      color: "#ff8c00",
+                      px: 3,
+                      py: 1,
+                      "&:hover": {
+                        borderColor: "#e67c00",
+                        backgroundColor: "rgba(25,140,0,0.1)",
+                    },
+                      "&:focus": {
+                        outline: "2px solid #ff8c0",
+                        outlineOffset: "2px",
+                    },
+                  }}
+                  >
+                    Logg Inn
+                  </Button>
+                  <Button variant="contained"
+                    onClick={handleGetStarted}
+                    className="gpu-accelerated"
+                    aria-label="Kom i gang med CreatorHub Norge"
+                    sx={{
+                      backgroundColor: "#ff8c00",
+                      color: "white",
+                      px: 4,
+                      py: 1.5,
+                      borderRadius: "12px",
+                      fontSize: "16px",
+                      fontWeight: "bold",
+                      textTransform: "none",
+                      boxShadow: "0 4px 12px rgba(25,140,0,0.3)",
+                      "&:hover": {
+                        backgroundColor: "#e67c00",
+                        transform: "translateY(-2px) translateZ(0)",
+                        boxShadow: "0 6px 16px rgba(25,140,0,0.4)",
+                    },
+                      "&:focus": {
+                        outline: "2px solid #ffffff",
+                        outlineOffset: "2px",
+                    },
+                  }}
+                  >
+                    Kom i Gang
+                  </Button>
+                </>
+              )}
+            </Stack>
+          </Box>
+        </Container>
+      </Paper>
+
+      <Container maxWidth="lg" sx={{ py: 6 }}>
+        <Grid container spacing={4}>
+          {/* Hero Section - Left Column */}
+          <Grid item xs={12} md={6} className="staggered-animation">
+            <Box sx={{ py: 4 }}>
+              {/* Orange Badge */}
+              <Box
+                sx={{
+                  display: "inline-block",
+                  backgroundColor: `rgba(25,140,0,${GLASSMORPHISM_CONSTANTS.ALPHA_MEDIUM})`,
+                  borderRadius: "50px",
+                  px: 3,
+                  py: 1,
+                  mb: 3,
+                  border: GLASSMORPHISM_CONSTANTS.BORDER_STANDARD,
+                  backdropFilter: GLASSMORPHISM_CONSTANTS.BLUR_LIGHT,
+              }}
+              >
+                <Typography
+                  variant="body2"
+                  sx={{
+                    color: "#d97706",
+                    fontWeight: "bold",
+                    fontSize: "14px",
+                    letterSpacing: "0.5px",
+                }}
+                >
+                  CreatorHub Norge - Profesjonell Kreativ Plattform
+                </Typography>
+              </Box>
+
+              {/* Main Hero Title */}
+              <Typography variant="h2"
+                sx={{
+                  fontWeight: "bold",
+                  color: "#1f2937",
+                  mb: 2,
+                  lineHeight: 1.1,
+                  fontSize: { md: "48px", lg: "56px, ",},
+              }}
+    >
+                Profesjonell Kreativ
+              </Typography>
+              <Typography variant="h2"
+                sx={{
+                  fontWeight: "bold",
+                  color: "#d97706",
+                  mb: 3,
+                  fontSize: { md: "48px", lg: "56px, ",},
+              }}
+    >
+                Plattform
+              </Typography>
+
+              {/* Hero Description */}
+              <Typography variant="h6"
+                sx={{
+                  color: "#374151",
+                  mb: 4,
+                  lineHeight: 1.6,
+                  fontSize: "18px",
+                  maxWidth: "500px",
+              }}
+    >
+                Profesjonell prosjektadministrasjon og kreative verktøy for
+                norske fotografer, videografer og musikkprodusenter.
+                Strømlinjeforme arbeidsflyt, forbedre samarbeid og lever
+                skreddersydde opplevelser.
+              </Typography>
+
+              {/* Hero Action Buttons */}
+              <Stack direction="row" spacing={3} sx={{ mb: 4 }}>
+                <Button variant="contained"
+                  size="large"
+                  className="gpu-accelerated"
+                  sx={{
+                    backgroundColor: "#ff8c00",
+                    color: "white",
+                    py: 2,
+                    px: 4,
+                    minHeight: "56px",
+                    borderRadius: "14px",
+                    fontSize: "18px",
+                    fontWeight: "bold",
+                    textTransform: "none",
+                    boxShadow: "0 6px 16px rgba(25,140,0,0.3)",
+                    transition: "all 0.3s ease-in-out",
+                    "&:hover": {
+                      backgroundColor: "#e67c00",
+                      transform: "translateY(-2px) translateZ(0)",
+                      boxShadow: "0 8px 20px rgba(25,140,0,0.4)",
+                  },
+                }}
+                  onClick={handleGetStarted}
+                >
+                  Bli med i CreatorHub
+                </Button>
+
+                <Button
+                  variant="outlined"
+                  size="large"
+                  onClick={handleLogin}
+                  sx={{
+                    borderColor: "#ff8c00",
+                    color: "#ff8c00",
+                    py: 2,
+                    px: 4,
+                    minHeight: "56px",
+                    borderRadius: "14px",
+                    fontSize: "18px",
+                    fontWeight: "bold",
+                    textTransform: "none",
+                    borderWidth: "2px",
+                    "&:hover": {
+                      borderColor: "#e67c00",
+                      backgroundColor: "rgba(25,140,0,0.1)",
+                      borderWidth: "2px",
+                  },
+                }}
+                >
+                  Logg inn
+                </Button>
+              </Stack>
+
+              {/* Dynamic Key Stats - Only shown when 350+ users */}
+              <DynamicPlatformStats />
+
+              {/* Google Workspace Integration */}
+              <MuiCard
+                sx={{
+                  mt: 3,
+                  borderRadius: "16px",
+                  background: `rgba(25,255,255,${GLASSMORPHISM_CONSTANTS.ALPHA_LIGHT})`,
+                  backdropFilter: GLASSMORPHISM_CONSTANTS.BLUR_MEDIUM,
+                  border: GLASSMORPHISM_CONSTANTS.BORDER_STANDARD,
+                  boxShadow: GLASSMORPHISM_CONSTANTS.BOX_SHADOW_MEDIUM,
+                  transition: "all 0.3s ease",
+                  "&:hover": {
+                    transform: "translateY(-4px) translateZ(0)",
+                    boxShadow: GLASSMORPHISM_CONSTANTS.BOX_SHADOW_STRONG,
+                },
+              }}
+              >
+                <CardContent sx={{ p:  3 }}>
+                  <Box sx={{ display: "flex", alignItems: "center", mb: 2 }}>
+                    {/* Official Google Logo */}
+                    <Box
+                      sx={{
+                        width:  48,
+                        height:  48,
+                        borderRadius: "12px",
+                        background: "rgba(25,255,255,0.9)",
+                        backdropFilter: "blur(10px)",
+                        border: "1px solid rgba(0,0,0,0.1)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        mr:  2,
+                    }}
+                    >
+                      <svg
+                        width="24"
+                        height="24"
+                        viewBox="0 0 24 24"
+                        xmlns="http: //www.w3.org/2000/svg"
+                      >
+                        <path
+                          d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                          fill="#4285F4"
+                        />
+                        <path
+                          d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                          fill="#34A853"
+                        />
+                        <path
+                          d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+                          fill="#FBBC05"
+                        />
+                        <path
+                          d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+                          fill="#EA4335"
+                        />
+                      </svg>
+                    </Box>
+                    <Box>
+                      <Typography variant="h5"
+                        sx={{ fontWeight: "bold", color: "#1f2937", mb: 0.5}}
+            >
+                        Google Workspace Integration
+                      </Typography>
+                      <Typography variant="body2" sx={{ color: "#6b7280" }}>
+                        Full integrasjon med Google's forretningsverktøy
+                      </Typography>
+                    </Box>
+                  </Box>
+
+                  <Grid container spacing={2} sx={{ mb: 2 }}>
+                    <Grid item xs={12} md={6}>
+                      <Stack spacing={1}>
+                        {["Gmail & Calendar", "Google Drive Sync"].map(
+                          (item, index) => (
+                            <Box
+                              key={index}
+                              sx={{ display: "flex", alignItems: "center" }}
+                            >
+                              <CheckCircle
+                                sx={{ color: "#4285F4", fontSize:  18, mr: 1.5}}
+                              />
+                              <Typography
+                                variant="body2"
+                                sx={{ color: "#374151" }}
+                              >
+                                {item}
+                              </Typography>
+                            </Box>
+                          ),
+                        )}
+                      </Stack>
+                    </Grid>
+                    <Grid item xs={12} md={6}>
+                      <Stack spacing={1}>
+                        {["Docs & Sheets API", "Automatisk Backup"].map(
+                          (item, index) => (
+                            <Box
+                              key={index}
+                              sx={{ display: "flex", alignItems: "center" }}
+                            >
+                              <CheckCircle
+                                sx={{ color: "#4285F4", fontSize:  18, mr: 1.5}}
+                              />
+                              <Typography
+                                variant="body2"
+                                sx={{ color: "#374151" }}
+                              >
+                                {item}
+                              </Typography>
+                            </Box>
+                          ),
+                        )}
+                      </Stack>
+                    </Grid>
+                  </Grid>
+
+                  <Stack
+                    direction="row"
+                    spacing={1}
+                    sx={{ flexWrap: "wrap", gap:  1 }}
+                  >
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      onClick={() => setGoogleWorkspaceDialogOpen(true)}
+                      sx={{
+                        borderColor: "#4285F4",
+                        color: "#4285F4",
+                        fontSize: "14px",
+                        textTransform: "none",
+                        "&:hover": {
+                          borderColor: "#3367D6",
+                          backgroundColor: "rgba(6,133,244,0.1)",
+                      },
+                    }}
+                    >
+                      Hvorfor Google Workspace?
+                    </Button>
+
+                    <Button variant="contained"
+                      size="small"
+                      href="https: //workspace.google.com/intl/no/"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      sx={{
+                        background:
+                          "linear-gradient(135deg, #4285F4 0%, #34A853 100%)",
+                        color: "white",
+                        fontSize: "14px",
+                        textTransform: "none",
+                        boxShadow: "0 4px 12px rgba(6,133,244,0.3)",
+                        "&:hover": {
+                          background: "linear-gradient(135deg, #3367D6 0%, #2e7d32 100%)",
+                          boxShadow: "0 6px 16px rgba(6,133,244,0.4)",
+                      },
+                    }}
+                    >
+                      Les mer om Google Workspace
+                    </Button>
+                  </Stack>
+                </CardContent>
+              </MuiCard>
+            </Box>
+          </Grid>
+
+          {/* Professional Cards - Right Column */}
+          <Grid item xs={12} md={6} sx={{ mt: { xs: 3, md: 6, lg: 1.5 } }}>
+            <Stack spacing={6} className="staggered-animation">
+              {/* Fotograf Card */}
+              <MuiCard
+                sx={{
+                  borderRadius: "16px",
+                  background: `rgba(25,255,255,${GLASSMORPHISM_CONSTANTS.ALPHA_LIGHT})`,
+                  backdropFilter: GLASSMORPHISM_CONSTANTS.BLUR_MEDIUM,
+                  border: GLASSMORPHISM_CONSTANTS.BORDER_STANDARD,
+                  boxShadow: GLASSMORPHISM_CONSTANTS.BOX_SHADOW_MEDIUM,
+                  transition: "all 0.3s ease",
+                  "&:hover": {
+                    transform: "translateY(-4px) translateZ(0)",
+                    boxShadow: GLASSMORPHISM_CONSTANTS.BOX_SHADOW_STRONG,
+                },
+              }}
+              >
+                <CardContent sx={{ p:  3 }}>
+                  <Box sx={{ display: "flex", alignItems: "center", mb: 2 }}>
+                    <Box
+                      sx={{
+                        width:  48,
+                        height:  48,
+                        borderRadius: "12px",
+                        background: "rgba(6,175,80,0.15)",
+                        backdropFilter: "blur(10px)",
+                        border: "1px solid rgba(6,175,80,0.2)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        mr:  2,
+                    }}
+                    >
+                      <PhotoCamera sx={{ color: "#2e7d32", fontSize: 24}} />
+                    </Box>
+                    <Typography variant="h5"
+                      sx={{ fontWeight: "bold", color: "#1f2937, ",}}
+          >
+                      Fotograf
+                    </Typography>
+                  </Box>
+
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} md={6}>
+                      <Stack spacing={1}>
+                        {["Administrasjon", "Klienthåndtering"].map(
+                          (item, index) => (
+                            <Box
+                              key={index}
+                              sx={{ display: "flex", alignItems: "center" }}
+                            >
+                              <CheckCircle
+                                sx={{ color: "#2e7d32", fontSize:  18, mr: 1.5}}
+                              />
+                              <Typography
+                                variant="body2"
+                                sx={{ color: "#374151" }}
+                              >
+                                {item}
+                              </Typography>
+                            </Box>
+                          ),
+                        )}
+                      </Stack>
+                    </Grid>
+                    <Grid item xs={12} md={6}>
+                      <Stack spacing={1}>
+                        {["Showcase Galleri", "Planlegging og Booking"].map(
+                          (item, index) => (
+                            <Box
+                              key={index}
+                              sx={{ display: "flex", alignItems: "center" }}
+                            >
+                              <CheckCircle
+                                sx={{ color: "#2e7d32", fontSize:  18, mr: 1.5}}
+                              />
+                              <Typography
+                                variant="body2"
+                                sx={{ color: "#374151" }}
+                              >
+                                {item}
+                              </Typography>
+                            </Box>
+                          ),
+                        )}
+                      </Stack>
+                    </Grid>
+                  </Grid>
+                </CardContent>
+              </MuiCard>
+
+              {/* Videografi Card */}
+              <MuiCard
+                sx={{
+                  borderRadius: "16px",
+                  background: "rgba(25,255,255,0.1)",
+                  backdropFilter: "blur(15px)",
+                  border: "1px solid rgba(3,150,243,0.3)",
+                  boxShadow: "0 12px 28px rgba(3,150,243,0.15)",
+                  transition: "all 0.3s ease",
+                  "&:hover": {
+                    transform: "translateY(-4px) translateZ(0)",
+                    boxShadow: "0 16px 32px rgba(3,150,243,0.2)",
+                },
+              }}
+              >
+                <CardContent sx={{ p:  3 }}>
+                  <Box sx={{ display: "flex", alignItems: "center", mb: 2 }}>
+                    <Box
+                      sx={{
+                        width:  48,
+                        height:  48,
+                        borderRadius: "12px",
+                        background: "rgba(3,150,243,0.15)",
+                        backdropFilter: "blur(10px)",
+                        border: "1px solid rgba(3,150,243,0.2)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        mr:  2,
+                    }}
+                    >
+                      <VideoLibrary sx={{ color: "#1565c0", fontSize: 24}} />
+                    </Box>
+                    <Typography variant="h5"
+                      sx={{ fontWeight: "bold", color: "#1f2937, ",}}
+          >
+                      Videografi
+                    </Typography>
+                  </Box>
+
+                  <Grid container spacing={5}>
+                    <Grid item xs={12} md={6}>
+                      <Stack spacing={1}>
+                        {["Produksjonsplanlegging", "Post-produksjon"].map(
+                          (item, index) => (
+                            <Box
+                              key={index}
+                              sx={{ display: "flex", alignItems: "center" }}
+                            >
+                              <CheckCircle
+                                sx={{ color: "#1565c0", fontSize:  18, mr: 1.5}}
+                              />
+                              <Typography
+                                variant="body2"
+                                sx={{ color: "#374151" }}
+                              >
+                                {item}
+                              </Typography>
+                            </Box>
+                          ),
+                        )}
+                      </Stack>
+                    </Grid>
+                    <Grid item xs={12} md={6}>
+                      <Stack spacing={1}>
+                        {["Klientgjennomgang", "Videoleveranse"].map(
+                          (item, index) => (
+                            <Box
+                              key={index}
+                              sx={{ display: "flex", alignItems: "center" }}
+                            >
+                              <CheckCircle
+                                sx={{ color: "#1565c0", fontSize:  18, mr: 1.5}}
+                              />
+                              <Typography
+                                variant="body2"
+                                sx={{ color: "#374151" }}
+                              >
+                                {item}
+                              </Typography>
+                            </Box>
+                          ),
+                        )}
+                      </Stack>
+                    </Grid>
+                  </Grid>
+                </CardContent>
+              </MuiCard>
+
+              {/* Musikk Produksjon Card */}
+              <MuiCard
+                sx={{
+                  borderRadius: "16px",
+                  background: "rgba(25,255,255,0.1)",
+                  backdropFilter: "blur(15px)",
+                  border: "1px solid rgba(16,39,176,0.3)",
+                  boxShadow: "0 12px 28px rgba(16,39,176,0.15)",
+                  transition: "all 0.3s ease",
+                  "&:hover": {
+                    transform: "translateY(-4px) translateZ(0)",
+                    boxShadow: "0 16px 32px rgba(16,39,176,0.2)",
+                },
+              }}
+              >
+                <CardContent sx={{ p:  3 }}>
+                  <Box sx={{ display: "flex", alignItems: "center", mb: 2 }}>
+                    <Box
+                      sx={{
+                        width:  48,
+                        height:  48,
+                        borderRadius: "12px",
+                        background: "rgba(16,39,176,0.15)",
+                        backdropFilter: "blur(10px)",
+                        border: "1px solid rgba(16,39,176,0.2)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        mr:  2,
+                    }}
+                    >
+                      <LibraryMusic sx={{ color: "#7b1fa2", fontSize: 24}} />
+                    </Box>
+                    <Typography variant="h5"
+                      sx={{ fontWeight: "bold", color: "#1f2937, ",}}
+          >
+                      Musikk Produksjon
+                    </Typography>
+                  </Box>
+
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} md={6}>
+                      <Stack spacing={1}>
+                        {["Studioadministrasjon", "Lydopptak"].map(
+                          (item, index) => (
+                            <Box
+                              key={index}
+                              sx={{ display: "flex", alignItems: "center" }}
+                            >
+                              <CheckCircle
+                                sx={{ color: "#7b1fa2", fontSize:  18, mr: 1.5}}
+                              />
+                              <Typography
+                                variant="body2"
+                                sx={{ color: "#374151" }}
+                              >
+                                {item}
+                              </Typography>
+                            </Box>
+                          ),
+                        )}
+                      </Stack>
+                    </Grid>
+                    <Grid item xs={12} md={6}>
+                      <Stack spacing={1}>
+                        {["Miksing og Mastering", "Artist Håndtering"].map(
+                          (item, index) => (
+                            <Box
+                              key={index}
+                              sx={{ display: "flex", alignItems: "center" }}
+                            >
+                              <CheckCircle
+                                sx={{ color: "#7b1fa2", fontSize:  18, mr: 1.5}}
+                              />
+                              <Typography
+                                variant="body2"
+                                sx={{ color: "#374151" }}
+                              >
+                                {item}
+                              </Typography>
+                            </Box>
+                          ),
+                        )}
+                      </Stack>
+                    </Grid>
+                  </Grid>
+                </CardContent>
+              </MuiCard>
+            </Stack>
+          </Grid>
+        </Grid>
+
+        {/* Features Section */}
+        <Box
+          component="section"
+          aria-labelledby="features-heading"
+          sx={{ mt: 8 }}
+        >
+          <Typography id="features-heading"
+            component="h2"
+            variant="h3"
+            sx={{
+              textAlign: "center",
+              fontWeight: "bold",
+              color: "#1f2937",
+              mb: 2,
+          }}
+>
+            Hvorfor CreatorHub Norge?
+          </Typography>
+          <Typography variant="h6"
+            sx={{
+              textAlign: "center",
+              color: "#374151",
+              mb: 6,
+              maxWidth: "600px",
+              mx: "auto",
+          }}
+>
+            Alt du trenger for å drive en profesjonell kreativ virksomhet i
+            Norge
+          </Typography>
+
+          <Grid container spacing={4} sx={{ alignItems: "stretch" }}>
+            {[
+              {
+                icon: <Assessment sx={{ fontSize: 56, color: "#ff8c00, ",}} />,
+                title: "Prosjektadministrasjon",
+                description: "Effektiv prosjektstyring – Tilby intelligente løsninger for planlegging, produksjon og post-produksjon som strømlinjeformer arbeidsflyt og frigjør tid til det kreative arbeidet.",
+            },
+              {
+                icon: <Group sx={{ fontSize: 56, color: "#ff8c00, ",}} />,
+                title: "Nettverk",
+                description: "Samarbeid og nettverk – Skape en felles plattform for fotografer, videografer og musikkprodusenter i Norge, med verktøy som styrker samarbeid og kommunikasjon.",
+            },
+        
+              {
+                icon: <AutoAwesome sx={{ fontSize: 56, color: "#ff8c00, ",}} />,
+                title: "Smart Arbeidsflyt",
+                description: "Effektiviser hverdagen din med verktøy for planlegging, produksjon og kommunikasjon – fra første kundehenvendelse til ferdig levert prosjekt. Smart arbeid fremfor hardt arbeid.",
+            },
+              
+
+              {
+                icon: <Science sx={{ fontSize: 56, color: "#ff8c00, ",}} />,
+                title: "Skap Vekst",
+                description: "Vekst for din busineFå bedre kontroll på prosjektene, spar tid og øk lønnsomheten med løsninger som hjelper deg å håndtere både kunder og leveranser.",
+            },
+            ].map((feature, index) => (
+              <Grid
+                item
+                xs={12}
+                md={4}
+                key={index}
+                className="staggered-animation"
+                sx={{ display: "flex" }}
+              >
+                <MuiCard
+                  sx={{
+                    height: "320px",
+                    width: "100%",
+                    display: "flex",
+                    flexDirection: "column",
+                    borderRadius: "16px",
+                    background: `rgba(25,255,255,${GLASSMORPHISM_CONSTANTS.ALPHA_LIGHT})`,
+                    backdropFilter: GLASSMORPHISM_CONSTANTS.BLUR_MEDIUM,
+                    border: GLASSMORPHISM_CONSTANTS.BORDER_STANDARD,
+                    boxShadow: GLASSMORPHISM_CONSTANTS.BOX_SHADOW_MEDIUM,
+                    transition: "all 0.3s ease",
+                    "&:hover": {
+                      transform: "translateY(-4px) translateZ(0)",
+                      boxShadow: GLASSMORPHISM_CONSTANTS.BOX_SHADOW_STRONG,
+                  },
+                }}
+                >
+                  <CardContent
+                    sx={{
+                      p:  3,
+                      textAlign: "center",
+                      height: "100%",
+                      display: "flex",
+                      flexDirection: "column",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                  }}
+                  >
+                    <Box sx={{ textAlign: "center" }}>
+                      <Box sx={{ mb: 2 }}>{feature.icon}</Box>
+                      <Typography component="h3"
+                        variant="h5"
+                        sx={{ fontWeight: "bold", color: "#1f2937", mb: 2 }}
+            >
+                        {feature.title}
+                      </Typography>
+                    </Box>
+                    <Box
+                      sx={{
+                        flex:  1,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                    }}
+                    >
+                      <Typography
+                        variant="body1"
+                        sx={{
+                          color: "#374151",
+                          lineHeight: 1.6,
+                          textAlign: "center",
+                      }}
+                      >
+                        {feature.description}
+                      </Typography>
+                    </Box>
+                  </CardContent>
+                </MuiCard>
+              </Grid>
+            ))}
+          </Grid>
+        </Box>
+
+        {/* Call to Action Section */}
+        <Box
+          sx={{
+            mt: 10,
+            textAlign: "center",
+            background: `rgba(25,255,255,${GLASSMORPHISM_CONSTANTS.ALPHA_LIGHT})`,
+            backdropFilter: GLASSMORPHISM_CONSTANTS.BLUR_MEDIUM,
+            border: GLASSMORPHISM_CONSTANTS.BORDER_STANDARD,
+            borderRadius: "24px",
+            p:  6,
+            boxShadow: GLASSMORPHISM_CONSTANTS.BOX_SHADOW_STRONG,
+        }}
+        >
+          <Typography variant="h3"
+            sx={{ fontWeight: "bold", color: "#1f2937", mb: 2 }}
+>
+            Klar til å revolutjonere din kreative virksomhet?
+          </Typography>
+          <Typography variant="h6"
+            sx={{ color: "#374151", mb: 4, maxWidth: "600px", mx: "auto, ",}}
+>
+            Bli med i CreatorHub Norge i dag og opplev forskjellen profesjonelle
+            verktøy kan gjøre for din kreative virksomhet.
+          </Typography>
+          <Button variant="contained"
+            size="large"
+            className="gpu-accelerated"
+            sx={{
+              backgroundColor: "#ff8c00",
+              color: "white",
+              py: 2.5,
+              px: 6,
+              minHeight: "64px",
+              borderRadius: "16px",
+              fontSize: "20px",
+              fontWeight: "bold",
+              textTransform: "none",
+              boxShadow: "0 8px 20px rgba(25,140,0,0.3)",
+              transition: "all 0.3s ease-in-out",
+              "&:hover": {
+                backgroundColor: "#e67c00",
+                transform: "translateY(-3px) translateZ(0)",
+                boxShadow: "0 12px 28px rgba(25,140,0,0.4)",
+            },
+          }}
+            onClick={handleGetStarted}
+          >
+            Bli en del av CreatorHub Norge
+          </Button>
+        </Box>
+      </Container>
+
+      {/* Role Selector Modal */}
+      <Dialog
+        open={modalState.showRoleSelector}
+        onClose={handleCloseModals}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle sx={{ textAlign: "center", pb:  1 }}>
+          <Typography variant="h5"
+            sx={{ fontWeight: "bold", color: "#1f2937, ",}}
+>
+            Velg din profesjon
+          </Typography>
+        </DialogTitle>
+        <DialogContent sx={{ pb:  3 }}>
+          <Stack spacing={2} sx={{ mt: 2 }}>
+            {allProfessions.map((profession) => (
+              <Button
+                key={profession.role}
+                variant="outlined"
+                size="large"
+                startIcon={profession.icon}
+                onClick={() => handleRoleSelection(profession.role)}
+                aria-label={`Velg ${profession.label} som din profesjon`}
+                sx={{
+                  py: 2,
+                  justifyContent: "flex-start",
+                  borderColor: profession.color,
+                  color: profession.color,
+                  "&:hover": {
+                    borderColor: profession.color,
+                    backgroundColor: `${profession.color}10`,
+                },
+              }}
+              >
+                {profession.label}
+              </Button>
+            ))}
+          </Stack>
+        </DialogContent>
+      </Dialog>
+
+      {/* Login Modal */}
+      {modalState.showLoginModal && (
+        <React.Suspense fallback={<div>Loading...</div>}>
+          <LoginModal
+            open={modalState.showLoginModal}
+            onClose={handleCloseModals}
+          />
+        </React.Suspense>
+      )}
+
+      {/* Invite Request Modal */}
+      {modalState.showInviteRequest && (
+        <React.Suspense fallback={<div>Loading...</div>}>
+          <InviteRequestForm
+            isOpen={modalState.showInviteRequest}
+            onClose={handleCloseModals}
+            selectedRole={modalState.selectedRole}
+          />
+        </React.Suspense>
+      )}
+
+      {/* GDPR Cookie Consent Banner */}
+      <GdprNotice position="bottom" />
+
+      {/* Footer */}
+      <Box
+        component="footer"
+        sx={{
+          background: `rgba(31,41,55,0.95)`,
+          backdropFilter: "blur(10px)",
+          borderTop: "1px solid rgba(255,140,0,0.2)",
+          color: "white",
+          py: 6,
+          mt: 8,
+        }}
+      >
+        <Container maxWidth="lg">
+          <Grid container spacing={4}>
+            {/* Company Info */}
+            <Grid item xs={12} md={4}>
+              <Box sx={{ mb: 2 }}>
+                <img
+                  src="/creatorhub-logo-amber.svg"
+                  alt="CreatorHub Norge"
+                  style={{
+                    width: "200px",
+                    height: "auto",
+                    filter: "brightness(1.2)",
+                  }}
+                />
+              </Box>
+              <Typography variant="body2" sx={{ color: "rgba(255,255,255,0.7)", mb: 2, lineHeight: 1.6 }}>
+                Profesjonell prosjektadministrasjon og kreative verktøy for norske fotografer, videografer og musikkprodusenter.
+              </Typography>
+              <Stack direction="row" spacing={1}>
+                <IconButton
+                  size="small"
+                  sx={{
+                    color: "#ff8c00",
+                    "&:hover": { backgroundColor: "rgba(255,140,0,0.1)" },
+                  }}
+                  aria-label="Facebook"
+                >
+                  <Info fontSize="small" />
+                </IconButton>
+                <IconButton
+                  size="small"
+                  sx={{
+                    color: "#ff8c00",
+                    "&:hover": { backgroundColor: "rgba(255,140,0,0.1)" },
+                  }}
+                  aria-label="LinkedIn"
+                >
+                  <Business fontSize="small" />
+                </IconButton>
+              </Stack>
+            </Grid>
+
+            {/* Quick Links */}
+            <Grid item xs={12} md={2}>
+              <Typography variant="h6" sx={{ fontWeight: "bold", mb: 2, color: "#ff8c00" }}>
+                Navigasjon
+              </Typography>
+              <Stack spacing={1}>
+                {[
+                  { label: "Hjem", path: "/" },
+                  { label: "Om Oss", path: "/about-us" },
+                  { label: "Logg Inn", action: handleLogin },
+                  { label: "Kom i Gang", action: handleGetStarted },
+                ].map((link, index) => (
+                  <Button
+                    key={index}
+                    variant="text"
+                    onClick={link.action || (() => handleNavigation(link.path || "/"))}
+                    sx={{
+                      color: "rgba(255,255,255,0.7)",
+                      textTransform: "none",
+                      justifyContent: "flex-start",
+                      fontSize: "14px",
+                      px: 0,
+                      "&:hover": {
+                        color: "#ff8c00",
+                        backgroundColor: "transparent",
+                      },
+                    }}
+                  >
+                    {link.label}
+                  </Button>
+                ))}
+              </Stack>
+            </Grid>
+
+            {/* Professions */}
+            <Grid item xs={12} md={3}>
+              <Typography variant="h6" sx={{ fontWeight: "bold", mb: 2, color: "#ff8c00" }}>
+                Profesjoner
+              </Typography>
+              <Stack spacing={1}>
+                {[
+                  { label: "Fotograf", icon: <PhotoCamera fontSize="small" /> },
+                  { label: "Videograf", icon: <VideoLibrary fontSize="small" /> },
+                  { label: "Musikk Produsent", icon: <LibraryMusic fontSize="small" /> },
+                  { label: "Leverandør", icon: <Business fontSize="small" /> },
+                ].map((profession, index) => (
+                  <Box
+                    key={index}
+                    sx={{
+                      display: "flex",
+                      alignItems: "center",
+                      color: "rgba(255,255,255,0.7)",
+                      fontSize: "14px",
+                    }}
+                  >
+                    <Box sx={{ mr: 1, color: "#ff8c00" }}>{profession.icon}</Box>
+                    <Typography variant="body2">{profession.label}</Typography>
+                  </Box>
+                ))}
+              </Stack>
+            </Grid>
+
+            {/* Contact & Legal */}
+            <Grid item xs={12} md={3}>
+              <Typography variant="h6" sx={{ fontWeight: "bold", mb: 2, color: "#ff8c00" }}>
+                Kontakt
+              </Typography>
+              <Stack spacing={1.5}>
+                <Box sx={{ display: "flex", alignItems: "center", color: "rgba(255,255,255,0.7)" }}>
+                  <Email fontSize="small" sx={{ mr: 1, color: "#ff8c00" }} />
+                  <Typography variant="body2">kontakt@creatorhubn.com</Typography>
+                </Box>
+                <Box sx={{ display: "flex", alignItems: "center", color: "rgba(255,255,255,0.7)" }}>
+                  <Phone fontSize="small" sx={{ mr: 1, color: "#ff8c00" }} />
+                  <Typography variant="body2">+47 XXX XX XXX</Typography>
+                </Box>
+                <Box sx={{ display: "flex", alignItems: "center", color: "rgba(255,255,255,0.7)" }}>
+                  <LocationOn fontSize="small" sx={{ mr: 1, color: "#ff8c00" }} />
+                  <Typography variant="body2">Norge</Typography>
+                </Box>
+                <Divider sx={{ my: 1, backgroundColor: "rgba(255,255,255,0.1)" }} />
+                <Button
+                  variant="text"
+                  onClick={() => handleNavigation("/privacy-policy")}
+                  sx={{
+                    color: "rgba(255,255,255,0.7)",
+                    textTransform: "none",
+                    justifyContent: "flex-start",
+                    fontSize: "14px",
+                    px: 0,
+                    "&:hover": {
+                      color: "#ff8c00",
+                      backgroundColor: "transparent",
+                    },
+                  }}
+                >
+                  Personvern & GDPR
+                </Button>
+              </Stack>
+            </Grid>
+          </Grid>
+
+          {/* Bottom Bar */}
+          <Divider sx={{ my: 4, backgroundColor: "rgba(255,255,255,0.1)" }} />
+          <Box
+            sx={{
+              display: "flex",
+              flexDirection: { xs: "column", md: "row" },
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: 2,
+            }}
+          >
+            <Typography variant="body2" sx={{ color: "rgba(255,255,255,0.5)", textAlign: "center" }}>
+              © {new Date().getFullYear()} CreatorHub Norge. Alle rettigheter reservert.
+            </Typography>
+            <Stack direction="row" spacing={2}>
+              <Button
+                variant="text"
+                size="small"
+                onClick={() => handleNavigation("/privacy-policy")}
+                sx={{
+                  color: "rgba(255,255,255,0.5)",
+                  textTransform: "none",
+                  fontSize: "12px",
+                  "&:hover": {
+                    color: "#ff8c00",
+                  },
+                }}
+              >
+                Personvernerklæring
+              </Button>
+              <Typography variant="body2" sx={{ color: "rgba(255,255,255,0.3)" }}>
+                •
+              </Typography>
+              <Button
+                variant="text"
+                size="small"
+                onClick={() => handleNavigation("/terms-and-conditions")}
+                sx={{
+                  color: "rgba(255,255,255,0.5)",
+                  textTransform: "none",
+                  fontSize: "12px",
+                  "&:hover": {
+                    color: "#ff8c00",
+                  },
+                }}
+              >
+                Vilkår & Betingelser
+              </Button>
+            </Stack>
+          </Box>
+        </Container>
+      </Box>
+
+      {/* Google Workspace Information Dialog */}
+      <Dialog
+        open={googleWorkspaceDialogOpen}
+        onClose={() => setGoogleWorkspaceDialogOpen(false)}
+        maxWidth="md"
+        fullWidth
+        sx={{
+          "& .MuiDialog-paper": {
+            borderRadius: "16px",
+            background: "rgba(25,255,255,0.95)",
+            backdropFilter: "blur(20px)",
+            border: "1px solid rgba(25,255,255,0.2)",
+            boxShadow: "0 32px 64px rgba(0,0,0,0.2)",
+        },
+      }}
+      >
+        <DialogTitle
+          sx={{
+            pb:  1,
+            background: "linear-gradient(135deg, #4285F4 0%, #34A853 100%)",
+            color: "white",
+            borderTopLeftRadius: "16px",
+            borderTopRightRadius: "16px",
+        }}
+        >
+          <Box sx={{ display: "flex", alignItems: "center" }}>
+            {/* Google Logo */}
+            <Box
+              sx={{
+                width:  40,
+                height:  40,
+                borderRadius: "8px",
+                background: "rgba(25,255,255,0.9)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                mr:  2,
+            }}
+            >
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                xmlns="http: //www.w3.org/2000/svg"
+              >
+                <path
+                  d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                  fill="#4285F4"
+                />
+                <path
+                  d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                  fill="#34A853"
+                />
+                <path
+                  d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+                  fill="#FBBC05"
+                />
+                <path
+                  d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+                  fill="#EA4335"
+                />
+              </svg>
+            </Box>
+            <Box>
+              <Typography variant="h5" sx={{ fontWeight: "bold", mb: 0.5 }}>
+                Hvorfor Google Workspace?
+              </Typography>
+              <Typography variant="body2" sx={{ opacity: 0.9}}>
+                CreatorHub Norge's strategiske valg
+              </Typography>
+            </Box>
+          </Box>
+        </DialogTitle>
+
+        <DialogContent sx={{ p:  4 }}>
+          <Stack spacing={3}>
+            <Typography
+              variant="body1"
+              sx={{ color: "#374151", lineHeight: 1.6}}
+            >
+              CreatorHub Norge har valgt Google Workspace som vår primære
+              forretningsplattform fordi den gir norske kreative fagfolk den
+              mest sømløse, sikre og produktive arbeidsflyten.
+            </Typography>
+
+            <Box>
+              <Box sx={{ display: "flex", alignItems: "center", mb: 2 }}>
+                <Security sx={{ color: "#34A853", fontSize:  24, mr: 1.5}} />
+                <Typography variant="h6"
+                  sx={{ fontWeight: "bold", color: "#1f2937, ",}}
+      >
+                  Sikkerhet og Pålitelighet
+                </Typography>
+              </Box>
+              <List>
+                {[
+                  "Enterprise-grade sikkerhet med 99.9% oppetid",
+                  "Automatisk kryptering av alle filer og kommunikasjon",
+                  "GDPR-kompatibel databehandling for norske brukere",
+                ].map((item, index) => (
+                  <ListItem key={index} sx={{ py: 0.5,px: 0 }}>
+                    <ListItemIcon>
+                      <CheckCircle sx={{ color: "#34A853", fontSize: 20}} />
+                    </ListItemIcon>
+                    <ListItemText
+                      primary={item}
+                      primaryTypographyProps={{
+                        fontSize: "0.9rem",
+                        color: "#374151",
+                    }}
+                    />
+                  </ListItem>
+                ))}
+              </List>
+            </Box>
+
+            <Box>
+              <Box sx={{ display: "flex", alignItems: "center", mb: 2 }}>
+                <RocketLaunch
+                  sx={{ color: "#4285F4", fontSize:  24, mr: 1.5}}
+                />
+                <Typography variant="h6"
+                  sx={{ fontWeight: "bold", color: "#1f2937, ",}}
+      >
+                  Teknisk Integrasjon
+                </Typography>
+              </Box>
+              <List>
+                {[
+                  "Gmail API: Automatisert e-postkommunikasjon",
+                  "Google Drive API: Sømløs filsynkronisering",
+                  "Calendar API: Integrert bookingsystem",
+                  "Docs & Sheets API: Automatisk rapportgenerering",
+                ].map((item, index) => (
+                  <ListItem key={index} sx={{ py: 0.5,px: 0 }}>
+                    <ListItemIcon>
+                      <CheckCircle sx={{ color: "#4285F4", fontSize: 20}} />
+                    </ListItemIcon>
+                    <ListItemText
+                      primary={item}
+                      primaryTypographyProps={{
+                        fontSize: "0.9rem",
+                        color: "#374151",
+                    }}
+                    />
+                  </ListItem>
+                ))}
+              </List>
+            </Box>
+
+            <Box>
+              <Box sx={{ display: "flex", alignItems: "center", mb: 2 }}>
+                <Adjust sx={{ color: "#FF6F00", fontSize:  24, mr: 1.5}} />
+                <Typography variant="h6"
+                  sx={{ fontWeight: "bold", color: "#1f2937, ",}}
+      >
+                  Fordeler for Kreative Fagfolk
+                </Typography>
+              </Box>
+              <Grid container spacing={2}>
+                <Grid item xs={12} md={4}>
+                  <Box sx={{ textAlign: "center", p:  2 }}>
+                    <PhotoCamera
+                      sx={{ color: "#2e7d32", fontSize:  32, mb: 1 }}
+                    />
+                    <Typography
+                      variant="subtitle2"
+                      sx={{ fontWeight: "bold", color: "#1f2937, ",}}
+                    >
+                      Fotografer
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: "#6b7280" }}>
+                      Automatisk backup og deling av gallerier
+                    </Typography>
+                  </Box>
+                </Grid>
+                <Grid item xs={12} md={4}>
+                  <Box sx={{ textAlign: "center", p:  2 }}>
+                    <VideoLibrary
+                      sx={{ color: "#1565c0", fontSize:  32, mb: 1 }}
+                    />
+                    <Typography
+                      variant="subtitle2"
+                      sx={{ fontWeight: "bold", color: "#1f2937, ",}}
+                    >
+                      Videografer
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: "#6b7280" }}>
+                      Høyhastighets filoverføring og samarbeid
+                    </Typography>
+                  </Box>
+                </Grid>
+                <Grid item xs={12} md={4}>
+                  <Box sx={{ textAlign: "center", p:  2 }}>
+                    <LibraryMusic
+                      sx={{ color: "#7b1fa2", fontSize:  32, mb: 1 }}
+                    />
+                    <Typography
+                      variant="subtitle2"
+                      sx={{ fontWeight: "bold", color: "#1f2937, ",}}
+                    >
+                      Musikprodusenter
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: "#6b7280" }}>
+                      Sikker lagring og distribusjon
+                    </Typography>
+                  </Box>
+                </Grid>
+              </Grid>
+            </Box>
+
+            <Box
+              sx={{
+                background: "linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%)",
+                borderRadius: "12px",
+                p:  3,
+                textAlign: "center",
+            }}
+            >
+              <Typography variant="body2" sx={{ color: "#374151", mb: 2 }}>
+                Vår integrasjon med Google Workspace er ikke bare en teknisk
+                løsning - det er fundamentet som gjør det mulig for norske
+                kreative profesjonelle å fokusere på det de gjør best: skape
+                fantastisk innhold.
+              </Typography>
+              <Button
+                variant="outlined"
+                size="small"
+                href="https://workspace.google.com/integrations/"
+                target="_blank"
+                rel="noopener noreferrer"
+                sx={{
+                  borderColor: "#4285F4",
+                  color: "#4285F4",
+                  fontSize: "12px",
+                  textTransform: "none",
+                  "&:hover": {
+                    borderColor: "#3367D6",
+                    backgroundColor: "rgba(6,133,244,0.1)",
+                },
+              }}
+              >
+                Les mer på Google's offisielle side
+              </Button>
+            </Box>
+          </Stack>
+        </DialogContent>
+
+        <DialogActions sx={{ p:  3, pt:  0 }}>
+          <Button
+            onClick={() => setGoogleWorkspaceDialogOpen(false)}
+            variant="contained"
+            sx={{
+              background: "linear-gradient(135deg, #4285F4 0%, #34A853 100%)",
+              color: "white",
+              fontWeight: "bold",
+              "&:hover": {
+                background: "linear-gradient(135deg, #3367D6 0%, #2e7d32 100%)",
+            },
+          }}
+          >
+            Forstått
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
+  );
+};
+
+export default LandingDesktop;

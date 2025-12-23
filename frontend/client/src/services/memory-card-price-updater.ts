@@ -1,0 +1,437 @@
+/**
+ * CreatorHub Norge - Memory Card Price Updater Service
+ * Automatic price monitoring and update system
+ */
+
+import { MemoryCardPriceAPI, PRICE_SOURCES } from '../data/memory-card-price-sources';
+import { MEMORY_CARD_TYPES, MemoryCardType } from '../data/memory-card-database';
+
+export interface PriceUpdateEvent {
+  id: string;
+  cardType: string;
+  capacity: string;
+  oldPrice: number;
+  newPrice: number;
+  currency: string;
+  source: string;
+  changePercent: number;
+  timestamp: string;
+  isSignificant: boolean; // >10% change
+}
+
+export interface PriceUpdateConfig {
+  updateInterval: number; // minutes
+  sources: string[];
+  cardTypes: string[];
+  capacities: string[];
+  enableNotifications: boolean;
+  significantChangeThreshold: number; // percentage
+  maxRetries: number;
+  retryDelay: number; // milliseconds
+}
+
+export class MemoryCardPriceUpdater {
+  private config: PriceUpdateConfig;
+  private updateTimer: NodeJS.Timeout | null = null;
+  private isRunning = false;
+  private lastUpdate: Date | null = null;
+  private priceHistory: Map<string, PriceUpdateEvent[]> = new Map();
+  private listeners: ((event: PriceUpdateEvent) => void)[] = [];
+
+  constructor(config: Partial<PriceUpdateConfig> = {}) {
+    this.config = {
+      updateInterval: 60, // 1 hour default
+      sources: PRICE_SOURCES.filter(s => s.reliability === 'high').map(s => s.id),
+      cardTypes: ['SDXC UHS-I','CFexpress Type B','XQD','SDXC'],
+      capacities: ['64GB','128GB','256GB','512GB','1TB'],
+      enableNotifications: true,
+      significantChangeThreshold: 10,
+      maxRetries: 3,
+      retryDelay: 500,
+      ...config
+    };
+  }
+
+  /**
+   * Start automatic price monitoring
+   */
+  start(): void {
+    if (this.isRunning) {
+      console.warn('Price updater is already running');
+      return;
+  }
+
+    this.isRunning = true;
+    console.log('🔄 Starting memory card price monitoring...');
+    
+    // Initial update
+    this.performUpdate();
+    
+    // Set up recurring updates
+    this.updateTimer = setInterval(() => {
+      this.performUpdate();
+  }, this.config.updateInterval * 60 * 1000);
+}
+
+  /**
+   * Stop automatic price monitoring
+   */
+  stop(): void {
+    if (this.updateTimer) {
+      clearInterval(this.updateTimer);
+      this.updateTimer = null;
+  }
+    this.isRunning = false;
+    console.log('⏹️ Memory card price monitoring stopped');
+}
+
+  /**
+   * Perform a price update cycle
+   */
+  private async performUpdate(): Promise<void> {
+    try {
+      console.log('🔄 Updating memory card prices...');
+      const startTime = Date.now();
+      
+      const updatePromises = this.config.cardTypes.map(cardType =>
+        this.updateCardTypePrices(cardType)
+      );
+
+      await Promise.allSettled(updatePromises);
+      
+      this.lastUpdate = new Date();
+      const duration = Date.now() - startTime;
+      
+      console.log(`✅ Price update completed in ${duration}ms`);
+      
+      // Send update notification
+      if (this.config.enableNotifications) {
+        this.notifyUpdateComplete();
+    }
+      
+  } catch (error) {
+      console.error('❌ Price update failed: ', error);
+      this.handleUpdateError(error);
+  }
+}
+
+  /**
+   * Update prices for a specific card type
+   */
+  private async updateCardTypePrices(cardType: string): Promise<void> {
+    for (const capacity of this.config.capacities) {
+      try {
+        await this.updateCardPrices(cardType, capacity);
+    } catch (error) {
+        console.error(`Failed to update ${cardType} ${capacity}:`, error);
+    }
+  }
+}
+
+  /**
+   * Update prices for a specific card and capacity
+   */
+  private async updateCardPrices(cardType: string, capacity: string): Promise<void> {
+    const key = `${cardType}-${capacity}`;
+    
+    try {
+      // Fetch current prices
+      const currentPrices = await MemoryCardPriceAPI.fetchPrices(
+        cardType,
+        capacity,
+        this.config.sources
+      );
+
+      if (currentPrices.length === 0) {
+        console.warn(`No prices found for ${cardType} ${capacity}`);
+        return;
+    }
+
+      // Get previous prices from history
+      const previousPrices = this.priceHistory.get(key) || [];
+      const lastPrice = previousPrices[previousPrices.length - 1];
+
+      // Process price changes
+      for (const priceData of currentPrices) {
+        if (lastPrice && lastPrice.source === priceData.source) {
+          const changePercent = ((priceData.price - lastPrice.newPrice) / lastPrice.newPrice) * 100;
+          
+          if (Math.abs(changePercent) > 1) { // Only log changes >1%
+            const updateEvent: PriceUpdateEvent = {
+              id: `${Date.now()}-${priceData.source}`,
+              cardType,
+              capacity,
+              oldPrice: lastPrice.newPrice,
+              newPrice: priceData.price,
+              currency: priceData.currency,
+              source: priceData.source,
+              changePercent,
+              timestamp: new Date().toISOString(),
+              isSignificant: Math.abs(changePercent) > this.config.significantChangeThreshold
+            };
+
+            // Store in history
+            this.addToHistory(key, updateEvent);
+
+            // Notify listeners
+            this.notifyListeners(updateEvent);
+
+            // Log significant changes
+            if (updateEvent.isSignificant) {
+              console.log(`📈 Significant price change: ${cardType} ${capacity} - ${changePercent.toFixed(1)}% (${priceData.source})`);
+          }
+        }
+      } else {
+          // First price for this card/source combination
+          const updateEvent: PriceUpdateEvent = {
+            id: `${Date.now()}-${priceData.source}`,
+            cardType,
+            capacity,
+            oldPrice: 0,
+            newPrice: priceData.price,
+            currency: priceData.currency,
+            source: priceData.source,
+            changePercent: 0,
+            timestamp: new Date().toISOString(),
+            isSignificant: false
+          };
+
+          this.addToHistory(key, updateEvent);
+      }
+    }
+
+  } catch (error) {
+      console.error(`Error updating prices for ${cardType} ${capacity}:`, error);
+      throw error;
+  }
+}
+
+  /**
+   * Add price update to history
+   */
+  private addToHistory(key: string, event: PriceUpdateEvent): void {
+    const history = this.priceHistory.get(key) || [];
+    history.push(event);
+    
+    // Keep only last 100 updates per card
+    if (history.length > 100) {
+      history.splice(0, history.length - 100);
+    }
+    
+    this.priceHistory.set(key, history);
+}
+
+  /**
+   * Notify listeners of price changes
+   */
+  private notifyListeners(event: PriceUpdateEvent): void {
+    this.listeners.forEach(listener => {
+      try {
+        listener(event);
+      } catch (error) {
+        console.error('Error in price update listener:', error);
+      }
+    });
+}
+
+  /**
+   * Add price update listener
+   */
+  addListener(listener: (event: PriceUpdateEvent) => void): void {
+    this.listeners.push(listener);
+  }
+
+  /**
+   * Remove price update listener
+   */
+  removeListener(listener: (event: PriceUpdateEvent) => void): void {
+    const index = this.listeners.indexOf(listener);
+    if (index > -1) {
+      this.listeners.splice(index, 1);
+  }
+}
+
+  /**
+   * Handle update errors with retry logic
+   */
+  private async handleUpdateError(error: any): Promise<void> {
+    console.error('Price update error:', error);
+    
+    // Implement retry logic here if needed
+    // For now, just log the error and continue
+}
+
+  /**
+   * Notify that update is complete
+   */
+  private notifyUpdateComplete(): void {
+    // This could send notifications to users, update UI, etc.
+    console.log('📢 Price update notifications sent');
+}
+
+  /**
+   * Get price history for a specific card
+   */
+  getPriceHistory(cardType: string, capacity: string): PriceUpdateEvent[] {
+    const key = `${cardType}-${capacity}`;
+    return this.priceHistory.get(key) || [];
+}
+
+  /**
+   * Get all significant price changes
+   */
+  getSignificantChanges(): PriceUpdateEvent[] {
+    const allChanges: PriceUpdateEvent[] = [];
+    
+    for (const history of this.priceHistory.values()) {
+      allChanges.push(...history.filter(event => event.isSignificant));
+    }
+    
+    return allChanges.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+}
+
+  /**
+   * Get price trends for a specific card
+   */
+  getPriceTrends(cardType: string, capacity: string, days: number = 30): Array<{
+    date: string;
+    averagePrice: number;
+    minPrice: number;
+    maxPrice: number;
+    changePercent: number;
+  }> {
+    const history = this.getPriceHistory(cardType, capacity);
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - days);
+    
+    const recentHistory = history.filter(event => 
+      new Date(event.timestamp) >= cutoffDate
+    );
+
+    // Group by date and calculate daily statistics
+    const dailyStats = new Map<string, {
+      prices: number[];
+      changes: number[];
+    }>();
+
+    recentHistory.forEach(event => {
+      const date = event.timestamp.split('T')[0];
+      if (!dailyStats.has(date)) {
+        dailyStats.set(date, { prices: [], changes: [] });
+      }
+      dailyStats.get(date)!.prices.push(event.newPrice);
+      dailyStats.get(date)!.changes.push(event.changePercent);
+  });
+
+    return Array.from(dailyStats.entries()).map(([date, stats]) => ({
+      date,
+      averagePrice: stats.prices.reduce((sum, price) => sum + price, 0) / stats.prices.length,
+      minPrice: Math.min(...stats.prices),
+      maxPrice: Math.max(...stats.prices),
+      changePercent: stats.changes.reduce((sum, change) => sum + change, 0) / stats.changes.length
+  })).sort((a, b) => a.date.localeCompare(b.date));
+}
+
+  /**
+   * Update configuration
+   */
+  updateConfig(newConfig: Partial<PriceUpdateConfig>): void {
+    this.config = { ...this.config, ...newConfig };
+    
+    // Restart if running
+    if (this.isRunning) {
+      this.stop();
+      this.start();
+  }
+}
+
+  /**
+   * Get current status
+   */
+  getStatus(): {
+    isRunning: boolean;
+    lastUpdate: Date | null;
+    config: PriceUpdateConfig;
+    totalUpdates: number;
+    significantChanges: number;
+,} {
+    const totalUpdates = Array.from(this.priceHistory.values())
+      .reduce((sum, history) => sum + history.length, 0);
+    
+    const significantChanges = this.getSignificantChanges().length;
+
+    return {
+      isRunning: this.isRunning,
+      lastUpdate: this.lastUpdate,
+      config: this.config,
+      totalUpdates,
+      significantChanges
+  };
+}
+
+  /**
+   * Force immediate update
+   */
+  async forceUpdate(): Promise<void> {
+    console.log('🔄 Forcing immediate price update...');
+    await this.performUpdate();
+}
+
+  /**
+   * Get price alerts for significant changes
+   */
+  getPriceAlerts(): Array<{
+    id: string;
+    cardType: string;
+    capacity: string;
+    changePercent: number;
+    newPrice: number;
+    currency: string;
+    source: string;
+    timestamp: string;
+  }> {
+    return this.getSignificantChanges().map(event => ({
+      id: event.id,
+      cardType: event.cardType,
+      capacity: event.capacity,
+      changePercent: event.changePercent,
+      newPrice: event.newPrice,
+      currency: event.currency,
+      source: event.source,
+      timestamp: event.timestamp
+    }));
+}
+}
+
+// Global price updater instance
+export const globalPriceUpdater = new MemoryCardPriceUpdater({
+  updateInterval:  60, // 1 hour
+  enableNotifications: true,
+  significantChangeThreshold: 1
+});
+
+// Auto-start in production
+if (import.meta.env.MODE ==='production') {
+  globalPriceUpdater.start();
+}
+
+// Export utility functions
+export const startPriceMonitoring = () => globalPriceUpdater.start();
+export const stopPriceMonitoring = () => globalPriceUpdater.stop();
+export const getPriceAlerts = () => globalPriceUpdater.getPriceAlerts();
+export const getPriceTrends = (cardType: string, capacity: string, days?: number) => 
+  globalPriceUpdater.getPriceTrends(cardType, capacity, days);
+
+
+
+
+
+
+
+
+
+
+
+
+
+

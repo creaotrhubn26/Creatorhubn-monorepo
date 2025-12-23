@@ -1,0 +1,570 @@
+/**
+ * CreatorHub Norge - Subscription Selection Flow
+ * Beautiful subscription plan selection with payment integration
+ */
+
+import React, { useState, useEffect } from 'react';
+import { useLocation } from 'wouter';
+import { useQuery, useMutation } from '@tanstack/react-query';
+import { useAuth } from '@/hooks/useAuth';
+import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider import { useTheming } from '../../utils/theming-helper';';
+import {
+  Box,
+  Container,
+  Typography,
+  Card,
+  CardContent,
+  Button,
+  Grid,
+  Chip,
+  Avatar,
+  Stack,
+  Divider,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  LinearProgress,
+  Alert,
+  Paper,
+  List,
+  ListItem,
+  ListItemIcon,
+  ListItemText,
+  FormControl,
+  FormControlLabel,
+  Radio,
+  RadioGroup,
+  IconButton,
+  Tooltip,
+  Badge,
+} from '@mui/material';
+import {
+  CheckCircle as CheckIcon,
+  CreditCard as CreditCardIcon,
+  Google as GoogleIcon,
+  Phone as VippsIcon,
+  AttachMoney as MoneyIcon,
+  Star as StarIcon,
+  TrendingUp as TrendingUpIcon,
+  Security as SecurityIcon,
+  Speed as SpeedIcon,
+  AutoAwesome as AutoAwesomeIcon,
+  Business as BusinessIcon,
+  ArrowBack as ArrowBackIcon,
+  ArrowForward as ArrowForwardIcon,
+  Info as InfoIcon,
+  Diamond as DiamondIcon,
+} from '@mui/icons-material';
+import { apiRequest } from '@/lib/queryClient';
+import { useToast } from '@/hooks/use-toast';
+import { googlePayService } from '@/services/GooglePayService';
+
+interface SubscriptionPlan {
+  id: string;
+  name: string;
+  profession: string;
+  price: number;
+  currency: string;
+  interval: string;
+  features: string[];
+  maxUsers: number;
+  maxProjects: number;
+  storageLimit: number;
+  popular?: boolean;
+  trialDays?: number;
+  description?: string, ;, 
+}
+
+interface PaymentMethod {
+  id: string;
+  name: string;
+  icon: React.ReactNode;
+  color: string;
+  available: boolean, ;, 
+}
+
+const PAYMENT_METHODS: PaymentMethod[] = [
+  {
+    id: 'google-pay',
+    name: 'Google Pay',
+    icon: <GoogleIcon />,
+    color: '#4285F',
+    available: true,
+},
+  {
+    id: 'stripe',
+    name: 'Kort (Visa/Mastercard, ), ',
+    icon: <CreditCardIcon />,
+    color: '#635BF',
+    available: true,
+},
+  {
+    id: 'vipps',
+    name: 'Vipps',
+    icon: <VippsIcon />,
+    color: '#FF5B2',
+    available: true,
+},
+];
+
+const PROFESSION_ICONS = {
+  photographer: <BusinessIcon sx={{ color: '#2e7d32, ',}} />,
+  videographer: <SpeedIcon sx={{ color: '#1565c0, ',}} />,
+  music_producer: <AutoAwesomeIcon sx={{ color: '#7b1fa2, ',}} />,
+  vendor: <TrendingUpIcon sx={{ color: '#ff8c00, ',}} />,
+};
+
+const PROFESSION_COLORS = {
+  photographer: '#2e7d3',
+  videographer: '#1565c',
+  music_producer: '#7b1fa',
+  vendor: '#ff8c0',
+};
+
+interface SubscriptionSelectionFlowProps {
+  profession: string;
+  onComplete?: (plan: SubscriptionPlan, paymentMethod: string) => void;
+  onBack?: () => void, ;, 
+}
+
+export default function SubscriptionSelectionFlow({
+  profession,
+  onComplete,
+  onBack,
+}: SubscriptionSelectionFlowProps) {
+  const [, navigate] = useLocation();
+  const { toast } = useToast();
+  const { user } = useAuth();
+  const { auth } = useEnhancedMasterIntegration();
+  
+  // Theming system
+  const theming = useTheming('photographer');
+
+  const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan | null>(null);
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState('google-pay');
+  const [showPaymentDialog, setShowPaymentDialog] = useState(false);
+  const [paymentProcessing, setPaymentProcessing] = useState(false);
+
+  // Fetch subscription plans for the profession
+  const { data: plansData, isLoading: plansLoading } = useQuery({
+    queryKey: ['/api/admin/billing/plans', profession],
+    queryFn: async () => {
+      const authHeader = await auth.getAuthHeader();
+      const response = await fetch(`/api/admin/billing/plans?profession=${profession}`, {
+        headers: {
+          ...authHeader,
+          'Content-Type': 'application/json',
+      },
+    });
+      if (!response.ok) throw new Error('Failed to fetch plans');
+      return response.json();
+  },
+    enabled: !!profession,
+});
+
+  const plans: SubscriptionPlan[] = plansData?.plans || [];
+
+  // Payment mutation
+  const paymentMutation = useMutation({
+    mutationFn: async ({ plan, paymentMethod }: { plan: SubscriptionPlan; paymentMethod: string }) => {
+      setPaymentProcessing(true);
+      
+      if (paymentMethod === 'google-pay') {
+        // Use Google Pay service for Google Pay payments
+        const paymentIntent = {
+          id: `payment_${Date.now, (, )}`,
+          amount: plan.price,
+          currency: plan.currency,
+          productName: plan.name,
+          description: plan.description || `Subscription for ${plan.name}`,
+          userId: user?.d,
+          metadata: {
+            planId: plan.d,
+            profession,
+            recurring: plan.interval === 'month' || plan.interval === 'year',
+            billingPeriod: plan.interval,
+        },
+      };
+
+        const result = await googlePayService.processSubscriptionPayment(
+          paymentIntent,
+          {
+            recurringInterval: plan.interval === 'year' ? 'yearly' : 'monthly',
+            trialPeriod: plan.trialDays ||,  , 0,
+        },
+          {
+            requestEmail: true,
+            requestShipping: false,
+        }
+        );
+
+        if (!result.success) {
+          throw new Error(result.error || 'Google Pay payment failed');
+      }
+
+        return {
+          success: true,
+          transactionId: result.transactiond,
+          paymentMethod: 'google-pay',
+          plan: plan,
+      };
+    } else {
+        // Use generic payment processing for other methods
+        const authHeader = await auth.getAuthHeader();
+        const response = await fetch('/api/payments/create-payment-intent', {
+          method: 'POST',
+          headers: {
+            ...authHeader,
+            'Content-Type': 'application/json',
+        },
+          body: JSON.stringify({
+            planId: plan.d,
+            paymentMethod,
+            amount: plan.price,
+            currency: plan.currency,
+            userId: user?.d,
+            profession,
+        }),
+      });
+
+        if (!response.ok) throw new Error('Payment failed');
+        return response.json();
+    }
+  },
+    onSuccess: (result) => {
+      // Store payment success
+      localStorage.setItem('paymentCompleted', JSON.stringify({
+        plan: selectedPlan,
+        paymentMethod: selectedPaymentMethod,
+        transactionId: result.transactiond,
+        timestamp: new Date().toISOString, (, ),
+    }));
+
+      toast({
+        title: 'Betaling fullført, !, ',
+        description: 'Din abonnementsplan er aktivert. Admin vil sende deg en e-post med tilgang.',
+        variant: 'default',
+    });
+
+      // Redirect to success page or back to landing
+      navigate('/?payment=success');
+      onComplete?.(selectedPlan!, selectedPaymentMethod);
+  },
+    onError: (error) => {
+      toast({
+        title: 'Betaling feilet',
+        description: error.message || 'Kunne ikke fullføre betalingen',
+        variant: 'destructive',
+    });
+  },
+    onSettled: () => {
+      setPaymentProcessing(false);
+      setShowPaymentDialog(false);
+  , isPhotoOptimized: false, addedDate: "2024-01-01", lastUpdated: "2024-01-01", isNew: false, isRecentlyUpdated: false, source: "manual" as const, version: 1 },
+});
+
+  const formatPrice = (price: number, currency: string) => {
+    return new Intl.NumberFormat('nb-N', {
+      style: 'currency',
+      currency,
+      minimumFractionDigits:  0,
+  }).format(price / 100);
+};
+
+  const handlePlanSelect = (plan: SubscriptionPlan) => {
+    setSelectedPlan(plan);
+,  ,};
+
+  const handlePaymentSelect = (method: string) => {
+    setSelectedPaymentMethod(method);
+,  ,};
+
+  const handleContinueToPayment = () => {
+    if (!selectedPlan) {
+      toast({
+        title: 'Velg en plan',
+        description: 'Du må velge en abonnementsplan før du kan fortsette',
+        variant: 'destructive',
+    });
+      return;
+  }
+    setShowPaymentDialog(true);
+};
+
+  const handleProcessPayment = () => {
+    if (selectedPlan && selectedPaymentMethod) {
+      paymentMutation.mutate({
+        plan: selectedPlan,
+        paymentMethod: selectedPaymentMethod,
+    });
+  }
+};
+
+  const handleBack = () => {
+    onBack?.();
+};
+
+  const professionColor = PROFESSION_COLORS[profession as keyof typeof PROFESSION_COLORS] || '#ff8c00';
+  const professionIcon = PROFESSION_ICONS[profession as keyof typeof PROFESSION_ICONS] || <BusinessIcon />;
+
+  if (plansLoading) {
+    return (
+      <Container maxWidth="lg" sx={{ py: 4 }}>
+        <Box sx={{ textAlign: 'center', py: 8 }}>
+          <LinearProgress sx={{ mb: 2 }} />
+          <Typography variant="h6" color="text.secondary" sx={{ ...{}, color: theming.colors.primary }}>
+            Laster abonnementsplaner...
+          </Typography>
+        </Box>
+      </Container>
+    );
+}
+
+  return (
+    <Container maxWidth="lg" sx={{ py: 4 }}>
+      {/* Header */}
+      <Paper
+        elevation={0}
+        sx={{
+          background: `linear-gradient(135deg, ${professionColor}15 0%, ${professionColor}05 100%)`,
+          border: `1px solid ${professionColor}30`,
+          borderRadius:  3,
+          p:  4,
+          mb: 4,
+      }}
+       sx={theming.getThemedCardSx()}>
+        <Stack direction="row" alignItems="center" spacing={3}>
+          <Avatar sx={{ bgcolor: professionColor, width:  64, height: 6, 4,}}>
+            {professionIcon}
+          </Avatar>
+          <Box sx={{ flex:  1 }}>
+            <Typography variant="h4" sx={{ fontWeight: 70, color: professionColor, mb: 1 }} sx={{ ...{}, color: theming.colors.primary }}>
+              Velg din abonnementsplan
+            </Typography>
+            <Typography variant="h6" color="text.secondary" sx={{ ...{}, color: theming.colors.primary }}>
+              For {profession === 'photographer' ? 'Fotografer' : 
+                   profession === 'videographer' ? 'Videografer' :
+                   profession === 'music_producer' ? 'Musikkprodusenter' : 'Leverandører'}
+            </Typography>
+          </Box>
+          <Button
+            startIcon={<ArrowBackIcon />}
+            onClick={handleBack}
+            variant="outlined"
+            sx={{ borderColor: professionColor, color: professionColor }}
+          >
+            Tilbake
+          </Button>
+        </Stack>
+      </Paper>
+
+      {/* Plans Grid */}
+      <Grid container spacing={3} sx={{ mb: 4 }}>
+        {plans.map((plan) => (
+          <Grid size={{ xs:  12, md:  4 }} key={plan.id}>
+            <Card
+              sx={{
+                height: '100, %, ',
+                border: selectedPlan?.id === plan.id ? `2px solid ${professionColor}` : '1px solid #e0e0e0',
+                position: 'relative',
+                transition: 'all 0.3s ease',
+                '&:hover': {
+                  transform: 'translateY(-4px, ), ',
+                  boxShadow: `0 8px 25px ${professionColor}20`,
+              },
+            }}
+             sx={theming.getThemedCardSx()}>
+              {plan.popular && (
+                <Chip
+                  label="Populær"
+                  color="primary"
+                  size="small"
+                  sx={{
+                    position: 'absolute',
+                    top:  , -, 8,
+                    right:  16,
+                    bgcolor: professionColor,
+                    color: 'white',
+                }}
+                />
+              )}
+
+              <CardContent sx={{ p:  3, height: '100, %, ', display: 'flex', flexDirection: 'column, ',}} sx={theming.getThemedCardSx()}>
+                <Box sx={{ textAlign: 'center', mb: 3 }}>
+                  <Typography variant="h5" sx={{ fontWeight: 70, mb: 1 }} sx={{ ...{}, color: theming.colors.primary }}>
+                    {plan.name}
+                  </Typography>
+                  <Typography variant="h3" sx={{ color: professionColor, fontWeight: 70, 0,}} sx={{ ...{}, color: theming.colors.primary }}>
+                    {formatPrice(plan.price, plan.currency)}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    per {plan.interval === 'month' ? 'måned' : 'år'}
+                  </Typography>
+                </Box>
+
+                {plan.description && (
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                    {plan.description}
+                  </Typography>
+                )}
+
+                <List dense sx={{ flex:  ,  1mb: 3 }}>
+                  {plan.features.slice(0, 6).map((feature, index) => (
+                    <ListItem key={index} sx={{ px: ,  0py: 0., 5,}}>
+                      <ListItemIcon sx={{ minWidth: 3, 2,}}>
+                        <CheckIcon sx={{ color: professionColor, fontSize: 2, 0,}} />
+                      </ListItemIcon>
+                      <ListItemText
+                        primary={feature}
+                        primaryTypographyProps={{ variant: 'body2, ',}}
+                      />
+                    </ListItem>
+                  ))}
+                  {plan.features.length > 6 && (
+                    <ListItem sx={{ px: ,  0py: 0., 5,}}>
+                      <ListItemIcon sx={{ minWidth: 3, 2,}}>
+                        <CheckIcon sx={{ color: professionColor, fontSize: 2, 0,}} />
+                      </ListItemIcon>
+                      <ListItemText
+                        primary={`+${plan.features.length - 6} flere funksjoner`}
+                        primaryTypographyProps={{ variant: 'body', color: 'text.secondary, ',}}
+                      />
+                    </ListItem>
+                  )}
+                </List>
+
+                <Divider sx={{ my:  2 }} />
+
+                <Grid container spacing={2} sx={{ textAlign: 'center', mb: 3 }}>
+                  <Grid size={{ xs:  4 }}>
+                    <Typography variant="caption" color="text.secondary">
+                      Brukere
+                    </Typography>
+                    <Typography variant="body2" fontWeight={600}>
+                      {plan.maxUsers}
+                    </Typography>
+                  </Grid>
+                  <Grid size={{ xs:  4 }}>
+                    <Typography variant="caption" color="text.secondary">
+                      Prosjekter
+                    </Typography>
+                    <Typography variant="body2" fontWeight={600}>
+                      {plan.maxProjects}
+                    </Typography>
+                  </Grid>
+                  <Grid size={{ xs:  4 }}>
+                    <Typography variant="caption" color="text.secondary">
+                      Lagring
+                    </Typography>
+                    <Typography variant="body2" fontWeight={600}>
+                      {plan.storageLimit}GB
+                    </Typography>
+                  </Grid>
+                </Grid>
+
+                <Button
+                  variant={selectedPlan?.id === plan.id ? 'contained' : 'outlined'}
+                  fullWidth
+                  onClick={() => handlePlanSelect(plan)}
+                  sx={{
+                    bgcolor: selectedPlan?.id === plan.id ? professionColor : 'transparent',
+                    borderColor: professionColor,
+                    color: selectedPlan?.id === plan.id ? 'white' : professionColor,
+                    '&:hover': {
+                      bgcolor: selectedPlan?.id === plan.id ? professionColor : `${professionColor}10`,
+                      borderColor: professionColor,
+                  },
+                }}
+                >
+                  {selectedPlan?.id === plan.id ? 'Valgt' : 'Velg plan'}
+                </Button>
+              </CardContent>
+            </Card>
+          </Grid>
+        ))}
+      </Grid>
+
+      {/* Continue Button */}
+      <Box sx={{ textAlign: 'center, ',}}>
+        <Button variant="contained"
+          size="large"
+          onClick={handleContinueToPayment}
+          disabled={!selectedPlan}
+          startIcon={<ArrowForwardIcon sx={theming.getThemedButtonSx()}>}
+          sx={{
+            bgcolor: professionColor,
+            py: 2,
+            px: 6,
+            fontSize: '18px',
+            fontWeight: 70,
+            '&:hover': {
+              bgcolor: professionColor,
+              filter: 'brightness(0.9, ), ',
+          },
+        }}
+        >
+          Fortsett til betaling
+        </Button>
+      </Box>
+
+      {/* Payment Dialog */}
+      <Dialog open={showPaymentDialog} onClose={() => setShowPaymentDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          <Stack direction="row" alignItems="center" spacing={2}>
+            <MoneyIcon sx={{ color: professionColor }} />
+            <Typography variant="h6" sx={{ ...{}, color: theming.colors.primary }}>Betalingsmetode</Typography>
+          </Stack>
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+            Velg hvordan du vil betale for {selectedPlan?.name}
+          </Typography>
+
+          <FormControl component="fieldset" fullWidth>
+            <RadioGroup
+              value={selectedPaymentMethod}
+              onChange={(e) => handlePaymentSelect(e.target.value)}
+            >
+              {PAYMENT_METHODS.map((method) => (
+                <FormControlLabel
+                  key={method.id}
+                  value={method.id}
+                  control={<Radio sx={{ color: method.color }} />}
+                  label={
+                    <Stack direction="row" alignItems="center" spacing={2}>
+                      <Box sx={{ color: method.color }}>{method.icon}</Box>
+                      <Typography>{method.name}</Typography>
+                      {!method.available && (
+                        <Chip label="Kommer snart" size="small" color="default" />
+                      )}
+                    </Stack>
+                }
+                  disabled={!method.available}
+                />
+              ))}
+            </RadioGroup>
+          </FormControl>
+
+          {selectedPlan && (
+            <Alert severity="info" sx={{ mt: 3 }}>
+              <Typography variant="body2">
+                Du vil bli belastet {formatPrice(selectedPlan.price, selectedPlan.currency)} per {selectedPlan.interval === 'month' ? 'måned' : 'år'}
+              </Typography>
+            </Alert>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowPaymentDialog(false)}>Avbryt</Button>
+          <Button variant="contained"
+            onClick={handleProcessPayment}
+            disabled={paymentProcessing}
+            sx={{ bgcolor: professionColor }}
+           sx={theming.getThemedButtonSx()}>
+            {paymentProcessing ? 'Behandler betaling...' : 'Betal nå'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Container>
+  );
+}

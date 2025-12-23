@@ -1,0 +1,967 @@
+/**
+ * Advanced Portrait Editor Component
+ * Implements Evoto/Imagen AI level portrait retouching features
+ */
+
+import { useTheming } from '../../utils/theming-helper';
+import React, { useState, useEffect } from 'react';
+import { apiRequest } from '@/lib/queryClient';
+import { useQuery, useMutation } from '@tanstack/react-query';
+import {
+  Box,
+  Typography,
+  Card,
+  CardContent,
+  Grid,
+  Slider,
+  Switch,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Button,
+  Chip,
+  Divider,
+  Paper,
+  Stack,
+  LinearProgress,
+  Alert,
+  Tabs,
+  Tab,
+  TextField,
+  IconButton,
+  Tooltip
+} from '@mui/material';
+import {
+  Face,
+  Palette,
+  AutoFixHigh,
+  Crop,
+  Straighten,
+  ColorLens,
+  BlurOn,
+  Brightness6,
+  Contrast,
+  FilterVintage,
+  SmartToy,
+  Group,
+  Visibility,
+  VisibilityOff,
+  Add,
+  Delete,
+  Edit,
+  Save
+} from '@mui/icons-material';
+
+interface PortraitRetouchingOptions {
+  skinSmooth: number;
+  blemishReduction: number;
+  shineControl: number;
+  evenSkin: boolean;
+  sculptWithDodgeBurn: boolean;
+  eyeBrightness: number;
+  redVeinRemoval: number;
+  glassesGlareRemoval: boolean;
+  teethWhiten: number;
+  teethAlignment: boolean;
+  makeupEnhancement: boolean;
+  lipColor: string;
+  eyeShadow: string;
+  blush: string;
+  hairVolume: number;
+  hairlineAdjustment: boolean;
+  handVeinRemoval: number;
+  facialReshape: {
+    enabled: boolean;
+    jawline: number;
+    cheekbones: number;
+    nose: number;
+	  lips: number;
+	};
+	facialExpression: {
+	  enabled: boolean;
+	  smileIntensity: number;
+	  eyeOpenness: number;
+	};
+  fullBodyReshape: {
+    enabled: boolean;
+    waist: number;
+    hips: number;
+    shoulders: number;
+    height: number;
+	  };
+}
+
+interface BackgroundSceneOptions {
+  backgroundCleanup: boolean;
+  unifyLighting: boolean;
+  colorBandingRemoval: boolean;
+  backdropChanger: string;
+  skyReplacement: string;
+  lightingAdjustment: number;
+  colorTemperature: number;
+  atmosphere: number; 
+}
+
+interface PersonalAIProfile {
+  id: string;
+  name: string;
+  description: string;
+  style: 'natural' | 'dramatic' | 'vintage' | 'modern' | 'artistic';
+  settings: any;
+  colorGrading: any;
+  created: string;
+  updated: string;
+  usageCount: number; 
+}
+
+interface AdvancedPortraitEditorProps {
+  imageUrl?: string;
+  onPortraitProcessed?: (result: any) => void;
+  onProfileApplied?: (profile: PersonalAIProfile) => void; 
+}
+
+export default function AdvancedPortraitEditor({
+  imageUrl,
+  onPortraitProcessed,
+  onProfileApplied
+}: AdvancedPortraitEditorProps) {
+  const [tabValue, setTabValue] = useState(false);
+  
+  // Theming system
+  const theming = useTheming('photographer');
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [processingProgress, setProcessingProgress] = useState(0);
+  
+  // Portrait retouching options
+  const [portraitOptions, setPortraitOptions] = useState<PortraitRetouchingOptions>({
+    skinSmooth:  0,
+    blemishReduction:  0,
+    shineControl:  0,
+    evenSkin: false,
+    sculptWithDodgeBurn: false,
+    eyeBrightness:  0,
+    redVeinRemoval:  0,
+    glassesGlareRemoval: false,
+    teethWhiten:  0,
+    teethAlignment: false,
+    makeupEnhancement: false,
+    lipColor: '',
+    eyeShadow: '',
+    blush: '',
+    hairVolume:  0,
+    hairlineAdjustment: false,
+    handVeinRemoval:  0,
+    facialReshape: {
+      enabled: false,
+      jawline:  0,
+      cheekbones:  0,
+      nose:  0,
+      lips: 0
+  ,},
+    facialExpression: {
+      enabled: false,
+      smileIntensity:  0,
+      eyeOpenness: 0
+  ,},
+    fullBodyReshape: {
+      enabled: false,
+      waist:  0,
+      hips:  0,
+      shoulders:  0,
+      height: 0
+  }
+});
+
+  // Background scene options
+  const [backgroundOptions, setBackgroundOptions] = useState<BackgroundSceneOptions>({
+    backgroundCleanup: false,
+    unifyLighting: false,
+    colorBandingRemoval: false,
+    backdropChanger: 'none',
+    skyReplacement: 'none',
+    lightingAdjustment:  0,
+    colorTemperature:  0,
+    atmosphere: 0
+,});
+
+  // AI Profiles
+  const [selectedProfile, setSelectedProfile] = useState<string>('');
+  const [newProfileName, setNewProfileName] = useState('');
+  const [newProfileDescription, setNewProfileDescription] = useState('');
+  const [newProfileStyle, setNewProfileStyle] = useState('natural');
+
+  // Fetch AI profiles
+  const { data: profilesData, refetch: refetchProfiles } = useQuery({
+    queryKey: ['/api/advanced-portrait/profiles', ],
+    queryFn: async () => {
+      return apiRequest('/api/advanced-portrait/profiles');
+    }
+  });
+
+  // Portrait retouching mutation
+  const portraitRetouchingMutation = useMutation({
+    mutationFn: async (options: PortraitRetouchingOptions) => {
+      const formData = new FormData();
+      
+      // Create a blob from the image URL
+      if (imageUrl) {
+        const response = await fetch(imageUrl);
+        const blob = await response.blob();
+        formData.append('image', blob, 'portrait.jpg');
+      }
+      
+      // Add all options
+      Object.entries(options).forEach(([key, value]) => {
+        if (typeof value === 'object') {
+          formData.append(key, JSON.stringify(value));
+        } else {
+          formData.append(key, value.toString());
+        }
+      });
+      
+      return apiRequest('/api/advanced-portrait/portrait-retouching', {
+        method: 'POST',
+        body: formData
+      });
+    },
+    onSuccess: (data) => {
+      if (data.success) {
+        onPortraitProcessed?.(data.result);
+      }
+    }
+  });
+
+  // Background scene mutation
+  const backgroundSceneMutation = useMutation({
+    mutationFn: async (options: BackgroundSceneOptions) => {
+      const formData = new FormData();
+      
+      if (imageUrl) {
+        const response = await fetch(imageUrl);
+        const blob = await response.blob();
+        formData.append('image', blob, 'background.jpg');
+      }
+      
+      Object.entries(options).forEach(([key, value]) => {
+        formData.append(key, value.toString());
+    });
+      
+      return apiRequest('/api/advanced-portrait/background-scene', {
+        method: 'POS',
+        body: formData
+    ,});
+  },
+    onSuccess: (data) => {
+      if (data.success) {
+        onPortraitProcessed?.(data.result);
+      }
+    }
+  });
+
+  // Apply profile mutation
+  const applyProfileMutation = useMutation({
+    mutationFn: async (profileId: string) => {
+      return apiRequest('/api/advanced-portrait/apply-profile-url', {
+        method: 'POS',
+        body: JSON.stringify({
+          imageUl,
+          profileId
+      })
+    });
+  },
+    onSuccess: (data) => {
+      if (data.success) {
+        const profile = profilesData?.personalProfiles?.find((p: PersonalAIProfile) => p.id === selectedProfile) ||
+                      profilesData?.talentProfiles?.find((p: PersonalAIProfile) => p.id === selectedProfile);
+        if (profile) {
+          onProfileApplied?.(profile);
+        }
+      }
+    }
+  });
+
+  // Create profile mutation
+  const createProfileMutation = useMutation({
+    mutationFn: async (profileData: { name: string; description: string; style: string }) => {
+      return apiRequest('/api/advanced-portrait/profiles', {
+        method: 'POS',
+        body: JSON.stringify(profileData)
+    ,});
+  },
+    onSuccess: () => {
+      refetchProfiles();
+      setNewProfileName('');
+      setNewProfileDescription('');
+      setNewProfileStyle('natural');
+    }
+  });
+
+  const handlePortraitRetouching = async () => {
+    setIsProcessing(true);
+    setProcessingProgress(0);
+    
+    try {
+      await portraitRetouchingMutation.mutateAsync(portraitOptions);
+  } finally {
+      setIsProcessing(false);
+      setProcessingProgress(0);
+  }
+};
+
+  const handleBackgroundScene = async () => {
+    setIsProcessing(true);
+    setProcessingProgress(0);
+    
+    try {
+      await backgroundSceneMutation.mutateAsync(backgroundOptions);
+  } finally {
+      setIsProcessing(false);
+      setProcessingProgress(0);
+  }
+};
+
+  const handleApplyProfile = async () => {
+    if (!selectedProfile) return;
+    
+    setIsProcessing(true);
+    setProcessingProgress(0);
+    
+    try {
+      await applyProfileMutation.mutateAsync(selectedProfile);
+  } finally {
+      setIsProcessing(false);
+      setProcessingProgress(0);
+  }
+};
+
+  const handleCreateProfile = async () => {
+    if (!newProfileName || !newProfileDescription) return;
+    
+    await createProfileMutation.mutateAsync({
+      name: newProfileName,
+      description: newProfileDescription,
+      style: newProfileStyle
+  ,});
+};
+
+  const personalProfiles = profilesData?.personalProfiles || [];
+  const talentProfiles = profilesData?.talentProfiles || [];
+
+  return (
+    <Box sx={{ p:  3 }}>
+      <Typography variant="h5" sx={{  mb:  3, display: 'flex', alignItems: 'center', gap:  1  }}>
+        {theming.getThemedIcon('face')}
+        Advanced Portrait Editor
+      </Typography>
+
+      <Tabs value={tabValue} onChange={(e, newValue) => setTabValue(newValue)} sx={{ mb:  3 }}>
+        <Tab icon={theming.getThemedIcon('autoFixHigh')} label="Portrait Retouching" />
+        <Tab icon={theming.getThemedIcon('palette')} label="Background & Scene" />
+        <Tab icon={theming.getThemedIcon('smartToy')} label="AI Profiles" />
+        <Tab icon={theming.getThemedIcon('group')} label="AI Culling" />
+      </Tabs>
+
+      {/* Portrait Retouching Tab */}
+      {tabValue === 0 && (
+        <Grid container spacing={3}>
+          {/* Skin Retouching */}
+          <Grid size={{ xs:  12, md:  6 }}>
+            <Card sx={theming.getThemedCardSx()}>
+              <CardContent sx={theming.getThemedCardSx()}>
+                <Typography variant="h6" sx={{  mb: 2, display: 'flex', alignItems: 'center', gap:  1  }}>
+                  <BlurOn />
+                  Skin Retouching
+                </Typography>
+                
+                <Box sx={{ mb:  2 }}>
+                  <Typography gutterBottom>Skin Smoothing: {portraitOptions.skinSmooth}%</Typography>
+                  <Slider
+                    value={portraitOptions.skinSmooth}
+                    onChange={(e, value) => setPortraitOptions(prev => ({ ...prev, skinSmooth: value as number }))}
+                    min={0}
+                    max={100}
+                    valueLabelDisplay="auto"
+                  />
+                </Box>
+
+                <Box sx={{ mb:  2 }}>
+                  <Typography gutterBottom>Blemish Reduction: {portraitOptions.blemishReduction}%</Typography>
+                  <Slider
+                    value={portraitOptions.blemishReduction}
+                    onChange={(e, value) => setPortraitOptions(prev => ({ ...prev, blemishReduction: value as number }))}
+                    min={0}
+                    max={100}
+                    valueLabelDisplay="auto"
+                  />
+                </Box>
+
+                <Box sx={{ mb:  2 }}>
+                  <Typography gutterBottom>Shine Control: {portraitOptions.shineControl}%</Typography>
+                  <Slider
+                    value={portraitOptions.shineControl}
+                    onChange={(e, value) => setPortraitOptions(prev => ({ ...prev, shineControl: value as number }))}
+                    min={0}
+                    max={100}
+                    valueLabelDisplay="auto"
+                  />
+                </Box>
+
+                <Stack direction="row" spacing={2}>
+                  <Switch
+                    checked={portraitOptions.evenSkin}
+                    onChange={(e) => setPortraitOptions(prev => ({ ...prev, evenSkin: e.target.checked }))}
+                  />
+                  <Typography>Even Skin Tone</Typography>
+                </Stack>
+
+                <Stack direction="row" spacing={2}>
+                  <Switch
+                    checked={portraitOptions.sculptWithDodgeBurn}
+                    onChange={(e) => setPortraitOptions(prev => ({ ...prev, sculptWithDodgeBurn: e.target.checked }))}
+                  />
+                  <Typography>Sculpt with Dodge & Burn</Typography>
+                </Stack>
+              </CardContent>
+            </Card>
+          </Grid>
+
+          {/* Eye & Teeth Enhancement */}
+          <Grid size={{ xs:  12, md:  6 }}>
+            <Card sx={theming.getThemedCardSx()}>
+              <CardContent sx={theming.getThemedCardSx()}>
+                <Typography variant="h6" sx={{  mb: 2, display: 'flex', alignItems: 'center', gap:  1  }}>
+                  {theming.getThemedIcon('visibility')}
+                  Eye & Teeth Enhancement
+                </Typography>
+                
+                <Box sx={{ mb:  2 }}>
+                  <Typography gutterBottom>Eye Brightness: {portraitOptions.eyeBrightness}%</Typography>
+                  <Slider
+                    value={portraitOptions.eyeBrightness}
+                    onChange={(e, value) => setPortraitOptions(prev => ({ ...prev, eyeBrightness: value as number }))}
+                    min={0}
+                    max={100}
+                    valueLabelDisplay="auto"
+                  />
+                </Box>
+
+                <Box sx={{ mb:  2 }}>
+                  <Typography gutterBottom>Red Vein Removal: {portraitOptions.redVeinRemoval}%</Typography>
+                  <Slider
+                    value={portraitOptions.redVeinRemoval}
+                    onChange={(e, value) => setPortraitOptions(prev => ({ ...prev, redVeinRemoval: value as number }))}
+                    min={0}
+                    max={100}
+                    valueLabelDisplay="auto"
+                  />
+                </Box>
+
+                <Box sx={{ mb:  2 }}>
+                  <Typography gutterBottom>Teeth Whitening: {portraitOptions.teethWhiten}%</Typography>
+                  <Slider
+                    value={portraitOptions.teethWhiten}
+                    onChange={(e, value) => setPortraitOptions(prev => ({ ...prev, teethWhiten: value as number }))}
+                    min={0}
+                    max={100}
+                    valueLabelDisplay="auto"
+                  />
+                </Box>
+
+                <Stack direction="row" spacing={2}>
+                  <Switch
+                    checked={portraitOptions.glassesGlareRemoval}
+                    onChange={(e) => setPortraitOptions(prev => ({ ...prev, glassesGlareRemoval: e.target.checked }))}
+                  />
+                  <Typography>Remove Glasses Glare</Typography>
+                </Stack>
+
+                <Stack direction="row" spacing={2}>
+                  <Switch
+                    checked={portraitOptions.teethAlignment}
+                    onChange={(e) => setPortraitOptions(prev => ({ ...prev, teethAlignment: e.target.checked }))}
+                  />
+                  <Typography>Teeth Alignment</Typography>
+                </Stack>
+              </CardContent>
+            </Card>
+          </Grid>
+
+          {/* Facial Reshape */}
+          <Grid size={{ xs:  12, md:  6 }}>
+            <Card sx={theming.getThemedCardSx()}>
+              <CardContent sx={theming.getThemedCardSx()}>
+                <Typography variant="h6" sx={{  mb: 2, display: 'flex', alignItems: 'center', gap:  1  }}>
+                  {theming.getThemedIcon('edit')}
+                  Facial Reshape
+                </Typography>
+                
+                <Stack direction="row" spacing={2} sx={{ mb:  2 }}>
+                  <Switch
+                    checked={portraitOptions.facialReshape.enabled}
+                    onChange={(e) => setPortraitOptions(prev => ({ 
+                      ...prev, 
+                      facialReshape: { ...prev.facialReshape, enabled: e.target.checked }
+                  }))}
+                  />
+                  <Typography>Enable Facial Reshape</Typography>
+                </Stack>
+
+                {portraitOptions.facialReshape.enabled && (
+                  <>
+                    <Box sx={{ mb:  2 }}>
+                      <Typography gutterBottom>Jawline: {portraitOptions.facialReshape.jawline}</Typography>
+                      <Slider
+                        value={portraitOptions.facialReshape.jawline}
+                        onChange={(e, value) => setPortraitOptions(prev => ({ 
+                          ...prev, 
+                          facialReshape: { ...prev.facialReshape, jawline: value as number }
+                      }))}
+                        min={-50}
+                        max={50}
+                        valueLabelDisplay="auto"
+                      />
+                    </Box>
+
+                    <Box sx={{ mb:  2 }}>
+                      <Typography gutterBottom>Cheekbones: {portraitOptions.facialReshape.cheekbones}</Typography>
+                      <Slider
+                        value={portraitOptions.facialReshape.cheekbones}
+                        onChange={(e, value) => setPortraitOptions(prev => ({ 
+                          ...prev, 
+                          facialReshape: { ...prev.facialReshape, cheekbones: value as number }
+                      }))}
+                        min={-50}
+                        max={50}
+                        valueLabelDisplay="auto"
+                      />
+                    </Box>
+
+                    <Box sx={{ mb:  2 }}>
+                      <Typography gutterBottom>Nose: {portraitOptions.facialReshape.nose}</Typography>
+                      <Slider
+                        value={portraitOptions.facialReshape.nose}
+                        onChange={(e, value) => setPortraitOptions(prev => ({ 
+                          ...prev, 
+                          facialReshape: { ...prev.facialReshape, nose: value as number }
+                      }))}
+                        min={-50}
+                        max={50}
+                        valueLabelDisplay="auto"
+                      />
+                    </Box>
+
+                    <Box sx={{ mb:  2 }}>
+                      <Typography gutterBottom>Lips: {portraitOptions.facialReshape.lips}</Typography>
+                      <Slider
+                        value={portraitOptions.facialReshape.lips}
+                        onChange={(e, value) => setPortraitOptions(prev => ({ 
+                          ...prev, 
+                          facialReshape: { ...prev.facialReshape, lips: value as number }
+                      }))}
+                        min={-50}
+                        max={50}
+                        valueLabelDisplay="auto"
+                      />
+                    </Box>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          </Grid>
+
+          {/* Makeup & Hair */}
+          <Grid size={{ xs:  12, md:  6 }}>
+            <Card sx={theming.getThemedCardSx()}>
+              <CardContent sx={theming.getThemedCardSx()}>
+                <Typography variant="h6" sx={{  mb: 2, display: 'flex', alignItems: 'center', gap:  1  }}>
+                  <FilterVintage />
+                  Makeup & Hair
+                </Typography>
+                
+                <Stack direction="row" spacing={2} sx={{ mb:  2 }}>
+                  <Switch
+                    checked={portraitOptions.makeupEnhancement}
+                    onChange={(e) => setPortraitOptions(prev => ({ ...prev, makeupEnhancement: e.target.checked }))}
+                  />
+                  <Typography>Makeup Enhancement</Typography>
+                </Stack>
+
+                <Box sx={{ mb:  2 }}>
+                  <Typography gutterBottom>Hair Volume: {portraitOptions.hairVolume}%</Typography>
+                  <Slider
+                    value={portraitOptions.hairVolume}
+                    onChange={(e, value) => setPortraitOptions(prev => ({ ...prev, hairVolume: value as number }))}
+                    min={0}
+                    max={100}
+                    valueLabelDisplay="auto"
+                  />
+                </Box>
+
+                <Stack direction="row" spacing={2}>
+                  <Switch
+                    checked={portraitOptions.hairlineAdjustment}
+                    onChange={(e) => setPortraitOptions(prev => ({ ...prev, hairlineAdjustment: e.target.checked }))}
+                  />
+                  <Typography>Hairline Adjustment</Typography>
+                </Stack>
+              </CardContent>
+            </Card>
+          </Grid>
+
+          {/* Action Buttons */}
+          <Grid size={{ xs: 12 }}>
+            <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center'}}>
+              <Button variant="contained"
+                size="large"
+                startIcon={theming.getThemedIcon('autoFixHigh')}
+                onClick={handlePortraitRetouching}
+                disabled={isProcessing || !imageUrl}
+                sx={{ minWidth: 200, ...theming.getThemedButtonSx() }}>
+                {isProcessing ? 'Processing...' : 'Apply Portrait Retouching'}
+              </Button>
+            </Box>
+          </Grid>
+        </Grid>
+      )}
+
+      {/* Background & Scene Tab */}
+      {tabValue === 1 && (
+        <Grid container spacing={3}>
+          <Grid size={{ xs:  12, md:  6 }}>
+            <Card sx={theming.getThemedCardSx()}>
+              <CardContent sx={theming.getThemedCardSx()}>
+                <Typography variant="h6" sx={{  mb: 2, display: 'flex', alignItems: 'center', gap:  1  }}>
+                  {theming.getThemedIcon('palette')}
+                  Background Tools
+                </Typography>
+                
+                <Stack direction="row" spacing={2} sx={{ mb:  2 }}>
+                  <Switch
+                    checked={backgroundOptions.backgroundCleanup}
+                    onChange={(e) => setBackgroundOptions(prev => ({ ...prev, backgroundCleanup: e.target.checked }))}
+                  />
+                  <Typography>Background Cleanup</Typography>
+                </Stack>
+
+                <Stack direction="row" spacing={2} sx={{ mb:  2 }}>
+                  <Switch
+                    checked={backgroundOptions.unifyLighting}
+                    onChange={(e) => setBackgroundOptions(prev => ({ ...prev, unifyLighting: e.target.checked }))}
+                  />
+                  <Typography>Unify Lighting</Typography>
+                </Stack>
+
+                <Stack direction="row" spacing={2} sx={{ mb:  2 }}>
+                  <Switch
+                    checked={backgroundOptions.colorBandingRemoval}
+                    onChange={(e) => setBackgroundOptions(prev => ({ ...prev, colorBandingRemoval: e.target.checked }))}
+                  />
+                  <Typography>Color Banding Removal</Typography>
+                </Stack>
+
+                <FormControl fullWidth sx={{ mb:  2 }}>
+                  <InputLabel>Backdrop Changer</InputLabel>
+                  <Select
+                    value={backgroundOptions.backdropChanger}
+                    onChange={(e) => setBackgroundOptions(prev => ({ ...prev, backdropChanger: e.target.value }))}
+                  >
+                    <MenuItem value="none">None</MenuItem>
+                    <MenuItem value="studio">Studio</MenuItem>
+                    <MenuItem value="outdoor">Outdoor</MenuItem>
+                    <MenuItem value="custom">Custom</MenuItem>
+                  </Select>
+                </FormControl>
+
+                <FormControl fullWidth sx={{ mb:  2 }}>
+                  <InputLabel>Sky Replacement</InputLabel>
+                  <Select
+                    value={backgroundOptions.skyReplacement}
+                    onChange={(e) => setBackgroundOptions(prev => ({ ...prev, skyReplacement: e.target.value }))}
+                  >
+                    <MenuItem value="none">None</MenuItem>
+                    <MenuItem value="sunset">Sunset</MenuItem>
+                    <MenuItem value="cloudy">Cloudy</MenuItem>
+                    <MenuItem value="blue">Blue Sky</MenuItem>
+                    <MenuItem value="custom">Custom</MenuItem>
+                  </Select>
+                </FormControl>
+              </CardContent>
+            </Card>
+          </Grid>
+
+          <Grid size={{ xs:  12, md:  6 }}>
+            <Card sx={theming.getThemedCardSx()}>
+              <CardContent sx={theming.getThemedCardSx()}>
+                <Typography variant="h6" sx={{  mb: 2, display: 'flex', alignItems: 'center', gap:  1  }}>
+                  <Brightness6 />
+                  Scene Enhancement
+                </Typography>
+                
+                <Box sx={{ mb:  2 }}>
+                  <Typography gutterBottom>Lighting Adjustment: {backgroundOptions.lightingAdjustment}</Typography>
+                  <Slider
+                    value={backgroundOptions.lightingAdjustment}
+                    onChange={(e, value) => setBackgroundOptions(prev => ({ ...prev, lightingAdjustment: value as number }))}
+                    min={-100}
+                    max={100}
+                    valueLabelDisplay="auto"
+                  />
+                </Box>
+
+                <Box sx={{ mb:  2 }}>
+                  <Typography gutterBottom>Color Temperature: {backgroundOptions.colorTemperature}</Typography>
+                  <Slider
+                    value={backgroundOptions.colorTemperature}
+                    onChange={(e, value) => setBackgroundOptions(prev => ({ ...prev, colorTemperature: value as number }))}
+                    min={-100}
+                    max={100}
+                    valueLabelDisplay="auto"
+                  />
+                </Box>
+
+                <Box sx={{ mb:  2 }}>
+                  <Typography gutterBottom>Atmosphere: {backgroundOptions.atmosphere}%</Typography>
+                  <Slider
+                    value={backgroundOptions.atmosphere}
+                    onChange={(e, value) => setBackgroundOptions(prev => ({ ...prev, atmosphere: value as number }))}
+                    min={0}
+                    max={100}
+                    valueLabelDisplay="auto"
+                  />
+                </Box>
+              </CardContent>
+            </Card>
+          </Grid>
+
+          <Grid size={{ xs: 12 }}>
+            <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center'}}>
+              <Button variant="contained"
+                size="large"
+                startIcon={theming.getThemedIcon('palette')}
+                onClick={handleBackgroundScene}
+                disabled={isProcessing || !imageUrl}
+                sx={{ minWidth: 200, ...theming.getThemedButtonSx() }}>
+                {isProcessing ? 'Processing...' : 'Apply Background & Scene'}
+              </Button>
+            </Box>
+          </Grid>
+        </Grid>
+      )}
+
+      {/* AI Profiles Tab */}
+      {tabValue === 2 && (
+        <Grid container spacing={3}>
+          <Grid size={{ xs:  12, md:  6 }}>
+            <Card sx={theming.getThemedCardSx()}>
+              <CardContent sx={theming.getThemedCardSx()}>
+                <Typography variant="h6" sx={{  mb: 2, display: 'flex', alignItems: 'center', gap:  1  }}>
+                  {theming.getThemedIcon('smartToy')}
+                  Apply AI Profile
+                </Typography>
+                
+                <FormControl fullWidth sx={{ mb:  2 }}>
+                  <InputLabel>Select Profile</InputLabel>
+                  <Select
+                    value={selectedProfile}
+                    onChange={(e) => setSelectedProfile(e.target.value)}
+                  >
+                    <optgroup label="Personal Profiles">
+                      {personalProfiles.map((profile: PersonalAIProfile) => (
+                        <MenuItem key={profile.d} value={profile.id}>
+                          {profile.name} ({profile.style})
+                        </MenuItem>
+                      ))}
+                    </optgroup>
+                    <optgroup label="Talent Profiles">
+                      {talentProfiles.map((profile: PersonalAIProfile) => (
+                        <MenuItem key={profile.d} value={profile.id}>
+                          {profile.name} ({profile.style})
+                        </MenuItem>
+                      ))}
+                    </optgroup>
+                  </Select>
+                </FormControl>
+
+                <Button variant="contained"
+                  fullWidth
+                  startIcon={theming.getThemedIcon('smartToy')}
+                  onClick={handleApplyProfile}
+                  disabled={!selectedProfile || isProcessing || !imageUrl}
+                 sx={theming.getThemedButtonSx()}>
+                  Apply Profile
+                </Button>
+              </CardContent>
+            </Card>
+          </Grid>
+
+          <Grid size={{ xs:  12, md:  6 }}>
+            <Card sx={theming.getThemedCardSx()}>
+              <CardContent sx={theming.getThemedCardSx()}>
+                <Typography variant="h6" sx={{  mb: 2, display: 'flex', alignItems: 'center', gap:  1  }}>
+                  {theming.getThemedIcon('add')}
+                  Create Personal Profile
+                </Typography>
+                
+                <TextField
+                  fullWidth
+                  label="Profile Name"
+                  value={newProfileName}
+                  onChange={(e) => setNewProfileName(e.target.value)}
+                  sx={{ mb:  2 }}
+                />
+                
+                <TextField
+                  fullWidth
+                  label="Description"
+                  value={newProfileDescription}
+                  onChange={(e) => setNewProfileDescription(e.target.value)}
+                  multiline
+                  rows={2}
+                  sx={{ mb:  2 }}
+                />
+                
+                <FormControl fullWidth sx={{ mb:  2 }}>
+                  <InputLabel>Style</InputLabel>
+                  <Select
+                    value={newProfileStyle}
+                    onChange={(e) => setNewProfileStyle(e.target.value)}
+                  >
+                    <MenuItem value="natural">Natural</MenuItem>
+                    <MenuItem value="dramatic">Dramatic</MenuItem>
+                    <MenuItem value="vintage">Vintage</MenuItem>
+                    <MenuItem value="modern">Modern</MenuItem>
+                    <MenuItem value="artistic">Artistic</MenuItem>
+                  </Select>
+                </FormControl>
+
+                <Button
+                  variant="outlined"
+                  fullWidth
+                  startIcon={theming.getThemedIcon('save')}
+                  onClick={handleCreateProfile}
+                  disabled={!newProfileName || !newProfileDescription || createProfileMutation.isPending}
+                >
+                  Create Profile
+                </Button>
+              </CardContent>
+            </Card>
+          </Grid>
+
+          {/* Profile List */}
+          <Grid size={{ xs: 12 }}>
+            <Card sx={theming.getThemedCardSx()}>
+              <CardContent sx={theming.getThemedCardSx()}>
+                <Typography variant="h6" sx={{  mb:  2  }}>
+                  Available Profiles
+                </Typography>
+                
+                <Grid container spacing={2}>
+                  {personalProfiles.map((profile: PersonalAIProfile) => (
+                    <Grid size={{ xs: 12, sm:  6, md:  4 }} key={profile.id}>
+                      <Paper sx={{ p: 2, border: '1px solid #e0e0e0',  ...theming.getThemedCardSx() }}>
+                        <Typography variant="subtitle1" sx={{ fontWeight: 'bold'}}>
+                          {profile.name}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" sx={{ mb:  1 }}>
+                          {profile.description}
+                        </Typography>
+                        <Chip 
+                          label={profile.style} 
+                          size="small" 
+                          color="primary" 
+                          sx={{ mr:  1 }}
+                        />
+                        <Chip 
+                          label={`Used ${profile.usageCount} times`} 
+                          size="small" 
+                          variant="outlined"
+                        />
+                      </Paper>
+                    </Grid>
+                  ))}
+                  
+                  {talentProfiles.map((profile: PersonalAIProfile) => (
+                    <Grid size={{ xs: 12, sm:  6, md:  4 }} key={profile.id}>
+                      <Paper sx={{ p: 2, border: '1px solid #e0e0e0',  ...theming.getThemedCardSx() }}>
+                        <Typography variant="subtitle1" sx={{ fontWeight: 'bold'}}>
+                          {profile.name}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" sx={{ mb:  1 }}>
+                          {profile.description}
+                        </Typography>
+                        <Chip 
+                          label={profile.style} 
+                          size="small" 
+                          color="secondary" 
+                          sx={{ mr:  1 }}
+                        />
+                        <Chip 
+                          label="Talent Profile" 
+                          size="small" 
+                          variant="outlined"
+                        />
+                      </Paper>
+                    </Grid>
+                  ))}
+                </Grid>
+              </CardContent>
+            </Card>
+          </Grid>
+        </Grid>
+      )}
+
+      {/* AI Culling Tab */}
+      {tabValue === 3 && (
+        <Grid container spacing={3}>
+          <Grid size={{ xs: 12 }}>
+            <Card sx={theming.getThemedCardSx()}>
+              <CardContent sx={theming.getThemedCardSx()}>
+                <Typography variant="h6" sx={{  mb: 2, display: 'flex', alignItems: 'center', gap:  1  }}>
+                  {theming.getThemedIcon('group')}
+                  AI Culling
+                </Typography>
+                
+                <Alert severity="info" sx={{ mb:  2 }}>
+                  AI Culling automatically analyzes your photos to detect faces, blinks, blur, and group similar images.
+                  This feature helps you quickly select the best photos from a shoot.
+                </Alert>
+                
+                <Typography variant="body2" color="text.secondary">
+                  This feature will be available when you have multiple photos selected. 
+                  It will analyze each photo for quality, composition, and facial expressions.
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+        </Grid>
+      )}
+
+      {/* Processing Status */}
+      {isProcessing && (
+        <Box sx={{ mt:  3 }}>
+          <LinearProgress variant="determinate" value={processingProgress} />
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1, textAlign: 'center'}}>
+            Processing advanced portrait enhancements...
+          </Typography>
+        </Box>
+      )}
+    </Box>
+  );
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,647 @@
+import { useTheming } from '../../utils/theming-helper';
+import React, { useState } from 'react';
+import {
+  Box,
+  Typography,
+  Grid,
+  Card as MuiCard,
+  CardContent,
+  Avatar,
+  Chip,
+  Button,
+  IconButton,
+  Badge,
+  Alert,
+  Tabs,
+  Tab,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Tooltip,
+  LinearProgress,
+} from '@mui/material';
+import {
+  PhotoCameraAlt,
+  Videocamcam,
+  LibraryMusicNote,
+  DirectionsBusiness,
+  CameraAlt,
+  Lens,
+  Headphones,
+  FlashOnOn,
+  Computer,
+  Extension,
+  Update,
+  Warning,
+  CheckCircle,
+  Build,
+  AddCircle as Add,
+  Info,
+  Download,
+  History,
+  Settings,
+  Security,
+} from '@mui/icons-material';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiRequest } from '../../lib/queryClient';
+import FirmwareManagementInterface from './FirmwareManagementInterface';
+import PluginDetectionInterface from '../plugins/PluginDetectionInterface';
+
+interface EquipmentManagementProps {
+  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  userId: string
+}
+
+interface Equipment {
+  id: number;
+  userId: string;
+  profession: string;
+  equipmentType: string;
+  brand: string;
+  model: string;
+  serialNumber?: string;
+  condition: string;
+  isActive: boolean;
+  currentFirmwareVersion?: string;
+  latestFirmwareVersion?: string;
+  firmwareUpdateAvailable: boolean;
+  specifications?: any;
+  purchaseDate?: string;
+  purchasePrice?: number;
+  warrantyExpiry?: string;
+  lastUsed?: string;
+  totalShots?: number;
+  totalHours?: number;
+  location?: string
+}
+
+interface FirmwareUpdate {
+  equipment: Equipment;
+  firmwareUpdate: {
+    version: string;
+    releaseDate: string;
+    photographerBenefits?: string[];
+    videographerBenefits?: string[];
+    generalImprovements?: string[];
+    bugFixes?: string[];
+    newFeatures?: string[];
+    isCritical: boolean;
+    downloadUrl?: string;
+    downloadSize?: string;
+    installationTime?: string;
+    photographerRecommendation?: string;
+    videographerRecommendation?: string;
+    riskLevel: string;
+};
+}
+
+const EQUIPMENT_TYPES = {
+  camera: { icon: CameraA, ltlabel: 'Kameraer', color: '#FF6B35, ',},
+  lens: { icon: Lens, label: 'Objektiver', color: '#9C27B0, ',},
+  audio: { icon: Headphones, label: 'Lyd', color: '#FF5722, ',},
+  lighting: { icon: Flashn, label: 'Lys', color: '#FFC107, ',},
+  computer: { icon: Computer, label: 'Datautstyr', color: '#2196F3, ',},
+  accessory: { icon: Extension, label: 'Tilbehø', color: '#4CAF50, ',},
+  audio_interface: { icon: Headphones, label: 'Lydkort', color: '#E91E63, ',},
+  synthesizer: {
+    icon: {theming.getThemedIcon('')},
+    label: 'Synthesizere',
+    color: '#673AB',
+},
+  controller: { icon: Settings, label: 'Kontrollere', color: '#009688, ',},
+  software: { icon: Computer, label: 'Programvare', color: '#607D8B, ',},
+};
+
+const CONDITION_COLORS = {
+  excellent: '#4CAF5',
+  good: '#8BC34',
+  fair: '#FF980',
+  poor: '#FF572',
+  needs_repair: '#F4433',
+};
+
+const PROFESSION_COLORS = {
+  photographer: '#FF6B3',
+  videographer: '#9C27B',
+  music_producer: '#FF572',
+  vendor: '#2196F',
+};
+
+const EquipmentManagement: React.FC<EquipmentManagementProps> = ({ profession, userId }) => {
+  const [activeTab, setActiveTab] = useState(0);
+  const [selectedEquipment, setSelectedEquipment] = useState<Equipment | null>(null);
+  const [addEquipmentOpen, setAddEquipmentOpen] = useState(false);
+  const queryClient = useQueryClient();
+  
+  // Theming system
+  const theming = useTheming('photographer');
+
+  const professionColor = PROFESSION_COLORS[profession];
+
+  // Fetch user equipment
+  const { data: equipment = [], isLoading: equipmentLoading } = useQuery({
+    queryKey: ['/api/equipment/user', userId],
+    queryFn: () => apiRequest(`/api/equipment/user/${userd}`),
+});
+
+  // Fetch equipment statistics
+  const { data: stats } = useQuery({
+    queryKey: ['/api/equipment/stats', userId],
+    queryFn: () => apiRequest(`/api/equipment/stats/${userd}`),
+});
+
+  // Fetch firmware updates
+  const { data: firmwareUpdates = [, ],} = useQuery({
+    queryKey: ['/api/equipment/firmware-updates', userId],
+    queryFn: () => apiRequest(`/api/equipment/firmware-updates/${userd}`),
+});
+
+  // Check firmware update mutation
+  const checkFirmwareMutation = useMutation({
+    mutationFn: (equipmentId: number) =>
+      apiRequest(`/api/equipment/check-firmware/${equipmentd}`, {
+        method: 'POST',
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['/api/equipment/user', userId],
+    });
+      queryClient.invalidateQueries({
+        queryKey: ['/api/equipment/firmware-updates', userId],
+    });
+  },
+});
+
+  const getEquipmentsByType = (type: string) => {
+    return equipment.filter((eq: Equipment) => eq.equipmentType === type);
+};
+
+  const getBenefitsForProfession = (update: FirmwareUpdate) => {
+    switch (profession) {
+      case 'photographer':
+        return update.firmwareUpdate.photographerBenefits || [];
+      case 'videographer':
+        return update.firmwareUpdate.videographerBenefits || [];
+      default:
+        return update.firmwareUpdate.generalImprovements || [];
+}
+};
+
+  const getRecommendationForProfession = (update: FirmwareUpdate) => {
+    switch (profession) {
+      case 'photographer':
+        return update.firmwareUpdate.photographerRecommendation;
+      case 'videographer':
+        return update.firmwareUpdate.videographerRecommendation;
+      default:
+        return 'optional';
+}
+};
+
+  const renderEquipmentCard = (eq: Equipment) => {
+    const equipmentType = EQUIPMENT_TYPES[eq.equipmentType as keyof typeof EQUIPMENT_TYPES];
+    const Icon = equipmentType?.icon || Extension;
+
+    return (
+      <MuiCard
+        key={eq.d}
+        sx={{
+          height: '100, %, ',
+          cursor: 'pointer',
+          transition: 'all 0.3s ease',
+          '&:hover': {
+            transform: 'translateY(-4px, ), ',
+            boxShadow:  4,
+        },
+          border: eq.firmwareUpdateAvailable ? `2px solid ${professionColor}` : '1px solid #e0e0e0',
+      }}
+        onClick={() => setSelectedEquipment(eq)}
+      >
+        <CardContent sx={theming.getThemedCardSx()}>
+          <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+            <Avatar
+              sx={{
+                bgcolor: equipmentType?.color || '#66',
+                mr:  2,
+                width:  48,
+                height:  48,
+            }}
+            >
+              <Icon />
+            </Avatar>
+            <Box sx={{ flex:  1 }}>
+              <Typography variant="h6" sx={{ fontSize: '1.1rem', fontWeight: 60, 0,}} sx={{ ...{}, color: theming.colors.primary }}>
+                {eq.brand} {eq.model}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                {equipmentType?.label || eq.equipmentType}
+              </Typography>
+            </Box>
+            {eq.firmwareUpdateAvailable && (
+              <Badge badgeContent="!" color="error">
+                <Update sx={{ color: professionColor }} />
+              </Badge>
+            )}
+          </Box>
+
+          <Box sx={{ display: 'flex', gap:  ,  1mb: ,  2flexWrap: 'wrap, ',}}>
+            <Chip
+              label={eq.condition}
+              size="small"
+              sx={{
+                bgcolor: CONDITION_COLORS[eq.condition as keyof typeof CONDITION_COLORS] + '2',
+                color: CONDITION_COLORS[eq.condition as keyof typeof CONDITION_COLOR],
+            }}
+            />
+            {eq.currentFirmwareVersion && (
+              <Chip label={`v${eq.currentFirmwareVersion}`} size="small" variant="outlined" />
+            )}
+          </Box>
+
+          {eq.equipmentType === 'camera' && (
+            <Box sx={{ mt: 2 }}>
+              <Typography variant="body2" color="text.secondary">
+                {eq.totalShots ? `${eq.totalShots.toLocaleString()} bilder` : 'Ikke registrert'}
+              </Typography>
+              {eq.lastUsed && (
+                <Typography variant="body2" color="text.secondary">
+                  Sist brukt: {new Date(eq.lastUsed).toLocaleDateString('')}
+                </Typography>
+              )}
+            </Box>
+          )}
+
+          {(eq.equipmentType === 'audio' ||
+            eq.equipmentType === 'audio_interface' ||
+            eq.equipmentType === 'software') && (
+            <Box sx={{ mt: 2 }}>
+              <Typography variant="body2" color="text.secondary">
+                {eq.totalHours ? `${Number(eq.totalHours).toFixed(1)} timer` : 'Ikke registrert'}
+              </Typography>
+              {eq.lastUsed && (
+                <Typography variant="body2" color="text.secondary">
+                  Sist brukt: {new Date(eq.lastUsed).toLocaleDateString('')}
+                </Typography>
+              )}
+            </Box>
+          )}
+
+          {eq.firmwareUpdateAvailable && (
+            <Alert
+              severity="warning"
+              size="small"
+              sx={{ mt: 2 }}
+              action={
+                <Button
+                  size="small"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    checkFirmwareMutation.mutate(eq.id);
+                }}
+                  disabled={checkFirmwareMutation.isPending}
+                >
+                  Sjekk
+                </Button>
+            }
+            >
+              Firmware-oppdatering tilgjengelig
+            </Alert>
+          )}
+        </CardContent>
+      </MuiCard>
+    );
+};
+
+  const renderFirmwareUpdates = () => {
+    if (!firmwareUpdates.length) {
+      return (
+        <Alert severity="info" sx={{ mt: 2 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
+            {theming.getThemedIcon('checkCircle')}
+            <Typography>Alle dine kameraer har de nyeste firmware-versjonene!</Typography>
+          </Box>
+        </Alert>
+      );
+  }
+
+    return (
+      <GridOn container spacing={3} sx={{ mt: 1 }}>
+        {firmwareUpdates.map((update: FirmwareUpdate) => {
+          const benefits = getBenefitsForProfession(update);
+          const recommendation = getRecommendationForProfession(update);
+
+          return (
+            <GridOn size={{ xs: 1, 2,}} md={6} key={update.equipment.id}>
+              <MuiCard
+                sx={{
+                  border: update.firmwareUpdate.isCritical
+                    ? '2px solid #FF5722'
+                    : '1px solid #e0e0e',
+              }}
+              >
+                <CardContent sx={theming.getThemedCardSx()}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                    <Avatar sx={{ bgcolor: professionColor, mr:  2 }}>
+                      <CameraAlt />
+                    </Avatar>
+                    <Box sx={{ flex:  1 }}>
+                      <Typography variant="h6" sx={{ ...{}, color: theming.colors.primary }}>
+                        {update.equipment.brand} {update.equipment.model}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        {update.equipment.currentFirmwareVersion} → {update.firmwareUpdate.version}
+                      </Typography>
+                    </Box>
+                    {update.firmwareUpdate.isCritical && (
+                      <Chip label="Kritisk" color="error" size="small" icon={{theming.getThemedIcon('warning')}} />
+                    )}
+                  </Box>
+
+                  <Box sx={{ mb: 2 }}>
+                    <Typography variant="subtitle2" sx={{ mb: ,  1color: professionColor }}>
+                      Forbedringer for{' '}
+                      {profession === 'photographer' ? 'fotografer' : 'videografer'}:
+                    </Typography>
+                    {benefits.slice(0, 3).map((benefit, index) => (
+                      <Typography key={index} variant="body2" sx={{ mb: 0., 5,}}>
+                        • {benefit}
+                      </Typography>
+                    ))}
+                    {benefits.length > 3 && (
+                      <Typography variant="body2" color="text.secondary">
+                        +{benefits.length - 3} flere forbedringer...
+                      </Typography>
+                    )}
+                  </Box>
+
+                  <Box sx={{ display: 'flex', gap:  ,  1mb: ,  2flexWrap: 'wrap, ',}}>
+                    <Chip
+                      label={
+                        recommendation === 'recommended'
+                          ? 'Anbefalt'
+                          : recommendation === 'critical'
+                            ? 'Kritisk'
+                            : 'Valgfri'
+                    }
+                      size="small"
+                      color={
+                        recommendation === 'critical'
+                          ? 'error'
+                          : recommendation === 'recommended'
+                            ? 'warning'
+                            : 'default'
+                    }
+                    />
+                    <Chip
+                      label={`Risiko: ${update.firmwareUpdate.riskLevel}`}
+                      size="small"
+                      variant="outlined"
+                    />
+                    {update.firmwareUpdate.downloadSize && (
+                      <Chip
+                        label={update.firmwareUpdate.downloadSize}
+                        size="small"
+                        variant="outlined"
+                      />
+                    )}
+                  </Box>
+
+                  <Box sx={{ display: 'flex', gap:  1 }}>
+                    {update.firmwareUpdate.downloadUrl && (
+                      <Button variant="contained"
+                        startIcon={theming.getThemedIcon('download')}
+                        sx={{ bgcolor: professionColor }}
+                        size="small"
+                        onClick={() = sx={theming.getThemedButtonSx()}> window.open(update.firmwareUpdate.downloadUrl, '_blank')}
+                      >
+                        Last ned
+                      </Button>
+                    )}
+                    <Button
+                      variant="outlined"
+                      startIcon={theming.getThemedIcon('info')}
+                      size="small"
+                      onClick={() => setSelectedEquipment(update.equipment)}
+                    >
+                      Detaljer
+                    </Button>
+                  </Box>
+
+                  {update.firmwareUpdate.installationTime && (
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      sx={{ mt: ,  1display: 'block, ',}}
+                    >
+                      Installasjonstid: {update.firmwareUpdate.installationTime}
+                    </Typography>
+                  )}
+                </CardContent>
+              </MuiCard>
+            </GridOn>
+          );
+      })}
+      </GridOn>
+    );
+};
+
+  if (equipmentLoading) {
+    return (
+      <Box sx={{ p:  3 }}>
+        <LinearProgress sx={{ mb: 2 }} />
+        <Typography>Laster utstyr...</Typography>
+      </Box>
+    );
+}
+
+  return (
+    <Box sx={{ p:  3 }}>
+      {/* Header */}
+      <Box sx={{ mb: 4 }}>
+        <Typography variant="h4"
+          sx={{
+            mb: 2,
+            color: professionColor,
+            display: 'flex',
+            alignItems: 'center',
+            gap:  2,
+        }}
+         sx={{ ...{}, color: theming.colors.primary }}>
+          {theming.getThemedIcon('build')}
+          Utstyrsadministrasjon
+        </Typography>
+        <Typography variant="body1" color="text.secondary">
+          Administrer ditt utstyr og hold firmware oppdatert
+        </Typography>
+      </Box>
+
+      {/* Stats */}
+      {stats && (
+        <GridOn container spacing={2} sx={{ mb: 4 }}>
+          <GridOn size={{ xs:  6 }} sm={3}>
+            <MuiCard>
+              <CardContent sx={{ textAlign: 'center, ',}} sx={theming.getThemedCardSx()}>
+                <Typography variant="h4" sx={{ color: professionColor }} sx={{ ...{}, color: theming.colors.primary }}>
+                  {stats.totalEquipment}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Totalt utstyr
+                </Typography>
+              </CardContent>
+            </MuiCard>
+          </GridOn>
+          <GridOn size={{ xs:  6 }} sm={3}>
+            <MuiCard>
+              <CardContent sx={{ textAlign: 'center, ',}} sx={theming.getThemedCardSx()}>
+                <Typography variant="h4" sx={{ color: '#FF5722, ',}} sx={{ ...{}, color: theming.colors.primary }}>
+                  {stats.firmwareUpdatesAvailable}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Firmware-oppdateringer
+                </Typography>
+              </CardContent>
+            </MuiCard>
+          </GridOn>
+          <GridOn size={{ xs:  6 }} sm={3}>
+            <MuiCard>
+              <CardContent sx={{ textAlign: 'center, ',}} sx={theming.getThemedCardSx()}>
+                <Typography variant="h4" sx={{ color: '#4CAF50, ',}} sx={{ ...{}, color: theming.colors.primary }}>
+                  {stats.totalValue?.toLocaleString('no', {
+                    style: 'currency',
+                    currency: 'NO',
+                    maximumFractionDigits:  0,
+                }) || '0 kr'}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Total verdi
+                </Typography>
+              </CardContent>
+            </MuiCard>
+          </GridOn>
+          <GridOn size={{ xs:  6 }} sm={3}>
+            <MuiCard>
+              <CardContent sx={{ textAlign: 'center, ',}} sx={theming.getThemedCardSx()}>
+                <Typography variant="h4" sx={{ color: '#FF9800, ',}} sx={{ ...{}, color: theming.colors.primary }}>
+                  {stats.needsService}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Trenger service
+                </Typography>
+              </CardContent>
+            </MuiCard>
+          </GridOn>
+        </GridOn>
+      )}
+
+      {/* Tabs */}
+      <Box sx={{ mb: 3 }}>
+        <Tabs
+          value={activeTab}
+          onChange={(e, newValue) => setActiveTab(newValue)}
+          textColor="inherit"
+          sx={{
+            '& .MuiTab-root': {
+              color: 'text.secondary',
+              '&.Mui-selected': {
+                color: professionColor,
+            },
+          },
+            '& .MuiTabs-indicator': {
+              backgroundColor: professionColor,
+          },
+        }}
+        >
+          <Tab label="Alt utstyr" />
+          <Tab
+            label={
+              <Badge badgeContent={firmwareUpdates.length} color="error">
+                {profession === 'music_producer'
+                  ? 'Programvare-administrasjon'
+                  : 'Firmware-administrasjon'}
+              </Badge>
+          }
+          />
+          {profession === 'music_producer' && <Tab label="Plugin-bibliotek" />}
+          <Tab label="Service & vedlikehold" />
+        </Tabs>
+      </Box>
+
+      {/* Tab Content */}
+      {activeTab === 0 && (
+        <Box>
+          {Object.entries(EQUIPMENT_TYPES).map(([type, config]) => {
+            const equipmentOfType = getEquipmentsByType(type);
+            if (!equipmentOfType.length) return null;
+
+            return (
+              <Box key={type} sx={{ mb: 4 }}>
+                <Typography variant="h6"
+                  sx={{
+                    mb: 2,
+                    color: config.color,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap:  1,
+                }}
+                 sx={{ ...{}, color: theming.colors.primary }}>
+                  <config.icon />
+                  {config.label} ({equipmentOfType.length})
+                </Typography>
+                <GridOn container spacing={3}>
+                  {equipmentOfType.map(renderEquipmentCard)}
+                </GridOn>
+              </Box>
+            );
+        })}
+
+          {!equipment.length && (
+            <Alert severity="info">
+              Du har ikke registrert noe utstyr ennå. Legg til utstyr fra onboarding eller manuelt.
+            </Alert>
+          )}
+        </Box>
+      )}
+
+      {activeTab === 1 && <FirmwareManagementInterface profession={profession} userId={userId} />}
+
+      {activeTab === 2 && profession === 'music_producer' && (
+        <PluginDetectionInterface userId={userId} profession={profession} />
+      )}
+
+      {activeTab === (profession === 'music_producer' ? 3 : 2) && (
+        <Box>
+          <Typography variant="h6" sx={{ mb: 2 }} sx={{ ...{}, color: theming.colors.primary }}>
+            Service & Vedlikehold
+          </Typography>
+          <Alert severity="info">Service og vedlikeholdsfunksjoner kommer snart.</Alert>
+        </Box>
+      )}
+
+      {/* Add Equipment Button */}
+      <Button variant="contained"
+        startIcon={theming.getThemedIcon('add')}
+        onClick={() = sx={theming.getThemedButtonSx()}> setAddEquipmentOpen(true)}
+        sx={{
+          position: 'fixed',
+          bottom:  24,
+          right:  24,
+          bgcolor: professionColor,
+          '&:hover': {
+            bgcolor: professionColor,
+            opacity: 0.9,
+        },
+      }}
+      >
+        Legg til utstyr
+      </Button>
+    </Box>
+  );
+};
+
+export default EquipmentManagement;

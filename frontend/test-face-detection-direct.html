@@ -1,0 +1,973 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Face Detection Test - Direct</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+      color: #fff;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
+      border-radius: 20px;
+      padding: 30px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    }
+    h1 {
+      margin-bottom: 10px;
+      font-size: 2.5em;
+    }
+    .subtitle {
+      opacity: 0.9;
+      margin-bottom: 30px;
+    }
+    .test-section {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 15px;
+      padding: 25px;
+      margin: 20px 0;
+    }
+    .image-preview {
+      max-width: 100%;
+      border-radius: 10px;
+      margin: 20px 0;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    }
+    button {
+      background: #4CAF50;
+      color: white;
+      border: none;
+      padding: 15px 30px;
+      border-radius: 10px;
+      cursor: pointer;
+      font-size: 16px;
+      font-weight: 600;
+      margin: 10px 5px;
+      transition: all 0.3s;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+    }
+    button:hover:not(:disabled) {
+      background: #45a049;
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+    }
+    button:disabled {
+      background: #666;
+      cursor: not-allowed;
+      opacity: 0.6;
+    }
+    .input-group {
+      margin: 20px 0;
+    }
+    input[type="file"] {
+      display: none;
+    }
+    .file-label {
+      display: inline-block;
+      padding: 12px 24px;
+      background: rgba(255, 255, 255, 0.2);
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+    .file-label:hover {
+      background: rgba(255, 255, 255, 0.3);
+    }
+    #log {
+      background: rgba(0, 0, 0, 0.3);
+      padding: 20px;
+      border-radius: 10px;
+      font-family: 'Courier New', monospace;
+      font-size: 14px;
+      max-height: 400px;
+      overflow-y: auto;
+      margin: 20px 0;
+      white-space: pre-wrap;
+    }
+    .log-entry {
+      margin: 8px 0;
+      padding: 8px;
+      border-left: 3px solid;
+      padding-left: 15px;
+      border-radius: 4px;
+    }
+    .log-success {
+      border-color: #4CAF50;
+      background: rgba(76, 175, 80, 0.2);
+    }
+    .log-error {
+      border-color: #f44336;
+      background: rgba(244, 67, 54, 0.2);
+    }
+    .log-info {
+      border-color: #2196F3;
+      background: rgba(33, 150, 243, 0.2);
+    }
+    .results {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 20px;
+      margin: 20px 0;
+    }
+    .result-card {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 10px;
+      padding: 20px;
+      border-left: 4px solid #4CAF50;
+    }
+    .result-card h3 {
+      margin-bottom: 15px;
+      color: #4CAF50;
+    }
+    .result-item {
+      margin: 10px 0;
+      padding: 10px;
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: 5px;
+    }
+    .progress-bar {
+      width: 100%;
+      height: 30px;
+      background: rgba(0, 0, 0, 0.3);
+      border-radius: 15px;
+      overflow: hidden;
+      margin: 20px 0;
+    }
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #4CAF50, #81c784);
+      transition: width 0.3s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: 600;
+    }
+    .api-url-input {
+      width: 100%;
+      padding: 12px;
+      border-radius: 8px;
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      background: rgba(255, 255, 255, 0.1);
+      color: white;
+      font-size: 14px;
+      margin: 10px 0;
+    }
+    .api-url-input::placeholder {
+      color: rgba(255, 255, 255, 0.6);
+    }
+    .status {
+      display: inline-block;
+      padding: 5px 15px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      margin-left: 10px;
+    }
+    .status.connected {
+      background: #4CAF50;
+    }
+    .status.disconnected {
+      background: #f44336;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🎭 Face Detection Test</h1>
+    <p class="subtitle">Test FaceXFormer face detection on Martin4k.mp4 frame</p>
+    
+    <div class="test-section">
+      <h2>📡 API Configuration</h2>
+      <input 
+        type="text" 
+        id="apiUrl" 
+        class="api-url-input" 
+        placeholder="http://localhost:3001/api/face-analysis/analyze"
+        value="http://localhost:3001/api/face-analysis/analyze"
+      />
+      <button id="checkApi">Check API Connection</button>
+      <span id="apiStatus" class="status disconnected">Disconnected</span>
+    </div>
+    
+    <div class="test-section">
+      <h2>📸 Image Input</h2>
+      <div class="input-group">
+        <label for="fileInput" class="file-label">
+          📁 Select Image or Video
+        </label>
+        <input type="file" id="fileInput" accept="image/*,video/*">
+        <p style="margin-top: 10px; opacity: 0.8;">
+          Supports both images and video files (MP4, MOV, etc.)
+        </p>
+        <p style="margin-top: 5px; opacity: 0.7; font-size: 0.9em;">
+          For video: Will extract frames at 25%, 50%, 75% and analyze them
+        </p>
+      </div>
+      
+      <div id="videoPreview" style="display: none;">
+        <h3>Video Preview:</h3>
+        <video id="previewVideo" class="image-preview" controls></video>
+        <div style="margin-top: 10px;">
+          <label>Extract frame at (seconds):</label>
+          <input type="number" id="frameTimestamp" value="2.5" min="0" step="0.1" style="padding: 8px; border-radius: 5px; border: 2px solid rgba(255,255,255,0.3); background: rgba(255,255,255,0.1); color: white; width: 100px; margin-left: 10px;">
+          <button id="extractFrameBtn" style="margin-left: 10px;">Extract Frame</button>
+        </div>
+      </div>
+      
+      <div id="imagePreview" style="display: none;">
+        <h3>Preview:</h3>
+        <img id="previewImg" class="image-preview" alt="Preview">
+      </div>
+      
+      <button id="testBtn" disabled>🔍 Detect Faces (Single Frame)</button>
+      <button id="testAllBtn" disabled>🎬 Scan Entire Video for Faces</button>
+      <p style="margin-top: 10px; opacity: 0.7; font-size: 0.9em;">
+        Full scan analyzes multiple frames throughout the video for comprehensive face detection
+      </p>
+    </div>
+    
+    <div class="test-section" id="progressSection" style="display: none;">
+      <h2>⏳ Progress</h2>
+      <div class="progress-bar">
+        <div class="progress-fill" id="progressFill" style="width: 0%">0%</div>
+      </div>
+    </div>
+    
+    <div class="test-section">
+      <h2>📋 Log</h2>
+      <div id="log"></div>
+    </div>
+    
+    <div class="test-section" id="resultsSection" style="display: none;">
+      <h2>📊 Results</h2>
+      <div class="results" id="results"></div>
+    </div>
+  </div>
+  
+  <script>
+    const apiUrlInput = document.getElementById('apiUrl');
+    const checkApiBtn = document.getElementById('checkApi');
+    const apiStatus = document.getElementById('apiStatus');
+    const fileInput = document.getElementById('fileInput');
+    const previewImg = document.getElementById('previewImg');
+    const imagePreview = document.getElementById('imagePreview');
+    const videoPreview = document.getElementById('videoPreview');
+    const previewVideo = document.getElementById('previewVideo');
+    const frameTimestamp = document.getElementById('frameTimestamp');
+    const extractFrameBtn = document.getElementById('extractFrameBtn');
+    const testBtn = document.getElementById('testBtn');
+    const testAllBtn = document.getElementById('testAllBtn');
+    const logDiv = document.getElementById('log');
+    const resultsSection = document.getElementById('resultsSection');
+    const resultsDiv = document.getElementById('results');
+    const progressSection = document.getElementById('progressSection');
+    const progressFill = document.getElementById('progressFill');
+    
+    let currentFile = null;
+    let currentFileType = null; // 'image' or 'video'
+    let currentVideoDuration = 0;
+    
+    function log(message, type = 'info') {
+      const entry = document.createElement('div');
+      entry.className = `log-entry log-${type}`;
+      const time = new Date().toLocaleTimeString();
+      entry.textContent = `[${time}] ${message}`;
+      logDiv.appendChild(entry);
+      logDiv.scrollTop = logDiv.scrollHeight;
+      console.log(`[${type.toUpperCase()}] ${message}`);
+    }
+    
+    function updateProgress(percent) {
+      progressSection.style.display = 'block';
+      progressFill.style.width = `${percent}%`;
+      progressFill.textContent = `${Math.round(percent)}%`;
+    }
+    
+    function showResults(data, scanStats = null) {
+      resultsSection.style.display = 'block';
+      resultsDiv.innerHTML = '';
+      
+      if (data && data.success) {
+        const card = document.createElement('div');
+        card.className = 'result-card';
+        card.innerHTML = `
+          <h3>✅ Analysis Successful</h3>
+          <div class="result-item">
+            <strong>Task:</strong> ${data.task}
+          </div>
+        `;
+        
+        if (data.results.landmarks) {
+          card.innerHTML += `
+            <div class="result-item">
+              <strong>✅ Landmarks:</strong> ${data.results.landmarks.length} points detected
+            </div>
+          `;
+        }
+        
+        if (data.results.headpose) {
+          const { pitch, yaw, roll } = data.results.headpose;
+          card.innerHTML += `
+            <div class="result-item">
+              <strong>✅ Head Pose:</strong><br>
+              Pitch: ${pitch.toFixed(1)}°<br>
+              Yaw: ${yaw.toFixed(1)}°<br>
+              Roll: ${roll.toFixed(1)}°
+            </div>
+          `;
+        }
+        
+        if (data.results.parsing) {
+          card.innerHTML += `
+            <div class="result-item">
+              <strong>✅ Face Parsing:</strong> Segmentation mask available
+            </div>
+          `;
+        }
+        
+        if (data.results.attributes) {
+          card.innerHTML += `
+            <div class="result-item">
+              <strong>✅ Attributes:</strong> ${data.results.attributes.length} detected
+            </div>
+          `;
+        }
+        
+        if (data.results.face) {
+          card.innerHTML += `
+            <div class="result-item">
+              <strong>✅ Face Image:</strong><br>
+              <img src="data:image/jpeg;base64,${data.results.face}" style="max-width: 200px; border-radius: 5px; margin-top: 10px;">
+            </div>
+          `;
+        }
+        
+        if (data.results.landmarks_visualization) {
+          card.innerHTML += `
+            <div class="result-item">
+              <strong>✅ Landmarks Visualization:</strong><br>
+              <img src="data:image/png;base64,${data.results.landmarks_visualization}" style="max-width: 200px; border-radius: 5px; margin-top: 10px;">
+            </div>
+          `;
+        }
+        
+        // Add scan statistics if available
+        if (scanStats && scanStats.scanEntireVideo) {
+          card.innerHTML += `
+            <div class="result-item" style="background: rgba(76, 175, 80, 0.2); margin-top: 15px; padding: 15px;">
+              <h4 style="margin-bottom: 10px; color: #4CAF50;">📊 Full Video Scan Results</h4>
+              <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;">
+                <div><strong>Total Frames Analyzed:</strong> ${scanStats.totalFrames}</div>
+                <div><strong>Frames with Faces:</strong> ${scanStats.framesWithFaces}</div>
+                <div><strong>Detection Rate:</strong> ${scanStats.detectionRate.toFixed(1)}%</div>
+                <div><strong>Video Duration:</strong> ${currentVideoDuration.toFixed(2)}s</div>
+              </div>
+            </div>
+          `;
+          
+          // Show timeline of face detections
+          if (scanStats.allResults && scanStats.allResults.length > 0) {
+            const timeline = scanStats.allResults
+              .map(r => {
+                const hasFace = !!(r.result?.results?.landmarks?.length || r.result?.results?.parsing);
+                return `<span style="display: inline-block; width: 8px; height: 8px; background: ${hasFace ? '#4CAF50' : '#666'}; margin: 2px; border-radius: 2px;" title="${r.timestamp.toFixed(1)}s"></span>`;
+              })
+              .join('');
+            
+            card.innerHTML += `
+              <div class="result-item" style="margin-top: 10px;">
+                <strong>Timeline:</strong> (Green = face detected, Gray = no face)
+                <div style="margin-top: 5px; word-break: break-all; font-size: 10px;">
+                  ${timeline}
+                </div>
+              </div>
+            `;
+          }
+        }
+        
+        // Add scan statistics if available
+        if (scanStats && scanStats.scanEntireVideo) {
+          const statsHtml = `
+            <div class="result-item" style="background: rgba(76, 175, 80, 0.2); margin-top: 15px; padding: 15px; border-radius: 5px;">
+              <h4 style="margin-bottom: 10px; color: #4CAF50;">📊 Full Video Scan Results</h4>
+              <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 10px;">
+                <div><strong>Total Frames Analyzed:</strong> ${scanStats.totalFrames}</div>
+                <div><strong>Frames with Faces:</strong> ${scanStats.framesWithFaces}</div>
+                <div><strong>Detection Rate:</strong> ${scanStats.detectionRate.toFixed(1)}%</div>
+                <div><strong>Video Duration:</strong> ${currentVideoDuration ? currentVideoDuration.toFixed(2) + 's' : 'N/A'}</div>
+              </div>
+          `;
+          
+          // Show timeline of face detections
+          if (scanStats.allResults && scanStats.allResults.length > 0) {
+            const timeline = scanStats.allResults
+              .map(r => {
+                const hasFace = !!(r.result?.results?.landmarks?.length || r.result?.results?.parsing);
+                return `<span style="display: inline-block; width: 8px; height: 8px; background: ${hasFace ? '#4CAF50' : '#666'}; margin: 2px; border-radius: 2px;" title="${r.timestamp.toFixed(1)}s ${hasFace ? '(face)' : '(no face)'}"></span>`;
+              })
+              .join('');
+            
+            card.innerHTML += statsHtml + `
+              <div style="margin-top: 10px;">
+                <strong>Timeline:</strong> (Green = face detected, Gray = no face)
+                <div style="margin-top: 5px; word-break: break-all; font-size: 10px; line-height: 1.2;">
+                  ${timeline}
+                </div>
+              </div>
+            </div>
+          `;
+          } else {
+            card.innerHTML += statsHtml + '</div>';
+          }
+        }
+        
+        resultsDiv.appendChild(card);
+      } else {
+        resultsDiv.innerHTML = `
+          <div class="result-card" style="border-left-color: #f44336;">
+            <h3>❌ Analysis Failed</h3>
+            <p>${data?.error || 'Unknown error'}</p>
+          </div>
+        `;
+      }
+    }
+    
+    // Check API connection
+    checkApiBtn.addEventListener('click', async () => {
+      const url = apiUrlInput.value.trim();
+      if (!url) {
+        log('❌ Please enter an API URL', 'error');
+        return;
+      }
+      
+      log(`🔍 Checking API connection: ${url}`, 'info');
+      checkApiBtn.disabled = true;
+      
+      try {
+        // First, establish a session
+        await establishSession();
+        
+        // Test backend health endpoint (no auth required)
+        const healthUrl = url.replace('/api/face-analysis/analyze', '/health');
+        log(`🔍 Testing: ${healthUrl}`, 'info');
+        
+        const response = await fetch(healthUrl, {
+          method: 'GET',
+          credentials: 'include',
+          mode: 'cors',
+        });
+        
+        if (response.ok) {
+          apiStatus.textContent = 'Connected';
+          apiStatus.className = 'status connected';
+          log('✅ Backend is reachable!', 'success');
+        } else if (response.status === 401 || response.status === 403) {
+          // Auth required but backend is reachable
+          apiStatus.textContent = 'Connected (Auth)';
+          apiStatus.className = 'status connected';
+          log('✅ Backend is reachable (authentication may be required)', 'success');
+        } else {
+          throw new Error(`HTTP ${response.status}`);
+        }
+      } catch (error) {
+        apiStatus.textContent = 'Disconnected';
+        apiStatus.className = 'status disconnected';
+        log(`❌ API connection failed: ${error.message}`, 'error');
+        log('💡 Troubleshooting:', 'info');
+        log('   1. Backend running? Check: curl http://localhost:5050/health', 'info');
+        log('   2. Frontend running? Should be on http://localhost:3001', 'info');
+        log('   3. Access via http://localhost:3001 (NOT file://)', 'info');
+        log('   4. Check browser console for CORS errors', 'info');
+      } finally {
+        checkApiBtn.disabled = false;
+      }
+    });
+    
+    // Extract frame from video
+    function extractFrameFromVideo(video, timestamp) {
+      return new Promise((resolve, reject) => {
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth || 1920;
+        canvas.height = video.videoHeight || 1080;
+        
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          reject(new Error('Could not get canvas context'));
+          return;
+        }
+        
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        
+        canvas.toBlob((blob) => {
+          if (!blob) {
+            reject(new Error('Could not create blob'));
+            return;
+          }
+          
+          const file = new File([blob], `frame_${timestamp.toFixed(2)}.jpg`, { type: 'image/jpeg' });
+          resolve(file);
+        }, 'image/jpeg', 0.9);
+      });
+    }
+    
+    // File input handler (supports both image and video)
+    fileInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      
+      currentFile = file;
+      const isVideo = file.type.startsWith('video/');
+      currentFileType = isVideo ? 'video' : 'image';
+      
+      if (isVideo) {
+        const url = URL.createObjectURL(file);
+        previewVideo.src = url;
+        videoPreview.style.display = 'block';
+        imagePreview.style.display = 'none';
+        
+        previewVideo.addEventListener('loadedmetadata', () => {
+          currentVideoDuration = previewVideo.duration;
+          frameTimestamp.max = currentVideoDuration;
+          log(`✅ Video loaded: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB, ${currentVideoDuration.toFixed(2)}s)`, 'success');
+          testBtn.disabled = false;
+          testAllBtn.disabled = false;
+        });
+        
+        previewVideo.addEventListener('error', (e) => {
+          log(`❌ Error loading video: ${e.message}`, 'error');
+        });
+      } else {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          previewImg.src = e.target.result;
+          imagePreview.style.display = 'block';
+          videoPreview.style.display = 'none';
+          testBtn.disabled = false;
+          testAllBtn.disabled = false;
+          log(`✅ Image loaded: ${file.name} (${(file.size / 1024).toFixed(2)} KB)`, 'success');
+        };
+        reader.readAsDataURL(file);
+      }
+    });
+    
+    // Extract frame button
+    extractFrameBtn.addEventListener('click', async () => {
+      if (currentFileType !== 'video' || !previewVideo.src) {
+        log('❌ Please load a video first', 'error');
+        return;
+      }
+      
+      const timestamp = parseFloat(frameTimestamp.value) || 0;
+      if (timestamp < 0 || timestamp > currentVideoDuration) {
+        log(`❌ Timestamp must be between 0 and ${currentVideoDuration.toFixed(2)}`, 'error');
+        return;
+      }
+      
+      log(`📸 Extracting frame at ${timestamp.toFixed(2)}s...`, 'info');
+      extractFrameBtn.disabled = true;
+      
+      try {
+        previewVideo.currentTime = timestamp;
+        
+        await new Promise((resolve) => {
+          previewVideo.addEventListener('seeked', resolve, { once: true });
+        });
+        
+        const frameFile = await extractFrameFromVideo(previewVideo, timestamp);
+        
+        // Switch to image mode with extracted frame
+        currentFile = frameFile;
+        currentFileType = 'image';
+        
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          previewImg.src = e.target.result;
+          imagePreview.style.display = 'block';
+          videoPreview.style.display = 'none';
+          log(`✅ Frame extracted: ${frameFile.name}`, 'success');
+        };
+        reader.readAsDataURL(frameFile);
+        
+      } catch (error) {
+        log(`❌ Error extracting frame: ${error.message}`, 'error');
+      } finally {
+        extractFrameBtn.disabled = false;
+      }
+    });
+    
+    // Test face detection on video (multiple frames)
+    async function testVideoFaceDetection(task = 'all', scanEntireVideo = false, framesPerSecond = 0.5) {
+      if (currentFileType !== 'video') {
+        return testFaceDetection(task);
+      }
+      
+      const url = apiUrlInput.value.trim();
+      if (!url) {
+        log('❌ Please enter an API URL', 'error');
+        return;
+      }
+      
+      log(`🎬 Starting video face detection (task: ${task})...`, 'info');
+      log(`📹 Video duration: ${currentVideoDuration.toFixed(2)}s`, 'info');
+      if (scanEntireVideo) {
+        log(`🔍 Full video scan: ${framesPerSecond} fps sampling (${Math.ceil(currentVideoDuration * framesPerSecond)} frames)`, 'info');
+      }
+      testBtn.disabled = true;
+      testAllBtn.disabled = true;
+      
+      let timestamps: number[] = [];
+      
+      if (scanEntireVideo && currentVideoDuration > 0) {
+        // Scan entire video
+        const frameInterval = 1 / framesPerSecond;
+        const totalFrames = Math.ceil(currentVideoDuration * framesPerSecond);
+        
+        for (let i = 0; i < totalFrames; i++) {
+          const timestamp = i * frameInterval;
+          if (timestamp < currentVideoDuration) {
+            timestamps.push(timestamp);
+          }
+        }
+        
+        // Always include first and last frame
+        if (timestamps[0] !== 0) timestamps.unshift(0);
+        if (timestamps[timestamps.length - 1] !== currentVideoDuration - 0.1) {
+          timestamps.push(Math.max(0, currentVideoDuration - 0.1));
+        }
+        
+        timestamps = [...new Set(timestamps)].sort((a, b) => a - b);
+        log(`📊 Will analyze ${timestamps.length} frames across ${currentVideoDuration.toFixed(2)}s`, 'info');
+      } else {
+        // Quick scan: just a few key frames
+        timestamps = [
+          0, // First frame
+          currentVideoDuration * 0.25,
+          currentVideoDuration * 0.5,
+          currentVideoDuration * 0.75,
+        ];
+      }
+      
+      const results = [];
+      let bestResult = null;
+      let hasFace = false;
+      
+      for (let i = 0; i < timestamps.length; i++) {
+        const timestamp = timestamps[i];
+        updateProgress((i / timestamps.length) * 90);
+        
+        try {
+          log(`📸 Extracting frame ${i + 1}/${timestamps.length} at ${timestamp.toFixed(2)}s...`, 'info');
+          
+          previewVideo.currentTime = timestamp;
+          await new Promise((resolve) => {
+            previewVideo.addEventListener('seeked', resolve, { once: true });
+          });
+          
+          const frameFile = await extractFrameFromVideo(previewVideo, timestamp);
+          log(`🔍 Analyzing frame ${i + 1}...`, 'info');
+          
+          const formData = new FormData();
+          formData.append('image', frameFile);
+          formData.append('task', task);
+          
+          const response = await fetch(url, {
+            method: 'POST',
+            credentials: 'include',
+            mode: 'cors',
+            body: formData,
+          });
+          
+          // Handle authentication
+          if (response.status === 401 || response.status === 403) {
+            // Try to establish session
+            await fetch('http://localhost:3001/api/auth/user', {
+              method: 'GET',
+              credentials: 'include',
+              mode: 'cors',
+            });
+            
+            // Retry
+            const retryResponse = await fetch(url, {
+              method: 'POST',
+              credentials: 'include',
+              mode: 'cors',
+              body: formData,
+            });
+            
+            if (!retryResponse.ok) {
+              throw new Error(`API error (${retryResponse.status}): Authentication may be required`);
+            }
+            
+            return retryResponse;
+          }
+          
+          if (!response.ok) {
+            throw new Error(`API error (${response.status})`);
+          }
+          
+          const result = await response.json();
+          results.push({ timestamp, result });
+          
+          const detected = !!(result.results?.landmarks?.length || result.results?.parsing);
+          
+          if (detected) {
+            hasFace = true;
+            if (!bestResult || (result.results?.landmarks?.length || 0) > (bestResult.results?.landmarks?.length || 0)) {
+              bestResult = { timestamp, result };
+            }
+            log(`✅ Face detected at ${timestamp.toFixed(2)}s!`, 'success');
+          } else if (!scanEntireVideo || i % 10 === 0) {
+            // Only log "no face" for quick scan, or every 10th frame for full scan
+            log(`⚠️ No face at ${timestamp.toFixed(2)}s`, 'info');
+          }
+          
+          // Progress update for full scan
+          if (scanEntireVideo && (i + 1) % 10 === 0) {
+            const progress = ((i + 1) / timestamps.length) * 100;
+            log(`📊 Progress: ${i + 1}/${timestamps.length} frames (${progress.toFixed(1)}%)`, 'info');
+            updateProgress(progress);
+          }
+          
+        } catch (error) {
+          log(`❌ Error at ${timestamp.toFixed(2)}s: ${error.message}`, 'error');
+        }
+      }
+      
+      updateProgress(100);
+      
+      // Calculate statistics
+      const framesWithFaces = results.filter(r => r.result?.results?.landmarks?.length || r.result?.results?.parsing).length;
+      const detectionRate = results.length > 0 ? (framesWithFaces / results.length) * 100 : 0;
+      
+      if (hasFace && bestResult) {
+        log(`✅ Best result: Face detected at ${bestResult.timestamp.toFixed(2)}s`, 'success');
+        if (scanEntireVideo) {
+          log(`📊 Scan summary: ${framesWithFaces}/${results.length} frames with faces (${detectionRate.toFixed(1)}%)`, 'success');
+        }
+        showResults(bestResult.result, {
+          scanEntireVideo,
+          totalFrames: results.length,
+          framesWithFaces,
+          detectionRate,
+          allResults: results,
+        });
+      } else {
+        log('⚠️ No face detected in any frame', 'info');
+        if (scanEntireVideo) {
+          log(`📊 Scanned ${results.length} frames - no faces found`, 'info');
+        }
+        if (results.length > 0) {
+          showResults(results[0].result, {
+            scanEntireVideo,
+            totalFrames: results.length,
+            framesWithFaces: 0,
+            detectionRate: 0,
+            allResults: results,
+          });
+        }
+      }
+      
+      testBtn.disabled = false;
+      testAllBtn.disabled = false;
+      setTimeout(() => {
+        progressSection.style.display = 'none';
+      }, 2000);
+    }
+    
+    // Test face detection
+    async function testFaceDetection(task = 'all') {
+      if (!currentFile) {
+        log('❌ Please select a file first', 'error');
+        return;
+      }
+      
+      // If video, use video detection
+      if (currentFileType === 'video') {
+        return testVideoFaceDetection(task);
+      }
+      
+      const url = apiUrlInput.value.trim();
+      if (!url) {
+        log('❌ Please enter an API URL', 'error');
+        return;
+      }
+      
+      log(`🔍 Starting face detection (task: ${task})...`, 'info');
+      testBtn.disabled = true;
+      testAllBtn.disabled = true;
+      updateProgress(10);
+      
+      try {
+        const formData = new FormData();
+        formData.append('image', currentFile);
+        formData.append('task', task);
+        
+        updateProgress(30);
+        log('📤 Sending request to API...', 'info');
+        
+          const response = await fetch(url, {
+            method: 'POST',
+            credentials: 'include',
+            mode: 'cors',
+            body: formData,
+          });
+          
+          // Check for authentication errors
+          if (response.status === 401 || response.status === 403) {
+            const errorText = await response.text().catch(() => '');
+            log(`⚠️ Authentication required. Trying to establish session...`, 'info');
+            
+            // Try to get a session by calling the auth endpoint
+            try {
+              const authResponse = await fetch('http://localhost:3001/api/auth/user', {
+                method: 'GET',
+                credentials: 'include',
+                mode: 'cors',
+              });
+              
+              if (authResponse.ok) {
+                log('✅ Session established, retrying face detection...', 'success');
+                // Retry the request
+                const retryResponse = await fetch(url, {
+                  method: 'POST',
+                  credentials: 'include',
+                  mode: 'cors',
+                  body: formData,
+                });
+                
+                if (!retryResponse.ok) {
+                  throw new Error(`API error after auth (${retryResponse.status}): ${await retryResponse.text().catch(() => 'Unknown error')}`);
+                }
+                
+                return retryResponse;
+              }
+            } catch (authError) {
+              log(`⚠️ Could not establish session: ${authError.message}`, 'info');
+            }
+            
+            throw new Error(`Authentication required (${response.status}). ${errorText || 'Please ensure you are logged in.'}`);
+          }
+        
+        updateProgress(70);
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`API error (${response.status}): ${errorText}`);
+        }
+        
+        updateProgress(90);
+        log('📥 Receiving response...', 'info');
+        
+        const result = await response.json();
+        
+        updateProgress(100);
+        log('✅ Analysis complete!', 'success');
+        
+        showResults(result);
+        
+        if (result.results.landmarks) {
+          log(`✅ Face detected! ${result.results.landmarks.length} landmarks found`, 'success');
+        } else {
+          log('⚠️ No landmarks detected (might not have a face)', 'info');
+        }
+        
+      } catch (error) {
+        log(`❌ Error: ${error.message}`, 'error');
+        log('💡 Make sure:', 'info');
+        log('   1. Backend server is running', 'info');
+        log('   2. FaceXFormer service is configured', 'info');
+        log('   3. CORS is properly configured', 'info');
+        updateProgress(0);
+      } finally {
+        testBtn.disabled = false;
+        testAllBtn.disabled = false;
+        setTimeout(() => {
+          progressSection.style.display = 'none';
+        }, 2000);
+      }
+    }
+    
+    testBtn.addEventListener('click', () => {
+      if (currentFileType === 'video') {
+        // Extract frame at current timestamp and test
+        const timestamp = parseFloat(frameTimestamp.value) || 0;
+        previewVideo.currentTime = timestamp;
+        previewVideo.addEventListener('seeked', async () => {
+          try {
+            const frameFile = await extractFrameFromVideo(previewVideo, timestamp);
+            const originalFile = currentFile;
+            const originalType = currentFileType;
+            currentFile = frameFile;
+            currentFileType = 'image';
+            await testFaceDetection('all');
+            currentFile = originalFile;
+            currentFileType = originalType;
+          } catch (error) {
+            log(`❌ Error: ${error.message}`, 'error');
+          }
+        }, { once: true });
+      } else {
+        testFaceDetection('all');
+      }
+    });
+    
+    testAllBtn.addEventListener('click', () => {
+      if (currentFileType === 'video') {
+        // Ask user for scan options
+        const scanEntire = confirm('Scan entire video? This will analyze multiple frames throughout the video.\n\nClick OK for full scan, Cancel for quick scan (3 frames).');
+        const fps = scanEntire ? parseFloat(prompt('Frames per second to sample (default: 0.5 = 1 frame every 2 seconds):', '0.5') || '0.5') : 0.5;
+        testVideoFaceDetection('all', scanEntire, fps);
+      } else {
+        testFaceDetection('all');
+      }
+    });
+    
+    // Establish session on load
+    async function establishSession() {
+      try {
+        const response = await fetch('http://localhost:3001/api/auth/user', {
+          method: 'GET',
+          credentials: 'include',
+          mode: 'cors',
+        });
+        
+        if (response.ok) {
+          const user = await response.json();
+          log(`✅ Session established: ${user.email || 'Guest'}`, 'success');
+          return true;
+        }
+      } catch (error) {
+        log(`⚠️ Could not establish session: ${error.message}`, 'info');
+        log('💡 Face detection may require authentication', 'info');
+      }
+      return false;
+    }
+    
+    // Auto-check API on load
+    window.addEventListener('load', async () => {
+      log('🚀 Face Detection Test Page Loaded', 'info');
+      log('📝 Instructions:', 'info');
+      log('   1. Check API connection', 'info');
+      log('   2. Select an image file', 'info');
+      log('   3. Click "Detect Faces"', 'info');
+      
+      // Try to establish session
+      await establishSession();
+    });
+  </script>
+</body>
+</html>

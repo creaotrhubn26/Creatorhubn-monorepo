@@ -1,0 +1,495 @@
+import { useTheming } from '../../utils/theming-helper';
+import React, { useState } from 'react';
+import { apiRequest } from '@/lib/queryClient';
+import { useQuery } from '@tanstack/react-query';
+import { useAuth } from '@/hooks/useAuth';
+import {
+  Box,
+  Typography,
+  Card as MuiCard,
+  CardContent as MuiCardContent,
+  Grid,
+  Chip,
+  Button,
+  IconButton,
+  useTheme,
+  CircularProgress,
+  Alert
+} from '@mui/material';
+import {
+  Dashboard,
+  Refresh,
+  Analytics,
+  Settings,
+  Assessment,
+  Group,
+  Build,
+  FolderOpen,
+  Email,
+  Article,
+  Event,
+  Star,
+  AttachMoney,
+  Chat,
+  Error as ErrorIcon
+} from '@mui/icons-material';
+
+// Import dynamic profession system
+import { useDynamicProfessions } from './hooks/useDynamicProfessions';
+import getProfessionIcon from '@/utils/profession-icons';
+
+// Import pricing administration
+import PriceAdministration from '@/pages/price-administration';
+
+// Import other components
+import UniversalCRMDashboard from '../crm/UniversalCRMDashboard';
+import { EnhancedGearTab } from '../dashboard/EnhancedGearTab';
+import FilesTab from './tabs/FilesTab';
+import IntegratedEmailCenter from '../email/EmailComposer';
+import UniversalWorklog from '../worklog/UniversalWorklog';
+
+// Import vendor-specific components
+import VendorDashboard from '../vendor/VendorDashboard';
+import VendorProductManager from '../vendor/VendorProductManager';
+import VendorShowcase from '../vendor/VendorShowcase';
+import UniversalVendorDashboard from '../vendor/UniversalVendorDashboard';
+
+// Import Universal Components for enhanced integration
+import UniversalShowcase from './UniversalShowcase';
+import { UniversalDownload } from './UniversalDownload';
+import UniversalFileUpload from './UniversalFileUpload';
+
+// Import Community System
+import CommunityHub from '../community/CommunityHub';
+
+interface ProfessionAdapterProps {
+  profession?: string; // Now supports any dynamic profession
+  activeTab?: string;
+  tabIndex?: number;
+  projectId?: string;
+  // Integration props for unified workflow connectivity
+  onMeetingCreate?: (meeting: any) => void;
+  onProjectUpdate?: (project: any) => void;
+  onWorklogCreate?: (worklog: any) => void;
+  onClientSelect?: (client: any) => void;
+  onClientUpdate?: (client: any) => void;
+  onShowcaseCreate?: (showcase: any) => void;
+  onFileUpload?: (file: any) => void;
+  onFileDownload?: (file: any) => void;
+  selectedProject?: any;
+  onProjectSelect?: (project: any) => void;
+  selectedClient?: any
+}
+
+// Fallback profession configuration for when API is loading or fails
+const getFallbackProfessionConfig = (professionName: string) => {
+  // Profession-specific creative enhancement components
+  const creativeComponents = professionName === 'photographer' ?
+    ['PhotoBatchProcessor','ImageHistogram','PhotoAnalysisAndFeedback','SmartSkinToneGuide','InteractiveLensVisualization'] :
+    professionName === 'videographer' ?
+    ['PhotoBatchProcessor','SocialMediaOptimizer'] :
+    ['SocialMediaOptimizer'];
+
+  return {
+    name: professionName || 'Bruker',
+    displayName: professionName || 'Bruker',
+    iconColor: '#ff8c00',
+    isActive: true,
+    sortOrder: 0,
+    icon: getProfessionIcon(professionName),
+    components: {
+      overview: ['DashboardStats','ProjectOverview','RecentActivity', ...creativeComponents.slice(0, 2)],
+      projects: ['ProjectManager','ClientProjects','ProjectTimeline'],
+      pricing: [''],
+      contracts: ['ContractManager','DigitalSignatures'],
+      clients: ['UniversalCRMDashboard','ClientCommunication'],
+      equipment: ['EnhancedGearTab','EquipmentManager', ...creativeComponents.slice(2, 4)],
+      files: ['FilesTab','GoogleDriveIntegration', ...creativeComponents.slice(4)],
+      email: [''],
+      worklog: [''],
+      settings: ['SystemSettings','GoogleIntegration'],
+      // Universal Components available for all professions
+      showcase: [', '],
+      downloads: [','],
+      upload: ['UniversalFileUpload']
+    }
+  };
+};
+
+// Tab mapping
+// NOTE: Community tab added at index 2 for photographer, videographer, music_producer
+// All subsequent indices shifted by +1 for these professions
+const tabMapping: Record<number, string> = {
+  0: 'overview',
+  1: 'projects',
+  2: 'community', // NEW - Community tab (not for vendor)
+  3: 'contracts', // Was 2
+  4: 'pricing', // Was 3 (or timeline for photographer)
+  5: 'showcase', // Was 4
+  6: 'downloads', // Was 5
+  7: 'upload', // Was 6
+  8: 'email', // Was 7
+  9: 'worklog', // Was 8
+  10: 'clients', // Was 9
+  11: 'equipment', // Was 10
+  12: 'files', // Was 11
+  13: 'settings', // Was 12
+  14: 'communication' // Was 13
+};
+
+// Component registry for dynamic rendering
+const componentRegistry: Record<string, React.ComponentType<any>> = {
+  PriceAdministration: PriceAdministration,
+  UniversalCRMDashboard: UniversalCRMDashboard,
+  EnhancedGearTab: EnhancedGearTab,
+  FilesTab: FilesTab,
+  IntegratedEmailCenter: IntegratedEmailCenter,
+  UniversalWorklog: UniversalWorklog,
+  // Universal Components
+  UniversalShowcase: UniversalShowcase,
+  UniversalDownload: UniversalDownload,
+  UniversalFileUpload: UniversalFileUpload,
+  // Community System
+  CommunityHub: CommunityHub,
+  // Vendor-specific components
+  VendorDashboard: VendorDashboard,
+  VendorProductManager: VendorProductManager,
+  VendorShowcase: VendorShowcase,
+  UniversalVendorDashboard: UniversalVendorDashboard,
+  UniversalVendorOnboarding: React.lazy(() => import('../vendor/UniversalVendorOnboarding')),
+  // Creative Enhancement Components (protokoll-integrerte)
+  PhotoBatchProcessor: React.lazy(() => import('../photo-editing/PhotoBatchProcessor')),
+  ImageHistogram: React.lazy(() => import('../photo-editing/ImageHistogram')),
+  InteractiveLensVisualization: React.lazy(() => import('../photo-editing/InteractiveLensVisualization')),
+  PhotoAnalysisAndFeedback: React.lazy(() => import('../photo-editing/PhotoAnalysisAndFeedback')),
+  SmartSkinToneGuide: React.lazy(() => import('../photo-editing/SmartSkinToneGuide')),
+  SocialMediaOptimizer: React.lazy(() => import('../social-media/social-media-optimizer-dialog')),
+  // Add more components as needed
+};
+
+export default function ProfessionAdapter({ 
+  profession = 'photographer', 
+  activeTab = 'overview',
+  tabIndex = 0,
+  projectId = 'demo-project-123',
+  onMeetingCreate,
+  onProjectUpdate,
+  onWorklogCreate,
+  onClientSelect,
+  onClientUpdate,
+  onShowcaseCreate,
+  onFileUpload,
+  onFileDownload,
+  selectedProject,
+  onProjectSelect,
+  selectedClient
+}: ProfessionAdapterProps) {
+  const [refreshKey, setRefreshKey] = useState(0);
+  const theme = useTheme();
+  
+  // Theming system
+  const theming = useTheming('photographer');
+  
+  // Use dynamic profession system
+  const { professionConfigs, isLoading, error } = useDynamicProfessions();
+  
+  // Get config for current profession (with fallback)
+  const config = professionConfigs[profession] || getFallbackProfessionConfig(profession);
+  
+  // Map tab indices to tab names
+  const currentTab = tabMapping[tabIndex] || activeTab;
+  
+  // Get components for current tab
+  const currentComponents = config.components?.[currentTab] || [];
+
+  // Show loading state
+  if (isLoading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 200}}>
+        <CircularProgress />
+        <Typography variant="body2" sx={{ ml:  2 }}>
+          Laster profesjonsinnstillinger...
+        </Typography>
+      </Box>
+    );
+}
+
+  // Show error state
+  if (error) {
+    return (
+      <Alert severity="warning" icon={<ErrorIcon />} sx={{ m:  2 }}>
+        <Typography variant="body2">
+          Kunne ikke laste profesjonsinnstillinger. Bruker fallback-innstillinger.
+        </Typography>
+      </Alert>
+    );
+}
+
+  // Handle specific tab content rendering
+  const renderTabContent = () => {
+    switch (currentTab) {
+      case 'community':
+        // Community tab only for photographer, videographer, music_producer (NOT vendor)
+        if (profession === 'vendor') {
+          return (
+            <Box sx={{ p: 3, textAlign: 'center' }}>
+              <Typography variant="body1" color="text.secondary">
+                Community er ikke tilgjengelig for leverandører.
+              </Typography>
+            </Box>
+          );
+        }
+        return <CommunityHub userId={projectId} profession={profession} />;
+
+      case 'academy':
+        // Academy tab only for mentors/instructors
+        const AcademyDashboard = React.lazy(() => import('../academy/AcademyDashboard'));
+        return (
+          <React.Suspense fallback={
+            <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 400 }}>
+              <CircularProgress />
+            </Box>
+          }>
+            <AcademyDashboard />
+          </React.Suspense>
+        );
+
+      case 'pricing':
+        return (
+          <Box sx={{ p: 3 }}>
+            <Typography variant="h5" sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', mb: 3, color: theming.colors.primary }}>
+              <AttachMoney sx={{ mr: 2, fontSize: 32 }} />
+              Prisadministrasjon
+            </Typography>
+            <PriceAdministration profession={profession} />
+          </Box>
+        );
+
+      case 'clients':
+        return (
+          <Box sx={{ p: 3 }}>
+            <Typography variant="h5" sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', mb: 3, color: theming.colors.primary }}>
+              <Group sx={{ mr: 2, fontSize: 32 }} />
+              {profession === 'music_producer' ? 'Artister' : 'Kunder'}
+            </Typography>
+            <UniversalCRMDashboard
+              profession={profession}
+              onCustomerSelect={(customer) => {
+                console.log('Customer selected: ', customer);
+              }}
+            />
+          </Box>
+        );
+
+      case 'equipment':
+        return (
+          <Box sx={{ p: 3, height: 'calc(100vh - 200px)', overflow: 'auto' }}>
+            <Typography variant="h5" sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', mb: 3, color: theming.colors.primary }}>
+              <Build sx={{ mr: 2, fontSize: 32 }} />
+              {profession === 'music_producer' ? 'Studio' : profession === 'vendor' ? 'Lager' : 'Utstyr'}
+            </Typography>
+            <EnhancedGearTab
+              profession={profession as 'photographer' | 'videographer' | 'music_producer' | 'vendor'}
+              className="enhanced-equipment-tab"
+            />
+          </Box>
+        );
+
+      case 'files':
+        return (
+          <Box sx={{ p: 3 }}>
+            <Typography variant="h5" sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', mb: 3, color: theming.colors.primary }}>
+              <FolderOpen sx={{ mr: 2, fontSize: 32 }} />
+              Filer
+            </Typography>
+            <FilesTab profession={profession as 'photographer' | 'videographer' | 'music_producer' | 'vendor'} userId={projectId} />
+          </Box>
+        );
+
+      case 'email':
+        return (
+          <Box sx={{ p: 3 }}>
+            <Typography variant="h5" sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', mb: 3, color: theming.colors.primary }}>
+              <Email sx={{ mr: 2, fontSize: 32 }} />
+              E-post
+            </Typography>
+            <IntegratedEmailCenter profession={profession} userId={projectId} />
+          </Box>
+        );
+        
+      case 'worklog':
+        return (
+          <Box sx={{ p:  3 }}>
+            <Typography variant="h5" sx={{  fontWeight: 600, color: config.iconColor, display: 'flex', alignItems: 'center', mb:  3  }}>
+              <Article sx={{ mr: 2, fontSize: 32}} />
+              Arbeidslogg
+            </Typography>
+            <UniversalWorklog 
+              projectId={projectId}
+              userId={projectId}
+              profession={profession as 'photographer' | 'videographer' | 'musicproducer' | 'vendor'}
+            />
+          </Box>
+        );
+        
+      case 'showcase':
+        return (
+          <Box sx={{ p: 0, height: 'calc(100vh - 200px, )', overflow: 'auto'}}>
+            <Typography variant="h5" sx={{  fontWeight: 600, color: config.iconColor, display: 'flex', alignItems: 'center', mb:  3, p:  3  }}>
+              <Star sx={{ mr: 2, fontSize: 32}} />
+              {profession === 'music_producer' ? 'Musikk Showcase' : profession === 'vendor' ? 'Produkt Showcase' : 'Showcase'}
+            </Typography>
+            <UniversalShowcase
+              profession={profession as 'photographer' | 'videographer' | 'music_producer' | 'vendor'}
+              userId={projectId}
+              maxItems={50}
+            />
+          </Box>
+        );
+        
+      case 'downloads':
+        return (
+          <Box sx={{ p:  3, height: 'calc(100vh - 200px, )', overflow: 'auto'}}>
+            <Typography variant="h5" sx={{  fontWeight: 600, color: config.iconColor, display: 'flex', alignItems: 'center', mb:  3  }}>
+              <Assessment sx={{ mr: 2, fontSize: 32}} />
+              {profession === 'music_producer' ? 'Musikk Downloads' : 'Downloads'}
+            </Typography>
+            <UniversalDownload
+              items={[]}
+              profession={profession as 'photographer' | 'videographer' | 'music_producer' | 'designer'}
+            />
+          </Box>
+        );
+        
+      case 'upload':
+        return (
+          <Box sx={{ p:  3, height: 'calc(100vh - 200px, )', overflow: 'auto'}}>
+            <Typography variant="h5" sx={{  fontWeight: 600, color: config.iconColor, display: 'flex', alignItems: 'center', mb:  3  }}>
+              <Settings sx={{ mr: 2, fontSize: 32}} />
+              {profession === 'music_producer' ? 'Musikk Upload' : profession === 'vendor' ? 'Produkt Upload' : 'File Upload'}
+            </Typography>
+            <UniversalFileUpload
+              profession={profession as 'photographer' | 'videographer' | 'music_producer' | 'designer'}
+            />
+          </Box>
+        );
+        
+      default: return (
+          <Box sx={{ p: 2 }}>
+            {/* Header */}
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
+              {React.cloneElement(config.icon, { sx: { color: config.iconColor, fontSize: 32} })}
+              <Typography variant="h5" sx={{  fontWeight: 600, color: config.iconColor  }}>
+                {config.displayName} Orchestrator
+              </Typography>
+              <Chip 
+                label={`${currentComponents.length} aktive komponenter`}
+                color="primary" 
+                size="small"
+                sx={{ ml: 'auto'}}
+              />
+            </Box>
+
+            {/* Active Tab Info */}
+            <MuiCard sx={{ mb:  3, bgcolor: config.iconColor + '10'}}>
+              <MuiCardContent>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
+                  <Dashboard sx={{ color: config.iconColor }} />
+                  <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+                    {currentTab.charAt(0).toUpperCase() + currentTab.slice(1)} Komponenter
+                  </Typography>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    startIcon={theming.getThemedIcon('refresh')}
+                    onClick={() => setRefreshKey(prev => prev + 1)}
+                    sx={{ ml: 'auto', borderColor: config.color, color: config.iconColor }}
+                  >
+                    Oppdater
+                  </Button>
+                </Box>
+              </MuiCardContent>
+            </MuiCard>
+
+            {/* Component Grid */}
+            <Grid container spacing={2}>
+              {currentComponents.map((componentName, index) => {
+                const Component = componentRegistry[componentName];
+                
+                return (
+                  <Grid size={{ xs: 12, md: 6, lg: 4 }} key={componentName}>
+                    <MuiCard sx={{
+                      height: '200px',
+                      border: `2px solid ${config.color}20`, '&:hover': {
+                        borderColor: config.color,
+                        transform: 'translateY(-2px)',
+                        transition: 'all 0.3s ease'
+                      }
+                    }}>
+                      <MuiCardContent sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+                          <Analytics sx={{ color: config.iconColor, fontSize: 20 }} />
+                          <Typography variant="h6" sx={{ fontSize: '0.9rem', fontWeight: 600, color: theming.colors.primary }}>
+                            {componentName}
+                          </Typography>
+                        </Box>
+
+                        {Component ? (
+                          <React.Suspense fallback={
+                            <Box sx={{
+                              flex: 1,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              color: 'text.secondary'
+                            }}>
+                              Laster...
+                            </Box>
+                          }>
+                            <Box sx={{ flex: 1, overflow: 'hidden' }}>
+                              {componentName === 'UniversalVendorDashboard' && profession === 'vendor' ? (
+                                <Component
+                                  vendorType={config.vendorType || 'software'}
+                                  vendorName="Demo Vendor"
+                                  userId={projectId}
+                                  compact={true}
+                                  key={refreshKey}
+                                />
+                              ) : (
+                                <Component
+                                  profession={profession}
+                                  userId={projectId}
+                                  compact={true}
+                                  key={refreshKey}
+                                />
+                              )}
+                            </Box>
+                          </React.Suspense>
+                        ) : (
+                          <Box sx={{
+                            flex: 1,
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            justifyContent: 'center',
+                            color:'text.secondary'
+                      }}>
+                            Komponent ikke tilgjengelig
+                          </Box>
+                        )}
+                      </MuiCardContent>
+                    </MuiCard>
+                  </Grid>
+                );
+            })}
+            </Grid>
+          </Box>
+        );
+  }
+};
+
+  return (
+    <Box key={refreshKey}>
+      {renderTabContent()}
+    </Box>
+  );
+}

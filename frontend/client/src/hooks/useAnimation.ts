@@ -1,0 +1,307 @@
+/**
+ * useAnimation Hook
+ * React hook for animation functionality
+ */
+
+import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
+import { 
+  animationManager, 
+  AnimationConfig, 
+  AnimationState, 
+  Animation,
+  AnimationTimeline
+} from'../utils/animationManager';
+
+export interface UseAnimationOptions {
+  config?: Partial<AnimationConfig>;
+  onAnimationAdded?: (data: { animation: Animation }) => void;
+  onAnimationPlayed?: (data: { animation: Animation; element?: HTMLElement }) => void;
+  onAnimationPaused?: (data: { animation: Animation }) => void;
+  onAnimationStopped?: (data: { animation: Animation }) => void;
+  onAnimationFinished?: (data: { animation: Animation; element: HTMLElement }) => void;
+  onAnimationApplyFailed?: (data: { animation: Animation; element: HTMLElement; error: string }) => void;
+  onPerformanceMeasure?: (data: { entry: PerformanceEntry }) => void;
+  onError?: (error: string) => void;
+  onInitialized?: () => void
+}
+
+export interface UseAnimationReturn {
+  addAnimation: (animationData: Partial<Animation>) => Promise<Animation>;
+  playAnimation: (animationId: string, element?: HTMLElement) => Promise<void>;
+  pauseAnimation: (animationId: string) => Promise<void>;
+  stopAnimation: (animationId: string) => Promise<void>;
+  getAnimation: (id: string) => Animation | null;
+  getAnimationsByType: (type: string) => Animation[];
+  getActiveAnimations: () => Animation[];
+  state: AnimationState;
+  config: AnimationConfig;
+  updateConfig: (config: Partial<AnimationConfig>) => void;
+  isEnabled: boolean;
+  isInitialized: boolean;
+  hasError: boolean;
+  error: string | null;
+  animations: Animation[];
+  timelines: AnimationTimeline[];
+  activeAnimations: Animation[];
+  totalAnimations: number;
+  totalTimelines: number;
+  totalKeyframes: number;
+  totalProperties: number;
+  totalTriggers: number;
+  totalUsage: number;
+  totalErrors: number;
+  totalConflicts: number;
+  totalOverrides: number;
+  getAllAnimations: () => Animation[]
+}
+
+/**
+ * Hook for animation functionality
+ */
+export const useAnimation = (options: UseAnimationOptions = {}): UseAnimationReturn => {
+  const {
+    config = {},
+    onAnimationAdded,
+    onAnimationPlayed,
+    onAnimationPaused,
+    onAnimationStopped,
+    onAnimationFinished,
+    onAnimationApplyFailed,
+    onPerformanceMeasure,
+    onError,
+    onInitialized
+} = options;
+
+  const [state, setState] = useState<AnimationState>({
+    isEnabled: false,
+    isInitialized: false,
+    hasError: false,
+    error: null,
+    animations: new Map(),
+    timelines: new Map(),
+    activeAnimations: new Map(),
+    lastUpdate:  0,
+    totalAnimations:  0,
+    totalTimelines:  0,
+    totalKeyframes:  0,
+    totalProperties:  0,
+    totalTriggers:  0,
+    totalUsage:  0,
+    totalErrors:  0,
+    totalConflicts:  0,
+    totalOverrides: 0
+});
+
+  const stateIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const eventHandlersRef = useRef<Map<string, Function>>(new Map());
+
+  // Initialize animation manager
+  useEffect(() => {
+    // Update configuration
+    if (Object.keys(config).length > 0) {
+      animationManager.updateConfig(config);
+  }
+
+    // Setup event handlers
+    const handleAnimationAdded = (data: { animation: Animation }) => {
+      if (onAnimationAdded) {
+        onAnimationAdded(data);
+    }
+  };
+
+    const handleAnimationPlayed = (data: { animation: Animation; element?: HTMLElement }) => {
+      if (onAnimationPlayed) {
+        onAnimationPlayed(data);
+    }
+  };
+
+    const handleAnimationPaused = (data: { animation: Animation }) => {
+      if (onAnimationPaused) {
+        onAnimationPaused(data);
+    }
+  };
+
+    const handleAnimationStopped = (data: { animation: Animation }) => {
+      if (onAnimationStopped) {
+        onAnimationStopped(data);
+    }
+  };
+
+    const handleAnimationFinished = (data: { animation: Animation; element: HTMLElement }) => {
+      if (onAnimationFinished) {
+        onAnimationFinished(data);
+    }
+  };
+
+    const handleAnimationApplyFailed = (data: { animation: Animation; element: HTMLElement; error: string }) => {
+      if (onAnimationApplyFailed) {
+        onAnimationApplyFailed(data);
+    }
+  };
+
+    const handlePerformanceMeasure = (data: { entry: PerformanceEntry }) => {
+      if (onPerformanceMeasure) {
+        onPerformanceMeasure(data);
+    }
+  };
+
+    const handleError = (data: { error: string }) => {
+      if (onError) {
+        onError(data.error);
+    }
+  };
+
+    const handleInitialized = () => {
+      if (onInitialized) {
+        onInitialized();
+    }
+  };
+
+    // Store event handlers
+    eventHandlersRef.current.set('animation_added', handleAnimationAdded);
+    eventHandlersRef.current.set('animation_played', handleAnimationPlayed);
+    eventHandlersRef.current.set('animation_paused', handleAnimationPaused);
+    eventHandlersRef.current.set('animation_stopped', handleAnimationStopped);
+    eventHandlersRef.current.set('animation_finished', handleAnimationFinished);
+    eventHandlersRef.current.set('animation_apply_failed', handleAnimationApplyFailed);
+    eventHandlersRef.current.set('performance_measure', handlePerformanceMeasure);
+    eventHandlersRef.current.set('error', handleError);
+    eventHandlersRef.current.set('initialized', handleInitialized);
+
+    // Add event listeners
+    animationManager.on('animation_added', handleAnimationAdded);
+    animationManager.on('animation_played', handleAnimationPlayed);
+    animationManager.on('animation_paused', handleAnimationPaused);
+    animationManager.on('animation_stopped', handleAnimationStopped);
+    animationManager.on('animation_finished', handleAnimationFinished);
+    animationManager.on('animation_apply_failed', handleAnimationApplyFailed);
+    animationManager.on('performance_measure', handlePerformanceMeasure);
+    animationManager.on('error', handleError);
+    animationManager.on('initialized', handleInitialized);
+
+    // Update initial state
+    setState(animationManager.getState());
+
+    return () => {
+      // Remove event listeners
+      eventHandlersRef.current.forEach((handler, event) => {
+        animationManager.off(event, handler);
+    });
+      eventHandlersRef.current.clear();
+  };
+}, [config, onAnimationAdded, onAnimationPlayed, onAnimationPaused, onAnimationStopped, onAnimationFinished, onAnimationApplyFailed, onPerformanceMeasure, onError, onInitialized]);
+
+  // Setup state monitoring
+  useEffect(() => {
+    stateIntervalRef.current = setInterval(() => {
+      const currentState = animationManager.getState();
+      setState(currentState);
+  }, 100);
+
+    return () => {
+      if (stateIntervalRef.current) {
+        clearInterval(stateIntervalRef.current);
+    }
+  };
+}, []);
+
+  // Add animation
+  const addAnimation = useCallback(async (animationData: Partial<Animation>) => {
+    return await animationManager.addAnimation(animationData);
+}, []);
+
+  // Play animation
+  const playAnimation = useCallback(async (animationId: string, element?: HTMLElement) => {
+    await animationManager.playAnimation(animationId, element);
+}, []);
+
+  // Pause animation
+  const pauseAnimation = useCallback(async (animationId: string) => {
+    await animationManager.pauseAnimation(animationId);
+}, []);
+
+  // Stop animation
+  const stopAnimation = useCallback(async (animationId: string) => {
+    await animationManager.stopAnimation(animationId);
+}, []);
+
+  // Get animation by ID
+  const getAnimation = useCallback((id: string) => {
+    return animationManager.getAnimation(id);
+}, []);
+
+  // Get animations by type
+  const getAnimationsByType = useCallback((type: string) => {
+    return animationManager.getAnimationsByType(type);
+}, []);
+
+  // Get active animations
+  const getActiveAnimations = useCallback(() => {
+    return animationManager.getActiveAnimations();
+}, []);
+
+  // Update configuration
+  const updateConfig = useCallback((newConfig: Partial<AnimationConfig>) => {
+    animationManager.updateConfig(newConfig);
+}, []);
+
+  // Get configuration
+  const currentConfig = useMemo(() => {
+    return animationManager.getConfig();
+}, []);
+
+  // Get all animations
+  const getAllAnimations = useCallback(() => {
+    return animationManager.getAllAnimations();
+}, []);
+
+  // Memoized return value
+  const returnValue = useMemo(() => ({
+    addAnimation,
+    playAnimation,
+    pauseAnimation,
+    stopAnimation,
+    getAnimation,
+    getAnimationsByType,
+    getActiveAnimations,
+    state,
+    config: currentConfig,
+    updateConfig,
+    isEnabled: state.isEnabled,
+    isInitialized: state.isInitialized,
+    hasError: state.hasError,
+    error: state.error,
+    animations: Array.from(state.animations.values()),
+    timelines: Array.from(state.timelines.values()),
+    activeAnimations: Array.from(state.activeAnimations.values()),
+    totalAnimations: state.totalAnimations,
+    totalTimelines: state.totalTimelines,
+    totalKeyframes: state.totalKeyframes,
+    totalProperties: state.totalProperties,
+    totalTriggers: state.totalTriggers,
+    totalUsage: state.totalUsage,
+    totalErrors: state.totalErrors,
+    totalConflicts: state.totalConflicts,
+    totalOverrides: state.totalOverrides,
+    getAllAnimations
+}), [
+    addAnimation,
+    playAnimation,
+    pauseAnimation,
+    stopAnimation,
+    getAnimation,
+    getAnimationsByType,
+    getActiveAnimations,
+    state,
+    currentConfig,
+    updateConfig,
+    getAllAnimations
+  ]);
+
+  return returnValue;
+};
+
+export default useAnimation;
+
+
+

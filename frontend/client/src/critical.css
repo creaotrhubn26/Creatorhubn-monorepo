@@ -1,0 +1,49 @@
+/* Critical styles for instant loading */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  min-height: 100vh;
+  background: linear-gradient(135deg, #fbbf24 0%, #f97316 50%, #dc2626 100%);
+}
+
+/* Orange gradient glassmorphism container */
+.orange-gradient-container {
+  background: rgba(255, 255, 255, 0.15) !important;
+  backdrop-filter: blur(10px) !important;
+  border-radius: 20px !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1) !important;
+}
+
+/* Critical button styles */
+.btn-orange {
+  background: linear-gradient(135deg, #f97316, #ea580c) !important;
+  color: white !important;
+  border: none !important;
+  padding: 12px 24px !important;
+  border-radius: 10px !important;
+  font-weight: 500 !important;
+  transition: all 0.2s !important;
+}
+
+.btn-orange:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 5px 15px rgba(249, 115, 22, 0.4) !important;
+}
+
+/* Hide loading spinners */
+.loading-spinner {
+  display: none !important;
+}
+
+/* Force visibility for critical content */
+.critical-content {
+  opacity: 1 !important;
+  visibility: visible !important;
+  display: block !important;
+}

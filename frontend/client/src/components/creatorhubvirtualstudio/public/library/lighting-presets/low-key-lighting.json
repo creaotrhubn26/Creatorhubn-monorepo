@@ -1,0 +1,40 @@
+{
+  "id": "low-key-lighting",
+  "name": "Low Key Lighting",
+  "description": "Dark, moody lighting with minimal fill",
+  "category": "portrait",
+  "difficulty": "advanced",
+  "lights": [
+    {
+      "name": "Key Light",
+      "type": "spot",
+      "position": [-2.5, 2.0, 1.0],
+      "rotation": [0.3, 0.6, 0],
+      "power": 0.75,
+      "cct": 4000,
+      "beam": 30,
+      "modifier": "spot"
+    },
+    {
+      "name": "Rim Light",
+      "type": "spot",
+      "position": [2.0, 2.2, -0.8],
+      "rotation": [0.5, -0.4, 0],
+      "power": 0.5,
+      "cct": 5600,
+      "beam": 25,
+      "modifier": "spot"
+    }
+  ],
+  "camera": {
+    "position": [0, 1.6, 3.5],
+    "focalLength": 85,
+    "aperture": 2.0
+  },
+  "subject": {
+    "position": [0, 1.7, 0],
+    "height": 1.75,
+    "rotation": [0, 0.2, 0]
+  }
+}
+

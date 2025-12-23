@@ -1,0 +1,743 @@
+/**
+ * Split Sheet Editor
+ * Form-based editor for creating and editing split sheets
+ * Now with profession-specific theming and role filtering
+ */
+
+import React, { useState, useMemo } from 'react';
+import { useMutation } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
+import {
+  Box,
+  Typography,
+  TextField,
+  Button,
+  Stack,
+  Card,
+  CardContent,
+  IconButton,
+  Alert,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Paper,
+  Grid,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
+  alpha
+} from '@mui/material';
+import {
+  Add as AddIcon,
+  Delete as DeleteIcon,
+  Save as SaveIcon,
+  Cancel as CancelIcon,
+  Warning as WarningIcon,
+  CheckCircle as CheckCircleIcon,
+  ExpandMore as ExpandMoreIcon,
+  Phone,
+  Business,
+  Badge
+} from '@mui/icons-material';
+import { useDynamicProfessions } from '../hooks/useDynamicProfessions';
+import getProfessionIcon from '@/utils/profession-icons';
+import type { 
+  SplitSheet, 
+  SplitSheetContributor,
+  CreateSplitSheetRequest,
+  UpdateSplitSheetRequest,
+  ContributorRole
+} from './types';
+import { ROLE_DISPLAY_NAMES as ROLE_NAMES } from './types';
+import SplitSheetSongFlowIntegration from './SplitSheetSongFlowIntegration';
+import PricingSelector from '../shared/PricingSelector';
+
+interface SplitSheetEditorProps {
+  splitSheet?: SplitSheet | null;
+  projectId?: string;
+  trackId?: string;
+  initialContributors?: SplitSheetContributor[];
+  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  onSave: (splitSheet: SplitSheet) => void;
+  onCancel: () => void;
+}
+
+export default function SplitSheetEditor({
+  splitSheet,
+  projectId,
+  trackId,
+  initialContributors,
+  profession = 'music_producer',
+  onSave,
+  onCancel
+}: SplitSheetEditorProps) {
+  const [title, setTitle] = useState(splitSheet?.title || '');
+  const [description, setDescription] = useState(splitSheet?.description || '');
+  const [contributors, setContributors] = useState<Omit<SplitSheetContributor, 'id' | 'split_sheet_id' | 'created_at' | 'updated_at'>[]>(
+    splitSheet?.contributors?.map(c => ({
+      name: c.name,
+      email: c.email || '',
+      role: c.role,
+      percentage: c.percentage,
+      user_id: c.user_id || undefined,
+      order_index: c.order_index || 0,
+      custom_fields: c.custom_fields || {}
+    })) || initialContributors?.map(c => ({
+      name: c.name,
+      email: c.email || '',
+      role: c.role,
+      percentage: c.percentage,
+      user_id: c.user_id || undefined,
+      order_index: c.order_index || 0,
+      custom_fields: c.custom_fields || {}
+    })) || []
+  );
+  const [expandedContributor, setExpandedContributor] = useState<number | null>(null);
+  
+  // Get profession-specific styling
+  const { getUserProfessionColor, getProfessionDisplayName, getProfessionCategory } = useDynamicProfessions();
+  const professionColor = getUserProfessionColor(profession);
+  const professionDisplayName = getProfessionDisplayName(profession);
+  const professionIcon = getProfessionIcon(profession);
+  
+  // Get profession-specific terminology for labels
+  const getProfessionLabels = () => {
+    switch (profession) {
+      case 'music_producer':
+        return {
+          titlePlaceholder: 'F.eks. "Summer Vibes - Single"',
+          descriptionPlaceholder: 'Beskrivelse av låten eller prosjektet...',
+          contributorLabel: 'Bidragsyter',
+          addContributorLabel: 'Legg til bidragsyter',
+        };
+      case 'photographer':
+        return {
+          titlePlaceholder: 'F.eks. "Bryllup Hansen/Olsen 2024"',
+          descriptionPlaceholder: 'Beskrivelse av fotoprosjektet...',
+          contributorLabel: 'Samarbeidspartner',
+          addContributorLabel: 'Legg til samarbeidspartner',
+        };
+      case 'videographer':
+        return {
+          titlePlaceholder: 'F.eks. "Bedriftsvideo - Firma AS"',
+          descriptionPlaceholder: 'Beskrivelse av videoproduksjonen...',
+          contributorLabel: 'Crew-medlem',
+          addContributorLabel: 'Legg til crew-medlem',
+        };
+      default:
+        return {
+          titlePlaceholder: 'Tittel på split sheet',
+          descriptionPlaceholder: 'Beskrivelse av prosjektet...',
+          contributorLabel: 'Bidragsyter',
+          addContributorLabel: 'Legg til bidragsyter',
+        };
+    }
+  };
+  
+  const labels = getProfessionLabels();
+
+  // Get available roles based on profession
+  const getAvailableRoles = (prof: string): ContributorRole[] => {
+    switch(prof) {
+      case 'music_producer':
+        return [
+          'producer','artist','songwriter','composer','lyricist','vocalist','instrumentalist','mix_engineer','mastering_engineer','arranger','featured_artist','backing_vocalist','session_musician','publisher','label','collaborator','other'
+        ];
+      case 'photographer':
+        return [
+          'second_shooter','photo_editor','retoucher','assistant','stylist','makeup_artist','collaborator','other'
+        ];
+      case 'videographer':
+        return [
+          'video_editor','colorist','sound_engineer','cinematographer','grip','gaffer','collaborator','other'
+        ];
+      default:
+        return ['collaborator','other'];
+    }
+  };
+
+  const availableRoles = useMemo(() => getAvailableRoles(profession), [profession]);
+
+  // Calculate total percentage
+  const totalPercentage = useMemo(() => {
+    return contributors.reduce((sum, c) => sum + (c.percentage || 0), 0);
+  }, [contributors]);
+
+  const isValid = useMemo(() => {
+    return title.trim().length > 0 && 
+           Math.abs(totalPercentage - 100) < 0.01 && 
+           contributors.length > 0 &&
+           contributors.every(c => c.name.trim().length > 0 && c.percentage > 0);
+  }, [title, totalPercentage, contributors]);
+
+  // Create/Update mutation
+  const saveMutation = useMutation({
+    mutationFn: async (data: CreateSplitSheetRequest | UpdateSplitSheetRequest) => {
+      try {
+        if (splitSheet?.id) {
+          // Update
+          const response = await apiRequest(`/api/split-sheets/${splitSheet.id}`, {
+            method: 'PUT',
+            body: JSON.stringify(data)
+          });
+          return response;
+        } else {
+          // Create
+          const response = await apiRequest('/api/split-sheets', {
+            method: 'POST',
+            body: JSON.stringify(data)
+          });
+          return response;
+        }
+      } catch (error: any) {
+        // Enhance error message with backend details
+        if (error?.response?.data) {
+          throw new Error(error.response.data.error || error.message);
+        }
+        throw error;
+      }
+    },
+    onSuccess: (response) => {
+      onSave(response.data);
+    }
+  });
+
+  const handleAddContributor = () => {
+    setContributors([
+      ...contributors,
+      {
+        name: '',
+        email: ', ',
+        role: 'collaborator',
+        percentage: 0,
+        order_index: contributors.length,
+        custom_fields: {}
+      }
+    ]);
+    setExpandedContributor(contributors.length);
+  };
+
+  const handleRemoveContributor = (index: number) => {
+    setContributors(contributors.filter((_, i) => i !== index));
+  };
+
+  const handleContributorChange = (index: number, field: keyof SplitSheetContributor, value: any) => {
+    const updated = [...contributors];
+    updated[index] = { ...updated[index], [field]: value };
+    setContributors(updated);
+  };
+
+  const handleCustomFieldChange = (index: number, field: string, value: any) => {
+    const updated = [...contributors];
+    const customFields = updated[index].custom_fields || {};
+    updated[index] = {
+      ...updated[index],
+      custom_fields: { ...customFields, [field]: value }
+    };
+    setContributors(updated);
+  };
+
+  const handleAutoFixPercentages = async () => {
+    if (totalPercentage === 0) return;
+    
+    // If split sheet exists, use backend validation
+    if (splitSheet?.id) {
+      try {
+        const response = await apiRequest(`/api/split-sheets/${splitSheet.id}/validate-percentages`, {
+          method: 'POST',
+          body: JSON.stringify({ auto_fix: true })
+        });
+        
+        if (response.success) {
+          // Refresh contributors from backend
+          const updatedResponse = await apiRequest(`/api/split-sheets/${splitSheet.id}`);
+          if (updatedResponse.success && updatedResponse.data.contributors) {
+            setContributors(updatedResponse.data.contributors.map((c: any) => ({
+              name: c.name,
+              email: c.email || ', ',
+              role: c.role,
+              percentage: c.percentage,
+              user_id: c.user_id || undefined,
+              order_index: c.order_index || 0,
+              custom_fields: c.custom_fields || {}
+            })));
+          }
+        }
+      } catch (error) {
+        console.error('Error auto-fixing percentages: ', error);
+      }
+    } else {
+      // Frontend-only fix for new split sheets
+      const adjustmentFactor = 100 / totalPercentage;
+      const updated = contributors.map(c => ({
+        ...c,
+        percentage: Math.round((c.percentage * adjustmentFactor) * 100) / 100
+      }));
+      setContributors(updated);
+    }
+  };
+
+  const handleDistributeEvenly = () => {
+    if (contributors.length === 0) return;
+    const evenPercentage = 100 / contributors.length;
+    setContributors(contributors.map(c => ({ ...c, percentage: evenPercentage })));
+  };
+
+  const handleAutoDistribute = () => {
+    // Simple auto-distribution: producer gets 50%, rest split evenly
+    if (contributors.length === 0) return;
+    
+    const producerIndex = contributors.findIndex(c => c.role === 'producer');
+    const updated = [...contributors];
+    
+    if (producerIndex >= 0 && contributors.length > 1) {
+      updated[producerIndex] = { ...updated[producerIndex], percentage: 50 };
+      const remaining = 50 / (contributors.length - 1);
+      updated.forEach((c, i) => {
+        if (i !== producerIndex) {
+          updated[i] = { ...c, percentage: remaining };
+        }
+      });
+    } else if (contributors.length === 1) {
+      updated[0] = { ...updated[0], percentage: 100 };
+    } else {
+      const evenPercentage = 100 / contributors.length;
+      updated.forEach((c, i) => {
+        updated[i] = { ...c, percentage: evenPercentage };
+      });
+    }
+    
+    setContributors(updated);
+  };
+
+  const handleSave = () => {
+    if (!isValid) return;
+
+    const data: CreateSplitSheetRequest | UpdateSplitSheetRequest = {
+      title: title.trim(),
+      description: description.trim() || undefined,
+      project_id: projectId,
+      track_id: trackId,
+      contributors: contributors.map((c, index) => ({
+        ...c,
+        order_index: index
+      }))
+    };
+
+    saveMutation.mutate(data);
+  };
+
+  const percentageError = Math.abs(totalPercentage - 100) >= 0.01;
+  const percentageWarning = Math.abs(totalPercentage - 100) < 0.01 && Math.abs(totalPercentage - 100) > 0;
+
+  return (
+    <Box sx={{ p: 2 }}>
+      <Stack spacing={3}>
+        {/* Basic Information */}
+        <Card>
+          <CardContent>
+            <Typography variant="h6" gutterBottom sx={{ fontWeight: 600}}>
+              Grunnleggende informasjon
+            </Typography>
+            <Stack spacing={2}>
+              <TextField
+                label="Tittel"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                required
+                fullWidth
+                placeholder="f.eks. 'Midnight Dreams - Split Sheet'"
+              />
+              <TextField
+                label="Beskrivelse (valgfritt)"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                fullWidth
+                multiline
+                rows={3}
+                placeholder="Beskrivelse av prosjektet eller sporet..."
+              />
+            </Stack>
+          </CardContent>
+        </Card>
+
+        {/* SongFlow Integration */}
+        {splitSheet?.id && (
+          <SplitSheetSongFlowIntegration
+            splitSheetId={splitSheet.id}
+            onLinkCreated={() => {
+              // Refresh split sheet data if needed
+            }}
+          />
+        )}
+
+        {/* Pricing Information */}
+        {projectId && (
+          <Card>
+            <CardContent>
+              <Typography variant="h6" gutterBottom sx={{ fontWeight: 600}}>
+                Prisinformasjon
+              </Typography>
+              <PricingSelector
+                onSelectPackage={(pkg) => {
+                  // Auto-populate title and description from package
+                  if (!title) setTitle(pkg.name);
+                  if (!description) setDescription(pkg.description || ', ');
+                }}
+                onSelectQuote={(quote) => {
+                  // Auto-populate from quote
+                  if (!title) setTitle(quote.quoteNumber || 'Split Sheet');
+                  if (!description) setDescription(quote.description || '');
+                  // Could also use quote total to suggest revenue splits
+                }}
+              />
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Contributors */}
+        <Card>
+          <CardContent>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+              <Typography variant="h6" sx={{ fontWeight: 600}}>
+                Bidragsytere
+              </Typography>
+              <Stack direction="row" spacing={1}>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  onClick={handleDistributeEvenly}
+                  disabled={contributors.length === 0}
+                >
+                  Del likt
+                </Button>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  onClick={handleAutoDistribute}
+                  disabled={contributors.length === 0}
+                >
+                  Auto-fordeling
+                </Button>
+                <Button
+                  size="small"
+                  variant="contained"
+                  startIcon={<AddIcon />}
+                  onClick={handleAddContributor}
+                  sx={{ bgcolor: '#9f7aea' }}
+                >
+                  Legg til
+                </Button>
+              </Stack>
+            </Box>
+
+            {contributors.length === 0 ? (
+              <Alert severity="info" sx={{ mb: 2 }}>
+                Legg til minst én bidragsyter for å opprette split sheet.
+              </Alert>
+            ) : (
+              <>
+                {/* Total Percentage Display */}
+                <Paper
+                  sx={{
+                    p: 2,
+                    mb: 2,
+                    bgcolor: percentageError
+                      ? 'error.light'
+                      : percentageWarning
+                      ? 'warning.light'
+                      : 'success.light',
+                    color: percentageError
+                      ? 'error.contrastText'
+                      : percentageWarning
+                      ? 'warning.contrastText'
+                      : 'success.contrastText'
+                  }}
+                >
+                  <Stack direction="row" justifyContent="space-between" alignItems="center">
+                    <Typography variant="body1" sx={{ fontWeight: 600}}>
+                      Total prosentandel:
+                    </Typography>
+                    <Typography variant="h6" sx={{ fontWeight: 700}}>
+                      {totalPercentage.toFixed(2)}%
+                    </Typography>
+                  </Stack>
+                  {percentageError && (
+                    <Box sx={{ mt: 1 }}>
+                      <Typography variant="caption" sx={{ display: 'block', mb: 1 }}>
+                        <WarningIcon sx={{ fontSize: 16, verticalAlign: 'middle', mr: 0.5 }} />
+                        {totalPercentage > 100 
+                          ? `Totalen er ${totalPercentage.toFixed(2)}% - må være nøyaktig 100% (${(totalPercentage - 100).toFixed(2)}% for mye)`
+                          : `Totalen er ${totalPercentage.toFixed(2)}% - må være nøyaktig 100% (${(100 - totalPercentage).toFixed(2)}% mangler)`
+                        }
+                      </Typography>
+                      <Stack direction="row" spacing={1} sx={{ mt: 1 }} flexWrap="wrap">
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          onClick={handleAutoFixPercentages}
+                        >
+                          Auto-juster til 100%
+                        </Button>
+                        {totalPercentage > 100 && (
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            color="error"
+                            onClick={() => {
+                              const excess = totalPercentage - 100;
+                              const updated = contributors.map(c => ({
+                                ...c,
+                                percentage: Math.max(0, c.percentage - (excess / contributors.length))
+                              }));
+                              setContributors(updated);
+                            }}
+                          >
+                            Reduser med {(totalPercentage - 100).toFixed(2)}%
+                          </Button>
+                        )}
+                        {totalPercentage < 100 && (
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            color="info"
+                            onClick={() => {
+                              const missing = 100 - totalPercentage;
+                              const updated = contributors.map(c => ({
+                                ...c,
+                                percentage: c.percentage + (missing / contributors.length)
+                              }));
+                              setContributors(updated);
+                            }}
+                          >
+                            Legg til {(100 - totalPercentage).toFixed(2)}%
+                          </Button>
+                        )}
+                      </Stack>
+                    </Box>
+                  )}
+                  {!percentageError && (
+                    <Typography variant="caption" sx={{ mt: 1, display: 'block' }}>
+                      <CheckCircleIcon sx={{ fontSize: 16, verticalAlign: 'middle', mr: 0.5 }} />
+                      Prosentandel er korrekt ({totalPercentage.toFixed(2)}%)
+                    </Typography>
+                  )}
+                </Paper>
+
+                {/* Contributors List */}
+                <Stack spacing={2}>
+                  {contributors.map((contributor, index) => (
+                    <Card key={index} variant="outlined">
+                      <CardContent>
+                        <Stack spacing={2}>
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                            <Typography variant="subtitle2" sx={{ fontWeight: 600}}>
+                              Bidragsyter {index + 1}
+                            </Typography>
+                            <IconButton
+                              size="small"
+                              color="error"
+                              onClick={() => handleRemoveContributor(index)}
+                            >
+                              <DeleteIcon fontSize="small" />
+                            </IconButton>
+                          </Box>
+
+                          <Grid container spacing={2}>
+                            <Grid item xs={12} sm={6}>
+                              <TextField
+                                label="Navn"
+                                value={contributor.name}
+                                onChange={(e) => handleContributorChange(index, 'name', e.target.value)}
+                                required
+                                fullWidth
+                                size="small"
+                              />
+                            </Grid>
+                            <Grid item xs={12} sm={6}>
+                              <TextField
+                                label="E-post (valgfritt)"
+                                type="email"
+                                value={contributor.email || ''}
+                                onChange={(e) => handleContributorChange(index, 'email', e.target.value)}
+                                fullWidth
+                                size="small"
+                              />
+                            </Grid>
+                            <Grid item xs={12} sm={6}>
+                              <FormControl fullWidth size="small">
+                                <InputLabel>Rolle</InputLabel>
+                                <Select
+                                  value={contributor.role}
+                                  label="Rolle"
+                                  onChange={(e) => handleContributorChange(index, 'role', e.target.value)}
+                                >
+                                  {availableRoles.map((role: ContributorRole) => (
+                                    <MenuItem key={role} value={role}>
+                                      {ROLE_NAMES[role]}
+                                    </MenuItem>
+                                  ))}
+                                </Select>
+                              </FormControl>
+                            </Grid>
+                            <Grid item xs={12} sm={6}>
+                              <TextField
+                                label="Prosentandel (%)"
+                                type="number"
+                                value={contributor.percentage}
+                                onChange={(e) => {
+                                  const value = parseFloat(e.target.value) || 0;
+                                  handleContributorChange(index, 'percentage', Math.max(0, Math.min(100, value)));
+                                }}
+                                required
+                                fullWidth
+                                size="small"
+                                inputProps={{ min: 0, max: 100, step: 0.01 }}
+                                error={contributor.percentage < 0 || contributor.percentage > 100}
+                                helperText={
+                                  contributor.percentage < 0 || contributor.percentage > 100
+                                    ? 'Må være mellom 0 og 100'
+                                    : ', '
+                                }
+                              />
+                            </Grid>
+                          </Grid>
+
+                          {/* Custom Fields Section */}
+                          <Accordion 
+                            expanded={expandedContributor === index}
+                            onChange={() => setExpandedContributor(expandedContributor === index ? null : index)}
+                            sx={{ mt: 1 }}
+                          >
+                            <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                              <Typography variant="caption" color="text.secondary">
+                                Tilleggsfelter (valgfritt)
+                              </Typography>
+                            </AccordionSummary>
+                            <AccordionDetails>
+                              <Grid container spacing={2}>
+                                <Grid item xs={12} sm={6}>
+                                  <TextField
+                                    label="Telefon"
+                                    value={contributor.custom_fields?.phone || ''}
+                                    onChange={(e) => handleCustomFieldChange(index, 'phone', e.target.value)}
+                                    fullWidth
+                                    size="small"
+                                    InputProps={{
+                                      startAdornment: <Phone sx={{ mr: 1, fontSize: 18, color: 'text.secondary' }} />
+                                    }}
+                                  />
+                                </Grid>
+                                <Grid item xs={12} sm={6}>
+                                  <TextField
+                                    label="PRO (f.eks. TONO, STIM)"
+                                    value={contributor.custom_fields?.pro || ''}
+                                    onChange={(e) => handleCustomFieldChange(index, 'pro', e.target.value)}
+                                    fullWidth
+                                    size="small"
+                                    InputProps={{
+                                      startAdornment: <Business sx={{ mr: 1, fontSize: 18, color: 'text.secondary' }} />
+                                    }}
+                                  />
+                                </Grid>
+                                <Grid item xs={12} sm={6}>
+                                  <TextField
+                                    label="IPI-nummer"
+                                    value={contributor.custom_fields?.ipi_number || ''}
+                                    onChange={(e) => handleCustomFieldChange(index, 'ipi_number', e.target.value)}
+                                    fullWidth
+                                    size="small"
+                                    InputProps={{
+                                      startAdornment: <Badge sx={{ mr: 1, fontSize: 18, color: 'text.secondary' }} />
+                                    }}
+                                  />
+                                </Grid>
+                                <Grid item xs={12} sm={6}>
+                                  <TextField
+                                    label="Organisasjonsnummer"
+                                    value={contributor.custom_fields?.organization_number || ''}
+                                    onChange={(e) => handleCustomFieldChange(index, 'organization_number', e.target.value)}
+                                    fullWidth
+                                    size="small"
+                                  />
+                                </Grid>
+                                <Grid item xs={12}>
+                                  <TextField
+                                    label="Adresse"
+                                    value={contributor.custom_fields?.address || ''}
+                                    onChange={(e) => handleCustomFieldChange(index, 'address', e.target.value)}
+                                    fullWidth
+                                    size="small"
+                                    multiline
+                                    rows={2}
+                                  />
+                                </Grid>
+                                <Grid item xs={12}>
+                                  <TextField
+                                    label="Notater"
+                                    value={contributor.custom_fields?.notes || ''}
+                                    onChange={(e) => handleCustomFieldChange(index, 'notes', e.target.value)}
+                                    fullWidth
+                                    size="small"
+                                    multiline
+                                    rows={2}
+                                    placeholder="Ekstra notater om bidragsyteren..."
+                                  />
+                                </Grid>
+                              </Grid>
+                            </AccordionDetails>
+                          </Accordion>
+                        </Stack>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </Stack>
+              </>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Actions */}
+        <Stack direction="row" spacing={2} justifyContent="flex-end">
+          <Button
+            variant="outlined"
+            startIcon={<CancelIcon />}
+            onClick={onCancel}
+            disabled={saveMutation.isPending}
+          >
+            Avbryt
+          </Button>
+          <Button
+            variant="contained"
+            startIcon={<SaveIcon />}
+            onClick={handleSave}
+            disabled={!isValid || saveMutation.isPending}
+            sx={{ bgcolor: '#9f7aea','&:hover': { bgcolor: '#8e6ed6' } }}
+          >
+            {saveMutation.isPending ? 'Lagrer...' : splitSheet?.id ? 'Oppdater' : 'Opprett'}
+          </Button>
+        </Stack>
+
+        {saveMutation.isError && (
+          <Alert severity="error">
+            {saveMutation.error instanceof Error 
+              ? saveMutation.error.message 
+              : 'Feil ved lagring av split sheet. Prøv igjen.'}
+            {saveMutation.error && typeof saveMutation.error === 'object' &&'details' in saveMutation.error && (
+              <Box sx={{ mt: 1 }}>
+                <Typography variant="caption">
+                  {(saveMutation.error as any).details?.message}
+                </Typography>
+              </Box>
+            )}
+          </Alert>
+        )}
+      </Stack>
+    </Box>
+  );
+}
+
+
+
+

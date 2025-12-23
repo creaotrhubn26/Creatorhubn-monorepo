@@ -1,0 +1,16 @@
+import { useTheming } from '../utils/theming-helper';
+import React from 'react';
+import { Box } from '@mui/material';
+import { EmailDesigner } from '../components/EmailDesigner/EmailDesigner';
+
+const EmailDesignerPage: React.FC = () => {
+  // Theming system
+  const theming = useTheming('photographer');
+  return (
+    <Box sx={{ height: '100vh', overflow: 'hidden' }}>
+      <EmailDesigner />
+    </Box>
+  );
+};
+
+export default EmailDesignerPage;

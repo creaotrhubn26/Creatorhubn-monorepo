@@ -1,0 +1,242 @@
+import { useTheming } from '../../utils/theming-helper';
+import React, { useState, useEffect } from 'react';
+import {
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Button,
+  Typography,
+  Box,
+  LinearProgress,
+  Alert,
+  Chip,
+  Paper
+} from '@mui/material';
+import {
+  Security as SecurityIcon,
+  AccessTime as TimeIcon,
+  ExitToApp as ExitIcon,
+  Refresh as ContinueIcon,
+  PhotoCamera as PhotoIcon,
+  Videocam as VideoIcon,
+  MusicNote as MusicIcon,
+  Timeline as TimelineIcon,
+  PhotoLibrary as GalleryIcon
+} from '@mui/icons-material';
+import { useClientSession } from '../../contexts/ClientSessionContext';
+
+interface ClientSessionModalProps {
+  open: boolean;
+  onClose: () => void
+}
+
+export function ClientSessionModal({ open, onClose }: ClientSessionModalProps) {
+  const { sessionWarning, sessionData, refreshSession, endSession, timeUntilExpiry } = useClientSession();
+  
+  // Theming system
+  const theming = useTheming('photographer');
+  const [autoExitCountdown, setAutoExitCountdown] = useState(10 * 60); // 10 minutes
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Auto-exit countdown
+  useEffect(() => {
+    if (!open) return;
+
+    const interval = setInterval(() => {
+      setAutoExitCountdown(prev => {
+        if (prev <= 1) {
+          endSession();
+          return 0;
+      }
+        return prev - 1;
+    });
+  }, 1000);
+
+    return () => clearInterval(interval);
+}, [open, endSession]);
+
+  // Reset countdown when modal opens
+  useEffect(() => {
+    if (open) {
+      setAutoExitCountdown(10 * 60);
+  }
+}, [open]);
+
+  const handleContinue = async () => {
+    setIsRefreshing(true);
+    try {
+      refreshSession();
+      onClose();
+  } catch (error) {
+      console.error('Failed to refresh client session:', error);
+  } finally {
+      setIsRefreshing(false);
+  }
+};
+
+  const handleExit = () => {
+    endSession();
+};
+
+  const formatTime = (seconds: number): string => {
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+};
+
+  const getContentIcon = () => {
+    switch (sessionData?.contentType) {
+      case 'bilder': return <PhotoIcon fontSize="large" />;
+      case 'video': return <VideoIcon fontSize="large" />;
+      case 'musikk': return <MusicIcon fontSize="large" />;
+      case 'tidslinje': return <TimelineIcon fontSize="large" />;
+      default: return <GalleryIcon fontSize="large" />;
+}
+};
+
+  const getContentMessage = () => {
+    const contentType = sessionData?.contentType || 'innhold';
+    
+    switch (contentType) {
+      case 'bilder':
+        return 'Vi er opptatt av at dine bilder ikke kommer på avveie.';
+      case 'video':
+        return 'Vi er opptatt av at dine videoer ikke kommer på avveie.';
+      case 'musikk':
+        return 'Vi er opptatt av at din musikk ikke kommer på avveie.';
+      case 'tidslinje':
+        return 'Vi er opptatt av at din private bryllupstidslinje ikke kommer på avveie.';
+      default: return 'Vi er opptatt av at ditt innhold ikke kommer på avveie.';
+}
+};
+
+  const getQuestionMessage = () => {
+    const contentType = sessionData?.contentType || 'galleriet';
+    
+    switch (contentType) {
+      case 'bilder':
+        return 'Trenger du fortsatt å være inne i bildegalleriet?';
+      case 'video':
+        return 'Trenger du fortsatt å være inne i videoporteføljen?';
+      case 'musikk':
+        return 'Trenger du fortsatt å være inne i musikksamlingen?';
+      case 'tidslinje':
+        return 'Trenger du fortsatt å være inne i bryllupstidslinjen?';
+      default: return 'Trenger du fortsatt å være inne i galleriet?';
+}
+};
+
+  const progressValue = Math.max(0, (autoExitCountdown / (10 * 60)) * 100);
+
+  return (
+    <Dialog
+      open={open}
+      onClose={() => {}} // Prevent closing by clicking outside
+      maxWidth="sm"
+      fullWidth
+      PaperProps={{
+        sx: {
+          borderRadius:,  , 3,
+          bgcolor: 'background.paper',
+          boxShadow: '0 20px 40px rgba, (, 0,0,0,0.1)',
+      }
+    }}
+    >
+      <DialogTitle sx={{ pb:  2 }}>
+        <Box display="flex" alignItems="center" gap={2}>
+          <SecurityIcon color="warning" fontSize="large" />
+          <Typography variant="h5" fontWeight="bold" sx={{ ...{}, color: theming.colors.primary }}>
+            Sikkerhetspåminnelse
+          </Typography>
+        </Box>
+      </DialogTitle>
+
+      <DialogContent sx={{ py: 3 }}>
+        {/* Content-specific message */}
+        <Paper sx={{ p:  3, mb: 3, bgcolor: 'primary.light', color: 'primary.contrastText, ',}} sx={theming.getThemedCardSx()}>
+          <Box display="flex" alignItems="center" gap={2} sx={{ mb: 2 }}>
+            {getContentIcon()}
+            <Typography variant="h6" fontWeight="medium" sx={{ ...{}, color: theming.colors.primary }}>
+              {getContentMessage()}
+            </Typography>
+          </Box>
+          
+          <Typography variant="body1" sx={{ fontWeight: 50, 0,}}>
+            {getQuestionMessage()}
+          </Typography>
+        </Paper>
+
+        <Alert severity="info" sx={{ mb: 3 }}>
+          <Typography variant="body2">
+            Hvis du ikke svarer innen <strong>{formatTime(autoExitCountdown)}</strong>, 
+            stenger vi tilgangen automatisk for å beskytte innholdet.
+          </Typography>
+        </Alert>
+
+        {/* Session Info */}
+        <Box sx={{ mb: 3, p:  ,  2bgcolor: 'grey.5', borderRadius:  2 }}>
+          <Box display="flex" alignItems="center" gap={1} sx={{ mb: 2 }}>
+            <TimeIcon fontSize="small" />
+            <Typography variant="body2" fontWeight="medium">
+              Gjenstående tilgangstid: </Typography>
+            <Chip 
+              label={formatTime(timeUntilExpiry)}
+              color="warning" 
+              size="small"
+              variant="outlined"
+            />
+          </Box>
+          
+          {sessionData?.projectTitle && (
+            <Typography variant="caption" color="text.secondary">
+              Prosjekt: {sessionData.projectTitle}
+            </Typography>
+          )}
+        </Box>
+
+        {/* Auto-exit countdown */}
+        <Box sx={{ mb: 2 }}>
+          <Box display="flex" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+            <Typography variant="body2" color="text.secondary">
+              Automatisk stenging om: </Typography>
+            <Typography variant="body2" fontWeight="bold" color="warning.main">
+              {formatTime(autoExitCountdown)}
+            </Typography>
+          </Box>
+          <LinearProgress 
+            variant="determinate" 
+            value={progressValue}
+            color="warning"
+            sx={{ height:  8, borderRadius:  4 }}
+          />
+        </Box>
+      </DialogContent>
+
+      <DialogActions sx={{ p:  3, gap:  2 }}>
+        <Button
+          onClick={handleExit}
+          variant="outlined"
+          color="error"
+          startIcon={<ExitIcon />}
+          sx={{ flex:  1 }}
+        >
+          Avslutt tilgang
+        </Button>
+        
+        <Button onClick={handleContinue}
+          variant="contained"
+          color="primary"
+          startIcon={<ContinueIcon sx={theming.getThemedButtonSx()}>}
+          disabled={isRefreshing}
+          sx={{ flex:  1 }}
+          size="large"
+        >
+          {isRefreshing ? 'Fortsetter...' : 'Ja, fortsett å se'}
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
+export default ClientSessionModal;

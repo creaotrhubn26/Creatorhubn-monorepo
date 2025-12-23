@@ -1,0 +1,538 @@
+import { useTheming } from '../../utils/theming-helper';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import {
+  Box,
+  Paper,
+  Typography,
+  Grid,
+  Card,
+  CardContent,
+  CardHeader,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemIcon,
+  Chip,
+  Button,
+  IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Stack,
+  Divider,
+  Tooltip,
+  Badge,
+  Avatar,
+  Tabs,
+  Tab,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Switch,
+  FormControlLabel,
+  Slider,
+  useMediaQuery,
+  useTheme,
+  Drawer,
+  AppBar,
+  Toolbar,
+  Menu,
+  MenuItem as MuiMenuItem,
+} from '@mui/material';
+import { CREATOR_HUB_ICONS } from '../shared/CreatorHubIcons';
+
+// Types
+interface BreakpointConfig {
+  xs: number;
+  sm: number;
+  md: number;
+  lg: number;
+  xl: number
+}
+
+interface LayoutConfig {
+  sidebar: {
+    width: number;
+    collapsed: boolean;
+    position: 'left' | 'right';
+};
+  header: {
+    height: number;
+    sticky: boolean;
+    showUserInfo: boolean;
+};
+  content: {
+    padding: number;
+    maxWidth: number;
+    centered: boolean;
+};
+  footer: {
+    height: number;
+    sticky: boolean;
+    showCopyright: boolean;
+};
+}
+
+interface ResponsiveLayoutProps {
+  className?: string;
+  children: React.ReactNode;
+  onLayoutChange?: (config: LayoutConfig) => void;
+  onBreakpointChange?: (breakpoint: string) => void
+}
+
+const ResponsiveLayout: React.FC<ResponsiveLayoutProps> = ({
+  className ='',
+  children,
+  onLayoutChange,
+  onBreakpointChange
+}) => {
+  // State
+  const [layoutConfig, setLayoutConfig] = useState<LayoutConfig>({
+    sidebar: {
+      width: 20,
+      collapsed: false,
+      position: 'left'
+},
+    header: {
+      height: 64,
+      sticky: true,
+      showUserInfo: true
+},
+    content: {
+      padding: 24,
+      maxWidth: 120,
+      centered: true
+},
+    footer: {
+      height: 60,
+      sticky: true,
+      showCopyright: true
+}
+});
+  const [showSettings, setShowSettings] = useState(false);
+  const [currentBreakpoint, setCurrentBreakpoint] = useState<string>('md');
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // Theme
+  const theme = useTheme();
+  
+  // Theming system
+  const theming = useTheming('photographer');
+  const isMobile = useMediaQuery(theme.breakpoints.down(, 'md'));
+  const isTablet = useMediaQuery(theme.breakpoints.between('sm', 'md'));
+  const isDesktop = useMediaQuery(theme.breakpoints.up('lg'));
+
+  // Handlers
+  const handleLayoutConfigChange = useCallback((key: keyof LayoutConfig, value: any) => {
+    setLayoutConfig(prev => ({
+      ...prev,
+      [key]: { ...prev[key], ...value }
+  }));
+}, []);
+
+  const handleSidebarToggle = useCallback(() => {
+    setSidebarOpen(prev => !prev);
+}, []);
+
+  const getBreakpointIcon = useCallback((breakpoint: string) => {
+    switch (breakpoint) {
+      case 'xs': return <CREATOR_HUB_ICONS.phone />;
+      case 'sm': return <CREATOR_HUB_ICONS.tablet />;
+      case 'md': return <CREATOR_HUB_ICONS.computer />;
+      case 'lg': return <CREATOR_HUB_ICONS.desktop />;
+      case 'xl': return <CREATOR_HUB_ICONS.tv />;
+      default: return <CREATOR_HUB_ICONS.computer />;
+}
+}, []);
+
+  const getDeviceType = useCallback(() => {
+    if (isMobile) return 'Mobile';
+    if (isTablet) return 'Tablet';
+    if (isDesktop) return 'Desktop';
+    return 'Unknown';
+}, [isMobile, isTablet, isDesktop]);
+
+  // Breakpoint detection
+  useEffect(() => {
+    const breakpoints = ['xs','sm','md', 'lg','xl'];
+    const current = breakpoints.find(bp => {
+      const query = theme.breakpoints.up(bp as any);
+      return useMediaQuery(query);
+  }) || 'md';
+    
+    if (current !== currentBreakpoint) {
+      setCurrentBreakpoint(current);
+      onBreakpointChange?.(current);
+  }
+}, [theme.breakpoints, currentBreakpoint, onBreakpointChange]);
+
+  // Layout change notification
+  useEffect(() => {
+    onLayoutChange?.(layoutConfig);
+}, [layoutConfig, onLayoutChange]);
+
+  // Memoized styles
+  const containerStyles = useMemo(() => ({
+    display: 'flex',
+    flexDirection: 'column',
+    minHeight: '100vh',
+    backgroundColor: theme.palette.background.default
+}), [theme.palette.background.default]);
+
+  const headerStyles = useMemo(() => ({
+    height: layoutConfig.header.height,
+    position: layoutConfig.header.sticky ? 'sticky' : 'static',
+    top:  0,
+    zIndex: , theme.zIndex.appBr,
+    backgroundColor: theme.palette.background.paper,
+    borderBottom: `1px solid ${theme.palette.divider}`
+}), [layoutConfig.header, theme.palette, theme.zIndex]);
+
+  const sidebarStyles = useMemo(() => ({
+    width: layoutConfig.sidebar.collapsed ? 64 : layoutConfig.sidebar.width,
+    position: 'fixed',
+    top: layoutConfig.header.sticky ? layoutConfig.header.height : 0,
+    left: layoutConfig.sidebar.position === 'left' ? 0 : 'auto',
+    right: layoutConfig.sidebar.position === 'right' ? 0 : 'auto',
+    height: `calc(100vh - ${layoutConfig.header.sticky ? layoutConfig.header.height : 0}px)`,
+    zIndex: , theme.zIndex.drawer,
+    backgroundColor: theme.palette.background.paper,
+    borderRight: layoutConfig.sidebar.position === 'left' ? `1px solid ${theme.palette.divider}` : 'none',
+    borderLeft: layoutConfig.sidebar.position === 'right' ? `1px solid ${theme.palette.divider}` : 'none',
+    transition: 'width 0.3s ease-in-out'
+}), [layoutConfig.sidebar, layoutConfig.header, theme.palette, theme.zIndex]);
+
+  const contentStyles = useMemo(() => ({
+    flex:  1,
+    padding: layoutConfig.content.padding,
+    marginLeft: !isMobile && layoutConfig.sidebar.position === 'left' ? 
+      (layoutConfig.sidebar.collapsed ? 64 : layoutConfig.sidebar.width) : 0,
+    marginRight: !isMobile && layoutConfig.sidebar.position === 'right' ? 
+      (layoutConfig.sidebar.collapsed ? 64 : layoutConfig.sidebar.width) : 0,
+    maxWidth: layoutConfig.content.centered ? layoutConfig.content.maxWidth : 'none',
+    margin: layoutConfig.content.centered ? '0 auto' : ',',
+    transition: 'margin 0.3s ease-in-out'
+}), [layoutConfig.sidebar, layoutConfig.content, isMobile]);
+
+  const footerStyles = useMemo(() => ({
+    height: layoutConfig.footer.height,
+    position: layoutConfig.footer.sticky ? 'sticky' : 'static',
+    bottom:  0,
+    backgroundColor: theme.palette.background.paper,
+    borderTop: `1px solid ${theme.palette.divider}`,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center'
+}), [layoutConfig.footer, theme.palette]);
+
+  return (
+    <Box className={className} sx={containerStyles}>
+      {/* Header */}
+      <AppBar position="static" sx={headerStyles}>
+        <Toolbar>
+          {isMobile && (
+            <IconButton
+              edge="start"
+              color="inherit"
+              onClick={handleSidebarToggle}
+              sx={{ mr:  2 }}
+            >
+              <CREATOR_HUB_ICONS.menu />
+            </IconButton>
+          )}
+          
+          <Typography variant="h6" component="div" sx={{ flexGrow:  1, color: theming.colors.primary }}>
+            CreatorHub
+          </Typography>
+          
+          <Stack direction="row" spacing={1} alignItems="center">
+            <Chip
+              icon={getBreakpointIcon(currentBreakpoint)}
+              label={`${currentBreakpoint.toUpperCase()} - ${getDeviceType()}`}
+              size="small"
+              color="primary"
+              variant="outlined"
+            />
+            
+            <IconButton
+              color="inherit"
+              onClick={() => setShowSettings(true)}
+            >
+              <CREATOR_HUB_ICONS.settings />
+            </IconButton>
+          </Stack>
+        </Toolbar>
+      </AppBar>
+
+      {/* Sidebar */}
+      {!isMobile && (
+        <Box sx={sidebarStyles}>
+          <Box sx={{ p:  2 }}>
+            <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+              Navigation
+            </Typography>
+            <List>
+              {['Dashboard', 'Documents', 'Analytics','Settings'].map((item, index) => (
+                <ListItem key={index} disablePadding>
+                  <ListItemButton>
+                    <ListItemIcon>
+                      <CREATOR_HUB_ICONS.home />
+                    </ListItemIcon>
+                    {!layoutConfig.sidebar.collapsed && (
+                      <ListItemText primary={item} />
+                    )}
+                  </ListItemButton>
+                </ListItem>
+              ))}
+            </List>
+          </Box>
+        </Box>
+      )}
+
+      {/* Mobile Sidebar Drawer */}
+      <Drawer
+        anchor="left"
+        open={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+        sx={{
+          '& .MuiDrawer-paper': {
+            width: layoutConfig.sidebar.width,
+            top: layoutConfig.header.height
+      }
+      }}
+      >
+        <Box sx={{ p:  2 }}>
+          <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+            Navigation
+          </Typography>
+          <List>
+            {['Dashboard','Documents','Analytics', 'Settings'].map((item, index) => (
+              <ListItem key={index} disablePadding>
+                <ListItemButton onClick={() => setSidebarOpen(false)}>
+                  <ListItemIcon>
+                    <CREATOR_HUB_ICONS.home />
+                  </ListItemIcon>
+                  <ListItemText primary={item} />
+                </ListItemButton>
+              </ListItem>
+            ))}
+          </List>
+        </Box>
+      </Drawer>
+
+      {/* Main Content */}
+      <Box component="main" sx={contentStyles}>
+        {children}
+      </Box>
+
+      {/* Footer */}
+      <Box component="footer" sx={footerStyles}>
+        <Typography variant="body2" color="text.secondary">
+          {layoutConfig.footer.showCopyright &&'© 2024 CreatorHub Norge. All rights reserved.'}
+        </Typography>
+      </Box>
+
+      {/* Settings Dialog */}
+      <Dialog open={showSettings} onClose={() => setShowSettings(false)} maxWidth="md" fullWidth>
+        <DialogTitle>
+          <Stack direction="row" spacing={2} alignItems="center">
+            <CREATOR_HUB_ICONS.settings />
+            <Typography variant="h6" sx={{ color: theming.colors.primary }}>Layout Settings</Typography>
+          </Stack>
+        </DialogTitle>
+        <DialogContent>
+          <Stack spacing={3} sx={{ mt:  2 }}>
+            {/* Sidebar Settings */}
+            <Accordion>
+              <AccordionSummary expandIcon={<CREATOR_HUB_ICONS.expandMore />}>
+                <Typography variant="subtitle1">Sidebar</Typography>
+              </AccordionSummary>
+              <AccordionDetails>
+                <Stack spacing={2}>
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={layoutConfig.sidebar.collapsed}
+                        onChange={(e) => handleLayoutConfigChange('sidebar', { collapsed: e.target.checked })}
+                      />
+                  }
+                    label="Collapsed"
+                  />
+                  
+                  <Box>
+                    <Typography variant="subtitle2" gutterBottom>
+                      Width: {layoutConfig.sidebar.width}px
+                    </Typography>
+                    <Slider
+                      value={layoutConfig.sidebar.width}
+                      onChange={(_, value) => handleLayoutConfigChange('sidebar', { width: value })}
+                      min={200}
+                      max={400}
+                      step={20}
+                    />
+                  </Box>
+                  
+                  <FormControl fullWidth>
+                    <InputLabel>Position</InputLabel>
+                    <Select
+                      value={layoutConfig.sidebar.position}
+                      onChange={(e) => handleLayoutConfigChange('sidebar', { position: e.target.value })}
+                    >
+                      <MenuItem value="left">Left</MenuItem>
+                      <MenuItem value="right">Right</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Stack>
+              </AccordionDetails>
+            </Accordion>
+
+            {/* Header Settings */}
+            <Accordion>
+              <AccordionSummary expandIcon={<CREATOR_HUB_ICONS.expandMore />}>
+                <Typography variant="subtitle1">Header</Typography>
+              </AccordionSummary>
+              <AccordionDetails>
+                <Stack spacing={2}>
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={layoutConfig.header.sticky}
+                        onChange={(e) => handleLayoutConfigChange('header', { sticky: e.target.checked })}
+                      />
+                  }
+                    label="Sticky"
+                  />
+                  
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={layoutConfig.header.showUserInfo}
+                        onChange={(e) => handleLayoutConfigChange('header', { showUserInfo: e.target.checked })}
+                      />
+                  }
+                    label="Show User Info"
+                  />
+                  
+                  <Box>
+                    <Typography variant="subtitle2" gutterBottom>
+                      Height: {layoutConfig.header.height}px
+                    </Typography>
+                    <Slider
+                      value={layoutConfig.header.height}
+                      onChange={(_, value) => handleLayoutConfigChange('header', { height: value })}
+                      min={48}
+                      max={120}
+                      step={8}
+                    />
+                  </Box>
+                </Stack>
+              </AccordionDetails>
+            </Accordion>
+
+            {/* Content Settings */}
+            <Accordion>
+              <AccordionSummary expandIcon={<CREATOR_HUB_ICONS.expandMore />}>
+                <Typography variant="subtitle1">Content</Typography>
+              </AccordionSummary>
+              <AccordionDetails>
+                <Stack spacing={2}>
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={layoutConfig.content.centered}
+                        onChange={(e) => handleLayoutConfigChange('content', { centered: e.target.checked })}
+                      />
+                  }
+                    label="Centered"
+                  />
+                  
+                  <Box>
+                    <Typography variant="subtitle2" gutterBottom>
+                      Padding: {layoutConfig.content.padding}px
+                    </Typography>
+                    <Slider
+                      value={layoutConfig.content.padding}
+                      onChange={(_, value) => handleLayoutConfigChange('content', { padding: value })}
+                      min={8}
+                      max={48}
+                      step={4}
+                    />
+                  </Box>
+                  
+                  <Box>
+                    <Typography variant="subtitle2" gutterBottom>
+                      Max Width: {layoutConfig.content.maxWidth}px
+                    </Typography>
+                    <Slider
+                      value={layoutConfig.content.maxWidth}
+                      onChange={(_, value) => handleLayoutConfigChange('content', { maxWidth: value })}
+                      min={800}
+                      max={1600}
+                      step={100}
+                    />
+                  </Box>
+                </Stack>
+              </AccordionDetails>
+            </Accordion>
+
+            {/* Footer Settings */}
+            <Accordion>
+              <AccordionSummary expandIcon={<CREATOR_HUB_ICONS.expandMore />}>
+                <Typography variant="subtitle1">Footer</Typography>
+              </AccordionSummary>
+              <AccordionDetails>
+                <Stack spacing={2}>
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={layoutConfig.footer.sticky}
+                        onChange={(e) => handleLayoutConfigChange('footer', { sticky: e.target.checked })}
+                      />
+                  }
+                    label="Sticky"
+                  />
+                  
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={layoutConfig.footer.showCopyright}
+                        onChange={(e) => handleLayoutConfigChange('footer', { showCopyright: e.target.checked })}
+                      />
+                  }
+                    label="Show Copyright"
+                  />
+                  
+                  <Box>
+                    <Typography variant="subtitle2" gutterBottom>
+                      Height: {layoutConfig.footer.height}px
+                    </Typography>
+                    <Slider
+                      value={layoutConfig.footer.height}
+                      onChange={(_, value) => handleLayoutConfigChange('footer', { height: value })}
+                      min={40}
+                      max={100}
+                      step={10}
+                    />
+                  </Box>
+                </Stack>
+              </AccordionDetails>
+            </Accordion>
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowSettings(false)}>
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
+  );
+};
+
+export default ResponsiveLayout;
+

@@ -1,0 +1,193 @@
+LocalStorage/sessionStorage occurrences in client/src/components
+Scan time: 2025-11-02T13:12:14Z
+
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/creatorhubvirtualstudio/VirtualStudio.tsx
+  lines: 88, 135
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/universal/UniversalDownload.tsx.bak
+  lines: 722, 794
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/admin/CreatorhubVisualEditor.tsx.backup
+  lines: 1472
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/admin/visual-editor/ThemingAdminPanel.tsx
+  lines: 57, 493
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/creatorhubvirtualstudio/ONBOARDING_IMPLEMENTATION.md
+  lines: 222, 226, 241, 266
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/dashboard/DashboardWidgets.tsx.bak
+  lines: 292, 294, 370, 372
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/admin/ShowcaseSettingsPanel.tsx
+  lines: 357, 358, 384, 393, 427, 431, 454, 461
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/chat/UniversalChatWidget.tsx
+  lines: 734, 744, 748, 755, 759, 769, 780
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/admin/visual-editor/AIUsageAnalytics.tsx
+  lines: 109, 114, 115, 599, 605
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/notifications/NotificationSystem.tsx.bak
+  lines: 251
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/creatorhubvirtualstudio/src/hooks/useOnboardingStatus.ts
+  lines: 12, 17, 22, 27, 28, 39, 43
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/EmailDesigner/EmailDesignerComplete.tsx
+  lines: 488, 489
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/subscription/SubscriptionSelectionFlow.tsx
+  lines: 236
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/project/ProjectCreationWithMemoryCards.tsx.bak
+  lines: 1315
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/subscription/SubscriptionSelectionFlow.tsx.bak
+  lines: 237
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/admin/visual-editor/AILocalModelProvider.tsx
+  lines: 332
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/notifications/NotificationFloatingButton.tsx.bak
+  lines: 54, 55, 67, 75, 97
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/scroll-story/ScrollStoryI18n.tsx
+  lines: 204, 205
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/enhancement/PhotoEnhancementSuite.tsx.bak
+  lines: 373, 406, 427
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/creatorhubvirtualstudio/src/core/services/templates.ts
+  lines: 8, 23
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/universal/misc/FloatingActionButtons.tsx
+  lines: 153, 157
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/universal/misc/FloatingActionButtons.tsx.backup
+  lines: 81, 102, 104, 105, 124, 127, 130, 133, 236, 237, 245
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/ExportDialog.tsx
+  lines: 94, 111, 391
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/common/GdprNotice.tsx.bak
+  lines: 46, 47, 71, 72, 73, 104, 105, 106, 130, 131, 132
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/davinci-resolve/ScriptManager.tsx.bak
+  lines: 1020, 1021, 1042, 1043
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/admin/visual-editor/HOT_RELOAD_GUIDE.md
+  lines: 163, 164, 203, 210, 532
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/common/GdprNotice.tsx
+  lines: 52, 53, 65, 66, 79, 80, 81, 111, 112, 113, 136, 137, 138
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/creatorhubvirtualstudio/src/ui/onboarding/VirtualStudioOnboarding.tsx
+  lines: 164, 165, 166
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/UniversalOnboarding.tsx
+  lines: 297, 299
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/creatorhubvirtualstudio/src/core/services/templates.ts.bak
+  lines: 8, 16
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/enhancement/PhotoEnhancementSuite.tsx
+  lines: 373, 405, 425
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/admin/CreatorhubVisualEditor.tsx.before_fix
+  lines: 1173
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/notifications/NotificationCenter.tsx
+  lines: 142, 156, 158, 165, 172, 241
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/smart-router.tsx.bak
+  lines: 52, 57
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/UniversalOnboarding.tsx.bak
+  lines: 297, 299
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/admin/visual-editor/AIModelComparison.tsx
+  lines: 163
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/davinci-resolve/SimpleCameraSetup.tsx
+  lines: 85
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/InviteRequestForm.tsx
+  lines: 158
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/InviteRequestForm.tsx.bak
+  lines: 158
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/admin/visual-editor/AICodeCompletionSystem.tsx
+  lines: 18, 189, 198, 214, 216, 219, 221, 232, 588
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/notifications/NotificationCenter.tsx.bak
+  lines: 101, 140, 154, 156, 163, 170, 246
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/smart-router.tsx
+  lines: 52, 57
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/admin/DocumentationBrowser.tsx
+  lines: 337, 387, 421, 423, 426
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/creatorhubvirtualstudio/ONBOARDING.md
+  lines: 103, 109, 110, 120, 161, 178, 179, 190, 192
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/project/ProjectCreationWithMemoryCards.tsx
+  lines: 1258
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/sync/CrossPlatformSync.tsx
+  lines: 132
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/universal/hooks/useDynamicProfessions.ts.bak
+  lines: 113, 116, 121, 122
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/neural-engine/NeuralEngineAnalyzer.tsx.bak
+  lines: 104, 134
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/notifications/NotificationSystem.tsx
+  lines: 251
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/admin/DocumentationBrowser.tsx.bak
+  lines: 337, 387, 421, 423, 426
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/davinci-resolve/SimpleCameraSetup.tsx.bak
+  lines: 87
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/creatorhubvirtualstudio/src/core/services/serializer.ts.bak
+  lines: 6, 11
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/admin/visual-editor/ProfessionConfigWizard.tsx
+  lines: 667, 670, 711, 750
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/universal/UniversalShowcase.tsx
+  lines: 1448, 1456, 1663, 1666, 1672, 1678, 1758, 2133, 3159, 3160
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/admin/NorwegianDictionaryPanel.tsx.bak
+  lines: 260, 262, 265, 300, 340, 366
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/davinci-resolve/ScriptManager.tsx
+  lines: 978, 979, 1000, 1001
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/universal/hooks/useDynamicProfessions.ts
+  lines: 113, 116, 121, 122
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/admin/DatabaseManagementPanel.tsx
+  lines: 123, 124, 131, 830, 832, 835, 837, 840, 843, 854, 922, 923, 3188, 3189, 3201, 3202, 3213, 3214, 3265, 3277, 3285, 3296, 3313, 3314, 3323, 3324, 3346
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/academy/AcademySettingsPanel.tsx.bak
+  lines: 549, 551, 568, 572, 580
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/creatorhubvirtualstudio/src/core/services/serializer.ts
+  lines: 7, 13
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/neural-engine/NeuralEngineAnalyzer.tsx
+  lines: 103, 131
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/universal/UniversalShowcase.tsx.bak
+  lines: 1474, 1476, 1685, 1690, 1701, 1786, 2165, 3382, 3383
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/visual-editor/VisualEditor.tsx
+  lines: 364, 365
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/academy/AcademySettingsPanel.tsx
+  lines: 565, 567, 584, 588, 596
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/admin/visual-editor/ToastDesigner.tsx
+  lines: 257, 259, 274, 284, 294, 2291, 2307, 2326, 2330, 2356, 2374, 2385, 2412, 2413, 2494, 2504, 2516, 2532, 2654, 2655, 2664, 3632, 3633, 3637, 3667
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/photographer/PhotographerPhotoSuite.tsx
+  lines: 618
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/admin/CreatorHubNotes.tsx.backup
+  lines: 1005, 1007
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/admin/SchemaValidationPanel.tsx
+  lines: 342, 348, 353
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/creatorhubvirtualstudio/src/hooks/usePersonaJourney.ts
+  lines: 17, 18, 25, 33, 38
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/admin/NorwegianDictionaryPanel.tsx
+  lines: 260, 262, 265, 300, 340, 366
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/dashboard/DashboardWidgets.tsx
+  lines: 290, 299, 376
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/photographer/PhotographerPhotoSuite.tsx.bak
+  lines: 628
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/admin/SchemaValidationPanel.tsx.bak
+  lines: 342, 348, 353
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/universal/misc/CameraEquipmentManager.tsx
+  lines: 256, 263, 392
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/creatorhubvirtualstudio/WORKFLOW_GAP_ANALYSIS.md
+  lines: 670
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/UniversalOnboardingWithTrials.tsx.bak
+  lines: 225, 227
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/admin/visual-editor/HotReloadSystem.tsx
+  lines: 115, 117, 147, 149, 246, 251, 252, 254, 258, 264, 269, 272, 277, 282, 283, 285, 289, 295, 300, 303
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/ui/accessibility.tsx
+  lines: 126, 139, 142, 171, 183
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/admin/DatabaseManagementPanel.tsx.bak
+  lines: 123, 124, 131, 830, 832, 835, 837, 840, 843, 854, 922, 923, 3188, 3189, 3201, 3202, 3213, 3214, 3265, 3277, 3285, 3296, 3313, 3314, 3323, 3324, 3346
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/marketing/EventsManagementPlatform.tsx
+  lines: 505
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/chat/UniversalChatWidget.tsx.bak
+  lines: 727, 729, 739, 750, 753, 756, 759
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/admin/AdminFloatingActionButtons.tsx.bak
+  lines: 194, 198
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/creatorhubvirtualstudio/src/core/services/config.ts
+  lines: 1, 3, 14, 25
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/admin/AdminFloatingActionButtons.tsx
+  lines: 194, 198
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/sync/CrossPlatformSync.tsx.bak
+  lines: 132
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/creatorhubvirtualstudio/src/core/services/config.ts.bak
+  lines: 1, 3, 13, 23
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/ExportDialog.tsx.bak
+  lines: 94, 111, 391
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/EmailDesigner/README.md
+  lines: 56
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/admin/visual-editor/AIPromptTemplates.tsx
+  lines: 167, 169, 181, 184
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/admin/visual-editor/ComponentLibrary.tsx
+  lines: 96, 97, 107
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/UniversalOnboardingWithTrials.tsx
+  lines: 205, 207
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/ui/accessibility.tsx.bak
+  lines: 126, 139, 142, 171, 183
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/universal/misc/CameraEquipmentManager.tsx.bak
+  lines: 259, 261, 266, 389
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/universal/misc/FloatingActionButtons.tsx.bak
+  lines: 153, 157
+/Volumes/Pro Blade 4TB1/Cursor/Cursor/project/client/src/components/admin/ShowcaseSettingsPanel.tsx.bak
+  lines: 356, 357, 383, 392, 426, 430, 453, 461

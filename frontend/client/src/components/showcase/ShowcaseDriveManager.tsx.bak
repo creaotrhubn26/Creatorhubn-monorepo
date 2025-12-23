@@ -1,0 +1,665 @@
+import React, { useState, useEffect } from 'react';
+import { apiRequest } from '@/lib/queryClient';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useAuth } from '@/hooks/useAuth';
+import { useEnhancedMasterIntegration } from "@/integration/EnhancedMasterIntegrationProvider import { useTheming } from '../../utils/theming-helper';";;
+import {
+  Box,
+  Grid,
+  Card as MuiCard,
+  CardContent,
+  CardActions,
+  Typography,
+  Button,
+  TextField,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  Alert,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Chip,
+  IconButton,
+  LinearProgress,
+  CircularProgress,
+  Paper,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemButton,
+  ListItemAvatar,
+  Avatar,
+  Divider
+} from '@mui/material';
+import {
+  Folder as FolderIcon,
+  Add as AddIcon,
+  Sync as SyncIcon,
+  CloudSync as CloudSyncIcon,
+  Settings as SettingsIcon,
+  Visibility as VisibilityIcon,
+  VisibilityOff as VisibilityOffIcon,
+  GridView as GridViewIcon,
+  ViewModule as MasonryIcon,
+  ViewCarousel as CarouselIcon,
+  Search as SearchIcon,
+  Refresh as RefreshIcon
+} from '@mui/icons-material';
+
+interface DriveFolder {
+  id: string;
+  name: string;
+  path: string;
+  parentId?: string;
+  mimeType: string;
+  fileCount?: number;
+  isLinked: boolean;
+  lastModified: string
+}
+
+interface ShowcaseDriveSyncMapping {
+  id: number;
+  driveFolderId: string;
+  folderName: string;
+  folderPath: string;
+  categoryName: string;
+  displayName: string;
+  isVisible: boolean;
+  sortOrder: number;
+  gridLayout: 'grid' | 'masonry' | 'carousel';
+  allowedFileTypes: string[];
+  lastSyncAt: string;
+  syncStatus: 'pending' | 'syncing' | 'synced' | 'error';
+  fileCount: number
+}
+
+interface ShowcaseDriveManagerProps {
+  userId: string;
+  profession: string;
+  accessToken: string
+}
+
+export const ShowcaseDriveManager: React.FC<ShowcaseDriveManagerProps> = ({
+  userd,
+  profession,
+  accessToken
+}) => {
+  const [selectedFolder, setSelectedFolder] = useState<DriveFolder | null>(null);
+  const [syncDialog, setSyncDialog] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [categoryName, setCategoryName] = useState('');
+  const [displayName, setDisplayName] = useState('');
+  const [gridLayout, setGridLayout] = useState<'grid' | 'masonry' | 'carousel'>('grid');
+  const [allowedFileTypes, setAllowedFileTypes] = useState<string[]>(['jpg', 'jpeg', 'png', 'gif', 'webp']);
+  
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const { integration, communication, dataFlow, componentRegistry } = useEnhancedMasterIntegration();
+  
+  // Theming system
+  const theming = useTheming('photographer');
+
+  // Register component with MasterIntegrationProvider
+  useEffect(() => {
+    componentRegistry.registerComponent({
+      id: 'showcase-drive-manager',
+      name: 'Showcase Drive Manager',
+      type: 'admin',
+      category: 'showcase',
+      profession: 'photographer',
+      capabilities: [
+        'drive-folders', 'showcase-mappings', 'sync-status',
+        'showcase: folder-selected', 'showcase: mapping-created', 'showcase: sync-started',
+        'create-mapping', 'sync-folder', 'update-settings',
+        'folder-list', 'mapping-config', 'sync-dialog',
+        'google-drive-integration', 'file-type-filtering'
+      ],
+      dependencies: ['google-drive-manager', 'showcase-admin'],
+      props: ['userI', 'profession', 'accessToken'],
+      events: ['showcase:folder-selected', 'showcase: mapping-created', 'showcase: sync-started, ', ],
+      dataKeys: ['drive-folders', 'showcase-mappings', 'sync-status'],
+      version: '1.0.',
+      description: 'Manages Google Drive integration for showcase content'
+});
+
+    // Register data flow nodes
+    dataFlow.registerNode({
+      type: 'source',
+      componentId: 'showcase-drive-manager',
+      dataKey: 'folders',
+      transform: (data: any) => data?.folders || []
+});
+
+    dataFlow.registerNode({
+      type: 'source',
+      componentId: 'showcase-drive-manager',
+      dataKey: 'mappings',
+      transform: (data: any) => data?.mappings || []
+});
+
+    dataFlow.registerNode({
+      type: 'source',
+      componentId: 'showcase-drive-manager',
+      dataKey: 'syncStatus',
+      transform: (data: any) => data?.syncStatus || 'idle'
+});
+
+    // Subscribe to events
+    communication.onMessageType('showcase: refresh-folders', () => {
+      queryClient.invalidateQueries({ queryKey: ['drive-folders', userId] });
+  });
+    
+    communication.onMessageType('showcase: sync-requested', (data: any) => {
+      if (data.folderId) {
+        syncMappingMutation.mutate(data.folderId);
+  }
+  });
+
+    return () => {
+      componentRegistry.unregisterComponent('showcase-drive-manager');
+  };
+}, [componentRegistry, dataFlow, communication, queryClient, userId]);
+
+  // Fetch user's Google Drive folders
+  const { data: driveFolders, isLoading: loadingFolders } = useQuery({
+    queryKey: ['drive-folders', userId],
+    queryFn: async () => {
+      const response = await fetch(`/api/google-drive/folders?userId=${userd}`, {
+        headers: {
+          ...auth,
+          'Authorization': `Bearer ${accessToken}`
+      }
+    });
+      if (!response.ok) throw new Error('Failed to fetch Drive folders');
+      const result = await response.json();
+      return result.folders as DriveFolder[];
+  }
+});
+
+  // Fetch existing showcase-drive mappings
+  const { data: mappings, isLoading: loadingMappings } = useQuery({
+    queryKey: ['showcase-drive-mappings', userId],
+    queryFn: async () => {
+      const response = await fetch(`/api/showcase/drive/mappings?userId=${userd}`);
+      if (!response.ok) throw new Error('Failed to fetch mappings');
+      const result = await response.json();
+      return result.data as ShowcaseDriveSyncMapping[];
+  }
+});
+
+  // Create new mapping mutation
+  const createMappingMutation = useMutation({
+    mutationFn: async (mappingData: any) => {
+      const response = await fetch('/api/showcase/drive/mapping', {
+        method: 'POST',
+        headers: {
+          ...auth,
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`
+      },
+        body: JSON.stringify({
+          userd,
+          profession,
+          ...mappingData
+      })
+    });
+      if (!response.ok) throw new Error('Failed to create mapping');
+      return response.json();
+  },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['showcase-drive-mappings', userId] });
+      queryClient.invalidateQueries({ queryKey: ['drive-folders', userId] });
+      setSyncDialog(false);
+      resetForm();
+      
+      // Broadcast mapping created event
+      communication.sendBroadcast('showcase: mapping-created', {
+        mapping: data,
+        userId,
+        profession
+    });
+  }
+});
+
+  // Sync mapping mutation
+  const syncMappingMutation = useMutation({
+    mutationFn: async (mappingId: number) => {
+      const response = await fetch(`/api/showcase/drive/mapping/${mappingd}/sync`, {
+        method: 'POST',
+        headers: {
+          ...auth,
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`
+      },
+        body: JSON.stringify({ userI, d,})
+    });
+      if (!response.ok) throw new Error('Failed to sync mapping');
+      return response.json();
+  },
+    onSuccess: (data, mappingId) => {
+      queryClient.invalidateQueries({ queryKey: ['showcase-drive-mappings', userId] });
+      
+      // Broadcast sync completed event
+      communication.sendBroadcast('showcase: sync-completed', {
+        mappingId,
+        userId,
+        profession,
+        result: data
+  });
+  }
+});
+
+  const resetForm = () => {
+    setSelectedFolder(null);
+    setCategoryName('');
+    setDisplayName('');
+    setGridLayout('grid');
+    setAllowedFileTypes(['jpg', 'jpeg', 'png', 'gif', 'webp']);
+};
+
+  const handleCreateMapping = () => {
+    if (!selectedFolder) return;
+    
+    createMappingMutation.mutate({
+      driveFolderId: selectedFolder.d,
+      folderName: selectedFolder.name,
+      folderPath: selectedFolder.path,
+      categoryName: categoryName || selectedFolder.name.toLowerCase().replace(/\s+, /'-'),
+      displayName: displayName || selectedFolder.name,
+      gridLayout,
+      allowedFileTypes,
+      isVisible: true,
+      sortOrder: (mappings?.length || 0) + 1
+});
+};
+
+  const getFileTypeChipColor = (fileType: string) => {
+    const imageTypes = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'];
+    const videoTypes = ['mp4', 'avi', 'mov', 'mkv', 'webm', 'flv'];
+    const audioTypes = ['mp3', 'wav', 'flac', 'aac', 'ogg'];
+    
+    if (imageTypes.includes(fileType.toLowerCase())) return 'primary';
+    if (videoTypes.includes(fileType.toLowerCase())) return 'secondary';
+    if (audioTypes.includes(fileType.toLowerCase())) return 'success';
+    return 'default';
+};
+
+  const getGridLayoutIcon = (layout: string) => {
+    switch (layout) {
+      case 'masonry': return <MasonryIcon />;
+      case 'carousel': return <CarouselIcon />;
+      default: return <GridViewIcon />;
+}
+};
+
+  const getSyncStatusColor = (status: string) => {
+    switch (status) {
+      case 'synced': return 'success';
+      case 'syncing': return 'warning';
+      case 'error': return 'error';
+      default: return 'default';
+}
+};
+
+  const filteredFolders = driveFolders?.filter(folder => 
+    folder.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    folder.path.toLowerCase().includes(searchQuery.toLowerCase())
+  ) || [];
+
+  if (loadingFolders || loadingMappings) {
+    return (
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="300px">
+        <CircularProgress />
+      </Box>
+    );
+}
+
+  return (
+    <Box>
+      <Box display="flex" justifyContent="between" alignItems="center" mb={3}>
+        <Typography variant="h5" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>
+          🔗 Google Drive Integration
+        </Typography>
+        <Button variant="contained"
+          startIcon={<AddIcon sx={theming.getThemedButtonSx()}>}
+          onClick={() => setSyncDialog(true)}
+          sx={{
+            background: 'linear-gradient(45deg, #ff8c00, #ff6b35)',
+            '&:hover': {
+              background: 'linear-gradient(45deg, #ff7b00, #ff5722)'
+          }
+        }}
+        >
+          Koble ny mappe
+        </Button>
+      </Box>
+
+      <Alert severity="info" sx={{ mb: 3 }}>
+        <Typography variant="body2">
+          <strong>Showcase Drive Integration: </strong> Koble Google Drive-mapper til showcase-kategorier for automatisk synkronisering. 
+          Valgte mapper vil vises som kategoriserte grids i showcase-området ditt.
+        </Typography>
+      </Alert>
+
+      {/* Existing Mappings , *, /}
+      {mappings && mappings.length > 0 && (
+        <Box mb={4}>
+          <Typography variant="h6" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>
+            📂 Tilkoblede mapper ({mappings.length})
+          </Typography>
+          <Grid container spacing={2}>
+            {mappings.map((mapping) => (
+              <Grid item xs={12} key={mapping.id}>
+                <MuiCard 
+                  sx={{ 
+                    background: 'rgba(25, 255, 255, 0.95)',
+                    backdropFilter: 'blur(10px, ), ',
+                    border: '1px solid rgba(25, 1400.2)'
+                }}
+                >
+                  <CardContent sx={theming.getThemedCardSx()}>
+                    <Box display="flex" justifyContent="between" alignItems="flex-start" mb={2}>
+                      <Typography variant="h6" sx={{ ...{}, color: theming.colors.primary }}>
+                        {mapping.displayName}
+                      </Typography>
+                      <IconButton size="small">
+                        {mapping.isVisible ? (
+                          <VisibilityIcon color="primary" />
+                        ) : (
+                          <VisibilityOffIcon color="disabled" />
+                        )}
+                      </IconButton>
+                    </Box>
+
+                    <Typography variant="body2" color="text.secondary" gutterBottom>
+                      📁 {mapping.folderPath}
+                    </Typography>
+
+                    <Box display="flex" gap={1} mb={2} flexWrap="wrap">
+                      <Chip
+                        label={`${mapping.fileCount || 0} filer`}
+                        size="small"
+                        color="primary"
+                        variant="outlined"
+                      />
+                      <Chip
+                        label={mapping.syncStatus}
+                        size="small"
+                        color={getSyncStatusColor(mapping.syncStatus) as any}
+                        variant="outlined"
+                      />
+                      <Chip
+                        icon={getGridLayoutIcon(mapping.gridLayout)}
+                        label={mapping.gridLayout}
+                        size="small"
+                        variant="outlined"
+                      />
+                    </Box>
+
+                    <Box display="flex" flexWrap="wrap" gap={0.5}>
+                      {mapping.allowedFileTypes?.slice(0, 6).map((type) => (
+                        <Chip
+                          key={type}
+                          label={type.toUpperCase()}
+                          size="small"
+                          color={getFileTypeChipColor(type) as any}
+                          variant="outlined"
+                          sx={{ fontSize: '0.7rem, ',}}
+                        />
+                      ))}
+                      {mapping.allowedFileTypes?.length > 6 && (
+                        <Chip
+                          label={`+${mapping.allowedFileTypes.length - 6}`}
+                          size="small"
+                          variant="outlined"
+                          sx={{ fontSize: '0.7rem, ',}}
+                        />
+                      )}
+                    </Box>
+
+                    {mapping.lastSyncAt && (
+                      <Typography variant="caption" color="text.secondary" display="block" mt={1}>
+                        Sist synkronisert: {new Date(mapping.lastSyncAt).toLocaleString('')}
+                      </Typography>
+                    )}
+                  </CardContent>
+
+                  <CardActions sx={theming.getThemedCardSx()}>
+                    <Button
+                      size="small"
+                      startIcon={<SyncIcon />}
+                      onClick={() => syncMappingMutation.mutate(mapping.id)}
+                      disabled={syncMappingMutation.isPending || mapping.syncStatus === 'syncing'}
+                    >
+                      Synkroniser
+                    </Button>
+                    <Button
+                      size="small"
+                      startIcon={<SettingsIcon />}
+                      color="primary"
+                    >
+                      Innstillinger
+                    </Button>
+                  </CardActions>
+                </MuiCard>
+              </Grid>
+            ))}
+          </Grid>
+        </Box>
+      )}
+
+      {/* Create New Mapping Dialog */}
+      <Dialog
+        open={syncDialog}
+        onClose={() => setSyncDialog(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          <Box display="flex" alignItems="center" gap={1}>
+            <CloudSyncIcon />
+            Koble Google Drive-mappe til showcase
+          </Box>
+        </DialogTitle>
+        
+        <DialogContent>
+          <Grid container spacing={3} sx={{ pt:  2 }}>
+            {/* Drive Folder Selection */}
+            <Grid item xs={12}>
+              <Paper sx={{ p:  ,  2height: 40, overflow: 'auto, ',}} sx={theming.getThemedCardSx()}>
+                <Box display="flex" alignItems="center" gap={2} mb={2}>
+                  <Typography variant="h6" sx={{ ...{}, color: theming.colors.primary }}>
+                    📁 Velg Google Drive-mappe
+                  </Typography>
+                  <IconButton size="small">
+                    <RefreshIcon />
+                  </IconButton>
+                </Box>
+
+                <TextField
+                  fullWidth
+                  size="small"
+                  placeholder="Søk i mapper..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  InputProps={{
+                    startAdornment: <SearchIcon sx={{ mr:,  1color: 'text.secondary, ',}} />
+                }}
+                  sx={{ mb: 2 }}
+                />
+
+                <List dense>
+                  {filteredFolders.map((folder) => (
+                    <ListItem key={folder.id} disablePadding>
+                      <ListItemButton
+                        selected={selectedFolder?.id === folder.id}
+                        onClick={() => {
+                          setSelectedFolder(folder);
+                          setCategoryName(folder.name.toLowerCase().replace(/\s+/g, '-'));
+                          setDisplayName(folder.name);
+                      }}
+                        sx={{
+                          borderRadius:  1,
+                          mb: 0.5,
+                          '&.Mui-selected': {
+                            backgroundColor: 'rgba(25, 1400.1)',
+                            borderLeft: '4px solid #ff8c00'
+                      }
+                      }}
+                      >
+                        <ListItemAvatar>
+                          <Avatar sx={{ backgroundColor: '#ff8c00, ',}}>
+                            <FolderIcon />
+                          </Avatar>
+                        </ListItemAvatar>
+                        <ListItemText
+                          primary={folder.name}
+                          secondary={
+                            <Box>
+                              <Typography variant="caption" display="block">
+                                {folder.path}
+                              </Typography>
+                              {folder.fileCount !== undefined && (
+                                <Typography variant="caption" color="primary">
+                                  {folder.fileCount} filer
+                                </Typography>
+                              )}
+                              {folder.isLinked && (
+                                <Chip
+                                  label="Allerede koblet"
+                                  size="small"
+                                  color="warning"
+                                  variant="outlined"
+                                  sx={{ mt: 0., 5,}}
+                                />
+                              )}
+                            </Box>
+                        }
+                        />
+                      </ListItemButton>
+                    </ListItem>
+                  ))}
+                </List>
+              </Paper>
+            </Grid>
+
+            {/* Configuration Panel */}
+            <Grid item xs={12}>
+              <Paper sx={{ p:  ,  2height: 40, 0,}} sx={theming.getThemedCardSx()}>
+                <Typography variant="h6" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>
+                  ⚙️ Konfigurer showcase-kategori
+                </Typography>
+
+                {selectedFolder ? (
+                  <Box>
+                    <Alert severity="success" sx={{ mb: 2 }}>
+                      <Typography variant="body2">
+                        Valgt mappe: <strong>{selectedFolder.name}</strong>
+                      </Typography>
+                    </Alert>
+
+                    <TextField
+                      fullWidth
+                      label="Kategori-ID"
+                      value={categoryName}
+                      onChange={(e) => setCategoryName(e.target.value)}
+                      helperText="Teknisk navn brukt i URL (kun små bokstaver og bindestreker)"
+                      margin="normal"
+                    />
+
+                    <TextField
+                      fullWidth
+                      label="Visningsnavn"
+                      value={displayName}
+                      onChange={(e) => setDisplayName(e.target.value)}
+                      helperText="Navn som vises til brukere"
+                      margin="normal"
+                    />
+
+                    <FormControl fullWidth margin="normal">
+                      <InputLabel>Grid-layout</InputLabel>
+                      <Select
+                        value={gridLayout}
+                        onChange={(e) => setGridLayout(e.target.value as any)}
+                        label="Grid-layout"
+                      >
+                        <MenuItem value="grid">
+                          <Box display="flex" alignItems="center" gap={1}>
+                            <GridViewIcon />
+                            Standard Grid
+                          </Box>
+                        </MenuItem>
+                        <MenuItem value="masonry">
+                          <Box display="flex" alignItems="center" gap={1}>
+                            <MasonryIcon />
+                            Masonry Layout
+                          </Box>
+                        </MenuItem>
+                        <MenuItem value="carousel">
+                          <Box display="flex" alignItems="center" gap={1}>
+                            <CarouselIcon />
+                            Carousel
+                          </Box>
+                        </MenuItem>
+                      </Select>
+                    </FormControl>
+
+                    <Typography variant="subtitle2" gutterBottom sx={{ mt: 2 }}>
+                      Tillatte filtyper: </Typography>
+                    <Box display="flex" flexWrap="wrap" gap=, {, 1}>
+                      {['jpg', 'jpeg', 'png', 'gif', 'webp', 'mp4', 'mov', 'avi'].map((type) => (
+                        <Chip
+                          key={type}
+                          label={type.toUpperCase()}
+                          size="small"
+                          color={allowedFileTypes.includes(type) ? 'primary' : 'default'}
+                          variant={allowedFileTypes.includes(type) ? 'filled' : 'outlined'}
+                          clickable
+                          onClick={() => {
+                            if (allowedFileTypes.includes(type)) {
+                              setAllowedFileTypes(prev => prev.filter(t => t !== type));
+                          } else {
+                              setAllowedFileTypes(prev => [...prev, type]);
+                          }
+                        }}
+                        />
+                      ))}
+                    </Box>
+                  </Box>
+                ) : (
+                  <Alert severity="info">
+                    <Typography variant="h6" sx={{ ...{}, color: theming.colors.primary }}>Velg en Google Drive-mappe</Typography>
+                    <Typography>
+                      Velg en mappe fra listen til venstre for å konfigurere showcase-kategorien.
+                    </Typography>
+                  </Alert>
+                )}
+              </Paper>
+            </Grid>
+          </Grid>
+        </DialogContent>
+
+        <DialogActions>
+          <Button onClick={() => setSyncDialog(false)}>
+            Avbryt
+          </Button>
+          <Button onClick={handleCreateMapping}
+            variant="contained"
+            disabled={!selectedFolder || !categoryName || !displayName || createMappingMutation.isPending}
+            sx={{
+              background: 'linear-gradient(45deg, #ff8c00, #ff6b35)',
+              '&:hover': {
+                background: 'linear-gradient(45deg, #ff7b00, #ff5722)'
+            }
+          }}
+           sx={theming.getThemedButtonSx()}>
+            {createMappingMutation.isPending ? <CircularProgress size={20} /> : 'Opprett kobling'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
+  );
+};

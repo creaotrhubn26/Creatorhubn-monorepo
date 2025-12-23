@@ -1,0 +1,39 @@
+import { useTheming } from '../../utils/theming-helper';
+import React from 'react';
+import { useUniversalSession } from '../../contexts/UniversalSessionContext';
+import { useClientSession } from '../../contexts/ClientSessionContext';
+import SessionRenewalModal from './SessionRenewalModal';
+import ClientSessionModal from'./ClientSessionModal';
+
+/**
+ * Universal Session Manager that handles both professional and client sessions
+ * Automatically detects which type of session is active and shows appropriate modal
+ */
+export function UniversalSessionManager() {
+  // Professional session (authenticated users)
+  const { sessionWarning: professionalWarning, dismissWarning: dismissProfessionalWarning } = useUniversalSession();
+  
+  // Theming system
+  const theming = useTheming('photographer');
+  
+  // Client session (accessToken/PIN users)
+  const { sessionWarning: clientWarning, dismissWarning: dismissClientWarning } = useClientSession();
+
+  return (
+    <>
+      {/* Professional Session Management */}
+      <SessionRenewalModal
+        open={professionalWarning.show}
+        onClose={dismissProfessionalWarning}
+      />
+
+      {/* Client Session Management */}
+      <ClientSessionModal
+        open={clientWarning.show}
+        onClose={dismissClientWarning}
+      />
+    </>
+  );
+}
+
+export default UniversalSessionManager;

@@ -1,0 +1,693 @@
+/**
+ * Virtualization Utilities
+ * Utilities for virtualizing large lists and grids
+ */
+
+export interface VirtualizationConfig {
+  itemHeight: number;
+  itemWidth: number;
+  containerHeight: number;
+  containerWidth: number;
+  overscan: number;
+  enableHorizontal: boolean;
+  enableVertical: boolean;
+  enableDynamicSizing: boolean;
+  enableSmoothScrolling: boolean;
+  enableMomentum: boolean;
+  momentumDecay: number;
+  scrollThreshold: number;
+  renderThreshold: number;
+}
+
+export interface VirtualItem {
+  index: number;
+  start: number;
+  end: number;
+  size: number;
+  key: string;
+  visible: boolean;
+  rendered: boolean;
+  data: any;
+}
+
+export interface VirtualizationState {
+  scrollTop: number;
+  scrollLeft: number;
+  containerHeight: number;
+  containerWidth: number;
+  totalHeight: number;
+  totalWidth: number;
+  visibleItems: VirtualItem[];
+  renderedItems: VirtualItem[];
+  isScrolling: boolean;
+  scrollDirection: 'up' | 'down' | 'left' | 'right' | 'none';
+  scrollVelocity: number;
+  lastScrollTime: number;
+}
+
+export interface VirtualizationMetrics {
+  totalItems: number;
+  visibleItems: number;
+  renderedItems: number;
+  scrollPosition: number;
+  scrollVelocity: number;
+  renderTime: number;
+  memoryUsage: number;
+  performanceScore: number;
+}
+
+export interface VirtualizationResult {
+  success: boolean;
+  items: VirtualItem[];
+  state: VirtualizationState;
+  metrics: VirtualizationMetrics;
+  recommendations: Array<{
+    type: 'performance' | 'memory' | 'rendering' | 'scrolling';
+    priority: 'low' | 'medium' | 'high';
+    description: string;
+    action: string;
+    estimatedImprovement: number;
+}>;
+}
+
+class VirtualizationManager {
+  private config: VirtualizationConfig;
+  private state: VirtualizationState;
+  private items: any[] = [];
+  private itemSizes: Map<number, number> = new Map();
+  private renderQueue: VirtualItem[] = [];
+  private isRendering = false;
+  private animationFrameId: number | null = null;
+  private scrollTimeout: NodeJS.Timeout | null = null;
+  private metrics: VirtualizationMetrics;
+  private performanceHistory: number[] = [];
+
+  constructor(config: Partial<VirtualizationConfig> = {}) {
+    this.config = {
+      itemHeight: 50,
+      itemWidth: 200,
+      containerHeight: 400,
+      containerWidth: 800,
+      overscan: 5,
+      enableHorizontal: true,
+      enableVertical: true,
+      enableDynamicSizing: false,
+      enableSmoothScrolling: true,
+      enableMomentum: true,
+      momentumDecay: 0.95,
+      scrollThreshold: 10,
+      renderThreshold: 16,
+      ...config
+  };
+
+    this.state = {
+      scrollTop: 0,
+      scrollLeft: 0,
+      containerHeight: this.config.containerHeight,
+      containerWidth: this.config.containerWidth,
+      totalHeight: 0,
+      totalWidth: 0,
+      visibleItems: [],
+      renderedItems: [],
+      isScrolling: false,
+      scrollDirection: 'none',
+      scrollVelocity: 0,
+      lastScrollTime: 0
+  };
+
+    this.metrics = {
+      totalItems: 0,
+      visibleItems: 0,
+      renderedItems: 0,
+      scrollPosition: 0,
+      scrollVelocity: 0,
+      renderTime: 0,
+      memoryUsage: 0,
+      performanceScore: 0
+};
+
+    this.initializeVirtualization();
+}
+
+  /**
+   * Initialize virtualization
+   */
+  private initializeVirtualization(): void {
+    this.setupPerformanceMonitoring();
+    this.setupMemoryOptimization();
+}
+
+  /**
+   * Setup performance monitoring
+   */
+  private setupPerformanceMonitoring(): void {
+    // Monitor performance
+    setInterval(() => {
+      this.updateMetrics();
+  }, 1000);
+}
+
+  /**
+   * Setup memory optimization
+   */
+  private setupMemoryOptimization(): void {
+    // Monitor memory usage
+    setInterval(() => {
+      this.optimizeMemory();
+  }, 5000);
+}
+
+  /**
+   * Set items
+   */
+  setItems(items: any[]): void {
+    this.items = items;
+    this.metrics.totalItems = items.length;
+    this.calculateTotalSize();
+    this.updateVisibleItems();
+}
+
+  /**
+   * Calculate total size
+   */
+  private calculateTotalSize(): void {
+    let totalHeight = 0;
+    let totalWidth = 0;
+
+    for (let i = 0; i < this.items.length; i++) {
+      const itemHeight = this.getItemHeight(i);
+      const itemWidth = this.getItemWidth(i);
+      
+      totalHeight += itemHeight;
+      totalWidth += itemWidth;
+  }
+
+    this.state.totalHeight = totalHeight;
+    this.state.totalWidth = totalWidth;
+}
+
+  /**
+   * Get item height
+   */
+  private getItemHeight(index: number): number {
+    if (this.config.enableDynamicSizing && this.itemSizes.has(index)) {
+      return this.itemSizes.get(index)!;
+}
+    return this.config.itemHeight;
+}
+
+  /**
+   * Get item width
+   */
+  private getItemWidth(index: number): number {
+    if (this.config.enableDynamicSizing && this.itemSizes.has(index)) {
+      return this.itemSizes.get(index)!;
+}
+    return this.config.itemWidth;
+}
+
+  /**
+   * Set item size
+   */
+  setItemSize(index: number, size: number): void {
+    this.itemSizes.set(index, size);
+    this.calculateTotalSize();
+    this.updateVisibleItems();
+}
+
+  /**
+   * Update visible items
+   */
+  private updateVisibleItems(): void {
+    const startTime = performance.now();
+    
+    const visibleItems: VirtualItem[] = [];
+    const renderedItems: VirtualItem[] = [];
+    
+    let currentTop = 0;
+    let currentLeft = 0;
+    
+    for (let i = 0; i < this.items.length; i++) {
+      const itemHeight = this.getItemHeight(i);
+      const itemWidth = this.getItemWidth(i);
+      
+      const item: VirtualItem = {
+        index: i,
+        start: this.config.enableVertical ? currentTop : currentLeft,
+        end: this.config.enableVertical ? currentTop + itemHeight : currentLeft + itemWidth,
+        size: this.config.enableVertical ? itemHeight : itemWidth,
+        key: `item-${i}`,
+        visible: false,
+        rendered: false,
+        data: this.items[i]
+};
+      
+      // Check if item is visible
+      if (this.isItemVisible(item)) {
+        item.visible = true;
+        visibleItems.push(item);
+        
+        // Check if item should be rendered
+        if (this.shouldRenderItem(item)) {
+          item.rendered = true;
+          renderedItems.push(item);
+      }
+    }
+      
+      if (this.config.enableVertical) {
+        currentTop += itemHeight;
+    } else {
+        currentLeft += itemWidth;
+    }
+  }
+    
+    this.state.visibleItems = visibleItems;
+    this.state.renderedItems = renderedItems;
+    
+    const endTime = performance.now();
+    this.metrics.renderTime = endTime - startTime;
+}
+
+  /**
+   * Check if item is visible
+   */
+  private isItemVisible(item: VirtualItem): boolean {
+    if (this.config.enableVertical) {
+      const itemTop = item.start;
+      const itemBottom = item.end;
+      const viewTop = this.state.scrollTop;
+      const viewBottom = this.state.scrollTop + this.state.containerHeight;
+      
+      return itemBottom > viewTop && itemTop < viewBottom;
+} else {
+      const itemLeft = item.start;
+      const itemRight = item.end;
+      const viewLeft = this.state.scrollLeft;
+      const viewRight = this.state.scrollLeft + this.state.containerWidth;
+      
+      return itemRight > viewLeft && itemLeft < viewRight;
+  }
+}
+
+  /**
+   * Check if item should be rendered
+   */
+  private shouldRenderItem(item: VirtualItem): boolean {
+    if (this.config.enableVertical) {
+      const itemTop = item.start;
+      const itemBottom = item.end;
+      const viewTop = this.state.scrollTop - (this.config.overscan * this.config.itemHeight);
+      const viewBottom = this.state.scrollTop + this.state.containerHeight + (this.config.overscan * this.config.itemHeight);
+      
+      return itemBottom > viewTop && itemTop < viewBottom;
+} else {
+      const itemLeft = item.start;
+      const itemRight = item.end;
+      const viewLeft = this.state.scrollLeft - (this.config.overscan * this.config.itemWidth);
+      const viewRight = this.state.scrollLeft + this.state.containerWidth + (this.config.overscan * this.config.itemWidth);
+      
+      return itemRight > viewLeft && itemLeft < viewRight;
+  }
+}
+
+  /**
+   * Handle scroll
+   */
+  handleScroll(scrollTop: number, scrollLeft: number = 0): void {
+    const now = Date.now();
+    const deltaTime = now - this.state.lastScrollTime;
+    
+    // Calculate scroll velocity
+    if (deltaTime > 0) {
+      const deltaTop = scrollTop - this.state.scrollTop;
+      const deltaLeft = scrollLeft - this.state.scrollLeft;
+      const velocity = Math.sqrt(deltaTop * deltaTop + deltaLeft * deltaLeft) / deltaTime;
+      
+      this.state.scrollVelocity = velocity;
+      this.state.scrollDirection = this.getScrollDirection(deltaTop, deltaLeft);
+  }
+    
+    this.state.scrollTop = scrollTop;
+    this.state.scrollLeft = scrollLeft;
+    this.state.lastScrollTime = now;
+    this.state.isScrolling = true;
+    
+    // Update visible items
+    this.updateVisibleItems();
+    
+    // Clear scroll timeout
+    if (this.scrollTimeout) {
+      clearTimeout(this.scrollTimeout);
+  }
+    
+    // Set scroll timeout
+    this.scrollTimeout = setTimeout(() => {
+      this.state.isScrolling = false;
+      this.state.scrollVelocity = 0;
+  }, 150);
+    
+    // Handle momentum scrolling
+    if (this.config.enableMomentum && this.state.scrollVelocity > this.config.scrollThreshold) {
+      this.handleMomentumScrolling();
+  }
+}
+
+  /**
+   * Get scroll direction
+   */
+  private getScrollDirection(deltaTop: number, deltaLeft: number): 'up' | 'down' | 'left' | 'right' | 'none' {
+    if (Math.abs(deltaTop) > Math.abs(deltaLeft)) {
+      return deltaTop > 0 ? 'down' : 'up';
+} else if (Math.abs(deltaLeft) > 0) {
+      return deltaLeft > 0 ? 'right' : 'left';
+  }
+    return 'none';
+}
+
+  /**
+   * Handle momentum scrolling
+   */
+  private handleMomentumScrolling(): void {
+    if (this.animationFrameId) {
+      cancelAnimationFrame(this.animationFrameId);
+  }
+    
+    const animate = () => {
+      if (this.state.scrollVelocity < 0.1) {
+        this.state.scrollVelocity = 0;
+        return;
+    }
+      
+      // Apply momentum
+      this.state.scrollVelocity *= this.config.momentumDecay;
+      
+      // Update scroll position
+      const deltaTop = this.state.scrollVelocity * 16; // 60fps
+      const deltaLeft = this.state.scrollVelocity * 16;
+      
+      this.state.scrollTop += deltaTop;
+      this.state.scrollLeft += deltaLeft;
+      
+      // Clamp scroll position
+      this.state.scrollTop = Math.max(0, Math.min(this.state.scrollTop, this.state.totalHeight - this.state.containerHeight));
+      this.state.scrollLeft = Math.max(0, Math.min(this.state.scrollLeft, this.state.totalWidth - this.state.containerWidth));
+      
+      // Update visible items
+      this.updateVisibleItems();
+      
+      // Continue animation
+      this.animationFrameId = requestAnimationFrame(animate);
+  };
+    
+    this.animationFrameId = requestAnimationFrame(animate);
+}
+
+  /**
+   * Get visible items
+   */
+  getVisibleItems(): VirtualItem[] {
+    return this.state.visibleItems;
+}
+
+  /**
+   * Get rendered items
+   */
+  getRenderedItems(): VirtualItem[] {
+    return this.state.renderedItems;
+}
+
+  /**
+   * Get item at position
+   */
+  getItemAtPosition(x: number, y: number): VirtualItem | null {
+    for (const item of this.state.visibleItems) {
+      if (this.config.enableVertical) {
+        if (y >= item.start && y <= item.end) {
+          return item;
+}
+    } else {
+        if (x >= item.start && x <= item.end) {
+          return item;
+      }
+    }
+  }
+    return null;
+}
+
+  /**
+   * Scroll to item
+   */
+  scrollToItem(index: number, align: 'start' | 'center' | 'end' = 'start'): void {
+    if (index < 0 || index >= this.items.length) return;
+    
+    let scrollTop = 0;
+    let scrollLeft = 0;
+    
+    // Calculate scroll position
+    for (let i = 0; i < index; i++) {
+      if (this.config.enableVertical) {
+        scrollTop += this.getItemHeight(i);
+} else {
+        scrollLeft += this.getItemWidth(i);
+    }
+  }
+    
+    // Apply alignment
+    if (this.config.enableVertical) {
+      const itemHeight = this.getItemHeight(index);
+      switch (align) {
+        case 'center':
+          scrollTop -= (this.state.containerHeight - itemHeight) / 2;
+          break;
+        case 'end':
+          scrollTop -= this.state.containerHeight - itemHeight;
+          break;
+    }
+  } else {
+      const itemWidth = this.getItemWidth(index);
+      switch (align) {
+        case 'center':
+          scrollLeft -= (this.state.containerWidth - itemWidth) / 2;
+          break;
+        case 'end':
+          scrollLeft -= this.state.containerWidth - itemWidth;
+          break;
+    }
+  }
+    
+    // Clamp scroll position
+    scrollTop = Math.max(0, Math.min(scrollTop, this.state.totalHeight - this.state.containerHeight));
+    scrollLeft = Math.max(0, Math.min(scrollLeft, this.state.totalWidth - this.state.containerWidth));
+    
+    // Update scroll position
+    this.handleScroll(scrollTop, scrollLeft);
+}
+
+  /**
+   * Update metrics
+   */
+  private updateMetrics(): void {
+    this.metrics.visibleItems = this.state.visibleItems.length;
+    this.metrics.renderedItems = this.state.renderedItems.length;
+    this.metrics.scrollPosition = this.state.scrollTop;
+    this.metrics.scrollVelocity = this.state.scrollVelocity;
+    this.metrics.memoryUsage = this.getMemoryUsage();
+    this.metrics.performanceScore = this.calculatePerformanceScore();
+    
+    this.performanceHistory.push(this.metrics.renderTime);
+    
+    if (this.performanceHistory.length > 100) {
+      this.performanceHistory = this.performanceHistory.slice(-100);
+  }
+}
+
+  /**
+   * Calculate performance score
+   */
+  private calculatePerformanceScore(): number {
+    const avgRenderTime = this.performanceHistory.reduce((a, b) => a + b, 0) / this.performanceHistory.length;
+    const maxRenderTime = Math.max(...this.performanceHistory);
+    
+    // Score based on render time (lower is better)
+    let score = 100;
+    if (avgRenderTime > 16) score -= 20; // 60fps threshold
+    if (avgRenderTime > 33) score -= 30; // 30fps threshold
+    if (avgRenderTime > 50) score -= 40; // 20fps threshold
+    
+    // Score based on memory usage
+    if (this.metrics.memoryUsage > 100) score -= 10;
+    if (this.metrics.memoryUsage > 200) score -= 20;
+    
+    return Math.max(0, Math.min(100, score));
+}
+
+  /**
+   * Get memory usage
+   */
+  private getMemoryUsage(): number {
+    // Type cast for Chrome-specific performance.memory API
+    if ((performance as any).memory) {
+      return (performance as any).memory.usedJSHeapSize / 1024 / 1024;
+  }
+    return 0;
+}
+
+  /**
+   * Optimize memory
+   */
+  private optimizeMemory(): void {
+    // Clear old render queue
+    this.renderQueue = [];
+    
+    // Clear old item sizes if not needed
+    if (!this.config.enableDynamicSizing) {
+      this.itemSizes.clear();
+  }
+}
+
+  /**
+   * Get optimization recommendations
+   */
+  getOptimizationRecommendations(): VirtualizationResult {
+    const recommendations: Array<any> = [];
+    
+    // Performance recommendations
+    if (this.metrics.renderTime > 16) {
+      recommendations.push({
+        type: 'performance',
+        priority: 'high',
+        description: 'High render time detected',
+        action: 'Reduce overscan or enable dynamic sizing',
+        estimatedImprovement: 20
+});
+  }
+    
+    // Memory recommendations
+    if (this.metrics.memoryUsage > 100) {
+      recommendations.push({
+        type: 'memory',
+        priority: 'medium',
+        description: 'High memory usage',
+        action: 'Reduce overscan or enable dynamic sizing',
+        estimatedImprovement: 15
+});
+  }
+    
+    // Rendering recommendations
+    if (this.metrics.renderedItems > 100) {
+      recommendations.push({
+        type: 'rendering',
+        priority: 'medium',
+        description: 'Too many rendered items',
+        action: 'Reduce overscan or enable viewport culling',
+        estimatedImprovement: 25
+});
+  }
+    
+    return {
+      success: recommendations.length > 0,
+      items: this.state.renderedItems,
+      state: this.state,
+      metrics: this.metrics,
+      recommendations
+  };
+}
+
+  /**
+   * Get current state
+   */
+  getState(): VirtualizationState {
+    return { ...this.state };
+}
+
+  /**
+   * Get current metrics
+   */
+  getMetrics(): VirtualizationMetrics {
+    return { ...this.metrics };
+}
+
+  /**
+   * Update configuration
+   */
+  updateConfig(newConfig: Partial<VirtualizationConfig>): void {
+    this.config = { ...this.config, ...newConfig };
+    this.calculateTotalSize();
+    this.updateVisibleItems();
+}
+
+  /**
+   * Get configuration
+   */
+  getConfig(): VirtualizationConfig {
+    return { ...this.config };
+}
+
+  /**
+   * Cleanup
+   */
+  destroy(): void {
+    if (this.animationFrameId) {
+      cancelAnimationFrame(this.animationFrameId);
+  }
+    
+    if (this.scrollTimeout) {
+      clearTimeout(this.scrollTimeout);
+  }
+    
+    this.items = [];
+    this.itemSizes.clear();
+    this.renderQueue = [];
+    this.performanceHistory = [];
+}
+}
+
+// Create singleton instance
+export const virtualizationManager = new VirtualizationManager();
+
+// Utility functions
+export const setItems = (items: any[]) => {
+  virtualizationManager.setItems(items)};
+
+export const handleScroll = (scrollTop: number, scrollLeft: number = 0) => {
+  virtualizationManager.handleScroll(scrollTop, scrollLeft);
+};
+
+export const getVisibleItems = () => {
+  return virtualizationManager.getVisibleItems();
+};
+
+export const getRenderedItems = () => {
+  return virtualizationManager.getRenderedItems();
+};
+
+export const scrollToItem = (index: number, align: 'start' | 'center' | 'end' = 'start') => {
+  virtualizationManager.scrollToItem(index, align);
+};
+
+export const getOptimizationRecommendations = () => {
+  return virtualizationManager.getOptimizationRecommendations();
+};
+
+export default virtualizationManager;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

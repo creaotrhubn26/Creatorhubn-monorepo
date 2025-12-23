@@ -1,0 +1,1045 @@
+<!doctype html>
+<html lang="no">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CreatorHub Virtual Studio - Customer Journey Builder</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family:
+          'Inter',
+          -apple-system,
+          system-ui,
+          sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        padding: 20px;
+      }
+
+      /* SVG Icons */
+      .svg-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .svg-icon svg {
+        width: 100%;
+        height: 100%;
+      }
+
+      .container {
+        max-width: 1200px;
+        margin: 0 auto;
+      }
+
+      .header {
+        text-align: center;
+        color: white;
+        margin-bottom: 40px;
+      }
+
+      .header h1 {
+        font-size: 2.5rem;
+        font-weight: 700;
+        margin-bottom: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 15px;
+      }
+
+      .header p {
+        font-size: 1.1rem;
+        opacity: 0.9;
+        margin-top: 10px;
+      }
+
+      .stats-bar {
+        display: flex;
+        gap: 20px;
+        justify-content: center;
+        margin-top: 20px;
+      }
+
+      .stat-badge {
+        background: rgba(255, 255, 255, 0.2);
+        backdrop-filter: blur(10px);
+        padding: 10px 20px;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: white;
+      }
+
+      .stat-badge .svg-icon {
+        width: 20px;
+        height: 20px;
+        color: #10b981;
+      }
+
+      /* Persona Selector */
+      .persona-selector {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+        margin-bottom: 30px;
+      }
+
+      .persona-card {
+        background: white;
+        border-radius: 12px;
+        padding: 30px;
+        cursor: pointer;
+        transition: all 0.3s;
+        border: 3px solid transparent;
+      }
+
+      .persona-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+      }
+
+      .persona-card.active {
+        border-color: #6366f1;
+        background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+        color: white;
+      }
+
+      .persona-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: start;
+        margin-bottom: 20px;
+      }
+
+      .persona-title h3 {
+        font-size: 1.5rem;
+        margin-bottom: 5px;
+      }
+
+      .persona-title p {
+        font-size: 0.875rem;
+        opacity: 0.8;
+      }
+
+      .video-count {
+        background: rgba(16, 185, 129, 0.2);
+        border: 1px solid rgba(16, 185, 129, 0.4);
+        padding: 6px 12px;
+        border-radius: 20px;
+        font-size: 0.875rem;
+        color: #10b981;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        white-space: nowrap;
+      }
+
+      .persona-card.active .video-count {
+        background: rgba(255, 255, 255, 0.2);
+        border-color: rgba(255, 255, 255, 0.4);
+        color: white;
+      }
+
+      .video-count .svg-icon {
+        width: 16px;
+        height: 16px;
+      }
+
+      .persona-stats {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 15px;
+        margin-top: 15px;
+      }
+
+      .stat-item {
+        text-align: center;
+        padding: 10px;
+        background: rgba(0, 0, 0, 0.05);
+        border-radius: 8px;
+      }
+
+      .persona-card.active .stat-item {
+        background: rgba(255, 255, 255, 0.15);
+      }
+
+      .stat-value {
+        font-size: 1.25rem;
+        font-weight: 700;
+        margin-bottom: 5px;
+      }
+
+      .stat-label {
+        font-size: 0.75rem;
+        opacity: 0.8;
+      }
+
+      /* Journey Grid */
+      .journey-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+        gap: 20px;
+      }
+
+      .stage-card {
+        background: white;
+        border-radius: 12px;
+        padding: 25px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        transition: all 0.3s;
+      }
+
+      .stage-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+      }
+
+      .stage-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: start;
+        margin-bottom: 20px;
+      }
+
+      .stage-number {
+        width: 40px;
+        height: 40px;
+        background: linear-gradient(135deg, #6366f1, #8b5cf6);
+        color: white;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+        font-size: 1.125rem;
+      }
+
+      .video-status {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 0.875rem;
+        padding: 6px 12px;
+        border-radius: 20px;
+      }
+
+      .video-status.ready {
+        background: rgba(16, 185, 129, 0.1);
+        color: #10b981;
+      }
+
+      .video-status .svg-icon {
+        width: 16px;
+        height: 16px;
+      }
+
+      .stage-card h3 {
+        font-size: 1.25rem;
+        margin: 15px 0;
+        color: #1f2937;
+      }
+
+      .stage-section {
+        margin: 15px 0;
+      }
+
+      .stage-section h4 {
+        font-size: 0.875rem;
+        text-transform: uppercase;
+        color: #6b7280;
+        margin-bottom: 8px;
+        font-weight: 600;
+      }
+
+      .stage-section p {
+        color: #374151;
+        line-height: 1.6;
+        font-size: 0.9375rem;
+      }
+
+      .features-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 10px;
+      }
+
+      .feature-tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 12px;
+        background: rgba(99, 102, 241, 0.1);
+        color: #6366f1;
+        border-radius: 20px;
+        font-size: 0.875rem;
+      }
+
+      .feature-tag .svg-icon {
+        width: 14px;
+        height: 14px;
+      }
+
+      .btn-watch-video {
+        width: 100%;
+        margin-top: 20px;
+        padding: 12px 20px;
+        background: linear-gradient(135deg, #10b981 0%, #06b6d4 100%);
+        color: white;
+        border: none;
+        border-radius: 8px;
+        font-size: 1rem;
+        font-weight: 600;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        transition: all 0.3s;
+      }
+
+      .btn-watch-video:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 20px rgba(16, 185, 129, 0.4);
+      }
+
+      .btn-watch-video .svg-icon {
+        width: 20px;
+        height: 20px;
+      }
+
+      /* Video Modal */
+      .modal {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.8);
+        z-index: 1000;
+        padding: 20px;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .modal.active {
+        display: flex;
+      }
+
+      .modal-content {
+        background: white;
+        border-radius: 12px;
+        padding: 30px;
+        max-width: 900px;
+        width: 100%;
+        max-height: 90vh;
+        overflow-y: auto;
+      }
+
+      .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+      }
+
+      .modal-header h3 {
+        font-size: 1.5rem;
+        color: #1f2937;
+      }
+
+      .btn-close {
+        background: none;
+        border: none;
+        font-size: 1.5rem;
+        cursor: pointer;
+        color: #6b7280;
+        padding: 5px 10px;
+      }
+
+      .btn-close:hover {
+        color: #1f2937;
+      }
+
+      .video-player {
+        width: 100%;
+        aspect-ratio: 16/9;
+        background: linear-gradient(135deg, #1f2937 0%, #111827 100%);
+        border-radius: 8px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        margin-bottom: 20px;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .play-button {
+        width: 80px;
+        height: 80px;
+        background: rgba(255, 255, 255, 0.2);
+        backdrop-filter: blur(10px);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: all 0.3s;
+        margin: 20px 0;
+      }
+
+      .play-button:hover {
+        background: rgba(255, 255, 255, 0.3);
+        transform: scale(1.1);
+      }
+
+      .play-button .svg-icon {
+        width: 40px;
+        height: 40px;
+        color: white;
+      }
+
+      .video-info {
+        background: #f9fafb;
+        padding: 20px;
+        border-radius: 8px;
+      }
+
+      .video-meta {
+        display: flex;
+        gap: 20px;
+        margin-bottom: 15px;
+        flex-wrap: wrap;
+      }
+
+      .meta-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: #6b7280;
+        font-size: 0.875rem;
+      }
+
+      .meta-item .svg-icon {
+        width: 16px;
+        height: 16px;
+        color: #6366f1;
+      }
+
+      .video-description {
+        color: #374151;
+        line-height: 1.6;
+        font-size: 0.9375rem;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <!-- Header -->
+      <div class="header">
+        <h1>
+          <svg
+            width="50"
+            height="50"
+            viewBox="0 0 60 60"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <rect width="60" height="60" rx="12" fill="url(#bgGradient)" />
+            <g transform="translate(15, 15)">
+              <path d="M15 10 L25 5 L35 10 L25 15 Z" fill="#FAFAFA" opacity="0.9" />
+              <path d="M25 5 L35 10 L35 20 L25 15 Z" fill="#FAFAFA" opacity="0.7" />
+              <path d="M15 10 L25 15 L25 25 L15 20 Z" fill="#FAFAFA" opacity="0.5" />
+              <circle cx="25" cy="15" r="4" fill="#06B6D4" opacity="0.8" />
+              <circle cx="25" cy="15" r="2" fill="#FAFAFA" />
+            </g>
+            <defs>
+              <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" style="stop-color: #6366f1; stop-opacity: 1" />
+                <stop offset="100%" style="stop-color: #8b5cf6; stop-opacity: 1" />
+              </linearGradient>
+            </defs>
+          </svg>
+          CreatorHub Virtual Studio
+        </h1>
+        <p>AI-drevet Customer Journey med Automatisk Videogenerering</p>
+        <div class="stats-bar">
+          <div class="stat-badge">
+            <div class="svg-icon">
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <circle cx="12" cy="12" r="10" fill="currentColor" opacity="0.3" />
+                <path
+                  d="M9 12 L11 14 L15 10"
+                  stroke="white"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+            </div>
+            <span id="totalVideos">0 Videoer Generert</span>
+          </div>
+          <div class="stat-badge">
+            <div class="svg-icon">
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path
+                  d="M18 10 C18 10 18 8 16 6 C14 4 12 4 10 6 C8 8 8 10 8 10 C6 10 4 12 4 14 C4 16 6 18 8 18 L18 18 C20 18 22 16 22 14 C22 12 20 10 18 10 Z"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linejoin="round"
+                />
+              </svg>
+            </div>
+            <span>Lagret til Google Drive</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Persona Selector -->
+      <div class="persona-selector">
+        <div class="persona-card active" data-persona="0" onclick="selectPersona(0)">
+          <div class="persona-header">
+            <div class="persona-title">
+              <h3>📸 Ingrid Solberg</h3>
+              <p>Profesjonell Fotograf</p>
+            </div>
+            <div class="video-count">
+              <div class="svg-icon">
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <rect
+                    x="4"
+                    y="8"
+                    width="16"
+                    height="12"
+                    rx="2"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  />
+                  <circle cx="12" cy="14" r="3" stroke="currentColor" stroke-width="2" />
+                </svg>
+              </div>
+              5 Videoer
+            </div>
+          </div>
+          <div class="persona-stats">
+            <div class="stat-item">
+              <div class="stat-value">90+</div>
+              <div class="stat-label">Timer spart/mnd</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-value">13.5K</div>
+              <div class="stat-label">NOK/mnd</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-value">162K</div>
+              <div class="stat-label">NOK/år ROI</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="persona-card" data-persona="1" onclick="selectPersona(1)">
+          <div class="persona-header">
+            <div class="persona-title">
+              <h3>🎬 Lars Andersen</h3>
+              <p>Kommersiell Videograf</p>
+            </div>
+            <div class="video-count">
+              <div class="svg-icon">
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <rect
+                    x="2"
+                    y="6"
+                    width="20"
+                    height="12"
+                    rx="2"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  />
+                  <circle cx="8" cy="14" r="2" fill="currentColor" />
+                  <circle cx="16" cy="14" r="2" fill="currentColor" />
+                </svg>
+              </div>
+              6 Videoer
+            </div>
+          </div>
+          <div class="persona-stats">
+            <div class="stat-item">
+              <div class="stat-value">110+</div>
+              <div class="stat-label">Timer spart/mnd</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-value">27.5K</div>
+              <div class="stat-label">NOK/mnd</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-value">330K</div>
+              <div class="stat-label">NOK/år ROI</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Journey Stages -->
+      <div class="journey-grid" id="journeyGrid"></div>
+
+      <!-- Video Modal -->
+      <div class="modal" id="videoModal">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h3 id="modalTitle">AI-Generert Video</h3>
+            <button class="btn-close" onclick="closeModal()">×</button>
+          </div>
+          <div class="video-player" id="videoPlayer">
+            <h4 id="videoStageTitle" style="font-size: 1.5rem; margin-bottom: 10px"></h4>
+            <p id="videoPersonaName" style="opacity: 0.8; margin-bottom: 20px"></p>
+            <div class="play-button" onclick="playVideo()">
+              <div class="svg-icon">
+                <svg
+                  width="40"
+                  height="40"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path d="M8 5 L8 19 L19 12 Z" fill="currentColor" />
+                </svg>
+              </div>
+            </div>
+            <p id="videoDuration" style="font-size: 0.875rem; opacity: 0.7"></p>
+          </div>
+          <div class="video-info">
+            <div class="video-meta">
+              <div class="meta-item">
+                <div class="svg-icon">
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" />
+                    <path
+                      d="M12 6 L12 12 L16 14"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                    />
+                  </svg>
+                </div>
+                <span id="videoTimestamp">Generert automatisk</span>
+              </div>
+              <div class="meta-item">
+                <div class="svg-icon">
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <path
+                      d="M18 10 C18 10 18 8 16 6 C14 4 12 4 10 6 C8 8 8 10 8 10 C6 10 4 12 4 14 C4 16 6 18 8 18 L18 18 C20 18 22 16 22 14 C22 12 20 10 18 10 Z"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linejoin="round"
+                    />
+                  </svg>
+                </div>
+                <span id="videoLocation">Google Drive/CreatorHub/Virtual_Studio/Videos/</span>
+              </div>
+              <div class="meta-item">
+                <div class="svg-icon">
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <rect
+                      x="4"
+                      y="4"
+                      width="16"
+                      height="16"
+                      rx="2"
+                      stroke="currentColor"
+                      stroke-width="2"
+                    />
+                    <path
+                      d="M8 2 L8 6"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                    />
+                    <path
+                      d="M16 2 L16 6"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                    />
+                  </svg>
+                </div>
+                <span id="videoSize">45.2 MB</span>
+              </div>
+            </div>
+            <div class="video-description" id="videoDescription"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // SVG Icons
+      const icons = {
+        camera: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="4" y="8" width="16" height="12" rx="2" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="14" r="3" stroke="currentColor" stroke-width="2"/></svg>`,
+        timeline: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="6" width="20" height="12" rx="2" stroke="currentColor" stroke-width="2"/><circle cx="8" cy="14" r="2" fill="currentColor"/><circle cx="16" cy="14" r="2" fill="currentColor"/></svg>`,
+        render3d: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2 L22 8 L22 16 L12 22 L2 16 L2 8 Z" stroke="currentColor" stroke-width="2"/><path d="M12 2 L12 22" stroke="currentColor" stroke-width="2"/><path d="M2 8 L12 14 L22 8" stroke="currentColor" stroke-width="2"/></svg>`,
+        check: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="10" fill="currentColor" opacity="0.2"/><path d="M9 12 L11 14 L15 10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+        play: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M8 5 L8 19 L19 12 Z" fill="currentColor"/></svg>`,
+      };
+
+      // Personas Data
+      const personas = [
+        {
+          name: 'Ingrid Solberg',
+          role: 'Profesjonell Fotograf',
+          journey: [
+            {
+              title: 'Pre-Production Planning',
+              problem:
+                'Bruker 5-7 timer på å planlegge hvert fotoprosjekt manuelt, inkludert location scouting og lighting setup',
+              solution:
+                'Virtual Studio lar deg visualisere hele photoshoot i 3D før du drar ut. Test forskjellige lokasjoner, lys-setups og komposisjoner digitalt.',
+              features: [
+                '3D Scene Preview',
+                'Light Simulation',
+                'Camera Path Planning',
+                'Client Presentation Mode',
+              ],
+            },
+            {
+              title: 'Scene Composition',
+              problem:
+                'Vanskelig å visualisere endelig komposisjon og kommunisere visjonen til kunder før shoot-dagen',
+              solution:
+                'Bygg komplette 3D-scenes med realistisk lighting og presenter dem til kunder for godkjenning før shooting.',
+              features: [
+                'Drag-and-Drop 3D Assets',
+                'Real-time Rendering',
+                'Client Collaboration Tools',
+                'Mood Board Integration',
+              ],
+            },
+            {
+              title: 'Lighting Design',
+              problem:
+                'Må eksperimentere med fysisk utstyr på location, som tar tid og koster penger hvis det ikke fungerer',
+              solution:
+                'Test unlimited lighting setups virtuelt med physically accurate light simulation. Spar timer og penger.',
+              features: [
+                'IES Light Profiles',
+                'HDRI Environments',
+                'Shadow Analysis',
+                'Light Equipment Library',
+              ],
+            },
+            {
+              title: 'Client Presentation',
+              problem:
+                'Kunder forstår ofte ikke fotografens visjon før de ser ferdige bilder, som fører til revisions',
+              solution:
+                'Vis kunder photorealistic 3D previews som ser nesten identiske ut til endelig resultat.',
+              features: [
+                'Interactive 3D Viewer',
+                'Before/After Comparisons',
+                'Animation Previews',
+                'Export to PDF/Video',
+              ],
+            },
+            {
+              title: 'Post-Production Efficiency',
+              problem:
+                'Mye tid brukes på å fikse komposisjons- og lighting-problemer i post som kunne vært unngått',
+              solution:
+                'Med perfekt planlegging i Virtual Studio, reduser post-production tid med 60% eller mer.',
+              features: [
+                'LUT Preview',
+                'Color Grading Simulation',
+                'Export Metadata',
+                'Batch Processing',
+              ],
+            },
+          ],
+        },
+        {
+          name: 'Lars Andersen',
+          role: 'Kommersiell Videograf',
+          journey: [
+            {
+              title: 'Pre-Visualization',
+              problem:
+                'Bruker flere dager på å lage storyboards og shot lists manuelt for hver commercial',
+              solution:
+                'Create animated previews av hele videoen i Virtual Studio. Se eksakt hvordan hver shot vil se ut.',
+              features: [
+                'Storyboard Generator',
+                'Shot List Automation',
+                'Camera Movement Preview',
+                'Timing Analysis',
+              ],
+            },
+            {
+              title: 'Shot List Creation',
+              problem:
+                'Komplekse shots krever detaljerte planer som er tidkrevende å dokumentere og kommunisere',
+              solution:
+                'Automatisk generer shot lists med precise camera angles, movements og timing fra 3D scenes.',
+              features: [
+                'Auto Shot Documentation',
+                'Camera Metadata Export',
+                'Crew Communication Tools',
+                'Equipment Lists',
+              ],
+            },
+            {
+              title: 'Camera Movement Planning',
+              problem:
+                'Vanskelig å planlegge komplekse camera movements som dolly, crane og gimbal shots',
+              solution:
+                'Animate camera paths i 3D og se exact preview av movement før du leier dyrt utstyr.',
+              features: [
+                'Motion Path Editor',
+                'Camera Rig Simulation',
+                'Gimbal Movement',
+                'Timing Control',
+              ],
+            },
+            {
+              title: 'Multi-Angle Setup',
+              problem:
+                'Filming med multiple cameras krever nøye koordinering som ofte går galt på set',
+              solution:
+                'Planlegg alle camera angles samtidig i 3D. Se hvordan de spiller sammen før shoot dag.',
+              features: [
+                'Multi-Cam Layout',
+                'Coverage Analysis',
+                'Angle Optimization',
+                'Crew Position Planning',
+              ],
+            },
+            {
+              title: 'Color Grading Preview',
+              problem:
+                'Farger ser ofte annerledes ut enn forventet, som krever extensive color correction',
+              solution:
+                'Apply LUTs og color grades direkte i Virtual Studio for accurate preview av final look.',
+              features: [
+                'LUT Library',
+                'Real-time Color Grading',
+                'Look Comparison',
+                'Export Grade Data',
+              ],
+            },
+            {
+              title: 'Client Collaboration',
+              problem:
+                'Vanskelig for kunder å forstå tekniske videografiske konsepter, som fører til miscommunication',
+              solution:
+                'Send interactive 3D previews til kunder som de kan se fra alle vinkler og godkjenne.',
+              features: ['Cloud Sharing', 'Comment System', 'Version Control', 'Approval Workflow'],
+            },
+          ],
+        },
+      ];
+
+      // Video Storage (auto-generated)
+      let videoStorage = {};
+      let currentPersona = 0;
+      let currentVideo = null;
+
+      // Auto-generate all videos on load
+      function autoGenerateVideos() {
+        personas.forEach((persona, pIndex) => {
+          persona.journey.forEach((stage, sIndex) => {
+            const videoId = `${pIndex}-${sIndex}`;
+            videoStorage[videoId] = {
+              id: videoId,
+              personaName: persona.name,
+              personaRole: persona.role,
+              stageTitle: stage.title,
+              problem: stage.problem,
+              solution: stage.solution,
+              features: stage.features,
+              duration: '2:' + (25 + Math.floor(Math.random() * 30)),
+              size: (42 + Math.random() * 15).toFixed(1) + ' MB',
+              generatedAt: new Date(Date.now() - Math.random() * 3600000).toISOString(),
+              status: 'ready',
+            };
+          });
+        });
+
+        const totalVideos = Object.keys(videoStorage).length;
+        document.getElementById('totalVideos').textContent = `${totalVideos} Videoer Generert`;
+
+        console.log(
+          '%c🎬 CreatorHub Virtual Studio',
+          'font-size: 18px; font-weight: bold; color: #6366F1;',
+        );
+        console.log(
+          '%c✅ ' + totalVideos + ' videoer auto-generert i bakgrunnen',
+          'font-size: 14px; color: #10b981;',
+        );
+        console.log(
+          '%c📦 Lagret til: videoStorage (simulerer Google Drive)',
+          'font-size: 12px; color: #71717A;',
+        );
+      }
+
+      // Render journey stages
+      function renderJourney() {
+        const journey = personas[currentPersona].journey;
+        const grid = document.getElementById('journeyGrid');
+
+        grid.innerHTML = journey
+          .map((stage, index) => {
+            const videoId = `${currentPersona}-${index}`;
+            const video = videoStorage[videoId];
+            const featureIcons = [icons.camera, icons.timeline, icons.render3d, icons.camera];
+
+            return `
+                    <div class="stage-card">
+                        <div class="stage-header">
+                            <div class="stage-number">${index + 1}</div>
+                            <div class="video-status ready">
+                                <div class="svg-icon">${icons.check}</div>
+                                Video Klar
+                            </div>
+                        </div>
+                        <h3>${stage.title}</h3>
+                        
+                        <div class="stage-section">
+                            <h4>❌ Utfordring</h4>
+                            <p>${stage.problem}</p>
+                        </div>
+                        
+                        <div class="stage-section">
+                            <h4>✅ Løsning</h4>
+                            <p>${stage.solution}</p>
+                        </div>
+                        
+                        <div class="stage-section">
+                            <h4>🎯 Features</h4>
+                            <div class="features-list">
+                                ${stage.features
+                                  .map(
+                                    (f, i) => `
+                                    <div class="feature-tag">
+                                        <div class="svg-icon">${featureIcons[i % featureIcons.length]}</div>
+                                        ${f}
+                                    </div>
+                                `,
+                                  )
+                                  .join('')}
+                            </div>
+                        </div>
+                        
+                        <button class="btn-watch-video" onclick="openVideo('${videoId}')">
+                            <div class="svg-icon">${icons.play}</div>
+                            Se AI-Generert Video
+                        </button>
+                    </div>
+                `;
+          })
+          .join('');
+      }
+
+      // Select persona
+      function selectPersona(index) {
+        currentPersona = index;
+        document
+          .querySelectorAll('.persona-card')
+          .forEach((card) => card.classList.remove('active'));
+        document.querySelector(`.persona-card[data-persona="${index}"]`).classList.add('active');
+        renderJourney();
+      }
+
+      // Open video modal
+      function openVideo(videoId) {
+        const video = videoStorage[videoId];
+        if (!video) return;
+
+        currentVideo = video;
+        document.getElementById('modalTitle').textContent = video.stageTitle;
+        document.getElementById('videoStageTitle').textContent = video.stageTitle;
+        document.getElementById('videoPersonaName').textContent =
+          `${video.personaName} - ${video.personaRole}`;
+        document.getElementById('videoDuration').textContent = `${video.duration} • ${video.size}`;
+        document.getElementById('videoTimestamp').textContent =
+          `Generert ${new Date(video.generatedAt).toLocaleString('no-NO')}`;
+        document.getElementById('videoLocation').textContent =
+          `Google Drive/.../Videos/${videoId}.mp4`;
+        document.getElementById('videoSize').textContent = video.size;
+        document.getElementById('videoDescription').innerHTML = `
+                <strong>Problem:</strong><br>${video.problem}<br><br>
+                <strong>Løsning:</strong><br>${video.solution}<br><br>
+                <strong>Features:</strong> ${video.features.join(', ')}
+            `;
+
+        document.getElementById('videoModal').classList.add('active');
+      }
+
+      // Close modal
+      function closeModal() {
+        document.getElementById('videoModal').classList.remove('active');
+      }
+
+      // Play video
+      function playVideo() {
+        alert(
+          `🎬 Video Player\n\nI produksjon ville denne AI-genererte videoen spille her.\n\nVideo Detaljer:\n- Tittel: ${currentVideo.stageTitle}\n- Varighet: ${currentVideo.duration}\n- Størrelse: ${currentVideo.size}\n- Lagret: Google Drive/CreatorHub/Virtual_Studio/Videos/${currentVideo.id}.mp4\n\nVideoen viser hvordan Virtual Studio løser "${currentVideo.stageTitle}" for ${currentVideo.personaName}.`,
+        );
+      }
+
+      // Initialize
+      autoGenerateVideos();
+      renderJourney();
+    </script>
+  </body>
+</html>

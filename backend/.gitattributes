@@ -1,0 +1,9 @@
+# LFS tracking (mp4 disabled to avoid smudge during deploys)
+# *.mp4 filter=lfs diff=lfs merge=lfs -text
+# Knowledge-base JSON no longer tracked to avoid LFS quota during deploys
+# server/ai-models/knowledge-base/*.json filter=lfs diff=lfs merge=lfs -text
+*.pth filter=lfs diff=lfs merge=lfs -text
+*.bin filter=lfs diff=lfs merge=lfs -text
+*.h5 filter=lfs diff=lfs merge=lfs -text
+*.onnx filter=lfs diff=lfs merge=lfs -text
+*.pb filter=lfs diff=lfs merge=lfs -text

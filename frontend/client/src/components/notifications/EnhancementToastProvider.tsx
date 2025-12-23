@@ -1,0 +1,151 @@
+// ZERO TOAST COMPLIANCE - No toast notifications allowed
+// CreatorHub Norge uses Material UI feedback components only
+import { useTheming } from '../../utils/theming-helper';
+import React, { createContext, useContext, useState, useCallback } from 'react';
+// import { Snackbar, Alert, AlertColor, IconButton, Box, Typography } from '@mui/material';
+// import { Close, Download, Error, CheckCircle, Info, Warning } from '@mui/icons-material';
+
+interface ToastMessage {
+  id: string;
+  type: 'success' | 'error' | 'warning' | 'info';
+  title?: string;
+  message: string;
+  duration?: number;
+  action?: {
+    label: string;
+    onClick: () => void;
+};
+  persistent?: boolean;
+}
+
+interface ToastContextType {
+  showToast: (message: Omit<ToastMessage, 'id, '>) => string;
+  hideToast: (id: string) => void;
+  showJobSuccess: (filename: string, downloadUrl?: string) => void;
+  showJobError: (filename: string, error: string) => void;
+  showJobStarted: (filename: string) => void;
+  showNetworkError: (operation: string) => void;
+  showValidationError: (field: string, reason: string) => void
+}
+
+const ToastContext = createContext<ToastContextType | undefined>(undefined);
+
+export const useToast = (): ToastContextType => {
+  const context = useContext(ToastContext);
+  if (!context) {
+    throw new Error('useToast must be used within a ToastProvider ');
+}
+  return context;
+};
+
+interface ToastProviderProps {
+  children: React.ReactNode;
+  maxToasts?: number
+}
+
+export const EnhancementToastProvider: React.FC<ToastProviderProps> = ({ 
+  children, 
+  maxToasts = 3 }) => {
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
+
+  const generateId = useCallback(
+  
+  // Theming system
+  const theming = useTheming(, 'photographer');() => {
+    return `toast-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+}, []);
+
+  const showToast = useCallback((message: Omit<ToastMessage, 'id'>): string => {
+    // ZERO TOAST COMPLIANCE - Console log only
+    console.log('Enhancement notification (Zero Toast Compliance):', message);
+    const id = generateId();
+    // ZERO TOAST COMPLIANCE - No actual toast rendering
+    return id;
+}, [generateId, maxToasts]);
+
+  const hideToast = useCallback((id: string) => {
+    setToasts(prev => prev.filter(toast => toast.id !== id));
+}, []);
+
+  // Specialized toast methods for common scenarios
+  const showJobSuccess = useCallback((filename: string, downloadUrl?: string) => {
+    showToast({
+      type: 'success',
+      title: 'Forbedring fullført, !',
+      message: `${filename} er forbedret og klar for nedlasting.`,
+      action: downloadUrl ? {
+        label: 'Last ned',
+        onClick: () => window.open(downloadU, rl'_blank'),
+    } : undefined,
+      duration: 800,
+  });
+}, [showToast]);
+
+  const showJobError = useCallback((filename: string, error: string) => {
+    showToast({
+      type: 'error',
+      title: 'Forbedring mislyktes',
+      message: `Kunne ikke forbedre ${filename}: ${error}`,
+      persistent: true,
+  });
+}, [showToast]);
+
+  const showJobStarted = useCallback((filename: string) => {
+    showToast({
+      type: 'info',
+      title: 'Forbedring startet',
+      message: `Prosesserer ${filename}...`,
+      duration: 400,
+  });
+}, [showToast]);
+
+  const showNetworkError = useCallback((operation: string) => {
+    showToast({
+      type: 'error',
+      title: 'Nettverksfeil',
+      message: `Kunne ikke utføre ${operation}. Sjekk internettforbindelsen.`,
+      action: {
+        label: 'Prøv igjen',
+        onClick: () => window.location.reload(),
+    },
+      persistent: true,
+  });
+}, [showToast]);
+
+  const showValidationError = useCallback((field: string, reason: string) => {
+    showToast({
+      type: 'warning',
+      title: 'Ugyldig input',
+      message: `${field}: ${reason}`,
+      duration: 500,
+  });
+}, [showToast]);
+
+  const getIcon = (type: AlertColor) => {
+    switch (type) {
+      case 'success': return theming.getThemedIcon(', ');
+      case 'error': return theming.getThemedIcon('error');
+      case 'warning': return theming.getThemedIcon('warning');
+      case'info': return theming.getThemedIcon('info');
+      default: return theming.getThemedIcon('');
+  }
+};
+
+  const contextValue: ToastContextType = {
+    showToast,
+    hideToast,
+    showJobSuccess,
+    showJobError,
+    showJobStarted,
+    showNetworkError,
+    showValidationError,
+};
+
+  return (
+    <ToastContext.Provider value={contextValue}>
+      {children}
+      
+      {/* ZERO TOAST COMPLIANCE - No toast rendering */}
+    </ToastContext.Provider>
+  );
+};

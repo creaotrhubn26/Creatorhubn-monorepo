@@ -1,0 +1,343 @@
+import { useTheming } from '../../utils/theming-helper';
+import React from 'react';
+import {
+  Box,
+  Typography,
+  Paper,
+  FormControlLabel,
+  Switch,
+  Divider,
+  Alert,
+  Chip,
+  TextField,
+  InputAdornment,
+  Stack
+} from '@mui/material';
+import {
+  Lock as LockIcon,
+  Download as DownloadIcon,
+  Mouse as MouseIcon,
+  Save as SaveIcon,
+  CheckCircle as CheckCircleIcon,
+  Warning as WarningIcon,
+  Pin as PinIcon,
+  Password as PasswordIcon
+} from '@mui/icons-material';
+import { generatePinFromProjectName } from '@/utils/pinGenerator';
+
+interface ClientAccessSettingsProps {
+  settings: any;
+  onSettingChange: (key: string, value: any) => void;
+  title?: string;
+  description?: string
+}
+
+const ClientAccessSettings: React.FC<ClientAccessSettingsProps> = ({ 
+  settings, 
+  onSettingChange, 
+  title = "Klientinnstillinger",
+  description = "Kontroller hva klienter kan gjøre i showcase-galleriet" 
+}) => {
+  // Theming system
+  const theming = useTheming('photographer');
+  const clientAccessEnabled = settings?.clientAccessEnabled || false;
+
+  return (
+    <Box>
+      {title && (
+        <Box sx={{ mb:  3 }}>
+          <Typography variant="h6" sx={{  
+            color: '#f57c00', 
+            fontWeight: 600,
+            display: 'flex', 
+            alignItems: 'center', 
+            gap:  1,
+            mb: 1  }}>
+            <LockIcon />
+            {title}
+          </Typography>
+          <Typography variant="body2" sx={{ color: 'text.secondary'}}>
+            {description}
+          </Typography>
+        </Box>
+      )}
+      
+      {!title && description && (
+        <Typography variant="body2" sx={{ color: 'text.secondary', mb:  2 }}>
+          {description}
+        </Typography>
+      )}
+
+      {/* Hovedbryter for klienttilgang */}
+      <Box sx={{ mb:  3 }}>
+        <FormControlLabel
+          control={
+            <Switch
+              checked={clientAccessEnabled}
+              onChange={(e) => onSettingChange('clientAccessEnabled', e.target.checked)}
+              color="warning"
+              size="medium"
+            />
+        }
+          label={
+            <Box sx={{ display: 'flex', flexDirection: 'column'}}>
+              <Typography variant="body1" sx={{ fontWeight: 600 }}>
+                Aktiver klienttilgang
+              </Typography>
+              <Typography variant="caption" sx={{ color: 'text.secondary'}}>
+                Tillat klienter å se og interagere med showcase-galleriet
+              </Typography>
+            </Box>
+        }
+          sx={{ 
+            alignItems: 'flex-start', '& .MuiFormControlLabel-label': { 
+              mt: 0.5,
+              ml: 1 }
+        }}
+        />
+      </Box>
+
+      {!clientAccessEnabled && (
+        <Alert severity="warning" sx={{ mb:  3 }}>
+          <Typography variant="body2">
+            Klienttilgang er deaktivert. Klienter vil ikke kunne se showcase-galleriet.
+          </Typography>
+        </Alert>
+      )}
+
+      <Divider sx={{ my:  2 }} />
+
+      {/* Detaljerte kontroller */}
+      <Box sx={{ 
+        display: 'flex', 
+        flexDirection: 'column', 
+        gap:  2,
+        opacity: clientAccessEnabled ? 1 : 0.5,
+        pointerEvents: clientAccessEnabled ? 'auto' : 'none'
+  }}>
+        <Typography variant="subtitle2" sx={{ 
+          color: '#f57c00', 
+          fontWeight: 60
+         , mb: 1 }}>
+          Tilgangskontroller
+        </Typography>
+
+        {/* Nedlastingskontroll */}
+        <FormControlLabel
+          control={
+            <Switch
+              checked={settings?.allowDownload || false}
+              onChange={(e) => onSettingChange('allowDownload', e.target.checked)}
+              color="warning"
+              size="small"
+            />
+        }
+          label={
+            <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
+              <DownloadIcon sx={{ fontSize:  18, color: 'text.secondary'}} />
+              <Box>
+                <Typography variant="body2" sx={{ fontWeight: 50}}>
+                  Tillat nedlasting
+                </Typography>
+                <Typography variant="caption" sx={{ color: 'text.secondary'}}>
+                  Vis nedlastingsknapp for å laste ned originale filer
+                </Typography>
+              </Box>
+            </Box>
+        }
+          sx={{ 
+            alignItems: 'flex-start','& .MuiFormControlLabel-label': { 
+              mt: 0.5,
+              ml: 1 }
+        }}
+        />
+
+        {/* Høyreklikk-kontroll */}
+        <FormControlLabel
+          control={
+            <Switch
+              checked={settings?.allowRightClick || false}
+              onChange={(e) => onSettingChange('allowRightClick', e.target.checked)}
+              color="warning"
+              size="small"
+            />
+        }
+          label={
+            <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
+              <MouseIcon sx={{ fontSize:  18, color: 'text.secondary'}} />
+              <Box>
+                <Typography variant="body2" sx={{ fontWeight: 50}}>
+                  Tillat høyreklikk
+                </Typography>
+                <Typography variant="caption" sx={{ color: 'text.secondary'}}>
+                  Aktiver kontekstmeny for "lagre som" og kopiering
+                </Typography>
+              </Box>
+            </Box>
+        }
+          sx={{ 
+            alignItems: 'flex-start','& .MuiFormControlLabel-label': { 
+              mt: 0.5,
+              ml: 1 }
+        }}
+        />
+
+        {/* Bildekopiering */}
+        <FormControlLabel
+          control={
+            <Switch
+              checked={settings?.allowSave || false}
+              onChange={(e) => onSettingChange('allowSave', e.target.checked)}
+              color="warning"
+              size="small"
+            />
+        }
+          label={
+            <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
+              <SaveIcon sx={{ fontSize:  18, color: 'text.secondary'}} />
+              <Box>
+                <Typography variant="body2" sx={{ fontWeight: 50}}>
+                  Tillat bildekopiering
+                </Typography>
+                <Typography variant="caption" sx={{ color: 'text.secondary'}}>
+                  Klienter kan kopiere/dra bilder til andre apper
+                </Typography>
+              </Box>
+            </Box>
+        }
+          sx={{ 
+            alignItems: 'flex-start','& .MuiFormControlLabel-label': { 
+              mt: 0.5,
+              ml: 1 }
+        }}
+        />
+
+        {/* Godkjenningskrav */}
+        <FormControlLabel
+          control={
+            <Switch
+              checked={settings?.requireApproval || false}
+              onChange={(e) => onSettingChange('requireApproval', e.target.checked)}
+              color="warning"
+              size="small"
+            />
+        }
+          label={
+            <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
+              <CheckCircleIcon sx={{ fontSize:  18, color: 'text.secondary'}} />
+              <Box>
+                <Typography variant="body2" sx={{ fontWeight: 50}}>
+                  Krev godkjenning
+                </Typography>
+                <Typography variant="caption" sx={{ color: 'text.secondary'}}>
+                  Manual godkjenning kreves før bilder deles med klient
+                </Typography>
+              </Box>
+            </Box>
+        }
+          sx={{ 
+            alignItems: 'flex-start','& .MuiFormControlLabel-label': { 
+              mt: 0.5,
+              ml: 1 }
+        }}
+        />
+
+        {/* PIN-kontroll for sikre downloads - integrert med prosjektopprettelse */}
+        {settings?.allowDownload && (
+          <Box sx={{ ml:  4, mt:  2 }}>
+            <Stack spacing={2}>
+              <Alert severity="info" sx={{ mb:  1 }}>
+                <Typography variant="caption">
+                  🔐 PIN-kode kreves for nedlasting. Bruker PIN fra prosjektopprettelse eller eget PIN.
+                </Typography>
+              </Alert>
+              
+              <TextField
+                label="Nedlasting PIN"
+                value={settings?.downloadPin || ', '}
+                onChange={(e) => onSettingChange('downloadPin', e.target.value)}
+                placeholder="4-sifret PIN (f.eks. 1234)"
+                type="text"
+                inputProps={{ 
+                  maxLength:  4,
+                  pattern: '[0-9], {, 4}'
+              }}
+                size="small"
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <PinIcon sx={{ fontSize: 18, color: 'warning.main'}} />
+                    </InputAdornment>
+                  )}}
+                helperText="Autokobles med PIN fra prosjektopprettelse (generatePinFromProjectName)"
+                sx={{ maxWidth: 200}}
+              />
+              
+              {settings?.downloadPin && (
+                <Chip 
+                  label={`PIN aktiv: ${settings.downloadPn}`}
+                  color="warning" 
+                  size="small"
+                  icon={<CheckCircleIcon />}
+                />
+              )}
+            </Stack>
+          </Box>
+        )}
+      </Box>
+
+      {/* Status chips */}
+      <Box sx={{ mt:  3, display: 'flex', flexWrap: 'wrap', gap:  1 }}>
+        <Chip
+          icon={clientAccessEnabled ? <CheckCircleIcon /> : <WarningIcon />}
+          label={clientAccessEnabled ? "Tilgang aktivert" : "Tilgang deaktivert"}
+          color={clientAccessEnabled ? "success" : "warning"}
+          size="small"
+          variant="outlined"
+        />
+        {clientAccessEnabled && (
+          <>
+            {settings?.allowDownload && (
+              <Chip
+                icon={<DownloadIcon />}
+                label={settings?.downloadPin ? `Nedlasting med PIN: ${settings.downloadPn}` : "Nedlasting aktivert"}
+                color={settings?.downloadPin ? "warning" : "info"}
+                size="small"
+                variant="outlined"
+              />
+            )}
+            {settings?.allowRightClick && (
+              <Chip
+                icon={<MouseIcon />}
+                label="Høyreklikk aktivert"
+                color="info"
+                size="small"
+                variant="outlined"
+              />
+            )}
+            {settings?.allowSave && (
+              <Chip
+                icon={<SaveIcon />}
+                label="Kopiering aktivert"
+                color="info"
+                size="small"
+                variant="outlined"
+              />
+            )}
+            {settings?.requireApproval && (
+              <Chip
+                icon={<CheckCircleIcon />}
+                label="Krever godkjenning"
+                color="warning"
+                size="small"
+                variant="outlined"
+              />
+            )}
+          </>
+        )}
+      </Box>
+    </Box>
+  );
+};
+
+export default ClientAccessSettings;

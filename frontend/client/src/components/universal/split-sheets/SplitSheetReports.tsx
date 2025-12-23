@@ -1,0 +1,362 @@
+/**
+ * Split Sheet Reports
+ * User-facing report system for split sheets
+ * Based on UniversalDashboard patterns
+ * Now with profession-specific theming
+ */
+
+import React, { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
+import {
+  Box,
+  Card,
+  CardContent,
+  Typography,
+  Button,
+  Grid,
+  Chip,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemIcon,
+  Divider,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Alert,
+  CircularProgress,
+  Stack,
+  Paper,
+  alpha,
+} from '@mui/material';
+import {
+  Assessment as ReportIcon,
+  PictureAsPdf as PdfIcon,
+  Download as DownloadIcon,
+  Email as EmailIcon,
+  CalendarToday,
+  TrendingUp,
+  AttachMoney,
+  AccountBalance as SplitSheetIcon,
+} from '@mui/icons-material';
+import { useDynamicProfessions } from '../hooks/useDynamicProfessions';
+import getProfessionIcon from '@/utils/profession-icons';
+
+interface SplitSheetReportsProps {
+  userId: string;
+  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+}
+
+interface Report {
+  id: string;
+  name: string;
+  type: 'monthly' | 'quarterly' | 'yearly' | 'custom';
+  period: string;
+  generatedAt: string;
+  downloadUrl?: string;
+  status: 'ready' | 'generating' | 'failed';
+}
+
+export default function SplitSheetReports({
+  userId,
+  profession = 'music_producer',
+}: SplitSheetReportsProps) {
+  const [selectedPeriod, setSelectedPeriod] = useState<'month' | 'quarter' | 'year' | 'custom'>('month');
+  const [generateDialogOpen, setGenerateDialogOpen] = useState(false);
+  const [selectedReport, setSelectedReport] = useState<Report | null>(null);
+  
+  // Get profession-specific styling
+  const { getUserProfessionColor, getProfessionDisplayName } = useDynamicProfessions();
+  const professionColor = getUserProfessionColor(profession);
+  const professionDisplayName = getProfessionDisplayName(profession);
+  const professionIcon = getProfessionIcon(profession);
+  
+  // Profession-specific report terminology
+  const getReportLabels = () => {
+    switch (profession) {
+      case 'music_producer':
+        return {
+          title: 'Inntektsrapporter',
+          description: 'Generer rapporter for royalties og inntektsfordeling',
+          itemLabel: 'låter',
+        };
+      case 'photographer':
+        return {
+          title: 'Prosjektrapporter',
+          description: 'Generer rapporter for fotoprosjekter og samarbeid',
+          itemLabel: 'prosjekter',
+        };
+      case 'videographer':
+        return {
+          title: 'Produksjonsrapporter',
+          description: 'Generer rapporter for videoproduksjoner og crew-fordeling',
+          itemLabel: 'produksjoner',
+        };
+      default:
+        return {
+          title: 'Rapporter',
+          description: 'Generer rapporter for dine prosjekter',
+          itemLabel: 'prosjekter',
+        };
+    }
+  };
+  
+  const reportLabels = getReportLabels();
+
+  // Fetch available reports
+  const { data: reportsData, isLoading } = useQuery({
+    queryKey: ['split-sheet-reports,', userId],
+    queryFn: async () => {
+      const response = await fetch(`/api/split-sheets/reports?userId=${userId}`);
+      if (!response.ok) return { reports: [] };
+      return response.json();
+    },
+  });
+
+  const reports: Report[] = reportsData?.reports || [];
+
+  // Fetch split sheet statistics for quick overview
+  const { data: statsData } = useQuery({
+    queryKey: ['split-sheet-stats-reports', userId],
+    queryFn: async () => {
+      const response = await fetch(`/api/split-sheets/stats?profession=${profession}`);
+      if (!response.ok) return null;
+      return response.json();
+    },
+  });
+
+  const stats = statsData?.data || {};
+
+  const handleGenerateReport = async () => {
+    try {
+      const response = await fetch(`/api/split-sheets/reports/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type' : 'application/json' },
+        body: JSON.stringify({
+          userId,
+          period: selectedPeriod,
+        }),
+      });
+      if (response.ok) {
+        setGenerateDialogOpen(false);
+        // Refresh reports list
+        window.location.reload();
+      }
+    } catch (error) {
+      console.error('Error generating report: ', error);
+    }
+  };
+
+  return (
+    <Box>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+        <Typography variant="h5" sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
+          <ReportIcon sx={{ color: '#9f7aea' }} />
+          Split Sheet Rapporter
+        </Typography>
+        <Button
+          variant="contained"
+          startIcon={<ReportIcon />}
+          onClick={() => setGenerateDialogOpen(true)}
+          sx={{ bgcolor: '#9f7aea', '&:hover': { bgcolor: '#8e6fd9' } }}
+        >
+          Generer Rapport
+        </Button>
+      </Box>
+
+      {/* Quick Stats Overview */}
+      {stats && (
+        <Grid container spacing={2} sx={{ mb: 3 }}>
+          <Grid item xs={12} sm={6} md={3}>
+            <Card sx={{ borderTop: '4px solid #9f7aea' }}>
+              <CardContent>
+                <Typography variant="h6" sx={{ color: '#9f7aea', fontWeight: 600}}>
+                  {stats.total || 0}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Totalt Split Sheets
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <Card sx={{ borderTop: '4px solid #4caf50' }}>
+              <CardContent>
+                <Typography variant="h6" sx={{ color: '#4caf50', fontWeight: 600}}>
+                  {stats.completed || 0}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Fullførte
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <Card sx={{ borderTop: '4px solid #ff9800' }}>
+              <CardContent>
+                <Typography variant="h6" sx={{ color: '#ff9800', fontWeight: 600}}>
+                  {stats.pendingSignatures || 0}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Venter Signaturer
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <Card sx={{ borderTop: '4px solid #2196f3' }}>
+              <CardContent>
+                <Typography variant="h6" sx={{ color: '#2196f3', fontWeight: 600}}>
+                  {(stats.totalRevenue || 0).toLocaleString('nb-NO')} kr
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Total Inntekt
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+        </Grid>
+      )}
+
+      {/* Reports List */}
+      <Card>
+        <CardContent>
+          {isLoading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
+              <CircularProgress />
+            </Box>
+          ) : reports.length === 0 ? (
+            <Alert severity="info">
+              Ingen rapporter generert ennå. Klikk på "Generer Rapport" for å opprette din første rapport.
+            </Alert>
+          ) : (
+            <List>
+              {reports.map((report, index) => (
+                <React.Fragment key={report.id}>
+                  <ListItem>
+                    <ListItemIcon>
+                      <ReportIcon sx={{ color: '#9f7aea' }} />
+                    </ListItemIcon>
+                    <ListItemText
+                      primary={
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Typography variant="subtitle1" sx={{ fontWeight: 600}}>
+                            {report.name}
+                          </Typography>
+                          <Chip
+                            label={report.type === 'monthly' ? 'Månedlig' : 
+                                   report.type === 'quarterly' ? 'Kvartalsvis' :
+                                   report.type === 'yearly' ? 'Årlig' : 'Tilpasset'}
+                            size="small"
+                            variant="outlined"
+                          />
+                        </Box>
+                      }
+                      secondary={
+                        <Box>
+                          <Typography variant="body2" color="text.secondary">
+                            Periode: {report.period}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            Generert: {new Date(report.generatedAt).toLocaleDateString('nb-NO')}
+                          </Typography>
+                        </Box>
+                      }
+                    />
+                    <Stack direction="row" spacing={1}>
+                      {report.status === 'ready' && report.downloadUrl && (
+                        <>
+                          <Button
+                            size="small"
+                            startIcon={<DownloadIcon />}
+                            onClick={() => window.open(report.downloadUrl, '_blank')}
+                          >
+                            Last ned
+                          </Button>
+                          <Button
+                            size="small"
+                            startIcon={<EmailIcon />}
+                            onClick={() => {
+                              // Send report via email
+                              window.open(`/api/split-sheets/reports/${report.id}/email`, '_blank');
+                            }}
+                          >
+                            Send e-post
+                          </Button>
+                        </>
+                      )}
+                      {report.status === 'generating' && (
+                        <Chip
+                          icon={<CircularProgress size={16} />}
+                          label="Genererer..."
+                          size="small"
+                        />
+                      )}
+                    </Stack>
+                  </ListItem>
+                  {index < reports.length - 1 && <Divider />}
+                </React.Fragment>
+              ))}
+            </List>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Generate Report Dialog */}
+      <Dialog open={generateDialogOpen} onClose={() => setGenerateDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <ReportIcon sx={{ color: '#9f7aea' }} />
+            Generer Split Sheet Rapport
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          <FormControl fullWidth sx={{ mt: 2 }}>
+            <InputLabel>Rapportperiode</InputLabel>
+            <Select
+              value={selectedPeriod}
+              label="Rapportperiode"
+              onChange={(e) => setSelectedPeriod(e.target.value as any)}
+            >
+              <MenuItem value="month">Siste måned</MenuItem>
+              <MenuItem value="quarter">Siste kvartal</MenuItem>
+              <MenuItem value="year">Siste år</MenuItem>
+              <MenuItem value="custom">Tilpasset periode</MenuItem>
+            </Select>
+          </FormControl>
+          <Alert severity="info" sx={{ mt: 2 }}>
+            Rapporten vil inkludere:
+            <Box component="ul" sx={{ mt: 1, pl: 2 }}>
+              <li>Oversikt over alle split sheets</li>
+              <li>Inntektsdata og betalingsstatus</li>
+              <li>Bidragsyterstatistikk</li>
+              <li>Revenue trends</li>
+            </Box>
+          </Alert>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setGenerateDialogOpen(false)}>Avbryt</Button>
+          <Button
+            variant="contained"
+            onClick={handleGenerateReport}
+            startIcon={<ReportIcon />}
+            sx={{ bgcolor: '#9f7aea','&:hover': { bgcolor:'#8e6fd9' } }}
+          >
+            Generer Rapport
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
+  );
+}
+
+
+
+
+

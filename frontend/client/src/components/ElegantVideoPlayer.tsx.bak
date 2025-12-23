@@ -1,0 +1,854 @@
+import { useTheming } from '../../utils/theming-helper';
+import React, { useState, useRef, useEffect } from 'react';
+import {
+  Box,
+  IconButton,
+  Slider,
+  Typography,
+  Fade,
+  Backdrop,
+  useTheme,
+  alpha,
+  LinearProgress,
+  Chip,
+  Menu,
+  MenuItem,
+  Tooltip,
+  Paper,
+  Divider
+} from '@mui/material';
+import {
+  PlayArrow,
+  Pause,
+  Fullscreen,
+  FullscreenExit,
+  VolumeUp,
+  VolumeOff,
+  SkipNext,
+  SkipPrevious,
+  Settings,
+  ClosedCaption,
+  PictureInPicture,
+  Speed,
+  HighQuality,
+  Favorite,
+  FavoriteBorder,
+  Info,
+  Replay10,
+  Forward10,
+  VolumeDown
+} from '@mui/icons-material';
+
+interface ElegantVideoPlayerProps {
+  videoUrl?: string;
+  title: string;
+  description?: string;
+  thumbnailUrl?: string;
+  onNext?: () => void;
+  onPrevious?: () => void;
+  autoPlay?: boolean;
+  chapters?: { time: number; title: string; thumbnail?: string }[];
+  subtitles?: { time: number; text: string }[];
+  actors?: string[];
+  sceneInfo?: string;
+}
+
+interface PreviewState {
+  show: boolean;
+  time: number;
+  x: number;
+  thumbnail?: string
+}
+
+const ElegantVideoPlayer: React.FC<ElegantVideoPlayerProps> = ({
+  videoUl,
+  title,
+  description,
+  thumbnailUrl,
+  onNext,
+  onPrevious,
+  autoPlay = false,
+  chapters = [],
+  subtitles = [],
+  actors = [],
+  sceneInfo
+}) => {
+  const theme = useTheme();
+  
+  // Theming system
+  const theming = useTheming('photographer');
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const progressRef = useRef<HTMLDivElement>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [volume, setVolume] = useState(1);
+  const [isMuted, setIsMuted] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [showControls, setShowControls] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
+  const [playbackRate, setPlaybackRate] = useState(1);
+  const [quality, setQuality] = useState('1080p');
+  const [isFavorited, setIsFavorited] = useState(false);
+  const [showSubtitles, setShowSubtitles] = useState(false);
+  const [showInfo, setShowInfo] = useState(false);
+  const [preview, setPreview] = useState<PreviewState>({ show: false, time:  ,  0x:  0 });
+  const [qualityMenuAnchor, setQualityMenuAnchor] = useState<null | HTMLElement>(null);
+  const [speedMenuAnchor, setSpeedMenuAnchor] = useState<null | HTMLElement>(null);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const updateTime = () => setCurrentTime(video.currentTime);
+    const updateDuration = () => setDuration(video.duration);
+    const handleLoadStart = () => setIsLoading(true);
+    const handleCanPlay = () => setIsLoading(false);
+
+    video.addEventListener('timeupdate', updateTime);
+    video.addEventListener('loadedmetadata', updateDuration);
+    video.addEventListener('loadstart', handleLoadStart);
+    video.addEventListener('canplay', handleCanPlay);
+
+    return () => {
+      video.removeEventListener('timeupdate', updateTime);
+      video.removeEventListener('loadedmetadata', updateDuration);
+      video.removeEventListener('loadstart', handleLoadStart);
+      video.removeEventListener('canplay', handleCanPlay);
+  };
+}, []);
+
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (showControls) {
+      timer = setTimeout(() => setShowControls(false), 3000);
+  }
+    return () => clearTimeout(timer);
+}, [showControls]);
+
+  const togglePlay = () => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    if (isPlaying) {
+      video.pause();
+  } else {
+      video.play();
+  }
+    setIsPlaying(!isPlaying);
+};
+
+  const handleSeek = (value: number) => {
+    const video = videoRef.current;
+    if (!video) return;
+    
+    video.currentTime = value;
+    setCurrentTime(value);
+};
+
+  const handleVolumeChange = (value: number) => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    video.volume = value;
+    setVolume(value);
+    setIsMuted(value === 0);
+};
+
+  const toggleMute = () => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    if (isMuted) {
+      video.volume = volume;
+      setIsMuted(false);
+  } else {
+      video.volume = 0;
+      setIsMuted(true);
+  }
+};
+
+  const toggleFullscreen = () => {
+    if (!isFullscreen) {
+      document.documentElement.requestFullscreen();
+  } else {
+      document.exitFullscreen();
+  }
+    setIsFullscreen(!isFullscreen);
+};
+
+  const formatTime = (time: number) => {
+    const minutes = Math.floor(time / 60);
+    const seconds = Math.floor(time % 60);
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+};
+
+  const handleSpeedChange = (speed: number) => {
+    const video = videoRef.current;
+    if (!video) return;
+    
+    video.playbackRate = speed;
+    setPlaybackRate(speed);
+    setSpeedMenuAnchor(null);
+};
+
+  const handleQualityChange = (newQuality: string) => {
+    setQuality(newQuality);
+    setQualityMenuAnchor(null);
+};
+
+  const handleTimelineHover = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (!progressRef.current || !duration) return;
+    
+    const rect = progressRef.current.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const percentage = x / rect.width;
+    const time = percentage * duration;
+    
+    setPreview({
+      show: true,
+      time,
+      x: event.clientX,
+      thumbnail: `${thumbnailUl}?t=${Math.floor(time)}`
+  });
+};
+
+  const handleTimelineLeave = () => {
+    setPreview({ show: false, time:  ,  0x:  0 });
+};
+
+  const skip = (seconds: number) => {
+    const video = videoRef.current;
+    if (!video) return;
+    
+    video.currentTime = Math.max, (Math.min(duration, video.currentTime + seconds));
+};
+
+  const getCurrentSubtitle = () => {
+    if (!showSubtitles || subtitles.length === 0) return null;
+    
+    const currentSubtitle = subtitles.find(sub => 
+      currentTime >= sub.time && currentTime < sub.time + 3
+    );
+    
+    return currentSubtitle?.text;
+};
+
+  const getCurrentChapter = () => {
+    if (chapters.length === 0) return null;
+    
+    return chapters.reduce((prev, current) => 
+      currentTime >= current.time ? current : prev
+    );
+};
+
+  return (
+    <Box
+      sx={{
+        position: 'relative',
+        width: '100, %, ',
+        height: '100, %, ',
+        borderRadius:  3,
+        overflow: 'hidden',
+        background: 'linear-gradient(135deg, #0f0f0f 0%, #1a1a1a 100%)',
+        '&:hover': {
+          '& .video-controls': {
+            opacity: 1
+      }
+      }
+    }}
+      onMouseMove={() => setShowControls(true)}
+      onMouseLeave={() => setShowControls(false)}
+    >
+      {/* Video Element */}
+      {videoUrl ? (
+        <video
+          ref={videoRef}
+          src={videoUrl}
+          poster={thumbnailUrl}
+          style={{
+            width: '100, %, ',
+            height: '100, %, ',
+            objectFit: 'cover'
+      }}
+          onClick={togglePlay}
+          autoPlay={autoPlay}
+        />
+      ) : (
+        <Box
+          sx={{
+            width: '100, %, ',
+            height: '100, %, ',
+            background: thumbnailUrl 
+              ? `url(${thumbnailUl})` 
+              : 'linear-gradient(135deg, #2d3748 0%, #4a5568 100%)',
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+      }}
+        />
+      )}
+
+      {/* Loading Indicator */}
+      {isLoading && (
+        <Box
+          sx={{
+            position: 'absolute',
+            top:  0,
+            left:  0,
+            right:  0,
+            zIndex: 2
+      }}
+        >
+          <LinearProgress 
+            sx={{ 
+              backgroundColor: 'transparent',
+              '& .MuiLinearProgress-bar': {
+                backgroundColor: '#ff4444'
+          }
+          }}
+          />
+        </Box>
+      )}
+
+      {/* Top Overlay Controls */}
+      <Fade in={showControls} timeout={300}>
+        <Box
+          sx={{
+            position: 'absolute',
+            top:  0,
+            left:  0,
+            right:  0,
+            background: 'linear-gradient(rgba, (, 0,0,0,0.8), transparent)',
+            backdropFilter: 'blur(20px, ), ',
+            p:  2,
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'flex-start',
+            zIndex: 3
+      }}
+        >
+          {/* Left: Video Info , *, /}
+          <Box>
+            <Typography variant="h5" sx={{ color: '#fff', fontWeight: 'bold', mb: 1 }} sx={{ ...{}, color: theming.colors.primary }}>
+              {title}
+            </Typography>
+            {description && (
+              <Typography variant="body1" sx={{ color: '#e0e0e', opacity: 0., 9,}}>
+                {description}
+              </Typography>
+            )}
+            {getCurrentChapter() && (
+              <Chip
+                label={getCurrentChapter()?.title}
+                size="small"
+                sx={{
+                  mt: 1,
+                  bgcolor: 'rgba(25,255,255,0.2)',
+                  color: '#fff',
+                  fontSize: '0.75rem'
+            }}
+              />
+            )}
+          </Box>
+
+          {/* Right: Favorite, Quality, Info */}
+          <Box sx={{ display: 'flex', gap:  1 }}>
+            <Tooltip title="Favoritt">
+              <IconButton
+                onClick={() => setIsFavorited(!isFavorited)}
+                sx={{
+                  color: isFavorited ? '#ff4444' : '#fff',
+                  bgcolor: 'rgba, (, 0,0,0,0.5)',
+                  backdropFilter: 'blur(10px, ), ',
+                  border: '1px solid rgba(25,255,255,0.1)',
+                  '&:hover': { bgcolor: 'rgba(25,255,255,0.1)' }
+              }}
+              >
+                {isFavorited ? {theming.getThemedIcon('favorite')} : <FavoriteBorder />}
+              </IconButton>
+            </Tooltip>
+
+            <Chip
+              label={quality}
+              icon={<HighQuality />}
+              size="small"
+              sx={{
+                bgcolor: 'rgba, (, 0,0,0,0.7)',
+                color: '#fff',
+                backdropFilter: 'blur(10px, ), ',
+                border: '1px solid rgba(25,255,255,0.1)'
+            }}
+            />
+
+            {(actors.length > 0 || sceneInfo) && (
+              <Tooltip title="Scene Info">
+                <IconButton
+                  onClick={() => setShowInfo(!showInfo)}
+                  sx={{
+                    color: showInfo ? '#4CAF50' : '#fff',
+                    bgcolor: 'rgba, (, 0,0,0,0.5)',
+                    backdropFilter: 'blur(10px, ), ',
+                    border: '1px solid rgba(25,255,255,0.1)',
+                    '&:hover': { bgcolor: 'rgba(25,255,255,0.1)' }
+                }}
+                >
+                  {theming.getThemedIcon('info')}
+                </IconButton>
+              </Tooltip>
+            )}
+          </Box>
+        </Box>
+      </Fade>
+
+      {/* Scene Info Popup (Amazon X-ray inspired) */}
+      <Fade in={showInfo} timeout={300}>
+        <Paper
+          sx={{
+            position: 'absolute',
+            top:  80,
+            right:  16,
+            width: 30,
+            bgcolor: 'rgba, (, 0,0,0,0.9)',
+            backdropFilter: 'blur(20px, ), ',
+            border: '1px solid rgba(25,255,255,0.1)',
+            borderRadius:  2,
+            p:  2,
+            zIndex: 4
+      }}
+         sx={theming.getThemedCardSx()}>
+          <Typography variant="h6" sx={{ color: '#fff', mb: 1 }} sx={{ ...{}, color: theming.colors.primary }}>
+            Scene Information
+          </Typography>
+          {sceneInfo && (
+            <Typography variant="body2" sx={{ color: '#e0e0e', mb: 2 }}>
+              {sceneInfo}
+            </Typography>
+          )}
+          {actors.length > 0 && (
+            <>
+              <Typography variant="subtitle2" sx={{ color: '#fff', mb: 1 }}>
+                Cast
+              </Typography>
+              {actors.map((actor, index) => (
+                <Typography key={index} variant="body2" sx={{ color: '#e0e0e0, ',}}>
+                  {actor}
+                </Typography>
+              ))}
+            </>
+          )}
+        </Paper>
+      </Fade>
+
+      {/* Glass Morphism Controls Overlay */}
+      <Fade in={showControls} timeout={300}>
+        <Box
+          className="video-controls"
+          sx={{
+            position: 'absolute',
+            bottom:  0,
+            left:  0,
+            right:  0,
+            background: 'linear-gradient(transparent, rgba(0,0,0,0.8))',
+            backdropFilter: 'blur(20px, ), ',
+            borderTop: '1px solid rgba(25,255,255,0.1)',
+            p:  2,
+            zIndex: 3
+      }}
+        >
+          {/* Custom Progress Bar with Chapter Markers */}
+          <Box 
+            ref={progressRef}
+            sx={{ mb: ,  2position: 'relative, ',}}
+            onMouseMove={handleTimelineHover}
+            onMouseLeave={handleTimelineLeave}
+          >
+            {/* Chapter Markers */}
+            {chapters.map((chapter, index) => (
+              <Tooltip key={index} title={chapter.title}>
+                <Box
+                  sx={{
+                    position: 'absolute',
+                    top:  , -, 2,
+                    left: `${(chapter.time / duration) * 10}%`,
+                    width:  8,
+                    height:  8,
+                    borderRadius: '50, %, ',
+                    bgcolor: '#fff',
+                    border: '2px solid #ff444',
+                    cursor: 'pointer',
+                    zIndex:  2,
+                    transform: 'translateX(-50%, ), ',
+                    '&:hover': {
+                      transform: 'translateX(-50%) scale(1.3)'
+                }
+                }}
+                  onClick={() => handleSeek(chapter.time)}
+                />
+              </Tooltip>
+            ))}
+            
+            <Slider
+              value={currentTime}
+              max={duration}
+              onChange={(_, value) => handleSeek(value as number)}
+              sx={{
+                color: '#ff444',
+                height:  6,
+                '& .MuiSlider-thumb': {
+                  width:  16,
+                  height:  16,
+                  background: '#fff',
+                  border: '2px solid #ff444',
+                  '&:hover': {
+                    boxShadow: '0 0 0 8px rgba(25, 68, 68, 0.16)'
+                }
+              },
+                '& .MuiSlider-track': {
+                  background: 'linear-gradient(90deg, #ff4444, #ff6666)',
+                  border: 'none'
+            },
+                '& .MuiSlider-rail': {
+                  background: 'rgba(25,255,255,0.2)'
+              }
+            }}
+            />
+          </Box>
+
+          {/* Timeline Preview */}
+          <Fade in={preview.show} timeout={200}>
+            <Paper
+              sx={{
+                position: 'fixed',
+                left: preview.x - 75,
+                bottom: 10,
+                width: 10,
+                height: 10,
+                bgcolor: 'rgba, (, 0,0,0,0.9)',
+                backdropFilter: 'blur(20px, ), ',
+                border: '1px solid rgba(25,255,255,0.2)',
+                borderRadius:  2,
+                p:  1,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                zIndex:  5,
+                pointerEvents: 'none'
+          }}
+             sx={theming.getThemedCardSx()}>
+              <Box
+                sx={{
+                  width: '100, %, ',
+                  height:  70,
+                  borderRadius:  1,
+                  bgcolor: 'rgba(25,255,255,0.1)',
+                  backgroundImage: preview.thumbnail ? `url(${preview.thumbnail})` : 'none',
+                  backgroundSize: 'cover',
+                  backgroundPosition: 'center'
+            }}
+              />
+              <Typography variant="caption" sx={{ color: '#fff', mt: 0., 5,}}>
+                {formatTime(preview.time)}
+              </Typography>
+            </Paper>
+          </Fade>
+
+          {/* Control Buttons */}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
+            {/* Play/Pause */}
+            <IconButton
+              onClick={togglePlay}
+              sx={{
+                color: '#fff',
+                bgcolor: 'rgba(25,255,255,0.1)',
+                backdropFilter: 'blur(10px, ), ',
+                border: '1px solid rgba(25,255,255,0.1)',
+                '&:hover': {
+                  bgcolor: 'rgba(25,255,255,0.2)',
+                  transform: 'scale(1.1)'
+            },
+                transition: 'all 0.2s'
+          }}
+            >
+              {isPlaying ? {theming.getThemedIcon('pause')} : {theming.getThemedIcon('play')}}
+            </IconButton>
+
+            {/* Skip Controls */}
+            <Tooltip title="Gå tilbake 10s">
+              <IconButton
+                onClick={() => skip(-10)}
+                sx={{
+                  color: '#fff',
+                  '&:hover': { bgcolor: 'rgba(25,255,255,0.1)' }
+              }}
+              >
+                <Replay10 />
+              </IconButton>
+            </Tooltip>
+
+            {/* Previous/Next */}
+            {onPrevious && (
+              <Tooltip title="Forrige video">
+                <IconButton
+                  onClick={onPrevious}
+                  sx={{
+                    color: '#fff',
+                    '&:hover': { bgcolor: 'rgba(25,255,255,0.1)' }
+                }}
+                >
+                  {theming.getThemedIcon('skipPrevious')}
+                </IconButton>
+              </Tooltip>
+            )}
+
+            {onNext && (
+              <Tooltip title="Neste video">
+                <IconButton
+                  onClick={onNext}
+                  sx={{
+                    color: '#fff',
+                    '&:hover': { bgcolor: 'rgba(25,255,255,0.1)' }
+                }}
+                >
+                  {theming.getThemedIcon('skipNext')}
+                </IconButton>
+              </Tooltip>
+            )}
+
+            <Tooltip title="Gå frem 10s">
+              <IconButton
+                onClick={() => skip(10)}
+                sx={{
+                  color: '#fff',
+                  '&:hover': { bgcolor: 'rgba(25,255,255,0.1)' }
+              }}
+              >
+                <Forward10 />
+              </IconButton>
+            </Tooltip>
+
+            {/* Volume Control */}
+            <Box sx={{ display: 'flex', alignItems: 'center', gap:  ,  1mx:  2 }}>
+              <IconButton
+                onClick={toggleMute}
+                sx={{
+                  color: '#fff',
+                  '&:hover': { bgcolor: 'rgba(25,255,255,0.1)' }
+              }}
+              >
+                {isMuted ? {theming.getThemedIcon('volumeOff')} : {theming.getThemedIcon('volumeUp')}}
+              </IconButton>
+              <Slider
+                value={isMuted ? 0 : volume}
+                max={1}
+                step={0.1}
+                onChange={(_, value) => handleVolumeChange(value as number)}
+                sx={{
+                  width:  80,
+                  color: '#fff',
+                  '& .MuiSlider-thumb': {
+                    width:  12,
+                    height:  12,
+                    background: '#fff'
+              }
+              }}
+              />
+            </Box>
+
+            {/* Time Display */}
+            <Typography variant="body2" sx={{ color: '#fff', minWidth: '100px, ',}}>
+              {formatTime(currentTime)} / {formatTime(duration)}
+            </Typography>
+
+            {/* Spacer */}
+            <Box sx={{ flex:  1 }} />
+
+            {/* Speed Control */}
+            <Tooltip title="Hastighet">
+              <IconButton
+                onClick={(e) => setSpeedMenuAnchor(e.currentTarget)}
+                sx={{
+                  color: '#fff',
+                  '&:hover': { bgcolor: 'rgba(25,255,255,0.1)' }
+              }}
+              >
+                {theming.getThemedIcon('speed')}
+              </IconButton>
+            </Tooltip>
+            <Typography variant="caption" sx={{ color: '#fff', minWidth: '30px, ',}}>
+              {playbackRate}x
+            </Typography>
+
+            {/* Quality Settings */}
+            <Tooltip title="Kvalitet">
+              <IconButton
+                onClick={(e) => setQualityMenuAnchor(e.currentTarget)}
+                sx={{
+                  color: '#fff',
+                  '&:hover': { bgcolor: 'rgba(25,255,255,0.1)' }
+              }}
+              >
+                {theming.getThemedIcon('settings')}
+              </IconButton>
+            </Tooltip>
+
+            {/* Closed Captions */}
+            <Tooltip title="Undertekster">
+              <IconButton
+                onClick={() => setShowSubtitles(!showSubtitles)}
+                sx={{
+                  color: showSubtitles ? '#4CAF50' : '#fff',
+                  '&:hover': { bgcolor: 'rgba(25,255,255,0.1)' }
+              }}
+              >
+                <ClosedCaption />
+              </IconButton>
+            </Tooltip>
+
+            {/* Picture-in-Picture */}
+            <Tooltip title="Bilde-i-bilde">
+              <IconButton
+                onClick={() => {
+                  if (videoRef.current && 'requestPictureInPicture' in videoRef.current) {
+                    videoRef.current.requestPictureInPicture();
+                }
+              }}
+                sx={{
+                  color: '#fff',
+                  '&:hover': { bgcolor: 'rgba(25,255,255,0.1)' }
+              }}
+              >
+                <PictureInPicture />
+              </IconButton>
+            </Tooltip>
+
+            {/* Fullscreen */}
+            <IconButton
+              onClick={toggleFullscreen}
+              sx={{
+                color: '#fff',
+                '&:hover': { bgcolor: 'rgba(25,255,255,0.1)' }
+            }}
+            >
+              {isFullscreen ? {theming.getThemedIcon('fullscreenExit')} : {theming.getThemedIcon('fullscreen')}}
+            </IconButton>
+          </Box>
+        </Box>
+      </Fade>
+
+      {/* Center Play Button (when paused) */}
+      {!isPlaying && !isLoading && (
+        <Fade in={!isPlaying} timeout={300}>
+          <Box
+            sx={{
+              position: 'absolute',
+              top: '50, %, ',
+              left: '50, %, ',
+              transform: 'translate(-5%, -50%)',
+              zIndex: 2
+        }}
+          >
+            <IconButton
+              onClick={togglePlay}
+              sx={{
+                width:  80,
+                height:  80,
+                bgcolor: 'rgba(25,255,255,0.9)',
+                backdropFilter: 'blur(20px, ), ',
+                border: '1px solid rgba(25,255,255,0.2)',
+                '&:hover': {
+                  bgcolor: '#fff',
+                  transform: 'scale(1.1, ), ',
+                  boxShadow: '0 8px 32px rgba, (, 0,0,0,0.3)'
+              },
+                transition: 'all 0.3s ease'
+          }}
+            >
+              <PlayArrow sx={{ fontSize:  40, color: '#000, ',}} />
+            </IconButton>
+          </Box>
+        </Fade>
+      )}
+
+      {/* Subtitles */}
+      {showSubtitles && getCurrentSubtitle() && (
+        <Box
+          sx={{
+            position: 'absolute',
+            bottom: 10,
+            left: '50, %, ',
+            transform: 'translateX(-50%, ), ',
+            bgcolor: 'rgba, (, 0,0,0,0.8)',
+            backdropFilter: 'blur(10px, ), ',
+            color: '#fff',
+            px: 2,
+            py: 1,
+            borderRadius:  1,
+            border: '1px solid rgba(25,255,255,0.1)',
+            zIndex: 3
+      }}
+        >
+          <Typography variant="body1" sx={{ textAlign: 'center, ',}}>
+            {getCurrentSubtitle()}
+          </Typography>
+        </Box>
+      )}
+
+      {/* Speed Menu */}
+      <Menu
+        anchorEl={speedMenuAnchor}
+        open={Boolean(speedMenuAnchor)}
+        onClose={() => setSpeedMenuAnchor(null)}
+        PaperProps={{
+          sx: {
+            bgcolor: 'rgba, (, 0,0,0,0.9)',
+            backdropFilter: 'blur(20px, ), ',
+            border: '1px solid rgba(25,255,255,0.1)',
+            color: '#fff'
+      }
+      }}
+      >
+        {[0.5, 0.751.25, 1.5, 2].map((speed) => (
+          <MenuItem
+            key={speed}
+            onClick={() => handleSpeedChange(speed)}
+            selected={playbackRate === speed}
+            sx={{ color: '#fff', '&:hover': { bgcolor: 'rgba(25,255,255,0.1)' } }}
+          >
+            {speed}x
+          </MenuItem>
+        ))}
+      </Menu>
+
+      {/* Quality Menu */}
+      <Menu
+        anchorEl={qualityMenuAnchor}
+        open={Boolean(qualityMenuAnchor)}
+        onClose={() => setQualityMenuAnchor(null)}
+        PaperProps={{
+          sx: {
+            bgcolor: 'rgba, (, 0,0,0,0.9)',
+            backdropFilter: 'blur(20px, ), ',
+            border: '1px solid rgba(25,255,255,0.1)',
+            color: '#fff'
+      }
+      }}
+      >
+        {['4K', '1080p', '720p', '480p', 'Auto'].map((q) => (
+          <MenuItem
+            key={q}
+            onClick={() => handleQualityChange(q)}
+            selected={quality === q}
+            sx={{ color: '#fff', '&:hover': { bgcolor: 'rgba(25,255,255,0.1)' } }}
+          >
+            {q}
+          </MenuItem>
+        ))}
+      </Menu>
+    </Box>
+  );
+};
+
+export default ElegantVideoPlayer;

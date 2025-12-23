@@ -1,0 +1,306 @@
+/**
+ * Enhanced Feedback Location Tracker Utility
+ * Provides granular location tracking for prototype feedback and tester applications
+ */
+
+export interface LocationContext {
+  profession: string;
+  dashboardType: string;
+  currentTab: string;
+  currentSection: string;
+  specificFeature?: string;
+  pageUrl: string;
+  userAgent: string;
+  timestamp: string
+}
+
+// ✅ Profession-specific feature mappings for enhanced tracking
+const professionFeatures: Record<string, Record<string, string[]>> = {
+  photographer: {
+    'universal_dashboard': ['photo_editing', 'portfolio_management', 'client_gallery'],
+    'photo_dashboard': ['lightroom_integration', 'photo_upload', 'metadata_management'],
+    'equipment_dashboard': ['camera_settings', 'lens_database', 'gear_tracking'],
+},
+  videographer: {
+    'universal_dashboard': ['video_editing', 'project_management', 'timeline_view'],
+    'video_dashboard': ['premiere_integration', 'video_upload', 'rendering_queue'],
+    'equipment_dashboard': ['camera_rigs', 'audio_gear', 'lighting_setup'],
+},
+  music_producer: {
+    'universal_dashboard': ['audio_editing', 'project_management', 'session_recording'],
+    'music_dashboard': ['daw_integration', 'audio_upload', 'mixing_console'],
+    'equipment_dashboard': ['audio_interfaces', 'microphones', 'monitors'],
+},
+  vendor: {
+    'universal_dashboard': ['product_management', 'order_processing', 'inventory_tracking'],
+    'vendor_dashboard': ['product_catalog', 'sales_analytics', 'customer_management'],
+    'equipment_dashboard': ['product_listings', 'pricing_management', 'stock_levels'],
+},
+  admin: {
+    'universal_dashboard': ['system_management', 'user_administration', 'analytics'],
+    'admin_dashboard': ['platform_health', 'performance_monitoring', 'security_audit'],
+    'equipment_dashboard': ['system_equipment', 'maintenance_scheduling', 'resource_allocation'],
+},
+};
+
+// ✅ URL pattern detection for current tab identification
+const urlPatterns: Record<string, string> = {
+  '/dashboard': 'universal_dashboard',
+  '/photo-dashboard': 'photo_dashboard',
+  '/video-dashboard': 'video_dashboard',
+  '/music-dashboard': 'music_dashboard',
+  '/vendor-dashboard': 'vendor_dashboard',
+  '/admin-dashboard': 'admin_dashboard',
+  '/equipment': 'equipment_dashboard',
+  '/prototype-testing': 'prototype_testing',
+  '/feedback': 'feedback_system',
+  '/settings': 'settings_panel',
+  '/profile': 'user_profile',
+  '/projects': 'project_management',
+  '/communication': 'communication_panel',
+  '/email': 'email_center',
+  '/analytics': 'analytics_dashboard',
+  '/reports': 'reporting_system',
+};
+
+/**
+ * Detect current tab from URL path
+ */
+const getCurrentTabFromUrl = (url: string): string => {
+  try {
+    const urlObj = new URL(url);
+    const pathname = urlObj.pathname;
+    
+    // Check for exact matches first
+    for (const [pattern, tab] of Object.entries(urlPatterns)) {
+      if (pathname.includes(pattern)) {
+        return tab;
+    }
+  }
+    
+    // Fallback to pathname segments
+    const segments = pathname.split('/').filter(Boolean);
+    if (segments.length > 0) {
+      return segments[0] + '_dashboard';
+  }
+    
+    return 'unknown_tab';
+} catch (error) {
+    console.warn('Error parsing URL for tab detection:', error);
+    return 'unknown_tab';
+}
+};
+
+/**
+ * Detect specific feature from URL and profession context
+ */
+const detectCurrentFeature = (url: string, profession: string, currentTab: string): string | undefined => {
+  try {
+    const urlObj = new URL(url);
+    const pathname = urlObj.pathname;
+    const searchParams = urlObj.searchParams;
+    
+    // Check if URL contains specific feature identifiers
+    const featurePatterns = [
+      /\/edit\/(.+, ), /,
+      /\/view\/(.+)/,
+      /\/create\/(.+)/,
+      /\/manage\/(.+)/,
+      /\/settings\/(.+)/,
+      /\/analytics\/(.+)/,
+      /\/reports\/(.+)/,
+      /\/communication\/(.+)/,
+      /\/feedback\/(.+)/,
+      /\/prototype\/(.+)/,
+    ];
+    
+    for (const pattern of featurePatterns) {
+      const match = pathname.match(pattern);
+      if (match) {
+        return match[1];
+    }
+  }
+    
+    // Check URL parameters for feature context
+    const featureParam = searchParams.get('feature') || searchParams.get('tab') || searchParams.get('section');
+    if (featureParam) {
+      return featureParam;
+  }
+    
+    // Check profession-specific features
+    const professionFeaturesForTab = professionFeatures[profession]?.[currentTab];
+    if (professionFeaturesForTab && professionFeaturesForTab.length > 0) {
+      // Check if URL path contains any of the profession-specific features
+      for (const feature of professionFeaturesForTab) {
+        if (pathname.includes(feature)) {
+          return feature;
+      }
+    }
+  }
+    
+    return undefined;
+} catch (error) {
+    console.warn('Error detecting current feature:', error);
+    return undefined;
+}
+};
+
+/**
+ * Create enhanced location context for feedback tracking
+ */
+export const createFeedbackLocationContext = (
+  profession: string,
+  dashboardType: string,
+  componentContext?: { tab?: string; section?: string; feature?: string; component?: string }
+): LocationContext => {
+  const pageUrl = window.location.href;
+  const userAgent = navigator.userAgent;
+  const timestamp = new Date().toISOString();
+  
+  const currentTab = componentContext?.tab || getCurrentTabFromUrl(pageUrl);
+  const currentSection = componentContext?.section || currentTab;
+  const specificFeature = componentContext?.feature || detectCurrentFeature(pageUrl, profession, currentTab);
+  
+  return {
+    profession,
+    dashboardType,
+    currentTab,
+    currentSection,
+    specificFeature,
+    pageUrl,
+    userAgent,
+    timestamp,
+};
+};
+
+/**
+ * Generate human-readable location description
+ */
+export const generateLocationDescription = (context: LocationContext | { locationContext?: LocationContext }): string => {
+  let locationContext: LocationContext;
+  
+  if ('locationContext' in context) {
+    if (!context.locationContext) {
+      return 'Ukjent lokasjon';
+}
+    locationContext = context.locationContext;
+} else {
+    locationContext = context;
+}
+  
+  const { profession, dashboardType, currentTab, currentSection, specificFeature } = locationContext;
+  
+  // Profession mapping for better display
+  const professionNames: Record<string, string> = {
+    photographer: 'Fotograf',
+    videographer: 'Videograf',
+    music_producer: 'Musikkprodusent',
+    vendor: 'Leverandø',
+    admin: 'Administrator',
+};
+  
+  // Dashboard type mapping
+  const dashboardNames: Record<string, string> = {
+    universal_dashboard: 'Universal Dashboard',
+    photo_dashboard: 'Foto Dashboard',
+    video_dashboard: 'Video Dashboard',
+    music_dashboard: 'Musikk Dashboard',
+    vendor_dashboard: 'Leverandør Dashboard',
+    admin_dashboard: 'Admin Dashboard',
+    equipment_dashboard: 'Utstyr Dashboard',
+    prototype_testing: 'Prototype Testing',
+    feedback_system: 'Feedback System',
+    settings_panel: 'Innstillinger',
+    user_profile: 'Brukerprofil',
+    project_management: 'Prosjektledelse',
+    communication_panel: 'Kommunikasjonspanel',
+    email_center: 'E-post Center',
+    analytics_dashboard: 'Analytics Dashboard',
+    reporting_system: 'Rapport System',
+};
+  
+  // Tab/Section mapping
+  const tabNames: Record<string, string> = {
+    universal_dashboard: 'Universal Dashboard',
+    photo_dashboard: 'Foto Dashboard',
+    video_dashboard: 'Video Dashboard',
+    music_dashboard: 'Musikk Dashboard',
+    vendor_dashboard: 'Leverandør Dashboard',
+    admin_dashboard: 'Admin Dashboard',
+    equipment_dashboard: 'Utstyr Dashboard',
+    prototype_testing: 'Prototype Testing',
+    feedback_system: 'Feedback System',
+    settings_panel: 'Innstillinger',
+    user_profile: 'Brukerprofil',
+    project_management: 'Prosjektledelse',
+    communication_panel: 'Kommunikasjonspanel',
+    email_center: 'E-post Center',
+    analytics_dashboard: 'Analytics Dashboard',
+    reporting_system: 'Rapport System',
+    prototype_tester_application: 'Prototype Tester Application',
+    application_form: 'Application Form',
+};
+  
+  const professionName = professionNames[profession] || profession;
+  const dashboardName = dashboardNames[dashboardType] || dashboardType;
+  const tabName = tabNames[currentTab] || currentTab;
+  const sectionName = tabNames[currentSection] || currentSection;
+  
+  let description = `${professionName} - ${dashboardName}`;
+  
+  if (currentTab !== dashboardType) {
+    description += ` → ${tabName}`;
+}
+  
+  if (currentSection !== currentTab && currentSection !== dashboardType) {
+    description += ` → ${sectionName}`;
+}
+  
+  if (specificFeature) {
+    description += ` → ${specificFeature}`;
+}
+  
+  return description;
+};
+
+/**
+ * Log prototype interaction for debugging and analytics
+ */
+export const logPrototypeInteraction = (action: string, context: any) => {
+  if (process.env.NODE_ENV === 'development') {
+    console.log(`🧪 Prototype Interaction: ${action}`, {
+      timestamp: new Date().toISOString, (, ),
+      context,
+      url: window.location.href,
+      userAgent: navigator.userAgent,
+  });
+}
+};
+
+/**
+ * Validate location context for completeness
+ */
+export const validateLocationContext = (context: LocationContext): { isValid: boolean; missingFields: string[, ],} => {
+  const requiredFields: (keyof LocationContext)[] = [
+    'profession',
+    'dashboardType',
+    'currentTab',
+    'currentSection',
+    'pageUrl',
+    'userAgent',
+    'timestamp',
+  ];
+  
+  const missingFields: string[] = [];
+  
+  for (const field of requiredFields) {
+    if (!context[field] || context[field].toString().trim() === '') {
+      missingFields.push(field);
+}
+}
+  
+  return {
+    isValid: missingFields.length ===,  , 0,
+    missingFields,
+};
+};

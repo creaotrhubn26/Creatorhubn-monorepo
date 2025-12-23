@@ -1,0 +1,466 @@
+/**
+ * Contextual Word Suggestions
+ * 
+ * AI-powered word suggestions while writing
+ * Features:
+ * - Real-time context analysis
+ * - Better word alternatives
+ * - Norwegian ↔ English suggestions
+ * - Explanation of why suggested word is better
+ * - One-click replacement
+ * - Domain-aware suggestions (business, creative, technical)
+ */
+
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  Box,
+  Paper,
+  Typography,
+  Stack,
+  Button,
+  Chip,
+  Divider,
+  IconButton,
+  Tooltip,
+  Card,
+  CardContent,
+  Collapse,
+  Alert,
+  CircularProgress,
+  Badge,
+} from '@mui/material';
+import {
+  Lightbulb as LightbulbIcon,
+  CheckCircle as CheckCircleIcon,
+  Close as CloseIcon,
+  TrendingUp as TrendingUpIcon,
+  Psychology as PsychologyIcon,
+  SwapHoriz as SwapHorizIcon,
+  ExpandMore as ExpandMoreIcon,
+  Star as StarIcon,
+  Info as InfoIcon,
+} from '@mui/icons-material';
+import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
+import { apiRequest } from '@/lib/queryClient';
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// TYPES
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+interface WordSuggestion {
+  originalWord: string;
+  suggestedWord: string;
+  reason: string;
+  improvement: 'clarity' | 'professionalism' | 'precision' | 'tone' | 'formality' | 'brevity' | 'impact';
+  confidence: number;
+  domain?: string;
+  position?: { start: number; end: number };
+  context?: string;
+  examples?: {
+    before: string;
+    after: string;
+  };
+}
+
+interface Props {
+  noteContent: string;
+  noteTitle?: string;
+  noteCategory?: string;
+  onReplace?: (original: string, suggested: string, position?: { start: number; end: number }) => void;
+  onDismiss?: (suggestion: WordSuggestion) => void;
+  autoAnalyze?: boolean;
+  maxSuggestions?: number;
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// COMPONENT
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+export default function ContextualWordSuggestions({
+  noteContent,
+  noteTitle,
+  noteCategory,
+  onReplace,
+  onDismiss,
+  autoAnalyze = true,
+  maxSuggestions = 5
+}: Props) {
+  const { analytics, performance, auth, features } = useEnhancedMasterIntegration();
+  
+  const [suggestions, setSuggestions] = useState<WordSuggestion[]>([]);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [expandedSuggestion, setExpandedSuggestion] = useState<number | null>(null);
+  const [dismissedWords, setDismissedWords] = useState<Set<string>>(new Set());
+  
+  // 🔐 User Context
+  const userProfile = auth.getUserProfile();
+  const userId = userProfile?.id || 'anonymous';
+  
+  // 🎯 Feature Access
+  const aiAccess = features.checkFeatureAccess('ai-tools', userProfile?.role);
+  const canUseAI = aiAccess.hasAccess;
+  
+  // 🤖 Analyze content for word suggestions
+  const analyzeContent = useCallback(async () => {
+    if (!noteContent || noteContent.length < 50 || !canUseAI) return;
+    
+    setIsAnalyzing(true);
+    const endTiming = performance.startTiming('contextual_word_analysis');
+    
+    try {
+      const headers = await auth.getAuthHeader();
+      const response = await apiRequest('/api/ai/suggest-words', {
+        method: 'POST',
+        body: JSON.stringify({
+          content: noteContent,
+          title: noteTitle,
+          category: noteCategory,
+          userId,
+          maxSuggestions
+        }),
+        headers
+      });
+      
+      const newSuggestions = (response.suggestions || []).filter(
+        (s: WordSuggestion) => !dismissedWords.has(s.originalWord)
+      );
+      
+      setSuggestions(newSuggestions);
+      
+      // Track
+      analytics.trackEvent('contextual_suggestions_generated', {
+        suggestionsCount: newSuggestions.length,
+        noteLength: noteContent.length,
+        userId
+      });
+      
+      features.trackFeatureUsage('ai-tools', 'contextual-suggestions', {
+        suggestionsCount: newSuggestions.length
+      });
+    } catch (error: any) {
+      console.warn('Word suggestion analysis failed:', error);
+    } finally {
+      setIsAnalyzing(false);
+      endTiming();
+    }
+  }, [noteContent, noteTitle, noteCategory, canUseAI, dismissedWords, maxSuggestions, auth, analytics, features, performance, userId]);
+  
+  // Auto-analyze when content changes (debounced)
+  useEffect(() => {
+    if (!autoAnalyze || !canUseAI) return;
+    
+    const timer = setTimeout(() => {
+      analyzeContent();
+    }, 2000); // Wait 2 seconds after user stops typing
+    
+    return () => clearTimeout(timer);
+  }, [noteContent, autoAnalyze, canUseAI, analyzeContent]);
+  
+  // 🔄 Handle word replacement
+  const handleReplace = useCallback((suggestion: WordSuggestion) => {
+    if (onReplace) {
+      onReplace(suggestion.originalWord, suggestion.suggestedWord, suggestion.position);
+    }
+    
+    // Remove suggestion from list
+    setSuggestions(prev => prev.filter(s => s.originalWord !== suggestion.originalWord));
+    
+    // Track
+    analytics.trackEvent('contextual_suggestion_accepted', {
+      originalWord: suggestion.originalWord,
+      suggestedWord: suggestion.suggestedWord,
+      improvement: suggestion.improvement,
+      userId
+    });
+    
+    features.trackFeatureUsage('ai-tools', 'word-replacement', {
+      improvement: suggestion.improvement
+    });
+  }, [onReplace, analytics, features, userId]);
+  
+  // ❌ Handle dismissal
+  const handleDismiss = useCallback((suggestion: WordSuggestion) => {
+    setDismissedWords(prev => new Set([...prev, suggestion.originalWord]));
+    setSuggestions(prev => prev.filter(s => s.originalWord !== suggestion.originalWord));
+    
+    if (onDismiss) {
+      onDismiss(suggestion);
+    }
+    
+    // Track
+    analytics.trackEvent('contextual_suggestion_dismissed', {
+      originalWord: suggestion.originalWord,
+      userId
+    });
+  }, [onDismiss, analytics, userId]);
+  
+  // 🎨 Get improvement color
+  const getImprovementColor = (improvement: string) => {
+    switch (improvement) {
+      case 'clarity': return 'info';
+      case 'professionalism': return 'primary';
+      case 'precision': return 'success';
+      case 'tone': return 'secondary';
+      case 'formality': return 'primary';
+      case 'brevity': return 'warning';
+      case 'impact': return 'error';
+      default: return 'default';
+    }
+  };
+  
+  // 🎨 Get improvement icon
+  const getImprovementIcon = (improvement: string) => {
+    switch (improvement) {
+      case 'clarity': return '💡';
+      case 'professionalism': return '👔';
+      case 'precision': return '🎯';
+      case 'tone': return '🎵';
+      case 'formality': return '📋';
+      case 'brevity': return '✂️';
+      case 'impact': return '💥';
+      default: return '✨';
+    }
+  };
+  
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // RENDER
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  
+  if (!canUseAI) {
+    return (
+      <Paper sx={{ p: 2 }}>
+        <Alert severity="info">
+          <Typography variant="body2">
+            {aiAccess.reason}
+          </Typography>
+        </Alert>
+      </Paper>
+    );
+  }
+  
+  return (
+    <Paper sx={{ p: 2 }}>
+      <Stack spacing={2}>
+        {/* Header */}
+        <Stack direction="row" alignItems="center" justifyContent="space-between">
+          <Stack direction="row" alignItems="center" spacing={1}>
+            <Badge badgeContent={suggestions.length} color="primary">
+              <LightbulbIcon color="warning" />
+            </Badge>
+            <Typography variant="h6">Word Suggestions</Typography>
+          </Stack>
+          {isAnalyzing && <CircularProgress size={20} />}
+        </Stack>
+        
+        <Divider />
+        
+        {/* Suggestions List */}
+        {suggestions.length === 0 && !isAnalyzing ? (
+          <Box sx={{ textAlign: 'center', py: 3 }}>
+            <CheckCircleIcon sx={{ fontSize: 48, color: 'success.main', opacity: 0.5, mb: 1 }} />
+            <Typography variant="body2" color="text.secondary">
+              {noteContent.length < 50 
+                ? 'Write more to get suggestions' 
+                : 'No suggestions - your writing looks great!'}
+            </Typography>
+            <Button
+              size="small"
+              startIcon={<PsychologyIcon />}
+              onClick={analyzeContent}
+              sx={{ mt: 1 }}
+              disabled={isAnalyzing}
+            >
+              Analyze Again
+            </Button>
+          </Box>
+        ) : (
+          <Stack spacing={1.5}>
+            {suggestions.map((suggestion, idx) => (
+              <Card 
+                key={idx} 
+                variant="outlined"
+                sx={{ 
+                  border: expandedSuggestion === idx ? '2px solid' : '1px solid',
+                  borderColor: expandedSuggestion === idx ? 'primary.main' : 'divider'
+                }}
+              >
+                <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
+                  <Stack spacing={1}>
+                    {/* Header */}
+                    <Stack direction="row" alignItems="center" justifyContent="space-between">
+                      <Stack direction="row" alignItems="center" spacing={1} flex={1}>
+                        <Typography variant="body2" fontWeight="bold" color="text.secondary">
+                          {suggestion.originalWord}
+                        </Typography>
+                        <SwapHorizIcon fontSize="small" color="action" />
+                        <Typography variant="body2" fontWeight="bold" color="primary.main">
+                          {suggestion.suggestedWord}
+                        </Typography>
+                        <Chip 
+                          label={`${getImprovementIcon(suggestion.improvement)} ${suggestion.improvement}`}
+                          size="small"
+                          color={getImprovementColor(suggestion.improvement) as any}
+                          sx={{ fontSize: '0.7rem' }}
+                        />
+                      </Stack>
+                      <Stack direction="row" spacing={0.5}>
+                        <Tooltip title={expandedSuggestion === idx ? 'Hide details' : 'Show details'}>
+                          <IconButton 
+                            size="small"
+                            onClick={() => setExpandedSuggestion(expandedSuggestion === idx ? null : idx)}
+                          >
+                            <ExpandMoreIcon 
+                              sx={{ 
+                                transform: expandedSuggestion === idx ? 'rotate(180deg)' : 'none',
+                                transition: 'transform 0.2s'
+                              }}
+                            />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Dismiss">
+                          <IconButton 
+                            size="small"
+                            onClick={() => handleDismiss(suggestion)}
+                          >
+                            <CloseIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      </Stack>
+                    </Stack>
+                    
+                    {/* Quick Reason */}
+                    <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                      {suggestion.reason}
+                    </Typography>
+                    
+                    {/* Confidence Badge */}
+                    <Stack direction="row" spacing={0.5} alignItems="center">
+                      <Chip 
+                        label={`${(suggestion.confidence * 100).toFixed(0)}% confidence`}
+                        size="small"
+                        variant="outlined"
+                        color={suggestion.confidence > 0.8 ? 'success' : 'default'}
+                        sx={{ fontSize: '0.65rem' }}
+                      />
+                      {suggestion.domain && (
+                        <Chip 
+                          label={suggestion.domain}
+                          size="small"
+                          variant="outlined"
+                          sx={{ fontSize: '0.65rem' }}
+                        />
+                      )}
+                    </Stack>
+                    
+                    {/* Expanded Details */}
+                    <Collapse in={expandedSuggestion === idx}>
+                      <Box sx={{ mt: 1, p: 1.5, bgcolor: 'grey.50', borderRadius: 1 }}>
+                        {/* Context */}
+                        {suggestion.context && (
+                          <Box sx={{ mb: 1.5 }}>
+                            <Typography variant="caption" fontWeight="bold" gutterBottom display="block">
+                              📝 Context:
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                              "{suggestion.context}"
+                            </Typography>
+                          </Box>
+                        )}
+                        
+                        {/* Detailed Explanation */}
+                        <Box sx={{ mb: 1.5 }}>
+                          <Typography variant="caption" fontWeight="bold" gutterBottom display="block">
+                            💡 Why This Word is Better:
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {suggestion.reason}
+                          </Typography>
+                        </Box>
+                        
+                        {/* Examples */}
+                        {suggestion.examples && (
+                          <Box>
+                            <Typography variant="caption" fontWeight="bold" gutterBottom display="block">
+                              📊 Comparison:
+                            </Typography>
+                            <Stack spacing={0.5}>
+                              <Paper variant="outlined" sx={{ p: 1, bgcolor: 'error.50' }}>
+                                <Typography variant="caption" color="error.main" fontWeight="bold">
+                                  ❌ Before:
+                                </Typography>
+                                <Typography variant="caption" display="block" sx={{ mt: 0.5 }}>
+                                  {suggestion.examples.before}
+                                </Typography>
+                              </Paper>
+                              <Paper variant="outlined" sx={{ p: 1, bgcolor: 'success.50' }}>
+                                <Typography variant="caption" color="success.main" fontWeight="bold">
+                                  ✅ After:
+                                </Typography>
+                                <Typography variant="caption" display="block" sx={{ mt: 0.5 }}>
+                                  {suggestion.examples.after}
+                                </Typography>
+                              </Paper>
+                            </Stack>
+                          </Box>
+                        )}
+                      </Box>
+                    </Collapse>
+                    
+                    {/* Action Buttons */}
+                    <Stack direction="row" spacing={1}>
+                      <Button
+                        size="small"
+                        variant="contained"
+                        color="success"
+                        startIcon={<CheckCircleIcon />}
+                        onClick={() => handleReplace(suggestion)}
+                        fullWidth
+                      >
+                        Replace
+                      </Button>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        onClick={() => setExpandedSuggestion(expandedSuggestion === idx ? null : idx)}
+                      >
+                        {expandedSuggestion === idx ? 'Less' : 'More'}
+                      </Button>
+                    </Stack>
+                  </Stack>
+                </CardContent>
+              </Card>
+            ))}
+          </Stack>
+        )}
+        
+        {/* Stats Footer */}
+        {suggestions.length > 0 && (
+          <Box>
+            <Divider sx={{ my: 1 }} />
+            <Stack direction="row" spacing={1} alignItems="center" justifyContent="center">
+              <TrendingUpIcon fontSize="small" color="success" />
+              <Typography variant="caption" color="text.secondary">
+                {suggestions.length} improvement{suggestions.length !== 1 ? 's' : ''} found
+              </Typography>
+            </Stack>
+          </Box>
+        )}
+        
+        {/* Quick Info */}
+        <Alert severity="info" sx={{ fontSize: '0.75rem', py: 0.5 }}>
+          <Typography variant="caption" fontWeight="bold" gutterBottom display="block">
+            How it works:
+          </Typography>
+          <Typography variant="caption" component="div">
+            • AI analyzes your writing context<br/>
+            • Suggests better word choices<br/>
+            • Explains why each suggestion improves your text<br/>
+            • One-click replacement
+          </Typography>
+        </Alert>
+      </Stack>
+    </Paper>
+  );
+}
+
+

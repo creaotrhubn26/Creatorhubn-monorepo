@@ -1,0 +1,462 @@
+/**
+ * Split Sheet Billing Panel
+ * User-facing billing panel for split sheet invoices
+ * Allows email sending and Fiken integration
+ * Now with profession-specific theming
+ */
+
+import React, { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
+import { useAuth } from '@/hooks/useAuth';
+import {
+  Box,
+  Card,
+  CardContent,
+  Typography,
+  Button,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Paper,
+  Chip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Alert,
+  CircularProgress,
+  Divider,
+  Stack,
+  IconButton,
+  Tooltip,
+  alpha,
+} from '@mui/material';
+import {
+  AttachMoney as MoneyIcon,
+  Email as EmailIcon,
+  AccountBalance as FikenIcon,
+  Send as SendIcon,
+  CheckCircle,
+  Schedule,
+  Download as DownloadIcon,
+} from '@mui/icons-material';
+import { useDynamicProfessions } from '../hooks/useDynamicProfessions';
+import getProfessionIcon from '@/utils/profession-icons';
+
+interface SplitSheetBillingPanelProps {
+  userId: string;
+  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+}
+
+interface Invoice {
+  id: string;
+  splitSheetId: string;
+  splitSheetTitle: string;
+  amount: number;
+  currency: string;
+  status: 'draft' | 'sent' | 'paid' | 'overdue';
+  createdAt: string;
+  dueDate?: string;
+  paidAt?: string;
+  recipientEmail?: string;
+  fikenInvoiceId?: string;
+}
+
+export default function SplitSheetBillingPanel({
+  userId,
+  profession = 'music_producer',
+}: SplitSheetBillingPanelProps) {
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const [sendEmailDialogOpen, setSendEmailDialogOpen] = useState(false);
+  const [sendFikenDialogOpen, setSendFikenDialogOpen] = useState(false);
+  const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
+  const [emailRecipient, setEmailRecipient] = useState('');
+  const [emailSubject, setEmailSubject] = useState('');
+  
+  // Get profession-specific styling
+  const { getUserProfessionColor, getProfessionDisplayName } = useDynamicProfessions();
+  const professionColor = getUserProfessionColor(profession);
+  const professionDisplayName = getProfessionDisplayName(profession);
+  const professionIcon = getProfessionIcon(profession);
+  
+  // Profession-specific billing terminology
+  const getBillingLabels = () => {
+    switch (profession) {
+      case 'music_producer':
+        return {
+          title: 'Fakturering',
+          description: 'Administrer fakturaer for royalty-utbetalinger',
+          invoiceType: 'Royalty-faktura',
+        };
+      case 'photographer':
+        return {
+          title: 'Fakturering',
+          description: 'Administrer fakturaer for fotoprosjekter',
+          invoiceType: 'Prosjektfaktura',
+        };
+      case 'videographer':
+        return {
+          title: 'Fakturering',
+          description: 'Administrer fakturaer for videoproduksjoner',
+          invoiceType: 'Produksjonsfaktura',
+        };
+      default:
+        return {
+          title: 'Fakturering',
+          description: 'Administrer fakturaer',
+          invoiceType: 'Faktura',
+        };
+    }
+  };
+  
+  const billingLabels = getBillingLabels();
+  const [emailMessage, setEmailMessage] = useState('');
+
+  // Check if user has Fiken integration
+  const { data: fikenStatus } = useQuery({
+    queryKey: ['fiken-status', userId],
+    queryFn: async () => {
+      const response = await fetch(`/api/accounting/fiken/status`);
+      if (!response.ok) return { hasFiken: false };
+      return response.json();
+    },
+  });
+
+  const hasFiken = fikenStatus?.hasFiken || false;
+
+  // Fetch split sheet invoices
+  const { data: invoicesData, isLoading } = useQuery({
+    queryKey: ['split-sheet-invoices', userId],
+    queryFn: async () => {
+      const response = await fetch(`/api/split-sheets/invoices?userId=${userId}`);
+      if (!response.ok) return { invoices: [] };
+      return response.json();
+    },
+  });
+
+  const invoices: Invoice[] = invoicesData?.invoices || [];
+
+  // Send invoice via email mutation
+  const sendEmailMutation = useMutation({
+    mutationFn: async ({ invoiceId, recipient, subject, message }: any) => {
+      return await apiRequest(`/api/split-sheets/invoices/${invoiceId}/send-email`, {
+        method: 'POST',
+        headers: { 'Content-Type' : 'application/json' },
+        body: JSON.stringify({
+          recipient,
+          subject,
+          message,
+        }),
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['split-sheet-invoices'] });
+      setSendEmailDialogOpen(false);
+      setSelectedInvoice(null);
+    },
+  });
+
+  // Send invoice to Fiken mutation
+  const sendFikenMutation = useMutation({
+    mutationFn: async (invoiceId: string) => {
+      return await apiRequest(`/api/split-sheets/invoices/${invoiceId}/send-fiken`, {
+        method: 'POST',
+        headers: { 'Content-Type' : 'application/json' },
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['split-sheet-invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['fiken-status'] });
+      setSendFikenDialogOpen(false);
+      setSelectedInvoice(null);
+    },
+  });
+
+  const handleSendEmail = () => {
+    if (!selectedInvoice || !emailRecipient) return;
+    sendEmailMutation.mutate({
+      invoiceId: selectedInvoice.id,
+      recipient: emailRecipient,
+      subject: emailSubject || `Faktura: ${selectedInvoice.splitSheetTitle}`,
+      message: emailMessage,
+    });
+  };
+
+  const handleSendFiken = () => {
+    if (!selectedInvoice) return;
+    sendFikenMutation.mutate(selectedInvoice.id);
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'paid':
+        return 'success';
+      case 'sent':
+        return 'info';
+      case 'overdue':
+        return 'error';
+      default:
+        return 'default';
+    }
+  };
+
+  const getStatusLabel = (status: string) => {
+    switch (status) {
+      case 'draft':
+        return 'Utkast';
+      case 'sent':
+        return 'Sendt';
+      case 'paid':
+        return 'Betalt';
+      case 'overdue':
+        return 'Forfalt';
+      default:
+        return status;
+    }
+  };
+
+  return (
+    <Box>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+        <Typography variant="h5" sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
+          <MoneyIcon sx={{ color: '#9f7aea' }} />
+          Split Sheet Fakturering
+        </Typography>
+        {hasFiken && (
+          <Chip
+            icon={<FikenIcon />}
+            label="Fiken Integrert"
+            color="success"
+            variant="outlined"
+          />
+        )}
+      </Box>
+
+      {hasFiken && (
+        <Alert severity="info" sx={{ mb: 3 }}>
+          Du har Fiken-integrasjon aktivert. Fakturaer kan sendes direkte til Fiken eller via e-post.
+        </Alert>
+      )}
+
+      <Card>
+        <CardContent>
+          {isLoading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
+              <CircularProgress />
+            </Box>
+          ) : invoices.length === 0 ? (
+            <Alert severity="info">
+              Ingen fakturaer funnet. Fakturaer genereres automatisk når split sheets har inntektsdata.
+            </Alert>
+          ) : (
+            <TableContainer>
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Split Sheet</TableCell>
+                    <TableCell align="right">Beløp</TableCell>
+                    <TableCell align="center">Status</TableCell>
+                    <TableCell>Opprettet</TableCell>
+                    <TableCell>Forfallsdato</TableCell>
+                    <TableCell align="center">Handlinger</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {invoices.map((invoice) => (
+                    <TableRow key={invoice.id} hover>
+                      <TableCell>
+                        <Typography variant="body2" sx={{ fontWeight: 600}}>
+                          {invoice.splitSheetTitle}
+                        </Typography>
+                        {invoice.recipientEmail && (
+                          <Typography variant="caption" color="text.secondary">
+                            {invoice.recipientEmail}
+                          </Typography>
+                        )}
+                      </TableCell>
+                      <TableCell align="right">
+                        <Typography variant="body2" sx={{ fontWeight: 600}}>
+                          {invoice.amount.toLocaleString('nb-NO')} {invoice.currency}
+                        </Typography>
+                      </TableCell>
+                      <TableCell align="center">
+                        <Chip
+                          label={getStatusLabel(invoice.status)}
+                          color={getStatusColor(invoice.status) as any}
+                          size="small"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="body2">
+                          {new Date(invoice.createdAt).toLocaleDateString('nb-NO')}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        {invoice.dueDate ? (
+                          <Typography variant="body2">
+                            {new Date(invoice.dueDate).toLocaleDateString('nb-NO')}
+                          </Typography>
+                        ) : (
+                          <Typography variant="body2" color="text.secondary">
+                            Ikke satt
+                          </Typography>
+                        )}
+                      </TableCell>
+                      <TableCell align="center">
+                        <Stack direction="row" spacing={1} justifyContent="center">
+                          <Tooltip title="Send via e-post">
+                            <IconButton
+                              size="small"
+                              onClick={() => {
+                                setSelectedInvoice(invoice);
+                                setEmailRecipient(invoice.recipientEmail || ', ');
+                                setEmailSubject(`Faktura: ${invoice.splitSheetTitle}`);
+                                setEmailMessage(', ');
+                                setSendEmailDialogOpen(true);
+                              }}
+                              sx={{ color: '#2196f3' }}
+                            >
+                              <EmailIcon />
+                            </IconButton>
+                          </Tooltip>
+                          {hasFiken && (
+                            <Tooltip title="Send til Fiken">
+                              <IconButton
+                                size="small"
+                                onClick={() => {
+                                  setSelectedInvoice(invoice);
+                                  setSendFikenDialogOpen(true);
+                                }}
+                                sx={{ color: '#4caf50' }}
+                              >
+                                <FikenIcon />
+                              </IconButton>
+                            </Tooltip>
+                          )}
+                          <Tooltip title="Last ned">
+                            <IconButton
+                              size="small"
+                              onClick={() => {
+                                window.open(`/api/split-sheets/invoices/${invoice.id}/download`, '_blank');
+                              }}
+                            >
+                              <DownloadIcon />
+                            </IconButton>
+                          </Tooltip>
+                        </Stack>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Send Email Dialog */}
+      <Dialog open={sendEmailDialogOpen} onClose={() => setSendEmailDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Send faktura via e-post</DialogTitle>
+        <DialogContent>
+          {selectedInvoice && (
+            <Box sx={{ mt: 1 }}>
+              <Alert severity="info" sx={{ mb: 2 }}>
+                Faktura: <strong>{selectedInvoice.splitSheetTitle}</strong>
+                <br />
+                Beløp: <strong>{selectedInvoice.amount.toLocaleString('nb-NO')} {selectedInvoice.currency}</strong>
+              </Alert>
+              <TextField
+                fullWidth
+                label="Mottaker e-post"
+                type="email"
+                value={emailRecipient}
+                onChange={(e) => setEmailRecipient(e.target.value)}
+                required
+                sx={{ mb: 2 }}
+              />
+              <TextField
+                fullWidth
+                label="Emne"
+                value={emailSubject}
+                onChange={(e) => setEmailSubject(e.target.value)}
+                sx={{ mb: 2 }}
+              />
+              <TextField
+                fullWidth
+                label="Melding (valgfritt)"
+                multiline
+                rows={4}
+                value={emailMessage}
+                onChange={(e) => setEmailMessage(e.target.value)}
+                placeholder="Legg til en personlig melding i e-posten..."
+              />
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setSendEmailDialogOpen(false)}>Avbryt</Button>
+          <Button
+            variant="contained"
+            onClick={handleSendEmail}
+            disabled={!emailRecipient || sendEmailMutation.isPending}
+            startIcon={sendEmailMutation.isPending ? <CircularProgress size={16} /> : <SendIcon />}
+            sx={{ bgcolor: '#2196f3' }}
+          >
+            {sendEmailMutation.isPending ? 'Sender...' : 'Send e-post'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Send Fiken Dialog */}
+      <Dialog open={sendFikenDialogOpen} onClose={() => setSendFikenDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <FikenIcon sx={{ color: '#4caf50' }} />
+            Send faktura til Fiken
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          {selectedInvoice && (
+            <Box sx={{ mt: 1 }}>
+              <Alert severity="info" sx={{ mb: 2 }}>
+                Fakturaen vil bli sendt til Fiken og automatisk registrert i regnskapet ditt.
+              </Alert>
+              <Typography variant="body2" sx={{ mb: 1 }}>
+                <strong>Split Sheet:</strong> {selectedInvoice.splitSheetTitle}
+              </Typography>
+              <Typography variant="body2" sx={{ mb: 2 }}>
+                <strong>Beløp:</strong> {selectedInvoice.amount.toLocaleString('nb-NO')} {selectedInvoice.currency}
+              </Typography>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setSendFikenDialogOpen(false)}>Avbryt</Button>
+          <Button
+            variant="contained"
+            onClick={handleSendFiken}
+            disabled={sendFikenMutation.isPending}
+            startIcon={sendFikenMutation.isPending ? <CircularProgress size={16} /> : <FikenIcon />}
+            sx={{ bgcolor: '#4caf50' }}
+          >
+            {sendFikenMutation.isPending ? 'Sender til Fiken...' : 'Send til Fiken'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
+  );
+}
+
+
+
+

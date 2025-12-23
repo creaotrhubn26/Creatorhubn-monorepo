@@ -1,0 +1,275 @@
+import React, { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
+import {
+  Box,
+  Typography,
+  Card,
+  CardContent,
+  Button,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemSecondaryAction,
+  Chip,
+  CircularProgress,
+  Alert,
+  Divider,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+} from '@mui/material';
+import {
+  LocalOffer as PriceIcon,
+  Receipt as QuoteIcon,
+  CheckCircle as CheckIcon,
+  Close as CloseIcon,
+} from '@mui/icons-material';
+import { useTheming } from '../../../utils/theming-helper';
+import { useClientServicePricing } from '../../../services/ClientServicePricingService';
+
+interface PricingSelectorProps {
+  onSelectPackage?: (pkg: any) => void;
+  onSelectQuote?: (quote: any) => void;
+  selectedPackageId?: string;
+  selectedQuoteId?: string;
+}
+
+export default function PricingSelector({
+  onSelectPackage,
+  onSelectQuote,
+  selectedPackageId,
+  selectedQuoteId,
+}: PricingSelectorProps) {
+  const theming = useTheming('photographer');
+  const { formatCurrency } = useClientServicePricing();
+  const [showPackages, setShowPackages] = useState(false);
+  const [showQuotes, setShowQuotes] = useState(false);
+
+  // Fetch pricing packages
+  const { data: packagesData, isLoading: packagesLoading } = useQuery({
+    queryKey: ['/api/price-administration/packages'],
+    queryFn: () => apiRequest('/api/price-administration/packages'),
+    retry: false,
+  });
+
+  // Fetch quotes
+  const { data: quotesData, isLoading: quotesLoading } = useQuery({
+    queryKey: ['/api/price-administration/quotes'],
+    queryFn: () => apiRequest('/api/price-administration/quotes'),
+    retry: false,
+  });
+
+  const packages = packagesData?.packages || [];
+  const quotes = quotesData?.quotes || [];
+
+  const handlePackageSelect = (pkg: any) => {
+    if (onSelectPackage) {
+      onSelectPackage(pkg);
+    }
+    setShowPackages(false);
+  };
+
+  const handleQuoteSelect = (quote: any) => {
+    if (onSelectQuote) {
+      onSelectQuote(quote);
+    }
+    setShowQuotes(false);
+  };
+
+  return (
+    <Box>
+      <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+        <Button
+          variant="outlined"
+          startIcon={<PriceIcon />}
+          onClick={() => setShowPackages(true)}
+          fullWidth
+          sx={{ borderColor: theming.colors.primary, color: theming.colors.primary }}
+        >
+          Velg Pakke
+        </Button>
+        <Button
+          variant="outlined"
+          startIcon={<QuoteIcon />}
+          onClick={() => setShowQuotes(true)}
+          fullWidth
+          sx={{ borderColor: theming.colors.primary, color: theming.colors.primary }}
+        >
+          Velg Tilbud
+        </Button>
+      </Box>
+
+      {/* Package Selection Dialog */}
+      <Dialog open={showPackages} onClose={() => setShowPackages(false)} maxWidth="md" fullWidth>
+        <DialogTitle>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Typography variant="h6">Velg Standardpakke</Typography>
+            <Button onClick={() => setShowPackages(false)}>
+              <CloseIcon />
+            </Button>
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          {packagesLoading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
+              <CircularProgress />
+            </Box>
+          ) : packages.length === 0 ? (
+            <Alert severity="info">Ingen pakker tilgjengelig. Opprett en pakke i Prisadministrasjon.</Alert>
+          ) : (
+            <List>
+              {packages.map((pkg: any) => (
+                <ListItem
+                  key={pkg.id}
+                  button
+                  onClick={() => handlePackageSelect(pkg)}
+                  selected={selectedPackageId === pkg.id}
+                  sx={{
+                    border: '1px solid',
+                    borderColor: selectedPackageId === pkg.id ? theming.colors.primary : 'divider',
+                    borderRadius: 1,
+                    mb: 1, '&:hover': {
+                      bgcolor: 'action.hover',
+                    }}}
+                >
+                  <ListItemText
+                    primary={
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Typography variant="subtitle1" sx={{ fontWeight: 600}}>
+                          {pkg.name}
+                        </Typography>
+                        {selectedPackageId === pkg.id && (
+                          <CheckIcon color="primary" />
+                        )}
+                      </Box>
+                    }
+                    secondary={
+                      <Box>
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+                          {pkg.description}
+                        </Typography>
+                        <Box sx={{ display: 'flex', gap: 1, mt: 0.5 }}>
+                          <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+                            {formatCurrency(pkg.basePrice || 0)}
+                          </Typography>
+                          {pkg.category && (
+                            <Chip label={pkg.category} size="small" variant="outlined" />
+                          )}
+                        </Box>
+                      </Box>
+                    }
+                  />
+                  <ListItemSecondaryAction>
+                    <Button
+                      variant="contained"
+                      size="small"
+                      onClick={() => handlePackageSelect(pkg)}
+                      sx={{ bgcolor: theming.colors.primary }}
+                    >
+                      Bruk
+                    </Button>
+                  </ListItemSecondaryAction>
+                </ListItem>
+              ))}
+            </List>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowPackages(false)}>Avbryt</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Quote Selection Dialog */}
+      <Dialog open={showQuotes} onClose={() => setShowQuotes(false)} maxWidth="md" fullWidth>
+        <DialogTitle>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Typography variant="h6">Velg Tilbud</Typography>
+            <Button onClick={() => setShowQuotes(false)}>
+              <CloseIcon />
+            </Button>
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          {quotesLoading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
+              <CircularProgress />
+            </Box>
+          ) : quotes.length === 0 ? (
+            <Alert severity="info">Ingen tilbud tilgjengelig. Opprett et tilbud i Prisadministrasjon.</Alert>
+          ) : (
+            <List>
+              {quotes.map((quote: any) => (
+                <ListItem
+                  key={quote.id}
+                  button
+                  onClick={() => handleQuoteSelect(quote)}
+                  selected={selectedQuoteId === quote.id}
+                  sx={{
+                    border: '1px solid',
+                    borderColor: selectedQuoteId === quote.id ? theming.colors.primary : 'divider',
+                    borderRadius: 1,
+                    mb: 1, '&:hover': {
+                      bgcolor: 'action.hover',
+                    }}}
+                >
+                  <ListItemText
+                    primary={
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Typography variant="subtitle1" sx={{ fontWeight: 600}}>
+                          {quote.quoteNumber || `Tilbud #${quote.id}`}
+                        </Typography>
+                        {selectedQuoteId === quote.id && (
+                          <CheckIcon color="primary" />
+                        )}
+                        <Chip
+                          label={quote.status || 'draft'}
+                          size="small"
+                          color={quote.status === 'accepted' ? 'success' : 'default'}
+                        />
+                      </Box>
+                    }
+                    secondary={
+                      <Box>
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+                          Klient: {quote.clientId || 'Ukjent'}
+                        </Typography>
+                        <Box sx={{ display: 'flex', gap: 1, mt: 0.5 }}>
+                          <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+                            {formatCurrency(quote.totalAmount || 0)}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            Opprettet: {new Date(quote.createdAt).toLocaleDateString('no-NO')}
+                          </Typography>
+                        </Box>
+                      </Box>
+                    }
+                  />
+                  <ListItemSecondaryAction>
+                    <Button
+                      variant="contained"
+                      size="small"
+                      onClick={() => handleQuoteSelect(quote)}
+                      sx={{ bgcolor: theming.colors.primary }}
+                    >
+                      Bruk
+                    </Button>
+                  </ListItemSecondaryAction>
+                </ListItem>
+              ))}
+            </List>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowQuotes(false)}>Avbryt</Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
+  );
+}
+
+
+
+
+

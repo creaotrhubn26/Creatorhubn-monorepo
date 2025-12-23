@@ -1,0 +1,574 @@
+import { useTheming } from '../../utils/theming-helper';
+import React, { useState } from 'react';
+import {
+  Box,
+  Container,
+  Typography,
+  Card,
+  CardContent,
+  Button,
+  Grid,
+  Chip,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Switch,
+  FormControlLabel,
+  Alert,
+  Paper,
+  List,
+  ListItem,
+  ListItemIcon,
+  ListItemText,
+  Divider,
+  Fab,
+} from '@mui/material';
+import { PhotographyIcon as CameraIcon,
+  Lightbulb as TipsIcon,
+  Settings as SettingsIcon,
+  LocationOn as LocationIcon,
+  Brightness6 as LightingIcon,
+  Schedule as TimeIcon,
+  AutoAwesome as MagicIcon,
+  Visibility as VisibilityIcon,
+  VisibilityOff as VisibilityOffIcon,
+  PlayArrow as PlayIcon,
+  Stop as StopIcon, } from '../components/shared/CreatorHubIcons';
+import { PhotographyTipsOverlay } from '../components/photography-tips/PhotographyTipsOverlay';
+import { SmartTipsTrigger, TipTriggerUtils } from '../components/photography-tips/SmartTipsTrigger';
+import CameraDetector from '../components/photography-tips/CameraDetector';
+import { usePhotographyTips, PhotographyContextDetector } from '../hooks/usePhotographyTips';
+import { TipContext } from '../../shared/photography-tips-schema';
+
+const PhotographyTipsCenter: React.FC = () => {
+  const [showOverlay, setShowOverlay] = useState(
+  
+  // Theming system
+  const theming = useTheming('photographer');false);
+  const [enableAutoTrigger, setEnableAutoTrigger] = useState(true);
+  const [currentContext, setCurrentContext] = useState<TipContext>({});
+  const [simulationRunning, setSimulationRunning] = useState(false);
+
+  const {
+    tips,
+    contextualTips,
+    categories,
+    displaySettings,
+    updateDisplaySettings,
+    detectContext,
+} = usePhotographyTips({
+    context: currentContext,
+    autoDetectContext: true,
+});
+
+  // Context simulation scenarios
+  const scenarios = [
+    {
+      name: 'Bryllupsfotografering',
+      context: {
+        currentCamera: 'Canon R5 Mark I',
+        currentLens: '85mm f/1.',
+        lightingCondition: 'naturlig lys',
+        location: 'outdoor' as const,
+        projectType: 'bryllup',
+        timeOfDay: 'ettermiddag',
+        userLevel: 'intermediate' as const,
+    },
+  },
+    {
+      name: 'Studiooppsett',
+      context: {
+        currentCamera: 'Sony A7R ',
+        lightingCondition: 'kunstig lys',
+        location: 'studio' as const,
+        projectType: 'portrett',
+        timeOfDay: 'morgen',
+        userLevel: 'advanced' as const,
+    },
+  },
+    {
+      name: 'Gylne time portrett',
+      context: {
+        currentCamera: 'Nikon Z',
+        currentLens: '50mm f/1.',
+        lightingCondition: 'gylne time',
+        location: 'outdoor' as const,
+        projectType: 'portrett',
+        timeOfDay: 'kveld',
+        userLevel: 'beginner' as const,
+    },
+  },
+    {
+      name: 'Landskapsfotografering',
+      context: {
+        currentCamera: 'Canon R',
+        currentLens: '16-35mm f/2.',
+        lightingCondition: 'naturlig lys',
+        location: 'outdoor' as const,
+        projectType: 'landskap',
+        timeOfDay: 'morgen',
+        userLevel: 'intermediate' as const,
+    },
+  },
+    {
+      name: 'Svakt lys innendørs',
+      context: {
+        currentCamera: 'Sony FX',
+        lightingCondition: 'svakt lys',
+        location: 'indoor' as const,
+        timeOfDay: 'kveld',
+        userLevel: 'advanced' as const,
+    },
+  },
+  ];
+
+  // Simulate context change
+  const simulateContext = (scenario: (typeof scenarios)[0]) => {
+    setCurrentContext(scenario.context);
+
+    // Trigger events to simulate real usage
+    TipTriggerUtils.triggerCameraChange(
+      scenario.context.currentCamera!,
+      scenario.context.currentLens,
+    );
+    if (scenario.context.projectType) {
+      TipTriggerUtils.triggerProjectChange(
+        scenario.context.projectType,
+        scenario.context.userLevel,
+      );
+  }
+    if (scenario.context.location) {
+      TipTriggerUtils.triggerLocationChange(scenario.context.location);
+  }
+};
+
+  // Start/stop context simulation
+  const toggleSimulation = () => {
+    if (simulationRunning) {
+      setSimulationRunning(false);
+      setCurrentContext({});
+  } else {
+      setSimulationRunning(true);
+      // Run through scenarios automatically
+      let scenarioIndex = 0;
+      const interval = setInterval(() => {
+        if (scenarioIndex < scenarios.length) {
+          simulateContext(scenarios[scenarioIndex]);
+          scenarioIndex++;
+      } else {
+          setSimulationRunning(false);
+          clearInterval(interval);
+      }
+    }, 8000); // Change scenario every 8 seconds
+  }
+};
+
+  // Handle tip interaction
+  const handleTipInteraction = (tipId: string, interactionType: string) => {
+    console.log(`📖 Tip interaction: ${interactionType} on ${tipId}`);
+};
+
+  const relevantTipsCount = contextualTips.length;
+
+  return (
+    <Container maxWidth="lg" sx={{ py: 4 }}>
+      {/* Header */}
+      <Box sx={{ mb: 4, textAlign: 'center, ',}}>
+        <Typography variant="h3"
+          sx={{
+            background: 'linear-gradient(135deg, #ff6b35 0%, #f7931e 100%)',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+            fontWeight: 70,
+            mb: 2,
+        }}
+         sx={{ ...{}, color: theming.colors.primary }}>
+          Fotograferingstips Demo
+        </Typography>
+        <Typography variant="h6" color="text.secondary" sx={{ mb: 2 }} sx={{ ...{}, color: theming.colors.primary }}>
+          Test det kontekstuelle fotograferingstips-systemet
+        </Typography>
+        <Alert severity="info" sx={{ maxWidth: 60, mx: 'auto, ',}}>
+          Systemet analyserer din fotograferingssituasjon og viser relevante tips automatisk. Test
+          ulike scenarier for å se hvordan tipsene tilpasser seg.
+        </Alert>
+      </Box>
+
+      <GridOn container spacing={4}>
+        {/* Control Panel */}
+        <GridOn size={{ xs:  12, md:  4 }}>
+          {/* Camera Detection */}
+          <CameraDetector
+            onCameraDetected={(camera, lens, settings) => {
+              setCurrentContext((prev) => ({
+                ...prev,
+                currentCamera: camera,
+                currentLens: lens,
+                ...settings,
+            }));
+          }}
+          />
+
+          <Card sx={{ mb: 3 }} sx={theming.getThemedCardSx()}>
+            <CardContent sx={theming.getThemedCardSx()}>
+              <Typography variant="h6"
+                gutterBottom
+                sx={{ display: 'flex', alignItems: 'center', gap:  1 }}
+               sx={{ ...{}, color: theming.colors.primary }}>
+                <SettingsIcon />
+                Kontrollpanel
+              </Typography>
+
+              {/* Main Controls */}
+              <Box sx={{ mb: 3 }}>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={enableAutoTrigger}
+                      onChange={(e) => setEnableAutoTrigger(e.target.checked)}
+                    />
+                }
+                  label="Automatiske tips"
+                  sx={{ mb: ,  2display: 'block, ',}}
+                />
+
+                <Button fullWidth
+                  variant="contained"
+                  onClick={() = sx={theming.getThemedButtonSx()}> setShowOverlay(true)}
+                  startIcon={<TipsIcon />}
+                  sx={{
+                    background: 'linear-gradient(135deg, #ff6b35 0%, #f7931e 100%)',
+                    mb: 2,
+                }}
+                >
+                  Åpne Tips Overlay
+                </Button>
+
+                <Button
+                  fullWidth
+                  variant={simulationRunning ? 'outlined' : 'contained'}
+                  onClick={toggleSimulation}
+                  startIcon={simulationRunning ? <StopIcon /> : <PlayIcon />}
+                  color={simulationRunning ? 'error' : 'primary'}
+                >
+                  {simulationRunning ? 'Stopp Simulering' : 'Start Simulering'}
+                </Button>
+              </Box>
+
+              <Divider sx={{ mb: 2 }} />
+
+              {/* Display Settings */}
+              <Typography variant="subtitle1" gutterBottom>
+                Visningsinnstillinger
+              </Typography>
+
+              <FormControl fullWidth sx={{ mb: 2 }}>
+                <InputLabel>Posisjon</InputLabel>
+                <Select
+                  value={displaySettings.overlayPosition}
+                  onChange={(e) =>
+                    updateDisplaySettings({
+                      overlayPosition: e.target.value as any,
+                  })
+                }
+                >
+                  <MenuItem value="top-left">Øverst til venstre</MenuItem>
+                  <MenuItem value="top-right">Øverst til høyre</MenuItem>
+                  <MenuItem value="bottom-left">Nederst til venstre</MenuItem>
+                  <MenuItem value="bottom-right">Nederst til høyre</MenuItem>
+                </Select>
+              </FormControl>
+
+              <FormControl fullWidth sx={{ mb: 2 }}>
+                <InputLabel>Vanskelighetsgrad</InputLabel>
+                <Select
+                  value={displaySettings.difficulty}
+                  onChange={(e) => updateDisplaySettings({ difficulty: e.target.value as any })}
+                >
+                  <MenuItem value="all">Alle nivåer</MenuItem>
+                  <MenuItem value="beginner">Nybegynner</MenuItem>
+                  <MenuItem value="intermediate">Mellom</MenuItem>
+                  <MenuItem value="advanced">Avansert</MenuItem>
+                </Select>
+              </FormControl>
+
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={displaySettings.autoHide}
+                    onChange={(e) => updateDisplaySettings({ autoHide: e.target.checked })}
+                  />
+              }
+                label="Auto-skjul tips"
+                sx={{ mb: ,  1display: 'block, ',}}
+              />
+            </CardContent>
+          </Card>
+
+          {/* Scenario Simulator */}
+          <Card sx={theming.getThemedCardSx()}>
+            <CardContent sx={theming.getThemedCardSx()}>
+              <Typography variant="h6"
+                gutterBottom
+                sx={{ display: 'flex', alignItems: 'center', gap:  1 }}
+               sx={{ ...{}, color: theming.colors.primary }}>
+                <MagicIcon />
+                Scenarie-simulator
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Test forskjellige fotograferingssituasjoner
+              </Typography>
+
+              {scenarios.map((scenario, index) => (
+                <Button
+                  key={index}
+                  fullWidth
+                  variant="outlined"
+                  onClick={() => simulateContext(scenario)}
+                  sx={{ mb: 1 }}
+                  disabled={simulationRunning}
+                >
+                  {scenario.name}
+                </Button>
+              ))}
+            </CardContent>
+          </Card>
+        </GridOn>
+
+        {/* Current Context Display */}
+        <GridOn size={{ xs:  12, md:  4 }}>
+          <Card sx={{ mb: 3 }} sx={theming.getThemedCardSx()}>
+            <CardContent sx={theming.getThemedCardSx()}>
+              <Typography variant="h6"
+                gutterBottom
+                sx={{ display: 'flex', alignItems: 'center', gap:  1 }}
+               sx={{ ...{}, color: theming.colors.primary }}>
+                <CameraIcon />
+                Gjeldende kontekst
+              </Typography>
+
+              {Object.keys(currentContext).length === 0 ? (
+                <Typography color="text.secondary">
+                  Ingen kontekst valgt. Velg et scenario eller start simulering.
+                </Typography>
+              ) : (
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap:  1 }}>
+                  {currentContext.currentCamera && (
+                    <Chip
+                      icon={<CameraIcon />}
+                      label={currentContext.currentCamera}
+                      size="small"
+                      color="primary"
+                    />
+                  )}
+                  {currentContext.currentLens && (
+                    <Chip label={currentContext.currentLens} size="small" variant="outlined" />
+                  )}
+                  {currentContext.lightingCondition && (
+                    <Chip
+                      icon={<LightingIcon />}
+                      label={currentContext.lightingCondition}
+                      size="small"
+                      color="secondary"
+                    />
+                  )}
+                  {currentContext.location && (
+                    <Chip
+                      icon={<LocationIcon />}
+                      label={currentContext.location}
+                      size="small"
+                      color="info"
+                    />
+                  )}
+                  {currentContext.timeOfDay && (
+                    <Chip
+                      icon={<TimeIcon />}
+                      label={currentContext.timeOfDay}
+                      size="small"
+                      color="warning"
+                    />
+                  )}
+                  {currentContext.projectType && (
+                    <Chip label={currentContext.projectType} size="small" color="success" />
+                  )}
+                  {currentContext.userLevel && (
+                    <Chip
+                      label={currentContext.userLevel}
+                      size="small"
+                      variant="outlined"
+                      color="error"
+                    />
+                  )}
+                </Box>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Relevant Tips Count */}
+          <Card sx={{ mb: 3 }} sx={theming.getThemedCardSx()}>
+            <CardContent sx={theming.getThemedCardSx()}>
+              <Typography variant="h6" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>
+                Tips Statistics
+              </Typography>
+              <GridOn container spacing={2}>
+                <GridOn size={6}>
+                  <Paper
+                    sx={{
+                      p:  2,
+                      textAlign: 'center',
+                      bgcolor: 'primary.light',
+                      color: 'primary.contrastText',
+                  }}
+                   sx={theming.getThemedCardSx()}>
+                    <Typography variant="h4" fontWeight="bold" sx={{ ...{}, color: theming.colors.primary }}>
+                      {relevantTipsCount}
+                    </Typography>
+                    <Typography variant="body2">Relevante tips</Typography>
+                  </Paper>
+                </GridOn>
+                <GridOn size={6}>
+                  <Paper
+                    sx={{
+                      p:  2,
+                      textAlign: 'center',
+                      bgcolor: 'secondary.light',
+                      color: 'secondary.contrastText',
+                  }}
+                   sx={theming.getThemedCardSx()}>
+                    <Typography variant="h4" fontWeight="bold" sx={{ ...{}, color: theming.colors.primary }}>
+                      {categories.length}
+                    </Typography>
+                    <Typography variant="body2">Kategorier</Typography>
+                  </Paper>
+                </GridOn>
+              </GridOn>
+            </CardContent>
+          </Card>
+
+          {/* Categories List */}
+          <Card sx={theming.getThemedCardSx()}>
+            <CardContent sx={theming.getThemedCardSx()}>
+              <Typography variant="h6" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>
+                Tilgjengelige kategorier
+              </Typography>
+              <List dense>
+                {categories.map((category) => (
+                  <ListItem key={category.id} sx={{ px: 0 }}>
+                    <ListItemIcon sx={{ minWidth: 3, 2,}}>
+                      <TipsIcon fontSize="small" />
+                    </ListItemIcon>
+                    <ListItemText primary={category.name} secondary={`${category.count} tips`} />
+                  </ListItem>
+                ))}
+              </List>
+            </CardContent>
+          </Card>
+        </GridOn>
+
+        {/* Contextual Tips Preview */}
+        <GridOn size={{ xs:  12, md:  4 }}>
+          <Card sx={theming.getThemedCardSx()}>
+            <CardContent sx={theming.getThemedCardSx()}>
+              <Typography variant="h6"
+                gutterBottom
+                sx={{ display: 'flex', alignItems: 'center', gap:  1 }}
+               sx={{ ...{}, color: theming.colors.primary }}>
+                <VisibilityIcon />
+                Relevante tips ({relevantTipsCount})
+              </Typography>
+
+              {relevantTipsCount === 0 ? (
+                <Alert severity="info">
+                  Ingen relevante tips for gjeldende kontekst. Prøv å velge et scenario.
+                </Alert>
+              ) : (
+                <List>
+                  {contextualTips.slice(0, 5).map((tip, index) => (
+                    <React.Fragment key={tip.id || index}>
+                      <ListItem sx={{ px: 0 }}>
+                        <ListItemText
+                          primary={tip.title}
+                          secondary={
+                            <Box>
+                              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                                {tip.content.substring(0, 100)}...
+                              </Typography>
+                              <Box sx={{ display: 'flex', gap: 0., 5,}}>
+                                <Chip label={tip.category} size="small" />
+                                {tip.conditions?.difficulty && (
+                                  <Chip
+                                    label={tip.conditions.difficulty}
+                                    size="small"
+                                    variant="outlined"
+                                  />
+                                )}
+                              </Box>
+                            </Box>
+                        }
+                        />
+                      </ListItem>
+                      {index < contextualTips.slice(0, 5).length - 1 && <Divider />}
+                    </React.Fragment>
+                  ))}
+                </List>
+              )}
+
+              {relevantTipsCount > 5 && (
+                <Box sx={{ mt: ,  2textAlign: 'center, ',}}>
+                  <Button
+                    variant="outlined"
+                    onClick={() => setShowOverlay(true)}
+                    startIcon={<VisibilityIcon />}
+                  >
+                    Se alle {relevantTipsCount} tips
+                  </Button>
+                </Box>
+              )}
+            </CardContent>
+          </Card>
+        </GridOn>
+      </GridOn>
+
+      {/* Photography Tips Components */}
+      <PhotographyTipsOverlay
+        context={currentContext}
+        userId="demo_user"
+        onTipInteraction={handleTipInteraction}
+      />
+
+      {enableAutoTrigger && (
+        <SmartTipsTrigger
+          userId="demo_user"
+          onTipClick={(tip) => {
+            console.log('Smart tip clicked:', tip.title);
+        }}
+          onShowAllTips={() => setShowOverlay(true)}
+          enableAutoTrigger={enableAutoTrigger}
+        />
+      )}
+
+      {/* Status Indicator */}
+      {simulationRunning && (
+        <Fab
+          color="secondary"
+          sx={{
+            position: 'fixed',
+            top:  24,
+            left:  24,
+            animation: 'pulse 2s infinite',
+            '@keyframes pulse': {
+              '0%': { transform: 'scale(1), ',},
+              '50%': { transform: 'scale(1.1), ',},
+              '100%': { transform: 'scale(1), ',},
+          },
+        }}
+        >
+          <PlayIcon />
+        </Fab>
+      )}
+    </Container>
+  );
+};
+
+export default PhotographyTipsCenter;

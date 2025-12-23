@@ -1,0 +1,118 @@
+import { useState, useEffect } from 'react';
+
+interface User {
+  id: string;
+  email: string;
+  name: string;
+  picture?: string;
+  role: 'user' | 'prototype_tester' | 'admin';
+  userType?: string;
+  loginTime: string;
+}
+
+interface AuthState {
+  user: User | null;
+  isAuthenticated: boolean;
+  isLoading: boolean;
+  error: string | null;
+}
+
+export function useAuth() {
+  const [authState, setAuthState] = useState<AuthState>({
+    user: null,
+    isAuthenticated: false,
+    isLoading: true,
+    error: null,
+});
+
+  const checkAuthStatus = async () => {
+    try {
+      setAuthState((prev) => ({ ...prev, isLoading: true, error: null }));
+
+      const response = await fetch('/api/auth/user', {
+        method: 'GET',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+      },
+    });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.user) {
+          setAuthState({
+            user: data.user,
+            isAuthenticated: true,
+            isLoading: false,
+            error: null,
+        });
+      } else {
+          setAuthState({
+            user: null,
+            isAuthenticated: false,
+            isLoading: false,
+            error: null,
+        });
+      }
+    } else {
+        // User not authenticated
+        setAuthState({
+          user: null,
+          isAuthenticated: false,
+          isLoading: false,
+          error: null,
+      });
+    }
+  } catch (error) {
+      console.error('Auth check error:', error);
+      setAuthState({
+        user: null,
+        isAuthenticated: false,
+        isLoading: false,
+        error: 'Failed to check authentication status',
+    });
+  }
+};
+
+  const logout = async () => {
+    try {
+      const response = await fetch('/api/auth/logout', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+      },
+    });
+
+      if (response.ok) {
+        setAuthState({
+          user: null,
+          isAuthenticated: false,
+          isLoading: false,
+          error: null,
+      });
+
+        // Redirect to home page after logout
+        window.location.href = '/';
+    } else {
+        throw new Error('Logout failed');
+    }
+  } catch (error) {
+      console.error('Logout error:', error);
+      setAuthState((prev) => ({
+        ...prev,
+        error: 'Failed to logout',
+    }));
+  }
+};
+
+  useEffect(() => {
+    checkAuthStatus();
+}, []);
+
+  return {
+    ...authState,
+    logout,
+    refetch: checkAuthStatus,
+};
+}

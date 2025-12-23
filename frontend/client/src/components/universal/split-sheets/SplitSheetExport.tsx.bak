@@ -1,0 +1,234 @@
+/**
+ * Split Sheet Export Component
+ * Allows users to export split sheets in various formats for accounting software
+ */
+
+import React, { useState } from 'react';
+import { useMutation } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
+import {
+  Box,
+  Button,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  RadioGroup,
+  FormControlLabel,
+  Radio,
+  Checkbox,
+  FormGroup,
+  Typography,
+  Alert,
+  CircularProgress,
+  Divider,
+} from '@mui/material';
+import {
+  Download as DownloadIcon,
+  PictureAsPdf as PdfIcon,
+  TableChart as ExcelIcon,
+  Description as CsvIcon,
+  AccountBalance as SplitSheetIcon,
+  AccountBalance as AccountBalanceIcon,
+} from '@mui/icons-material';
+
+interface SplitSheetExportProps {
+  splitSheetId: string;
+  splitSheetTitle: string;
+  onExportComplete?: () => void;
+}
+
+export default function SplitSheetExport({
+  splitSheetId,
+  splitSheetTitle,
+  onExportComplete,
+}: SplitSheetExportProps) {
+  const [open, setOpen] = useState(false);
+  const [format, setFormat] = useState<'csv' | 'excel' | 'accounting'>('csv');
+  const [includeRevenue, setIncludeRevenue] = useState(true);
+  const [includePayments, setIncludePayments] = useState(true);
+  const [includeContributors, setIncludeContributors] = useState(true);
+  const [accountingFormat, setAccountingFormat] = useState<'quickbooks' | 'xero' | 'norwegian'>('norwegian');
+
+  const exportMutation = useMutation({
+    mutationFn: async () => {
+      let url = '';
+      if (format === 'csv') {
+        url = `/api/split-sheets/${splitSheetId}/export/csv`;
+      } else if (format === 'excel') {
+        url = `/api/split-sheets/${splitSheetId}/export/excel`;
+      } else {
+        url = `/api/split-sheets/${splitSheetId}/export/accounting?format=${accountingFormat}`;
+      }
+
+      const response = await fetch(url);
+      if (!response.ok) throw new Error('Failed to export split sheet ');
+
+      if (format === 'csv') {
+        const blob = await response.blob();
+        const downloadUrl = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = downloadUrl;
+        a.download = `split-sheet-${splitSheetId}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(downloadUrl);
+        document.body.removeChild(a);
+      } else if (format === 'excel') {
+        const data = await response.json();
+        // Convert JSON to downloadable format
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const downloadUrl = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = downloadUrl;
+        a.download = `split-sheet-${splitSheetId}.json`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(downloadUrl);
+        document.body.removeChild(a);
+      }
+
+      return { success: true };
+    },
+    onSuccess: () => {
+      setOpen(false);
+      if (onExportComplete) onExportComplete();
+    },
+  });
+
+  const handleExport = () => {
+    exportMutation.mutate();
+  };
+
+  return (
+    <>
+      <Button
+        variant="outlined"
+        startIcon={<DownloadIcon />}
+        onClick={() => setOpen(true)}
+        sx={{
+          color: '#9f7aea',
+          borderColor: '#9f7aea', '&:hover': {
+            borderColor: '#9f7aea',
+            bgcolor: '#9f7aea10',
+          }}}
+      >
+        Eksporter
+      </Button>
+
+      <Dialog open={open} onClose={() => setOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <SplitSheetIcon sx={{ color: '#9f7aea' }} />
+            Eksporter Split Sheet
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            {splitSheetTitle}
+          </Typography>
+
+          <FormControl fullWidth sx={{ mb: 3 }}>
+            <InputLabel>Eksportformat</InputLabel>
+            <Select value={format} label="Eksportformat" onChange={(e) => setFormat(e.target.value as any)}>
+              <MenuItem value="csv">
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <CsvIcon fontSize="small" />
+                  CSV (Komma-separert)
+                </Box>
+              </MenuItem>
+              <MenuItem value="excel">
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <ExcelIcon fontSize="small" />
+                  Excel/JSON
+                </Box>
+              </MenuItem>
+              <MenuItem value="accounting">
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <AccountBalanceIcon fontSize="small" />
+                  Regnskapsformat
+                </Box>
+              </MenuItem>
+            </Select>
+          </FormControl>
+
+          {format === 'accounting' && (
+            <FormControl fullWidth sx={{ mb: 3 }}>
+              <InputLabel>Regnskapsformat</InputLabel>
+              <Select
+                value={accountingFormat}
+                label="Regnskapsformat"
+                onChange={(e) => setAccountingFormat(e.target.value as any)}
+              >
+                <MenuItem value="norwegian">Norsk Bokføring</MenuItem>
+                <MenuItem value="quickbooks">QuickBooks</MenuItem>
+                <MenuItem value="xero">Xero</MenuItem>
+              </Select>
+            </FormControl>
+          )}
+
+          <Divider sx={{ my: 2 }} />
+
+          <Typography variant="subtitle2" gutterBottom>
+            Inkluder data
+          </Typography>
+          <FormGroup>
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={includeContributors}
+                  onChange={(e) => setIncludeContributors(e.target.checked)}
+                />
+              }
+              label="Bidragsytere og prosenter"
+            />
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={includeRevenue}
+                  onChange={(e) => setIncludeRevenue(e.target.checked)}
+                />
+              }
+              label="Inntektsdata"
+            />
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={includePayments}
+                  onChange={(e) => setIncludePayments(e.target.checked)}
+                />
+              }
+              label="Betalinger"
+            />
+          </FormGroup>
+
+          {exportMutation.isError && (
+            <Alert severity="error" sx={{ mt: 2 }}>
+              Feil ved eksport: {(exportMutation.error as Error)?.message || 'Ukjent feil'}
+            </Alert>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpen(false)}>Avbryt</Button>
+          <Button
+            variant="contained"
+            onClick={handleExport}
+            disabled={exportMutation.isPending}
+            startIcon={exportMutation.isPending ? <CircularProgress size={16} /> : <DownloadIcon />}
+            sx={{ bgcolor: '#9f7aea','&:hover': { bgcolor: '#8e6fd9' } }}
+          >
+            {exportMutation.isPending ? 'Eksporterer...' : 'Eksporter'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </>
+  );
+}
+
+
+
+

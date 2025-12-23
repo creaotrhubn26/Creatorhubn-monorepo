@@ -1,0 +1,539 @@
+import { useTheming } from '../../utils/theming-helper';
+import React, { useState } from 'react';
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
+import { useAuth } from '@/hooks/useAuth';
+import {
+  Box,
+  Card as MuiCard,
+  CardContent,
+  Typography,
+  Grid,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Paper,
+  Chip,
+  Button,
+  IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  MenuItem,
+  Select,
+  FormControl,
+  InputLabel,
+  Alert,
+  Tabs,
+  Tab,
+  LinearProgress,
+  Tooltip
+} from '@mui/material';
+import {
+  Assessment,
+  Business,
+  CheckCircle,
+  Cancel,
+  Flag,
+  Email,
+  Visibility,
+  TrendingUp,
+  Group,
+  Schedule,
+  Warning
+} from '@mui/icons-material';
+import { apiRequest } from '@/lib/queryClient';
+
+interface InviteRequest {
+  id: string;
+  businessName: string;
+  orgNumber: string;
+  contactName: string;
+  contactEmail: string;
+  profession: string;
+  status: 'pending' | 'under_review' | 'approved' | 'rejected';
+  hasGoogleWorkspace: boolean;
+  redFlagAnalysis?: {
+    riskLevel: 'low' | 'medium' | 'high' | 'critical';
+    flags: Array<{
+      category: string;
+      severity: 'warning' | 'danger' | 'critical';
+      message: string;
+}>;
+    score: number;
+    recommendation: 'approve' | 'review' | 'reject';
+};
+  createdAt: string;
+  reviewedAt?: string;
+  inviteSentAt?: string;
+  registeredAt?: string;
+}
+
+interface InviteStats {
+  totalRequests: number;
+  pendingReview: number;
+  approved: number;
+  rejected: number;
+  converted: number;
+  conversionRate: number;
+  averageReviewTime: number;
+  riskDistribution: {
+    low: number;
+    medium: number;
+    high: number;
+    critical: number;
+};
+}
+
+export default function InviteManagementDashboard() {
+  const queryClient = useQueryClient();
+  
+  // Theming system
+  const theming = useTheming('prototype_tester');
+
+  // Fetch invite requests
+  const { data: inviteData, isLoading } = useQuery({
+    queryKey: ['/api/invites/admin/requests'],
+    queryFn: async () => {
+      return apiRequest('/api/invites/admin/requests');
+  },
+    refetchInterval: 30000
+});
+
+  const invitations = inviteData?.invitations || [];
+  const stats = inviteData?.stats || {};
+
+  // Update invite status mutation
+  const updateStatusMutation = useMutation({
+    mutationFn: async ({ inviteId, status, notes }: { inviteId: string; status: string; notes: string }) => {
+      const response = await fetch(`/api/invites/admin/requests/${inviteId}/status`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status, adminNotes: notes })
+    });
+      return response.json();
+  },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/invites/admin/requests'] });
+      setShowReviewDialog(false);
+      setSelectedInvite(null);
+      setAdminNotes('');
+  }
+});
+
+  const [currentTab, setCurrentTab] = useState(0);
+  const [selectedInvite, setSelectedInvite] = useState<InviteRequest | null>(null);
+  const [showReviewDialog, setShowReviewDialog] = useState(false);
+  const [reviewStatus, setReviewStatus] = useState('');
+  const [adminNotes, setAdminNotes] = useState('');
+
+  // Send invite email mutation
+  const sendInviteMutation = useMutation({
+    mutationFn: async (inviteId: string) => apiRequest(`/api/invites/admin/requests/${inviteId}/send-invite`, { method: 'POST' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/invites/admin/requests'] });
+  }
+});
+
+  const handleReviewInvite = (invite: InviteRequest) => {
+    setSelectedInvite(invite);
+    setReviewStatus(invite.status);
+    setAdminNotes('');
+    setShowReviewDialog(true);
+};
+
+  const handleUpdateStatus = () => {
+    if (selectedInvite) {
+      updateStatusMutation.mutate({
+        inviteId: selectedInvite.id,
+        status: reviewStatus,
+        notes: adminNotes
+  });
+  }
+};
+
+  const handleSendInvite = (inviteId: string) => {
+    sendInviteMutation.mutate(inviteId);
+};
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'pending': return 'default';
+      case 'under_review': return 'warning';
+      case 'approved': return 'success';
+      case 'rejected': return 'error';
+      default: return 'default';
+}
+};
+
+  const getRiskColor = (level: string) => {
+    switch (level) {
+      case 'low': return 'success';
+      case 'medium': return 'warning';
+      case 'high': return 'error';
+      case 'critical': return 'error';
+      default: return 'default';
+}
+};
+
+  const getProfessionLabel = (profession: string) => {
+    const labels = {
+      photographer: 'Fotograf',
+      videographer: 'Videograf',
+      music_producer: 'Musikk-produsent',
+      vendor: 'Leverandør'
+};
+    return labels[profession as keyof typeof labels] || profession;
+};
+
+  const filteredInvitations = invitations.filter((invite: any) => {
+    switch (currentTab) {
+      case 1: return invite.status === 'pending';
+      case 2: return invite.status === 'under_review';
+      case 3: return invite.status === 'approved';
+      case 4: return invite.status === 'rejected';
+      default: return true;
+}
+});
+
+  if (isLoading) {
+    return (
+      <Box sx={{ p: 3 }}>
+        <LinearProgress />
+        <Typography sx={{ mt: 2, textAlign: 'center' }}>
+          Laster invitasjonsdata...
+        </Typography>
+      </Box>
+    );
+}
+
+  return (
+    <Box sx={{ p: 3 }}>
+      <Typography variant="h4" sx={{ mb: 3, color: theming.colors.primary }}>
+        Invitasjonshåndtering
+      </Typography>
+
+      {/* Statistics Cards */}
+      <Grid container spacing={3} sx={{ mb: 4 }}>
+        <Grid item xs={12} md={3}>
+          <MuiCard sx={{ backgroundColor: 'rgba(33, 150, 243, 0.1)' }}>
+            <CardContent>
+              <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                <Group sx={{ color: 'primary.main', mr: 2 }} />
+                <Box>
+                  <Typography variant="h4" sx={{ color: theming.colors.primary }}>{stats.totalRequests || 0}</Typography>
+                  <Typography variant="body2">Totale søknader</Typography>
+                </Box>
+              </Box>
+            </CardContent>
+          </MuiCard>
+        </Grid>
+        
+        <Grid item xs={12} md={3}>
+          <MuiCard sx={{ backgroundColor: 'rgba(255, 1520.1)' }}>
+            <CardContent >
+              <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                <Schedule sx={{ color: 'warning.main', mr: 2 }} />
+                <Box>
+                  <Typography variant="h4" sx={{ color: theming.colors.primary }}>{stats.pendingReview || 0}</Typography>
+                  <Typography variant="body2">Venter på godkjenning</Typography>
+                </Box>
+              </Box>
+            </CardContent>
+          </MuiCard>
+        </Grid>
+
+        <Grid item xs={12} md={3}>
+          <MuiCard sx={{ backgroundColor: 'rgba(76, 175, 80, 0.1)' }}>
+            <CardContent >
+              <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                <CheckCircle sx={{ color: 'success.main', mr: 2 }} />
+                <Box>
+                  <Typography variant="h4" sx={{ color: theming.colors.primary }}>{stats.approved || 0}</Typography>
+                  <Typography variant="body2">Godkjente</Typography>
+                </Box>
+              </Box>
+            </CardContent>
+          </MuiCard>
+        </Grid>
+
+        <Grid item xs={12} md={3}>
+          <MuiCard sx={{ backgroundColor: 'rgba(255, 107, 53, 0.1)' }}>
+            <CardContent >
+              <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                <TrendingUp sx={{ color: '#ff6b35', mr: 2 }} />
+                <Box>
+                  <Typography variant="h4" sx={{ color: theming.colors.primary }}>{Math.round(stats.conversionRate || 0)}%</Typography>
+                  <Typography variant="body2">Konverteringsrate</Typography>
+                </Box>
+              </Box>
+            </CardContent>
+          </MuiCard>
+        </Grid>
+      </Grid>
+
+      {/* Tabs for filtering */}
+      <Paper sx={{ mb: 3 }} >
+        <Tabs 
+          value={currentTab}
+          onChange={(e, newValue) => setCurrentTab(newValue)}
+          sx={{
+            '& .MuiTab-root': {
+              color: 'text.secondary',
+              '&.Mui-selected': {
+                color: '#ff6b35'
+          }
+          },
+            '& .MuiTabs-indicator': {
+              backgroundColor: '#ff6b35'
+        }
+        }}
+        >
+          <Tab label={`Alle (${invitations.length})`} />
+          <Tab label={`Venter (${invitations.filter((i: any) => i.status === 'pending').length})`} />
+          <Tab label={`Under vurdering (${invitations.filter((i: any) => i.status === 'under_review').length})`} />
+          <Tab label={`Godkjent (${invitations.filter((i: any) => i.status === 'approved').length})`} />
+          <Tab label={`Avvist (${invitations.filter((i: any) => i.status === 'rejected').length})`} />
+        </Tabs>
+      </Paper>
+
+      {/* Invitations Table */}
+      <TableContainer component={Paper}>
+        <Table>
+          <TableHead>
+            <TableRow>
+              <TableCell>Bedrift</TableCell>
+              <TableCell>Kontakt</TableCell>
+              <TableCell>Profesjon</TableCell>
+              <TableCell>Status</TableCell>
+              <TableCell>Risiko</TableCell>
+              <TableCell>Google Workspace</TableCell>
+              <TableCell>Dato</TableCell>
+              <TableCell>Handlinger</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {filteredInvitations.map((invite: any) => (
+              <TableRow key={invite.id} hover>
+                <TableCell>
+                  <Box>
+                    <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                      {invite.businessName}
+                    </Typography>
+                    <Typography variant="caption" color="textSecondary">
+                      {invite.orgNumber}
+                    </Typography>
+                  </Box>
+                </TableCell>
+                
+                <TableCell>
+                  <Box>
+                    <Typography variant="body2">{invite.contactName}</Typography>
+                    <Typography variant="caption" color="textSecondary">
+                      {invite.contactEmail}
+                    </Typography>
+                  </Box>
+                </TableCell>
+                
+                <TableCell>
+                  <Chip 
+                    label={getProfessionLabel(invite.profession)}
+                    variant="outlined"
+                    size="small"
+                  />
+                </TableCell>
+                
+                <TableCell>
+                  <Chip 
+                    label={invite.status}
+                    color={getStatusColor(invite.status)}
+                    size="small"
+                  />
+                </TableCell>
+                
+                <TableCell>
+                  {invite.redFlagAnalysis && (
+                    <Tooltip title={`Score: ${invite.redFlagAnalysis.score}/100`}>
+                      <Chip 
+                        label={invite.redFlagAnalysis.riskLevel}
+                        color={getRiskColor(invite.redFlagAnalysis.riskLevel)}
+                        size="small"
+                        icon={invite.redFlagAnalysis.flags.length > 0 ? <Flag /> : undefined}
+                      />
+                    </Tooltip>
+                  )}
+                </TableCell>
+                
+                <TableCell>
+                  {invite.hasGoogleWorkspace ? (
+                    <CheckCircle sx={{ color: 'success.main, ',}} />
+                  ) : (
+                    <Cancel sx={{ color: 'text.disabled, ',}} />
+                  )}
+                </TableCell>
+                
+                <TableCell>
+                  <Typography variant="body2">
+                    {new Date(invite.createdAt).toLocaleDateString('nb-NO')}
+                  </Typography>
+                </TableCell>
+                
+                <TableCell>
+                  <Box sx={{ display: 'flex', gap: 1 }}>
+                    <Tooltip title="Se detaljer">
+                      <IconButton 
+                        size="small"
+                        onClick={() => handleReviewInvite(invite)}
+                      >
+                        {theming.getThemedIcon('visibility')}
+                      </IconButton>
+                    </Tooltip>
+                    
+                    {invite.status === 'approved' && !invite.inviteSentAt && (
+                      <Tooltip title="Send invitasjon">
+                        <IconButton 
+                          size="small"
+                          onClick={() => handleSendInvite(invite.id)}
+                          disabled={sendInviteMutation.isPending}
+                        >
+                          {theming.getThemedIcon('email')}
+                        </IconButton>
+                      </Tooltip>
+                    )}
+                  </Box>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </TableContainer>
+
+      {/* Review Dialog */}
+      <Dialog 
+        open={showReviewDialog}
+        onClose={() => setShowReviewDialog(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          Vurder invitasjon - {selectedInvite?.businessName}
+        </DialogTitle>
+        
+        <DialogContent>
+          {selectedInvite && (
+            <Box sx={{ pt: 2 }}>
+              {/* Business Information */}
+              <MuiCard sx={{ mb: 3, backgroundColor: 'rgba(255,255,255,0.02)' }}>
+                <CardContent>
+                  <Typography variant="h6" sx={{ mb: 2, color: theming.colors.primary }}>
+                    Bedriftsinformasjon
+                  </Typography>
+                  <Grid container spacing={2}>
+                    <Grid item xs={6}>
+                      <Typography variant="body2" color="textSecondary">Bedriftsnavn: </Typography>
+                      <Typography variant="body1">{selectedInvite.businessName}</Typography>
+                    </Grid>
+                    <Grid item xs={6}>
+                      <Typography variant="body2" color="textSecondary">Org.nr: </Typography>
+                      <Typography variant="body1">{selectedInvite.orgNumber}</Typography>
+                    </Grid>
+                    <Grid item xs={6}>
+                      <Typography variant="body2" color="textSecondary">Kontaktperson: </Typography>
+                      <Typography variant="body1">{selectedInvite.contactName}</Typography>
+                    </Grid>
+                    <Grid item xs={6}>
+                      <Typography variant="body2" color="textSecondary">E-post: </Typography>
+                      <Typography variant="body1">{selectedInvite.contactEmail}</Typography>
+                    </Grid>
+                  </Grid>
+                </CardContent>
+              </MuiCard>
+
+              {/* Red Flag Analysis */}
+              {selectedInvite.redFlagAnalysis && (
+                <MuiCard sx={{ mb: 3, backgroundColor: 'rgba(255,255,255,0.02)' }}>
+                  <CardContent>
+                    <Typography variant="h6" sx={{ mb: 2, color: theming.colors.primary }}>
+                      Risikoanalyse
+                    </Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                      <Chip 
+                        label={`${selectedInvite.redFlagAnalysis.riskLevel} risiko`}
+                        color={getRiskColor(selectedInvite.redFlagAnalysis.riskLevel)}
+                      />
+                      <Typography sx={{ ml: 2 }}>
+                        Score: {selectedInvite.redFlagAnalysis.score}/100
+                      </Typography>
+                    </Box>
+                    
+                    {selectedInvite.redFlagAnalysis.flags.length > 0 && (
+                      <>
+                        <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                          Red flags: </Typography>
+                        {selectedInvite.redFlagAnalysis.flags.map((flag, index) => (
+                          <Alert 
+                            key={index}
+                            severity={flag.severity === 'critical' ? 'error' : 'warning'}
+                            sx={{ mb: 1 }}
+                          >
+                            <Typography variant="body2">
+                              <strong>{flag.category}:</strong> {flag.message}
+                            </Typography>
+                          </Alert>
+                        ))}
+                      </>
+                    )}
+                  </CardContent>
+                </MuiCard>
+              )}
+
+              {/* Review Controls */}
+              <FormControl fullWidth sx={{ mb: 3 }}>
+                <InputLabel>Status</InputLabel>
+                <Select
+                  value={reviewStatus}
+                  onChange={(e) => setReviewStatus(e.target.value)}
+                  label="Status"
+                >
+                  <MenuItem value="pending">Venter</MenuItem>
+                  <MenuItem value="under_review">Under vurdering</MenuItem>
+                  <MenuItem value="approved">Godkjent</MenuItem>
+                  <MenuItem value="rejected">Avvist</MenuItem>
+                </Select>
+              </FormControl>
+
+              <TextField
+                fullWidth
+                label="Admin notater"
+                multiline
+                rows={4}
+                value={adminNotes}
+                onChange={(e) => setAdminNotes(e.target.value)}
+                placeholder="Legg til notater om vurderingen..."
+              />
+            </Box>
+          )}
+        </DialogContent>
+        
+        <DialogActions>
+          <Button onClick={() => setShowReviewDialog(false)}>
+            Avbryt
+          </Button>
+          <Button onClick={handleUpdateStatus}
+            variant="contained"
+            disabled={updateStatusMutation.isPending}
+            sx={{ 
+              backgroundColor: '#ff6b35',
+              '&:hover': { backgroundColor: '#e55722' }
+          }}>
+            Oppdater status
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
+  );
+}

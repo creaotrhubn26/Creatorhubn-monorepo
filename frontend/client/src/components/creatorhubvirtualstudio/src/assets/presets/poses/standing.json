@@ -1,0 +1,71 @@
+{
+  "id": "standing_neutral",
+  "name": "Neutral Standing",
+  "category": "standing",
+  "description": "Classic neutral standing pose for portraits",
+  "bones": {
+    "Hips": {
+      "rotation": { "x": 0, "y": 0, "z": 0 },
+      "position": [0, 0.95, 0]
+    },
+    "Spine": {
+      "rotation": { "x": 0, "y": 0, "z": 0 }
+    },
+    "Spine1": {
+      "rotation": { "x": 0, "y": 0, "z": 0 }
+    },
+    "Spine2": {
+      "rotation": { "x": 0, "y": 0, "z": 0 }
+    },
+    "Neck": {
+      "rotation": { "x": 0, "y": 0, "z": 0 }
+    },
+    "Head": {
+      "rotation": { "x": 0, "y": 0.1, "z": 0 }
+    },
+    "LeftShoulder": {
+      "rotation": { "x": 0, "y": 0, "z": 0 }
+    },
+    "LeftArm": {
+      "rotation": { "x": 0, "y": 0, "z": -0.2 }
+    },
+    "LeftForeArm": {
+      "rotation": { "x": 0, "y": 0, "z": 0 }
+    },
+    "LeftHand": {
+      "rotation": { "x": 0, "y": 0, "z": 0 }
+    },
+    "RightShoulder": {
+      "rotation": { "x": 0, "y": 0, "z": 0 }
+    },
+    "RightArm": {
+      "rotation": { "x": 0, "y": 0, "z": 0.2 }
+    },
+    "RightForeArm": {
+      "rotation": { "x": 0, "y": 0, "z": 0 }
+    },
+    "RightHand": {
+      "rotation": { "x": 0, "y": 0, "z": 0 }
+    },
+    "LeftUpLeg": {
+      "rotation": { "x": 0, "y": 0, "z": 0 }
+    },
+    "LeftLeg": {
+      "rotation": { "x": 0, "y": 0, "z": 0 }
+    },
+    "LeftFoot": {
+      "rotation": { "x": 0, "y": 0, "z": 0 }
+    },
+    "RightUpLeg": {
+      "rotation": { "x": 0, "y": 0, "z": 0 }
+    },
+    "RightLeg": {
+      "rotation": { "x": 0, "y": 0, "z": 0 }
+    },
+    "RightFoot": {
+      "rotation": { "x": 0, "y": 0, "z": 0 }
+    }
+  }
+}
+
+

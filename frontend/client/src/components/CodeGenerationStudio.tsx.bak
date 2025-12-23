@@ -1,0 +1,676 @@
+/**
+ * CreatorHub Norge - Code Generation Studio
+ * Production-ready code generation and analysis platform
+ * Fully integrated with Material-UI and EnhancedMasterIntegrationProvider
+ * 
+ * Features:
+ * - Auto-generates backend services, API routes, and frontend hooks
+ * - Connects to Visual Editor for component-based API suggestions
+ * - Integrates with .env management system
+ * - Broadcasts events to all platform components
+ */
+
+import { useTheming } from '../utils/theming-helper';
+import { useEnhancedMasterIntegration } from '../integration/EnhancedMasterIntegrationProvider';
+import React, { useState, useEffect } from 'react';
+import {
+  Box,
+  Card,
+  CardContent,
+  CardHeader,
+  Button,
+  Tabs,
+  Tab,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  Alert,
+  AlertTitle,
+  TextField,
+  Typography,
+  Grid,
+  Chip,
+  List,
+  ListItem,
+  ListItemText,
+  CircularProgress,
+  Paper,
+} from '@mui/material';
+import {
+  Code,
+  PlayArrow,
+  Settings,
+  CheckCircle,
+  Storage,
+  Description,
+  Language,
+  Layers,
+  OfflineBolt,
+} from '@mui/icons-material';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useForm, Controller } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
+import { apiRequest } from '@/lib/queryClient';
+
+const testConfigSchema = z.object({
+  providerId: z.string().min(1, 'Velg en API-leverandør'),
+  apiKey: z.string().min(10, 'API-nøkkel må være minst 10 tegn'),
+  environment: z.enum(['sandbox', 'production']),
+  companySlug: z.string().optional(),
+});
+
+type TestConfig = z.infer<typeof testConfigSchema>;
+
+export function CodeGenerationDemo() {
+  const theming = useTheming('photographer');
+  const queryClient = useQueryClient();
+  const { communication, dataFlow, componentRegistry, auth, analytics } = useEnhancedMasterIntegration();
+  const [selectedProvider, setSelectedProvider] = useState<string>('');
+  const [generatedCode, setGeneratedCode] = useState<any>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [activeTab, setActiveTab] = useState(0);
+
+  // Register component with Master Integration
+  useEffect(() => {
+    componentRegistry.registerComponent({
+      id: 'code-generation-studio',
+      type: 'admin',
+      version: '1.0.0',
+      capabilities: {
+        data: ['code-generation'] as string[],
+        events: ['code-generation'] as string[],
+        actions: ['generate'] as string[],
+        ui: ['code-display'] as string[],
+        system: ['integration'] as string[]
+    },
+      dependencies: ['api-integration-generator', 'env-secrets'],
+      lastActive: Date.now(),
+      performance: {
+        renderCount: 0,
+        avgRenderTime: 0,
+        memoryUsage: 0
+    }
+  } as any);
+
+    return () => {
+      componentRegistry.unregisterComponent('code-generation-studio');
+  };
+}, [componentRegistry]);
+
+  // Listen for Visual Editor component selections
+  useEffect(() => {
+    const unsubscribe = communication.onMessage((message: any) => {
+      if (message.type === 'visual-editor:component:selected' && message.data) {
+        console.log('🎨 Visual Editor selected component:', message.data);
+        handleComponentSelected(message.data);
+    }
+  });
+
+    return unsubscribe;
+}, [communication]);
+
+  const {
+    control,
+    handleSubmit,
+    setValue,
+    getValues,
+    formState: { errors },
+} = useForm<TestConfig>({
+    resolver: zodResolver(testConfigSchema) as any,
+    defaultValues: {
+      providerId: '',
+      apiKey: '',
+      environment: 'sandbox',
+      companySlug: '',
+  },
+});
+
+  // Get available API providers
+  const { data: providers } = useQuery({
+    queryKey: ['/api/admin/integrations/templates'],
+});
+
+  // Generate backend code
+  const generateBackendMutation = useMutation({
+    mutationFn: async (config: TestConfig) => {
+      const userId = auth.getUserProfile()?.id || 'demo-user-123';
+
+      await apiRequest(`/api/admin/integrations/user/${userId}/${config.providerId}/configure`, {
+        method: 'POST',
+        body: JSON.stringify({
+          configuration: {
+            apiKey: config.apiKey,
+            environment: config.environment,
+            companySlug: config.companySlug,
+        },
+      }),
+    });
+
+      await apiRequest(`/api/admin/integrations/user/${userId}/${config.providerId}/toggle`, {
+        method: 'POST',
+        body: JSON.stringify({ isEnabled: true }),
+    });
+
+      return await apiRequest(
+        `/api/admin/integrations/user/${userId}/${config.providerId}/generate-backend`,
+        { method: 'POST' },
+      );
+  },
+    onSuccess: (data) => {
+      setGeneratedCode((prev: any) => ({ ...prev, backend: data }));
+      
+      analytics.trackEvent('backend_generated', {
+        provider: getValues().providerId,
+        filesGenerated: data?.files?.length || 0
+    });
+
+      communication.sendBroadcast('code-generation:backend:complete', { 
+        provider: getValues().providerId, 
+        data 
+    });
+
+      dataFlow.syncData('code-generation:backend', data, 'code-generation-studio', 'all');
+  },
+});
+
+  // Generate frontend code
+  const generateFrontendMutation = useMutation({
+    mutationFn: async (config: TestConfig) => {
+      const userId = auth.getUserProfile()?.id || 'demo-user-123';
+      return await apiRequest(
+        `/api/admin/integrations/user/${userId}/${config.providerId}/generate-frontend`,
+        { method: 'POST' },
+      );
+  },
+    onSuccess: (data) => {
+      setGeneratedCode((prev: any) => ({ ...prev, frontend: data }));
+      
+      analytics.trackEvent('frontend_generated', {
+        provider: getValues().providerId,
+        componentsGenerated: data?.components?.length || 0
+    });
+
+      communication.sendBroadcast('code-generation:frontend:complete', { 
+        provider: getValues().providerId, 
+        data 
+    });
+
+      dataFlow.syncData('code-generation:frontend', data, 'code-generation-studio', 'all');
+  },
+});
+
+  // Generate full integration
+  const generateFullMutation = useMutation({
+    mutationFn: async (config: TestConfig) => {
+      const userId = auth.getUserProfile()?.id || 'demo-user-123';
+      setIsGenerating(true);
+
+      await apiRequest(`/api/admin/integrations/user/${userId}/${config.providerId}/configure`, {
+        method: 'POST',
+        body: JSON.stringify({
+          configuration: {
+            apiKey: config.apiKey,
+            environment: config.environment,
+            companySlug: config.companySlug,
+        },
+      }),
+    });
+
+      await apiRequest(`/api/admin/integrations/user/${userId}/${config.providerId}/toggle`, {
+        method: 'POST',
+        body: JSON.stringify({ isEnabled: true }),
+    });
+
+      return await apiRequest(
+        `/api/admin/integrations/user/${userId}/${config.providerId}/generate-full`,
+        { method: 'POST' },
+      );
+  },
+    onSuccess: (data) => {
+      setGeneratedCode(data);
+      setIsGenerating(false);
+      
+      analytics.trackEvent('full_stack_generated', {
+        provider: getValues().providerId,
+        environment: getValues().environment,
+        userId: auth.getUserProfile()?.id,
+        filesGenerated: {
+          backend: data?.backend?.files?.length || 0,
+          frontend: data?.frontend?.components?.length || 0
+      }
+    });
+
+      communication.sendBroadcast('code-generation:complete', { 
+        provider: getValues().providerId, 
+        data,
+        success: true 
+    });
+
+      dataFlow.syncData('code-generation:full-integration', data, 'code-generation-studio', 'all');
+
+      communication.sendMessage({
+        from: 'code-generation-studio',
+        to: 'visual-editor',
+        type: 'new-components-available',
+        data: { 
+          provider: getValues().providerId,
+          components: data?.frontend?.components || []
+      },
+        priority: 'high'
+    });
+  },
+    onError: () => {
+      setIsGenerating(false);
+  },
+});
+
+  const handleProviderChange = (value: string) => {
+    setSelectedProvider(value);
+    setValue('providerId', value);
+    setGeneratedCode(null);
+};
+
+  const handleComponentSelected = (componentData: any) => {
+    const apiSuggestions: Record<string 
+ string> = {
+      'payment-form': 'stripe',
+      'chat-interface': 'openai',
+      'image-gallery': 'unsplash',
+      'video-player': 'pexels',
+      'email-form': 'sendgrid',
+      'map-component': 'google-maps',
+  };
+
+    const suggestedApi = apiSuggestions[componentData.type];
+    if (suggestedApi) {
+      setSelectedProvider(suggestedApi);
+      setValue('providerId', suggestedApi);
+      
+      analytics.trackEvent('api_suggested', {
+        componentType: componentData.type,
+        suggestedApi
+    });
+
+      communication.sendBroadcast('api:suggestion', { 
+        componentType: componentData.type, 
+        suggestedApi 
+    });
+  }
+};
+
+  const onSubmit = async (data: TestConfig) => {
+    analytics.trackEvent('code_generation_started', {
+      provider: data.providerId,
+      environment: data.environment,
+      userId: auth.getUserProfile()?.id
+  });
+
+    communication.sendBroadcast('code-generation:started', { 
+      provider: data.providerId 
+  });
+
+    generateFullMutation.mutate(data);
+
+    if (generatedCode) {
+      dataFlow.syncData('code-generation:result', generatedCode, 'code-generation-studio', 'all');
+  }
+};
+
+  return (
+<Box
+  sx={{
+    minHeight: '100vh',
+    background: 'linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%)',
+    p: 3,
+  }}
+>
+      <Box sx={{ maxWidth: 1400, mx: 'auto' }}>
+        {/* Header */}
+        <Box sx={{ textAlign: 'center', mb: 4 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2, mb: 2 }}>
+            <OfflineBolt sx={{ fontSize: 48, color: theming.colors.primary }} />
+            <Typography variant="h3" sx={{ fontWeight: 'bold', color: theming.colors.primary }}>
+              CreatorHub Norge Code Generation
+            </Typography>
+          </Box>
+          <Typography variant="h6" color="text.secondary" sx={{ maxWidth: 800, mx: 'auto' }}>
+            Automatisk kodegenerering som skaper backend-tjenester og frontend-komponenter
+          </Typography>
+        </Box>
+
+        {/* Features Overview */}
+        <Grid container spacing={2} sx={{ mb: 4 }}>
+          <Grid item xs={12} sm={6} md={3}>
+            <Card sx={{ borderLeft: 4, borderColor: 'primary.main' }}>
+              <CardContent>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                  <Storage color="primary" />
+                  <Typography variant="h6">Backend Services</Typography>
+                </Box>
+                <Typography variant="body2" color="text.secondary">
+                  Auto-genererte API-tjenester
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+
+          <Grid item xs={12} sm={6} md={3}>
+            <Card sx={{ borderLeft: 4, borderColor: 'success.main' }}>
+              <CardContent>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                  <Language color="success" />
+                  <Typography variant="h6">Frontend</Typography>
+                </Box>
+                <Typography variant="body2" color="text.secondary">
+                  React + Material UI
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+
+          <Grid item xs={12} sm={6} md={3}>
+            <Card sx={{ borderLeft: 4, borderColor: 'secondary.main' }}>
+              <CardContent>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                  <Description color="secondary" />
+                  <Typography variant="h6">Smart Standards</Typography>
+                </Box>
+                <Typography variant="body2" color="text.secondary">
+                  TypeScript + Prettier
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+
+          <Grid item xs={12} sm={6} md={3}>
+            <Card sx={{ borderLeft: 4, borderColor: 'warning.main' }}>
+              <CardContent>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                  <Layers color="warning" />
+                  <Typography variant="h6">Auto Integration</Typography>
+                </Box>
+                <Typography variant="body2" color="text.secondary">
+                  Automatic registration
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+        </Grid>
+
+        {/* Configuration Form */}
+        <Card sx={{ maxWidth: 600, mx: 'auto', mb: 4 }}>
+          <CardHeader
+            title={
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Settings />
+                Test Kodegenerering
+              </Box>
+          }
+          />
+          <CardContent>
+            <Box component="form" onSubmit={handleSubmit(onSubmit) as any} sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+              <Controller
+                name="providerId"
+                control={control}
+                render={({ field }) => (
+                  <FormControl fullWidth error={!!errors.providerId}>
+                    <InputLabel>API-leverandør</InputLabel>
+                    <Select
+                      {...field}
+                      value={selectedProvider}
+                      onChange={(e) => {
+                        field.onChange(e);
+                        handleProviderChange(e.target.value);
+                    }}
+                      label="API-leverandør"
+                    >
+                      <MenuItem value="openai">OpenAI</MenuItem>
+                      <MenuItem value="anthropic">Anthropic Claude</MenuItem>
+                      <MenuItem value="stripe">Stripe</MenuItem>
+                      <MenuItem value="pexels">Pexels</MenuItem>
+                      <MenuItem value="unsplash">Unsplash</MenuItem>
+                    </Select>
+                  </FormControl>
+                )}
+              />
+
+              <Controller
+                name="environment"
+                control={control}
+                render={({ field }) => (
+                  <FormControl fullWidth>
+                    <InputLabel>Miljø</InputLabel>
+                    <Select {...field} label="Miljø">
+                      <MenuItem value="sandbox">Sandbox (Test)</MenuItem>
+                      <MenuItem value="production">Production (Live)</MenuItem>
+                    </Select>
+                  </FormControl>
+                )}
+              />
+
+              <Controller
+                name="apiKey"
+                control={control}
+                render={({ field }) => (
+                  <TextField
+                    {...field}
+                    fullWidth
+                    type="password"
+                    label="API-nøkkel"
+                    placeholder="Din API-nøkkel for testing"
+                    error={!!errors.apiKey}
+                    helperText={errors.apiKey?.message}
+                  />
+                )}
+              />
+
+              {selectedProvider === 'fiken' && (
+                <Controller
+                  name="companySlug"
+                  control={control}
+                  render={({ field }) => (
+                    <TextField
+                      {...field}
+                      fullWidth
+                      label="Bedriftsslug"
+                      placeholder="din-bedrift-slug"
+                      error={!!errors.companySlug}
+                      helperText={errors.companySlug?.message}
+                    />
+                  )}
+                />
+              )}
+
+              <Button
+                type="submit"
+                variant="contained"
+                fullWidth
+                disabled={isGenerating || !selectedProvider}
+                startIcon={isGenerating ? <CircularProgress size={20} /> : <OfflineBolt />}
+              >
+                {isGenerating ? 'Genererer...' : 'Generer Full-Stack'}
+              </Button>
+            </Box>
+          </CardContent>
+        </Card>
+
+        {/* Individual Generation Buttons */}
+        {selectedProvider && !isGenerating && (
+          <Box sx={{ display: 'flex', justifyContent: 'center', gap: 2, mb: 4 }}>
+            <Button
+              variant="outlined"
+              onClick={() => generateBackendMutation.mutate(getValues())}
+              disabled={generateBackendMutation.isPending}
+              startIcon={<Storage />}
+            >
+              Kun Backend
+            </Button>
+            <Button
+              variant="outlined"
+              onClick={() => generateFrontendMutation.mutate(getValues())}
+              disabled={generateFrontendMutation.isPending}
+              startIcon={<Language />}
+            >
+              Kun Frontend
+            </Button>
+          </Box>
+        )}
+
+        {/* Generated Code Results */}
+        {generatedCode && (
+          <Card>
+            <CardHeader
+              title={
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <CheckCircle sx={{ color: 'success.main' }} />
+                  Generert Kode - Replit Kvalitet
+                </Box>
+            }
+            />
+            <CardContent>
+              <Tabs value={activeTab} onChange={(_, v) => setActiveTab(v)}>
+                <Tab label="Oversikt" />
+                <Tab label="Backend" />
+                <Tab label="Frontend" />
+              </Tabs>
+
+              {/* Overview Tab */}
+              {activeTab === 0 && (
+                <Box sx={{ mt: 3 }}>
+                  <Grid container spacing={2}>
+                    {generatedCode.backend && (
+                      <Grid item xs={12} md={6}>
+                        <Card sx={{ borderLeft: 4, borderColor: 'primary.main' }}>
+                          <CardHeader
+                            title={
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                <Storage />
+                                Backend Generert
+                              </Box>
+                          }
+                          />
+                          <CardContent>
+                            <List dense>
+                              <ListItem>
+                                <CheckCircle sx={{ color: 'success.main', mr: 1 }} fontSize="small" />
+                                <ListItemText primary="API Service" />
+                              </ListItem>
+                              <ListItem>
+                                <CheckCircle sx={{ color: 'success.main', mr: 1 }} fontSize="small" />
+                                <ListItemText primary="Express Routes" />
+                              </ListItem>
+                            </List>
+                            {generatedCode.backend?.files && (
+                              <Box sx={{ mt: 2 }}>
+                                <Typography variant="subtitle2">Genererte filer:</Typography>
+                                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1 }}>
+                                  {generatedCode.backend.files.map((file: string, i: number) => (
+                                    <Chip key={i} label={file} size="small" />
+                                  ))}
+                                </Box>
+                              </Box>
+                            )}
+                          </CardContent>
+                        </Card>
+                      </Grid>
+                    )}
+
+                    {generatedCode.frontend && (
+                      <Grid item xs={12} md={6}>
+                        <Card sx={{ borderLeft: 4, borderColor: 'success.main' }}>
+                          <CardHeader
+                            title={
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                <Language />
+                                Frontend Generert
+                              </Box>
+                          }
+                          />
+                          <CardContent>
+                            <List dense>
+                              <ListItem>
+                                <CheckCircle sx={{ color: 'success.main', mr: 1 }} fontSize="small" />
+                                <ListItemText primary="React Components" />
+                              </ListItem>
+                              <ListItem>
+                                <CheckCircle sx={{ color: 'success.main', mr: 1 }} fontSize="small" />
+                                <ListItemText primary="Material UI" />
+                              </ListItem>
+                            </List>
+                            {generatedCode.frontend?.components && (
+                              <Box sx={{ mt: 2 }}>
+                                <Typography variant="subtitle2">Komponenter:</Typography>
+                                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1 }}>
+                                  {generatedCode.frontend.components.map((comp: string, i: number) => (
+                                    <Chip key={i} label={comp} size="small" />
+                                  ))}
+                                </Box>
+                              </Box>
+                            )}
+                          </CardContent>
+                        </Card>
+                      </Grid>
+                    )}
+                  </Grid>
+
+                  <Alert severity="success" sx={{ mt: 3 }}>
+                    <AlertTitle>Replit-kvalitet oppnådd!</AlertTitle>
+                    Koden er automatisk formatert og integrert med din arkitektur.
+                  </Alert>
+                </Box>
+              )}
+
+              {/* Backend Tab */}
+              {activeTab === 1 && (
+                <Box sx={{ mt: 3 }}>
+                  <Typography variant="h6" gutterBottom>
+                    Backend Code Quality Features
+                  </Typography>
+                  <Paper sx={{ p: 2, bgcolor: 'grey.50' }}>
+                    <Typography variant="subtitle2" gutterBottom>Genererte filer:</Typography>
+                    <List dense>
+                      <ListItem>✅ server/services/{selectedProvider}-service.ts</ListItem>
+                      <ListItem>✅ server/routes/{selectedProvider}-api-routes.ts</ListItem>
+                      <ListItem>✅ Auto-registration i server/index.ts</ListItem>
+                    </List>
+                  </Paper>
+                </Box>
+              )}
+
+              {/* Frontend Tab */}
+              {activeTab === 2 && (
+                <Box sx={{ mt: 3 }}>
+                  <Typography variant="h6" gutterBottom>
+                    Frontend Component Features
+                  </Typography>
+                  <Paper sx={{ p: 2, bgcolor: 'grey.50' }}>
+                    <Typography variant="subtitle2" gutterBottom>Genererte filer:</Typography>
+                    <List dense>
+                      <ListItem>✅ client/src/hooks/use{selectedProvider}Api.ts</ListItem>
+                      <ListItem>✅ client/src/components/integrations/{selectedProvider}Dashboard.tsx</ListItem>
+                      <ListItem>✅ Material UI + React Query</ListItem>
+                    </List>
+                  </Paper>
+                </Box>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Footer */}
+        <Box sx={{ textAlign: 'center', color: 'text.secondary', mt: 4 }}>
+          <Typography variant="body2">
+            CreatorHub Norge Code Generation Engine
+          </Typography>
+          <Typography variant="caption">
+            Automatisk backend og frontend generering
+          </Typography>
+        </Box>
+      </Box>
+    </Box>
+  );
+}
+
+export default CodeGenerationDemo;

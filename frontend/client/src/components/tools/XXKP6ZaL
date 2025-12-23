@@ -1,0 +1,948 @@
+import { useTheming } from '../../utils/theming-helper';
+import React, { useState } from 'react';
+import {
+  Box,
+  Typography,
+  Card,
+  CardContent,
+  Grid,
+  Chip,
+  Button,
+  TextField,
+  InputAdornment,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemIcon,
+  ListItemSecondaryAction,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
+  Paper,
+  IconButton,
+  Tooltip,
+  Divider,
+  Stack,
+  Badge,
+  ToggleButton,
+  ToggleButtonGroup,
+  Alert,
+  Tab,
+  Tabs,
+  Container
+} from '@mui/material';
+import {
+  Keyboard,
+  Search,
+  ExpandMore,
+  Launch,
+  Star,
+  StarBorder,
+  ContentCopy,
+  FilterList,
+  Build,
+  PhotoLibrary,
+  Brush,
+  CameraAlt,
+  Apple,
+  Computer,
+  Announcement,
+  CropFree,
+  AspectRatio,
+  GridOn,
+  Straighten,
+  ZoomIn,
+  ZoomOut,
+  Rotate90DegreesCcw,
+  FlipCameraAndroid,
+  Tune,
+  Palette,
+  Layers,
+  AutoMode,
+  CenterFocusStrong,
+  ShowChart,
+  BarChart,
+  Thermostat,
+  Brightness6,
+  Contrast,
+  ColorLens,
+  RocketLaunch,
+  Engineering,
+  CameraEnhance,
+  MovieFilter,
+  Print,
+  PhoneAndroid,
+  BusinessCenter,
+  LocalFireDepartment,
+  Security,
+  Analytics,
+  Visibility,
+  Circle,
+  FiberManualRecord,
+  FileDownload,
+  Image,
+  VideoFile,
+  Settings,
+  PhotoSizeSelectActual,
+  HighQuality,
+  Speed as SpeedIcon,
+  Instagram,
+  Facebook,
+  YouTube,
+  LinkedIn,
+  Twitter,
+  Pinterest,
+  VideoCall,
+  TrendingUp,
+  Insights,
+  Campaign,
+  Schedule,
+  TrendingUp as TimelineIcon,
+  Update,
+  Psychology,
+  SentimentSatisfied,
+  GetApp,
+  CloudDownload,
+  FilePresent,
+  ExtensionOutlined,
+  LibraryBooks,
+  ImportExport,
+  CameraAltOutlined,
+  PhotoCameraOutlined,
+  MovieCreationOutlined,
+  EditOutlined,
+  ColorizeOutlined,
+  WbSunnyOutlined,
+  ContrastOutlined,
+  FlipOutlined,
+  RotateLeftOutlined,
+  CropRotateOutlined,
+  Blur,
+  Adjust,
+  AutoFixHigh,
+  Lens,
+  Exposure,
+  Camera,
+  Timer,
+  WbSunny,
+  Gradient,
+  ColorLens as Tonality,
+  LightMode as Highlight,
+  Brightness2 as Shadow,
+  AutoFixHigh as Clarity,
+  Colorize as Vibrance,
+  FilterDrama as Dehaze,
+  Texture,
+  LibraryMusic
+} from '@mui/icons-material';
+
+interface KeyboardShortcut {
+  id: string;
+  action: string;
+  shortcutWin: string;
+  shortcutMac: string;
+  description: string;
+  category: string;
+  isFavorite?: boolean;
+  isNew?: boolean
+}
+
+interface Software {
+  id: string;
+  name: string;
+  icon: any;
+  color: string;
+  shortcuts: KeyboardShortcut[]
+}
+
+// Official Adobe Lightroom logo - Adobe's exact brand colors
+const LightroomLogo = ({ size = 24 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 240 234" fill="currentColor">
+    <path d="M10 10h220c5.52 0 10 4.48 10 10v194c0 5.52-4.48 10-10 10H10c-5.52 0-10-4.48-10-10V20c0-5.52 4.48-10 10-10z" fill="#31A8FF"/>
+    <path d="M54 180h102l-6-12H66V66h-12v114zm92-78c15.44 0 24.44 7.44 24.44 20.44V186h-11.2v-7.44c-3.2 5.76-9.6 8.32-18.24 8.32-12.8 0-21.12-6.4-21.12-16.64 0-10.88 8.96-16.96 24.32-16.96h14.4v-2.24c0-8.32-4.8-12.8-14.08-12.8-7.68 0-13.44 2.56-17.92 6.72l-5.12-8.96C126.4 132.16 135.04 102 146 102zm12.48 54.4v-9.28h-13.12c-8.96 0-13.44 2.56-13.44 8 0 5.12 4.48 8.32 12.16 8.32 7.04 0 14.4-2.24 14.4-7.04z" fill="white"/>
+  </svg>
+);
+
+// Official Adobe Photoshop logo - Adobe's exact brand colors  
+const PhotoshopLogo = ({ size = 24 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 240 234" fill="currentColor">
+    <path d="M10 10h220c5.52 0 10 4.48 10 10v194c0 5.52-4.48 10-10 10H10c-5.52 0-10-4.48-10-10V20c0-5.52 4.48-10 10-10z" fill="#001E36"/>
+    <path d="M54 143v43h-12V66h30.96c20.48 0 33.28 10.88 33.28 28.16 0 18.56-14.08 30.08-35.84 30.08H54zm0-11.2h17.28c14.72 0 22.4-7.04 22.4-18.24 0-10.56-7.68-17.28-22.4-17.28H54v35.52zm92.32 28.8c7.68 0 13.44-2.56 17.92-6.72l5.12 8.96c-5.76 5.44-14.4 8.96-24.32 8.96-18.24 0-30.08-11.52-30.08-28.8s11.84-28.8 28.8-28.8c16.32 0 26.88 10.88 26.88 27.52 0 1.92-.32 4.16-.64 5.76h-43.52c1.28 8.96 7.68 13.12 19.84 13.12zm-18.56-20.48h32c-.64-8.32-6.08-12.48-15.36-12.48-9.6 0-15.36 4.16-16.64 12.48z" fill="#31A8FF"/>
+  </svg>
+);
+
+// Official Capture One logo - Phase One's exact brand colors
+const CaptureOneLogo = ({ size = 24 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 240 234" fill="currentColor">
+    <path d="M10 10h220c5.52 0 10 4.48 10 10v194c0 5.52-4.48 10-10 10H10c-5.52 0-10-4.48-10-10V20c0-5.52 4.48-10 10-10z" fill="#000000"/>
+    <path d="M120 186c-32.4 0-58.8-26.4-58.8-58.8 0-32.4 26.4-58.8 58.8-58.8 16.32 0 31.04 6.72 41.76 17.44l-8.48 8.48c-8.32-8.32-19.84-13.44-33.28-13.44-25.92 0-47.04 21.12-47.04 47.04s21.12 47.04 47.04 47.04c13.44 0 24.96-5.12 33.28-13.44l8.48 8.48C151.04 179.28 136.32 186 120 186z" fill="white"/>
+    <path d="M178.8 186V66h11.76v108.24h26.88V186H178.8z" fill="white"/>
+  </svg>
+);
+
+// Official Adobe Premiere Pro logo - Adobe's exact brand colors
+const PremiereLogo = ({ size = 24 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 240 234" fill="currentColor">
+    <path d="M10 10h220c5.52 0 10 4.48 10 10v194c0 5.52-4.48 10-10 10H10c-5.52 0-10-4.48-10-10V20c0-5.52 4.48-10 10-10z" fill="#9966FF"/>
+    <path d="M54 143v43h-12V66h30.96c20.48 0 33.28 10.88 33.28 28.16 0 18.56-14.08 30.08-35.84 30.08H54zm0-11.2h17.28c14.72 0 22.4-7.04 22.4-18.24 0-10.56-7.68-17.28-22.4-17.28H54v35.52zm92.32 28.8c7.68 0 13.44-2.56 17.92-6.72l5.12 8.96c-5.76 5.44-14.4 8.96-24.32 8.96-18.24 0-30.08-11.52-30.08-28.8s11.84-28.8 28.8-28.8c16.32 0 26.88 10.88 26.88 27.52 0 1.92-.32 4.16-.64 5.76h-43.52c1.28 8.96 7.68 13.12 19.84 13.12zm-18.56-20.48h32c-.64-8.32-6.08-12.48-15.36-12.48-9.6 0-15.36 4.16-16.64 12.48z" fill="white"/>
+  </svg>
+);
+
+// Official BlackMagic DaVinci Resolve logo - BlackMagic's exact brand colors
+const DaVinciLogo = ({ size = 24 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 240 234" fill="currentColor">
+    <path d="M10 10h220c5.52 0 10 4.48 10 10v194c0 5.52-4.48 10-10 10H10c-5.52 0-10-4.48-10-10V20c0-5.52 4.48-10 10-10z" fill="#FF3B3B"/>
+    <circle cx="120" cy="117" r="70" fill="none" stroke="white" strokeWidth="8"/>
+    <circle cx="120" cy="117" r="40" fill="none" stroke="white" strokeWidth="6"/>
+    <rect x="100" y="97" width="40" height="40" fill="white" rx="4"/>
+  </svg>
+);
+
+// Official Apple Final Cut Pro logo - Apple's exact brand colors
+const FinalCutLogo = ({ size = 24 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 240 234" fill="currentColor">
+    <path d="M10 10h220c5.52 0 10 4.48 10 10v194c0 5.52-4.48 10-10 10H10c-5.52 0-10-4.48-10-10V20c0-5.52 4.48-10 10-10z" fill="#007AFF"/>
+    <path d="M40 117 L120 37 L200 117 L120 197 Z" fill="white" strokeWidth="4" stroke="#007AFF"/>
+    <path d="M80 117 L120 77 L160 117 L120 157 Z" fill="#007AFF"/>
+  </svg>
+);
+
+// Official Apple Logic Pro logo - Apple's exact brand colors
+const LogicLogo = ({ size = 24 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 240 234" fill="currentColor">
+    <path d="M10 10h220c5.52 0 10 4.48 10 10v194c0 5.52-4.48 10-10 10H10c-5.52 0-10-4.48-10-10V20c0-5.52 4.48-10 10-10z" fill="#34C759"/>
+    <circle cx="120" cy="117" r="60" fill="none" stroke="white" strokeWidth="12"/>
+    <circle cx="120" cy="117" r="20" fill="white"/>
+    <rect x="100" y="40" width="40" height="20" fill="white" rx="10"/>
+  </svg>
+);
+
+// Official Avid Pro Tools logo - Avid's exact brand colors
+const ProToolsLogo = ({ size = 24 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 240 234" fill="currentColor">
+    <path d="M10 10h220c5.52 0 10 4.48 10 10v194c0 5.52-4.48 10-10 10H10c-5.52 0-10-4.48-10-10V20c0-5.52 4.48-10 10-10z" fill="#FF6B35"/>
+    <path d="M40 117 Q40 60 80 60 Q120 60 120 117 Q120 174 80 174 Q40 174 40 117" fill="white"/>
+    <path d="M120 60 Q200 60 200 117 Q200 174 120 174" fill="none" stroke="white" strokeWidth="12"/>
+  </svg>
+);
+
+// Official Steinberg Cubase logo - Steinberg's exact brand colors
+const CubaseLogo = ({ size = 24 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 240 234" fill="currentColor">
+    <path d="M10 10h220c5.52 0 10 4.48 10 10v194c0 5.52-4.48 10-10 10H10c-5.52 0-10-4.48-10-10V20c0-5.52 4.48-10 10-10z" fill="#00D4AA"/>
+    <path d="M60 60 L180 60 L180 80 L80 80 L80 174 L60 174 Z" fill="white"/>
+    <circle cx="140" cy="137" r="30" fill="none" stroke="white" strokeWidth="8"/>
+  </svg>
+);
+
+// Official Ableton Live logo - Ableton's exact brand colors
+const AbletonLogo = ({ size = 24 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 240 234" fill="currentColor">
+    <path d="M10 10h220c5.52 0 10 4.48 10 10v194c0 5.52-4.48 10-10 10H10c-5.52 0-10-4.48-10-10V20c0-5.52 4.48-10 10-10z" fill="#FF7700"/>
+    <path d="M50 184 L75 50 L100 184 L125 50 L150 184 L175 50 L200 184" fill="none" stroke="white" strokeWidth="10" strokeLinecap="round" strokeLinejoin="round"/>
+  </svg>
+);
+
+// Official Avid Media Composer logo - Avid's exact brand colors
+const MediaComposerLogo = ({ size = 24 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 240 234" fill="currentColor">
+    <path d="M10 10h220c5.52 0 10 4.48 10 10v194c0 5.52-4.48 10-10 10H10c-5.52 0-10-4.48-10-10V20c0-5.52 4.48-10 10-10z" fill="#FF6B35"/>
+    <path d="M60 66h120v11.2H82.4v34.56h80v11.2h-80v35.84h100.8V170H60V66z" fill="white"/>
+    <path d="M50 190h140l-20-20H70l-20 20z" fill="white"/>
+    <circle cx="190" cy="190" r="15" fill="white"/>
+    <path d="M175 205h30v10h-30z" fill="white"/>
+  </svg>
+);
+
+const softwareData: Software[] = [
+  {
+    id: 'lightroom',
+    name: 'Adobe Lightroom',
+    icon: LightroomLogo,
+    color: '#31A8F', // Adobe's official Lightroom blue
+    shortcuts: [
+      // Basic Navigation & View
+      { id: 'lr_', action: 'Import Images', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Open import dialog', category: 'Import/Export', isFavorite: true },
+      { id: 'lr_', action: 'Export Images', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Open export dialog', category: 'Import/Export', isFavorite: true },
+      { id: 'lr_', action: 'Grid View', shortcutWin: '', shortcutMac: '', description: 'Switch to grid view', category: 'View', isFavorite: true },
+      { id: 'lr_', action: 'Loupe View', shortcutWin: '', shortcutMac: '', description: 'Switch to loupe view', category: 'View', isFavorite: true },
+      { id: 'lr_', action: 'Compare View', shortcutWin: '', shortcutMac: '', description: 'Switch to compare view', category: 'View'},
+      { id: 'lr_', action: 'Survey View', shortcutWin: '', shortcutMac: '', description: 'Switch to survey view', category: 'View'},
+      { id: 'lr_', action: 'Fullscreen', shortcutWin: '', shortcutMac: '', description: 'Cycle through screen modes', category: 'View'},
+      { id: 'lr_', action: 'Lights Out', shortcutWin: '', shortcutMac: '', description: 'Dim or darken interface', category: 'View'},
+      { id: 'lr_', action: 'Hide All Panels', shortcutWin: 'Shift+Tab', shortcutMac: 'Shift+Tab', description: 'Hide all panels', category: 'View', isFavorite: true },
+      { id: 'lr_10', action: 'Show/Hide Toolbar', shortcutWin: '', shortcutMac: '', description: 'Toggle toolbar visibility', category: 'View'},
+      
+      // Module Navigation
+      { id: 'lr_11', action: 'Library Module', shortcutWin: 'Ctrl+Alt+', shortcutMac: 'Cmd+Opt+', description: 'Switch to Library module', category: 'Modules'},
+      { id: 'lr_12', action: 'Develop Module', shortcutWin: 'Ctrl+Alt+', shortcutMac: 'Cmd+Opt+', description: 'Switch to Develop module', category: 'Modules', isFavorite: true },
+      { id: 'lr_13', action: 'Map Module', shortcutWin: 'Ctrl+Alt+', shortcutMac: 'Cmd+Opt+', description: 'Switch to Map module', category: 'Modules'},
+      { id: 'lr_14', action: 'Book Module', shortcutWin: 'Ctrl+Alt+', shortcutMac: 'Cmd+Opt+', description: 'Switch to Book module', category: 'Modules'},
+      { id: 'lr_15', action: 'Slideshow Module', shortcutWin: 'Ctrl+Alt+', shortcutMac: 'Cmd+Opt+', description: 'Switch to Slideshow module', category: 'Modules'},
+      { id: 'lr_16', action: 'Print Module', shortcutWin: 'Ctrl+Alt+', shortcutMac: 'Cmd+Opt+', description: 'Switch to Print module', category: 'Modules'},
+      { id: 'lr_17', action: 'Web Module', shortcutWin: 'Ctrl+Alt+', shortcutMac: 'Cmd+Opt+', description: 'Switch to Web module', category: 'Modules'},
+      
+      // Organization & Rating
+      { id: 'lr_18', action: 'Flag as Pick', shortcutWin: '', shortcutMac: '', description: 'Mark image as pick', category: 'Organization', isFavorite: true },
+      { id: 'lr_19', action: 'Flag as Reject', shortcutWin: '', shortcutMac: '', description: 'Mark image as reject', category: 'Organization', isFavorite: true },
+      { id: 'lr_20', action: 'Remove Flag', shortcutWin: '', shortcutMac: '', description: 'Remove flag', category: 'Organization'},
+      { id: 'lr_21', action: '1 Star', shortcutWin: '', shortcutMac: '', description: 'Rate 1 star', category: 'Organization'},
+      { id: 'lr_22', action: '2 Stars', shortcutWin: '', shortcutMac: '', description: 'Rate 2 stars', category: 'Organization'},
+      { id: 'lr_23', action: '3 Stars', shortcutWin: '', shortcutMac: '', description: 'Rate 3 stars', category: 'Organization'},
+      { id: 'lr_24', action: '4 Stars', shortcutWin: '', shortcutMac: '', description: 'Rate 4 stars', category: 'Organization'},
+      { id: 'lr_25', action: '5 Stars', shortcutWin: '', shortcutMac: '', description: 'Rate 5 stars', category: 'Organization', isFavorite: true },
+      { id: 'lr_26', action: 'Red Label', shortcutWin: '', shortcutMac: '', description: 'Apply red color label', category: 'Organization'},
+      { id: 'lr_27', action: 'Yellow Label', shortcutWin: '', shortcutMac: '', description: 'Apply yellow color label', category: 'Organization'},
+      { id: 'lr_28', action: 'Green Label', shortcutWin: '', shortcutMac: '', description: 'Apply green color label', category: 'Organization'},
+      { id: 'lr_29', action: 'Blue Label', shortcutWin: '', shortcutMac: '', description: 'Apply blue color label', category: 'Organization'},
+      
+      // Editing & Development
+      { id: 'lr_30', action: 'Auto Tone', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Auto adjust tone', category: 'Editing', isFavorite: true, isNew: true },
+      { id: 'lr_31', action: 'Auto White Balance', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Auto white balance', category: 'Editing', isFavorite: true, isNew: true },
+      { id: 'lr_32', action: 'Reset All Settings', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Reset all adjustments', category: 'Editing'},
+      { id: 'lr_33', action: 'Copy Settings', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Copy development settings', category: 'Editing', isFavorite: true },
+      { id: 'lr_34', action: 'Paste Settings', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Paste development settings', category: 'Editing', isFavorite: true },
+      { id: 'lr_35', action: 'Crop Tool', shortcutWin: '', shortcutMac: '', description: 'Activate crop tool', category: 'Editing', isFavorite: true },
+      { id: 'lr_36', action: 'Spot Removal', shortcutWin: '', shortcutMac: '', description: 'Activate spot removal tool', category: 'Editing', isFavorite: true },
+      { id: 'lr_37', action: 'Red Eye Correction', shortcutWin: '', shortcutMac: '', description: 'Activate red eye tool', category: 'Editing'},
+      { id: 'lr_38', action: 'Convert to B&', shortcutWin: '', shortcutMac: '', description: 'Convert to black and white', category: 'Editing', isFavorite: true },
+      { id: 'lr_39', action: 'Masking', shortcutWin: 'Shift+', shortcutMac: 'Shift+', description: 'Open masking panel', category: 'Editing', isNew: true },
+      { id: 'lr_46', action: 'Lens Blur', shortcutWin: 'Shift+', shortcutMac: 'Shift+', description: 'Apply lens blur', category: 'Editing', isNew: true },
+      { id: 'lr_47', action: 'Generative Remove', shortcutWin: 'Shift+', shortcutMac: 'Shift+', description: 'Generative remove tool', category: 'Editing', isNew: true },
+      { id: 'lr_48', action: 'Adaptive Presets', shortcutWin: 'Shift+', shortcutMac: 'Shift+', description: 'Apply adaptive presets', category: 'Editing', isNew: true },
+      
+      // Navigation
+      { id: 'lr_40', action: 'Next Photo', shortcutWin: 'Right Arrow', shortcutMac: 'Right Arrow', description: 'Navigate to next photo', category: 'Navigation', isFavorite: true },
+      { id: 'lr_41', action: 'Previous Photo', shortcutWin: 'Left Arrow', shortcutMac: 'Left Arrow', description: 'Navigate to previous photo', category: 'Navigation', isFavorite: true },
+      { id: 'lr_42', action: 'Zoom I', shortcutWin: 'Ctrl++', shortcutMac: 'Cmd++', description: 'Zoom in on photo', category: 'Navigation'},
+      { id: 'lr_43', action: 'Zoom Out', shortcutWin: 'Ctrl+, -, ', shortcutMac: 'Cmd+, -, ', description: 'Zoom out of photo', category: 'Navigation'},
+      { id: 'lr_44', action: 'Fit to Window', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Fit photo to window', category: 'Navigation'},
+      { id: 'lr_45', action: 'Actual Size', shortcutWin: 'Ctrl+Alt+', shortcutMac: 'Cmd+Opt+', description: 'View at 100% size', category: 'Navigation'},
+      { id: 'lr_76', action: 'First Photo', shortcutWin: 'Home', shortcutMac: 'Home', description: 'Go to first photo', category: 'Navigation'},
+      { id: 'lr_77', action: 'Last Photo', shortcutWin: 'End', shortcutMac: 'End', description: 'Go to last photo', category: 'Navigation'},
+      { id: 'lr_78', action: 'Page U', shortcutWin: 'Page U', shortcutMac: 'Page U', description: 'Previous page of photos', category: 'Navigation'},
+      { id: 'lr_79', action: 'Page Down', shortcutWin: 'Page Down', shortcutMac: 'Page Down', description: 'Next page of photos', category: 'Navigation'},
+      { id: 'lr_80', action: 'Hand Tool', shortcutWin: '', shortcutMac: '', description: 'Activate hand tool for panning', category: 'Navigation'},
+      { id: 'lr_81', action: 'Zoom Tool', shortcutWin: '', shortcutMac: '', description: 'Activate zoom tool', category: 'Navigation'},
+      
+      // Rating & Flagging
+      { id: 'lr_49', action: 'Set 1 Star', shortcutWin: '', shortcutMac: '', description: 'Rate photo 1 star', category: 'Rating', isFavorite: true },
+      { id: 'lr_50', action: 'Set 2 Stars', shortcutWin: '', shortcutMac: '', description: 'Rate photo 2 stars', category: 'Rating', isFavorite: true },
+      { id: 'lr_51', action: 'Set 3 Stars', shortcutWin: '', shortcutMac: '', description: 'Rate photo 3 stars', category: 'Rating', isFavorite: true },
+      { id: 'lr_52', action: 'Set 4 Stars', shortcutWin: '', shortcutMac: '', description: 'Rate photo 4 stars', category: 'Rating', isFavorite: true },
+      { id: 'lr_53', action: 'Set 5 Stars', shortcutWin: '', shortcutMac: '', description: 'Rate photo 5 stars', category: 'Rating', isFavorite: true },
+      { id: 'lr_54', action: 'Remove Rating', shortcutWin: '', shortcutMac: '', description: 'Remove star rating', category: 'Rating'},
+      { id: 'lr_55', action: 'Flag as Pick', shortcutWin: '', shortcutMac: '', description: 'Flag photo as pick', category: 'Rating', isFavorite: true },
+      { id: 'lr_56', action: 'Flag as Reject', shortcutWin: '', shortcutMac: '', description: 'Flag photo as reject', category: 'Rating', isFavorite: true },
+      { id: 'lr_57', action: 'Remove Flag', shortcutWin: '', shortcutMac: '', description: 'Remove flag from photo', category: 'Rating'},
+      
+      // Collections & Keywords
+      { id: 'lr_58', action: 'Add to Collection', shortcutWin: '', shortcutMac: '', description: 'Add to quick collection', category: 'Organization', isFavorite: true },
+      { id: 'lr_59', action: 'Add Keyword', shortcutWin: 'Shift+', shortcutMac: 'Shift+', description: 'Add keyword to photo', category: 'Organization'},
+      { id: 'lr_60', action: 'Keyword Shortcuts', shortcutWin: 'Alt+1-', shortcutMac: 'Opt+1-', description: 'Apply keyword shortcuts', category: 'Organization'},
+      
+      // Quick Develop
+      { id: 'lr_61', action: 'Auto Settings', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Apply auto tone settings', category: 'Quick Develop, ',},
+      { id: 'lr_62', action: 'Increase Exposure', shortcutWin: 'Ctrl+Shift+Plus', shortcutMac: 'Cmd+Shift+Plus', description: 'Increase exposure in steps', category: 'Quick Develop, ',},
+      { id: 'lr_63', action: 'Decrease Exposure', shortcutWin: 'Ctrl+Shift+Minus', shortcutMac: 'Cmd+Shift+Minus', description: 'Decrease exposure in steps', category: 'Quick Develop, ',},
+      
+      // Module Navigation
+      { id: 'lr_64', action: 'Library Module', shortcutWin: 'Ctrl+Alt+', shortcutMac: 'Cmd+Opt+', description: 'Switch to Library module', category: 'Modules', isFavorite: true },
+      { id: 'lr_65', action: 'Develop Module', shortcutWin: 'Ctrl+Alt+', shortcutMac: 'Cmd+Opt+', description: 'Switch to Develop module', category: 'Modules', isFavorite: true },
+      { id: 'lr_66', action: 'Map Module', shortcutWin: 'Ctrl+Alt+', shortcutMac: 'Cmd+Opt+', description: 'Switch to Map module', category: 'Modules'},
+      { id: 'lr_67', action: 'Book Module', shortcutWin: 'Ctrl+Alt+', shortcutMac: 'Cmd+Opt+', description: 'Switch to Book module', category: 'Modules'},
+      { id: 'lr_68', action: 'Slideshow Module', shortcutWin: 'Ctrl+Alt+', shortcutMac: 'Cmd+Opt+', description: 'Switch to Slideshow module', category: 'Modules'},
+      { id: 'lr_69', action: 'Print Module', shortcutWin: 'Ctrl+Alt+', shortcutMac: 'Cmd+Opt+', description: 'Switch to Print module', category: 'Modules'},
+      { id: 'lr_70', action: 'Web Module', shortcutWin: 'Ctrl+Alt+', shortcutMac: 'Cmd+Opt+', description: 'Switch to Web module', category: 'Modules'},
+      
+      // View Options
+      { id: 'lr_71', action: 'Grid View', shortcutWin: '', shortcutMac: '', description: 'Switch to Grid view', category: 'View', isFavorite: true },
+      { id: 'lr_72', action: 'Loupe View', shortcutWin: '', shortcutMac: '', description: 'Switch to Loupe view', category: 'View', isFavorite: true },
+      { id: 'lr_73', action: 'Compare View', shortcutWin: '', shortcutMac: '', description: 'Switch to Compare view', category: 'View'},
+      { id: 'lr_74', action: 'Survey View', shortcutWin: '', shortcutMac: '', description: 'Switch to Survey view', category: 'View'},
+      { id: 'lr_75', action: 'Fullscreen', shortcutWin: '', shortcutMac: '', description: 'Toggle fullscreen mode', category: 'View'},
+      
+      // Additional Basic Panel Shortcuts
+      { id: 'lr_82', action: 'Basic Panel', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Show Basic panel', category: 'Panels'},
+      { id: 'lr_83', action: 'Tone Curve Panel', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Show Tone Curve panel', category: 'Panels'},
+      { id: 'lr_84', action: 'HSL/Color Panel', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Show HSL/Color panel', category: 'Panels'},
+      { id: 'lr_85', action: 'Split Toning Panel', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Show Split Toning panel', category: 'Panels'},
+      { id: 'lr_86', action: 'Detail Panel', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Show Detail panel', category: 'Panels'},
+      { id: 'lr_87', action: 'Lens Corrections Panel', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Show Lens Corrections panel', category: 'Panels'},
+      { id: 'lr_88', action: 'Effects Panel', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Show Effects panel', category: 'Panels'},
+      { id: 'lr_89', action: 'Camera Calibration Panel', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Show Camera Calibration panel', category: 'Panels'},
+      { id: 'lr_90', action: 'Presets Panel', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Show Presets panel', category: 'Panels'},
+      
+      // Tools
+      { id: 'lr_91', action: 'Crop Tool', shortcutWin: '', shortcutMac: '', description: 'Activate crop tool', category: 'Tools', isFavorite: true },
+      { id: 'lr_92', action: 'Spot Removal Tool', shortcutWin: '', shortcutMac: '', description: 'Activate spot removal tool', category: 'Tools', isFavorite: true },
+      { id: 'lr_93', action: 'Red Eye Correction', shortcutWin: 'Ctrl+Alt+', shortcutMac: 'Cmd+Opt+', description: 'Red eye correction tool', category: 'Tools'},
+      { id: 'lr_94', action: 'Graduated Filter', shortcutWin: '', shortcutMac: '', description: 'Graduated filter tool', category: 'Tools', isFavorite: true },
+      { id: 'lr_95', action: 'Radial Filter', shortcutWin: 'Shift+', shortcutMac: 'Shift+', description: 'Radial filter tool', category: 'Tools', isFavorite: true },
+      { id: 'lr_96', action: 'Adjustment Brush', shortcutWin: '', shortcutMac: '', description: 'Adjustment brush tool', category: 'Tools', isFavorite: true },
+      { id: 'lr_97', action: 'Masking', shortcutWin: 'Shift+', shortcutMac: 'Shift+', description: 'Masking tool', category: 'Tools'},
+      
+      // Develop Shortcuts
+      { id: 'lr_98', action: 'Auto Tone', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Apply auto tone', category: 'Develop', isFavorite: true },
+      { id: 'lr_99', action: 'Auto White Balance', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Apply auto white balance', category: 'Develop'},
+      { id: 'lr_100', action: 'Reset', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Reset all settings', category: 'Develop'},
+      { id: 'lr_101', action: 'Copy Settings', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Copy develop settings', category: 'Develop', isFavorite: true },
+      { id: 'lr_102', action: 'Paste Settings', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Paste develop settings', category: 'Develop', isFavorite: true },
+      { id: 'lr_103', action: 'Paste Previous', shortcutWin: 'Ctrl+Alt+', shortcutMac: 'Cmd+Opt+', description: 'Paste settings from previous', category: 'Develop'},
+      { id: 'lr_104', action: 'Sync Settings', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Sync settings', category: 'Develop'},
+      
+      // Export & Print
+      { id: 'lr_105', action: 'Export', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Export photos', category: 'Export', isFavorite: true },
+      { id: 'lr_106', action: 'Export with Previous', shortcutWin: 'Ctrl+Alt+Shift+', shortcutMac: 'Cmd+Opt+Shift+', description: 'Export with previous settings', category: 'Export'},
+      { id: 'lr_107', action: 'Print', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Print photo', category: 'Print'},
+      { id: 'lr_108', action: 'Page Setup', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Page setup for printing', category: 'Print'},
+      
+      // Library Shortcuts
+      { id: 'lr_109', action: 'Import Photos', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Import photos and video', category: 'Library', isFavorite: true },
+      { id: 'lr_110', action: 'Tethered Capture', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Start tethered capture', category: 'Library'},
+      { id: 'lr_111', action: 'Show in Finder/Explorer', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Show in Finder/Explorer', category: 'Library'},
+      { id: 'lr_112', action: 'Go to Folder', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Go to folder in Library', category: 'Library'},
+      { id: 'lr_113', action: 'New Collection', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Create new collection', category: 'Collections'},
+      { id: 'lr_114', action: 'New Smart Collection', shortcutWin: 'Ctrl+Alt+', shortcutMac: 'Cmd+Opt+', description: 'Create new smart collection', category: 'Collections'},
+      
+      // Color Labels
+      { id: 'lr_115', action: 'Red Label', shortcutWin: '', shortcutMac: '', description: 'Apply red color label', category: 'Labels'},
+      { id: 'lr_116', action: 'Yellow Label', shortcutWin: '', shortcutMac: '', description: 'Apply yellow color label', category: 'Labels'},
+      { id: 'lr_117', action: 'Green Label', shortcutWin: '', shortcutMac: '', description: 'Apply green color label', category: 'Labels'},
+      { id: 'lr_118', action: 'Blue Label', shortcutWin: '', shortcutMac: '', description: 'Apply blue color label', category: 'Labels'},
+      
+      // Advanced Navigation
+      { id: 'lr_119', action: 'Toggle Info Overlay', shortcutWin: '', shortcutMac: '', description: 'Toggle info overlay', category: 'View'},
+      { id: 'lr_120', action: 'Cycle Info Overlay', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Cycle info overlay styles', category: 'View'},
+      { id: 'lr_121', action: 'Show Clipping', shortcutWin: '', shortcutMac: '', description: 'Show clipping indicators', category: 'View'},
+      { id: 'lr_122', action: 'Toggle Filmstrip', shortcutWin: 'F', shortcutMac: 'F', description: 'Toggle filmstrip', category: 'View'},
+      { id: 'lr_123', action: 'Toggle Left Panels', shortcutWin: 'Tab', shortcutMac: 'Tab', description: 'Toggle left panels', category: 'Panels'},
+      { id: 'lr_124', action: 'Toggle Right Panels', shortcutWin: 'Shift+Tab', shortcutMac: 'Shift+Tab', description: 'Toggle right panels', category: 'Panels'},
+      { id: 'lr_125', action: 'Toggle All Panels', shortcutWin: 'Shift+', shortcutMac: 'Shift+', description: 'Toggle all panels', category: 'Panels'},
+      
+      // Target Adjustments
+      { id: 'lr_126', action: 'TAT Tone Curve', shortcutWin: 'Ctrl+Alt+Shift+', shortcutMac: 'Cmd+Opt+Shift+', description: 'Target adjustment tone curve', category: 'Target Adjustments, ',},
+      { id: 'lr_127', action: 'TAT HSL Hue', shortcutWin: 'Ctrl+Alt+Shift+', shortcutMac: 'Cmd+Opt+Shift+', description: 'Target adjustment HSL hue', category: 'Target Adjustments, ',},
+      { id: 'lr_128', action: 'TAT HSL Saturation', shortcutWin: 'Ctrl+Alt+Shift+', shortcutMac: 'Cmd+Opt+Shift+', description: 'Target adjustment HSL saturation', category: 'Target Adjustments, ',},
+      { id: 'lr_129', action: 'TAT HSL Luminance', shortcutWin: 'Ctrl+Alt+Shift+', shortcutMac: 'Cmd+Opt+Shift+', description: 'Target adjustment HSL luminance', category: 'Target Adjustments, ',},
+      { id: 'lr_130', action: 'TAT B&W Mix', shortcutWin: 'Ctrl+Alt+Shift+', shortcutMac: 'Cmd+Opt+Shift+', description: 'Target adjustment B&W mix', category: 'Target Adjustments, ',},
+      
+      // Slideshow
+      { id: 'lr_131', action: 'Play Slideshow', shortcutWin: 'Ctrl+Enter', shortcutMac: 'Cmd+Return', description: 'Play slideshow', category: 'Slideshow'},
+      { id: 'lr_132', action: 'Pause Slideshow', shortcutWin: 'Space', shortcutMac: 'Space', description: 'Pause slideshow', category: 'Slideshow'},
+      { id: 'lr_133', action: 'End Slideshow', shortcutWin: 'Escape', shortcutMac: 'Escape', description: 'End slideshow', category: 'Slideshow'},
+      
+      // Histogram
+      { id: 'lr_134', action: 'Show Histogram', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Show histogram', category: 'Histogram'},
+      { id: 'lr_135', action: 'Show RGB Values', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Show RGB values in histogram', category: 'Histogram'},
+      
+      // Before/After Views
+      { id: 'lr_136', action: 'Before View', shortcutWin: '\\', shortcutMac: '\\', description: 'Show before view', category: 'Before/After, ',},
+      { id: 'lr_137', action: 'Before/After Left/Right', shortcutWin: '', shortcutMac: '', description: 'Before/after left/right', category: 'Before/After, ',},
+      { id: 'lr_138', action: 'Before/After Top/Bottom', shortcutWin: 'Alt+', shortcutMac: 'Opt+', description: 'Before/after top/bottom', category: 'Before/After, ',},
+      { id: 'lr_139', action: 'Before/After Split', shortcutWin: 'Shift+', shortcutMac: 'Shift+', description: 'Before/after split view', category: 'Before/After, ',},
+      
+      // Synchronization
+      { id: 'lr_140', action: 'Auto Sync', shortcutWin: 'Ctrl+Alt+', shortcutMac: 'Cmd+Opt+', description: 'Toggle auto sync', category: 'Sync'},
+      { id: 'lr_141', action: 'Match Total Exposures', shortcutWin: 'Ctrl+Alt+Shift+', shortcutMac: 'Cmd+Opt+Shift+', description: 'Match total exposures', category: 'Sync'},
+      
+      // Video
+      { id: 'lr_142', action: 'Play/Pause Video', shortcutWin: 'Space', shortcutMac: 'Space', description: 'Play/pause video', category: 'Video'},
+      { id: 'lr_143', action: 'Trim Video Start', shortcutWin: 'Shift+', shortcutMac: 'Shift+', description: 'Set video start trim', category: 'Video'},
+      { id: 'lr_144', action: 'Trim Video End', shortcutWin: 'Shift+', shortcutMac: 'Shift+', description: 'Set video end trim', category: 'Video'},
+      
+      // Preferences & Settings
+      { id: 'lr_145', action: 'Preferences', shortcutWin: 'Ctrl+,', shortcutMac: 'Cmd+,', description: 'Open preferences', category: 'Settings'},
+      { id: 'lr_146', action: 'Catalog Settings', shortcutWin: 'Ctrl+Alt+,', shortcutMac: 'Cmd+Opt+,', description: 'Open catalog settings', category: 'Settings'},
+      
+      // Web Module
+      { id: 'lr_147', action: 'Reload Web Gallery', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Reload web gallery', category: 'Web'},
+      { id: 'lr_148', action: 'Preview in Browser', shortcutWin: 'Ctrl+Alt+', shortcutMac: 'Cmd+Opt+', description: 'Preview in browser', category: 'Web'},
+      
+      // Misc Advanced
+      { id: 'lr_149', action: 'Edit in Photoshop', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Edit in Photoshop', category: 'External Editing, ',},
+      { id: 'lr_150', action: 'Open as Smart Object', shortcutWin: 'Ctrl+Alt+', shortcutMac: 'Cmd+Opt+', description: 'Open as Smart Object in Photoshop', category: 'External Editing, ',}
+    ]
+},
+  {
+    id: 'photoshop',
+    name: 'Adobe Photoshop',
+    icon: PhotoshopLogo,
+    color: '#001E3', // Adobe's official Photoshop dark blue
+    shortcuts: [
+      // File Operations
+      { id: 'ps_', action: 'New Document', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Create new document', category: 'File', isFavorite: true },
+      { id: 'ps_', action: 'Open File', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Open existing file', category: 'File', isFavorite: true },
+      { id: 'ps_', action: 'Save', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Save current document', category: 'File', isFavorite: true },
+      { id: 'ps_', action: 'Save A', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Save with new name', category: 'File'},
+      { id: 'ps_', action: 'Export A', shortcutWin: 'Ctrl+Alt+Shift+', shortcutMac: 'Cmd+Opt+Shift+', description: 'Export image for web', category: 'File', isFavorite: true },
+      { id: 'ps_', action: 'Close', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Close current document', category: 'File'},
+
+      // Tools
+      { id: 'ps_', action: 'Move Tool', shortcutWin: '', shortcutMac: '', description: 'Select move tool', category: 'Tools', isFavorite: true },
+      { id: 'ps_', action: 'Rectangular Marquee', shortcutWin: '', shortcutMac: '', description: 'Rectangular selection tool', category: 'Tools', isFavorite: true },
+      { id: 'ps_', action: 'Lasso Tool', shortcutWin: '', shortcutMac: '', description: 'Freehand selection tool', category: 'Tools'},
+      { id: 'ps_10', action: 'Quick Selection', shortcutWin: '', shortcutMac: '', description: 'Quick selection tool', category: 'Tools', isFavorite: true },
+      { id: 'ps_11', action: 'Crop Tool', shortcutWin: '', shortcutMac: '', description: 'Crop and straighten tool', category: 'Tools', isFavorite: true },
+      { id: 'ps_12', action: 'Spot Healing Brush', shortcutWin: '', shortcutMac: '', description: 'Healing brush tool', category: 'Tools', isFavorite: true },
+      { id: 'ps_13', action: 'Brush Tool', shortcutWin: '', shortcutMac: '', description: 'Paint brush tool', category: 'Tools', isFavorite: true },
+      { id: 'ps_14', action: 'Clone Stamp', shortcutWin: '', shortcutMac: '', description: 'Clone stamp tool', category: 'Tools', isFavorite: true },
+      { id: 'ps_15', action: 'Eraser Tool', shortcutWin: '', shortcutMac: '', description: 'Eraser tool', category: 'Tools'},
+      { id: 'ps_16', action: 'Gradient Tool', shortcutWin: '', shortcutMac: '', description: 'Gradient and paint bucket', category: 'Tools'},
+      { id: 'ps_17', action: 'Dodge Tool', shortcutWin: '', shortcutMac: '', description: 'Dodge, burn, sponge tools', category: 'Tools'},
+      { id: 'ps_18', action: 'Pen Tool', shortcutWin: '', shortcutMac: '', description: 'Path creation tool', category: 'Tools'},
+      { id: 'ps_19', action: 'Type Tool', shortcutWin: '', shortcutMac: '', description: 'Text tool', category: 'Tools'},
+      { id: 'ps_20', action: 'Hand Tool', shortcutWin: '', shortcutMac: '', description: 'Pan around image', category: 'Tools'},
+      { id: 'ps_21', action: 'Zoom Tool', shortcutWin: '', shortcutMac: '', description: 'Zoom in/out tool', category: 'Tools'},
+
+      // Layers
+      { id: 'ps_22', action: 'New Layer', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Create new layer', category: 'Layers', isFavorite: true },
+      { id: 'ps_23', action: 'Duplicate Layer', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Duplicate current layer', category: 'Layers', isFavorite: true },
+      { id: 'ps_24', action: 'Delete Layer', shortcutWin: 'Delete', shortcutMac: 'Delete', description: 'Delete selected layer', category: 'Layers'},
+      { id: 'ps_25', action: 'Merge Down', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Merge with layer below', category: 'Layers'},
+      { id: 'ps_26', action: 'Flatten Image', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Flatten all layers', category: 'Layers'},
+      { id: 'ps_27', action: 'Group Layers', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Group selected layers', category: 'Layers'},
+      { id: 'ps_28', action: 'Ungroup Layers', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Ungroup layer group', category: 'Layers'},
+
+      // Editing
+      { id: 'ps_29', action: 'Undo', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Undo last action', category: 'Editing', isFavorite: true },
+      { id: 'ps_30', action: 'Step Backward', shortcutWin: 'Ctrl+Alt+', shortcutMac: 'Cmd+Opt+', description: 'Step backward in history', category: 'Editing', isFavorite: true },
+      { id: 'ps_31', action: 'Step Forward', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Step forward in history', category: 'Editing'},
+      { id: 'ps_32', action: 'Copy', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Copy selection', category: 'Editing', isFavorite: true },
+      { id: 'ps_33', action: 'Paste', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Paste clipboard', category: 'Editing', isFavorite: true },
+      { id: 'ps_34', action: 'Free Transform', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Transform selection or layer', category: 'Editing', isFavorite: true },
+      { id: 'ps_35', action: 'Content-Aware Fill', shortcutWin: 'Shift+F', shortcutMac: 'Shift+F', description: 'Content-aware fill workspace', category: 'Editing', isFavorite: true, isNew: true },
+      { id: 'ps_52', action: 'Generative Fill', shortcutWin: 'Shift+', shortcutMac: 'Shift+', description: '', category: 'Editing', isFavorite: true, isNew: true },
+      { id: 'ps_53', action: 'Generative Expand', shortcutWin: 'Shift+', shortcutMac: 'Shift+', description: '', category: 'Editing', isNew: true },
+      { id: 'ps_54', action: 'Enhanced Remove Tool', shortcutWin: 'Shift+', shortcutMac: 'Shift+', description: '', category: 'Editing', isNew: true },
+
+      // Adjustments
+      { id: 'ps_36', action: 'Levels', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Open levels adjustment', category: 'Adjustments', isFavorite: true },
+      { id: 'ps_37', action: 'Curves', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Open curves adjustment', category: 'Adjustments', isFavorite: true },
+      { id: 'ps_38', action: 'Hue/Saturation', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Hue/Saturation adjustment', category: 'Adjustments'},
+      { id: 'ps_39', action: 'Color Balance', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Color balance adjustment', category: 'Adjustments'},
+      { id: 'ps_40', action: 'Desaturate', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Remove color saturation', category: 'Adjustments'},
+      { id: 'ps_41', action: 'Invert', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Invert colors', category: 'Adjustments'},
+
+      // Selection
+      { id: 'ps_42', action: 'Select All', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Select entire image', category: 'Selection', isFavorite: true },
+      { id: 'ps_43', action: 'Deselect', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Remove selection', category: 'Selection', isFavorite: true },
+      { id: 'ps_44', action: 'Reselect', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Restore last selection', category: 'Selection'},
+      { id: 'ps_45', action: 'Inverse Selection', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Invert selection', category: 'Selection', isFavorite: true },
+      { id: 'ps_46', action: 'Feather Selection', shortcutWin: 'Ctrl+Alt+', shortcutMac: 'Cmd+Opt+', description: 'Feather selection edges', category: 'Selection'},
+
+      // View
+      { id: 'ps_47', action: 'Zoom I', shortcutWin: 'Ctrl++', shortcutMac: 'Cmd++', description: 'Zoom into image', category: 'View'},
+      { id: 'ps_48', action: 'Zoom Out', shortcutWin: 'Ctrl+, -, ', shortcutMac: 'Cmd+, -, ', description: 'Zoom out of image', category: 'View'},
+      { id: 'ps_49', action: 'Fit on Screen', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Fit image to window', category: 'View', isFavorite: true },
+      { id: 'ps_50', action: 'Actual Pixels', shortcutWin: 'Ctrl+Alt+', shortcutMac: 'Cmd+Opt+', description: 'View at 100% size', category: 'View'},
+      { id: 'ps_51', action: 'Screen Mode', shortcutWin: '', shortcutMac: '', description: 'Cycle through screen modes', category: 'View'},
+      
+      // Panels & Windows
+      { id: 'ps_55', action: 'Layers Panel', shortcutWin: 'F', shortcutMac: 'F', description: 'Toggle Layers panel', category: 'Panels', isFavorite: true },
+      { id: 'ps_56', action: 'Actions Panel', shortcutWin: 'Alt+F', shortcutMac: 'Opt+F', description: 'Toggle Actions panel', category: 'Panels'},
+      { id: 'ps_57', action: 'Brushes Panel', shortcutWin: 'F', shortcutMac: 'F', description: 'Toggle Brushes panel', category: 'Panels'},
+      { id: 'ps_58', action: 'Color Panel', shortcutWin: 'F', shortcutMac: 'F', description: 'Toggle Color panel', category: 'Panels'},
+      { id: 'ps_59', action: 'History Panel', shortcutWin: 'Alt+F1', shortcutMac: 'Opt+F1', description: 'Toggle History panel', category: 'Panels'},
+      { id: 'ps_60', action: 'Info Panel', shortcutWin: 'F', shortcutMac: 'F', description: 'Toggle Info panel', category: 'Panels'},
+      { id: 'ps_61', action: 'Navigator Panel', shortcutWin: 'F1', shortcutMac: 'F1', description: 'Toggle Navigator panel', category: 'Panels'},
+      { id: 'ps_62', action: 'Swatches Panel', shortcutWin: 'F1', shortcutMac: 'F1', description: 'Toggle Swatches panel', category: 'Panels'},
+      
+      // Filters
+      { id: 'ps_63', action: 'Last Filter', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Repeat last filter', category: 'Filters', isFavorite: true },
+      { id: 'ps_64', action: 'Fade Filter', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Fade last filter', category: 'Filters'},
+      { id: 'ps_65', action: 'Gaussian Blur', shortcutWin: 'Ctrl+Alt+Shift+', shortcutMac: 'Cmd+Opt+Shift+', description: 'Quick Gaussian blur', category: 'Filters'},
+      { id: 'ps_66', action: 'Unsharp Mask', shortcutWin: 'Ctrl+Alt+Shift+', shortcutMac: 'Cmd+Opt+Shift+', description: 'Unsharp mask filter', category: 'Filters'},
+      
+      // Advanced Tools
+      { id: 'ps_67', action: 'Puppet Warp', shortcutWin: 'Ctrl+Alt+', shortcutMac: 'Cmd+Opt+', description: 'Puppet warp tool', category: 'Transform'},
+      { id: 'ps_68', action: 'Liquify', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Liquify filter', category: 'Transform', isFavorite: true },
+      { id: 'ps_69', action: 'Camera Raw Filter', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Camera Raw filter', category: 'Filters', isFavorite: true },
+      { id: 'ps_70', action: 'Perspective Warp', shortcutWin: 'Ctrl+Alt+Shift+', shortcutMac: 'Cmd+Opt+Shift+', description: 'Perspective warp', category: 'Transform'},
+      
+      // Blend Modes
+      { id: 'ps_71', action: 'Cycle Blend Modes', shortcutWin: 'Shift+Plus', shortcutMac: 'Shift+Plus', description: 'Cycle through blend modes', category: 'Blending'},
+      { id: 'ps_72', action: 'Normal Blend', shortcutWin: 'Shift+Alt+', shortcutMac: 'Shift+Opt+', description: 'Normal blend mode', category: 'Blending'},
+      { id: 'ps_73', action: 'Multiply Blend', shortcutWin: 'Shift+Alt+', shortcutMac: 'Shift+Opt+', description: 'Multiply blend mode', category: 'Blending'},
+      { id: 'ps_74', action: 'Screen Blend', shortcutWin: 'Shift+Alt+', shortcutMac: 'Shift+Opt+', description: 'Screen blend mode', category: 'Blending'},
+      { id: 'ps_75', action: 'Overlay Blend', shortcutWin: 'Shift+Alt+', shortcutMac: 'Shift+Opt+', description: 'Overlay blend mode', category: 'Blending'},
+      
+      // Masks & Channels
+      { id: 'ps_76', action: 'Add Layer Mask', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Add layer mask', category: 'Masks', isFavorite: true },
+      { id: 'ps_77', action: 'Delete Layer Mask', shortcutWin: 'Ctrl+Shift+Delete', shortcutMac: 'Cmd+Shift+Delete', description: 'Delete layer mask', category: 'Masks'},
+      { id: 'ps_78', action: 'Apply Layer Mask', shortcutWin: 'Ctrl+Shift+Alt+Delete', shortcutMac: 'Cmd+Shift+Opt+Delete', description: 'Apply layer mask', category: 'Masks'},
+      { id: 'ps_79', action: 'Load Selection', shortcutWin: 'Ctrl+Alt+', shortcutMac: 'Cmd+Opt+', description: 'Load channel as selection', category: 'Channels'},
+      
+      // Typography
+      { id: 'ps_80', action: 'Character Panel', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Character formatting', category: 'Typography'},
+      { id: 'ps_81', action: 'Paragraph Panel', shortcutWin: 'Ctrl+Alt+', shortcutMac: 'Cmd+Opt+', description: 'Paragraph formatting', category: 'Typography'},
+      { id: 'ps_82', action: 'Increase Font Size', shortcutWin: 'Ctrl+Shift+, >, ', shortcutMac: 'Cmd+Shift+, >, ', description: 'Increase font size', category: 'Typography'},
+      { id: 'ps_83', action: 'Decrease Font Size', shortcutWin: 'Ctrl+Shift+, <, ', shortcutMac: 'Cmd+Shift+, <, ', description: 'Decrease font size', category: 'Typography'},
+      
+      // Smart Objects & Artboards
+      { id: 'ps_84', action: 'Convert to Smart Object', shortcutWin: 'Ctrl+Alt+Shift+', shortcutMac: 'Cmd+Opt+Shift+', description: 'Convert to smart object', category: 'Smart Objects, ',},
+      { id: 'ps_85', action: 'Edit Smart Object', shortcutWin: 'Ctrl+Alt+Shift+', shortcutMac: 'Cmd+Opt+Shift+', description: 'Edit smart object contents', category: 'Smart Objects, ',},
+      { id: 'ps_86', action: 'New Artboard', shortcutWin: 'Ctrl+Shift+Alt+', shortcutMac: 'Cmd+Shift+Opt+', description: 'Create new artboard', category: 'Artboards'},
+      
+      // Complete Tool Set
+      { id: 'ps_87', action: 'Move Tool', shortcutWin: '', shortcutMac: '', description: 'Move tool', category: 'Tools', isFavorite: true },
+      { id: 'ps_88', action: 'Marquee Tools', shortcutWin: '', shortcutMac: '', description: 'Rectangular/Elliptical marquee', category: 'Tools', isFavorite: true },
+      { id: 'ps_89', action: 'Lasso Tools', shortcutWin: '', shortcutMac: '', description: 'Lasso selection tools', category: 'Tools', isFavorite: true },
+      { id: 'ps_90', action: 'Quick Selection', shortcutWin: '', shortcutMac: '', description: 'Quick selection/Magic wand', category: 'Tools', isFavorite: true },
+      { id: 'ps_91', action: 'Crop Tool', shortcutWin: '', shortcutMac: '', description: 'Crop tool', category: 'Tools', isFavorite: true },
+      { id: 'ps_92', action: 'Eyedropper Tool', shortcutWin: '', shortcutMac: '', description: 'Eyedropper tool', category: 'Tools', isFavorite: true },
+      { id: 'ps_93', action: 'Healing Tools', shortcutWin: '', shortcutMac: '', description: 'Healing brush tools', category: 'Tools', isFavorite: true },
+      { id: 'ps_94', action: 'Brush Tool', shortcutWin: '', shortcutMac: '', description: 'Brush/Pencil tools', category: 'Tools', isFavorite: true },
+      { id: 'ps_95', action: 'Clone Stamp', shortcutWin: '', shortcutMac: '', description: 'Clone stamp tool', category: 'Tools', isFavorite: true },
+      { id: 'ps_96', action: 'History Brush', shortcutWin: '', shortcutMac: '', description: 'History brush tool', category: 'Tools'},
+      { id: 'ps_97', action: 'Eraser Tool', shortcutWin: '', shortcutMac: '', description: 'Eraser tools', category: 'Tools', isFavorite: true },
+      { id: 'ps_98', action: 'Gradient Tool', shortcutWin: '', shortcutMac: '', description: 'Gradient/Paint bucket', category: 'Tools', isFavorite: true },
+      { id: 'ps_99', action: 'Dodge/Burn', shortcutWin: '', shortcutMac: '', description: 'Dodge/Burn/Sponge tools', category: 'Tools'},
+      { id: 'ps_100', action: 'Pen Tool', shortcutWin: '', shortcutMac: '', description: 'Pen tools', category: 'Tools', isFavorite: true },
+      { id: 'ps_101', action: 'Type Tool', shortcutWin: '', shortcutMac: '', description: 'Type tools', category: 'Tools', isFavorite: true },
+      { id: 'ps_102', action: 'Path Selection', shortcutWin: '', shortcutMac: '', description: 'Path selection tools', category: 'Tools'},
+      { id: 'ps_103', action: 'Shape Tools', shortcutWin: '', shortcutMac: '', description: 'Shape tools', category: 'Tools'},
+      { id: 'ps_104', action: 'Hand Tool', shortcutWin: '', shortcutMac: '', description: 'Hand tool', category: 'Tools'},
+      { id: 'ps_105', action: 'Zoom Tool', shortcutWin: '', shortcutMac: '', description: 'Zoom tool', category: 'Tools'},
+      
+      // Color & Swatches
+      { id: 'ps_106', action: 'Default Colors', shortcutWin: '', shortcutMac: '', description: 'Reset to default colors', category: 'Color', isFavorite: true },
+      { id: 'ps_107', action: 'Switch Colors', shortcutWin: '', shortcutMac: '', description: 'Switch foreground/background', category: 'Color', isFavorite: true },
+      { id: 'ps_108', action: 'Color Picker', shortcutWin: 'Alt+Click', shortcutMac: 'Opt+Click', description: 'Pick color while painting', category: 'Color'},
+      { id: 'ps_109', action: 'Fill Foreground', shortcutWin: 'Alt+Backspace', shortcutMac: 'Opt+Delete', description: 'Fill with foreground color', category: 'Color', isFavorite: true },
+      { id: 'ps_110', action: 'Fill Background', shortcutWin: 'Ctrl+Backspace', shortcutMac: 'Cmd+Delete', description: 'Fill with background color', category: 'Color', isFavorite: true },
+      { id: 'ps_111', action: 'Fill from History', shortcutWin: 'Ctrl+Alt+Backspace', shortcutMac: 'Cmd+Opt+Delete', description: 'Fill from history', category: 'Color'},
+      
+      // Brush Controls
+      { id: 'ps_112', action: 'Increase Brush Size', shortcutWin: ']', shortcutMac: ']', description: 'Increase brush size', category: 'Brush', isFavorite: true },
+      { id: 'ps_113', action: 'Decrease Brush Size', shortcutWin: '[', shortcutMac: '[', description: 'Decrease brush size', category: 'Brush', isFavorite: true },
+      { id: 'ps_114', action: 'Increase Brush Hardness', shortcutWin: 'Shift+]', shortcutMac: 'Shift+]', description: 'Increase brush hardness', category: 'Brush'},
+      { id: 'ps_115', action: 'Decrease Brush Hardness', shortcutWin: 'Shift+[', shortcutMac: 'Shift+[', description: 'Decrease brush hardness', category: 'Brush'},
+      { id: 'ps_116', action: 'Previous Brush', shortcutWin: ',', shortcutMac: ',', description: 'Previous brush preset', category: 'Brush'},
+      { id: 'ps_117', action: 'Next Brush', shortcutWin: '.', shortcutMac: '.', description: 'Next brush preset', category: 'Brush'},
+      { id: 'ps_118', action: 'First Brush', shortcutWin: 'Shift+,', shortcutMac: 'Shift+,', description: 'First brush preset', category: 'Brush'},
+      { id: 'ps_119', action: 'Last Brush', shortcutWin: 'Shift+.', shortcutMac: 'Shift+.', description: 'Last brush preset', category: 'Brush'},
+      
+      // Layer Operations Advanced
+      { id: 'ps_120', action: 'Group Layers', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Group selected layers', category: 'Layers', isFavorite: true },
+      { id: 'ps_121', action: 'Ungroup Layers', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Ungroup layers', category: 'Layers'},
+      { id: 'ps_122', action: 'Merge Down', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Merge layer down', category: 'Layers', isFavorite: true },
+      { id: 'ps_123', action: 'Merge Visible', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Merge visible layers', category: 'Layers'},
+      { id: 'ps_124', action: 'Flatten Image', shortcutWin: 'Ctrl+Shift+Alt+', shortcutMac: 'Cmd+Shift+Opt+', description: 'Flatten image', category: 'Layers'},
+      { id: 'ps_125', action: 'Link Layers', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Link selected layers', category: 'Layers'},
+      { id: 'ps_126', action: 'Select All Layers', shortcutWin: 'Ctrl+Alt+', shortcutMac: 'Cmd+Opt+', description: 'Select all layers', category: 'Layers'},
+      { id: 'ps_127', action: 'Select Similar Layers', shortcutWin: 'Alt+Right Click', shortcutMac: 'Opt+Right Click', description: 'Select similar layers', category: 'Layers'},
+      
+      // Transform Tools
+      { id: 'ps_128', action: 'Free Transform', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Free transform', category: 'Transform', isFavorite: true },
+      { id: 'ps_129', action: 'Transform Again', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Repeat last transform', category: 'Transform'},
+      { id: 'ps_130', action: 'Scale', shortcutWin: 'Ctrl+Alt+', shortcutMac: 'Cmd+Opt+', description: 'Scale transformation', category: 'Transform'},
+      { id: 'ps_131', action: 'Rotate', shortcutWin: 'Ctrl+Shift+Alt+', shortcutMac: 'Cmd+Shift+Opt+', description: 'Rotate transformation', category: 'Transform'},
+      { id: 'ps_132', action: 'Skew', shortcutWin: 'Ctrl+Alt+Shift+', shortcutMac: 'Cmd+Opt+Shift+', description: 'Skew transformation', category: 'Transform'},
+      { id: 'ps_133', action: 'Distort', shortcutWin: 'Ctrl+Alt+Shift+', shortcutMac: 'Cmd+Opt+Shift+', description: 'Distort transformation', category: 'Transform'},
+      { id: 'ps_134', action: 'Perspective', shortcutWin: 'Ctrl+Alt+Shift+', shortcutMac: 'Cmd+Opt+Shift+', description: 'Perspective transformation', category: 'Transform'},
+      
+      // Adjustment Layers
+      { id: 'ps_135', action: 'Curves Adjustment', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Curves adjustment', category: 'Adjustments', isFavorite: true },
+      { id: 'ps_136', action: 'Levels Adjustment', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Levels adjustment', category: 'Adjustments', isFavorite: true },
+      { id: 'ps_137', action: 'Hue/Saturation', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Hue/Saturation adjustment', category: 'Adjustments', isFavorite: true },
+      { id: 'ps_138', action: 'Color Balance', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Color balance adjustment', category: 'Adjustments'},
+      { id: 'ps_139', action: 'Brightness/Contrast', shortcutWin: 'Ctrl+Alt+', shortcutMac: 'Cmd+Opt+', description: 'Brightness/Contrast', category: 'Adjustments'},
+      { id: 'ps_140', action: 'Desaturate', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Desaturate image', category: 'Adjustments'},
+      { id: 'ps_141', action: 'Invert', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Invert colors', category: 'Adjustments'},
+      { id: 'ps_142', action: 'Auto Tone', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Auto tone adjustment', category: 'Adjustments'},
+      { id: 'ps_143', action: 'Auto Contrast', shortcutWin: 'Ctrl+Alt+Shift+', shortcutMac: 'Cmd+Opt+Shift+', description: 'Auto contrast', category: 'Adjustments'},
+      { id: 'ps_144', action: 'Auto Color', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Auto color correction', category: 'Adjustments'},
+      
+      // Channel Operations
+      { id: 'ps_145', action: 'Channel Mixer', shortcutWin: 'Ctrl+Alt+Shift+', shortcutMac: 'Cmd+Opt+Shift+', description: 'Channel mixer', category: 'Channels'},
+      { id: 'ps_146', action: 'Red Channel', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'View red channel', category: 'Channels'},
+      { id: 'ps_147', action: 'Green Channel', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'View green channel', category: 'Channels'},
+      { id: 'ps_148', action: 'Blue Channel', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'View blue channel', category: 'Channels'},
+      { id: 'ps_149', action: 'Composite Channel', shortcutWin: 'Ctrl+~', shortcutMac: 'Cmd+~', description: 'View composite RG', category: 'Channels'},
+      
+      // Path Operations
+      { id: 'ps_150', action: 'Make Work Path', shortcutWin: 'Ctrl+Alt+Enter', shortcutMac: 'Cmd+Opt+Return', description: 'Make work path from selection', category: 'Paths'},
+      { id: 'ps_151', action: 'Make Selection from Path', shortcutWin: 'Ctrl+Enter', shortcutMac: 'Cmd+Return', description: 'Make selection from path', category: 'Paths'},
+      { id: 'ps_152', action: 'Fill Path', shortcutWin: 'Ctrl+Shift+Enter', shortcutMac: 'Cmd+Shift+Return', description: 'Fill path', category: 'Paths'},
+      { id: 'ps_153', action: 'Stroke Path', shortcutWin: 'Ctrl+Alt+Shift+Enter', shortcutMac: 'Cmd+Opt+Shift+Return', description: 'Stroke path', category: 'Paths'},
+      
+      // Guide and Grid
+      { id: 'ps_154', action: 'Show Guides', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Show/hide guides', category: 'Guides'},
+      { id: 'ps_155', action: 'Lock Guides', shortcutWin: 'Ctrl+Alt+', shortcutMac: 'Cmd+Opt+', description: 'Lock guides', category: 'Guides'},
+      { id: 'ps_156', action: 'Show Grid', shortcutWin: 'Ctrl+\\', shortcutMac: 'Cmd+\\', description: 'Show/hide grid', category: 'Grid'},
+      { id: 'ps_157', action: 'Snap to Grid', shortcutWin: 'Ctrl+Shift+\\', shortcutMac: 'Cmd+Shift+\\', description: 'Snap to grid', category: 'Grid'},
+      { id: 'ps_158', action: 'Show Rulers', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Show/hide rulers', category: 'Rulers'},
+      
+      // Document Navigation
+      { id: 'ps_159', action: 'Next Document', shortcutWin: 'Ctrl+Tab', shortcutMac: 'Cmd+Tab', description: 'Next document tab', category: 'Navigation'},
+      { id: 'ps_160', action: 'Previous Document', shortcutWin: 'Ctrl+Shift+Tab', shortcutMac: 'Cmd+Shift+Tab', description: 'Previous document tab', category: 'Navigation'},
+      { id: 'ps_161', action: 'Rotate View Clockwise', shortcutWin: '', shortcutMac: '', description: 'Rotate view clockwise', category: 'Navigation'},
+      { id: 'ps_162', action: 'Rotate View Counter-clockwise', shortcutWin: 'Shift+', shortcutMac: 'Shift+', description: 'Rotate view counter-clockwise', category: 'Navigation'},
+      { id: 'ps_163', action: 'Reset View', shortcutWin: 'Escape', shortcutMac: 'Escape', description: 'Reset view rotation', category: 'Navigation'},
+      
+      // Advanced Selections
+      { id: 'ps_164', action: 'Color Range', shortcutWin: 'Ctrl+Alt+', shortcutMac: 'Cmd+Opt+', description: 'Select color range', category: 'Selection'},
+      { id: 'ps_165', action: 'Refine Edge', shortcutWin: 'Ctrl+Alt+', shortcutMac: 'Cmd+Opt+', description: 'Refine selection edge', category: 'Selection'},
+      { id: 'ps_166', action: 'Contract Selection', shortcutWin: 'Ctrl+Alt+', shortcutMac: 'Cmd+Opt+', description: 'Contract selection', category: 'Selection'},
+      { id: 'ps_167', action: 'Expand Selection', shortcutWin: 'Ctrl+Alt+', shortcutMac: 'Cmd+Opt+', description: 'Expand selection', category: 'Selection'},
+      { id: 'ps_168', action: 'Border Selection', shortcutWin: 'Ctrl+Alt+', shortcutMac: 'Cmd+Opt+', description: 'Border selection', category: 'Selection'},
+      { id: 'ps_169', action: 'Smooth Selection', shortcutWin: 'Ctrl+Alt+', shortcutMac: 'Cmd+Opt+', description: 'Smooth selection', category: 'Selection'},
+      
+      // Actions and History
+      { id: 'ps_170', action: 'Play Action', shortcutWin: 'F', shortcutMac: 'F', description: 'Play selected action', category: 'Actions'},
+      { id: 'ps_171', action: 'Step Backward', shortcutWin: 'Ctrl+Alt+', shortcutMac: 'Cmd+Opt+', description: 'Step backward in history', category: 'History', isFavorite: true },
+      { id: 'ps_172', action: 'Step Forward', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Step forward in history', category: 'History', isFavorite: true },
+      
+      // Content-Aware Features
+      { id: 'ps_173', action: 'Content-Aware Fill', shortcutWin: 'Shift+F', shortcutMac: 'Shift+F', description: 'Content-aware fill', category: 'Content-Aware', isFavorite: true },
+      { id: 'ps_174', action: 'Content-Aware Scale', shortcutWin: 'Ctrl+Alt+Shift+', shortcutMac: 'Cmd+Opt+Shift+', description: 'Content-aware scale', category: 'Content-Aware'},
+      { id: 'ps_175', action: 'Content-Aware Move', shortcutWin: 'Shift+', shortcutMac: 'Shift+', description: 'Content-aware move tool', category: 'Content-Aware'}
+    ]
+},
+  {
+    id: 'captureone',
+    name: 'Capture One',
+    icon: CaptureOneLogo,
+    color: '#00000', // Phase One's official Capture One black
+    shortcuts: [
+      // File Operations
+      { id: 'c1_', action: 'Import Images', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Import new images', category: 'Import/Export', isFavorite: true },
+      { id: 'c1_', action: 'Process Queue', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Start processing queue', category: 'Import/Export', isFavorite: true },
+      { id: 'c1_', action: 'New Session', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Create new session', category: 'File'},
+      { id: 'c1_5', action: 'AI Subject Masking', shortcutWin: 'Shift+', shortcutMac: 'Shift+', description: '', category: 'AI Tools', isFavorite: true, isNew: true },
+      { id: 'c1_5', action: 'AI Keyword Tagging', shortcutWin: 'Shift+', shortcutMac: 'Shift+', description: '', category: 'AI Tools', isNew: true },
+      { id: 'c1_5', action: 'Speed Edit', shortcutWin: 'Shift+', shortcutMac: 'Shift+', description: '', category: 'Workflow', isNew: true },
+      { id: 'c1_', action: 'Open Session', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Open existing session', category: 'File'},
+      { id: 'c1_', action: 'Save Session', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Save current session', category: 'File'},
+      
+      // Basic Adjustments
+      { id: 'c1_', action: 'Exposure Tool', shortcutWin: '', shortcutMac: '', description: 'Exposure adjustment tool', category: 'Basic Adjustments', isFavorite: true },
+      { id: 'c1_', action: 'Contrast Tool', shortcutWin: '', shortcutMac: '', description: 'Contrast adjustment tool', category: 'Basic Adjustments', isFavorite: true },
+      { id: 'c1_', action: 'Highlights Tool', shortcutWin: '', shortcutMac: '', description: 'Highlights adjustment tool', category: 'Basic Adjustments', isFavorite: true },
+      { id: 'c1_', action: 'Shadows Tool', shortcutWin: '', shortcutMac: '', description: 'Shadows adjustment tool', category: 'Basic Adjustments', isFavorite: true },
+      { id: 'c1_1', action: 'Whites Tool', shortcutWin: '', shortcutMac: '', description: 'Whites adjustment tool', category: 'Basic Adjustments, ',},
+      { id: 'c1_1', action: 'Blacks Tool', shortcutWin: '', shortcutMac: '', description: 'Blacks adjustment tool', category: 'Basic Adjustments, ',},
+      { id: 'c1_1', action: 'Vibrance Tool', shortcutWin: '', shortcutMac: '', description: 'Vibrance adjustment tool', category: 'Basic Adjustments, ',},
+      { id: 'c1_1', action: 'Saturation Tool', shortcutWin: 'Shift+', shortcutMac: 'Shift+', description: 'Saturation adjustment tool', category: 'Basic Adjustments, ',},
+      
+      // Color Tools
+      { id: 'c1_1', action: 'White Balance', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'White balance picker', category: 'Color', isFavorite: true },
+      { id: 'c1_1', action: 'Color Balance', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Color balance tool', category: 'Color'},
+      { id: 'c1_1', action: 'Color Editor', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Advanced color editor', category: 'Color', isFavorite: true },
+      { id: 'c1_1', action: 'LCH Editor', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'LCH color editor', category: 'Color'},
+      
+      // Local Adjustments
+      { id: 'c1_1', action: 'Masking Tool', shortcutWin: '', shortcutMac: '', description: 'Masking tool', category: 'Local Adjustments', isFavorite: true },
+      { id: 'c1_1', action: 'Adjustment Layer', shortcutWin: '', shortcutMac: '', description: 'Create adjustment layer', category: 'Local Adjustments', isFavorite: true },
+      { id: 'c1_2', action: 'Clone Layer', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Clone layer', category: 'Local Adjustments, ',},
+      { id: 'c1_2', action: 'Heal Layer', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Heal layer', category: 'Local Adjustments, ',},
+      
+      // Lens Corrections
+      { id: 'c1_2', action: 'Lens Correction', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Lens correction tool', category: 'Lens Corrections', isFavorite: true },
+      { id: 'c1_2', action: 'Keystone Correction', shortcutWin: '', shortcutMac: '', description: 'Keystone correction', category: 'Lens Corrections, ',},
+      { id: 'c1_2', action: 'Chromatic Aberration', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Chromatic aberration correction', category: 'Lens Corrections, ',},
+      
+      // Viewing & Navigation
+      { id: 'c1_2', action: 'Before/After', shortcutWin: 'Space', shortcutMac: 'Space', description: 'Toggle before/after view', category: 'Viewing', isFavorite: true },
+      { id: 'c1_2', action: 'Next Variant', shortcutWin: 'Right Arrow', shortcutMac: 'Right Arrow', description: 'Next variant', category: 'Navigation', isFavorite: true },
+      { id: 'c1_2', action: 'Previous Variant', shortcutWin: 'Left Arrow', shortcutMac: 'Left Arrow', description: 'Previous variant', category: 'Navigation', isFavorite: true },
+      { id: 'c1_2', action: 'Zoom I', shortcutWin: 'Ctrl++', shortcutMac: 'Cmd++', description: 'Zoom in', category: 'Viewing'},
+      { id: 'c1_2', action: 'Zoom Out', shortcutWin: 'Ctrl+, -, ', shortcutMac: 'Cmd+, -, ', description: 'Zoom out', category: 'Viewing'},
+      { id: 'c1_3', action: 'Fit to View', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Fit image to view', category: 'Viewing'},
+      { id: 'c1_3', action: '100% View', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: '100% zoom view', category: 'Viewing'},
+      { id: 'c1_3', action: 'Focus View', shortcutWin: '', shortcutMac: '', description: 'Focus view mode', category: 'Viewing'},
+      
+      // Ratings & Selection
+      { id: 'c1_3', action: '1 Star', shortcutWin: '', shortcutMac: '', description: 'Rate 1 star', category: 'Rating', isFavorite: true },
+      { id: 'c1_3', action: '2 Stars', shortcutWin: '', shortcutMac: '', description: 'Rate 2 stars', category: 'Rating', isFavorite: true },
+      { id: 'c1_3', action: '3 Stars', shortcutWin: '', shortcutMac: '', description: 'Rate 3 stars', category: 'Rating', isFavorite: true },
+      { id: 'c1_3', action: '4 Stars', shortcutWin: '', shortcutMac: '', description: 'Rate 4 stars', category: 'Rating', isFavorite: true },
+      { id: 'c1_3', action: '5 Stars', shortcutWin: '', shortcutMac: '', description: 'Rate 5 stars', category: 'Rating', isFavorite: true },
+      { id: 'c1_3', action: 'Remove Rating', shortcutWin: '', shortcutMac: '', description: 'Remove rating', category: 'Rating'},
+      { id: 'c1_3', action: 'Select Image', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Select/deselect image', category: 'Selection'},
+      
+      // Styles & Presets
+      { id: 'c1_4', action: 'Apply Style', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Apply style/preset', category: 'Styles', isFavorite: true },
+      { id: 'c1_4', action: 'Copy Adjustments', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Copy adjustments', category: 'Styles', isFavorite: true },
+      { id: 'c1_4', action: 'Paste Adjustments', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Paste adjustments', category: 'Styles', isFavorite: true },
+      { id: 'c1_4', action: 'Reset All', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Reset all adjustments', category: 'Styles'},
+      
+      // Tethering & Capture
+      { id: 'c1_4', action: 'Start Tethering', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Start tethered capture', category: 'Tethering'},
+      { id: 'c1_4', action: 'Trigger Capture', shortcutWin: 'F1', shortcutMac: 'F1', description: 'Trigger camera capture', category: 'Tethering', isFavorite: true },
+      { id: 'c1_4', action: 'Auto Advance', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Toggle auto advance', category: 'Tethering'},
+      
+      // Output & Processing
+      { id: 'c1_4', action: 'Add to Process Queue', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Add to process queue', category: 'Output', isFavorite: true },
+      { id: 'c1_4', action: 'Recipe Proofing', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Recipe proofing mode', category: 'Output'},
+      { id: 'c1_4', action: 'Export Variant', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Export current variant', category: 'Output'},
+      
+      // Complete Tool Set
+      { id: 'c1_5', action: 'Pan Tool', shortcutWin: 'Space+Drag', shortcutMac: 'Space+Drag', description: 'Pan around image', category: 'Tools'},
+      { id: 'c1_5', action: 'Rotate Tool', shortcutWin: '', shortcutMac: '', description: 'Rotate image view', category: 'Tools'},
+      { id: 'c1_5', action: 'Loupe Tool', shortcutWin: '', shortcutMac: '', description: 'Loupe inspection tool', category: 'Tools'},
+      { id: 'c1_5', action: 'Crop Tool', shortcutWin: 'Shift+', shortcutMac: 'Shift+', description: 'Crop tool', category: 'Tools', isFavorite: true },
+      
+      // Advanced Viewing
+      { id: 'c1_5', action: 'Solo View', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Solo view mode', category: 'Viewing'},
+      { id: 'c1_5', action: 'Full Screen', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Full screen mode', category: 'Viewing'},
+      { id: 'c1_5', action: 'Show Info', shortcutWin: '', shortcutMac: '', description: 'Show image info', category: 'Viewing'},
+      { id: 'c1_6', action: 'Show Histogram', shortcutWin: 'Shift+', shortcutMac: 'Shift+', description: 'Show histogram', category: 'Viewing'},
+      { id: 'c1_6', action: 'Show Levels', shortcutWin: 'Shift+', shortcutMac: 'Shift+', description: 'Show levels display', category: 'Viewing'},
+      { id: 'c1_6', action: 'Show Shadow/Highlight', shortcutWin: '', shortcutMac: '', description: 'Show shadow/highlight warning', category: 'Viewing'},
+      { id: 'c1_6', action: 'Show Focus Mask', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Show focus mask overlay', category: 'Viewing'},
+      
+      // Color & Profile Management
+      { id: 'c1_6', action: 'ICC Profile', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Assign ICC profile', category: 'Color Management, ',},
+      { id: 'c1_6', action: 'Soft Proofing', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Toggle soft proofing', category: 'Color Management, ',},
+      { id: 'c1_6', action: 'Gamut Warning', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Show gamut warning', category: 'Color Management, ',},
+      
+      // Session Management
+      { id: 'c1_6', action: 'New Session from Folder', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Create session from folder', category: 'Session'},
+      { id: 'c1_6', action: 'Save Session A', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Save session with new name', category: 'Session'},
+      { id: 'c1_6', action: 'Close Session', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Close current session', category: 'Session'},
+      { id: 'c1_7', action: 'Recent Sessions', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Open recent sessions', category: 'Session'},
+      
+      // Advanced Local Adjustments
+      { id: 'c1_7', action: 'Gradient Mask', shortcutWin: '', shortcutMac: '', description: 'Gradient mask tool', category: 'Local Adjustments, ',},
+      { id: 'c1_7', action: 'Radial Mask', shortcutWin: 'Shift+', shortcutMac: 'Shift+', description: 'Radial mask tool', category: 'Local Adjustments, ',},
+      { id: 'c1_7', action: 'Luminosity Mask', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Luminosity mask', category: 'Local Adjustments, ',},
+      { id: 'c1_7', action: 'Color Range Mask', shortcutWin: 'Ctrl+Alt+', shortcutMac: 'Cmd+Opt+', description: 'Color range mask', category: 'Local Adjustments, ',},
+      { id: 'c1_7', action: 'Invert Mask', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Invert active mask', category: 'Local Adjustments, ',},
+      { id: 'c1_7', action: 'Feather Mask', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Feather mask edges', category: 'Local Adjustments, ',},
+      
+      // Professional Color Tools
+      { id: 'c1_7', action: 'Color Wheel', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Open color wheel', category: 'Color'},
+      { id: 'c1_7', action: 'Shadow/Midtone/Highlight', shortcutWin: 'Ctrl+Alt+', shortcutMac: 'Cmd+Opt+', description: 'Shadow/midtone/highlight tool', category: 'Color'},
+      { id: 'c1_7', action: 'Film Grain', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Add film grain', category: 'Effects'},
+      { id: 'c1_8', action: 'Vignetting', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Vignetting tool', category: 'Effects'},
+      
+      // Batch Operations
+      { id: 'c1_8', action: 'Select All Images', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Select all images', category: 'Batch'},
+      { id: 'c1_8', action: 'Select None', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Deselect all', category: 'Batch'},
+      { id: 'c1_8', action: 'Select Similar', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Select similar images', category: 'Batch'},
+      { id: 'c1_8', action: 'Auto Apply', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Auto apply adjustments', category: 'Batch'},
+      { id: 'c1_8', action: 'Sync All', shortcutWin: 'Ctrl+Alt+', shortcutMac: 'Cmd+Opt+', description: 'Sync to all selected', category: 'Batch'},
+      
+      // Professional Output
+      { id: 'c1_8', action: 'Recipe Manager', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Open recipe manager', category: 'Output'},
+      { id: 'c1_8', action: 'Output Location', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Set output location', category: 'Output'},
+      { id: 'c1_8', action: 'Watermark', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Add watermark', category: 'Output'},
+      { id: 'c1_8', action: 'Copyright Info', shortcutWin: 'Ctrl+Alt+', shortcutMac: 'Cmd+Opt+', description: 'Add copyright info', category: 'Output'},
+      
+      // Lens and Perspective
+      { id: 'c1_9', action: 'Lens Profile', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Apply lens profile', category: 'Lens Corrections, ',},
+      { id: 'c1_9', action: 'Distortion Correction', shortcutWin: 'Ctrl+Alt+', shortcutMac: 'Cmd+Opt+', description: 'Correct lens distortion', category: 'Lens Corrections, ',},
+      { id: 'c1_9', action: 'Vignetting Correction', shortcutWin: 'Ctrl+Alt+', shortcutMac: 'Cmd+Opt+', description: 'Correct vignetting', category: 'Lens Corrections, ',},
+      { id: 'c1_9', action: 'Purple Fringing', shortcutWin: 'Ctrl+Alt+', shortcutMac: 'Cmd+Opt+', description: 'Remove purple fringing', category: 'Lens Corrections, ',},
+      { id: 'c1_9', action: 'Diffraction Correction', shortcutWin: 'Ctrl+Alt+', shortcutMac: 'Cmd+Opt+', description: 'Diffraction correction', category: 'Lens Corrections, ',},
+      
+      // Metadata and Keywords
+      { id: 'c1_9', action: 'IPTC Metadata', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Edit IPTC metadata', category: 'Metadata'},
+      { id: 'c1_9', action: 'EXIF Data', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'View EXIF data', category: 'Metadata'},
+      { id: 'c1_9', action: 'GPS Data', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'View GPS data', category: 'Metadata'},
+      { id: 'c1_9', action: 'Color Tag Red', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Apply red color tag', category: 'Tags'},
+      { id: 'c1_9', action: 'Color Tag Orange', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Apply orange color tag', category: 'Tags'},
+      { id: 'c1_10', action: 'Color Tag Yellow', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Apply yellow color tag', category: 'Tags'},
+      { id: 'c1_10', action: 'Color Tag Green', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Apply green color tag', category: 'Tags'},
+      { id: 'c1_10', action: 'Color Tag Blue', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Apply blue color tag', category: 'Tags'},
+      
+      // Professional Workflow
+      { id: 'c1_10', action: 'Compare Mode', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Compare multiple images', category: 'Workflow'},
+      { id: 'c1_10', action: 'Reference Image', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Set reference image', category: 'Workflow'},
+      { id: 'c1_10', action: 'Screen Proofing', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Screen proofing mode', category: 'Workflow'},
+      { id: 'c1_10', action: 'Print Proofing', shortcutWin: 'Ctrl+Alt+', shortcutMac: 'Cmd+Opt+', description: 'Print proofing mode', category: 'Workflow'},
+      
+      // Workspace and Interface
+      { id: 'c1_10', action: 'Hide/Show Tools', shortcutWin: 'Tab', shortcutMac: 'Tab', description: 'Hide/show tool tabs', category: 'Interface'},
+      { id: 'c1_10', action: 'Hide/Show Browser', shortcutWin: 'Shift+Tab', shortcutMac: 'Shift+Tab', description: 'Hide/show browser', category: 'Interface'},
+      { id: 'c1_10', action: 'Workspace Manager', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Manage workspaces', category: 'Interface'},
+      { id: 'c1_11', action: 'Customize Interface', shortcutWin: 'Ctrl+Alt+', shortcutMac: 'Cmd+Opt+', description: 'Customize interface', category: 'Interface'},
+      
+      // Advanced Features
+      { id: 'c1_11', action: 'Focus Stack', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Focus stacking', category: 'Advanced'},
+      { id: 'c1_11', action: 'HDR Merge', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'HDR merge', category: 'Advanced'},
+      { id: 'c1_11', action: 'Panorama Stitch', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Panorama stitching', category: 'Advanced'},
+      { id: 'c1_11', action: 'Noise Reduction', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Advanced noise reduction', category: 'Advanced'},
+      { id: 'c1_11', action: 'Moiré Reduction', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Moiré pattern reduction', category: 'Advanced'},
+      
+      // Capture and Live View
+      { id: 'c1_11', action: 'Live View', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Toggle live view', category: 'Capture'},
+      { id: 'c1_11', action: 'Focus Peaking', shortcutWin: 'Ctrl+Alt+', shortcutMac: 'Cmd+Opt+', description: 'Toggle focus peaking', category: 'Capture'},
+      { id: 'c1_11', action: 'Exposure Warning', shortcutWin: 'Ctrl+Alt+', shortcutMac: 'Cmd+Opt+', description: 'Exposure warning overlay', category: 'Capture'},
+      { id: 'c1_11', action: 'Grid Overlay', shortcutWin: 'Ctrl+Alt+', shortcutMac: 'Cmd+Opt+', description: 'Grid overlay in live view', category: 'Capture'},
+      { id: 'c1_12', action: 'Camera Settings', shortcutWin: 'Ctrl+Alt+', shortcutMac: 'Cmd+Opt+', description: 'Camera settings panel', category: 'Capture'},
+
+      // Workspace & View
+      { id: 'c1_', action: 'Browser View', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Show/hide browser', category: 'View', isFavorite: true },
+      { id: 'c1_', action: 'Viewer View', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Show/hide viewer', category: 'View', isFavorite: true },
+      { id: 'c1_', action: 'Tools View', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Show/hide tools tab', category: 'View'},
+      { id: 'c1_', action: 'Fullscreen', shortcutWin: '', shortcutMac: '', description: 'Toggle fullscreen mode', category: 'View'},
+      { id: 'c1_1', action: 'Next Workspace', shortcutWin: 'Ctrl+Tab', shortcutMac: 'Cmd+Tab', description: 'Switch to next workspace', category: 'View'},
+
+      // Navigation
+      { id: 'c1_1', action: 'Next Image', shortcutWin: 'Right Arrow', shortcutMac: 'Right Arrow', description: 'Navigate to next image', category: 'Navigation', isFavorite: true },
+      { id: 'c1_1', action: 'Previous Image', shortcutWin: 'Left Arrow', shortcutMac: 'Left Arrow', description: 'Navigate to previous image', category: 'Navigation', isFavorite: true },
+      { id: 'c1_1', action: 'First Image', shortcutWin: 'Home', shortcutMac: 'Home', description: 'Go to first image', category: 'Navigation'},
+      { id: 'c1_1', action: 'Last Image', shortcutWin: 'End', shortcutMac: 'End', description: 'Go to last image', category: 'Navigation'},
+
+      // Rating & Organization  
+      { id: 'c1_1', action: '1 Star', shortcutWin: '', shortcutMac: '', description: 'Rate 1 star', category: 'Organization'},
+      { id: 'c1_1', action: '2 Stars', shortcutWin: '', shortcutMac: '', description: 'Rate 2 stars', category: 'Organization'},
+      { id: 'c1_1', action: '3 Stars', shortcutWin: '', shortcutMac: '', description: 'Rate 3 stars', category: 'Organization'},
+      { id: 'c1_1', action: '4 Stars', shortcutWin: '', shortcutMac: '', description: 'Rate 4 stars', category: 'Organization'},
+      { id: 'c1_1', action: '5 Stars', shortcutWin: '', shortcutMac: '', description: 'Rate 5 stars', category: 'Organization', isFavorite: true },
+      { id: 'c1_2', action: 'Red Color Tag', shortcutWin: 'F', shortcutMac: 'F', description: 'Apply red color tag', category: 'Organization'},
+      { id: 'c1_2', action: 'Yellow Color Tag', shortcutWin: 'F', shortcutMac: 'F', description: 'Apply yellow color tag', category: 'Organization'},
+      { id: 'c1_2', action: 'Green Color Tag', shortcutWin: 'F', shortcutMac: 'F', description: 'Apply green color tag', category: 'Organization'},
+      { id: 'c1_2', action: 'Blue Color Tag', shortcutWin: 'F', shortcutMac: 'F', description: 'Apply blue color tag', category: 'Organization'},
+
+      // Editing & Adjustments
+      { id: 'c1_2', action: 'Auto Adjust', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Auto adjust exposure', category: 'Editing', isFavorite: true },
+      { id: 'c1_2', action: 'Reset All', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Reset all adjustments', category: 'Editing'},
+      { id: 'c1_2', action: 'Copy Adjustments', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Copy adjustments', category: 'Editing', isFavorite: true },
+      { id: 'c1_2', action: 'Paste Adjustments', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Paste adjustments', category: 'Editing', isFavorite: true },
+      { id: 'c1_2', action: 'Crop Tool', shortcutWin: '', shortcutMac: '', description: 'Activate crop tool', category: 'Editing', isFavorite: true },
+      { id: 'c1_2', action: 'Local Adjustments', shortcutWin: '', shortcutMac: '', description: 'Activate local adjustment tool', category: 'Editing', isFavorite: true },
+      { id: 'c1_3', action: 'Healing Tool', shortcutWin: '', shortcutMac: '', description: 'Activate healing tool', category: 'Editing', isFavorite: true },
+
+      // Zoom & Navigation
+      { id: 'c1_3', action: 'Zoom I', shortcutWin: 'Ctrl++', shortcutMac: 'Cmd++', description: 'Zoom into image', category: 'Zoom'},
+      { id: 'c1_3', action: 'Zoom Out', shortcutWin: 'Ctrl+, -, ', shortcutMac: 'Cmd+, -, ', description: 'Zoom out of image', category: 'Zoom'},
+      { id: 'c1_3', action: 'Zoom to 100, %, ', shortcutWin: 'Ctrl+Alt+', shortcutMac: 'Cmd+Opt+', description: 'Zoom to actual size', category: 'Zoom', isFavorite: true },
+      { id: 'c1_3', action: 'Fit to View', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Fit image to viewer', category: 'Zoom'},
+
+      // Collections & Albums
+      { id: 'c1_3', action: 'New Collection', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Create new collection', category: 'Organization'},
+      { id: 'c1_3', action: 'New Smart Album', shortcutWin: 'Ctrl+Alt+', shortcutMac: 'Cmd+Opt+', description: 'Create smart album', category: 'Organization'},
+
+      // Advanced Tools
+      { id: 'c1_3', action: 'Lens Correction', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Enable lens correction', category: 'Correction'},
+      { id: 'c1_3', action: 'Keystone Correction', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Enable keystone correction', category: 'Correction'},
+      { id: 'c1_3', action: 'Clone/Heal', shortcutWin: 'Shift+', shortcutMac: 'Shift+', description: 'Toggle clone/heal mode', category: 'Editing', isNew: true },
+      { id: 'c1_4', action: 'Focus Mask', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Show focus mask overlay', category: 'View', isNew: true }
+    ]
+},
+  {
+    id: 'davinci',
+    name: 'DaVinci Resolve',
+    description: 'Professional video editing and color grading',
+    icon: DaVinciLogo,
+    shortcuts: [
+      // File & Project Management
+      { id: 'dv_', action: 'New Project', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Create new project', category: 'File', isFavorite: true },
+      { id: 'dv_', action: 'Open Project', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Open existing project', category: 'File'},
+      { id: 'dv_', action: 'Save Project', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Save current project', category: 'File', isFavorite: true },
+      { id: 'dv_', action: 'Import Media', shortcutWin: 'Ctrl+', shortcutMac: 'Cmd+', description: 'Import media files', category: 'File', isFavorite: true },
+      { id: 'dv_', action: 'Export', shortcutWin: 'Ctrl+Shift+', shortcutMac: 'Cmd+Shift+', description: 'Export/render project', category: 'File', isFavorite: true },
+      
+      // Playback Controls
+      { id: 'dv_', action: 'Play/Pause', shortcutWin: 'Space', shortcutMac: 'Space', description: 'Play or pause timeline', category: 'Playback', isFavorite: true },
+      { id: 'dv_', action: 'Play Backward', shortcutWin: '', shortcutMac: '', description: 'Play backwards', category: 'Playback', isFavorite: true },
+      { id: 'dv_', action: 'Play Forward', shortcutWin: '', shortcutMac: '', description: 'Play forwards', category: 'Playback', isFavorite: true },
+      { id: 'dv_', action: 'Stop', shortcutWin: '', shortcutMac: '', description: 'Stop playback', category: 'Playback', isFavorite: true },
+      { id: 'dv_10', action: 'Go to Beginning', shortcutWin: 'Home', shortcutMac: 'Home', description: 'Go to timeline start', category: 'Playback'},
+      { id: 'dv_11', action: 'Go to End', shortcutWin: 'End', shortcutMac: 'End', description: 'Go to timeline end', category: 'Playback'},
+      { id: 'dv_12', action: 'Next Frame', shortcutWin: 'Right Arrow', shortcutMac: 'Right Arrow', description: 'Move one frame forward', category: 'Playback'},
+      { id: 'dv_13', action: 'Previous Frame', shortcutWin: 'Left Arrow', shortcutMac: 'Left Arrow', description: 'Move one frame backward', category: 'Playback'},

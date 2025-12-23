@@ -1,0 +1,308 @@
+/**
+ * Theming Helper Utility
+ * Provides easy-to-use functions for implementing profession-based theming
+ * Includes centralized profession branding (icons, colors, labels)
+ */
+
+import React from 'react';
+import { useEnhancedMasterIntegration } from '../integration/EnhancedMasterIntegrationProvider';
+import {
+  PhotoCamera,
+  VideoLibrary,
+  LibraryMusic,
+  Business,
+  Build,
+  Science
+} from '@mui/icons-material';
+
+export interface ThemingConfig {
+  profession?: string;
+  variant?: 'primary' | 'secondary' | 'accent' | 'light' | 'dark';
+  size?: 'small' | 'medium' | 'large';
+  opacity?: number;
+}
+
+export interface ProfessionBranding {
+  icon: React.ComponentType<any>;
+  emoji: string;
+  label: string;
+  labelEn: string;
+  color: string;
+  description?: string;
+}
+
+export interface ThemingReturn {
+  colors: {
+    primary: string;
+    secondary: string;
+    accent: string;
+    light: string;
+    dark: string;
+};
+  getThemedIcon: (iconName: string, config?: ThemingConfig) => React.ReactNode;
+  getThemedSx: (config?: ThemingConfig) => any;
+  getThemedButtonSx: (config?: ThemingConfig) => any;
+  getThemedCardSx: (config?: ThemingConfig) => any;
+  getProfessionColors: (prof: string) => {
+    primary: string;
+    secondary: string;
+    accent: string;
+    light: string;
+    dark: string;
+};
+  getProfessionBranding: (prof: string) => ProfessionBranding;
+  professionConfig: Record<string, ProfessionBranding>;
+}
+
+/**
+ * Centralized Profession Branding Configuration
+ * Single source of truth for all profession icons, colors, and labels
+ */
+export const PROFESSION_BRANDING: Record<string, ProfessionBranding> = {
+  photographer: {
+    icon: PhotoCamera,
+    emoji: '📸',
+    label: 'Fotograf',
+    labelEn: 'Photographer',
+    color: '#2e7d32', // Green - matches landing page
+    description: 'Professional photography services'
+  },
+  videographer: {
+    icon: VideoLibrary,
+    emoji: '🎬',
+    label: 'Videograf',
+    labelEn: 'Videographer',
+    color: '#1565c8', // Blue - matches landing page
+    description: 'Professional video production'
+  },
+  music_producer: {
+    icon: LibraryMusic,
+    emoji: '🎵',
+    label: 'Musikkprodusent',
+    labelEn: 'Music Producer',
+    color: '#7b1fa2', // Purple - matches landing page
+    description: 'Professional audio production'
+  },
+  vendor: {
+    icon: Business,
+    emoji: '🏪',
+    label: 'Leverandør',
+    labelEn: 'Vendor',
+    color: '#ff8c00', // Orange - matches landing page
+    description: 'Business partners and vendors'
+  },
+  prototype_tester: {
+    icon: Science,
+    emoji: '🧪',
+    label: 'Prototype Tester',
+    labelEn: 'Prototype Tester',
+    color: '#e65100', // Deep Orange
+    description: 'Beta testers and early adopters'
+  },
+  other: {
+    icon: Build,
+    emoji: '🔧',
+    label: 'Annet',
+    labelEn: 'Other',
+    color: '#757575', // Grey
+    description: 'Other professional roles'
+  }
+};
+
+/**
+ * Hook for easy theming in components
+ * Now supports dynamic branding via ThemingAdminService
+ */
+export function useTheming(profession?: string): ThemingReturn {
+  const integration = useEnhancedMasterIntegration();
+  const icons = (integration as any)?.icons || { CREATOR_HUB_ICONS: {} };
+  const [, forceUpdate] = React.useState({});
+  
+  // Listen for branding updates from ThemingAdminService
+  React.useEffect(() => {
+    const handleThemingUpdate = () => {
+      forceUpdate({});
+    };
+    
+    window.addEventListener('theming:update', handleThemingUpdate);
+    
+    return () => {
+      window.removeEventListener('theming:update', handleThemingUpdate);
+    };
+  }, []);
+  
+  const getProfessionBranding = (prof: string): ProfessionBranding => {
+    // Try to get from ThemingAdminService first (for dynamic updates)
+    if (typeof window !== 'undefined' && (window as any).themingAdminService) {
+      return (window as any).themingAdminService.getProfessionBranding(prof);
+    }
+    // Fallback to static branding
+    return PROFESSION_BRANDING[prof] || PROFESSION_BRANDING.other;
+  };
+  
+  const getProfessionColors = (prof: string) => {
+    switch (prof) {
+      case 'photographer':
+        return {
+          primary: '#2e7d32',
+          secondary: '#E8F5E8',
+          accent: '#1B5E20',
+          light: '#C8E6C9',
+          dark: '#2E7D32'
+    };
+      case 'videographer':
+        return {
+          primary: '#1565c0',
+          secondary: '#E3F2FD',
+          accent: '#0D47A1',
+          light: '#BBDEFB',
+          dark: '#1565C0'
+    };
+      case 'music_producer':
+        return {
+          primary: '#7b1fa2',
+          secondary: '#F3E5F5',
+          accent: '#4A148C',
+          light: '#E1BEE7',
+          dark: '#7B1FA2'
+    };
+      case 'vendor':
+        return {
+          primary: '#ff8c00',
+          secondary: '#FFF3E0',
+          accent: '#E65100',
+          light: '#FFE0B2',
+          dark: '#FF8C00'
+    };
+      case 'prototype_tester':
+        return {
+          primary: '#e65100',
+          secondary: '#FFF3E0',
+          accent: '#BF360C',
+          light: '#FFCCBC',
+          dark: '#E65100'
+    };
+      default: return {
+          primary: '#4CAF50',
+          secondary: '#E8F5E8',
+          accent: '#388E3C',
+          light: '#C8E6C9',
+          dark: '#4CAF50'
+    };
+  }
+};
+
+  const getThemedIcon = (iconName: keyof typeof icons.CREATOR_HUB_ICONS, config?: ThemingConfig) => {
+    const IconComponent = icons.CREATOR_HUB_ICONS[iconName];
+    if (!IconComponent) return null;
+
+    const prof = config?.profession || profession || 'photographer';
+    const colors = getProfessionColors(prof);
+    const variant = config?.variant || 'primary';
+    const opacity = config?.opacity || 1;
+
+    return React.createElement(IconComponent, {
+      sx: {
+        color: colors[variant],
+        opacity,
+        fontSize: config?.size === 'small' ? '1rem' : config?.size === 'large' ? '2rem' : '1.5rem'
+    }
+  });
+};
+
+  const getThemedSx = (config?: ThemingConfig) => {
+    const prof = config?.profession || profession || 'photographer';
+    const colors = getProfessionColors(prof);
+    const variant = config?.variant || 'primary';
+    const opacity = config?.opacity || 1;
+
+    return {
+      color: colors[variant],
+      opacity,
+      '&:hover': {
+        color: colors.accent,
+        opacity: 1
+    }
+  };
+};
+
+  const getThemedButtonSx = (config?: ThemingConfig) => {
+    const prof = config?.profession || profession || 'photographer';
+    const colors = getProfessionColors(prof);
+
+    return {
+      bgcolor: colors.primary,
+      color: 'white',
+      '&:hover': {
+        bgcolor: colors.accent
+    },
+      '&:disabled': {
+        bgcolor: colors.light,
+        color: colors.dark
+    }
+  };
+};
+
+  const getThemedCardSx = (config?: ThemingConfig) => {
+    const prof = config?.profession || profession || 'photographer';
+    const colors = getProfessionColors(prof);
+
+    return {
+      bgcolor: colors.secondary,
+      border: `2px solid ${colors.accent}`,
+      '&:hover': {
+        borderColor: colors.primary,
+        boxShadow: `0 4px 12px ${colors.primary}20`
+    }
+  };
+};
+
+  // Build dynamic profession config (uses ThemingAdminService if available)
+  const professionConfig = React.useMemo(() => {
+    const config: Record<string, ProfessionBranding> = {};
+    Object.keys(PROFESSION_BRANDING).forEach(key => {
+      config[key] = getProfessionBranding(key);
+    });
+    return config;
+  }, [profession]); // Re-calculate when update event fires (via forceUpdate)
+
+  return {
+    getThemedIcon,
+    getThemedSx,
+    getThemedButtonSx,
+    getThemedCardSx,
+    getProfessionColors: (prof: string) => getProfessionColors(prof),
+    getProfessionBranding: (prof: string) => getProfessionBranding(prof),
+    professionConfig,
+    colors: getProfessionColors(profession || 'photographer')
+};
+}
+
+/**
+ * Higher-order component for automatic theming
+ */
+export function withTheming<P extends object>(
+  Component: React.ComponentType<P>,
+  defaultProfession?: string
+) {
+  return function ThemedComponent(props: P & { profession?: string }) {
+    const theming = useTheming(props.profession || defaultProfession);
+    
+    return React.createElement(Component, { ...props, theming });
+};
+}
+
+/**
+ * Utility for bulk theming fixes
+ */
+export function createThemingFix(componentPath: string, iconMappings: Record<string, string>) {
+  const theming = useTheming('photographer');
+  return {
+    colors: theming.colors,
+    getThemedIcon: theming.getThemedIcon,
+    getThemedButtonSx: theming.getThemedButtonSx,
+    getThemedCardSx: theming.getThemedCardSx
+};
+}
+
+export default useTheming;

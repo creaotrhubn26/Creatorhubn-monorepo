@@ -1,0 +1,98 @@
+import { useTheming } from '../../utils/theming-helper';
+import React from 'react';
+import { Box, Chip, Tooltip, Typography } from '@mui/material';
+import {
+  CheckCircle as CheckCircleIcon,
+  Warning as WarningIcon,
+  Error as ErrorIcon
+} from '@mui/icons-material';
+import { useSessionTimeRemaining } from '../../hooks/useUniversalSession';
+
+interface SessionStatusIndicatorProps {
+  variant?: 'chip' | 'badge' | 'full';
+  showIcon?: boolean;
+}
+
+export function SessionStatusIndicator({ 
+  variant =  'chip', 
+  showIcon = true 
+}: SessionStatusIndicatorProps) {
+  const { formattedTime, isExpiringSoon, isCritical, timeUntilExpiry } = useSessionTimeRemaining();
+  
+  // Theming system
+  const theming = useTheming('photographer');
+
+  if (timeUntilExpiry <= 0) {
+    return null; // Don't show if session is expired
+}
+
+  const getStatusColor = () => {
+    if (isCritical) return 'error';
+    if (isExpiringSoon) return 'warning';
+    return 'success';
+};
+
+  const getStatusIcon = () => {
+    if (isCritical) return <ErrorIcon fontSize="small" />;
+    if (isExpiringSoon) return <WarningIcon fontSize="small" />;
+    return <CheckCircleIcon fontSize="small" />;
+};
+
+  const getStatusText = () => {
+    if (isCritical) return 'Kritisk';
+    if (isExpiringSoon) return 'Utløper snart';
+    return 'Aktiv';
+};
+
+  if (variant === 'badge') {
+    return (
+      <Tooltip title={`Session utløper om ${formattedTime}`}>
+        <Box display="flex" alignItems="center" gap={0.5}>
+          {showIcon && getStatusIcon()}
+          <Typography variant="caption" color={`${getStatusColor()}.main`}>
+            {formattedTime}
+          </Typography>
+        </Box>
+      </Tooltip>
+    );
+}
+
+  if (variant ==='full') {
+    return (
+      <Box 
+        sx={{ 
+          p: 1,
+          bgcolor: `${getStatusColor()}.light`, 
+          borderRadius:  2,
+          border:  1,
+          borderColor: `${getStatusColor()}.main`
+      }}
+      >
+        <Box display="flex" alignItems="center" gap={1} sx={{ mb: 0.5}}>
+          {showIcon && getStatusIcon()}
+          <Typography variant="body2" fontWeight="medium">
+            Session Status: {getStatusText()}
+          </Typography>
+        </Box>
+        <Typography variant="caption" color="text.secondary">
+          Gjenstående tid: {formattedTime}
+        </Typography>
+      </Box>
+    );
+}
+
+  // Default: chip variant
+  return (
+    <Tooltip title={`Session utløper om ${formattedTime}`}>
+      <Chip
+        label={formattedTime}
+        color={getStatusColor()}
+        variant="outlined"
+        size="small"
+        icon={showIcon ? getStatusIcon() : undefined}
+      />
+    </Tooltip>
+  );
+}
+
+export default SessionStatusIndicator;

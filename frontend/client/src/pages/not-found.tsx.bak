@@ -1,0 +1,54 @@
+import { useTheming } from '../../utils/theming-helper';
+import React from 'react';
+import { Box, Typography, Button, Container } from '@mui/material';
+import { useLocation } from 'wouter';
+
+const NotFound: React.FC = () => {
+  const [, setLocation] = useLocation();
+  
+  // Theming system
+  const theming = useTheming('photographer');
+
+  return (
+    <Container maxWidth="sm" sx={{ textAlign: 'center', py: 8 }}>
+      <Box
+        sx={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: 3,
+      }}
+      >
+        <Typography variant="h1" color="primary" sx={{ fontSize: '6rem', fontWeight: 'bold', color: theming.colors.primary }}>
+          404
+        </Typography>
+
+        <Typography variant="h4" color="text.primary" gutterBottom sx={{ color: theming.colors.primary }}>
+          Siden ikke funnet
+        </Typography>
+
+        <Typography variant="body1" color="text.secondary" sx={{ mb: 4 }}>
+          Beklager, siden du leter etter finnes ikke eller har blitt flyttet.
+        </Typography>
+
+        <Button 
+          variant="contained"
+          size="large"
+          onClick={() => setLocation('/')}
+          sx={{
+            borderRadius: 2,
+            px: 4,
+            py: 1.5,
+            textTransform: 'none',
+            fontWeight: 600,
+            ...theming.getThemedButtonSx()
+        }}
+        >
+          Gå til forsiden
+        </Button>
+      </Box>
+    </Container>
+  );
+};
+
+export default NotFound;

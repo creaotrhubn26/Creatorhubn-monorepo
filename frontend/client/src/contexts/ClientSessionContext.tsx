@@ -1,0 +1,410 @@
+import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import { useLocation } from 'wouter';
+
+interface ClientSessionData {
+  accessToken?: string;
+  accessCode?: string;
+  downloadPin?: string;
+  pinVerified: boolean;
+  contentType: 'bilder' | 'video' | 'musikk' | 'tidslinje' | 'galleri';
+  clientName?: string;
+  projectTitle?: string;
+  sessionStart: number;
+  lastActivity: number;
+  downloadAttempts: number;
+}
+
+interface ClientSessionWarning {
+  show: boolean;
+  timeRemaining: number;
+  contentType: string;
+}
+
+interface ClientSessionContextType {
+  sessionData: ClientSessionData | null;
+  sessionWarning: ClientSessionWarning;
+  timeUntilExpiry: number;
+  isActive: boolean;
+  canDownload: boolean;
+  refreshSession: () => void;
+  endSession: () => void;
+  updateActivity: () => void;
+  dismissWarning: () => void;
+  verifyDownloadPin: (pin: string) => Promise<boolean>;
+  requestDownload: (itemId: string) => Promise<{ success: boolean; requiresPin: boolean }>;
+}
+
+const ClientSessionContext = createContext<ClientSessionContextType | undefined>(undefined);
+
+// Session duration: 2 hours for client galleries (longer than professional sessions)
+const CLIENT_SESSION_DURATION = 2 * 60 * 60 * 1000; // 2 hours
+const WARNING_THRESHOLD = 10 * 60 * 1000; // 10 minutes before expiry
+
+export function ClientSessionProvider({ children }: { children: React.ReactNode }) {
+  const [location] = useLocation();
+  const [sessionData, setSessionData] = useState<ClientSessionData | null>(null);
+  const [sessionWarning, setSessionWarning] = useState<ClientSessionWarning>({
+    show: false,
+    timeRemaining: 0,
+    contentType: 'galleri',
+});
+  const [timeUntilExpiry, setTimeUntilExpiry] = useState<number>(0);
+
+  // Initialize session based on current route and URL parameters
+  useEffect(() => {
+    console.log('🔍 ClientSession: Checking location: ', location);
+    const urlParams = new URLSearchParams(window.location.search);
+    const pathSegments = location.split('/, ');
+
+    let newSessionData: ClientSessionData | null = null;
+
+    // Client gallery access
+    if (location.includes('/client/gallery') || location.includes('/gallery/')) {
+      const accessToken = urlParams.get('access') || pathSegments[pathSegments.length - 1];
+      const projectId = pathSegments.find((segment) => segment.match(/^[a-f0-9\-]{36}$/i));
+
+      if (accessToken) {
+        newSessionData = {
+          accessToken,
+          contentType: 'bilder',
+          sessionStart: Date.now(),
+          lastActivity: Date.now(),
+          projectTitle: 'Bildegalleri',
+          pinVerified: false,
+          downloadAttempts: 0,
+      };
+    }
+  }
+    // Wedding timeline access
+    else if (location.includes('/wedding-timeline') || location.includes('/timeline/')) {
+      const accessCode = urlParams.get('code') || pathSegments[pathSegments.length - 1];
+
+      if (accessCode) {
+        newSessionData = {
+          accessCode,
+          contentType: 'tidslinje',
+          sessionStart: Date.now(),
+          lastActivity: Date.now(),
+          projectTitle: 'Bryllupstidslinje',
+          pinVerified: false,
+          downloadAttempts: 0,
+      };
+    }
+  }
+    // Music showcase access
+    else if (location.includes('/showcase/music_producer')) {
+      const accessToken = urlParams.get('access') || pathSegments[pathSegments.length - 1];
+
+      if (accessToken && accessToken !== 'music_producer') {
+        newSessionData = {
+          accessToken,
+          contentType: 'musikk',
+          sessionStart: Date.now(),
+          lastActivity: Date.now(),
+          projectTitle: 'Musikkportef√∏lje',
+          pinVerified: false,
+          downloadAttempts: 0,
+      };
+    }
+  }
+    // General showcase with project ID
+    else if (location.match(/^\/showcase\/[a-f0-9\-]{36}$/i)) {
+      const projectId = pathSegments[2];
+      const accessToken = urlParams.get('access');
+
+      if (accessToken || projectId) {
+        newSessionData = {
+          accessToken: accessToken || projectId,
+          contentType: 'bilder', // Default, can be overridden by URL params
+          sessionStart: Date.now(),
+          lastActivity: Date.now(),
+          projectTitle: 'Prosjektportef√∏lje',
+          pinVerified: false,
+          downloadAttempts: 0,
+      };
+    }
+  }
+    // Vendor showcase access
+    else if (
+      location.includes('/universal-vendor-showcase') ||
+      location.includes('/vendor-showcase')
+    ) {
+      const accessToken = urlParams.get('access') || urlParams.get('token');
+
+      if (accessToken) {
+        newSessionData = {
+          accessToken,
+          contentType: 'bilder', // Vendor products/portfolio
+          sessionStart: Date.now(),
+          lastActivity: Date.now(),
+          projectTitle: 'Leverand√∏rportef√∏lje',
+          pinVerified: false,
+          downloadAttempts: 0,
+      };
+    }
+  }
+    // Showcase client (photos/videos/music)
+    else if (location.includes('/showcase-client')) {
+      const accessToken = urlParams.get('access');
+      const type = urlParams.get('type') || 'bilder';
+
+      if (accessToken) {
+        newSessionData = {
+          accessToken,
+          contentType: type as any,
+          sessionStart: Date.now(),
+          lastActivity: Date.now(),
+          projectTitle: getProjectTitleByType(type),
+          pinVerified: false,
+          downloadAttempts: 0,
+      };
+    }
+  }
+
+    if (newSessionData && !sessionData) {
+      setSessionData(newSessionData);
+      console.log(
+        '🔐 Client session started:',
+        newSessionData.contentType,
+        'for location:',
+        location,
+      );
+  }
+}, [location]);
+
+  // Session timeout management
+  useEffect(() => {
+    if (!sessionData) {
+      setTimeUntilExpiry(0);
+      setSessionWarning({
+        show: false,
+        timeRemaining: 0,
+        contentType: 'galleri',
+    });
+      return;
+  }
+
+    const interval = setInterval(() => {
+      const now = Date.now();
+      const elapsed = now - sessionData.sessionStart;
+      const remaining = Math.max(0, CLIENT_SESSION_DURATION - elapsed);
+      const remainingSeconds = Math.floor(remaining / 1000);
+
+      setTimeUntilExpiry(remainingSeconds);
+
+      // Show warning when approaching expiry
+      const shouldShowWarning = remaining <= WARNING_THRESHOLD && remaining > 0;
+
+      if (shouldShowWarning && !sessionWarning.show) {
+        setSessionWarning({
+          show: true,
+          timeRemaining: remainingSeconds,
+          contentType: sessionData.contentType,
+      });
+    }
+
+      // Auto-end session if expired
+      if (remaining <= 0) {
+        endSession();
+    }
+  }, 1000);
+
+    return () => clearInterval(interval);
+}, [sessionData, sessionWarning.show]);
+
+  const getProjectTitleByType = (type: string): string => {
+    switch (type) {
+      case 'bilder':
+        return 'Bildegalleri';
+      case 'video':
+        return 'Videoportefølje';
+      case 'musikk':
+        return 'Musikksamling';
+      case 'tidslinje':
+        return 'Bryllupstidslinje';
+      default:
+        return 'Galleri';
+  }
+};
+
+  const updateActivity = useCallback(() => {
+    if (sessionData) {
+      setSessionData((prev) =>
+        prev
+          ? {
+              ...prev,
+              lastActivity: Date.now(),
+          }
+          : null,
+      );
+  }
+}, [sessionData]);
+
+  const refreshSession = useCallback(() => {
+    if (sessionData) {
+      const refreshedSession = {
+        ...sessionData,
+        sessionStart: Date.now(),
+        lastActivity: Date.now(),
+    };
+      setSessionData(refreshedSession);
+      setSessionWarning({
+        show: false,
+        timeRemaining: 0,
+        contentType: sessionData.contentType,
+    });
+      console.log('🔄 Client session refreshed for:', sessionData.contentType);
+  }
+}, [sessionData]);
+
+  const endSession = useCallback(() => {
+    console.log('👋 Client session ended');
+    setSessionData(null);
+    setSessionWarning({
+      show: false,
+      timeRemaining: 0,
+      contentType: 'galleri',
+  });
+
+    // Redirect to home or show access expired message
+    const currentParams = new URLSearchParams(window.location.search);
+    currentParams.set('session_expired','true');
+    window.history.replaceState({}, ', ', `${window.location.pathname}?${currentParams.toString()}`);
+
+    // Optional: Redirect to home after short delay
+    setTimeout(() => {
+      window.location.href = '/';
+  }, 3000);
+}, []);
+
+  const dismissWarning = useCallback(() => {
+    setSessionWarning((prev) => ({ ...prev, show: false }));
+}, []);
+
+  // PIN verification for downloads (integrates with showcase admin settings)
+  const verifyDownloadPin = useCallback(
+    async (pin: string): Promise<boolean> => {
+      if (!sessionData) return false;
+
+      try {
+        const response = await fetch('/api/client/verify-download-pin', {
+          method: 'POST',
+          headers: { 'Content-Type' : 'application/json' },
+          body: JSON.stringify({
+            accessToken: sessionData.accessToken,
+            accessCode: sessionData.accessCode,
+            pin: pin,
+            contentType: sessionData.contentType,
+            projectId: new URLSearchParams(window.location.search).get('projectId'),
+        }),
+      });
+
+        const result = await response.json();
+
+        if (result.valid) {
+          setSessionData((prev) =>
+            prev ? { ...prev, pinVerified: true, downloadPin: pin } : null,
+          );
+          console.log('🔓 PIN verified for downloads:', sessionData.contentType);
+          return true;
+      } else {
+          setSessionData((prev) =>
+            prev ? { ...prev, downloadAttempts: prev.downloadAttempts + 1 } : null,
+          );
+          return false;
+      }
+    } catch (error) {
+        console.error('PIN verification error:', error);
+        setSessionData((prev) =>
+          prev ? { ...prev, downloadAttempts: prev.downloadAttempts + 1 } : null,
+        );
+        return false;
+    }
+  },
+    [sessionData],
+  );
+
+  // Request download with PIN requirement (integrates with showcase admin)
+  const requestDownload = useCallback(
+    async (itemId: string): Promise<{ success: boolean; requiresPin: boolean }> => {
+      if (!sessionData) return { success: false, requiresPin: true };
+
+      // Always require PIN for downloads as per showcase admin settings
+      if (!sessionData.pinVerified) {
+        return { success: false, requiresPin: true };
+    }
+
+      try {
+        const response = await fetch('/api/client/download', {
+          method: 'POST',
+          headers: { 'Content-Type' : 'application/json' },
+          body: JSON.stringify({
+            accessToken: sessionData.accessToken,
+            accessCode: sessionData.accessCode,
+            pin: sessionData.downloadPin,
+            itemId: itemId,
+            contentType: sessionData.contentType,
+            projectId: new URLSearchParams(window.location.search).get('projectId'),
+        }),
+      });
+
+        if (response.ok) {
+          updateActivity();
+          console.log('💾 Download authorized for:', itemId, 'Type:', sessionData.contentType);
+          return { success: true, requiresPin: false };
+      } else {
+          return { success: false, requiresPin: true };
+      }
+    } catch (error) {
+        console.error('Download request error:', error);
+        return { success: false, requiresPin: true };
+    }
+  },
+    [sessionData, updateActivity],
+  );
+
+  // Activity tracking on user interaction
+  useEffect(() => {
+    const activityEvents = ['mousedown','mousemove','keypress','scroll', 'touchstart', 'click'];
+
+    const handleActivity = () => {
+      updateActivity();
+  };
+
+    activityEvents.forEach((event) => {
+      document.addEventListener(event, handleActivity, { passive: true });
+  });
+
+    return () => {
+      activityEvents.forEach((event) => {
+        document.removeEventListener(event, handleActivity);
+    });
+  };
+}, [updateActivity]);
+
+  const contextValue: ClientSessionContextType = {
+    sessionData,
+    sessionWarning,
+    timeUntilExpiry,
+    isActive: !!sessionData,
+    canDownload: !!sessionData?.pinVerified,
+    refreshSession,
+    endSession,
+    updateActivity,
+    dismissWarning,
+    verifyDownloadPin,
+    requestDownload,
+};
+
+  return (
+    <ClientSessionContext.Provider value={contextValue}>{children}</ClientSessionContext.Provider>
+  );
+}
+
+export function useClientSession() {
+  const context = useContext(ClientSessionContext);
+  if (context === undefined) {
+    throw new Error('useClientSession must be used within a ClientSessionProvider');
+}
+  return context;
+}

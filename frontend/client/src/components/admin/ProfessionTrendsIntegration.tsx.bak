@@ -1,0 +1,402 @@
+/**
+ * Profession Trends Integration Component
+ * Shows how useDynamicProfessions is connected to Google Trends
+ */
+
+import { useTheming } from '../../utils/theming-helper';
+import React, { useState, useEffect } from 'react';
+import { apiRequest } from '@/lib/queryClient';
+import { useQuery } from '@tanstack/react-query';
+import { useAuth } from '@/hooks/useAuth';
+import {
+  Box,
+  Card,
+  CardContent,
+  Typography,
+  Button,
+  Grid,
+  Chip,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemIcon,
+  Alert,
+  CircularProgress,
+  Divider,
+  Paper,
+  Stack,
+  IconButton,
+  Tooltip,
+} from '@mui/material';
+import {
+  TrendingUp,
+  Search,
+  AutoFixHigh,
+  CheckCircle,
+  Refresh,
+  Analytics,
+  LocationOn,
+  Schedule,
+  Star,
+} from '@mui/icons-material';
+import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
+
+export default function ProfessionTrendsIntegration() {
+  const {
+    professionConfigs,
+    getCurrentUserProfession,
+    loadTrendsData,
+    getTrendingKeywords,
+    getSEOSuggestions,
+    getSEOInsights,
+    applySEOFixes,
+} = useDynamicProfessions();
+
+  const [selectedProfession, setSelectedProfession] = useState<string>('photographer');
+  const [selectedRegion, setSelectedRegion] = useState<string>('norway');
+  const [isLoading, setIsLoading] = useState(
+  
+  // Theming system
+  const theming = useTheming('prototype_tester');false);
+  const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
+
+  const currentProfession = getCurrentUserProfession();
+  const professionConfig = professionConfigs[selectedProfession];
+
+  // Load trends data when profession or region changes
+  useEffect(() => {
+    loadTrendsForProfession();
+}, [selectedProfession, selectedRegion]);
+
+  const loadTrendsForProfession = async () => {
+    setIsLoading(true);
+    try {
+      await loadTrendsData(selectedProfession, selectedRegion);
+      setLastUpdate(new Date());
+  } catch (error) {
+      console.error('Error loading trends:', error);
+  } finally {
+      setIsLoading(false);
+  }
+};
+
+  const handleApplySEOFixes = async () => {
+    const success = await applySEOFixes(selectedProfession, selectedRegion);
+    if (success) {
+      alert('✅ SEO fixes applied successfully!');
+  } else {
+      alert('❌ Error applying SEO fixes');
+  }
+};
+
+  const getTrendIcon = (trend: 'rising' | 'stable' | 'declining') => {
+    switch (trend) {
+      case 'rising':
+        return <TrendingUp color="success" />;
+      case 'declining':
+        return <TrendingUp color="error" sx={{ transform: 'rotate(180deg), ',}} />;
+      default: return <TrendingUp color="info" />;
+}
+};
+
+  const getOpportunityColor = (opportunity: 'high' | 'medium' | 'low') => {
+    switch (opportunity) {
+      case 'high':
+        return 'success';
+      case 'medium':
+        return 'warning';
+      default:
+        return 'error';
+}
+};
+
+  return (
+    <Box sx={{ width: '100%, ',}}>
+      {/* Header */}
+      <Box sx={{ mb: 3 }}>
+        <Typography variant="h4" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>
+          🔗 Profession-Trends Integration
+        </Typography>
+        <Typography variant="body1" color="text.secondary">
+          How useDynamicProfessions connects to Google Trends and SEO
+        </Typography>
+      </Box>
+
+      {/* Current User Info */}
+      <Card sx={{ mb: 3 }} sx={theming.getThemedCardSx()}>
+        <CardContent sx={theming.getThemedCardSx()}>
+          <Typography variant="h6" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>
+            Current User Context
+          </Typography>
+          <GridOn container spacing={2}>
+            <GridOn size={{"xs":"12","md":"6"}}>
+              <Typography variant="body2" color="text.secondary">
+                Current Profession: <strong>{currentProfession}</strong>
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Display Name: <strong>{professionConfig?.displayName}</strong>
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Category: <strong>{professionConfig?.getProfessionCategory?.() || 'N/'}</strong>
+              </Typography>
+            </GridOn>
+            <GridOn size={{"xs":"12","md":"6"}}>
+              <Typography variant="body2" color="text.secondary">
+                Icon Color: <Chip label={professionConfig?.iconColor} size="small" />
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Active: <Chip label={professionConfig?.isActive ? 'Yes' : 'N'} color={professionConfig?.isActive ? 'success' : 'error'} size="small" />
+              </Typography>
+            </GridOn>
+          </GridOn>
+        </CardContent>
+      </Card>
+
+      {/* Profession Selector */}
+      <Card sx={{ mb: 3 }} sx={theming.getThemedCardSx()}>
+        <CardContent sx={theming.getThemedCardSx()}>
+          <Typography variant="h6" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>
+            Test Different Professions
+          </Typography>
+          <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mb: 2 }}>
+            {Object.keys(professionConfigs).map((profession) => (
+              <Chip
+                key={profession}
+                label={professionConfigs[profession].displayName}
+                onClick={() => setSelectedProfession(profession)}
+                color={selectedProfession === profession ? 'primary' : 'default'}
+                variant={selectedProfession === profession ? 'filled' : 'outlined'}
+              />
+            ))}
+          </Stack>
+          <Stack direction="row" spacing={1} flexWrap="wrap">
+            {['norway', 'oslo', 'bergen', 'trondheim', 'stavanger'].map((region) => (
+              <Chip
+                key={region}
+                label={region.charAt(0).toUpperCase() + region.slice(1)}
+                onClick={() => setSelectedRegion(region)}
+                color={selectedRegion === region ? 'secondary' : 'default'}
+                variant={selectedRegion === region ? 'filled' : 'outlined'}
+                icon={{theming.getThemedIcon('location')}}
+              />
+            ))}
+          </Stack>
+        </CardContent>
+      </Card>
+
+      {/* Google Trends Data */}
+      <GridOn container spacing={3}>
+        {/* Trending Keywords */}
+        <GridOn size={{"xs":"12","md":"6"}}>
+          <Card sx={theming.getThemedCardSx()}>
+            <CardContent sx={theming.getThemedCardSx()}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Typography variant="h6" sx={{ ...{}, color: theming.colors.primary }}>
+                  🔥 Trending Keywords
+                </Typography>
+                <IconButton onClick={loadTrendsForProfession} disabled={isLoading}>
+                  {theming.getThemedIcon('refresh')}
+                </IconButton>
+              </Box>
+              
+              {isLoading ? (
+                <Box sx={{ display: 'flex', justifyContent: 'center', p:  2 }}>
+                  <CircularProgress />
+                </Box>
+              ) : (
+                <List dense>
+                  {getTrendingKeywords(selectedProfession).map((keyword, index) => (
+                    <ListItem key={index}>
+                      <ListItemIcon>
+                        {getTrendIcon(keyword.trend)}
+                      </ListItemIcon>
+                      <ListItemText
+                        primary={keyword.keyword}
+                        secondary={`${keyword.searchVolume} searches • ${keyword.opportunity} opportunity`}
+                      />
+                      <Chip
+                        label={keyword.competition}
+                        size="small"
+                        color={keyword.competition === 'low' ? 'success' : keyword.competition === 'medium' ? 'warning' : 'error'}
+                      />
+                    </ListItem>
+                  ))}
+                </List>
+              )}
+            </CardContent>
+          </Card>
+        </GridOn>
+
+        {/* SEO Insights */}
+        <GridOn size={{"xs":"12","md":"6"}}>
+          <Card sx={theming.getThemedCardSx()}>
+            <CardContent sx={theming.getThemedCardSx()}>
+              <Typography variant="h6" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>
+                📊 SEO Insights
+              </Typography>
+              
+              {getSEOInsights(selectedProfession) ? (
+                <Box>
+                  <Paper sx={{ p:  ,  2mb: ,  2bgcolor: 'grey.50, ',}} sx={theming.getThemedCardSx()}>
+                    <Typography variant="subtitle2" gutterBottom>
+                      Market Overview
+                    </Typography>
+                    <GridOn container spacing={2}>
+                      <GridOn size={{"xs":"6"}}>
+                        <Typography variant="body2" color="text.secondary">
+                          Total Search Volume
+                        </Typography>
+                        <Typography variant="h6" sx={{ ...{}, color: theming.colors.primary }}>
+                          {getSEOInsights(selectedProfession)?.searchVolume.toLocaleString()}
+                        </Typography>
+                      </GridOn>
+                      <GridOn size={{"xs":"6"}}>
+                        <Typography variant="body2" color="text.secondary">
+                          Trend Direction
+                        </Typography>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
+                          {getTrendIcon(getSEOInsights(selectedProfession)?.trend || 'stable')}
+                          <Typography variant="body2">
+                            {getSEOInsights(selectedProfession)?.trend}
+                          </Typography>
+                        </Box>
+                      </GridOn>
+                    </GridOn>
+                  </Paper>
+
+                  <Box sx={{ display: 'flex', gap:  ,  1mb: 2 }}>
+                    <Chip
+                      label={`Opportunity: ${getSEOInsights(selectedProfession)?.opportunity}`}
+                      color={getOpportunityColor(getSEOInsights(selectedProfession)?.opportunity || 'medium')}
+                      size="small"
+                    />
+                    <Chip
+                      label={getSEOInsights(selectedProfession)?.seasonality}
+                      icon={{theming.getThemedIcon('schedule')}}
+                      size="small"
+                    />
+                  </Box>
+
+                  <Button variant="contained"
+                    startIcon={theming.getThemedIcon('autoFixHigh')}
+                    onClick={handleApplySEOFixes}
+                    fullWidth
+                    color="success"
+                   sx={theming.getThemedButtonSx()}>
+                    Apply SEO Fixes
+                  </Button>
+                </Box>
+              ) : (
+                <Alert severity="info">
+                  No SEO insights available. Click refresh to load trends data.
+                </Alert>
+              )}
+            </CardContent>
+          </Card>
+        </GridOn>
+
+        {/* SEO Suggestions */}
+        <GridOn size={{"xs":"12"}}>
+          <Card sx={theming.getThemedCardSx()}>
+            <CardContent sx={theming.getThemedCardSx()}>
+              <Typography variant="h6" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>
+                💡 SEO Suggestions
+              </Typography>
+              
+              {getSEOSuggestions(selectedProfession).length > 0 ? (
+                <List>
+                  {getSEOSuggestions(selectedProfession).map((suggestion, index) => (
+                    <ListItem key={index}>
+                      <ListItemIcon>
+                        <CheckCircle color="success" />
+                      </ListItemIcon>
+                      <ListItemText
+                        primary={suggestion.title}
+                        secondary={suggestion.description}
+                      />
+                      <Chip
+                        label={suggestion.category}
+                        size="small"
+                        color="primary"
+                      />
+                    </ListItem>
+                  ))}
+                </List>
+              ) : (
+                <Alert severity="info">
+                  No SEO suggestions available. Load trends data to see suggestions.
+                </Alert>
+              )}
+            </CardContent>
+          </Card>
+        </GridOn>
+      </GridOn>
+
+      {/* Integration Details */}
+      <Card sx={{ mt: 3 }} sx={theming.getThemedCardSx()}>
+        <CardContent sx={theming.getThemedCardSx()}>
+          <Typography variant="h6" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>
+            🔧 How the Integration Works
+          </Typography>
+          <GridOn container spacing={2}>
+            <GridOn size={{"xs":"12","md":"6"}}>
+              <Typography variant="subtitle2" gutterBottom>
+                useDynamicProfessions Hook
+              </Typography>
+              <List dense>
+                <ListItem>
+                  <ListItemIcon><CheckCircle color="success" /></ListItemIcon>
+                  <ListItemText primary="Manages profession configurations" />
+                </ListItem>
+                <ListItem>
+                  <ListItemIcon><CheckCircle color="success" /></ListItemIcon>
+                  <ListItemText primary="Loads Google Trends data per profession" />
+                </ListItem>
+                <ListItem>
+                  <ListItemIcon><CheckCircle color="success" /></ListItemIcon>
+                  <ListItemText primary="Generates SEO suggestions automatically" />
+                </ListItem>
+                <ListItem>
+                  <ListItemIcon><CheckCircle color="success" /></ListItemIcon>
+                  <ListItemText primary="Provides one-click SEO fixes" />
+                </ListItem>
+              </List>
+            </GridOn>
+            <GridOn size={{"xs":"12","md":"6"}}>
+              <Typography variant="subtitle2" gutterBottom>
+                Connected Components
+              </Typography>
+              <List dense>
+                <ListItem>
+                  <ListItemIcon><CheckCircle color="success" /></ListItemIcon>
+                  <ListItemText primary="SmartWorkflowSystem" />
+                </ListItem>
+                <ListItem>
+                  <ListItemIcon><CheckCircle color="success" /></ListItemIcon>
+                  <ListItemText primary="UniversalCommunicationHub" />
+                </ListItem>
+                <ListItem>
+                  <ListItemIcon><CheckCircle color="success" /></ListItemIcon>
+                  <ListItemText primary="ProfessionAdapter" />
+                </ListItem>
+                <ListItem>
+                  <ListItemIcon><CheckCircle color="success" /></ListItemIcon>
+                  <ListItemText primary="Project Creation Forms" />
+                </ListItem>
+              </List>
+            </GridOn>
+          </GridOn>
+        </CardContent>
+      </Card>
+
+      {/* Footer */}
+      {lastUpdate && (
+        <Box sx={{ mt: 3, textAlign: 'center, ',}}>
+          <Typography variant="body2" color="text.secondary">
+            Last updated: {lastUpdate.toLocaleString, (, )}
+          </Typography>
+        </Box>
+      )}
+    </Box>
+  );
+}

@@ -1,0 +1,265 @@
+/**
+ * Signature Status Overview Component
+ * Displays all pending signatures across all document types in UniversalDashboard
+ */
+
+import React from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
+import {
+  Box,
+  Typography,
+  Card,
+  CardContent,
+  Stack,
+  Chip,
+  CircularProgress,
+  Alert,
+} from '@mui/material';
+import {
+  Description,
+  Assignment,
+  Receipt,
+  Event,
+  PhotoCamera,
+} from '@mui/icons-material';
+import SignatureStatusCard from './SignatureStatusCard';
+
+interface PendingSignature {
+  id: string;
+  documentType: 'split_sheet' | 'quote' | 'wedding_timeline' | 'invoice' | 'photo_enhancement';
+  documentId: string;
+  documentTitle: string;
+  signatureStatus: 'pending' | 'signed' | 'rejected' | 'partial';
+  googleDocUrl?: string;
+  signers: Array<{
+    name: string;
+    email: string;
+    role?: string;
+    signed?: boolean;
+    signedAt?: string;
+  }>;
+}
+
+export default function SignatureStatusOverview() {
+  const { data: pendingSignatures, isLoading, error } = useQuery({
+    queryKey: ['/api/signatures/pending'],
+    queryFn: async () => {
+      // Fetch pending signatures from all document types
+      const [splitSheets, quotes, weddingTimelines, invoices, enhancements] = await Promise.all([
+        apiRequest('/api/split-sheets?status=pending_signatures').catch(() => ({ data: [] })),
+        apiRequest('/api/quotes?signature_status=pending').catch(() => ({ data: [] })),
+        apiRequest('/api/wedding-timeline?contract_signature_status=pending').catch(() => ({ data: [] })),
+        apiRequest('/api/split-sheets/invoices?signature_status=pending').catch(() => ({ data: [] })),
+        apiRequest('/api/photo-enhancement/contracts?signature_status=pending').catch(() => ({ data: [] })),
+      ]);
+
+      const signatures: PendingSignature[] = [];
+
+      // Process split sheets
+      if (splitSheets.data) {
+        splitSheets.data.forEach((ss: any) => {
+          signatures.push({
+            id: ss.id,
+            documentType: 'split_sheet',
+            documentId: ss.id,
+            documentTitle: ss.title,
+            signatureStatus: ss.status === 'completed' ? 'signed' : 'pending',
+            googleDocUrl: ss.google_doc_url,
+            signers: ss.contributors?.map((c: any) => ({
+              name: c.name,
+              email: c.email,
+              role: c.role,
+              signed: !!c.signed_at,
+              signedAt: c.signed_at,
+            })) || [],
+          });
+        });
+      }
+
+      // Process quotes
+      if (quotes.data) {
+        quotes.data.forEach((q: any) => {
+          signatures.push({
+            id: q.id,
+            documentType: 'quote',
+            documentId: q.id,
+            documentTitle: q.title,
+            signatureStatus: q.signature_status || 'pending',
+            googleDocUrl: q.google_doc_url,
+            signers: [
+              {
+                name: q.client_info?.name || 'Client',
+                email: q.client_info?.email || '',
+                role: 'Client',
+                signed: q.signature_status === 'signed',
+              },
+              ...(q.approvers || []).map((a: any) => ({
+                name: a.name,
+                email: a.email,
+                role: 'Approver',
+                signed: false,
+              })),
+            ],
+          });
+        });
+      }
+
+      // Process wedding timelines
+      if (weddingTimelines.data) {
+        weddingTimelines.data.forEach((wt: any) => {
+          signatures.push({
+            id: wt.id,
+            documentType: 'wedding_timeline',
+            documentId: wt.id,
+            documentTitle: `Wedding Contract - ${wt.couple_name}`,
+            signatureStatus: wt.contract_signature_status || 'pending',
+            googleDocUrl: wt.google_doc_url,
+            signers: [
+              {
+                name: wt.couple_name,
+                email: wt.client_email || '',
+                role: 'Client',
+                signed: wt.contract_signature_status === 'signed',
+              },
+            ],
+          });
+        });
+      }
+
+      // Process invoices
+      if (invoices.data) {
+        invoices.data.forEach((inv: any) => {
+          signatures.push({
+            id: inv.id,
+            documentType: 'invoice',
+            documentId: inv.id,
+            documentTitle: `Invoice - ${inv.split_sheet_title}`,
+            signatureStatus: inv.signature_status || 'pending',
+            googleDocUrl: inv.google_doc_url,
+            signers: [
+              {
+                name: inv.recipient_email || 'Recipient',
+                email: inv.recipient_email || ', ',
+                role: 'Invoice Recipient',
+                signed: inv.signature_status === 'signed',
+              },
+            ],
+          });
+        });
+      }
+
+      return signatures;
+    },
+    refetchInterval: 30000, // Refetch every 30 seconds
+  });
+
+  if (isLoading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
+
+  if (error) {
+    return (
+      <Alert severity="error">
+        Kunne ikke laste signaturstatus. Prøv igjen senere.
+      </Alert>
+    );
+  }
+
+  if (!pendingSignatures || pendingSignatures.length === 0) {
+    return (
+      <Card>
+        <CardContent>
+          <Typography variant="h6" gutterBottom>
+            Signaturer
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Ingen ventende signaturer
+          </Typography>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const groupedByType = pendingSignatures.reduce((acc: any, sig: PendingSignature) => {
+    if (!acc[sig.documentType]) {
+      acc[sig.documentType] = [];
+    }
+    acc[sig.documentType].push(sig);
+    return acc;
+  }, {});
+
+  const typeLabels: Record<string, string> = {
+    split_sheet: 'Split Sheets',
+    quote: 'Tilbud',
+    wedding_timeline: 'Brudekontrakter',
+    invoice: 'Fakturaer',
+    photo_enhancement: 'Bildeforbedringskontrakter',
+  };
+
+  const typeIcons: Record<string, React.ReactNode> = {
+    split_sheet: <Description />,
+    quote: <Receipt />,
+    wedding_timeline: <Event />,
+    invoice: <Receipt />,
+    photo_enhancement: <PhotoCamera />,
+  };
+
+  return (
+    <Box>
+      <Typography variant="h6" gutterBottom sx={{ mb: 2 }}>
+        Ventende signaturer ({pendingSignatures.length})
+      </Typography>
+      <Stack spacing={2}>
+        {Object.entries(groupedByType).map(([type, signatures]: [string, any]) => (
+          <Box key={type}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+              {typeIcons[type]}
+              <Typography variant="subtitle1" fontWeight="bold">
+                {typeLabels[type]} ({signatures.length})
+              </Typography>
+            </Box>
+            {signatures.map((sig: PendingSignature) => (
+              <SignatureStatusCard
+                key={sig.id}
+                documentType={sig.documentType}
+                documentId={sig.documentId}
+                documentTitle={sig.documentTitle}
+                signers={sig.signers}
+                signatureStatus={sig.signatureStatus}
+                googleDocUrl={sig.googleDocUrl}
+              />
+            ))}
+          </Box>
+        ))}
+      </Stack>
+    </Box>
+  );
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

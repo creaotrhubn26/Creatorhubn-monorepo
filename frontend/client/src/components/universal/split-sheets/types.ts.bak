@@ -1,0 +1,310 @@
+/**
+ * Split Sheet TypeScript Types
+ * Type definitions for split sheet feature
+ */
+
+export type SplitSheetStatus = 'draft' | 'pending_signatures' | 'completed' | 'archived';
+
+export type ContributorRole = 
+  // Music roles (existing)
+  | 'producer' 
+  | 'artist' 
+  | 'songwriter'
+  | 'composer'
+  | 'lyricist'
+  | 'vocalist'
+  | 'instrumentalist'
+  | 'mix_engineer' 
+  | 'mastering_engineer'
+  | 'arranger'
+  | 'featured_artist'
+  | 'backing_vocalist'
+  | 'session_musician'
+  | 'publisher'
+  | 'label'
+  // Photographer roles (new)
+  | 'second_shooter'
+  | 'photo_editor'
+  | 'retoucher'
+  | 'assistant'
+  | 'stylist'
+  | 'makeup_artist'
+  // Videographer roles (new)
+  | 'video_editor'
+  | 'colorist'
+  | 'sound_engineer'
+  | 'cinematographer'
+  | 'grip'
+  | 'gaffer'
+  // Generic
+  | 'collaborator'
+  | 'other';
+
+export type InvitationStatus = 'not_sent' | 'sent' | 'viewed' | 'signed' | 'declined';
+
+export interface SplitSheetContributor {
+  id?: string;
+  split_sheet_id?: string;
+  name: string;
+  email?: string;
+  role: ContributorRole;
+  percentage: number;
+  signed_at?: string | null;
+  signature_data?: SignatureData | null;
+  invitation_sent_at?: string | null;
+  invitation_status?: InvitationStatus;
+  user_id?: string | null;
+  order_index?: number;
+  notes?: string | null;
+  custom_fields?: Record<string, any>; // Custom fields like phone, PRO affiliation, IPI number, etc.
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface SignatureData {
+  signature: string; // Base64 encoded signature image or text
+  signed_by: string; // Name of person who signed
+  signed_at: string; // ISO timestamp
+  ip_address?: string;
+  user_agent?: string;
+}
+
+export interface SplitSheet {
+  id?: string;
+  user_id?: string;
+  project_id?: string | null;
+  track_id?: string | null;
+  songflow_project_id?: string | null;
+  songflow_track_id?: string | null;
+  title: string;
+  description?: string | null;
+  status: SplitSheetStatus;
+  total_percentage?: number;
+  metadata?: Record<string, any>;
+  created_at?: string;
+  updated_at?: string;
+  completed_at?: string | null;
+  contributors?: SplitSheetContributor[];
+  contributor_count?: number;
+  signed_count?: number;
+}
+
+export interface SplitSheetSongFlowLink {
+  id?: string;
+  split_sheet_id: string;
+  songflow_project_id?: string | null;
+  songflow_track_id?: string | null;
+  link_type: 'project' | 'track';
+  auto_created: boolean;
+  linked_at?: string;
+  linked_by?: string;
+  metadata?: Record<string, any>;
+}
+
+export interface SplitSheetVersion {
+  id?: string;
+  split_sheet_id: string;
+  version_number: number;
+  changes: Record<string, any>;
+  created_by: string;
+  created_at?: string;
+  snapshot_data?: Record<string, any>;
+}
+
+export interface CreateSplitSheetRequest {
+  project_id?: string;
+  track_id?: string;
+  title: string;
+  description?: string;
+  contributors?: Omit<SplitSheetContributor, 'id' | 'split_sheet_id' | 'created_at' | 'updated_at'>[];
+}
+
+export interface UpdateSplitSheetRequest {
+  title?: string;
+  description?: string;
+  status?: SplitSheetStatus;
+  project_id?: string;
+  track_id?: string;
+  contributors?: Omit<SplitSheetContributor, 'id' | 'split_sheet_id' | 'created_at' | 'updated_at'>[];
+}
+
+export interface SignSplitSheetRequest {
+  contributor_id: string;
+  signature_data: SignatureData;
+}
+
+export interface ShareSplitSheetRequest {
+  contributor_ids?: string[];
+  message?: string;
+}
+
+export interface SplitSheetListResponse {
+  success: boolean;
+  data: SplitSheet[];
+  error?: string;
+}
+
+export interface SplitSheetResponse {
+  success: boolean;
+  data: SplitSheet;
+  error?: string;
+}
+
+export interface SplitSheetVersionResponse {
+  success: boolean;
+  data: SplitSheetVersion[];
+  error?: string;
+}
+
+export interface SplitSheetPDFResponse {
+  success: boolean;
+  data: {
+    splitSheet: SplitSheet;
+    contributors: SplitSheetContributor[];
+    pdfUrl?: string | null;
+  };
+  error?: string;
+}
+
+// Role display names (Norwegian)
+export const ROLE_DISPLAY_NAMES: Record<ContributorRole, string> = {
+  // Music roles
+  producer: 'Produsent',
+  artist: 'Artist',
+  songwriter: 'Låtskriver',
+  composer: 'Komponist',
+  lyricist: 'Tekstforfatter',
+  vocalist: 'Vokalist',
+  instrumentalist: 'Instrumentalist',
+  mix_engineer: 'Miksing',
+  mastering_engineer: 'Mastering',
+  arranger: 'Arrangør',
+  featured_artist: 'Gjesteartist',
+  backing_vocalist: 'Bakgrunnsvokalist',
+  session_musician: 'Sessionmusiker',
+  publisher: 'Forlag',
+  label: 'Plateselskap',
+  // Photographer roles
+  second_shooter: 'Andrefotograf',
+  photo_editor: 'Fotoeditor',
+  retoucher: 'Retusjør',
+  assistant: 'Assistent',
+  stylist: 'Stylist',
+  makeup_artist: 'Sminkør',
+  // Videographer roles
+  video_editor: 'Videoeditor',
+  colorist: 'Kolorist',
+  sound_engineer: 'Lydtekniker',
+  cinematographer: 'Filmfotograf',
+  grip: 'Grip',
+  gaffer: 'Gaffer',
+  // Generic
+  collaborator: 'Samarbeidspartner',
+  other: 'Annet'
+};
+
+// Status display names (Norwegian)
+export const STATUS_DISPLAY_NAMES: Record<SplitSheetStatus, string> = {
+  draft: 'Utkast',
+  pending_signatures: 'Venter på signaturer',
+  completed: 'Fullført',
+  archived: 'Arkivert'
+};
+
+// Status colors
+export const STATUS_COLORS: Record<SplitSheetStatus, string> = {
+  draft: '#9e9e9e',
+  pending_signatures: '#ff9800',
+  completed: '#4caf50',
+  archived: '#757575'
+};
+
+// Revenue types
+export type RevenueSource = 'streaming' | 'sales' | 'sync' | 'performance' | 'mechanical' | 'publishing' | 'other';
+
+export type PaymentStatus = 'pending' | 'paid' | 'overdue' | 'cancelled';
+
+export interface SplitSheetRevenue {
+  id?: string;
+  split_sheet_id: string;
+  amount: number;
+  currency: string;
+  revenue_source: RevenueSource;
+  period_start: string;
+  period_end: string;
+  platform?: string | null;
+  description?: string | null;
+  metadata?: Record<string, any>;
+  created_at?: string;
+  updated_at?: string;
+  created_by: string;
+}
+
+export interface SplitSheetPayment {
+  id?: string;
+  split_sheet_id: string;
+  contributor_id: string;
+  revenue_id?: string | null;
+  amount: number;
+  currency: string;
+  percentage: number;
+  payment_status: PaymentStatus;
+  payment_date?: string | null;
+  payment_method?: string | null;
+  payment_reference?: string | null;
+  notes?: string | null;
+  created_at?: string;
+  updated_at?: string;
+  paid_at?: string | null;
+  contributor?: SplitSheetContributor;
+}
+
+export interface CreateRevenueRequest {
+  split_sheet_id: string;
+  amount: number;
+  currency?: string;
+  revenue_source: RevenueSource;
+  period_start: string;
+  period_end: string;
+  platform?: string;
+  description?: string;
+}
+
+export interface UpdatePaymentRequest {
+  payment_status?: PaymentStatus;
+  payment_date?: string;
+  payment_method?: string;
+  payment_reference?: string;
+  notes?: string;
+}
+
+// Revenue source display names (Norwegian)
+export const REVENUE_SOURCE_NAMES: Record<RevenueSource, string> = {
+  streaming: 'Streaming',
+  sales: 'Salg',
+  sync: 'Sync-lisens',
+  performance: 'Opptredener',
+  mechanical: 'Mekanisk',
+  publishing: 'Forlag',
+  other: 'Annet'
+};
+
+// Payment status display names (Norwegian)
+export const PAYMENT_STATUS_NAMES: Record<PaymentStatus, string> = {
+  pending: 'Venter',
+  paid: 'Betalt',
+  overdue: 'Forfalt',
+  cancelled: 'Kansellert'
+};
+
+// Payment status colors
+export const PAYMENT_STATUS_COLORS: Record<PaymentStatus, string> = {
+  pending: '#ff9800',
+  paid: '#4caf50',
+  overdue: '#f44336',
+  cancelled: '#757575'
+};
+
+
+
+

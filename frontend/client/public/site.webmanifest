@@ -1,0 +1,41 @@
+{
+  "name": "CreatorHub Norge - Profesjonell Kreativ Utdanning",
+  "short_name": "CreatorHub",
+  "description": "Norges ledende platform for kreative fagfolk med HD videokurs og ekspert instruktører",
+  "theme_color": "hsl(25, 25%, 25%)",
+  "background_color": "#ffffff",
+  "display": "standalone",
+  "scope": "/",
+  "start_url": "/",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/favicon-16x16.png",
+      "sizes": "16x16",
+      "type": "image/png"
+    },
+    {
+      "src": "/favicon-32x32.png",
+      "sizes": "32x32",
+      "type": "image/png"
+    },
+    {
+      "src": "/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    },
+    {
+      "src": "/android-chrome-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/android-chrome-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ],
+  "categories": ["education", "photography", "video", "music"],
+  "lang": "no",
+  "dir": "ltr"
+}

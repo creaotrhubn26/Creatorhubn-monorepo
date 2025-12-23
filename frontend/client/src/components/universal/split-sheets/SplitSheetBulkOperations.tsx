@@ -1,0 +1,385 @@
+/**
+ * Split Sheet Bulk Operations
+ * Component for bulk creating, updating, and managing multiple split sheets
+ */
+
+import React, { useState } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
+import {
+  Box,
+  Typography,
+  Card,
+  CardContent,
+  Button,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Stepper,
+  Step,
+  StepLabel,
+  Checkbox,
+  FormControlLabel,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Paper,
+  Alert,
+  Stack,
+  Chip,
+  LinearProgress
+} from '@mui/material';
+import {
+  PlayArrow as StartIcon,
+  CheckCircle as CompleteIcon,
+  FileDownload as ExportIcon
+} from '@mui/icons-material';
+import type { SplitSheet } from './types';
+
+interface SplitSheetBulkOperationsProps {
+  projects?: Array<{ id: string; title: string; track_id?: string }>;
+  onComplete?: () => void;
+}
+
+export default function SplitSheetBulkOperations({
+  projects = [],
+  onComplete
+}: SplitSheetBulkOperationsProps) {
+  const queryClient = useQueryClient();
+  const [showDialog, setShowDialog] = useState(false);
+  const [activeStep, setActiveStep] = useState(0);
+  const [selectedProjects, setSelectedProjects] = useState<Set<string>>(new Set());
+  const [templateId, setTemplateId] = useState<string | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [results, setResults] = useState<Array<{ project: any; success: boolean; error?: string; splitSheetId?: string }>>([]);
+
+  // Bulk create mutation
+  const bulkCreateMutation = useMutation({
+    mutationFn: async (data: { projects: any[]; templateId?: string | null }) => {
+      const results = [];
+      for (const project of data.projects) {
+        try {
+          // Get template if provided
+          let contributors = [];
+          if (data.templateId) {
+            const templateResponse = await apiRequest(`/api/split-sheets/templates/${data.templateId}`);
+            contributors = templateResponse.data?.contributors || [];
+          }
+
+          const response = await apiRequest('/api/split-sheets, ', {
+            method: 'POST',
+            body: JSON.stringify({
+              project_id: project.id,
+              track_id: project.track_id,
+              title: `${project.title} - Split Sheet`,
+              contributors: contributors.map((c: any, index: number) => ({
+                ...c,
+                name: c.name || `Bidragsyter ${index + 1}`,
+                order_index: index
+              }))
+            })
+          });
+          results.push({ project, success: true, splitSheetId: response.data?.id });
+        } catch (error: any) {
+          results.push({ project, success: false, error: error.message || 'Unknown error' });
+        }
+      }
+      return results;
+    },
+    onSuccess: (data) => {
+      setResults(data);
+      setActiveStep(2);
+      queryClient.invalidateQueries({ queryKey: ['split-sheets'] });
+    },
+    onError: () => {
+      setIsProcessing(false);
+    }
+  });
+
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedProjects(new Set(projects.map(p => p.id)));
+    } else {
+      setSelectedProjects(new Set());
+    }
+  };
+
+  const handleSelectProject = (projectId: string, checked: boolean) => {
+    const newSelected = new Set(selectedProjects);
+    if (checked) {
+      newSelected.add(projectId);
+    } else {
+      newSelected.delete(projectId);
+    }
+    setSelectedProjects(newSelected);
+  };
+
+  const handleBulkCreate = () => {
+    const selectedProjectsData = projects.filter(p => selectedProjects.has(p.id));
+    if (selectedProjectsData.length === 0) {
+      return;
+    }
+
+    setIsProcessing(true);
+    bulkCreateMutation.mutate({
+      projects: selectedProjectsData,
+      templateId: templateId
+    });
+  };
+
+  const handleExportResults = () => {
+    const csv = [
+      ['Prosjekt','Status','Split Sheet ID','Feil'],
+      ...results.map(r => [
+        r.project.title,
+        r.success ? 'Suksess' : 'Feil',
+        r.splitSheetId || ', ',
+        r.error || ', '
+      ])
+    ].map(row => row.join('')).join('\n');
+
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `bulk-split-sheets-${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+  };
+
+  const steps = ['Velg prosjekter','Bekreft', 'Resultater'];
+
+  return (
+    <Box>
+      <Button
+        variant="outlined"
+        startIcon={<StartIcon />}
+        onClick={() => setShowDialog(true)}
+        disabled={projects.length === 0}
+      >
+        Bulk-operasjoner ({projects.length} prosjekter)
+      </Button>
+
+      <Dialog
+        open={showDialog}
+        onClose={() => {
+          if (!isProcessing) {
+            setShowDialog(false);
+            setActiveStep(0);
+            setSelectedProjects(new Set());
+            setResults([]);
+          }
+        }}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          Bulk-operasjoner for Split Sheets
+        </DialogTitle>
+        <DialogContent>
+          <Stepper activeStep={activeStep} sx={{ mb: 3, mt: 2 }}>
+            {steps.map((label) => (
+              <Step key={label}>
+                <StepLabel>{label}</StepLabel>
+              </Step>
+            ))}
+          </Stepper>
+
+          {activeStep === 0 && (
+            <Box>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Typography variant="h6">
+                  Velg prosjekter ({selectedProjects.size} valgt)
+                </Typography>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={selectedProjects.size === projects.length && projects.length > 0}
+                      indeterminate={selectedProjects.size > 0 && selectedProjects.size < projects.length}
+                      onChange={(e) => handleSelectAll(e.target.checked)}
+                    />
+                  }
+                  label="Velg alle"
+                />
+              </Box>
+
+              {projects.length === 0 ? (
+                <Alert severity="info">
+                  Ingen prosjekter tilgjengelig for bulk-operasjoner
+                </Alert>
+              ) : (
+                <TableContainer component={Paper} sx={{ maxHeight: 400 }}>
+                  <Table stickyHeader>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell padding="checkbox" />
+                        <TableCell sx={{ fontWeight: 600}}>Prosjekt</TableCell>
+                        <TableCell sx={{ fontWeight: 600}}>Spor ID</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {projects.map((project) => (
+                        <TableRow key={project.id} hover>
+                          <TableCell padding="checkbox">
+                            <Checkbox
+                              checked={selectedProjects.has(project.id)}
+                              onChange={(e) => handleSelectProject(project.id, e.target.checked)}
+                            />
+                          </TableCell>
+                          <TableCell>{project.title}</TableCell>
+                          <TableCell>{project.track_id || '-'}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              )}
+            </Box>
+          )}
+
+          {activeStep === 1 && (
+            <Box>
+              <Alert severity="warning" sx={{ mb: 2 }}>
+                Dette vil opprette {selectedProjects.size} split sheet(s) for de valgte prosjektene.
+              </Alert>
+              <Typography variant="body2" color="text.secondary">
+                Hver split sheet vil bli opprettet med standard konfigurasjon. 
+                Du kan redigere dem individuelt etter opprettelse.
+              </Typography>
+            </Box>
+          )}
+
+          {activeStep === 2 && (
+            <Box>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Typography variant="h6">
+                  Resultater
+                </Typography>
+                <Button
+                  size="small"
+                  startIcon={<ExportIcon />}
+                  onClick={handleExportResults}
+                >
+                  Eksporter
+                </Button>
+              </Box>
+
+              <Stack spacing={1}>
+                {results.map((result, index) => (
+                  <Card key={index} variant="outlined">
+                    <CardContent>
+                      <Stack direction="row" justifyContent="space-between" alignItems="center">
+                        <Box>
+                          <Typography variant="body1" sx={{ fontWeight: 600}}>
+                            {result.project.title}
+                          </Typography>
+                          {result.splitSheetId && (
+                            <Typography variant="caption" color="text.secondary">
+                              Split Sheet ID: {result.splitSheetId}
+                            </Typography>
+                          )}
+                          {result.error && (
+                            <Typography variant="caption" color="error">
+                              {result.error}
+                            </Typography>
+                          )}
+                        </Box>
+                        <Chip
+                          icon={result.success ? <CompleteIcon /> : undefined}
+                          label={result.success ? 'Suksess' : 'Feil'}
+                          color={result.success ? 'success' : 'error'}
+                          size="small"
+                        />
+                      </Stack>
+                    </CardContent>
+                  </Card>
+                ))}
+              </Stack>
+
+              <Alert severity="info" sx={{ mt: 2 }}>
+                {results.filter(r => r.success).length} av {results.length} split sheets opprettet
+              </Alert>
+            </Box>
+          )}
+
+          {isProcessing && (
+            <Box sx={{ mt: 2 }}>
+              <LinearProgress />
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 1, textAlign: 'center' }}>
+                Oppretter split sheets...
+              </Typography>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          {activeStep === 0 && (
+            <>
+              <Button onClick={() => setShowDialog(false)}>Avbryt</Button>
+              <Button
+                variant="contained"
+                onClick={() => setActiveStep(1)}
+                disabled={selectedProjects.size === 0}
+                sx={{ bgcolor: '#9f7aea' }}
+              >
+                Neste
+              </Button>
+            </>
+          )}
+          {activeStep === 1 && (
+            <>
+              <Button onClick={() => setActiveStep(0)}>Tilbake</Button>
+              <Button
+                variant="contained"
+                onClick={handleBulkCreate}
+                disabled={isProcessing}
+                sx={{ bgcolor: '#9f7aea' }}
+              >
+                Opprett alle
+              </Button>
+            </>
+          )}
+          {activeStep === 2 && (
+            <>
+              <Button onClick={() => {
+                setShowDialog(false);
+                setActiveStep(0);
+                setSelectedProjects(new Set());
+                setResults([]);
+                if (onComplete) onComplete();
+              }}>
+                Lukk
+              </Button>
+            </>
+          )}
+        </DialogActions>
+      </Dialog>
+    </Box>
+  );
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

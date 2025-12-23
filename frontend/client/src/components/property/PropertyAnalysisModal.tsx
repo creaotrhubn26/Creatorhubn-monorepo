@@ -1,0 +1,668 @@
+/**
+ * CreatorHub Norge - Property Analysis Modal
+ * Comprehensive property analysis with Kartverket data and Google Maps integration
+ */
+
+import React, { useState, useEffect } from 'react';
+import {
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Button,
+  Box,
+  Typography,
+  Grid,
+  Card,
+  CardContent,
+  Chip,
+  List,
+  ListItem,
+  ListItemIcon,
+  ListItemText,
+  Divider,
+  Alert,
+  CircularProgress,
+  Tabs,
+  Tab,
+  Paper,
+  IconButton,
+  Tooltip,
+  Badge
+} from '@mui/material';
+import {
+  LocationOn,
+  PhotoCamera,
+  Drone,
+  Warning,
+  Accessible,
+  DirectionsCar,
+  Public,
+  Terrain,
+  Home,
+  Info,
+  Close,
+  Map,
+  Satellite,
+  Terrain as TerrainIcon
+} from '@mui/icons-material';
+import { useExternalData } from '../../services/ExternalDataService';
+import { useGoogleMaps } from '../../services/GoogleMapsService';
+
+interface PropertyAnalysisModalProps {
+  open: boolean;
+  onClose: () => void;
+  propertyId?: string;
+  address?: string;
+  title?: string;
+}
+
+interface TabPanelProps {
+  children?: React.ReactNode;
+  index: number;
+  value: number;
+}
+
+function TabPanel(props: TabPanelProps) {
+  const { children, value, index, ...other } = props;
+
+  return (
+    <div
+      role="tabpanel"
+      hidden={value !== index}
+      id={`property-tabpanel-${index}`}
+      aria-labelledby={`property-tab-${index}`}
+      {...other}
+    >
+      {value === index && (
+        <Box sx={{ p: 3 }}>
+          {children}
+        </Box>
+      )}
+    </div>
+  );
+}
+
+export default function PropertyAnalysisModal({
+  open,
+  onClose,
+  propertyId,
+  address,
+  title = 'Property Analysis'
+}: PropertyAnalysisModalProps) {
+  const [activeTab, setActiveTab] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [property, setProperty] = useState<any>(null);
+  const [analysis, setAnalysis] = useState<any>(null);
+  const [mapContainerId] = useState(`property-map-${Date.now()}`);
+
+  const { 
+    getKartverketAddress, 
+    getKartverketProperty, 
+    analyzeProperty 
+} = useExternalData();
+
+  const { 
+    initializeMap, 
+    createPropertyAnalysisMap 
+} = useGoogleMaps();
+
+  useEffect(() => {
+    if (open && (propertyId || address)) {
+      loadPropertyAnalysis();
+  }
+}, [open, propertyId, address]);
+
+  const loadPropertyAnalysis = async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      let propertyData = null;
+
+      if (address) {
+        // Get address first, then property
+        const addressData = await getKartverketAddress(address);
+        if (addressData.propertyId) {
+          propertyData = await getKartverketProperty(addressData.propertyId);
+      }
+    } else if (propertyId) {
+        // Get property directly
+        propertyData = await getKartverketProperty(propertyId);
+    }
+
+      if (propertyData) {
+        setProperty(propertyData);
+        
+        // Analyze property
+        const analysisData = await analyzeProperty(propertyData.propertyId);
+        setAnalysis(analysisData);
+
+        // Initialize map
+        setTimeout(() => {
+          const mapConfig = createPropertyAnalysisMap(propertyData, analysisData);
+          initializeMap(mapContainerId, mapConfig);
+      }, 100);
+    } else {
+        setError('Property not found ');
+    }
+  } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load property analysis');
+  } finally {
+      setLoading(false);
+  }
+};
+
+  const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
+    setActiveTab(newValue);
+};
+
+  const getAccessibilityColor = (accessibility: string) => {
+    switch (accessibility) {
+      case 'wheelchair-accessible': return 'success';
+      case 'limited': return 'warning';
+      case 'not-accessible': return 'error';
+      default: return 'default';
+  }
+};
+
+  const getWeatherExposureColor = (exposure: string) => {
+    switch (exposure) {
+      case 'low': return 'success';
+      case 'moderate': return 'warning';
+      case 'high': return 'error';
+      default: return 'default';
+  }
+};
+
+  return (
+    <Dialog 
+      open={open} 
+      onClose={onClose} 
+      maxWidth="lg" 
+      fullWidth
+      PaperProps={{
+        sx: { height: '90vh' }
+    }}
+    >
+      <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Home color="primary" />
+          <Typography variant="h6">{title}</Typography>
+        </Box>
+        <IconButton onClick={onClose} size="small">
+          <Close />
+        </IconButton>
+      </DialogTitle>
+
+      <DialogContent sx={{ p: 0 }}>
+        {loading && (
+          <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
+            <CircularProgress />
+            <Typography sx={{ ml: 2 }}>Loading property analysis...</Typography>
+          </Box>
+        )}
+
+        {error && (
+          <Alert severity="error" sx={{ m: 2 }}>
+            {error}
+          </Alert>
+        )}
+
+        {property && analysis && (
+          <Box>
+            {/* Property Header */}
+            <Box sx={{ p: 2, bgcolor: 'grey.50' }}>
+              <Typography variant="h6" gutterBottom>
+                {property.address}
+              </Typography>
+              <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                <Chip 
+                  icon={<Terrain />} 
+                  label={`${property.area} m²`} 
+                  size="small" 
+                />
+                <Chip 
+                  icon={<LocationOn />} 
+                  label={property.municipality} 
+                  size="small" 
+                />
+                <Chip 
+                  label={property.landUse} 
+                  size="small" 
+                  color="primary" 
+                />
+                <Chip 
+                  label={`Source: ${property.source}`} 
+                  size="small" 
+                  variant="outlined" 
+                />
+              </Box>
+            </Box>
+
+            {/* Tabs */}
+            <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
+              <Tabs value={activeTab} onChange={handleTabChange}>
+                <Tab 
+                  icon={<Map />} 
+                  label="Map View" 
+                  iconPosition="start"
+                />
+                <Tab 
+                  icon={<PhotoCamera />} 
+                  label="Photography" 
+                  iconPosition="start"
+                />
+                <Tab 
+                  icon={<Drone />} 
+                  label="Drone Analysis" 
+                  iconPosition="start"
+                />
+                <Tab 
+                  icon={<Accessible />} 
+                  label="Access & Transport" 
+                  iconPosition="start"
+                />
+                <Tab 
+                  icon={<Info />} 
+                  label="Property Details" 
+                  iconPosition="start"
+                />
+              </Tabs>
+            </Box>
+
+            {/* Map View Tab */}
+            <TabPanel value={activeTab} index={0}>
+              <Box sx={{ height: '400px', width: '100%' }}>
+                <div 
+                  id={mapContainerId} 
+                  style={{ 
+                    height: '100%', 
+                    width: '100%',
+                    borderRadius: '8px',
+                    border: '1px solid #e0e0e0'
+                }} 
+                />
+              </Box>
+            </TabPanel>
+
+            {/* Photography Tab */}
+            <TabPanel value={activeTab} index={1}>
+              <Grid container spacing={2}>
+                <Grid item xs={12} md={6}>
+                  <Card>
+                    <CardContent>
+                      <Typography variant="h6" gutterBottom>
+                        📸 Photography Spots
+                      </Typography>
+                      <List>
+                        {analysis.photographySpots?.map((spot: any, index: number) => (
+                          <ListItem key={index}>
+                            <ListItemIcon>
+                              <PhotoCamera color="primary" />
+                            </ListItemIcon>
+                            <ListItemText
+                              primary={spot.description}
+                              secondary={
+                                <Box>
+                                  <Chip 
+                                    label={spot.accessibility} 
+                                    size="small" 
+                                    color={spot.accessibility === 'easy' ? 'success' : 'warning'}
+                                    sx={{ mr: 1 }}
+                                  />
+                                  {spot.restrictions.length > 0 && (
+                                    <Chip 
+                                      label={`${spot.restrictions.length} restrictions`} 
+                                      size="small" 
+                                      color="warning"
+                                    />
+                                  )}
+                                </Box>
+                            }
+                            />
+                          </ListItem>
+                        ))}
+                      </List>
+                    </CardContent>
+                  </Card>
+                </Grid>
+
+                <Grid item xs={12} md={6}>
+                  <Card>
+                    <CardContent>
+                      <Typography variant="h6" gutterBottom>
+                        🌤️ Weather Exposure
+                      </Typography>
+                      <Box sx={{ mb: 2 }}>
+                        <Typography variant="body2" color="text.secondary">
+                          Wind Exposure
+                        </Typography>
+                        <Chip 
+                          label={analysis.weatherExposure.windExposure} 
+                          color={getWeatherExposureColor(analysis.weatherExposure.windExposure)}
+                        />
+                      </Box>
+                      <Box sx={{ mb: 2 }}>
+                        <Typography variant="body2" color="text.secondary">
+                          Sun Exposure
+                        </Typography>
+                        <Chip 
+                          label={analysis.weatherExposure.sunExposure} 
+                          color="info"
+                        />
+                      </Box>
+                      {analysis.weatherExposure.shelterOptions.length > 0 && (
+                        <Box>
+                          <Typography variant="body2" color="text.secondary" gutterBottom>
+                            Shelter Options
+                          </Typography>
+                          {analysis.weatherExposure.shelterOptions.map((option: string, index: number) => (
+                            <Chip 
+                              key={index}
+                              label={option} 
+                              size="small" 
+                              sx={{ mr: 1, mb: 1 }}
+                            />
+                          ))}
+                        </Box>
+                      )}
+                    </CardContent>
+                  </Card>
+                </Grid>
+              </Grid>
+            </TabPanel>
+
+            {/* Drone Analysis Tab */}
+            <TabPanel value={activeTab} index={2}>
+              <Grid container spacing={2}>
+                <Grid item xs={12}>
+                  <Alert 
+                    severity={analysis.droneRestrictions.allowed ? 'success' : 'error'}
+                    icon={<Drone />}
+                  >
+                    <Typography variant="h6">
+                      {analysis.droneRestrictions.allowed ? 'Drone Flights Allowed' : 'Drone Flights Restricted'}
+                    </Typography>
+                    {analysis.droneRestrictions.maxAltitude && (
+                      <Typography variant="body2">
+                        Maximum altitude: {analysis.droneRestrictions.maxAltitude}m
+                      </Typography>
+                    )}
+                  </Alert>
+                </Grid>
+
+                {analysis.droneRestrictions.restrictions.length > 0 && (
+                  <Grid item xs={12}>
+                    <Card>
+                      <CardContent>
+                        <Typography variant="h6" gutterBottom>
+                          ⚠️ Restrictions
+                        </Typography>
+                        <List>
+                          {analysis.droneRestrictions.restrictions.map((restriction: string, index: number) => (
+                            <ListItem key={index}>
+                              <ListItemIcon>
+                                <Warning color="warning" />
+                              </ListItemIcon>
+                              <ListItemText primary={restriction} />
+                            </ListItem>
+                          ))}
+                        </List>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                )}
+
+                {analysis.droneRestrictions.noFlyZones.length > 0 && (
+                  <Grid item xs={12}>
+                    <Card>
+                      <CardContent>
+                        <Typography variant="h6" gutterBottom>
+                          🚫 No-Fly Zones
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          {analysis.droneRestrictions.noFlyZones.length} restricted area(s) identified
+                        </Typography>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                )}
+              </Grid>
+            </TabPanel>
+
+            {/* Access & Transport Tab */}
+            <TabPanel value={activeTab} index={3}>
+              <Grid container spacing={2}>
+                <Grid item xs={12} md={6}>
+                  <Card>
+                    <CardContent>
+                      <Typography variant="h6" gutterBottom>
+                        🚗 Parking & Access
+                      </Typography>
+                      <Box sx={{ mb: 2 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                          <DirectionsCar sx={{ mr: 1 }} />
+                          <Typography variant="body2">
+                            Parking: {analysis.accessAnalysis.parkingAvailable ? 'Available' : 'Not Available'}
+                          </Typography>
+                        </Box>
+                        <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                          <Accessible sx={{ mr: 1 }} />
+                          <Typography variant="body2">
+                            Accessibility: 
+                            <Chip 
+                              label={analysis.accessAnalysis.accessibility} 
+                              size="small" 
+                              color={getAccessibilityColor(analysis.accessAnalysis.accessibility)}
+                              sx={{ ml: 1 }}
+                            />
+                          </Typography>
+                        </Box>
+                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                          <Public sx={{ mr: 1 }} />
+                          <Typography variant="body2">
+                            Walking distance: {analysis.accessAnalysis.walkingDistance}m
+                          </Typography>
+                        </Box>
+                      </Box>
+                    </CardContent>
+                  </Card>
+                </Grid>
+
+                <Grid item xs={12} md={6}>
+                  <Card>
+                    <CardContent>
+                      <Typography variant="h6" gutterBottom>
+                        🚌 Public Transport
+                      </Typography>
+                      {analysis.accessAnalysis.publicTransport.length > 0 ? (
+                        <List>
+                          {analysis.accessAnalysis.publicTransport.map((transport: string, index: number) => (
+                            <ListItem key={index}>
+                              <ListItemIcon>
+                                <Public color="primary" />
+                              </ListItemIcon>
+                              <ListItemText primary={transport} />
+                            </ListItem>
+                          ))}
+                        </List>
+                      ) : (
+                        <Typography variant="body2" color="text.secondary">
+                          No public transport available
+                        </Typography>
+                      )}
+                    </CardContent>
+                  </Card>
+                </Grid>
+              </Grid>
+            </TabPanel>
+
+            {/* Property Details Tab */}
+            <TabPanel value={activeTab} index={4}>
+              <Grid container spacing={2}>
+                <Grid item xs={12} md={6}>
+                  <Card>
+                    <CardContent>
+                      <Typography variant="h6" gutterBottom>
+                        🏠 Property Information
+                      </Typography>
+                      <List>
+                        <ListItem>
+                          <ListItemText
+                            primary="Property ID"
+                            secondary={property.propertyId}
+                          />
+                        </ListItem>
+                        <ListItem>
+                          <ListItemText
+                            primary="Area"
+                            secondary={`${property.area} m²`}
+                          />
+                        </ListItem>
+                        <ListItem>
+                          <ListItemText
+                            primary="Elevation"
+                            secondary={`${property.elevation}m above sea level`}
+                          />
+                        </ListItem>
+                        <ListItem>
+                          <ListItemText
+                            primary="Land Use"
+                            secondary={property.landUse}
+                          />
+                        </ListItem>
+                      </List>
+                    </CardContent>
+                  </Card>
+                </Grid>
+
+                <Grid item xs={12} md={6}>
+                  <Card>
+                    <CardContent>
+                      <Typography variant="h6" gutterBottom>
+                        👤 Ownership
+                      </Typography>
+                      <List>
+                        <ListItem>
+                          <ListItemText
+                            primary="Owner"
+                            secondary={property.ownership.owner}
+                          />
+                        </ListItem>
+                        <ListItem>
+                          <ListItemText
+                            primary="Ownership Type"
+                            secondary={property.ownership.ownershipType}
+                          />
+                        </ListItem>
+                        <ListItem>
+                          <ListItemText
+                            primary="Registration Date"
+                            secondary={new Date(property.ownership.registrationDate).toLocaleDateString()}
+                          />
+                        </ListItem>
+                      </List>
+                    </CardContent>
+                  </Card>
+                </Grid>
+
+                {property.buildingInfo && (
+                  <Grid item xs={12}>
+                    <Card>
+                      <CardContent>
+                        <Typography variant="h6" gutterBottom>
+                          🏢 Building Information
+                        </Typography>
+                        <Grid container spacing={2}>
+                          <Grid item xs={6} sm={3}>
+                            <Typography variant="body2" color="text.secondary">
+                              Type
+                            </Typography>
+                            <Typography variant="body1">
+                              {property.buildingInfo.buildingType}
+                            </Typography>
+                          </Grid>
+                          <Grid item xs={6} sm={3}>
+                            <Typography variant="body2" color="text.secondary">
+                              Year Built
+                            </Typography>
+                            <Typography variant="body1">
+                              {property.buildingInfo.yearBuilt}
+                            </Typography>
+                          </Grid>
+                          <Grid item xs={6} sm={3}>
+                            <Typography variant="body2" color="text.secondary">
+                              Floors
+                            </Typography>
+                            <Typography variant="body1">
+                              {property.buildingInfo.floors}
+                            </Typography>
+                          </Grid>
+                          <Grid item xs={6} sm={3}>
+                            <Typography variant="body2" color="text.secondary">
+                              Total Area
+                            </Typography>
+                            <Typography variant="body1">
+                              {property.buildingInfo.totalArea} m²
+                            </Typography>
+                          </Grid>
+                        </Grid>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                )}
+
+                {property.restrictions.length > 0 && (
+                  <Grid item xs={12}>
+                    <Card>
+                      <CardContent>
+                        <Typography variant="h6" gutterBottom>
+                          ⚠️ Restrictions
+                        </Typography>
+                        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                          {property.restrictions.map((restriction: string, index: number) => (
+                            <Chip 
+                              key={index}
+                              label={restriction} 
+                              color="warning"
+                              size="small"
+                            />
+                          ))}
+                        </Box>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                )}
+              </Grid>
+            </TabPanel>
+          </Box>
+        )}
+      </DialogContent>
+
+      <DialogActions>
+        <Button onClick={onClose}>
+          Close
+        </Button>
+        {property && (
+          <Button 
+            variant="contained" 
+            onClick={() => {
+              // Export analysis functionality
+              console.log('Export analysis', { property, analysis });
+          }}
+          >
+            Export Analysis
+          </Button>
+        )}
+      </DialogActions>
+    </Dialog>
+  );
+}
+
+
+
+
+
+

@@ -1,0 +1,523 @@
+import React, { createContext, useContext, useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+
+interface DemoModeContextType {
+  isDemoMode: boolean;
+  isLoading: boolean;
+  toggleDemoMode: () => Promise<void>;
+  error: string | null;
+  getDemoData: <T>(dataType: string) => T[];
+  getDemoMessage: () => string;
+}
+
+const DemoModeContext = createContext<DemoModeContextType | undefined>(undefined);
+
+export function DemoModeProvider({ children }: { children: React.ReactNode }) {
+  // ZERO PLACEHOLDER COMPLIANCE - Always use real data from database
+  const [localDemoMode, setLocalDemoMode] = useState<boolean>(false);
+
+  // Demo data for different components
+  const demoData = {
+    events: [
+      {
+        id: 'demo-event-1',
+        title: 'Emma & Jonas Bryllup',
+        date: '2025-08-15',
+        location: 'Lofoten, Norge',
+        status: 'planning',
+        type: 'wedding',
+        photographer: 'Daniel Normann',
+        clientEmail: 'emma@example.com',
+        clientPhone: '+47 123 45 678',
+        budget: 45000,
+        description: 'Destination wedding in the beautiful Lofoten Islands'
+    },
+      {
+        id: 'demo-event-2',
+        title: 'Bedriftsfotografering - Teknologi Norge AS',
+        date: '2025-09-01',
+        location: 'Oslo, Norge',
+        status: 'confirmed',
+        type: 'corporate',
+        photographer: 'Emma Larsen',
+        clientEmail: 'kontakt@teknologi-norge.no',
+        clientPhone: '+47 22 33 44 55',
+        budget: 25000,
+        description: 'Bedriftsfotografering for ny produktlansering'
+    }
+    ],
+    projects: [
+      {
+        id: 'demo-project-1',
+        name: 'Bryllup - Kari og Ole Hansen',
+        type: 'wedding',
+        status: 'active',
+        clientName: 'Kari & Ole Hansen',
+        eventDate: '2025-08-15',
+        location: 'Bergen, Norge',
+        photographer: 'Daniel Normann',
+        totalValue: 45000,
+        progress: 65,
+        lastModified: new Date(Date.now() - 1000 * 60 * 30).toISOString()
+    },
+      {
+        id: 'demo-project-2',
+        name: 'Portrettserie - Sofie Eriksen',
+        type: 'portrait',
+        status: 'completed',
+        clientName: 'Sofie Eriksen',
+        eventDate: '2025-07-20',
+        location: 'Oslo, Norge',
+        photographer: 'Emma Larsen',
+        totalValue: 8500,
+        progress: 100,
+        lastModified: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString()
+    }
+    ],
+    clients: [
+      {
+        id: 'demo-client-1',
+        name: 'Emma & Jonas Andersen',
+        email: 'emma.andersen@email.com',
+        phone: '+47 900 12 345',
+        company: '',
+        projectType: 'bryllupsfotografi',
+        status: 'active',
+        lastContact: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+        totalValue: 45000,
+        projects: 1
+    },
+      {
+        id: 'demo-client-2',
+        name: 'Nordtek AS',
+        email: 'kontakt@nordtek.no',
+        phone: '+47 22 33 44 55',
+        company: 'Nordtek AS',
+        projectType: 'bedriftsfotografering',
+        status: 'prospect',
+        lastContact: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
+        totalValue: 25000,
+        projects: 0
+    }
+    ],
+    worklogs: [
+      {
+        id: 'demo-worklog-1',
+        projectId: 'demo-project-1',
+        task: 'Fotografering av forberedelser',
+        description: 'Fotograferte brudens forberedelser og detaljer',
+        timeSpent: 120,
+        date: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(),
+        status: 'completed',
+        tags: ['wedding','preparation','details']
+    },
+      {
+        id: 'demo-worklog-2',
+        projectId: 'demo-project-1',
+        task: 'Redigering av seremonibilder',
+        description: 'Redigerte og retusjerte seremonibilder',
+        timeSpent: 180,
+        date: new Date(Date.now() - 1000 * 60 * 60 * 12).toISOString(),
+        status: 'in-progress',
+        tags: ['wedding','editing','ceremony']
+    }
+    ],
+    showcases: [
+      {
+        id: 'demo-showcase-1',
+        title: 'Emma & Jonas Bryllup - Highlight',
+        description: 'De beste bildene fra bryllupsdagen',
+        coverImage: 'https://images.unsplash.com/photo-1606216794074-735e91aa2c92?w=400',
+        status: 'published',
+        shareLink: 'https://creatorhub.no/showcase/demo-showcase-1',
+        photoCount: 45,
+        createdAt: new Date(Date.now() - 1000 * 60 * 60 * 48).toISOString()
+    },
+      {
+        id: 'demo-showcase-2',
+        title: 'Portrettserie - Sofie Eriksen',
+        description: 'Profesjonell portrettserie i Oslo',
+        coverImage: 'https://images.unsplash.com/photo-1519741497674-611481863552?w=400',
+        status: 'draft',
+        shareLink: '',
+        photoCount: 12,
+        createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString()
+    }
+    ],
+    meetings: [
+      {
+        id: 'demo-meeting-1',
+        title: 'Konsultasjon - Emma & Jonas',
+        date: '2025-07-20T14:00:00Z',
+        duration: 120,
+        type: 'consultation',
+        status: 'scheduled',
+        attendees: ['Emma Andersen','Jonas Andersen','Daniel Normann'],
+        location: 'Studio Oslo',
+        agenda: ['Diskuter bryllupsdagen','Gjennomgå timeline','Velg foto/video stil']
+    },
+      {
+        id: 'demo-meeting-2',
+        title: 'Lokasjonsbesøk - Lofoten',
+        date: '2025-07-25T10:00:00Z',
+        duration: 180,
+        type: 'location_visit',
+        status: 'completed',
+        attendees: ['Emma Andersen','Jonas Andersen','Daniel Normann'],
+        location: 'Lofoten, Norge',
+        agenda: ['Gå gjennom timeline på stedet','Identifiser beste foto-vinkler','Planlegg utstyr']
+    }
+    ],
+    notifications: [
+      {
+        id: 'demo-notification-1',
+        title: 'Ny forespørsel mottatt',
+        message: 'Emma & Jonas har sendt inn en ny forespørsel for bryllupsfotografering',
+        type: 'lead',
+        isRead: false,
+        createdAt: new Date(Date.now() - 1000 * 60 * 30).toISOString()
+    },
+      {
+        id: 'demo-notification-2',
+        title: 'Møte påminnelse',
+        message: 'Konsultasjon med Kari & Ole Hansen i morgen kl. 14:00',
+        type: 'meeting',
+        isRead: true,
+        createdAt: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString()
+    }
+    ],
+    analytics: {
+      totalProjects: 12,
+      activeProjects: 3,
+      completedProjects: 9,
+      totalRevenue: 285000,
+      monthlyRevenue: 45000,
+      clientSatisfaction: 4.8,
+      averageProjectValue: 23750,
+      conversionRate: 0.75
+  },
+    videos: [
+      {
+        id: 1,
+        title: 'Emma & Jonas Bryllup - Highlight',
+        description: 'De beste øyeblikkene fra bryllupsdagen',
+        thumbnailUrl: 'https://images.unsplash.com/photo-1606216794074-735e91aa2c92?w=400',
+        videoUrl: 'https://sample-videos.com/zip/10/mp4/SampleVideo_1280x720_1mb.mp4',
+        duration: '3:45',
+        category: 'wedding',
+        tags: ['bryllup','highlight','emma','jonas'],
+        views: 1250,
+        likes: 89,
+        comments: 12,
+        uploadDate: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(),
+        isPublic: true,
+        createdBy: 'Daniel Normann',
+        rating: 4.8
+    },
+      {
+        id: 2,
+        title: 'Portrettserie - Sofie Eriksen',
+        description: 'Profesjonell portrettserie i Oslo',
+        thumbnailUrl: 'https://images.unsplash.com/photo-1519741497674-611481863552?w=400',
+        videoUrl: 'https://sample-videos.com/zip/10/mp4/SampleVideo_1280x720_2mb.mp4',
+        duration: '2:30',
+        category: 'portrait',
+        tags: ['portrett','sofie','oslo'],
+        views: 890,
+        likes: 67,
+        comments: 8,
+        uploadDate: new Date(Date.now() - 1000 * 60 * 60 * 48).toISOString(),
+        isPublic: true,
+        createdBy: 'Emma Larsen',
+        rating: 4.6
+    }
+    ],
+    cameras: [
+      {
+        id: 'canon-eos-r5',
+        brand: 'Canon',
+        model: 'EOS R5',
+        year: 2020,
+        megapixels: 45,
+        sensor: 'Full Frame CMOS',
+        maxISO: 51200,
+        videoCapabilities: ['4K','8K','120fps'],
+        firmwareVersion: '1.8.1',
+        lastUpdated: new Date(Date.now() - 1000 * 60 * 60 * 24 * 7).toISOString(),
+        features: ['IBIS','Dual Pixel AF','Weather Sealed'],
+        price: 38999,
+        discontinued: false
+    },
+      {
+        id: 'sony-a7r5',
+        brand: 'Sony',
+        model: 'A7R V',
+        year: 2022,
+        megapixels: 61,
+        sensor: 'Full Frame CMOS',
+        maxISO: 102400,
+        videoCapabilities: ['4K','8K','60fps'],
+        firmwareVersion: '2.0.0',
+        lastUpdated: new Date(Date.now() - 1000 * 60 * 60 * 24 * 3).toISOString(),
+        features: ['IBIS','Real-time Tracking','Weather Sealed'],
+        price: 42999,
+        discontinued: false
+    }
+    ],
+    reports: [
+      {
+        id: 'demo-report-1',
+        templateId: 'monthly-financial',
+        name: 'Månedlig Finansrapport - August 2025',
+        status: 'ready',
+        generatedAt: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(),
+        fileUrl: 'https://example.com/reports/monthly-financial-aug-2025.pdf',
+        fileSize: '2.4 MB',
+        recipients: ['daniel@creatorhubn.com'],
+        format: 'pdf',
+        dataRange: {
+          start: '2025-08-01',
+          end: '2025-08-31'
+      }
+    }
+    ],
+    templates: [
+      {
+        id: 'monthly-financial',
+        name: 'Månedlig Finansrapport',
+        description: 'Omfattende finansiell oversikt med norske regnskapsregler',
+        category: 'financial',
+        sections: ['Revenue Analysis','Cost Breakdown','Profit/Loss','Tax Calculations','VAT Summary'],
+        frequency: 'monthly',
+        format: 'pdf',
+        recipients: ['user?.email'],
+        norwegianCompliance: true,
+        vatIncluded: true,
+        status: 'active'
+    }
+    ],
+    professionTerms: {
+      photographer: {
+        showcase: 'Fotogalleri',
+        project: 'Fotoprosjekt',
+        collection: 'Bildesamling',
+        media: 'Bilder',
+        portfolio: 'Portefølje'
+    },
+      videographer: {
+        showcase: 'Videogalleri',
+        project: 'Videoprosjekt',
+        collection: 'Videosamling',
+        media: 'Videoer',
+        portfolio: 'Showreel'
+    },
+      music_producer: {
+        showcase: 'Musikkgalleri',
+        project: 'Låt/Album',
+        collection: 'Spilleliste',
+        media: 'Musikk',
+        portfolio: 'Diskografi'
+    },
+      vendor: {
+        showcase: 'Produktgalleri',
+        project: 'Produktlinje',
+        collection: 'Produktsamling',
+        media: 'Produktbilder',
+        portfolio: 'Katalog'
+    }
+  },
+    enhancementPresets: {
+      portrait: {
+        name: 'Portrett',
+        description: 'Optimalisert for portrettfotografering',
+        options: {
+          brightness: 5,
+          contrast: 1.1,
+          saturation: 10,
+          sharpening: 0.8,
+          noiseReduction: true,
+          autoTone: true
+      }
+    },
+      wedding: {
+        name: 'Bryllup',
+        description: 'Perfekt for bryllupsfotografering',
+        options: {
+          brightness: 8,
+          contrast: 1.15,
+          saturation: 15,
+          sharpening: 1.0,
+          noiseReduction: true,
+          autoTone: true
+      }
+    },
+      landscape: {
+        name: 'Landskap',
+        description: 'Forbedrer naturbilder og landskap',
+        options: {
+          brightness: 3,
+          contrast: 1.2,
+          saturation: 20,
+          sharpening: 1.2,
+          noiseReduction: false,
+          autoTone: true
+      }
+    }
+  }
+};
+
+const getDemoData = <T,>(dataType: string): T[] => {
+  if (!localDemoMode) return [];
+  return (demoData as Record<string, T[]>)?.[dataType] ?? [];
+};
+
+
+  const getDemoMessage = (): string => {
+    return localDemoMode 
+      ? 'Demo-modus aktivert - Rikelige simulerte data som viser full funksjonalitet'
+      : 'Produksjonssystem - tomt til ekte data fylles inn';
+};
+
+  // Query for demo mode status
+  const {
+    data: demoModeData,
+    isLoading,
+    error,
+    refetch,
+} = useQuery({
+    queryKey: ['/api/settings/demo-mode'],
+    queryFn: async () => {
+      const response = await fetch('/api/settings/demo-mode');
+      if (!response.ok) throw new Error('Failed to fetch demo mode');
+      return response.json();
+  },
+    staleTime: 1000 * 60 * 5, // 5 minutes
+    refetchOnWindowFocus: false,
+});
+
+  // Update local state when data changes - Support both real and demo modes
+  useEffect(() => {
+    if (demoModeData?.isDemoMode !== undefined) {
+      setLocalDemoMode(demoModeData.isDemoMode);
+  }
+}, [demoModeData]);
+
+  const toggleDemoMode = async () => {
+    try {
+      const newMode = !localDemoMode;
+
+      const response = await fetch('/api/settings/demo-mode', {
+        method: 'PUT',
+        headers: {
+          'Content-Type' : 'application/json',
+      },
+        body: JSON.stringify({ demoMode: newMode }),
+    });
+
+      if (!response.ok) throw new Error('Failed to update demo mode');
+
+      setLocalDemoMode(newMode);
+      await refetch(); // Refresh the query data
+
+      // Force a page reload to ensure all components get fresh data
+      setTimeout(() => {
+        window.location.reload();
+    }, 500);
+  } catch (error) {
+      console.error('Error toggling demo mode: ', error);
+      throw error;
+  }
+};
+
+  const value: DemoModeContextType = {
+    isDemoMode: localDemoMode, // Support both real and demo modes for testing
+    isLoading,
+    toggleDemoMode,
+    error: error?.message || null,
+    getDemoData,
+    getDemoMessage,
+};
+
+  return <DemoModeContext.Provider value={value}>{children}</DemoModeContext.Provider>;
+}
+
+export function useDemoMode(): DemoModeContextType {
+  const context = useContext(DemoModeContext);
+  if (context === undefined) {
+    throw new Error('useDemoMode must be used within a DemoModeProvider');
+}
+  return context;
+}
+
+// Hook for components to get demo-aware data
+export function useDemoModeQuery<T>(queryKey: string[], queryFn: () => Promise<T>, options?: any) {
+  const { isDemoMode } = useDemoMode();
+
+  return useQuery({
+    queryKey: [...queryKey, { demoMode: isDemoMode }],
+    queryFn,
+    enabled: !options?.enabled === false,
+    staleTime: isDemoMode ? 1000 * 60 * 10 : 1000 * 30, // Demo data caches longer
+    ...options,
+});
+}
+
+// Hook for components that need demo data with fallback
+export function useDemoModeData<T>(dataType: string, fallbackData: T[] = []): T[] {
+  const { isDemoMode, getDemoData } = useDemoMode();
+  
+  if (isDemoMode) {
+    return getDemoData<T>(dataType);
+}
+  
+  return fallbackData;
+}
+
+// Hook for demo-aware API calls
+export function useDemoModeApi<T>(
+  queryKey: string[], 
+  apiCall: () => Promise<T>, 
+  demoData: T,
+  options?: any
+) {
+  const { isDemoMode } = useDemoMode();
+
+  return useQuery({
+    queryKey: [...queryKey, { demoMode: isDemoMode }],
+    queryFn: async () => {
+      if (isDemoMode) {
+        // Simulate API delay for demo
+        await new Promise(resolve => setTimeout(resolve, 500));
+        return demoData;
+    }
+      return apiCall();
+  },
+    enabled: !options?.enabled === false,
+    staleTime: isDemoMode ? 1000 * 60 * 10 : 1000 * 30,
+    ...options,
+});
+}
+
+// Utility function to create demo-aware response
+export function createDemoResponse<T>(
+  isDemoMode: boolean,
+  demoData: T[],
+  realData: T[] = [],
+  message?: string
+) {
+  if (isDemoMode) {
+    return {
+      data: demoData,
+      message: message || 'Demo-modus aktivert - Rikelige simulerte data som viser full funksjonalitet',
+      isDemoMode: true,
+      count: demoData.length
+  };
+}
+  
+  return {
+    data: realData,
+    message:'Produksjonssystem - ekte data fra database',
+    isDemoMode: false,
+    count: realData.length
+};
+}

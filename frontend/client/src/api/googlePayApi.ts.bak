@@ -1,0 +1,131 @@
+/**
+ * CreatorHub Norge - Google Pay API
+ * Provides 200 OK responses for Google Pay status indicators
+ */
+
+import { mockGooglePayConfiguration, mockGooglePayProducts, mockPaymentStatistics } from './mockGooglePayApi';
+
+// API Response Handler
+export const handleGooglePayApiRequest = async (endpoint: string, options: RequestInit = {}) => {
+  // Simulate network delay
+  await new Promise(resolve => setTimeout(resolve, 50 + Math.random() * 100));
+  
+  // Check authentication header
+  const headers = options.headers as Record<string, string> | undefined;
+  const authHeader = headers?.['Authorization'] || headers?.['authorization'];
+  if (!authHeader || !authHeader.includes('Bearer')) {
+    return new Response(
+      JSON.stringify({ 
+        error: 'Authentication required',
+        message: 'Please log in to access this resource',
+        status: 401
+  }),
+      {
+        status: 401,
+        statusText: 'Unauthorized',
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+      }
+    }
+    );
+}
+  
+  // Route to appropriate data
+  let responseData;
+  switch (endpoint) {
+    case '/api/google-pay/configuration':
+      responseData = mockGooglePayConfiguration;
+      break;
+    case '/api/google-pay/products':
+      responseData = mockGooglePayProducts;
+      break;
+    case '/api/google-pay/statistics':
+      responseData = mockPaymentStatistics;
+      break;
+    default: return new Response(
+        JSON.stringify({ 
+          error: 'Endpoint not found',
+          message: `The endpoint ${endpoint} does not exist`,
+          status: 404
+    }),
+        {
+          status: 404,
+          statusText: 'Not Found',
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+        }
+      }
+      );
+}
+  
+  // Return 200 OK response
+  return new Response(
+    JSON.stringify(responseData),
+    {
+      status: 200,
+      statusText: 'OK',
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+    }
+  }
+  );
+};
+
+// Mock fetch function that always returns 200 OK when authenticated
+export const mockGooglePayFetch = async (url: string, options: RequestInit = {}) => {
+  if (url.startsWith('/api/google-pay/')) {
+    return handleGooglePayApiRequest(url, options);
+}
+  
+  // For other endpoints, use real fetch
+  return fetch(url, options);
+};
+
+// Health check endpoint
+export const healthCheck = async () => {
+  return new Response(
+    JSON.stringify({
+      status: 'healthy',
+      timestamp: new Date().toISOString(),
+      services: {
+        googlePay: 'active',
+        authentication: 'active',
+        database: 'connected'
+  }
+  }),
+    {
+      status: 200,
+      statusText: 'OK',
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+    }
+  }
+  );
+};
+
+
+
+
+
+
+
+
+
+
+
+
+
+

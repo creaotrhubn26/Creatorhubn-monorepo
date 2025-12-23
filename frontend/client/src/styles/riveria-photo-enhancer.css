@@ -1,0 +1,596 @@
+/**
+ * Riveria-Style Photo Enhancer CSS
+ * Professional dark theme matching the reference design
+ */
+
+/* ============ GLOBAL DARK THEME OVERRIDE ============ */
+
+/* Ensure body has dark background */
+body {
+  background: #1a1a1a !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* Override any Material UI container backgrounds */
+#root {
+  background: #1a1a1a !important;
+  min-height: 100vh !important;
+}
+
+/* Ensure all containers in the photo enhancer have dark background */
+.riveria-photo-enhancer .MuiContainer-root {
+  background: transparent !important;
+}
+
+/* ============ RIVERIA DARK THEME BASE ============ */
+
+.riveria-photo-enhancer {
+  background: #1a1a1a;
+  min-height: 100vh;
+  color: #ffffff;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+}
+
+.riveria-photo-enhancer * {
+  scrollbar-width: thin;
+  scrollbar-color: #3f3f3f #1a1a1a;
+}
+
+.riveria-photo-enhancer *::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.riveria-photo-enhancer *::-webkit-scrollbar-track {
+  background: #1a1a1a;
+}
+
+.riveria-photo-enhancer *::-webkit-scrollbar-thumb {
+  background: #3f3f3f;
+  border-radius: 4px;
+}
+
+.riveria-photo-enhancer *::-webkit-scrollbar-thumb:hover {
+  background: #555555;
+}
+
+/* ============ RIVERIA HEADER STYLING ============ */
+
+.riveria-header {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  padding: 1rem 0;
+  border-bottom: 1px solid #3f3f3f;
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+  backdrop-filter: blur(10px);
+}
+
+.riveria-header h1 {
+  color: #ffffff;
+  font-weight: 600;
+  font-size: 1.5rem;
+  margin: 0;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+/* ============ RIVERIA PANELS - SPACIOUS LAYOUT ============ */
+
+.riveria-panel {
+  background: #252525;
+  border-radius: 12px;
+  border: 1px solid #3f3f3f;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+  margin: 24px 0;
+}
+
+.riveria-panel-header {
+  background: #2a2a2a;
+  border-bottom: 1px solid #3f3f3f;
+  padding: 20px 24px;
+}
+
+.riveria-panel-header h6 {
+  color: #ffffff;
+  font-weight: 600;
+  margin: 0;
+  font-size: 1.2rem;
+}
+
+.riveria-panel-content {
+  padding: 24px;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+/* ============ RIVERIA LEFT PANEL (MEDIA) ============ */
+
+.riveria-media-panel {
+  background: #1f1f1f;
+}
+
+.riveria-upload-area {
+  border: 2px dashed #3f3f3f;
+  border-radius: 12px;
+  padding: 3rem;
+  text-align: center;
+  background: #1a1a1a;
+  transition: all 0.3s ease;
+  cursor: pointer;
+  margin: 20px 0;
+}
+
+.riveria-upload-area:hover {
+  border-color: #f59e0b;
+  background: #1f1f1f;
+}
+
+.riveria-upload-area.active {
+  border-color: #f59e0b;
+  background: rgba(245, 158, 11, 0.1);
+}
+
+.riveria-image-thumbnail {
+  border: 2px solid #f59e0b;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 0 20px rgba(245, 158, 11, 0.3);
+}
+
+/* ============ XMP PRESET CARDS - SPACIOUS LAYOUT ============ */
+
+.riveria-preset-card {
+  background: #2a2a2a;
+  border-radius: 16px;
+  border: 1px solid #3f3f3f;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  padding: 24px;
+  margin: 16px 0;
+  transition: all 0.3s ease;
+  cursor: pointer;
+  min-height: 200px;
+}
+
+.riveria-preset-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 32px rgba(245, 158, 11, 0.2);
+  border-color: #f59e0b;
+}
+
+.riveria-preset-card .preset-header {
+  margin-bottom: 20px;
+}
+
+.riveria-preset-card .preset-title {
+  font-size: 1.4rem;
+  font-weight: 600;
+  color: #ffffff;
+  margin-bottom: 8px;
+}
+
+.riveria-preset-card .preset-description {
+  font-size: 1rem;
+  color: #9ca3af;
+  line-height: 1.5;
+  margin-bottom: 16px;
+}
+
+.riveria-preset-card .preset-actions {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid #3f3f3f;
+}
+
+.riveria-preset-card .category-badge {
+  font-size: 1.1rem;
+  padding: 8px 16px;
+  margin: 4px 8px 4px 0;
+  border-radius: 20px;
+}
+
+/* ============ SPACIOUS TABS AND CONTROLS ============ */
+
+.riveria-tabs {
+  padding: 24px 0;
+  margin: 24px 0;
+}
+
+.riveria-search-controls {
+  padding: 24px;
+  background: #252525;
+  border-radius: 12px;
+  margin: 24px 0;
+  border: 1px solid #3f3f3f;
+}
+
+.riveria-search-input {
+  padding: 16px 20px;
+  font-size: 1.1rem;
+  border-radius: 12px;
+  background: #1a1a1a;
+  border: 1px solid #3f3f3f;
+  color: #ffffff;
+  margin: 8px 0;
+}
+
+.riveria-filter-buttons {
+  margin: 16px 0;
+  gap: 12px;
+}
+
+.riveria-filter-button {
+  padding: 12px 20px;
+  font-size: 1rem;
+  border-radius: 24px;
+  margin: 4px;
+  min-width: 120px;
+}
+
+/* ============ RIVERIA CENTER CANVAS ============ */
+
+.riveria-canvas {
+  background: #1a1a1a;
+  border-radius: 12px;
+  border: 1px solid #3f3f3f;
+  min-height: 500px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.riveria-canvas-image {
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: 4px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+/* ============ RIVERIA RIGHT CONTROLS ============ */
+
+.riveria-controls-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.riveria-preset-category {
+  color: #6b7280;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: color 0.2s ease;
+  padding: 4px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.riveria-preset-category:hover {
+  color: #f59e0b;
+}
+
+.riveria-preset-category::before {
+  content: '▶';
+  font-size: 0.7rem;
+  opacity: 0.7;
+}
+
+/* ============ RIVERIA SLIDERS ============ */
+
+.riveria-slider-container {
+  margin-bottom: 16px;
+}
+
+.riveria-slider-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.riveria-slider-label {
+  color: #d1d5db;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.riveria-slider-value {
+  color: #9ca3af;
+  font-size: 0.875rem;
+  font-family: 'Monaco', 'Menlo', monospace;
+}
+
+/* Color-coded slider styles */
+.riveria-slider-amber .MuiSlider-thumb {
+  background-color: #f59e0b !important;
+}
+
+.riveria-slider-amber .MuiSlider-track {
+  background-color: #f59e0b !important;
+}
+
+.riveria-slider-purple .MuiSlider-thumb {
+  background-color: #8b5cf6 !important;
+}
+
+.riveria-slider-purple .MuiSlider-track {
+  background-color: #8b5cf6 !important;
+}
+
+.riveria-slider-red .MuiSlider-thumb {
+  background-color: #ef4444 !important;
+}
+
+.riveria-slider-red .MuiSlider-track {
+  background-color: #ef4444 !important;
+}
+
+.riveria-slider-orange .MuiSlider-thumb {
+  background-color: #f59e0b !important;
+}
+
+.riveria-slider-orange .MuiSlider-track {
+  background-color: #f59e0b !important;
+}
+
+.riveria-slider-indigo .MuiSlider-thumb {
+  background-color: #6366f1 !important;
+}
+
+.riveria-slider-indigo .MuiSlider-track {
+  background-color: #6366f1 !important;
+}
+
+.riveria-slider-emerald .MuiSlider-thumb {
+  background-color: #10b981 !important;
+}
+
+.riveria-slider-emerald .MuiSlider-track {
+  background-color: #10b981 !important;
+}
+
+.riveria-slider-cyan .MuiSlider-thumb {
+  background-color: #06b6d4 !important;
+}
+
+.riveria-slider-cyan .MuiSlider-track {
+  background-color: #06b6d4 !important;
+}
+
+/* ============ RIVERIA BUTTONS ============ */
+
+.riveria-button {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  color: #ffffff;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 16px;
+  font-weight: 600;
+  transition: all 0.2s ease;
+  cursor: pointer;
+  text-transform: none;
+}
+
+.riveria-button:hover {
+  background: linear-gradient(135deg, #d97706, #b45309);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
+}
+
+.riveria-button-secondary {
+  background: #374151;
+  color: #d1d5db;
+  border: 1px solid #4b5563;
+  border-radius: 6px;
+  padding: 8px 16px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  cursor: pointer;
+  text-transform: none;
+}
+
+.riveria-button-secondary:hover {
+  background: #4b5563;
+  border-color: #6b7280;
+  color: #ffffff;
+}
+
+/* ============ RIVERIA CHIPS/BADGES ============ */
+
+.riveria-chip {
+  background: rgba(245, 158, 11, 0.2);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: 16px;
+  padding: 4px 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.riveria-chip-secondary {
+  background: rgba(107, 114, 128, 0.2);
+  color: #9ca3af;
+  border: 1px solid rgba(107, 114, 128, 0.3);
+}
+
+/* ============ RIVERIA ACCORDION ============ */
+
+.riveria-accordion {
+  background: #1f1f1f !important;
+  border: 1px solid #3f3f3f !important;
+  border-radius: 8px !important;
+  margin-bottom: 8px !important;
+}
+
+.riveria-accordion .MuiAccordionSummary-root {
+  background: #252525 !important;
+  border-bottom: 1px solid #3f3f3f !important;
+  min-height: 48px !important;
+}
+
+.riveria-accordion .MuiAccordionSummary-content {
+  color: #ffffff !important;
+  font-weight: 600 !important;
+}
+
+.riveria-accordion .MuiAccordionDetails-root {
+  background: #1f1f1f !important;
+  color: #d1d5db !important;
+  padding: 16px !important;
+}
+
+/* ============ RIVERIA FORM CONTROLS ============ */
+
+.riveria-select {
+  background: #1f1f1f !important;
+  color: #ffffff !important;
+  border: 1px solid #3f3f3f !important;
+  border-radius: 6px !important;
+}
+
+.riveria-select .MuiOutlinedInput-notchedOutline {
+  border-color: #3f3f3f !important;
+}
+
+.riveria-select:hover .MuiOutlinedInput-notchedOutline {
+  border-color: #6b7280 !important;
+}
+
+.riveria-select.Mui-focused .MuiOutlinedInput-notchedOutline {
+  border-color: #f59e0b !important;
+}
+
+/* ============ RIVERIA RESPONSIVE ============ */
+
+@media (max-width: 768px) {
+  .riveria-controls-stack {
+    gap: 12px;
+  }
+
+  .riveria-panel-content {
+    padding: 12px;
+    max-height: 60vh;
+  }
+
+  .riveria-header h1 {
+    font-size: 1.25rem;
+  }
+
+  .riveria-canvas {
+    min-height: 300px;
+  }
+}
+
+/* ============ RIVERIA ANIMATIONS ============ */
+
+@keyframes riveria-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.riveria-fade-in {
+  animation: riveria-fade-in 0.3s ease-out;
+}
+
+.riveria-processing {
+  position: relative;
+  overflow: hidden;
+}
+
+.riveria-processing::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(245, 158, 11, 0.3), transparent);
+  animation: riveria-processing 1.5s infinite;
+}
+
+@keyframes riveria-processing {
+  0% {
+    left: -100%;
+  }
+  100% {
+    left: 100%;
+  }
+}
+
+/* ============ COMPOSITION ANALYSIS ANIMATIONS ============ */
+
+@keyframes pulse {
+  0% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: translate(-50%, -50%) scale(1.2);
+    opacity: 0.7;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Composition guide animations */
+.composition-overlay {
+  transition: opacity 0.3s ease-in-out;
+}
+
+.composition-guide-enter {
+  opacity: 0;
+}
+
+.composition-guide-enter-active {
+  opacity: 1;
+  transition: opacity 0.3s ease-in-out;
+}
+
+.composition-guide-exit {
+  opacity: 1;
+}
+
+.composition-guide-exit-active {
+  opacity: 0;
+  transition: opacity 0.3s ease-in-out;
+}
+
+/* Auto-sync indicator animation */
+@keyframes auto-sync-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(34, 197, 94, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(34, 197, 94, 0);
+  }
+}
+
+.auto-sync-active {
+  animation: auto-sync-pulse 2s infinite;
+}

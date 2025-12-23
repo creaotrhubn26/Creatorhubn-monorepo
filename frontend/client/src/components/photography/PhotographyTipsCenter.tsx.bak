@@ -1,0 +1,495 @@
+import { useTheming } from '../../utils/theming-helper';
+import React, { useState } from 'react';
+import {
+  Box,
+  Typography,
+  Card,
+  CardContent,
+  Grid,
+  Tabs,
+  Tab,
+  List,
+  ListItem,
+  ListItemIcon,
+  ListItemText,
+  Chip,
+  Button,
+  Alert,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails
+} from '@mui/material';
+import {
+  PhotoCamera,
+  Lightbulb,
+  Settings,
+  Landscape,
+  Portrait,
+  NightlightRound,
+  WbSunny,
+  Timer,
+  Palette,
+  ExpandMore,
+  School,
+  TipsAndUpdates,
+  Tune
+} from '@mui/icons-material';
+
+interface PhotographyTip {
+  id: string;
+  title: string;
+  category: string;
+  difficulty: 'beginner' | 'intermediate' | 'advanced';
+  equipment: string[];
+  description: string;
+  steps: string[];
+  settings?: {
+    aperture?: string;
+    shutterSpeed?: string;
+    iso?: string;
+    focusMode?: string;
+};
+}
+
+interface PhotographyTipsCenterProps {
+  // Integration props for unified workflow connectivity
+  onMeetingCreate?: (meeting: any) => void;
+  onProjectUpdate?: (project: any) => void;
+  onWorklogCreate?: (worklog: any) => void;
+  onClientSelect?: (client: any) => void;
+  onClientUpdate?: (client: any) => void;
+  onShowcaseCreate?: (showcase: any) => void;
+  onFileUpload?: (file: any) => void;
+  onFileDownload?: (file: any) => void;
+  selectedProject?: any;
+  onProjectSelect?: (project: any) => void;
+  selectedClient?: any;
+  onSettingsUpdate?: (settings: any) => void;
+  onNotificationCreate?: (notification: any) => void
+}
+
+const PhotographyTipsCenter: React.FC<PhotographyTipsCenterProps> = ({
+  onMeetingCreate,
+  onProjectUpdate,
+  onWorklogCreate,
+  onClientSelect,
+  onClientUpdate,
+  onShowcaseCreate,
+  onFileUpload,
+  onFileDownload,
+  selectedProject,
+  onProjectSelect,
+  selectedClient,
+  onSettingsUpdate,
+  onNotificationCreate
+}) => {
+  const [activeTab, setActiveTab] = useState(
+  
+  // Theming system
+  const theming = useTheming('photographer');0);
+  const [selectedTip, setSelectedTip] = useState<PhotographyTip | null>(null);
+
+  const photographyTips: PhotographyTip[] = [
+    {
+      id: 'golden-hour-portraits',
+      title: 'Golden Hour Portretter',
+      category: 'Portrait',
+      difficulty: 'beginner',
+      equipment: ['Kamera', 'Portrettoptikk (85mm+)', 'Reflektor'],
+      description: 'Utnytt det varme, myke lyset i golden hour for vakre portretter.',
+      steps: [
+        'Finn riktig tid - 1 time før solnedgang',
+        'Posisjonér modellen med ryggen mot solen',
+        'Bruk reflektor for å fylle skygger',
+        'Fokusér på øynene',
+        'Ta mange bilder - lyset endrer seg raskt'
+      ],
+      settings: {
+        aperture: 'f/1.4 - f/2.',
+        shutterSpeed: '1/250s eller raskere',
+        iso: '100-40',
+        focusMode: 'Single Point AF'
+  }
+  },
+    {
+      id: 'long-exposure-landscapes',
+      title: 'Langeksponering av Landskap',
+      category: 'Landskap',
+      difficulty: 'intermediate',
+      equipment: ['Stativ', 'ND-filter', 'Fjernutløser', 'Vidvinkeloptikk'],
+      description: 'Skape dramatiske landskapsbilder med bevegelse i vann og skyer.',
+      steps: [
+        'Sett opp stativet på stabil grunn',
+        'Monter ND-filter (6-10 stops)',
+        'Komponér bildet i live view',
+        'Beregn eksponeringstid (30s - 4min)',
+        'Bruk fjernutløser eller timer',
+        'Sjekk histogram for riktig eksponering'
+      ],
+      settings: {
+        aperture: 'f/8 - f/1',
+        shutterSpeed: '30s - 4min',
+        iso: '50-10',
+        focusMode: 'Manual Focus'
+  }
+  },
+    {
+      id: 'street-photography-tips',
+      title: 'Gatefotografering',
+      category: 'Gate',
+      difficulty: 'intermediate',
+      equipment: ['Kompakt kamera/objektiv', 'Diskret utstyr'],
+      description: 'Fang spontane øyeblikk og autentisk byliv.',
+      steps: [
+        'Lær kameraet ditt grundig',
+        'Bruk zone focusing teknikk',
+        'Vær diskret og respektfull',
+        'Forutse handling og bevegelse',
+        'Vent på "det avgjørende øyeblikk"',
+        'Øv på å komponere raskt'
+      ],
+      settings: {
+        aperture: 'f/5.6 - f/',
+        shutterSpeed: '1/250s eller raskere',
+        iso: '400-160',
+        focusMode: 'Continuous AF'
+  }
+  },
+    {
+      id: 'macro-photography',
+      title: 'Makrofotografering',
+      category: 'Makro',
+      difficulty: 'advanced',
+      equipment: ['Makroobjektiv', 'Stativ', 'Ringblits', 'Fokus rail'],
+      description: 'Utforsk den lille verden med ekstrem nærfotografering.',
+      steps: [
+        'Bruk stativ for stabilitet',
+        'Fokusér manuelt for presisjon',
+        'Bruk liten blenderåpning (f/8-f/16)',
+        'Vurder focus stacking teknikk',
+        'Bruk ekstra lys (ringblits/LED)',
+        'Vær tålmodig med komposisjon'
+      ],
+      settings: {
+        aperture: 'f/8 - f/1',
+        shutterSpeed: 'Varierer',
+        iso: '100-40',
+        focusMode: 'Manual Focus'
+  }
+  },
+    {
+      id: 'night-sky-photography',
+      title: 'Nattehimmelfotografering',
+      category: 'Astrofoto',
+      difficulty: 'advanced',
+      equipment: ['Stativ', 'Vidvinkel f/2.8', 'Fjernutløser', 'Rød lommelykt'],
+      description: 'Fang stjerner, melkeveien og nordlys.',
+      steps: [
+        'Finn sted med minimal lysforurensning',
+        'Sjekk værmelding og månefaser',
+        'Sett opp utstyr før mørket faller',
+        'Bruk 500-regelen for stjernefotografering',
+        'Ta testbilder og juster innstillinger',
+        'Vurder flere eksponering for stacking'
+      ],
+      settings: {
+        aperture: 'f/1.4 - f/2.',
+        shutterSpeed: '15-30',
+        iso: '1600-640',
+        focusMode: 'Manual Focus på uendelig'
+  }
+  }
+  ];
+
+  const categories = ['Alle', ...Array.from(new Set(photographyTips.map(tip => tip.category)))];
+
+  const filteredTips = activeTab === 0 
+    ? photographyTips 
+    : photographyTips.filter(tip => tip.category === categories[activeTab]);
+
+  const getDifficultyColor = (difficulty: string) => {
+    switch (difficulty) {
+      case 'beginner': return 'success';
+      case 'intermediate': return 'warning';
+      case 'advanced': return 'error';
+      default: return 'default';
+}
+};
+
+  const getDifficultyLabel = (difficulty: string) => {
+    switch (difficulty) {
+      case 'beginner': return 'Nybegynner';
+      case 'intermediate': return 'Middels';
+      case 'advanced': return 'Avansert';
+      default: return difficulty;
+}
+};
+
+  return (
+    <Box sx={{ p:  3 }}>
+      <Typography variant="h4" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap:  1 }} sx={{ ...{}, color: theming.colors.primary }}>
+        <PhotoCamera color="primary" />
+        Fotograferingstips & Teknikker
+      </Typography>
+
+      <Typography variant="body1" color="text.secondary" paragraph>
+        Lær profesjonelle fotograferingsteknikker og tips for ulike sjangre og situasjoner.
+      </Typography>
+
+      <Alert severity="info" sx={{ mb: 3 }}>
+        <Typography variant="subtitle2" gutterBottom>
+          💡 Pro Tips: </Typography>
+        <Typography variant="body2">
+          Øv på teknikkene i kontrollerte omgivelser før du bruker dem på viktige oppdrag. 
+          Husk at utstyr ikke gjør fotografen - kreativitet og øvelse er nøkkelen!
+        </Typography>
+      </Alert>
+
+      <Grid container spacing=, {, 3}>
+        {/* Category Navigation */}
+        <Grid size={{ xs: 1, 2,}}>
+          <Card sx={theming.getThemedCardSx()}>
+            <CardContent sx={theming.getThemedCardSx()}>
+              <Tabs 
+                value={activeTab}
+                onChange={(_, newValue) => setActiveTab(newValue)}
+                variant="scrollable"
+                scrollButtons="auto"
+              >
+                {categories.map((category, index) => (
+                  <Tab 
+                    key={index}
+                    label={category}
+                    icon={
+                      category === 'Portrait' ? <Portrait /> :
+                      category === 'Landskap' ? <Landscape /> :
+                      category === 'Gate' ? {theming.getThemedIcon('wbSunny')} :
+                      category === 'Makro' ? {theming.getThemedIcon('settings')} :
+                      category === 'Astrofoto' ? <NightlightRound /> :
+                      {theming.getThemedIcon('photoCamera')}
+                  }
+                  />
+                ))}
+              </Tabs>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* Tips List */}
+        <Grid size={{ xs: 1, 2,}} md={6}>
+          <Card sx={theming.getThemedCardSx()}>
+            <CardContent sx={theming.getThemedCardSx()}>
+              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap:  1 }} sx={{ ...{}, color: theming.colors.primary }}>
+                {theming.getThemedIcon('school')}
+                Tilgjengelige Tips ({filteredTips.length})
+              </Typography>
+
+              <List>
+                {filteredTips.map((tip, index) => (
+                  <ListItem
+                    key={tip.id}
+                    button
+                    onClick={() => {
+                      setSelectedTip(tip);
+                      
+                      // Trigger unified workflow callbacks
+                      onProjectUpdate?.({
+                        type: 'photography_tip_viewed',
+                        tip: tip,
+                        timestamp: new Date().toISOString()
+                  });
+                      onNotificationCreate?.({
+                        type: 'tip_viewed',
+                        message: `Viewing photography tip: "${tip.title}"`,
+                        timestamp: new Date().toISOString()
+                  });
+                  }}
+                    selected={selectedTip?.id === tip.id}
+                    sx={{ 
+                      borderRadius:  ,  1
+                      mb: 1,
+                      border: selectedTip?.id === tip.id ? 2 :,  , 1,
+                      borderColor: selectedTip?.id === tip.id ? 'primary.main' : 'divider'
+                }}
+                  >
+                    <ListItemIcon>
+                      <TipsAndUpdates color="primary" />
+                    </ListItemIcon>
+                    <ListItemText
+                      primary={tip.title}
+                      secondary={
+                        <Box sx={{ mt: 1 }}>
+                          <Chip 
+                            label={getDifficultyLabel(tip.difficulty)}
+                            color={getDifficultyColor(tip.difficulty) as any}
+                            size="small"
+                            sx={{ mr:  1 }}
+                          />
+                          <Chip 
+                            label={tip.category}
+                            variant="outlined"
+                            size="small"
+                          />
+                        </Box>
+                    }
+                    />
+                  </ListItem>
+                ))}
+              </List>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* Tip Details */}
+        <Grid size={{ xs: 1, 2,}} md={6}>
+          {selectedTip ? (
+            <Card sx={theming.getThemedCardSx()}>
+              <CardContent sx={theming.getThemedCardSx()}>
+                <Typography variant="h6" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>
+                  {selectedTip.title}
+                </Typography>
+
+                <Box sx={{ mb: 2 }}>
+                  <Chip 
+                    label={getDifficultyLabel(selectedTip.difficulty)}
+                    color={getDifficultyColor(selectedTip.difficulty) as any}
+                    sx={{ mr:  1 }}
+                  />
+                  <Chip 
+                    label={selectedTip.category}
+                    variant="outlined"
+                  />
+                </Box>
+
+                <Typography variant="body1" paragraph>
+                  {selectedTip.description}
+                </Typography>
+
+                <Accordion>
+                  <AccordionSummary expandIcon={{theming.getThemedIcon('expandMore')}}>
+                    <Typography variant="subtitle1" sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
+                      {theming.getThemedIcon('settings')}
+                      Anbefalt Utstyr
+                    </Typography>
+                  </AccordionSummary>
+                  <AccordionDetails>
+                    <List dense>
+                      {selectedTip.equipment.map((item, index) => (
+                        <ListItem key={index}>
+                          <ListItemIcon>
+                            {theming.getThemedIcon('photoCamera')}
+                          </ListItemIcon>
+                          <ListItemText primary={item} />
+                        </ListItem>
+                      ))}
+                    </List>
+                  </AccordionDetails>
+                </Accordion>
+
+                <Accordion>
+                  <AccordionSummary expandIcon={{theming.getThemedIcon('expandMore')}}>
+                    <Typography variant="subtitle1" sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
+                      <Lightbulb />
+                      Steg-for-steg Guide
+                    </Typography>
+                  </AccordionSummary>
+                  <AccordionDetails>
+                    <List>
+                      {selectedTip.steps.map((step, index) => (
+                        <ListItem key={index}>
+                          <ListItemIcon>
+                            <Typography variant="body2" color="primary" sx={{ fontWeight: 'bold, ',}}>
+                              {index + 1}
+                            </Typography>
+                          </ListItemIcon>
+                          <ListItemText primary={step} />
+                        </ListItem>
+                      ))}
+                    </List>
+                  </AccordionDetails>
+                </Accordion>
+
+                {selectedTip.settings && (
+                  <Accordion>
+                    <AccordionSummary expandIcon={{theming.getThemedIcon('expandMore')}}>
+                      <Typography variant="subtitle1" sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
+                        {theming.getThemedIcon('tune')}
+                        Anbefalt Kamerainnstillinger
+                      </Typography>
+                    </AccordionSummary>
+                    <AccordionDetails>
+                      <Grid container spacing={2}>
+                        {selectedTip.settings.aperture && (
+                          <Grid size={{ xs:  6 }}>
+                            <Typography variant="body2" color="text.secondary">
+                              Blenderåpning
+                            </Typography>
+                            <Typography variant="body1">
+                              {selectedTip.settings.aperture}
+                            </Typography>
+                          </Grid>
+                        )}
+                        {selectedTip.settings.shutterSpeed && (
+                          <Grid size={{ xs:  6 }}>
+                            <Typography variant="body2" color="text.secondary">
+                              Lukkertid
+                            </Typography>
+                            <Typography variant="body1">
+                              {selectedTip.settings.shutterSpeed}
+                            </Typography>
+                          </Grid>
+                        )}
+                        {selectedTip.settings.iso && (
+                          <Grid size={{ xs:  6 }}>
+                            <Typography variant="body2" color="text.secondary">
+                              ISO
+                            </Typography>
+                            <Typography variant="body1">
+                              {selectedTip.settings.iso}
+                            </Typography>
+                          </Grid>
+                        )}
+                        {selectedTip.settings.focusMode && (
+                          <Grid size={{ xs:  6 }}>
+                            <Typography variant="body2" color="text.secondary">
+                              Fokus Modus
+                            </Typography>
+                            <Typography variant="body1">
+                              {selectedTip.settings.focusMode}
+                            </Typography>
+                          </Grid>
+                        )}
+                      </Grid>
+                    </AccordionDetails>
+                  </Accordion>
+                )}
+
+                <Button variant="contained"
+                  startIcon={<Timer sx={theming.getThemedButtonSx()}>}
+                  sx={{ mt: 2 }}
+                  fullWidth
+                >
+                  Lag Øvingsplan
+                </Button>
+              </CardContent>
+            </Card>
+          ) : (
+            <Card sx={theming.getThemedCardSx()}>
+              <CardContent sx={{ textAlign: 'center', py: 8 }} sx={theming.getThemedCardSx()}>
+                <TipsAndUpdates sx={{ fontSize:  64, color: 'text.disabled', mb: 2 }} />
+                <Typography variant="h6" color="text.secondary" sx={{ ...{}, color: theming.colors.primary }}>
+                  Velg et tips for å se detaljer
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Klikk på et fotograferingstips i listen for å se detaljert guide og anbefalinger.
+                </Typography>
+              </CardContent>
+            </Card>
+          )}
+        </Grid>
+      </Grid>
+    </Box>
+  );
+};
+
+export default PhotographyTipsCenter;

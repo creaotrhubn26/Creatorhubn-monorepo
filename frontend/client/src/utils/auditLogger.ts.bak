@@ -1,0 +1,637 @@
+/**
+ * Audit Logger
+ * Comprehensive audit logging and change tracking system
+ */
+
+export interface AuditEvent {
+  id: string;
+  timestamp: number;
+  userId: string;
+  sessionId: string;
+  action: string;
+  resource: string;
+  resourceId: string;
+  details: Record<string, any>;
+  ipAddress?: string;
+  userAgent?: string;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  category: 'user' | 'system' | 'security' | 'performance' | 'error';
+  tags: string[];
+  metadata: Record<string, any>;
+}
+
+export interface AuditConfig {
+  enableLogging: boolean;
+  enableConsoleLogging: boolean;
+  enableFileLogging: boolean;
+  enableRemoteLogging: boolean;
+  logLevel: 'debug' | 'info' | 'warn' | 'error';
+  maxLogSize: number;
+  retentionDays: number;
+  enableCompression: boolean;
+  enableEncryption: boolean;
+  remoteEndpoint?: string;
+  apiKey?: string;
+  batchSize: number;
+  flushInterval: number;
+  enableRealTime: boolean;
+  enableAnalytics: boolean;
+  enableAlerts: boolean;
+  alertThresholds: {
+    errorRate: number;
+    responseTime: number;
+    memoryUsage: number;
+};
+}
+
+export interface AuditStats {
+  totalEvents: number;
+  eventsByCategory: Record<string, number>;
+  eventsBySeverity: Record<string, number>;
+  eventsByAction: Record<string, number>;
+  averageResponseTime: number;
+  errorRate: number;
+  memoryUsage: number;
+  lastUpdated: number;
+}
+
+export interface AuditQuery {
+  startDate?: number;
+  endDate?: number;
+  userId?: string;
+  action?: string;
+  resource?: string;
+  severity?: string;
+  category?: string;
+  tags?: string[];
+  limit?: number;
+  offset?: number;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
+}
+
+class AuditLogger {
+  private config: AuditConfig;
+  private events: AuditEvent[] = [];
+  private stats: AuditStats;
+  private batchQueue: AuditEvent[] = [];
+  private flushTimer: NodeJS.Timeout | null = null;
+  private isFlushing = false;
+
+  constructor(config: Partial<AuditConfig> = {}) {
+    this.config = {
+      enableLogging: true,
+      enableConsoleLogging: true,
+      enableFileLogging: false,
+      enableRemoteLogging: false,
+      logLevel: 'info',
+      maxLogSize: 1000,
+      retentionDays: 30,
+      enableCompression: false,
+      enableEncryption: false,
+      batchSize: 100,
+      flushInterval: 5000,
+      enableRealTime: true,
+      enableAnalytics: true,
+      enableAlerts: true,
+      alertThresholds: {
+        errorRate: 0.05,
+        responseTime: 1000,
+        memoryUsage: 0.8
+    },
+      ...config
+  };
+
+    this.stats = {
+      totalEvents: 0,
+      eventsByCategory: {},
+      eventsBySeverity: {},
+      eventsByAction: {},
+      averageResponseTime: 0,
+      errorRate: 0,
+      memoryUsage: 0,
+      lastUpdated: Date.now()
+};
+
+    this.initializeLogger();
+}
+
+  private initializeLogger(): void {
+    if (this.config.enableLogging) {
+      this.startFlushTimer();
+      this.setupErrorHandling();
+      this.setupPerformanceMonitoring();
+  }
+}
+
+  private startFlushTimer(): void {
+    if (this.flushTimer) {
+      clearInterval(this.flushTimer);
+  }
+
+    this.flushTimer = setInterval(() => {
+      this.flushBatch();
+  }, this.config.flushInterval);
+}
+
+  private setupErrorHandling(): void {
+    if (typeof window !== 'undefined') {
+      window.addEventListener('error', (event) => {
+        this.log({
+          action: 'javascript_error',
+          resource: 'browser',
+          resourceId: 'global',
+          details: {
+            message: event.message,
+            filename: event.filename,
+            lineno: event.lineno,
+            colno: event.colno,
+            error: event.error?.stack
+},
+          severity: 'high',
+          category: 'error',
+          tags: ['javascript', 'error', 'browser']
+      });
+    });
+
+      window.addEventListener('unhandledrejection', (event) => {
+        this.log({
+          action: 'unhandled_promise_rejection',
+          resource: 'browser',
+          resourceId: 'global',
+          details: {
+            reason: event.reason,
+            promise: event.promise
+},
+          severity: 'high',
+          category: 'error',
+          tags: ['promise', 'rejection', 'browser']
+      });
+    });
+  }
+}
+
+  private setupPerformanceMonitoring(): void {
+    if (typeof window !== 'undefined' && 'performance' in window) {
+      // Monitor page load performance
+      window.addEventListener('load', () => {
+        const navigation = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming;
+        if (navigation) {
+          this.log({
+            action: 'page_load',
+            resource: 'page',
+            resourceId: window.location.pathname,
+            details: {
+              loadTime: navigation.loadEventEnd - navigation.loadEventStart,
+              domContentLoaded: navigation.domContentLoadedEventEnd - navigation.domContentLoadedEventStart,
+              firstPaint: performance.getEntriesByName('first-paint')[0]?.startTime || 0,
+              firstContentfulPaint: performance.getEntriesByName('first-contentful-paint')[0]?.startTime || 0
+},
+            severity: 'low',
+            category: 'performance',
+            tags: ['page_load', 'performance']
+        });
+      }
+    });
+
+      // Monitor memory usage
+      if ('memory' in performance) {
+        setInterval(() => {
+          const memory = (performance as any).memory;
+          this.log({
+            action: 'memory_usage',
+            resource: 'browser',
+            resourceId: 'memory',
+            details: {
+              usedJSHeapSize: memory.usedJSHeapSize,
+              totalJSHeapSize: memory.totalJSHeapSize,
+              jsHeapSizeLimit: memory.jsHeapSizeLimit
+},
+            severity: 'low',
+            category: 'performance',
+            tags: ['memory', 'performance']
+        });
+      }, 30000); // Every 30 seconds
+    }
+  }
+}
+
+  public log(eventData: Partial<AuditEvent>): void {
+    if (!this.config.enableLogging) return;
+
+    const event: AuditEvent = {
+      id: this.generateId(),
+      timestamp: Date.now(),
+      userId: eventData.userId || 'anonymous',
+      sessionId: eventData.sessionId || this.getSessionId(),
+      action: eventData.action || 'unknown',
+      resource: eventData.resource || 'unknown',
+      resourceId: eventData.resourceId || 'unknown',
+      details: eventData.details || {},
+      ipAddress: eventData.ipAddress || this.getClientIP(),
+      userAgent: eventData.userAgent || this.getUserAgent(),
+      severity: eventData.severity || 'low',
+      category: eventData.category || 'user',
+      tags: eventData.tags || [],
+      metadata: eventData.metadata || {}
+  };
+
+    // Add to events array
+    this.events.push(event);
+
+    // Update stats
+    this.updateStats(event);
+
+    // Console logging
+    if (this.config.enableConsoleLogging) {
+      this.logToConsole(event);
+  }
+
+    // Add to batch queue
+    this.batchQueue.push(event);
+
+    // Flush if batch is full
+    if (this.batchQueue.length >= this.config.batchSize) {
+      this.flushBatch();
+  }
+
+    // Real-time logging
+    if (this.config.enableRealTime) {
+      this.sendRealTimeEvent(event);
+  }
+
+    // Check alerts
+    if (this.config.enableAlerts) {
+      this.checkAlerts(event);
+  }
+
+    // Cleanup old events
+    this.cleanupOldEvents();
+}
+
+  private generateId(): string {
+    return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+}
+
+  private getSessionId(): string {
+    if (typeof window !== 'undefined') {
+      return sessionStorage.getItem('audit_session_id') || this.createSessionId();
+  }
+    return 'server-session';
+}
+
+  private createSessionId(): string {
+    const sessionId = `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('audit_session_id', sessionId);
+  }
+    return sessionId;
+}
+
+  private getClientIP(): string {
+    // This would typically be provided by the server
+    return 'unknown';
+}
+
+  private getUserAgent(): string {
+    if (typeof window !== 'undefined') {
+      return navigator.userAgent;
+  }
+    return 'server';
+}
+
+  private updateStats(event: AuditEvent): void {
+    this.stats.totalEvents++;
+    this.stats.lastUpdated = Date.now();
+
+    // Update category stats
+    this.stats.eventsByCategory[event.category] = (this.stats.eventsByCategory[event.category] || 0) + 1;
+
+    // Update severity stats
+    this.stats.eventsBySeverity[event.severity] = (this.stats.eventsBySeverity[event.severity] || 0) + 1;
+
+    // Update action stats
+    this.stats.eventsByAction[event.action] = (this.stats.eventsByAction[event.action] || 0) + 1;
+
+    // Update performance stats
+    if (event.category === 'performance' && event.details.responseTime) {
+      const currentAvg = this.stats.averageResponseTime;
+      const totalEvents = this.stats.totalEvents;
+      this.stats.averageResponseTime = (currentAvg * (totalEvents - 1) + event.details.responseTime) / totalEvents;
+}
+
+    // Update error rate
+    if (event.category === 'error') {
+      this.stats.errorRate = this.stats.eventsByCategory.error / this.stats.totalEvents;
+  }
+
+    // Update memory usage
+    if (event.action === 'memory_usage' && event.details.usedJSHeapSize) {
+      this.stats.memoryUsage = event.details.usedJSHeapSize / event.details.jsHeapSizeLimit;
+  }
+}
+
+  private logToConsole(event: AuditEvent): void {
+    const logLevel = this.config.logLevel;
+    const shouldLog = this.shouldLogEvent(event, logLevel);
+
+    if (!shouldLog) return;
+
+    const logMessage = `[AUDIT] ${event.action} on ${event.resource} (${event.severity})`;
+    const logData = {
+      event,
+      stats: this.stats
+};
+
+    switch (event.severity) {
+      case 'critical':
+      case 'high':
+        console.error(logMessage, logData);
+        break;
+      case 'medium':
+        console.warn(logMessage, logData);
+        break;
+      case 'low':
+      default: console.log(logMessage, logData);
+        break;
+  }
+}
+
+  private shouldLogEvent(event: AuditEvent, logLevel: string): boolean {
+    const severityLevels = { debug: 0, info: 1, warn: 2, error: 3 };
+    const eventLevel = severityLevels[event.severity as keyof typeof severityLevels] || 0;
+    const configLevel = severityLevels[logLevel as keyof typeof severityLevels] || 1;
+
+    return eventLevel >= configLevel;
+}
+
+  private async flushBatch(): Promise<void> {
+    if (this.isFlushing || this.batchQueue.length === 0) return;
+
+    this.isFlushing = true;
+    const batch = [...this.batchQueue];
+    this.batchQueue = [];
+
+    try {
+      // File logging
+      if (this.config.enableFileLogging) {
+        await this.logToFile(batch);
+    }
+
+      // Remote logging
+      if (this.config.enableRemoteLogging && this.config.remoteEndpoint) {
+        await this.logToRemote(batch);
+    }
+  } catch (error) {
+      console.error('Failed to flush audit batch:', error);
+      // Re-add events to queue for retry
+      this.batchQueue.unshift(...batch);
+  } finally {
+      this.isFlushing = false;
+  }
+}
+
+  private async logToFile(events: AuditEvent[]): Promise<void> {
+    // This would typically write to a file on the server
+    console.log('File logging not implemented in browser environment');
+}
+
+  private async logToRemote(events: AuditEvent[]): Promise<void> {
+    if (!this.config.remoteEndpoint) return;
+
+    try {
+      const response = await fetch(this.config.remoteEndpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.config.apiKey}`,
+          'X-Audit-Batch-Size': events.length.toString()
+      },
+        body: JSON.stringify({
+          events,
+          timestamp: Date.now(),
+          sessionId: this.getSessionId()
+})
+    });
+
+      if (!response.ok) {
+        throw new Error(`Remote logging failed: ${response.status}`);
+    }
+  } catch (error) {
+      console.error('Remote logging error:', error);
+      throw error;
+  }
+}
+
+  private sendRealTimeEvent(event: AuditEvent): void {
+    // This would typically send to a WebSocket or similar real-time system
+    if (typeof window !== 'undefined' && 'CustomEvent' in window) {
+      window.dispatchEvent(new CustomEvent('audit-event', { detail: event }));
+  }
+}
+
+  private checkAlerts(event: AuditEvent): void {
+    const thresholds = this.config.alertThresholds;
+
+    // Check error rate
+    if (this.stats.errorRate > thresholds.errorRate) {
+      this.triggerAlert('high_error_rate', {
+        errorRate: this.stats.errorRate,
+        threshold: thresholds.errorRate
+});
+  }
+
+    // Check response time
+    if (this.stats.averageResponseTime > thresholds.responseTime) {
+      this.triggerAlert('slow_response_time', {
+        responseTime: this.stats.averageResponseTime,
+        threshold: thresholds.responseTime
+});
+  }
+
+    // Check memory usage
+    if (this.stats.memoryUsage > thresholds.memoryUsage) {
+      this.triggerAlert('high_memory_usage', {
+        memoryUsage: this.stats.memoryUsage,
+        threshold: thresholds.memoryUsage
+});
+  }
+
+    // Check critical events
+    if (event.severity === 'critical') {
+      this.triggerAlert('critical_event', {
+        event: event.action,
+        resource: event.resource,
+        details: event.details
+});
+  }
+}
+
+  private triggerAlert(type: string, data: Record<string, any>): void {
+    const alert = {
+      id: this.generateId(),
+      timestamp: Date.now(),
+      type,
+      data,
+      severity: 'high' as const
+};
+
+    console.warn(`[AUDIT ALERT] ${type}:`, alert);
+
+    // Dispatch custom event for alert handling
+    if (typeof window !== 'undefined' && 'CustomEvent' in window) {
+      window.dispatchEvent(new CustomEvent('audit-alert', { detail: alert,}));
+  }
+}
+
+  private cleanupOldEvents(): void {
+    const cutoffTime = Date.now() - (this.config.retentionDays * 24 * 60 * 60 * 1000);
+    this.events = this.events.filter(event => event.timestamp > cutoffTime);
+}
+
+  public query(query: AuditQuery): AuditEvent[] {
+    let results = [...this.events];
+
+    // Apply filters
+    if (query.startDate) {
+      results = results.filter(event => event.timestamp >= query.startDate!);
+}
+    if (query.endDate) {
+      results = results.filter(event => event.timestamp <= query.endDate!);
+  }
+    if (query.userId) {
+      results = results.filter(event => event.userId === query.userId);
+  }
+    if (query.action) {
+      results = results.filter(event => event.action === query.action);
+  }
+    if (query.resource) {
+      results = results.filter(event => event.resource === query.resource);
+  }
+    if (query.severity) {
+      results = results.filter(event => event.severity === query.severity);
+  }
+    if (query.category) {
+      results = results.filter(event => event.category === query.category);
+  }
+    if (query.tags && query.tags.length > 0) {
+      results = results.filter(event => 
+        query.tags!.some(tag => event.tags.includes(tag))
+      );
+  }
+
+    // Apply sorting
+    if (query.sortBy) {
+      results.sort((a, b) => {
+        const aValue = (a as any)[query.sortBy!];
+        const bValue = (b as any)[query.sortBy!];
+        const order = query.sortOrder === 'desc' ? -1 : 1;
+        return aValue < bValue ? -1 * order : aValue > bValue ? 1 * order : 0;
+    });
+  }
+
+    // Apply pagination
+    const offset = query.offset || 0;
+    const limit = query.limit || 100;
+    results = results.slice(offset, offset + limit);
+
+    return results;
+}
+
+  public getStats(): AuditStats {
+    return { ...this.stats };
+}
+
+  public export(format: 'json' | 'csv' | 'xml' = 'json'): string {
+    const data = this.events;
+
+    switch (format) {
+      case 'json':
+        return JSON.stringify(data, null, 2);
+      case 'csv':
+        return this.exportToCSV(data);
+      case 'xml':
+        return this.exportToXML(data);
+      default: return JSON.stringify(data, null, 2);
+  }
+}
+
+  private exportToCSV(events: AuditEvent[]): string {
+    if (events.length === 0) return '';
+
+    const headers = [
+      'id', 'timestamp', 'userId', 'sessionId', 'action', 'resource', 'resourceId',
+      'severity', 'category', 'tags', 'ipAddress', 'userAgent'
+    ];
+
+    const csvRows = [headers.join(',')];
+
+    events.forEach(event => {
+      const row = headers.map(header => {
+        const value = (event as any)[header];
+        if (Array.isArray(value)) {
+          return `"${value.join(';')}"`;
+      }
+        return `"${String(value || '').replace(/"/g, '""')}"`;
+    });
+      csvRows.push(row.join(','));
+  });
+
+    return csvRows.join('\n');
+}
+
+  private exportToXML(events: AuditEvent[]): string {
+    let xml = '<?xml version="1.0" encoding="UTF-8"?>\n<auditEvents>\n';
+
+    events.forEach(event => {
+      xml += '  <event>\n';
+      Object.entries(event).forEach(([key, value]) => {
+        if (Array.isArray(value)) {
+          xml += `    <${key}>${value.join(';')}</${key}>\n`;
+      } else {
+          xml += `    <${key}>${String(value || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</${key}>\n`;
+      }
+    });
+      xml += '  </event>\n';
+  });
+
+    xml += '</auditEvents>';
+    return xml;
+}
+
+  public clear(): void {
+    this.events = [];
+    this.batchQueue = [];
+    this.stats = {
+      totalEvents: 0,
+      eventsByCategory: {},
+      eventsBySeverity: {},
+      eventsByAction: {},
+      averageResponseTime: 0,
+      errorRate: 0,
+      memoryUsage: 0,
+      lastUpdated: Date.now()
+};
+}
+
+  public destroy(): void {
+    if (this.flushTimer) {
+      clearInterval(this.flushTimer);
+      this.flushTimer = null;
+  }
+    this.flushBatch();
+    this.clear();
+}
+}
+
+// Create singleton instance
+export const auditLogger = new AuditLogger();
+
+// Export types and class
+export { AuditLogger };
+export default auditLogger;
+
+
+
+
+

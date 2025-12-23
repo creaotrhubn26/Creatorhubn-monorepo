@@ -1,0 +1,15 @@
+<svg width="512" height="512" xmlns="http://www.w3.org/2000/svg">
+  <rect width="512" height="512" fill="white"/>
+  <g fill="black">
+    <rect x="0" y="0" width="30" height="512"/>
+    <rect x="60" y="0" width="30" height="512"/>
+    <rect x="120" y="0" width="30" height="512"/>
+    <rect x="180" y="0" width="30" height="512"/>
+    <rect x="240" y="0" width="30" height="512"/>
+    <rect x="300" y="0" width="30" height="512"/>
+    <rect x="360" y="0" width="30" height="512"/>
+    <rect x="420" y="0" width="30" height="512"/>
+    <rect x="480" y="0" width="30" height="512"/>
+  </g>
+</svg>
+

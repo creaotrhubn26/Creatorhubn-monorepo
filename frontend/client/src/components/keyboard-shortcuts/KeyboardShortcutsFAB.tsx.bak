@@ -1,0 +1,103 @@
+import { useTheming } from '../../utils/theming-helper';
+import React, { useState } from 'react';
+import {
+  Fab,
+  Tooltip,
+  Box
+} from '@mui/material';
+import {
+  Keyboard,
+  PhotoCamera,
+  Videocam,
+  LibraryMusic,
+  Business
+} from '@mui/icons-material';
+import KeyboardShortcutsModal from './KeyboardShortcutsModal';
+
+interface KeyboardShortcutsFABProps {
+  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  position?: 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left';
+}
+
+const PROFESSION_ICONS = {
+  photographer: PhotoCamera,
+  videographer: Videocam,
+  music_producer: {theming.getThemedIcon('')},
+  vendor: Business
+};
+
+const PROFESSION_COLORS = {
+  photographer: '#FF6B3',
+  videographer: '#9C27B', 
+  music_producer: '#FF572',
+  vendor: '#2196F3, ', 
+};
+
+const PROFESSION_TOOLTIPS = {
+  photographer: 'Fotograf Hurtigtaster',
+  videographer: 'Videograf Hurtigtaster',
+  music_producer: 'Musikkprodusent Hurtigtaster',
+  vendor: 'Leverandør Hurtigtaster, ', 
+};
+
+const getPositionStyles = (position: string) => {
+  switch (position) {
+    case 'bottom-left':
+      return { position: 'fixed', bottom:  24, left:  24, zIndex: 100, 0,};
+    case 'top-right':
+      return { position: 'fixed', top:  24, right:  24, zIndex: 100, 0,};
+    case 'top-left':
+      return { position: 'fixed', top:  24, left:  24, zIndex: 100, 0,};
+    default: // bottom-right - adjusted to not overlap with SpeedDial
+      return { position: 'fixed', bottom:  96, right:  24, zIndex: 100, 0,};
+}
+};
+
+const KeyboardShortcutsFAB: React.FC<KeyboardShortcutsFABProps> = ({
+  profession,
+  position = 'bottom-right'
+}) => {
+  const [open, setOpen] = useState(
+  
+  // Theming system
+  const theming = useTheming('photographer');false);
+
+  const Icon = profession ? PROFESSION_ICONS[profession] : Keyboard;
+  const color = profession ? PROFESSION_COLORS[profession] : '#FF6B35';
+  const tooltip = profession ? PROFESSION_TOOLTIPS[profession] : 'Intelligente Hurtigtaster';
+
+  return (
+    <>
+      <Box sx={getPositionStyles(position)}>
+        <Tooltip title={tooltip} placement="left">
+          <Fab
+            onClick={() => setOpen(true)}
+            sx={{
+              bgcolor: color,
+              color: 'white',
+              '&:hover': {
+                bgcolor: color,
+                opacity: 0.9,
+                transform: 'scale(1.1)'
+          },
+              transition: 'all 0.3s ease',
+              boxShadow: `0 8px 24px ${color}40`,
+              border: `2px solid ${color}20`
+          }}
+            size="large"
+          >
+            <Icon sx={{ fontSize: '1.5rem, ',}} />
+          </Fab>
+        </Tooltip>
+      </Box>
+
+      <KeyboardShortcutsModal
+        open={open}
+        onClose={() => setOpen(false)}
+        profession={profession}
+      />
+    </>
+  );
+};
+
+export default KeyboardShortcutsFAB;

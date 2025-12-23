@@ -1,0 +1,364 @@
+/**
+ * Responsive Design Components for CreatorHub Norge
+ * Mobile-first approach with Material UI breakpoints
+ * Ensures optimal user experience across all devices
+ */
+
+import { useTheming } from '../../utils/theming-helper';
+import React from 'react';
+import {
+  Box,
+  Container,
+  Grid,
+  Stack,
+  useTheme,
+  useMediaQuery,
+  Typography,
+  Hidden
+} from '@mui/material';
+import { styled } from '@mui/material/styles';
+import { Button } from '@mui/material';
+
+// Responsive container with proper spacing
+interface ResponsiveContainerProps {
+  children: React.ReactNode;
+  maxWidth?: 'xs' | 'sm' | 'md' | 'lg' | 'xl' | false;
+  disableGutters?: boolean;
+}
+
+export function ResponsiveContainer({ 
+  children, 
+  maxWidth = 'lg', 
+  disableGutters = false 
+}: ResponsiveContainerProps) {
+  return (
+    <Container 
+      maxWidth={maxWidth}
+      disableGutters={disableGutters}
+      sx={{ 
+        px: { xs: 2, sm: 3, md: 4 },
+        py: { xs: 2, sm: 3 }}}
+    >
+      {children}
+    </Container>
+  );
+}
+
+// Responsive grid system
+interface ResponsiveGridProps {
+  children: React.ReactNode[];
+  columns?: { xs?: number; sm?: number; md?: number; lg?: number; xl?: number };
+  spacing?: number;
+  alignItems?: 'flex-start' | 'center' | 'flex-end' | 'stretch';
+}
+
+export function ResponsiveGrid({ 
+  children, 
+  columns = { xs: 1, sm: 2, md: 3, lg: 4 },
+  spacing = 3,
+  alignItems = 'stretch'
+}: ResponsiveGridProps) {
+  const getGridSize = () => {
+    return {
+      xs: 12 / (columns.xs || 1),
+      sm: 12 / (columns.sm || columns.xs || 1),
+      md: 12 / (columns.md || columns.sm || columns.xs || 1),
+      lg: 12 / (columns.lg || columns.md || columns.sm || columns.xs || 1),
+      xl: 12 / (columns.xl || columns.lg || columns.md || columns.sm || columns.xs || 1),
+  };
+};
+
+  const gridSizes = getGridSize();
+
+  return (
+    <Grid container spacing={spacing} alignItems={alignItems}>
+      {React.Children.map(children, (child, index) => (
+        <Grid 
+          item 
+          key={index}
+          xs={gridSizes.xs}
+          sm={gridSizes.sm}
+          md={gridSizes.md}
+          lg={gridSizes.lg}
+          xl={gridSizes.xl}
+        >
+          {child}
+        </Grid>
+      ))}
+    </Grid>
+  );
+}
+
+// Responsive stack with proper spacing
+interface ResponsiveStackProps {
+  children: React.ReactNode;
+  direction?: { xs?: 'row' | 'column'; sm?: 'row' | 'column'; md?: 'row' | 'column' };
+  spacing?: { xs?: number; sm?: number; md?: number };
+  alignItems?: 'flex-start' | 'center' | 'flex-end' | 'stretch';
+  justifyContent?: 'flex-start' | 'center' | 'flex-end' | 'space-between' | 'space-around';
+}
+
+export function ResponsiveStack({ 
+  children, 
+  direction = { xs: 'column', sm: 'row' },
+  spacing = { xs: 2, sm: 3, md: 4 },
+  alignItems = 'center',
+  justifyContent = 'flex-start'
+}: ResponsiveStackProps) {
+  return (
+    <Stack
+      direction={direction}
+      spacing={spacing}
+      alignItems={alignItems}
+      justifyContent={justifyContent}
+      sx={{
+        width: '100%',
+        flexWrap: { xs: 'nowrap', sm: 'wrap' }}}
+    >
+      {children}
+    </Stack>
+  );
+}
+
+// Mobile-optimized card layout
+export const MobileOptimizedCard = styled(Box)(({ theme }) => ({
+  padding: theme.spacing(2),
+  borderRadius: theme.shape.borderRadius * 2,
+  backgroundColor: theme.palette.background.paper,
+  boxShadow: theme.shadows[2],
+  transition: 'all 0.3s ease-in-out',
+  
+  [theme.breakpoints.up('sm, ')]: {
+    padding: theme.spacing(3),
+    boxShadow: theme.shadows[4],
+},
+  
+  [theme.breakpoints.up('md,')]: {
+    padding: theme.spacing(4),
+    borderRadius: theme.shape.borderRadius * 3,
+}, '&:hover': {
+    transform: 'translateY(-2px)',
+    boxShadow: theme.shadows[8],
+},
+}));
+
+// Responsive typography with proper scaling
+interface ResponsiveTypographyProps {
+  children: React.ReactNode;
+  variant?: 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6' | 'body1' | 'body2';
+  mobileVariant?: 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6' | 'body1' | 'body2';
+  align?: 'left' | 'center' | 'right';
+  color?: string;
+}
+
+export function ResponsiveTypography({ 
+  children, 
+  variant = 'body1',
+  mobileVariant,
+  align = 'left',
+  color = 'text.primary'
+}: ResponsiveTypographyProps) {
+  const theme = useTheme();
+  
+  // Theming system
+  const theming = useTheming('photographer,');
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+
+  return (
+    <Typography
+      variant={isMobile && mobileVariant ? mobileVariant : variant}
+      align={align}
+      color={color}
+      sx={{
+        fontSize: { xs: variant === 'h1' ? '2rem' : variant === 'h2' ? '1.75rem' : undefined,
+          sm: undefined, // Use default Material UI sizes
+      },
+        lineHeight: { xs: 1.2, sm: 1.5 },
+        mb: { xs: 1, sm: 2 }}}
+    >
+      {children}
+    </Typography>
+  );
+}
+
+// Hook for responsive values
+export function useResponsiveValue<T>(values: {
+  xs?: T;
+  sm?: T;
+  md?: T;
+  lg?: T;
+  xl?: T;
+}): T | undefined {
+  const theme = useTheme();
+  const isXs = useMediaQuery(theme.breakpoints.only('xs'));
+  const isSm = useMediaQuery(theme.breakpoints.only('sm'));
+  const isMd = useMediaQuery(theme.breakpoints.only('md'));
+  const isLg = useMediaQuery(theme.breakpoints.only('lg'));
+  const isXl = useMediaQuery(theme.breakpoints.up('xl'));
+
+  if (isXl && values.xl) return values.xl;
+  if (isLg && values.lg) return values.lg;
+  if (isMd && values.md) return values.md;
+  if (isSm && values.sm) return values.sm;
+  if (isXs && values.xs) return values.xs;
+
+  // Fallback to the first available value
+  return values.xl || values.lg || values.md || values.sm || values.xs;
+}
+
+// Responsive sidebar layout
+interface ResponsiveSidebarProps {
+  sidebar: React.ReactNode;
+  main: React.ReactNode;
+  sidebarWidth?: { xs?: string; sm?: string; md?: string };
+  collapsibleOnMobile?: boolean;
+}
+
+export function ResponsiveSidebar({ 
+  sidebar, 
+  main, 
+  sidebarWidth = { xs: '100%', sm: '280px', md: '320px' },
+  collapsibleOnMobile = true
+}: ResponsiveSidebarProps) {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+
+  if (isMobile && collapsibleOnMobile) {
+    return (
+      <Stack direction="column" spacing={0}>
+        <Box sx={{ width: '100%', mb: 2 }}>
+          {sidebar}
+        </Box>
+        <Box sx={{ flex: 1 }}>
+          {main}
+        </Box>
+      </Stack>
+    );
+}
+
+  return (
+    <Stack direction="row" spacing={3} sx={{ height: '100vh' }}>
+      <Box 
+        sx={{ 
+          width: sidebarWidth,
+          flexShrink: 0,
+          overflow: 'auto'}}
+      >
+        {sidebar}
+      </Box>
+      <Box sx={{ flex: 1, overflow: 'auto' }}>
+        {main}
+      </Box>
+    </Stack>
+  );
+}
+
+// Mobile-first breakpoint helper
+export function useBreakpoints() {
+  const theme = useTheme();
+  
+  return {
+    isMobile: useMediaQuery(theme.breakpoints.down('sm')),
+    isTablet: useMediaQuery(theme.breakpoints.between('sm', 'md')),
+    isDesktop: useMediaQuery(theme.breakpoints.up('md')),
+    isLarge: useMediaQuery(theme.breakpoints.up('lg')),
+    isXLarge: useMediaQuery(theme.breakpoints.up('xl')),
+    
+    // Specific breakpoint checks
+    isXs: useMediaQuery(theme.breakpoints.only('xs')),
+    isSm: useMediaQuery(theme.breakpoints.only('sm')),
+    isMd: useMediaQuery(theme.breakpoints.only('md')),
+    isLg: useMediaQuery(theme.breakpoints.only('lg')),
+    isXl: useMediaQuery(theme.breakpoints.up('xl')),
+};
+}
+
+// Responsive button group
+interface ResponsiveButtonGroupProps {
+  buttons: Array<{
+    label: string;
+    onClick: () => void;
+    icon?: React.ReactNode;
+    variant?: 'contained' | 'outlined' | 'text';
+    disabled?: boolean;
+}>;
+  direction?: { xs?: 'row' | 'column'; sm?: 'row' | 'column' };
+}
+
+export function ResponsiveButtonGroup({ 
+  buttons, 
+  direction = { xs: 'column', sm: 'row' }
+}: ResponsiveButtonGroupProps) {
+  return (
+    <Stack
+      direction={direction}
+      spacing={{ xs: 1, sm: 2 }}
+      sx={{
+        width: { xs: '100%', sm: 'auto' }, '& > *': {
+          minWidth: { xs: '100%', sm: 'auto' },
+      }}}
+    >
+      {buttons.map((button, index) => (
+        <Box 
+          key={index}
+          component="button"
+          onClick={button.onClick}
+          disabled={button.disabled}
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 1,
+            px: 2,
+            py: 1.5,
+            borderRadius: 2,
+            border: button.variant === 'outlined' ? '1px solid' : 'none',
+            borderColor: button.variant === 'outlined' ? 'primary.main' : 'transparent',
+            backgroundColor: button.variant === 'contained' ? 'primary.main' : 'transparent',
+            color: button.variant === 'contained' ? 'primary.contrastText' : 'primary.main',
+            cursor: button.disabled ? 'not-allowed' : 'pointer',
+            opacity: button.disabled ? 0.5 : 1,
+            transition: 'all 0.2s ease-in-out', '&:hover': {
+              backgroundColor: button.variant === 'contained' 
+                ? 'primary.dark' 
+                : 'primary.main',
+              color: button.variant === 'contained' 
+                ? 'primary.contrastText'
+                : 'primary.contrastText',
+              transform: button.disabled ? 'none' : 'translateY(-1px)',
+          }}}
+        >
+          {button.icon}
+          <Typography variant="button">
+            {button.label}
+          </Typography>
+        </Box>
+      ))}
+    </Stack>
+  );
+}
+
+// Touch-optimized component for mobile
+export const TouchOptimized = styled(Box)(({ theme }) => ({
+  // Ensure touch targets are at least 44px
+  minHeight: '44px',
+  minWidth: '44px',
+  
+  // Add padding for better touch experience
+  padding: theme.spacing(1.5),
+  
+  // Improve touch feedback
+  '&:active': {
+    transform: 'scale(0.95)',
+    transition: 'transform 0.1s ease-out',
+},
+  
+  // Ensure proper spacing between touch elements
+ '& + &': {
+    marginTop: theme.spacing(1),
+    [theme.breakpoints.up('sm')]: {
+      marginTop: 0,
+      marginLeft: theme.spacing(1),
+  },
+},
+}));

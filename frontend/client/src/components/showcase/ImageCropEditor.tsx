@@ -1,0 +1,414 @@
+import React, { useState, useRef, useCallback, useEffect } from 'react';
+import { useEnhancedMasterIntegration } from "@/integration/EnhancedMasterIntegrationProvider';
+import { useTheming } from '../../utils/theming-helper';";
+import {
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Button,
+  Box,
+  Typography,
+  Slider,
+  IconButton,
+  Grid,
+  Paper
+} from '@mui/material';
+import {
+  RotateLeft as RotateLeftIcon,
+  RotateRight as RotateRightIcon,
+  ZoomIn as ZoomInIcon,
+  ZoomOut as ZoomOutIcon,
+  CenterFocusStrong as FocusIcon,
+  Crop as CropIcon
+} from '@mui/icons-material';
+
+interface CropSettings {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rotate: number;
+  zoom: number
+}
+
+interface FocalPoint {
+  x: number;
+  y: number
+}
+
+interface ImageCropEditorProps {
+  open: boolean;
+  onClose: () => void;
+  imageUrl: string;
+  currentCropSettings?: CropSettings;
+  currentFocalPoint?: FocalPoint;
+  onSave: (cropSettings: CropSettings, focalPoint: FocalPoint) => void
+}
+
+export const ImageCropEditor: React.FC<ImageCropEditorProps> = ({
+  open,
+  onClose,
+  imageUrl,
+  currentCropSettings,
+  currentFocalPoint,
+  onSave
+}) => {
+  const [cropSettings, setCropSettings] = useState<CropSettings>(
+    currentCropSettings || {
+      x:  0,
+      y:  0,
+      width: 10,
+      height: 10,
+      rotate:  0,
+      zoom: 1 }
+  );
+  
+  const [focalPoint, setFocalPoint] = useState<FocalPoint>(
+    currentFocalPoint || { x:  50, y: 50,}
+  );
+  
+  const [isDragging, setIsDragging] = useState(false);
+  const [showFocalPoint, setShowFocalPoint] = useState(false);
+  
+  const imageRef = useRef<HTMLImageElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  
+  const { integration, communication, dataFlow, componentRegistry } = useEnhancedMasterIntegration();
+  
+  // Theming system
+  const theming = useTheming('photographer');
+
+  // Register component with MasterIntegrationProvider
+  useEffect(() => {
+    componentRegistry.registerComponent({
+      id: 'image-crop-editor',
+      type: 'editor',
+      capabilities: [
+        'crop-settings','focal-point''image-data','image: crop-saved''image: crop-cancelled','image: focal-point-changed''crop-image','set-focal-point''rotate-image','zoom-image''crop-canvas','focal-point-selector''crop-controls', 'image-processing', 'canvas-manipulation', 'crop-algorithms'
+      ],
+      dependencies: ['showcase-drive-grid','showcase-admin'],
+      lastActive: Date.now(),
+      performance: {
+        renderCount: 0,
+        avgRenderTime:  0,
+        memoryUsage: 0 }
+  });
+
+    // Register data flow nodes
+    dataFlow.registerNode('crop-settings', 'source', {
+      description: 'Current crop settings for image editing',
+      dataType: 'object',
+      schema: 'CropSettings'
+});
+
+    dataFlow.registerNode('focal-point', 'source', {
+      description: 'Focal point for image cropping',
+      dataType: 'object',
+      schema: 'FocalPoint'
+});
+
+    dataFlow.registerNode('image-data', 'source', {
+      description: 'Image data being edited',
+      dataType: 'object',
+      schema: 'ImageData'
+});
+
+    return () => {
+      componentRegistry.unregisterComponent('image-crop-editor');
+  };
+}, [componentRegistry, dataFlow]);
+
+  const handleImageClick = useCallback((event: React.MouseEvent<HTMLImageElement>) => {
+    if (!imageRef.current || !containerRef.current) return;
+    
+    const rect = imageRef.current.getBoundingClientRect();
+    const containerRect = containerRef.current.getBoundingClientRect();
+    
+    const x = ((event.clientX - rect.left) / rect.width) * 100;
+    const y = ((event.clientY - rect.top) / rect.height) * 100;
+    
+    setFocalPoint({ x: Math.max, (Math.min(100, x)), y: Math.max, (Math.min(100, y)) });
+    setShowFocalPoint(true);
+}, []);
+
+  const handleRotate = (direction: 'left' | 'right') => {
+    const rotation = direction === 'left' ? -90 : 90;
+    setCropSettings(prev => ({
+      ...prev,
+      rotate: (prev.rotate + rotation) % 360 }));
+};
+
+  const handleZoom = (newZoom: number) => {
+    setCropSettings(prev => ({
+      ...prev,
+      zoom: newZoom
+}));
+};
+
+  const handleSave = () => {
+    // Broadcast crop saved event
+    communication.emit('image: crop-saved', {
+      cropSettings,
+      focalPoint,
+      imageUrl,
+      timestamp: Date.now()
+});
+    
+    onSave(cropSettings, focalPoint);
+    onClose();
+};
+
+  const resetCrop = () => {
+    setCropSettings({
+      x:  0,
+      y:  0,
+      width: 10,
+      height: 10,
+      rotate:  0,
+      zoom: 1 });
+    setFocalPoint({ x:  50, y: 50,});
+    setShowFocalPoint(false);
+};
+
+  return (
+    <Dialog
+      open={open}
+      onClose={onClose}
+      maxWidth="lg"
+      fullWidth
+      PaperProps={{
+        sx: {
+          height: '90vh',
+          maxHeight: '90vh'
+    }
+    }}
+    >
+      <DialogTitle>
+        <Box display="flex" alignItems="center" gap={1}>
+          <CropIcon />
+          Rediger bilde og fokuspunkt
+        </Box>
+      </DialogTitle>
+      
+      <DialogContent sx={{ p:  2 }}>
+        <Grid container spacing={2} sx={{ height: '100%'}}>
+          {/* Image Preview */}
+          <Grid item xs={12} md={8}>
+            <Paper 
+              ref={containerRef}
+              sx={{ 
+                position: 'relative', 
+                height: '100%', 
+                minHeight: 40,
+                overflow: 'hidden',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: '#f5f5f0',
+                cursor: 'crosshair'
+          }}
+             sx={theming.getThemedCardSx()}>
+              <img
+                ref={imageRef}
+                src={imageUrl}
+                alt="Crop preview"
+                onClick={handleImageClick}
+                style={{
+                  maxWidth: '100%',
+                  maxHeight: '100%',
+                  transform: `rotate(${cropSettings.rotate}deg) scale(${cropSettings.zoom})`,
+                  transition: 'transform 0.2s ease',
+                  objectFit: 'contain'
+            }}
+              />
+              
+              {/* Focal Point Indicator */}
+              {showFocalPoint && (
+                <Box
+                  sx={{
+                    position: 'absolute',
+                    left: `${focalPoint.x}%`,
+                    top: `${focalPoint.y}%`,
+                    width:  20,
+                    height:  20,
+                    borderRadius: '50, %',
+                    backgroundColor: '#ff8c00',
+                    border: '2px solid white',
+                    transform: 'translate(-5%, -50%)',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+                    zIndex: 10}}
+                />
+              )}
+              
+              {/* Crop Overlay */}
+              <Box
+                sx={{
+                  position: 'absolute',
+                  left: `${cropSettings.x}%`,
+                  top: `${cropSettings.y}%`,
+                  width: `${cropSettings.width}%`,
+                  height: `${cropSettings.height}%`,
+                  border: '2px dashed #ff8c00',
+                  backgroundColor: 'rgba(25, 1400.1)',
+                  pointerEvents: 'none'
+            }}
+              />
+            </Paper>
+          </Grid>
+
+          {/* Controls */}
+          <Grid item xs={12} md={4}>
+            <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', gap:  3 }}>
+              
+              {/* Rotation Controls */}
+              <Paper sx={{ p:  2 ,  ...theming.getThemedCardSx() }}>
+                <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                  🔄 Rotasjon
+                </Typography>
+                <Box display="flex" alignItems="center" justifyContent="center" gap={2}>
+                  <IconButton onClick={() => handleRotate('left')}>
+                    <RotateLeftIcon />
+                  </IconButton>
+                  <Typography variant="body2">
+                    {cropSettings.rotate}°
+                  </Typography>
+                  <IconButton onClick={() => handleRotate('right')}>
+                    <RotateRightIcon />
+                  </IconButton>
+                </Box>
+              </Paper>
+
+              {/* Zoom Controls */}
+              <Paper sx={{ p:  2 ,  ...theming.getThemedCardSx() }}>
+                <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                  🔍 Zoom
+                </Typography>
+                <Box display="flex" alignItems="center" gap={2}>
+                  <IconButton onClick={() => handleZoom(Math.max(0.1, cropSettings.zoom - 0.1))}>
+                    <ZoomOutIcon />
+                  </IconButton>
+                  <Slider
+                    value={cropSettings.zoom}
+                    onChange={(_, value) => handleZoom(value as number)}
+                    min={0.1}
+                    max={3}
+                    step={0.1}
+                    sx={{ flex:  1 }}
+                  />
+                  <IconButton onClick={() => handleZoom(Math.min(3, cropSettings.zoom + 0.1))}>
+                    <ZoomInIcon />
+                  </IconButton>
+                </Box>
+                <Typography variant="caption" color="text.secondary">
+                  {Math.round(cropSettings.zoom * 100)}%
+                </Typography>
+              </Paper>
+
+              {/* Focal Point */}
+              <Paper sx={{ p:  2 ,  ...theming.getThemedCardSx() }}>
+                <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                  🎯 Fokuspunkt
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  Klikk på bildet for å sette fokuspunkt for thumbnail-generering.
+                </Typography>
+                <Box display="flex" alignItems="center" gap={1} mb={2}>
+                  <FocusIcon color={showFocalPoint ? 'primary' : 'disabled'} />
+                  <Typography variant="body2">
+                    {showFocalPoint 
+                      ? `X: ${Math.round(focalPoint.)}%, Y: ${Math.round(focalPoint.)}%`
+                      : 'Ingen fokuspunkt satt'
+                  }
+                  </Typography>
+                </Box>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  onClick={() => {
+                    setFocalPoint({ x:  50, y: 50,});
+                    setShowFocalPoint(true);
+                }}
+                >
+                  Sentrer fokuspunkt
+                </Button>
+              </Paper>
+
+              {/* Crop Area */}
+              <Paper sx={{ p: 2, flex:  1 ,  ...theming.getThemedCardSx() }}>
+                <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                  ✂️ Beskjæring
+                </Typography>
+                
+                <Box mb={2}>
+                  <Typography variant="body2" gutterBottom>X Position</Typography>
+                  <Slider
+                    value={cropSettings.x}
+                    onChange={(_, value) => setCropSettings(prev => ({ ...prev, x: value as number }))}
+                    min={0}
+                    max={100 - cropSettings.width}
+                  />
+                </Box>
+
+                <Box mb={2}>
+                  <Typography variant="body2" gutterBottom>Y Position</Typography>
+                  <Slider
+                    value={cropSettings.y}
+                    onChange={(_, value) => setCropSettings(prev => ({ ...prev, y: value as number }))}
+                    min={0}
+                    max={100 - cropSettings.height}
+                  />
+                </Box>
+
+                <Box mb={2}>
+                  <Typography variant="body2" gutterBottom>Bredde</Typography>
+                  <Slider
+                    value={cropSettings.width}
+                    onChange={(_, value) => setCropSettings(prev => ({ ...prev, width: value as number }))}
+                    min={10}
+                    max={100}
+                  />
+                </Box>
+
+                <Box mb={2}>
+                  <Typography variant="body2" gutterBottom>Høyde</Typography>
+                  <Slider
+                    value={cropSettings.height}
+                    onChange={(_, value) => setCropSettings(prev => ({ ...prev, height: value as number }))}
+                    min={10}
+                    max={100}
+                  />
+                </Box>
+
+                <Button
+                  variant="outlined"
+                  size="small"
+                  onClick={resetCrop}
+                  fullWidth
+                >
+                  Tilbakestill alt
+                </Button>
+              </Paper>
+            </Box>
+          </Grid>
+        </Grid>
+      </DialogContent>
+
+      <DialogActions>
+        <Button onClick={onClose}>
+          Avbryt
+        </Button>
+        <Button onClick={handleSave}
+          variant="contained"
+          sx={{
+            background: 'linear-gradient(45deg, #ff8c00, #ff6b35)','&:hover': {
+              background: 'linear-gradient(45deg, #ff7b00, #ff5722)'
+          }
+        }}
+         sx={theming.getThemedButtonSx()}>
+          Lagre endringer
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+};

@@ -1,0 +1,34 @@
+[
+  {
+    "schema": "public",
+    "name": "scheduled_course_posts"
+  },
+  {
+    "schema": "public",
+    "name": "split_sheet_contributor_access"
+  },
+  {
+    "schema": "public",
+    "name": "split_sheet_songflow_links"
+  },
+  {
+    "schema": "public",
+    "name": "vendor_product_variants"
+  },
+  {
+    "schema": "public",
+    "name": "visual_editor_connections"
+  },
+  {
+    "schema": "public",
+    "name": "visual_editor_dependencies"
+  },
+  {
+    "schema": "public",
+    "name": "visual_editor_nodes"
+  },
+  {
+    "schema": "public",
+    "name": "wiremock_test_history"
+  }
+]

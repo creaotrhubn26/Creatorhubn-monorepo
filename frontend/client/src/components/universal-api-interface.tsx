@@ -1,0 +1,234 @@
+/**
+ * CreatorHub Norge - Universal API Interface
+ * Production-ready API management interface
+ */
+
+import { useTheming } from '../utils/theming-helper';
+import React, { useState } from 'react';
+import { apiRequest } from '@/lib/queryClient';
+import { useQuery } from '@tanstack/react-query';
+import { useAuth } from '@/hooks/useAuth';
+import {
+  Box,
+  Button,
+  TextField,
+  Typography,
+  Card,
+  CardContent,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  CircularProgress,
+  Alert,
+  Chip,
+  Grid
+} from '@mui/material';
+import { 
+  Send as SendIcon,
+  Check as CheckIcon,
+  Error as ErrorIcon
+} from '@mui/icons-material';
+import { useUniversalAPI, API_SERVICES } from '@/hooks/useUniversalAPI';
+
+export default function UniversalAPIInterface() {
+  const [selectedService, setSelectedService] = useState<string>('google-gemini');
+  const [prompt, setPrompt] = useState(false);
+  
+  // Theming system
+  const theming = useTheming('photographer');
+  const [response, setResponse] = useState<any>(null);
+  const [configuredServices, setConfiguredServices] = useState<string[]>([]);
+  
+  const api = useUniversalAPI({ showErrorToast: true });
+
+  // Check configured services on mount
+  React.useEffect(() => {
+    api.getConfiguredServices().then(services => {
+      setConfiguredServices(services);
+      console.log('✅ Configured services: ', services);
+  });
+}, []);
+
+  const handleTestAPI = async () => {
+    if (!prompt) return;
+    
+    setResponse(null);
+    
+    // Handle different services
+    switch (selectedService) {
+      case 'google-gemini':
+        const geminiResult = await api.callGemini(prompt);
+        setResponse(geminiResult);
+        break;
+      
+      case 'openai':
+        const openaiResult = await api.callOpenAI(prompt);
+        setResponse(openaiResult);
+        break;
+      
+      case 'anthropic':
+        const anthropicResult = await api.callAnthropic(prompt);
+        setResponse(anthropicResult);
+        break;
+      
+      case 'brreg':
+        // Example: Search for organization
+        const brregResult = await api.call(
+          'brreg',
+          `/enheter?navn=${encodeURIComponent(prompt)}`'GET'
+        );
+        setResponse(brregResult);
+        break;
+      
+      case 'stripe':
+        // Example: Get products
+        const stripeResult = await api.call(
+          'stripe','/products','GET'
+        );
+        setResponse(stripeResult);
+        break;
+      
+      default: // Generic API call
+        const genericResult = await api.call(
+          selectedService'/', 'GET'
+        );
+        setResponse(genericResult);
+  }
+};
+
+  const checkServiceStatus = async (service: string) => {
+    const isConfigured = await api.checkService(service);
+    alert(`${service} er ${isConfigured ? 'konfigurert ✅' : 'ikke konfigurert ❌'}`);
+};
+
+  return (
+    <Card elevation={3} sx={theming.getThemedCardSx()}>
+      <CardContent sx={theming.getThemedCardSx()}>
+        <Typography variant="h5" gutterBottom sx={{ color: theming.colors.primary }}>
+          Universal API Demo
+        </Typography>
+        
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          Test Universal API Proxy med alle konfigurerte tjenester. 
+          Legg til API-nøkler i integrasjonspanelet for å aktivere tjenester.
+        </Typography>
+
+        <Box sx={{ mb:  3 }}>
+          <Typography variant="subtitle2" gutterBottom>
+            Konfigurerte tjenester ({configuredServices.length}):
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap'}}>
+            {configuredServices.map(service => (
+              <Chip
+                key={service}
+                label={service}
+                size="small"
+                color="success"
+                icon={<CheckIcon />}
+                onClick={() => checkServiceStatus(service)}
+              />
+            ))}
+          </Box>
+        </Box>
+
+        <Grid container spacing={2}>
+          <Grid size={{ xs: 12 }} md={4}>
+            <FormControl fullWidth>
+              <InputLabel>Velg Tjeneste</InputLabel>
+              <Select
+                value={selectedService}
+                onChange={(e) => setSelectedService(e.target.value)}
+                label="Velg Tjeneste"
+              >
+                <MenuItem value="google-gemini">Google Gemini</MenuItem>
+                <MenuItem value="openai">OpenAI</MenuItem>
+                <MenuItem value="anthropic">Anthropic Claude</MenuItem>
+                <MenuItem value="stripe">Stripe</MenuItem>
+                <MenuItem value="brreg">Brønnøysundregistrene</MenuItem>
+                <MenuItem value="instagram">Instagram</MenuItem>
+                <MenuItem value="spotify">Spotify</MenuItem>
+                <MenuItem value="sendgrid">SendGrid</MenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
+          
+          <Grid size={{ xs: 12 }} md={8}>
+            <TextField
+              fullWidth
+              label="Prompt / Query"
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              placeholder={
+                selectedService === 'brreg' 
+                  ? 'Søk etter organisasjon...'
+                  : 'Skriv din forespørsel...'
+            }
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  handleTestAPI();
+              }
+            }}
+            />
+          </Grid>
+        </Grid>
+
+        <Box sx={{ mt: 2, display: 'flex', gap:  1 }}>
+          <Button variant="contained"
+            color="primary"
+            onClick={handleTestAPI}
+            disabled={!prompt || api.loading}
+            startIcon={api.loading ? <CircularProgress size={20} sx={theming.getThemedButtonSx()}> : <SendIcon />}
+          >
+            {api.loading ? 'Behandler...' : 'Test API'}
+          </Button>
+          
+          <Button
+            variant="outlined"
+            onClick={() => api.getConfiguredServices().then(setConfiguredServices)}
+          >
+            Oppdater Status
+          </Button>
+        </Box>
+
+        {api.error && (
+          <Alert severity="error" sx={{ mt:  2 }}>
+            {api.error}
+          </Alert>
+        )}
+
+        {response && (
+          <Box sx={{ mt:  3 }}>
+            <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+              Response: </Typography>
+            
+            {response.success ? (
+              <Alert severity="success" sx={{ mb: 2 }}>
+                API-kall vellykket!
+              </Alert>
+            ) : (
+              <Alert severity="error" sx={{ mb:  2 }}>
+                {response.error}
+              </Alert>
+            )}
+            
+            <Box 
+              sx={{ 
+                bgcolor: 'background.paper',
+                p:  2,
+                borderRadius:  1,
+                border:  1,
+                borderColor: 'divider',
+                maxHeight: 40,
+                overflow: 'auto',
+                fontFamily:'monospace',
+                fontSize: 12 }}
+            >
+              <pre>{JSON.stringify(response.data || response, null, 2)}</pre>
+            </Box>
+          </Box>
+        )}
+      </CardContent>
+    </Card>
+  );
+}

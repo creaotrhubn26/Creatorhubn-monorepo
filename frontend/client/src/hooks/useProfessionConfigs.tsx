@@ -1,0 +1,218 @@
+/**
+ * 🎨 useProfessionConfigs Hook
+ * Fetches dynamic profession configurations from the database
+ * Falls back to static configs if database is not configured
+ */
+
+import { useQuery } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
+import React from 'react';
+
+// Import MUI icons for dynamic rendering
+import {
+  Assessment,
+  Folder,
+  Article,
+  Event,
+  Collections,
+  Visibility,
+  GetApp,
+  CloudUpload,
+  AutoFixHigh,
+  Email,
+  AccessTime,
+  Group,
+  CameraAlt,
+  FolderOpen,
+  HelpCenter,
+  Settings,
+  Chat,
+  Build,
+  Videocam,
+  MovieCreation,
+  LibraryMusic,
+  SmartToy,
+  Person,
+  Store,
+  Payment,
+  Storage,
+  TrendingUp,
+  AttachMoney,
+  CalendarToday,
+  Star,
+  Dashboard,
+  PhotoCamera,
+  MusicNote,
+  Business,
+  Tab,
+  BarChart
+} from '@mui/icons-material';
+
+// Icon name to component mapping
+const ICON_MAP: Record<string, React.ReactElement> = {
+  Assessment: <Assessment />,
+  Dashboard: <Dashboard />,
+  Folder: <Folder />,
+  Article: <Article />,
+  Event: <Event />,
+  Collections: <Collections />,
+  Visibility: <Visibility />,
+  GetApp: <GetApp />,
+  CloudUpload: <CloudUpload />,
+  AutoFixHigh: <AutoFixHigh />,
+  Email: <Email />,
+  AccessTime: <AccessTime />,
+  Group: <Group />,
+  CameraAlt: <CameraAlt />,
+  PhotoCamera: <PhotoCamera />,
+  FolderOpen: <FolderOpen />,
+  HelpCenter: <HelpCenter />,
+  Settings: <Settings />,
+  Chat: <Chat />,
+  Build: <Build />,
+  Videocam: <Videocam />,
+  MovieCreation: <MovieCreation />,
+  LibraryMusic: <LibraryMusic />,
+  MusicNote: <MusicNote />,
+  SmartToy: <SmartToy />,
+  Person: <Person />,
+  Store: <Store />,
+  Payment: <Payment />,
+  Storage: <Storage />,
+  TrendingUp: <TrendingUp />,
+  AttachMoney: <AttachMoney />,
+  CalendarToday: <CalendarToday />,
+  Star: <Star />,
+  Business: <Business />,
+  Tab: <Tab />,
+  BarChart: <BarChart />
+};
+
+const getIconComponent = (iconName?: string): React.ReactElement => {
+  if (!iconName) return <Build />;
+  return ICON_MAP[iconName] || <Build />;
+};
+
+export interface ProfessionConfig {
+  name: string;
+  displayName: string;  // Alias for name, for compatibility with DynamicProfessionConfig
+  color: string;
+  iconColor: string;    // Alias for color, for compatibility with DynamicProfessionConfig
+  icon: React.ReactElement;
+  tabs: Array<{ id: string; label: string; icon: React.ReactElement }>;
+  projectTypes: string[];
+  stats: Array<{ key: string; label: string; icon: React.ReactElement }>;
+}
+
+export interface ProfessionConfigs {
+  [professionId: string]: ProfessionConfig;
+}
+
+/**
+ * Fetch and transform profession dashboard configurations
+ */
+export function useProfessionConfigs() {
+  const { data: rawProfessions, isLoading, error } = useQuery({
+    queryKey: ['/api/professions/all'],
+    queryFn: async () => {
+      try {
+        const response = await apiRequest('/api/professions/all');
+        return response;
+      } catch (err) {
+        console.warn('Could not fetch profession configs from API, using fallback', err);
+        return null;
+      }
+    },
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+    retry: 1
+  });
+
+  // Fetch dashboard configurations for each profession
+  const professionIds = rawProfessions?.professions?.map((p: any) => p.professionId) || [];
+  
+  const dashboardConfigQueries = useQuery({
+    queryKey: ['/api/professions/dashboard-configs', professionIds],
+    queryFn: async () => {
+      if (professionIds.length === 0) return {};
+      
+      const configs: Record<string, any> = {};
+      
+      for (const professionId of professionIds) {
+        try {
+          const config = await apiRequest(`/api/professions/${professionId}/dashboard-config`);
+          configs[professionId] = config;
+        } catch (err) {
+          console.warn(`Could not fetch dashboard config for ${professionId}`, err);
+          configs[professionId] = null;
+        }
+      }
+      
+      return configs;
+    },
+    enabled: professionIds.length > 0,
+    staleTime: 5 * 60 * 1000
+  });
+
+  // Transform to UniversalDashboard format
+  const transformedConfigs: ProfessionConfigs = React.useMemo(() => {
+    if (!rawProfessions?.professions || !dashboardConfigQueries.data) {
+      return {};
+    }
+
+    const configs: ProfessionConfigs = {};
+
+    rawProfessions.professions.forEach((profession: any) => {
+      const dashboardConfig = dashboardConfigQueries.data[profession.professionId];
+      
+      if (!dashboardConfig) return;
+
+      // Transform tabs
+      const tabs = (dashboardConfig.tabs || [])
+        .filter((tab: any) => tab.isEnabled)
+        .sort((a: any, b: any) => a.sortOrder - b.sortOrder)
+        .map((tab: any) => ({
+          id: tab.tabId,
+          label: tab.label,
+          icon: getIconComponent(tab.icon)
+        }));
+
+      // Transform project types
+      const projectTypes = (dashboardConfig.projectTypes || [])
+        .filter((type: any) => type.isEnabled)
+        .sort((a: any, b: any) => a.sortOrder - b.sortOrder)
+        .map((type: any) => type.typeId);
+
+      // Transform stats
+      const stats = (dashboardConfig.stats || [])
+        .filter((stat: any) => stat.isEnabled)
+        .sort((a: any, b: any) => a.sortOrder - b.sortOrder)
+        .map((stat: any) => ({
+          key: stat.statId,
+          label: stat.displayName,
+          icon: getIconComponent(stat.icon)
+        }));
+
+      const professionColor = profession.configuration?.color ||'#2196f3';
+      configs[profession.professionId] = {
+        name: profession.displayName,
+        displayName: profession.displayName,  // Alias for compatibility
+        color: professionColor,
+        iconColor: professionColor,           // Alias for compatibility
+        icon: getIconComponent(profession.configuration?.icon),
+        tabs,
+        projectTypes,
+        stats
+      };
+    });
+
+    return configs;
+  }, [rawProfessions, dashboardConfigQueries.data]);
+
+  return {
+    professionConfigs: transformedConfigs,
+    isLoading: isLoading || dashboardConfigQueries.isLoading,
+    error: error || dashboardConfigQueries.error,
+    hasData: Object.keys(transformedConfigs).length > 0
+  };
+}
+

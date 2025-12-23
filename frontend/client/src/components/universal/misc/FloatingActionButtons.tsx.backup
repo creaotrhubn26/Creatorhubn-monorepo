@@ -1,0 +1,550 @@
+import React, { useState, useEffect } from 'react';
+import { 
+  Fab, 
+  Box, 
+  Tooltip,
+  SpeedDial,
+  SpeedDialAction,
+  SpeedDialIcon,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Button,
+  List,
+  ListItem,
+  ListItemIcon,
+  ListItemText,
+  ListItemSecondaryAction,
+  Switch,
+  Divider,
+  Typography,
+  Chip,
+  IconButton,
+  Fade,
+  Slide,
+  Paper
+} from '@mui/material';
+import {
+  Add,
+  Settings,
+  Analytics,
+  CloudDone,
+  Article,
+  VideoCall,
+  NotificationAdd,
+  Chat,
+  SdCard,
+  Feedback,
+  EventNote,
+  MoreVert,
+  DragIndicator,
+  SwapVert,
+  Email,
+  Tune,
+  KeyboardArrowUp,
+  KeyboardArrowDown,
+  Delete,
+  Visibility,
+  VisibilityOff
+} from '@mui/icons-material';
+// Remove profession hook for now - will get profession from props or context
+
+interface FloatingActionButtonsProps {
+  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  onMeetingNotesOpen?: () => void;
+  onFeedbackOpen?: () => void;
+  onProjectCreate?: () => void;
+  onEmailOpen?: () => void;
+  onChatOpen?: () => void;
+}
+
+export default function FloatingActionButtons({ 
+  profession = 'photographer',
+  onMeetingNotesOpen,
+  onFeedbackOpen,
+  onProjectCreate,
+  onEmailOpen,
+  onChatOpen
+}: FloatingActionButtonsProps) {
+  const [open, setOpen] = useState(false);
+  const [customOrder, setCustomOrder] = useState<string[]>([]);
+  const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
+  const [organizerDialogOpen, setOrganizerDialogOpen] = useState(false);
+  const [hiddenActions, setHiddenActions] = useState<string[]>([]);
+  const [showInfoMessage, setShowInfoMessage] = useState(false);
+  const [infoMessageDismissed, setInfoMessageDismissed] = useState(false);
+
+
+  // Check if info message should be shown
+  useEffect(() => {
+    // Always show for testing - remove localStorage check temporarily
+    console.log('SpeedDial Info Message: Starting timer...');
+    
+    // Show info message after 1 second of page load for faster testing
+    const timer = setTimeout(() => {
+      console.log('SpeedDial Info Message: Showing message');
+      setShowInfoMessage(true);
+    }, 1000);
+
+    // Auto-hide after 6 seconds if not manually dismissed
+    const autoHideTimer = setTimeout(() => {
+      console.log('SpeedDial Info Message: Auto-hiding');
+      setShowInfoMessage(false);
+    }, 7000);
+
+    return () => {
+      clearTimeout(timer);
+      clearTimeout(autoHideTimer);
+    };
+  }, []);
+
+  // Load custom order and hidden actions from localStorage
+  useEffect(() => {
+    const savedOrder = localStorage.getItem(`speedDial_order_${profession}`);
+    const savedHidden = localStorage.getItem(`speedDial_hidden_${profession}`);
+    
+    if (savedOrder) {
+      try {
+        setCustomOrder(JSON.parse(savedOrder));
+      } catch (e) {
+        console.warn('Failed to load SpeedDial order:', e);
+      }
+    }
+    
+    if (savedHidden) {
+      try {
+        setHiddenActions(JSON.parse(savedHidden));
+      } catch (e) {
+        console.warn('Failed to load hidden actions:', e);
+      }
+    }
+  }, [profession]);
+
+  // Save custom order to localStorage
+  const saveOrder = (newOrder: string[]) => {
+    setCustomOrder(newOrder);
+    localStorage.setItem(`speedDial_order_${profession}`, JSON.stringify(newOrder));
+  };
+
+  // Save hidden actions to localStorage
+  const saveHiddenActions = (hidden: string[]) => {
+    setHiddenActions(hidden);
+    localStorage.setItem(`speedDial_hidden_${profession}`, JSON.stringify(hidden));
+  };
+
+  // Toggle action visibility
+  const toggleActionVisibility = (actionName: string) => {
+    const newHidden = hiddenActions.includes(actionName)
+      ? hiddenActions.filter(name => name !== actionName)
+      : [...hiddenActions, actionName];
+    saveHiddenActions(newHidden);
+  };
+
+  // Get all available actions (including hidden ones)
+  const getAllAvailableActions = () => {
+    const universalActions = [
+      { icon: <Chat />, name: 'Chat', action: onChatOpen || (() => alert('Chat-funksjonen vil bli åpnet her')) },
+      { icon: <Email />, name: 'E-post', action: onEmailOpen || (() => alert('E-post designer vil bli åpnet her')) },
+      { icon: <EventNote />, name: 'Nytt møtenotat', action: onMeetingNotesOpen || (() => alert('Møtenotat-grensesnitt vil bli åpnet her')) },
+      { icon: <Feedback />, name: 'Prototype Feedback', action: onFeedbackOpen || (() => alert('Tilbakemeldings-system vil bli åpnet her')) },
+      { icon: <Settings />, name: 'Innstillinger', action: () => alert('Innstillinger vil bli åpnet her') },
+      { icon: <Analytics />, name: 'Analytics', action: () => alert('Analytics-dashboard vil bli åpnet her') },
+      { icon: <CloudDone />, name: 'Google Drive Sync', action: () => alert('Google Drive synkronisering vil bli startet her') },
+      { icon: <NotificationAdd />, name: 'Notifikasjoner', action: () => alert('Notifikasjons-innstillinger vil bli åpnet her') }
+    ];
+
+    const professionSpecific = [];
+    switch (profession) {
+      case 'photographer':
+        professionSpecific.push(
+          { icon: <SdCard />, name: 'Nytt prosjekt', action: onProjectCreate || (() => alert('Nytt fotoprosjekt vil bli opprettet her')) },
+          { icon: <CloudDone />, name: 'Google Drive', action: () => alert('Google Drive-grensesnitt vil bli åpnet her') },
+          { icon: <VideoCall />, name: 'Video møte', action: () => alert('Video-møte vil bli startet her') }
+        );
+        break;
+      case 'videographer':
+        professionSpecific.push(
+          { icon: <Add />, name: 'Ny video', action: onProjectCreate || (() => alert('Nytt videoprosjekt vil bli opprettet her')) },
+          { icon: <VideoCall />, name: 'Møte', action: () => alert('Møte vil bli startet her') },
+          { icon: <Article />, name: 'Story Arc', action: () => alert('Story Arc-generator vil bli åpnet her') }
+        );
+        break;
+      case 'music_producer':
+        professionSpecific.push(
+          { icon: <Add />, name: 'Ny sang', action: onProjectCreate || (() => alert('Nytt musikkprosjekt vil bli opprettet her')) },
+          { icon: <Article />, name: 'Kontrakt', action: () => alert('Kontrakt-system vil bli åpnet her') }
+        );
+        break;
+    }
+
+    return [...professionSpecific, ...universalActions];
+  };
+
+  // Get visible actions only
+  const getAllActions = () => {
+    const allActions = getAllAvailableActions().filter(action => !hiddenActions.includes(action.name));
+    
+    // Apply custom order if available
+    if (customOrder.length > 0) {
+      const orderedActions = [];
+      const actionMap = new Map(allActions.map(action => [action.name, action]));
+      
+      // Add actions in custom order
+      for (const name of customOrder) {
+        if (actionMap.has(name)) {
+          orderedActions.push(actionMap.get(name)!);
+          actionMap.delete(name);
+        }
+      }
+      
+      // Add any remaining actions that weren't in the custom order
+      orderedActions.push(...Array.from(actionMap.values()));
+      
+      return orderedActions;
+    }
+    
+    return allActions;
+  };
+
+  // Move action up in order
+  const moveActionUp = (actionName: string) => {
+    const actions = getAllActions();
+    const currentIndex = actions.findIndex(a => a.name === actionName);
+    if (currentIndex > 0) {
+      const newOrder = actions.map(a => a.name);
+      [newOrder[currentIndex], newOrder[currentIndex - 1]] = [newOrder[currentIndex - 1], newOrder[currentIndex]];
+      saveOrder(newOrder);
+    }
+  };
+
+  // Move action down in order
+  const moveActionDown = (actionName: string) => {
+    const actions = getAllActions();
+    const currentIndex = actions.findIndex(a => a.name === actionName);
+    if (currentIndex < actions.length - 1) {
+      const newOrder = actions.map(a => a.name);
+      [newOrder[currentIndex], newOrder[currentIndex + 1]] = [newOrder[currentIndex + 1], newOrder[currentIndex]];
+      saveOrder(newOrder);
+    }
+  };
+
+  // Reset to default order
+  const resetOrder = () => {
+    setCustomOrder([]);
+    setHiddenActions([]);
+    localStorage.removeItem(`speedDial_order_${profession}`);
+    localStorage.removeItem(`speedDial_hidden_${profession}`);
+    setOrganizerDialogOpen(false);
+  };
+
+  // Handle dismissing info message
+  const dismissInfoMessage = () => {
+    setShowInfoMessage(false);
+    setInfoMessageDismissed(true);
+    localStorage.setItem('speedDialInfoDismissed', 'true');
+  };
+
+  // Create the organizer action as first SpeedDialAction
+  const getOrganizerAction = () => ({
+    icon: <Tune />,
+    name: 'Organiser',
+    action: () => setOrganizerDialogOpen(true)
+  });
+
+  // Get all actions for SpeedDial (including organizer)
+  const getSpeedDialActions = () => {
+    const organizer = getOrganizerAction();
+    const regularActions = getAllActions();
+    return [organizer, ...regularActions];
+  };
+
+  return (
+    <Box sx={{ 
+      position: 'fixed', 
+      bottom: 24, 
+      right: 24, 
+      zIndex: 1200,
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 1,
+      alignItems: 'flex-end'
+    }}>
+      {/* Animated Info Message */}
+      <Box
+        sx={{
+          position: 'fixed',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          zIndex: 99999,
+          display: showInfoMessage ? 'block' : 'none',
+          width: 320,
+          height: 200,
+          background: 'linear-gradient(135deg, #FF6B35 0%, #FF8C42 100%)',
+          borderRadius: 4,
+          border: '4px solid white',
+          boxShadow: '0 20px 40px rgba(0,0,0,0.3)',
+          p: 3,
+          color: 'white',
+          cursor: 'pointer'
+        }}
+        onClick={dismissInfoMessage}
+      >
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+              <Add sx={{ 
+                fontSize: 24, 
+                animation: 'pulse 2s infinite',
+                '@keyframes pulse': {
+                  '0%': { transform: 'scale(1)' },
+                  '50%': { transform: 'scale(1.1)' },
+                  '100%': { transform: 'scale(1)' }
+                }
+              }} />
+              <Typography variant="h6" sx={{ fontWeight: 600, fontSize: '1rem' }}>
+                Raske handlinger
+              </Typography>
+            </Box>
+            <Typography variant="body2" sx={{ opacity: 0.95, lineHeight: 1.4 }}>
+              Trykk på + ikonet for å få tilgang til alle raske handlinger som møtenotater, prosjektopprettelse, chat og mer!
+            </Typography>
+            <Typography variant="caption" sx={{ 
+              opacity: 0.8, 
+              fontSize: '0.7rem',
+              display: 'block',
+              mt: 1,
+              fontStyle: 'italic'
+            }}>
+              Klikk for å lukke
+            </Typography>
+        </Box>
+      )}
+
+      {/* Organizer Dialog */}
+      <Dialog
+        open={organizerDialogOpen}
+        onClose={() => setOrganizerDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 3,
+            backdropFilter: 'blur(20px)',
+            bgcolor: 'rgba(255, 255, 255, 0.95)'
+          }
+        }}
+      >
+        <DialogTitle sx={{ 
+          display: 'flex',
+          alignItems: 'center',
+          gap: 1,
+          borderBottom: 1,
+          borderColor: 'divider'
+        }}>
+          <Tune color="primary" />
+          <Typography variant="h6">Organiser SpeedDial handlinger</Typography>
+        </DialogTitle>
+        
+        <DialogContent sx={{ pt: 3 }}>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+            Tilpass rekkefølgen og synligheten på dine hurtighandlinger. Skru på/av handlinger eller endre rekkefølgen.
+          </Typography>
+
+          <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 600 }}>
+            Synlige handlinger
+          </Typography>
+          
+          <List dense>
+            {getAllAvailableActions().map((action, index) => {
+              const isHidden = hiddenActions.includes(action.name);
+              const visibleActions = getAllActions();
+              const visibleIndex = visibleActions.findIndex(a => a.name === action.name);
+              
+              return (
+                <ListItem 
+                  key={action.name}
+                  divider
+                  sx={{
+                    borderRadius: 2,
+                    mb: 1,
+                    bgcolor: isHidden ? 'action.hover' : 'background.paper',
+                    border: 1,
+                    borderColor: isHidden ? 'action.disabled' : 'divider'
+                  }}
+                >
+                  <ListItemIcon>
+                    {action.icon}
+                  </ListItemIcon>
+                  
+                  <ListItemText 
+                    primary={action.name}
+                    secondary={isHidden ? 'Skjult' : `Posisjon ${visibleIndex + 2}`} // +2 because Organiser is first
+                  />
+                  
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    {!isHidden && (
+                      <>
+                        <Tooltip title="Flytt opp">
+                          <span>
+                            <Button
+                              size="small"
+                              onClick={() => moveActionUp(action.name)}
+                              disabled={visibleIndex === 0}
+                              sx={{ minWidth: 'auto', px: 1 }}
+                            >
+                              <KeyboardArrowUp />
+                            </Button>
+                          </span>
+                        </Tooltip>
+                        
+                        <Tooltip title="Flytt ned">
+                          <span>
+                            <Button
+                              size="small"
+                              onClick={() => moveActionDown(action.name)}
+                              disabled={visibleIndex === visibleActions.length - 1}
+                              sx={{ minWidth: 'auto', px: 1 }}
+                            >
+                              <KeyboardArrowDown />
+                            </Button>
+                          </span>
+                        </Tooltip>
+                      </>
+                    )}
+                    
+                    <Switch
+                      checked={!isHidden}
+                      onChange={() => toggleActionVisibility(action.name)}
+                      color="primary"
+                      size="small"
+                    />
+                  </Box>
+                </ListItem>
+              );
+            })}
+          </List>
+
+          <Divider sx={{ my: 3 }} />
+          
+          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+            <Chip 
+              icon={<Visibility />}
+              label={`${getAllActions().length} synlige`}
+              color="primary"
+              variant="outlined"
+              size="small"
+            />
+            <Chip 
+              icon={<VisibilityOff />}
+              label={`${hiddenActions.length} skjulte`}
+              color="default"
+              variant="outlined"
+              size="small"
+            />
+          </Box>
+        </DialogContent>
+        
+        <DialogActions sx={{ px: 3, pb: 3 }}>
+          <Button onClick={resetOrder} color="error" startIcon={<Delete />}>
+            Tilbakestill alle
+          </Button>
+          <Button onClick={() => setOrganizerDialogOpen(false)} variant="contained">
+            Ferdig
+          </Button>
+        </DialogActions>
+      </Dialog>
+      <SpeedDial
+        ariaLabel="CreatorHub Norge handlinger"
+        sx={{ 
+          position: 'relative',
+          '& .MuiSpeedDial-fab': {
+            width: 72,
+            height: 72,
+            bgcolor: 'primary.main',
+            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3), 0 0 0 0 rgba(25, 118, 210, 0.4)',
+            backdropFilter: 'blur(10px)',
+            border: '2px solid rgba(255, 255, 255, 0.2)',
+            animation: 'pulse 2s infinite',
+            '&:hover': {
+              bgcolor: 'primary.dark',
+              transform: 'scale(1.05)',
+              boxShadow: '0 12px 48px rgba(0, 0, 0, 0.4)',
+              animation: 'none'
+            },
+            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+            '@keyframes pulse': {
+              '0%': {
+                boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3), 0 0 0 0 rgba(25, 118, 210, 0.4)'
+              },
+              '70%': {
+                boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3), 0 0 0 10px rgba(25, 118, 210, 0)'
+              },
+              '100%': {
+                boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3), 0 0 0 0 rgba(25, 118, 210, 0)'
+              }
+            }
+          },
+          '& .MuiSpeedDial-actions': {
+            paddingBottom: '72px'
+          }
+        }}
+        icon={<SpeedDialIcon />}
+        onClose={() => {}} // Deaktiver auto-lukking
+        onOpen={() => {}} // Deaktiver auto-åpning
+        open={open}
+        direction="up"
+        FabProps={{
+          onClick: (e) => {
+            e.stopPropagation();
+            setOpen(!open);
+          },
+          onMouseEnter: undefined, // Fjern hover-oppførsel
+          onMouseLeave: undefined  // Fjern hover-oppførsel
+        }}
+      >
+        {getSpeedDialActions().map((action, index) => (
+          <SpeedDialAction
+            key={`${action.name}-${index}`}
+            icon={action.icon}
+            tooltipTitle={action.name}
+            tooltipOpen
+            onClick={(e) => {
+              e.stopPropagation();
+              action.action();
+              setOpen(false); // Lukk etter valg
+            }}
+            FabProps={{
+              onMouseEnter: undefined,
+              onMouseLeave: undefined
+            }}
+            sx={{
+              '& .MuiSpeedDialAction-fab': {
+                width: 60,
+                height: 60,
+                bgcolor: action.name === 'Organiser' 
+                  ? 'rgba(255, 193, 7, 0.95)' // Amber for organizer
+                  : 'rgba(255, 255, 255, 0.95)',
+                backdropFilter: 'blur(15px)',
+                border: '2px solid rgba(255, 255, 255, 0.3)',
+                boxShadow: '0 6px 24px rgba(0, 0, 0, 0.25)',
+                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                color: action.name === 'Organiser' ? 'white' : 'inherit',
+                '&:hover': {
+                  bgcolor: action.name === 'Organiser'
+                    ? 'rgba(255, 193, 7, 1)'
+                    : 'rgba(255, 255, 255, 1)',
+                  transform: 'scale(1.15)',
+                  boxShadow: '0 8px 32px rgba(0, 0, 0, 0.35)'
+                }
+              },
+              '& .MuiSpeedDialAction-staticTooltipLabel': {
+                minWidth: 'auto',
+                whiteSpace: 'nowrap'
+              }
+            }}
+          />
+        ))}
+      </SpeedDial>
+    </Box>
+  );
+}

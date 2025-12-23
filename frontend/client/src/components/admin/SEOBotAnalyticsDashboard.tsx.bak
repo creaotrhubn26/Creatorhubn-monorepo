@@ -1,0 +1,829 @@
+/**
+ * SEO Bot Analytics Dashboard
+ * 
+ * Professional SEO bot analysis dashboard like Screaming Frog with:
+ * - Real-time bot visit tracking
+ * - Bot identification and verification
+ * - JavaScript rendering tests
+ * - Mobile usability testing
+ * - Crawl budget optimization
+ * - robots.txt analysis
+ * - AI-powered recommendations
+ */
+
+import React, { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+  Box,
+  Card,
+  CardContent,
+  Typography,
+  Grid,
+  Button,
+  TextField,
+  Tab,
+  Tabs,
+  Chip,
+  LinearProgress,
+  Alert,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Paper,
+  IconButton,
+  Tooltip,
+  CircularProgress,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
+} from '@mui/material';
+import {
+  BugReport as BotIcon,
+  PhoneAndroid as MobileIcon,
+  Code as CodeIcon,
+  Speed as SpeedIcon,
+  Assessment as ReportIcon,
+  Assessment,
+  Refresh as RefreshIcon,
+  PlayArrow as RunTestIcon,
+  CheckCircle as SuccessIcon,
+  Warning as WarningIcon,
+  Error as ErrorIcon,
+  TrendingUp as TrendingIcon,
+  Search as SearchIcon,
+} from '@mui/icons-material';
+import {
+  LineChart,
+  Line,
+  BarChart,
+  Bar,
+  PieChart,
+  Pie,
+  Cell,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip as RechartsTooltip,
+  Legend,
+  ResponsiveContainer,
+} from 'recharts';
+import SchemaValidationPanel from './SchemaValidationPanel';
+
+const COLORS = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8', '#F7DC6F'];
+
+interface TabPanelProps {
+  children?: React.ReactNode;
+  index: number;
+  value: number;
+}
+
+function TabPanel(props: TabPanelProps) {
+  const { children, value, index, ...other } = props;
+  return (
+    <div
+      role="tabpanel"
+      hidden={value !== index}
+      id={`bot-tabpanel-${index}`}
+      aria-labelledby={`bot-tab-${index}`}
+      {...other}
+    >
+      {value === index && <Box sx={{ pt: 3 }}>{children}</Box>}
+    </div>
+  );
+}
+
+export default function SEOBotAnalyticsDashboard() {
+  const [tabValue, setTabValue] = useState(0);
+  const [testUrl, setTestUrl] = useState('');
+  const [selectedBot, setSelectedBot] = useState('Googlebot');
+  const [days, setDays] = useState(7);
+  const queryClient = useQueryClient();
+
+  // Fetch bot analytics
+  const { data: analytics, isLoading: analyticsLoading } = useQuery({
+    queryKey: ['seo-bot-analytics', days],
+    queryFn: async () => {
+      const res = await fetch(`/api/seo-bot/analytics?days=${days}`);
+      if (!res.ok) throw new Error('Failed to fetch analytics');
+      return res.json();
+    },
+    refetchInterval: 30000, // Refresh every 30 seconds
+  });
+
+  // Fetch bot visits
+  const { data: visits, isLoading: visitsLoading } = useQuery({
+    queryKey: ['seo-bot-visits', selectedBot],
+    queryFn: async () => {
+      const res = await fetch(`/api/seo-bot/visits?botName=${selectedBot}&limit=100`);
+      if (!res.ok) throw new Error('Failed to fetch visits');
+      return res.json();
+    },
+  });
+
+  // Fetch crawl budget
+  const { data: crawlBudget, isLoading: budgetLoading } = useQuery({
+    queryKey: ['seo-crawl-budget', days],
+    queryFn: async () => {
+      const res = await fetch(`/api/seo-bot/crawl-budget?days=${days}`);
+      if (!res.ok) throw new Error('Failed to fetch crawl budget');
+      return res.json();
+    },
+  });
+
+  // Fetch mobile tests
+  const { data: mobileTests, isLoading: mobileLoading } = useQuery({
+    queryKey: ['seo-mobile-tests'],
+    queryFn: async () => {
+      const res = await fetch(`/api/seo-bot/mobile-tests?limit=10`);
+      if (!res.ok) throw new Error('Failed to fetch mobile tests');
+      return res.json();
+    },
+  });
+
+  // Fetch recommendations
+  const { data: recommendations, isLoading: recsLoading } = useQuery({
+    queryKey: ['seo-bot-recommendations'],
+    queryFn: async () => {
+      const res = await fetch(`/api/seo-bot/recommendations?status=open`);
+      if (!res.ok) throw new Error('Failed to fetch recommendations');
+      return res.json();
+    },
+  });
+
+  // Initialize bot types
+  const initializeMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch('/api/seo-bot/initialize', { method: 'POST' });
+      if (!res.ok) throw new Error('Failed to initialize');
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['seo-bot-analytics'] });
+    },
+  });
+
+  // Run render test
+  const renderTestMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch('/api/seo-bot/render-test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: testUrl, botName: selectedBot }),
+      });
+      if (!res.ok) throw new Error('Failed to run render test');
+      return res.json();
+    },
+    onSuccess: () => {
+      alert('Render test completed successfully!');
+    },
+  });
+
+  // Run mobile usability test
+  const mobileTestMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch('/api/seo-bot/mobile-usability-test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: testUrl }),
+      });
+      if (!res.ok) throw new Error('Failed to run mobile test');
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['seo-mobile-tests'] });
+    },
+  });
+
+  const getBotCategoryColor = (category: string) => {
+    const colors: any = {
+      search_engine: 'success',
+      seo_tool: 'info',
+      mobile_browser: 'warning',
+      social_media: 'secondary',
+      ai_scraper: 'error',
+    };
+    return colors[category] || 'default';
+  };
+
+  const getScoreColor = (score: number) => {
+    if (score >= 80) return 'success';
+    if (score >= 60) return 'warning';
+    return 'error';
+  };
+
+  return (
+    <Box sx={{ p: 3 }}>
+      {/* Header */}
+      <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Box>
+          <Typography variant="h4" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <BotIcon fontSize="large" />
+            SEO Bot Analytics Dashboard
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Professional bot detection like Screaming Frog + Real-time analytics
+          </Typography>
+        </Box>
+        <Box sx={{ display: 'flex', gap: 2 }}>
+          <FormControl size="small" sx={{ minWidth: 120 }}>
+            <InputLabel>Time Period</InputLabel>
+            <Select
+              value={days}
+              label="Time Period"
+              onChange={(e) => setDays(Number(e.target.value))}
+            >
+              <MenuItem value={1}>Last 24 hours</MenuItem>
+              <MenuItem value={7}>Last 7 days</MenuItem>
+              <MenuItem value={30}>Last 30 days</MenuItem>
+              <MenuItem value={90}>Last 90 days</MenuItem>
+            </Select>
+          </FormControl>
+          <Button
+            variant="outlined"
+            startIcon={<RefreshIcon />}
+            onClick={() => {
+              queryClient.invalidateQueries({ queryKey: ['seo-bot-analytics'] });
+              queryClient.invalidateQueries({ queryKey: ['seo-bot-visits'] });
+              queryClient.invalidateQueries({ queryKey: ['seo-crawl-budget'] });
+            }}
+          >
+            Refresh
+          </Button>
+          <Button
+            variant="contained"
+            startIcon={<SearchIcon />}
+            onClick={() => initializeMutation.mutate()}
+            disabled={initializeMutation.isPending}
+          >
+            {initializeMutation.isPending ? 'Initializing...' : 'Initialize Bot DB'}
+          </Button>
+        </Box>
+      </Box>
+
+      {/* Key Metrics */}
+      {!analyticsLoading && analytics?.analytics && (
+        <Grid container spacing={2} sx={{ mb: 3 }}>
+          <Grid item xs={12} md={3}>
+            <Card>
+              <CardContent>
+                <Typography color="text.secondary" gutterBottom>
+                  Total Bot Visits
+                </Typography>
+                <Typography variant="h4">
+                  {analytics.analytics.reduce((sum: number, a: any) => sum + Number(a.total_visits || 0), 0)}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Last {days} days
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+          <Grid item xs={12} md={3}>
+            <Card>
+              <CardContent>
+                <Typography color="text.secondary" gutterBottom>
+                  Unique Bots
+                </Typography>
+                <Typography variant="h4">
+                  {analytics.analytics.length}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Different bot types
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+          <Grid item xs={12} md={3}>
+            <Card>
+              <CardContent>
+                <Typography color="text.secondary" gutterBottom>
+                  Pages Crawled
+                </Typography>
+                <Typography variant="h4">
+                  {analytics.analytics.reduce((sum: number, a: any) => sum + Number(a.total_pages || 0), 0)}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  By all bots
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+          <Grid item xs={12} md={3}>
+            <Card>
+              <CardContent>
+                <Typography color="text.secondary" gutterBottom>
+                  Avg Response Time
+                </Typography>
+                <Typography variant="h4">
+                  {(analytics.analytics.reduce((sum: number, a: any) => sum + Number(a.avg_response_time || 0), 0) / analytics.analytics.length).toFixed(0)}ms
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Server response
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+        </Grid>
+      )}
+
+      {/* Tabs */}
+      <Card>
+        <Tabs
+          value={tabValue}
+          onChange={(_, newValue) => setTabValue(newValue)}
+          variant="scrollable"
+          scrollButtons="auto"
+        >
+          <Tab icon={<TrendingIcon />} label="Bot Analytics" />
+          <Tab icon={<CodeIcon />} label="Render Tests" />
+          <Tab icon={<MobileIcon />} label="Mobile Usability" />
+          <Tab icon={<SpeedIcon />} label="Crawl Budget" />
+          <Tab icon={<Assessment />} label="Schema Validator" />
+          <Tab icon={<ReportIcon />} label="Recommendations" />
+        </Tabs>
+
+        {/* Tab 1: Bot Analytics */}
+        <TabPanel value={tabValue} index={0}>
+          <Box sx={{ p: 3 }}>
+            <Typography variant="h6" gutterBottom>
+              Bot Visit Analytics
+            </Typography>
+            
+            {analyticsLoading ? (
+              <CircularProgress />
+            ) : analytics?.analytics && analytics.analytics.length > 0 ? (
+              <>
+                {/* Bot Distribution Chart */}
+                <Box sx={{ mb: 4 }}>
+                  <Typography variant="subtitle2" gutterBottom>
+                    Bot Visit Distribution
+                  </Typography>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <PieChart>
+                      <Pie
+                        data={analytics.analytics}
+                        dataKey="total_visits"
+                        nameKey="bot_name"
+                        cx="50%"
+                        cy="50%"
+                        label={(entry) => `${entry.bot_name}: ${entry.total_visits}`}
+                        outerRadius={100}
+                      >
+                        {analytics.analytics.map((_: any, index: number) => (
+                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <RechartsTooltip />
+                      <Legend />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </Box>
+
+                {/* Bot Details Table */}
+                <TableContainer component={Paper}>
+                  <Table>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Bot Name</TableCell>
+                        <TableCell>Category</TableCell>
+                        <TableCell align="right">Visits</TableCell>
+                        <TableCell align="right">Pages</TableCell>
+                        <TableCell align="right">Avg Response</TableCell>
+                        <TableCell align="right">Success Rate</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {analytics.analytics.map((bot: any) => (
+                        <TableRow key={bot.bot_name}>
+                          <TableCell>{bot.bot_name}</TableCell>
+                          <TableCell>
+                            <Chip
+                              label={bot.bot_category.replace('_', ' ')}
+                              color={getBotCategoryColor(bot.bot_category)}
+                              size="small"
+                            />
+                          </TableCell>
+                          <TableCell align="right">{bot.total_visits || 0}</TableCell>
+                          <TableCell align="right">{bot.total_pages || 0}</TableCell>
+                          <TableCell align="right">{Number(bot.avg_response_time || 0).toFixed(0)}ms</TableCell>
+                          <TableCell align="right">
+                            {bot.success_count > 0
+                              ? ((bot.success_count / bot.total_visits) * 100).toFixed(1)
+                              : 0}%
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </>
+            ) : (
+              <Alert severity="info">
+                No bot analytics data available. Run "Initialize Bot DB" to start tracking.
+              </Alert>
+            )}
+          </Box>
+        </TabPanel>
+
+        {/* Tab 2: Render Tests */}
+        <TabPanel value={tabValue} index={1}>
+          <Box sx={{ p: 3 }}>
+            <Typography variant="h6" gutterBottom>
+              JavaScript Rendering Tests
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+              Test if search bots can see your JavaScript-rendered content
+            </Typography>
+
+            {/* Test Controls */}
+            <Grid container spacing={2} sx={{ mb: 3 }}>
+              <Grid item xs={12} md={6}>
+                <TextField
+                  fullWidth
+                  label="URL to Test"
+                  value={testUrl}
+                  onChange={(e) => setTestUrl(e.target.value)}
+                  placeholder="https://example.com"
+                />
+              </Grid>
+              <Grid item xs={12} md={3}>
+                <FormControl fullWidth>
+                  <InputLabel>Bot to Emulate</InputLabel>
+                  <Select
+                    value={selectedBot}
+                    label="Bot to Emulate"
+                    onChange={(e) => setSelectedBot(e.target.value)}
+                  >
+                    <MenuItem value="Googlebot">Googlebot</MenuItem>
+                    <MenuItem value="Googlebot (Mobile)">Googlebot Mobile</MenuItem>
+                    <MenuItem value="Bingbot">Bingbot</MenuItem>
+                    <MenuItem value="Screaming Frog SEO Spider">Screaming Frog</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} md={3}>
+                <Button
+                  fullWidth
+                  variant="contained"
+                  startIcon={<RunTestIcon />}
+                  onClick={() => renderTestMutation.mutate()}
+                  disabled={!testUrl || renderTestMutation.isPending}
+                  sx={{ height: '56px' }}
+                >
+                  {renderTestMutation.isPending ? 'Testing...' : 'Run Test'}
+                </Button>
+              </Grid>
+            </Grid>
+
+            {renderTestMutation.isPending && (
+              <Box sx={{ mb: 3 }}>
+                <LinearProgress />
+                <Typography variant="caption" sx={{ mt: 1, display: 'block' }}>
+                  Fetching HTML, rendering with JavaScript, comparing content...
+                </Typography>
+              </Box>
+            )}
+
+            {renderTestMutation.data?.testResults && (
+              <Card sx={{ mt: 3, bgcolor: 'background.default' }}>
+                <CardContent>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} md={6}>
+                      <Typography variant="subtitle2" gutterBottom>
+                        HTML-Only Content
+                      </Typography>
+                      <Typography variant="h6">{renderTestMutation.data.testResults.htmlOnlyWordCount} words</Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        What bots without JS see
+                      </Typography>
+                    </Grid>
+                    <Grid item xs={12} md={6}>
+                      <Typography variant="subtitle2" gutterBottom>
+                        JS-Rendered Content
+                      </Typography>
+                      <Typography variant="h6">{renderTestMutation.data.testResults.jsRenderedWordCount} words</Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        What modern bots see
+                      </Typography>
+                    </Grid>
+                    <Grid item xs={12}>
+                      <Typography variant="subtitle2" gutterBottom>
+                        Content Match
+                      </Typography>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                        <LinearProgress
+                          variant="determinate"
+                          value={renderTestMutation.data.testResults.contentMatchPercent}
+                          sx={{ flex: 1, height: 10, borderRadius: 5 }}
+                          color={renderTestMutation.data.testResults.contentMatchPercent > 80 ? 'success' : 'warning'}
+                        />
+                        <Typography variant="h6">
+                          {renderTestMutation.data.testResults.contentMatchPercent}%
+                        </Typography>
+                      </Box>
+                    </Grid>
+                    {renderTestMutation.data.testResults.seoIssues?.length > 0 && (
+                      <Grid item xs={12}>
+                        <Alert severity="warning">
+                          <Typography variant="subtitle2" gutterBottom>SEO Issues Found:</Typography>
+                          <ul style={{ margin: 0, paddingLeft: 20 }}>
+                            {renderTestMutation.data.testResults.seoIssues.map((issue: string, idx: number) => (
+                              <li key={idx}>{issue}</li>
+                            ))}
+                          </ul>
+                        </Alert>
+                      </Grid>
+                    )}
+                    {renderTestMutation.data.testResults.recommendations?.length > 0 && (
+                      <Grid item xs={12}>
+                        <Alert severity="info">
+                          <Typography variant="subtitle2" gutterBottom>Recommendations:</Typography>
+                          <ul style={{ margin: 0, paddingLeft: 20 }}>
+                            {renderTestMutation.data.testResults.recommendations.map((rec: string, idx: number) => (
+                              <li key={idx}>{rec}</li>
+                            ))}
+                          </ul>
+                        </Alert>
+                      </Grid>
+                    )}
+                  </Grid>
+                </CardContent>
+              </Card>
+            )}
+          </Box>
+        </TabPanel>
+
+        {/* Tab 3: Mobile Usability */}
+        <TabPanel value={tabValue} index={2}>
+          <Box sx={{ p: 3 }}>
+            <Typography variant="h6" gutterBottom>
+              Mobile Usability Testing
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+              Test with Googlebot Mobile, Chrome for Android, and Safari iOS
+            </Typography>
+
+            {/* Test Controls */}
+            <Grid container spacing={2} sx={{ mb: 3 }}>
+              <Grid item xs={12} md={9}>
+                <TextField
+                  fullWidth
+                  label="URL to Test"
+                  value={testUrl}
+                  onChange={(e) => setTestUrl(e.target.value)}
+                  placeholder="https://example.com"
+                />
+              </Grid>
+              <Grid item xs={12} md={3}>
+                <Button
+                  fullWidth
+                  variant="contained"
+                  startIcon={<MobileIcon />}
+                  onClick={() => mobileTestMutation.mutate()}
+                  disabled={!testUrl || mobileTestMutation.isPending}
+                  sx={{ height: '56px' }}
+                >
+                  {mobileTestMutation.isPending ? 'Testing...' : 'Run Mobile Test'}
+                </Button>
+              </Grid>
+            </Grid>
+
+            {mobileTestMutation.isPending && (
+              <Box sx={{ mb: 3 }}>
+                <LinearProgress />
+                <Typography variant="caption" sx={{ mt: 1, display: 'block' }}>
+                  Testing Googlebot Mobile, Chrome for Android, Safari iOS...
+                </Typography>
+              </Box>
+            )}
+
+            {/* Recent Mobile Tests */}
+            {!mobileLoading && mobileTests?.tests && mobileTests.tests.length > 0 && (
+              <TableContainer component={Paper}>
+                <Table>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>URL</TableCell>
+                      <TableCell>Googlebot Mobile</TableCell>
+                      <TableCell>Chrome Android</TableCell>
+                      <TableCell>Safari iOS</TableCell>
+                      <TableCell align="right">Usability Score</TableCell>
+                      <TableCell align="right">SEO Score</TableCell>
+                      <TableCell>Tested</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {mobileTests.tests.map((test: any) => (
+                      <TableRow key={test.test_id}>
+                        <TableCell sx={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {test.url}
+                        </TableCell>
+                        <TableCell>
+                          {test.googlebot_mobile_compatible ? (
+                            <SuccessIcon color="success" />
+                          ) : (
+                            <ErrorIcon color="error" />
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {test.chrome_android_compatible ? (
+                            <SuccessIcon color="success" />
+                          ) : (
+                            <ErrorIcon color="error" />
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {test.safari_ios_compatible ? (
+                            <SuccessIcon color="success" />
+                          ) : (
+                            <ErrorIcon color="error" />
+                          )}
+                        </TableCell>
+                        <TableCell align="right">
+                          <Chip
+                            label={test.mobile_usability_score}
+                            color={getScoreColor(test.mobile_usability_score)}
+                            size="small"
+                          />
+                        </TableCell>
+                        <TableCell align="right">
+                          <Chip
+                            label={test.mobile_seo_score}
+                            color={getScoreColor(test.mobile_seo_score)}
+                            size="small"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          {new Date(test.tested_at).toLocaleDateString()}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            )}
+          </Box>
+        </TabPanel>
+
+        {/* Tab 4: Crawl Budget */}
+        <TabPanel value={tabValue} index={3}>
+          <Box sx={{ p: 3 }}>
+            <Typography variant="h6" gutterBottom>
+              Crawl Budget Optimization
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+              Identify wasted crawl budget and optimize bot crawling
+            </Typography>
+
+            {budgetLoading ? (
+              <CircularProgress />
+            ) : crawlBudget?.budgetReport && crawlBudget.budgetReport.length > 0 ? (
+              <>
+                <Grid container spacing={2} sx={{ mb: 3 }}>
+                  <Grid item xs={12} md={6}>
+                    <Card>
+                      <CardContent>
+                        <Typography color="text.secondary" gutterBottom>
+                          Average Waste
+                        </Typography>
+                        <Typography variant="h4">
+                          {crawlBudget.summary.avgWastePercent.toFixed(1)}%
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          Of crawl budget wasted
+                        </Typography>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <Card>
+                      <CardContent>
+                        <Typography color="text.secondary" gutterBottom>
+                          Bots Tracked
+                        </Typography>
+                        <Typography variant="h4">
+                          {crawlBudget.summary.totalBots}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          Different bots analyzed
+                        </Typography>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                </Grid>
+
+                <TableContainer component={Paper}>
+                  <Table>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Bot Name</TableCell>
+                        <TableCell>Date</TableCell>
+                        <TableCell align="right">Pages Crawled</TableCell>
+                        <TableCell align="right">Budget Wasted</TableCell>
+                        <TableCell align="right">Waste %</TableCell>
+                        <TableCell align="right">Efficiency</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {crawlBudget.budgetReport.map((report: any, idx: number) => (
+                        <TableRow key={`${report.bot_name}-${report.date}-${idx}`}>
+                          <TableCell>{report.bot_name}</TableCell>
+                          <TableCell>{new Date(report.date).toLocaleDateString()}</TableCell>
+                          <TableCell align="right">{report.actual_pages_crawled}</TableCell>
+                          <TableCell align="right">{report.total_budget_wasted}</TableCell>
+                          <TableCell align="right">
+                            <Chip
+                              label={`${Number(report.waste_percent).toFixed(1)}%`}
+                              color={Number(report.waste_percent) < 10 ? 'success' : 'warning'}
+                              size="small"
+                            />
+                          </TableCell>
+                          <TableCell align="right">
+                            {(100 - Number(report.waste_percent)).toFixed(1)}%
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </>
+            ) : (
+              <Alert severity="info">
+                No crawl budget data available yet. Data will populate as bots visit your site.
+              </Alert>
+            )}
+          </Box>
+        </TabPanel>
+
+        {/* Tab 5: Schema Validator */}
+        <TabPanel value={tabValue} index={4}>
+          <Box sx={{ p: 3 }}>
+            <SchemaValidationPanel />
+          </Box>
+        </TabPanel>
+
+        {/* Tab 6: Recommendations */}
+        <TabPanel value={tabValue} index={5}>
+          <Box sx={{ p: 3 }}>
+            <Typography variant="h6" gutterBottom>
+              AI-Powered SEO Recommendations
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+              Actionable insights to improve bot crawling and SEO
+            </Typography>
+
+            {recsLoading ? (
+              <CircularProgress />
+            ) : recommendations?.recommendations && recommendations.recommendations.length > 0 ? (
+              <Grid container spacing={2}>
+                {recommendations.recommendations.map((rec: any) => (
+                  <Grid item xs={12} key={rec.recommendation_id}>
+                    <Card>
+                      <CardContent>
+                        <Box sx={{ display: 'flex', alignItems: 'start', gap: 2 }}>
+                          <Box>
+                            {rec.priority === 'critical' && <ErrorIcon color="error" />}
+                            {rec.priority === 'high' && <WarningIcon color="warning" />}
+                            {rec.priority === 'medium' && <WarningIcon color="info" />}
+                          </Box>
+                          <Box sx={{ flex: 1 }}>
+                            <Typography variant="h6" gutterBottom>
+                              {rec.recommendation_title}
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary" paragraph>
+                              {rec.recommendation_text}
+                            </Typography>
+                            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                              <Chip
+                                label={rec.priority.toUpperCase()}
+                                color={rec.priority === 'critical' ? 'error' : rec.priority === 'high' ? 'warning' : 'info'}
+                                size="small"
+                              />
+                              <Chip label={rec.category} size="small" variant="outlined" />
+                              {rec.estimated_impact && (
+                                <Chip label={`Impact: ${rec.estimated_impact}`} size="small" variant="outlined" />
+                              )}
+                            </Box>
+                          </Box>
+                        </Box>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                ))}
+              </Grid>
+            ) : (
+              <Alert severity="success" icon={<SuccessIcon />}>
+                No open recommendations! Your SEO bot optimization is in great shape.
+              </Alert>
+            )}
+          </Box>
+        </TabPanel>
+      </Card>
+    </Box>
+  );
+}
+

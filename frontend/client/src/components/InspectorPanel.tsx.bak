@@ -1,0 +1,514 @@
+import { useTheming } from '@/lib/theming-helper';
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  Box,
+  Typography,
+  TextField,
+  Slider,
+  Stack,
+  Paper,
+  Divider,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Chip,
+  Button,
+  IconButton,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
+  Card,
+  CardContent,
+  Avatar,
+  Tooltip,
+  InputAdornment,
+  Switch,
+  FormControlLabel
+} from '@mui/material';
+import {
+  ExpandMore,
+  Edit,
+  Save,
+  Undo,
+  ColorLens,
+  Timeline,
+  Speed,
+  VolumeUp,
+  Brightness6,
+  Contrast,
+  Palette,
+  AccessTime,
+  TextFields,
+  TrendingUp,
+  Info,
+  Settings,
+  Time,
+  Transform,
+  Opacity,
+  SliderThumb
+} from '@mui/icons-material';
+import { BeatClip } from '../services/storyArcDataIntegration';
+import { storyArcStudioColors } from '../theme/storyArcStudioTheme';
+
+interface InspectorPanelProps {
+  selectedClips: BeatClip[];
+  onClipUpdate: (clipId: string, updates: Partial<BeatClip>) => void;
+  onBulkUpdate?: (clipIds: string[], updates: Partial<BeatClip>) => void;
+  height?: number
+}
+
+interface ClipEdit {
+  id: string;
+  field: string;
+  originalValue: any;
+  newValue: any
+}
+
+const EMOTIONAL_VALUE_COLORS = {
+  '-1.0': '#FF4444', // Very negative (red)
+  '-0.5': '#FF8800', // Negative (orange)  
+  '0.0': '#888888',  // Neutral (gray)
+  '0.5': '#44AA44',  // Positive (green)
+  '1.0': '#4488FF'   // Very positive (blue)
+};
+
+const CLIP_TYPES = [
+  'preparation', 'ceremony', 'celebration', 'farewell',
+  'interview', 'action', 'montage', 'transition',
+  'opening', 'closing', 'dialogue', 'music'
+];
+
+const VIDEO_EFFECTS = [
+  'None', 'Fade In', 'Fade Out', 'Cross Dissolve', 'Wipe',
+  'Color Correction', 'Stabilization', 'Slow Motion', 'Speed Ramp'
+];
+
+export default function InspectorPanel({ 
+  selectedClips, 
+  onClipUpdate, 
+  onBulkUpdate,
+  height = 600 
+}: InspectorPanelProps) {
+  const [editingField, setEditingField] = useState<string | null>(null);
+  const [pendingEdits, setPendingEdits] = useState<Map<string, ClipEdit>>(new Map());
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['basic', 'timing', 'emotional']));
+
+  // Auto-save pending edits after delay
+  useEffect(() => {
+    if (pendingEdits.size === 0) return;
+
+    const timer = setTimeout(() => {
+      pendingEdits.forEach((edit) => {
+        onClipUpdate(edit.id, { [edit.field]: edit.newValue });
+    });
+      setPendingEdits(new Map());
+  }, 500); // Auto-save after 500ms of no changes
+
+    return () => clearTimeout(timer);
+}, [pendingEdits, onClipUpdate]);
+
+  const handleFieldEdit = useCallback(
+  
+  // Theming system
+  const theming = useTheming('photographer');(clipId: string, field: string, value: unknown) => {
+    if (!selectedClips || selectedClips.length === 0) return;
+    
+    const clip = selectedClips.find(c => c && c.id === clipId);
+    if (!clip) return;
+
+    setPendingEdits(prev => {
+      const newEdits = new Map(prev);
+      const editKey = `${clipId}-${field}`;
+      
+      if (newEdits.has(editKey)) {
+        const existingEdit = newEdits.get(editKey);
+        if (existingEdit) {
+          newEdits.set(editKey, { ...existingEdit, newValue: value });
+      }
+    } else {
+        // FIXED: Type-safe field access
+        const originalValue = field in clip ? (clip as Record<string, unknown>)[field] : null;
+        newEdits.set(editKey, {
+          id: clipId,
+          field,
+          originalValue,
+          newValue: value
+    });
+    }
+      
+      return newEdits;
+  });
+
+    // Immediate update for responsive UI
+    if (onClipUpdate) {
+      onClipUpdate(clipId, { [field]: value });
+  }
+}, [selectedClips, onClipUpdate]);
+
+  const handleBulkEdit = useCallback((field: string, value: unknown) => {
+    if (!selectedClips || selectedClips.length === 0 || !onBulkUpdate) return;
+    
+    const clipIds = selectedClips.filter(clip => clip && clip.id).map(clip => clip.id);
+    if (clipIds.length > 0) {
+      onBulkUpdate(clipIds, { [field]: value });
+  }
+}, [selectedClips, onBulkUpdate]);
+
+  const toggleSection = useCallback((section: string) => {
+    setExpandedSections(prev => {
+      const newExpanded = new Set(prev);
+      if (newExpanded.has(section)) {
+        newExpanded.delete(section);
+  } else {
+        newExpanded.add(section);
+    }
+      return newExpanded;
+  });
+}, []);
+
+  const getEmotionalValueColor = (emotionalValue: number) => {
+    if (emotionalValue <= -0.75) return EMOTIONAL_VALUE_COLORS['-1.0'];
+    if (emotionalValue <= -0.25) return EMOTIONAL_VALUE_COLORS['-0.5'];
+    if (emotionalValue <= 0.25) return EMOTIONAL_VALUE_COLORS['0.0'];
+    if (emotionalValue <= 0.75) return EMOTIONAL_VALUE_COLORS['0.5'];
+    return EMOTIONAL_VALUE_COLORS['1.0'];
+  };
+
+  if (!selectedClips || selectedClips.length === 0) {
+    return (
+      <Box sx={{ 
+        height, 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'center',
+        p: 2
+  }}>
+        <Stack spacing={2} alignItems="center">
+          <Info color="disabled" sx={{ fontSize: 48}} />
+          <Typography variant="body2" color="text.secondary" textAlign="center">
+            Select clips on the timeline to view and edit their properties
+          </Typography>
+        </Stack>
+      </Box>
+    );
+}
+
+  return (
+    <Box sx={{ height, display: 'flex', flexDirection: 'column'}}>
+      {/* Header */}
+      <Box sx={{ p:  2, borderBottom: 1, borderColor: 'divider'}}>
+        <Stack direction="row" alignItems="center" spacing={1}>
+          <Typography variant="subtitle2" fontWeight={600}>
+            Inspector
+          </Typography>
+          <Chip 
+            label={`${selectedClips.length} selected`}
+            size="small"
+            color={isMultiSelection ? "secondary" : "primary"}
+          />
+        </Stack>
+        
+        {isMultiSelection && (
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 0, display: 'block',}}>
+            Editing multiple clips - changes apply to all selected
+          </Typography>
+        )}
+      </Box>
+
+      {/* Content */}
+      <Box sx={{ flex: 1, overflow: 'auto', p:  1 }}>
+        <Stack spacing={1}>
+          {/* Basic Properties */}
+          <Accordion 
+            expanded={expandedSections.has('basicProperties')}
+            onChange={() => toggleSection('basicProperties')}
+            variant="outlined"
+          >
+            <AccordionSummary expandIcon={{theming.getThemedIcon('expandMore')}}>
+              <Stack direction="row" alignItems="center" spacing={1}>
+                <TextFields fontSize="small" />
+                <Typography variant="body2" fontWeight={500}>
+                  Basic Properties
+                </Typography>
+              </Stack>
+            </AccordionSummary>
+            <AccordionDetails sx={{ pt:  0 }}>
+              <Stack spacing={2}>
+                {/* Clip Name */}
+                <TextField
+                  label="Clip Name"
+                  value={clip?.name || '' as string}
+                  onChange={(e) => handleFieldEdit(clipId, 'name', e.target.value)}
+                  size="small"
+                  fullWidth
+                />
+                <TextField
+                  label="Synopsis"
+                  value={clip?.synopsis || '' as string}
+                  onChange={(e) => handleFieldEdit(clipId, 'synopsis', e.target.value)}
+                  size="small"
+                  fullWidth
+                  multiline
+                  rows={3}
+                  helperText="Brief excerpt from the clip content"
+                />
+
+                <Box sx={{ marginTop: 1 }}>
+                  <Typography variant="caption" color="text.secondary" gutterBottom>
+                    Duration: {clip?.duration?.toFixed(1) || '0.0'} seconds
+                  </Typography>
+                  <Slider
+                    value={clip?.duration || 0 as number}
+                    onChange={(_, value) => {
+                      handleFieldEdit(clipId, 'duration', value as number);
+                    }}
+                    min={0.5}
+                    max={120}
+                    step={0.1}
+                    valueLabelDisplay="auto"
+                    valueLabelFormat={(value) => `${value.toFixed(1)} seconds`}
+                    size="small"
+                    sx={{
+                      '& .MuiSlider-thumb': {
+                        bgcolor: theming.colors.primary,
+                      },
+                      '& .MuiSlider-track': {
+                        bgcolor: theming.colors.primary,
+                      },
+                    }}
+                  />
+                </Box>
+                <Box sx={{ marginTop: 1 }}>
+                  <Typography variant="caption" color="text.secondary" gutterBottom>
+                    Playback Speed: {((clip?.speed || 1) * 100).toFixed()}%
+                  </Typography>
+                  <Slider
+                    value={(clip?.speed || 1) * 100}
+                    onChange={(_, value) => {
+                      handleFieldEdit(clipId, 'speed', (value as number) / 100);
+                    }}
+                    min={25}
+                    max={400}
+                    step={5}
+                    marks={[
+                        { value:  25, label: '25%', color: theming.colors.primary},
+                      { value:  50, label: '50%', color: theming.colors.primary},
+                        { value:  75, label: '75%', color: theming.colors.primary},
+                        { value: 100, label: '100%', color: theming.colors.primary},
+                        { value: 125, label: '125%', color: theming.colors.primary},
+                        { value: 150, label: '150%', color: theming.colors.primary},
+                        { value: 175, label: '175%', color: theming.colors.primary},
+                        { value: 200, label: '200%', color: theming.colors.primary},
+                        { value: 225, label: '225%', color: theming.colors.primary},
+                        { value: 250, label: '250%', color: theming.colors.primary},
+                        { value: 275, label: '275%', color: theming.colors.primary},
+                        { value: 300, label: '300%', color: theming.colors.primary}
+                    ]}
+                    valueLabelDisplay="auto"
+                    valueLabelFormat={(value) => `${value}%`}
+                    size="small"
+                    sx={{
+                      '& .MuiSlider-thumb': {
+                        bgcolor: theming.colors.primary,
+                      },
+                      '& .MuiSlider-track': {
+                        bgcolor: theming.colors.primary,
+                      },
+                    }}
+                  />
+                </Box>
+              </Stack>
+            </AccordionDetails>
+          </Accordion>
+
+          {/* Emotional Properties */}
+          <Accordion 
+            expanded={expandedSections.has('emotional')}
+            onChange={() => toggleSection('emotional')}
+            variant="outlined"
+          >
+            <AccordionSummary expandIcon={{theming.getThemedIcon('expandMore')}}>
+              <Stack direction="row" alignItems="center" spacing={1}>
+                <TrendingUp fontSize="small" />
+                <Typography variant="body2" fontWeight={500}>
+                  Emotional Properties
+                </Typography>
+              </Stack>
+            </AccordionSummary>
+            <AccordionDetails sx={{ pt:  0 }}>
+              <Stack spacing={2}>
+                {/* Emotional Value */}
+                <Box sx={{ marginTop: 1 }}>
+                  <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
+                    <Typography variant="caption" color="text.secondary">
+                      Emotional Value: {clip?.ev?.toFixed() || '0.0'}
+                    </Typography>
+                    <Box 
+                      sx={{ 
+                        width:  16, 
+                        height:  16, 
+                        borderRadius:  1,
+                        bgcolor: getEmotionalValueColor(clip?.ev || 0 as number)
+                      }}
+                      sx={theming.getThemedIconSx('trendingUp')}
+                    />
+                  </Stack>
+                  <Slider
+                      value={(clip?.ev || 0) * 100}
+                      onChange={(_, value) => handleFieldEdit(clipId, 'ev', (value as number) / 100)}
+                      min={0}
+                      max={100}
+                      step={1}
+                      valueLabelDisplay="auto"
+                      valueLabelFormat={(value) => `${value}%`}
+                      size="small"
+                      sx={theming.getThemedSliderSx()}
+                  />
+                </Box>
+              </Stack>
+            </AccordionDetails>
+          </Accordion>
+
+          {/* Visual Effects */}
+          <Accordion 
+            expanded={expandedSections.has('effects')}
+            onChange={() => toggleSection('effects')}
+            variant="outlined"
+          >
+            <AccordionSummary expandIcon={{theming.getThemedIcon('expandMore')}}>
+              <Stack direction="row" alignItems="center" spacing={1}>
+                <Palette fontSize="small" />
+                <Typography variant="body2" fontWeight={500}>
+                  Visual Effects
+                </Typography>
+              </Stack>
+            </AccordionSummary>
+            <AccordionDetails sx={{ pt:  0 }}>
+              <Stack spacing={2}>
+                {/* Color */}
+                <Box sx={{ marginTop: 1 }}>
+                  <Typography variant="caption" color="text.secondary" gutterBottom>
+                    Clip Color
+                  </Typography>
+                  <Stack direction="row" spacing={1} sx={{ marginTop: 1 }}>
+                    {Object.values(storyArcStudioColors.emotionalValues).map((color, index) => (
+                      <Box
+                        key={color}
+                        sx={{
+                          width:  24,
+                          height:  24,
+                          bgcolor: color,
+                          borderRadius:  1,
+                          cursor: 'pointer',
+                          border: clip?.color === color ? 2 : 1,
+                          borderColor: clip?.color === color ? 'primary.main' : 'divider'
+                    }}
+                        onClick={() => handleFieldEdit(clipId, 'color', color)}
+                      />
+                    ))}
+                  </Stack>
+                </Box>
+
+                {/* Video Effects */}
+                <FormControl size="small" fullWidth>
+                  <InputLabel>Video Effect</InputLabel>
+                  <Select
+                    value={clip?.effect || 'None'}
+                    onChange={(e) => {
+                      handleFieldEdit(clipId, 'effect', e.target.value);
+                    }}
+                    label="Video Effect"
+                  >
+                    {VIDEO_EFFECTS.map(effect => (
+                      <MenuItem key={effect} value={effect}>
+                        {effect}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+
+                {/* Opacity */}
+                <Box sx={{ marginTop: 1 }}>
+                  <Typography variant="caption" color="text.secondary" gutterBottom>
+                    Opacity: {Math.round((clip?.opacity || 1) * 10)}%
+                  </Typography>
+                  <Slider
+                    value={(clip?.opacity || 1) * 100}
+                    onChange={(_, value) => {
+                      handleFieldEdit(clipId, 'opacity', (value as number) / 100);
+                    }}
+                    min={0}
+                    max={100}
+                    step={1}
+                    valueLabelDisplay="auto"
+                    valueLabelFormat={(value) => `${value}%`}
+                    size="small"
+                    sx={theming.getThemedSliderSx()}
+                  />
+                </Box>
+              </Stack>
+            </AccordionDetails>
+          </Accordion>
+
+          {/* Multi-Selection Tools */}
+          {isMultiSelection && (
+            <Paper variant="outlined" sx={{ p:  2 }} sx={theming.getThemedCardSx()}>
+              <Typography variant="body2" fontWeight={500} gutterBottom>
+                Bulk Actions
+              </Typography>
+              <Stack spacing={1}>
+                <Button
+                  size="small"
+                  startIcon={theming.getThemedIcon('transform')}
+                  onClick={() => {
+                    // Align all clips to same start time
+                    const firstStart = Math.min(...selectedClips.map(c => c?.start || 0));
+                    selectedClips.forEach(clip => {
+                      handleFieldEdit(clip?.id || '', 'start', firstStart);
+                    });
+                }}
+                >
+                  Align Start Times
+                </Button>
+                <Button
+                  size="small"
+                  startIcon={theming.getThemedIcon('accessTime')}
+                  onClick={() => {
+                    // Set all clips to same duration as primary
+                    selectedClips.forEach(clip => {
+                      handleFieldEdit(clip?.id || '', 'duration', selectedClips[0]?.duration || 0 as number);
+                    });
+                    }}
+                  >
+                  Match Duration
+                </Button>
+                <Button
+                  size="small"
+                  startIcon={theming.getThemedIcon('palette')}
+                  onClick={() => {
+                    // Set all clips to same color as primary
+                    selectedClips.forEach(clip => {
+                      handleFieldEdit(clip?.id || '', 'color', selectedClips[0]?.color || 'white' as string);
+                    });
+                    }}
+                  >
+                  Match Color
+                </Button>
+              </Stack>
+            </Paper>
+          )}
+
+          {/* Pending Changes Indicator */}
+          {pendingEdits.size > 0 && (
+            <Paper variant="outlined" sx={{ p:  1, background: 'transparent', borderColor: 'warning.main' }} sx={theming.getThemedCardSx()}>
+              <Typography variant="caption" color="text.secondary" fontWeight={500} gutterBottom>
+                {pendingEdits.size} unsaved change(s) - will auto-save in 500ms
+              </Typography>
+            </Paper>
+            )}
+          </Stack>
+        </Box>
+      </Box>
+    );
+}

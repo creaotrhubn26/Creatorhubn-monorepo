@@ -1,0 +1,50 @@
+// @ts-nocheck
+// This file is in the unused directory and may have outdated imports
+import { useTheming } from '../../../utils/theming-helper';
+import React from 'react';
+import { getAuthHeader } from '@/lib/google/impersonation';
+import { useAuth } from '@/hooks/useAuth';
+import { getAuthHeader } from '@/lib/google/impersonation';
+import { Box, Typography } from '@mui/material';
+import { getAuthHeader } from '@/lib/google/impersonation';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { getAuthHeader } from '@/lib/google/impersonation';
+import { apiRequest } from '@/lib/queryClient';
+import { getAuthHeader } from '@/lib/google/impersonation';
+
+export default function EnhancedProjectFileManager() {
+const queryClient = useQueryClient();
+  
+  // Theming system
+  const theming = useTheming('photographer');
+  
+  // Database connection for EnhancedProjectFileManager
+  const { data: projectData = [], isLoading } = useQuery({
+    queryKey: ['/api/project', 'user-data'],
+    queryFn: () => apiRequest('/api/project/user-data', ),
+    retry: false,
+});
+
+  // Mutation for updating project data
+  const updateEnhancedProjectFileManager = useMutation({
+    mutationFn: async (data: any) => {
+      const auth = await getAuthHeader();
+      return apiRequest('/api/project/update', {
+        headers: auth,
+        method: 'POS',
+        body: JSON.stringify(data)
+  });
+  },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/project', ],});
+  }
+});
+
+  return (
+    <Box sx={{ p:  2 }}>
+      <Typography variant="h6" sx={{ ...{}, color: theming.colors.primary }}>
+        Enhanced Project File Manager
+      </Typography>
+    </Box>
+  );
+}

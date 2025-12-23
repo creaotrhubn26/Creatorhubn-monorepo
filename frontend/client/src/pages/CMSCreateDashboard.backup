@@ -1,0 +1,1064 @@
+import React, { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Progress } from '@/components/ui/progress';
+import { Switch } from '@/components/ui/switch';
+import { 
+  Plus, 
+  Edit3, 
+  Save, 
+  Trash2, 
+  Eye, 
+  FileText, 
+  Image, 
+  Video, 
+  Music,
+  Settings,
+  Palette,
+  Code,
+  Globe,
+  Database,
+  Star,
+  TrendingUp,
+  Copy,
+  Download,
+  Upload,
+  Bookmark,
+  Heart,
+  Share2,
+  MessageSquare,
+  Layout,
+  Sparkles,
+  Target,
+  Award,
+  CheckCircle,
+  XCircle,
+  AlertCircle,
+  Info,
+  Filter,
+  Search,
+  Calendar,
+  Clock,
+  Users,
+  Zap
+} from 'lucide-react';
+
+interface CMSContent {
+  id: string;
+  title: string;
+  content: string;
+  type: 'text' | 'image' | 'video' | 'audio';
+  status: 'draft' | 'published' | 'archived';
+  category: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface CMSStats {
+  totalContent: number;
+  publishedContent: number;
+  draftContent: number;
+  archivedContent: number;
+  totalViews: number;
+  monthlyViews: number;
+}
+
+export const CMSCreateDashboard: React.FC = () => {
+  const [activeTab, setActiveTab] = useState('oversikt');
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [editingContent, setEditingContent] = useState<CMSContent | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('alle');
+  const [selectedStatus, setSelectedStatus] = useState('alle');
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [newContent, setNewContent] = useState({
+    title: '',
+    content: '',
+    type: 'text' as const,
+    category: 'generelt',
+    status: 'draft' as const
+  });
+
+  const queryClient = useQueryClient();
+
+  // Fetch CMS statistics - following photography dashboard pattern
+  const { data: cmsStats } = useQuery<CMSStats>({
+    queryKey: ['/api/cms-create/stats'],
+    enabled: true
+  });
+
+  // Fetch CMS content
+  const { data: cmsContent = [] } = useQuery<CMSContent[]>({
+    queryKey: ['/api/cms-create/content'],
+    enabled: true
+  });
+
+  // Filter content based on search and filters
+  const filteredContent = (cmsContent || []).filter(content => {
+    const matchesSearch = content.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         content.content.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesCategory = selectedCategory === 'alle' || content.category === selectedCategory;
+    const matchesStatus = selectedStatus === 'alle' || content.status === selectedStatus;
+    return matchesSearch && matchesCategory && matchesStatus;
+  });
+
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'published': return <CheckCircle className="h-4 w-4 text-green-500" />;
+      case 'draft': return <AlertCircle className="h-4 w-4 text-yellow-500" />;
+      case 'archived': return <XCircle className="h-4 w-4 text-gray-500" />;
+      default: return <Info className="h-4 w-4 text-blue-500" />;
+    }
+  };
+
+  const getTypeIcon = (type: string) => {
+    switch (type) {
+      case 'image': return <Image className="h-5 w-5 text-purple-500" />;
+      case 'video': return <Video className="h-5 w-5 text-red-500" />;
+      case 'audio': return <Music className="h-5 w-5 text-green-500" />;
+      default: return <FileText className="h-5 w-5 text-blue-500" />;
+    }
+  };
+
+  // Create content mutation
+  const createContentMutation = useMutation({
+    mutationFn: async (contentData: any) => {
+      const response = await fetch('/api/cms-create/content', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(contentData)
+      });
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/cms-create/content'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/cms-create/stats'] });
+      setShowCreateDialog(false);
+      setNewContent({ title: '', content: '', type: 'text', category: 'generelt', status: 'draft' });
+      console.log('✅ CMS innhold opprettet successfully');
+    }
+  });
+
+  // Update content mutation
+  const updateContentMutation = useMutation({
+    mutationFn: async ({ id, ...data }: any) => {
+      const response = await fetch(`/api/cms-create/content/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/cms-create/content'] });
+      setEditingContent(null);
+      console.log('✅ CMS innhold oppdatert successfully');
+    }
+  });
+
+  // Delete content mutation
+  const deleteContentMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const response = await fetch(`/api/cms-create/content/${id}`, {
+        method: 'DELETE'
+      });
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/cms-create/content'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/cms-create/stats'] });
+      console.log('✅ CMS innhold slettet successfully');
+    }
+  });
+
+  const handleCreateContent = () => {
+    if (!newContent.title || !newContent.content) {
+      console.error('❌ Tittel og innhold er påkrevd');
+      return;
+    }
+    createContentMutation.mutate(newContent);
+  };
+
+  const handleUpdateContent = () => {
+    if (!editingContent) return;
+    updateContentMutation.mutate(editingContent);
+  };
+
+  const handleDeleteContent = (id: string) => {
+    if (confirm('Er du sikker på at du vil slette dette innholdet?')) {
+      deleteContentMutation.mutate(id);
+    }
+  };
+
+
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'published': return 'bg-green-500';
+      case 'draft': return 'bg-yellow-500';
+      case 'archived': return 'bg-gray-500';
+      default: return 'bg-blue-500';
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 p-4">
+      <div className="max-w-7xl mx-auto space-y-6">
+        {/* ULTIMATE Header with Premium Design */}
+        <div className="relative bg-white/10 backdrop-blur-2xl rounded-3xl shadow-2xl border border-white/20 p-8 overflow-hidden">
+          {/* Animated Background Elements */}
+          <div className="absolute inset-0 bg-gradient-to-r from-blue-500/5 via-purple-500/5 to-pink-500/5"></div>
+          <div className="absolute top-0 right-0 w-96 h-96 bg-gradient-to-bl from-purple-400/10 to-transparent rounded-full -translate-y-48 translate-x-48"></div>
+          <div className="absolute bottom-0 left-0 w-96 h-96 bg-gradient-to-tr from-blue-400/10 to-transparent rounded-full translate-y-48 -translate-x-48"></div>
+          
+          <div className="relative z-10">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+              <div>
+                <h1 className="text-5xl font-bold bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent flex items-center gap-4">
+                  <div className="relative">
+                    <FileText className="h-12 w-12 text-blue-600" />
+                    <Sparkles className="h-5 w-5 text-purple-500 absolute -top-1 -right-1 animate-pulse" />
+                  </div>
+                  CMS Ultimate Creator
+                </h1>
+                <p className="text-gray-700 mt-4 text-xl font-medium">
+                  Den ultimate opplevelsen for innholdsstyring med AI-drevet Norwegian CMS
+                </p>
+                <div className="flex items-center gap-4 mt-6">
+                  <Badge className="bg-gradient-to-r from-green-500 to-emerald-600 text-white px-4 py-2 text-sm">
+                    <Star className="h-4 w-4 mr-2" />
+                    Premium Experience
+                  </Badge>
+                  <Badge className="bg-gradient-to-r from-blue-500 to-indigo-600 text-white px-4 py-2 text-sm">
+                    <Zap className="h-4 w-4 mr-2" />
+                    AI-Powered
+                  </Badge>
+                  <Badge className="bg-gradient-to-r from-purple-500 to-pink-600 text-white px-4 py-2 text-sm">
+                    <Heart className="h-4 w-4 mr-2" />
+                    Best Ever
+                  </Badge>
+                </div>
+              </div>
+              <div className="flex flex-col sm:flex-row gap-4">
+                <Button
+                  onClick={() => setShowCreateDialog(true)}
+                  className="bg-gradient-to-r from-blue-500 via-purple-600 to-pink-600 hover:from-blue-600 hover:via-purple-700 hover:to-pink-700 text-white shadow-2xl hover:shadow-purple-500/25 transform hover:scale-105 transition-all duration-300 text-lg px-8 py-4"
+                >
+                  <Plus className="h-6 w-6 mr-3" />
+                  Opprett Meesterwerk
+                </Button>
+                <Button
+                  variant="outline"
+                  className="border-white/30 bg-white/10 backdrop-blur-sm hover:bg-white/20 text-gray-700 shadow-lg text-lg px-6 py-4"
+                >
+                  <Settings className="h-5 w-5 mr-3" />
+                  Avanserte Innstillinger
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Advanced Search and Filter Bar */}
+        <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow-xl border border-white/20 p-6">
+          <div className="flex flex-col lg:flex-row gap-6">
+            <div className="flex-1">
+              <div className="relative">
+                <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                <Input
+                  placeholder="Søk i alt innhold med AI-powered søk..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-12 h-12 text-lg bg-white/80 border-gray-200/50 focus:border-purple-500 focus:ring-purple-500/20"
+                />
+              </div>
+            </div>
+            
+            <div className="flex flex-wrap gap-4">
+              <div className="flex items-center gap-2">
+                <Filter className="h-5 w-5 text-gray-500" />
+                <select
+                  value={selectedCategory}
+                  onChange={(e) => setSelectedCategory(e.target.value)}
+                  className="px-4 py-2 rounded-lg border border-gray-200 bg-white/80 text-gray-700 focus:border-purple-500 focus:ring-purple-500/20"
+                >
+                  <option value="alle">Alle Kategorier</option>
+                  <option value="generelt">Generelt</option>
+                  <option value="fotografering">Fotografering</option>
+                  <option value="video">Video</option>
+                  <option value="musikk">Musikk</option>
+                </select>
+              </div>
+              
+              <div className="flex items-center gap-2">
+                <Badge className="bg-gray-100 text-gray-600">Status</Badge>
+                <select
+                  value={selectedStatus}
+                  onChange={(e) => setSelectedStatus(e.target.value)}
+                  className="px-4 py-2 rounded-lg border border-gray-200 bg-white/80 text-gray-700 focus:border-purple-500 focus:ring-purple-500/20"
+                >
+                  <option value="alle">Alle Status</option>
+                  <option value="published">Publisert</option>
+                  <option value="draft">Utkast</option>
+                  <option value="archived">Arkivert</option>
+                </select>
+              </div>
+              
+              <div className="flex items-center gap-2 border rounded-lg p-1 bg-white/80">
+                <Button
+                  variant={viewMode === 'grid' ? 'default' : 'ghost'}
+                  size="sm"
+                  onClick={() => setViewMode('grid')}
+                  className="h-8 w-8 p-0"
+                >
+                  <Layout className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant={viewMode === 'list' ? 'default' : 'ghost'}
+                  size="sm"
+                  onClick={() => setViewMode('list')}
+                  className="h-8 w-8 p-0"
+                >
+                  <FileText className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Premium Statistics Cards with Enhanced Design */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <Card className="bg-gradient-to-br from-blue-50/80 to-blue-100/80 backdrop-blur-xl border border-blue-200/20 hover:shadow-2xl hover:shadow-blue-500/10 transition-all duration-300 hover:scale-105">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-blue-600 font-medium">Totalt Innhold</p>
+                  <p className="text-3xl font-bold text-blue-700 mt-2">
+                    {cmsStats?.totalContent || 0}
+                  </p>
+                  <div className="flex items-center gap-1 mt-2">
+                    <TrendingUp className="h-4 w-4 text-green-500" />
+                    <span className="text-xs text-green-600">+12% denne måneden</span>
+                  </div>
+                </div>
+                <div className="bg-blue-500/10 p-3 rounded-2xl">
+                  <Database className="h-8 w-8 text-blue-500" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-gradient-to-br from-green-50/80 to-emerald-100/80 backdrop-blur-xl border border-green-200/20 hover:shadow-2xl hover:shadow-green-500/10 transition-all duration-300 hover:scale-105">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-green-600 font-medium">Publisert</p>
+                  <p className="text-3xl font-bold text-green-700 mt-2">
+                    {cmsStats?.publishedContent || 0}
+                  </p>
+                  <div className="flex items-center gap-1 mt-2">
+                    <CheckCircle className="h-4 w-4 text-green-500" />
+                    <span className="text-xs text-green-600">Live innhold</span>
+                  </div>
+                </div>
+                <div className="bg-green-500/10 p-3 rounded-2xl">
+                  <Globe className="h-8 w-8 text-green-500" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-gradient-to-br from-yellow-50/80 to-amber-100/80 backdrop-blur-xl border border-yellow-200/20 hover:shadow-2xl hover:shadow-yellow-500/10 transition-all duration-300 hover:scale-105">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-yellow-600 font-medium">Utkast</p>
+                  <p className="text-3xl font-bold text-yellow-700 mt-2">
+                    {cmsStats?.draftContent || 0}
+                  </p>
+                  <div className="flex items-center gap-1 mt-2">
+                    <Edit3 className="h-4 w-4 text-yellow-500" />
+                    <span className="text-xs text-yellow-600">Arbeider med</span>
+                  </div>
+                </div>
+                <div className="bg-yellow-500/10 p-3 rounded-2xl">
+                  <Edit3 className="h-8 w-8 text-yellow-500" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-gradient-to-br from-purple-50/80 to-pink-100/80 backdrop-blur-xl border border-purple-200/20 hover:shadow-2xl hover:shadow-purple-500/10 transition-all duration-300 hover:scale-105">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-purple-600 font-medium">Månedsvisninger</p>
+                  <p className="text-3xl font-bold text-purple-700 mt-2">
+                    {cmsStats?.monthlyViews || 0}
+                  </p>
+                  <div className="flex items-center gap-1 mt-2">
+                    <Eye className="h-4 w-4 text-purple-500" />
+                    <span className="text-xs text-purple-600">Økning 18%</span>
+                  </div>
+                </div>
+                <div className="bg-purple-500/10 p-3 rounded-2xl">
+                  <Eye className="h-8 w-8 text-purple-500" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Enhanced Content Display */}
+        <Card className="bg-white/80 backdrop-blur-xl border-white/20 shadow-2xl">
+          <CardContent className="p-8">
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+              <TabsList className="grid grid-cols-4 gap-2 p-2 bg-gray-100/50 rounded-xl">
+                <TabsTrigger value="oversikt" className="rounded-lg text-sm font-medium data-[state=active]:bg-white data-[state=active]:shadow-md">
+                  <Database className="h-4 w-4 mr-2" />
+                  Oversikt
+                </TabsTrigger>
+                <TabsTrigger value="innhold" className="rounded-lg text-sm font-medium data-[state=active]:bg-white data-[state=active]:shadow-md">
+                  <FileText className="h-4 w-4 mr-2" />
+                  Alt Innhold
+                </TabsTrigger>
+                <TabsTrigger value="analyser" className="rounded-lg text-sm font-medium data-[state=active]:bg-white data-[state=active]:shadow-md">
+                  <BarChart3 className="h-4 w-4 mr-2" />
+                  Analytics
+                </TabsTrigger>
+                <TabsTrigger value="templates" className="rounded-lg text-sm font-medium data-[state=active]:bg-white data-[state=active]:shadow-md">
+                  <Palette className="h-4 w-4 mr-2" />
+                  Templates
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="oversikt" className="space-y-6">
+                <div className="text-center py-12">
+                  <div className="relative inline-block">
+                    <FileText className="h-24 w-24 text-blue-500 mx-auto" />
+                    <Sparkles className="h-8 w-8 text-purple-500 absolute -top-2 -right-2 animate-bounce" />
+                  </div>
+                  <h3 className="text-2xl font-bold text-gray-800 mt-6">Velkommen til CMS Ultimate Creator</h3>
+                  <p className="text-gray-600 mt-4 max-w-2xl mx-auto text-lg">
+                    Den beste opplevelsen for innholdsstyring. Opprett, administrer og publiser innhold med vår AI-drevne norske CMS.
+                  </p>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-12">
+                    <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-6 rounded-2xl">
+                      <Plus className="h-12 w-12 text-blue-500 mx-auto mb-4" />
+                      <h4 className="font-semibold text-blue-800">Opprett Innhold</h4>
+                      <p className="text-blue-600 text-sm mt-2">Lag profesjonelt innhold med AI-assistanse</p>
+                    </div>
+                    <div className="bg-gradient-to-br from-green-50 to-green-100 p-6 rounded-2xl">
+                      <Eye className="h-12 w-12 text-green-500 mx-auto mb-4" />
+                      <h4 className="font-semibold text-green-800">Publiser Øyeblikkelig</h4>
+                      <p className="text-green-600 text-sm mt-2">Publiser innhold direkte til CreatorHub Norge</p>
+                    </div>
+                    <div className="bg-gradient-to-br from-purple-50 to-purple-100 p-6 rounded-2xl">
+                      <BarChart3 className="h-12 w-12 text-purple-500 mx-auto mb-4" />
+                      <h4 className="font-semibold text-purple-800">Analyser Ytelse</h4>
+                      <p className="text-purple-600 text-sm mt-2">Følg med på innholdets prestasjon</p>
+                    </div>
+                  </div>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="innhold" className="space-y-6">
+                {filteredContent.length === 0 ? (
+                  <div className="text-center py-16">
+                    <FileText className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+                    <h3 className="text-xl font-semibold text-gray-600">Ingen innhold funnet</h3>
+                    <p className="text-gray-500 mt-2">
+                      {searchTerm || selectedCategory !== 'alle' || selectedStatus !== 'alle' 
+                        ? 'Prøv å justere søket eller filtrene dine'
+                        : 'Begynn å skape fantastisk innhold for CreatorHub Norge'
+                      }
+                    </p>
+                    <Button
+                      onClick={() => setShowCreateDialog(true)}
+                      className="mt-6 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700"
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      Opprett Ditt Første Innhold
+                    </Button>
+                  </div>
+                ) : (
+                  <div className={`${viewMode === 'grid' ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6' : 'space-y-4'}`}>
+                    {filteredContent.map((content) => (
+                      <Card key={content.id} className={`bg-white border border-gray-200 hover:shadow-xl transition-all duration-300 hover:scale-105 ${viewMode === 'list' ? 'p-4' : ''}`}>
+                        <CardContent className={viewMode === 'grid' ? 'p-6' : 'p-0'}>
+                          <div className="flex items-start justify-between mb-4">
+                            <div className="flex items-center gap-3">
+                              {getTypeIcon(content.type)}
+                              <div>
+                                <h3 className="font-semibold text-gray-800 line-clamp-1">{content.title}</h3>
+                                <p className="text-sm text-gray-500">{content.category}</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {getStatusIcon(content.status)}
+                              <Badge className={`${getStatusColor(content.status)} text-white`}>
+                                {content.status}
+                              </Badge>
+                            </div>
+                          </div>
+                          
+                          <p className="text-gray-600 text-sm line-clamp-3 mb-4">
+                            {content.content}
+                          </p>
+                          
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2 text-xs text-gray-500">
+                              <Calendar className="h-3 w-3" />
+                              {new Date(content.createdAt).toLocaleDateString('no-NO')}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
+                                <Eye className="h-4 w-4" />
+                              </Button>
+                              <Button 
+                                size="sm" 
+                                variant="ghost" 
+                                className="h-8 w-8 p-0"
+                                onClick={() => setEditingContent(content)}
+                              >
+                                <Edit3 className="h-4 w-4" />
+                              </Button>
+                              <Button 
+                                size="sm" 
+                                variant="ghost" 
+                                className="h-8 w-8 p-0 text-red-500 hover:text-red-700"
+                                onClick={() => handleDeleteContent(content.id)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+              </TabsContent>
+
+              <TabsContent value="analyser" className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 text-blue-800">
+                        <TrendingUp className="h-5 w-5" />
+                        Innholdsytelse
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-4">
+                        <div className="flex justify-between items-center">
+                          <span className="text-sm text-blue-700">Mest populære innhold</span>
+                          <Badge className="bg-blue-500 text-white">Top 3</Badge>
+                        </div>
+                        <div className="space-y-2">
+                          {filteredContent.slice(0, 3).map((content, index) => (
+                            <div key={content.id} className="flex items-center justify-between p-3 bg-white/60 rounded-lg">
+                              <div className="flex items-center gap-2">
+                                <Badge className="bg-blue-500 text-white w-6 h-6 flex items-center justify-center text-xs">
+                                  {index + 1}
+                                </Badge>
+                                <span className="text-sm font-medium">{content.title}</span>
+                              </div>
+                              <span className="text-xs text-blue-600">{Math.floor(Math.random() * 1000 + 100)} visninger</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                  
+                  <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 text-green-800">
+                        <Target className="h-5 w-5" />
+                        Publiseringsstatistikk
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-4">
+                        <div className="space-y-3">
+                          <div className="flex justify-between">
+                            <span className="text-sm text-green-700">Publiserte i måneden</span>
+                            <span className="font-semibold text-green-800">{cmsStats?.publishedContent || 0}</span>
+                          </div>
+                          <Progress value={75} className="h-2" />
+                          <div className="flex justify-between">
+                            <span className="text-sm text-green-700">Utkast som venter</span>
+                            <span className="font-semibold text-green-800">{cmsStats?.draftContent || 0}</span>
+                          </div>
+                          <Progress value={45} className="h-2" />
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="templates" className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {[
+                    { name: 'Fotografi Guide', icon: Image, color: 'blue', description: 'Professionell fotografi guide template' },
+                    { name: 'Video Tutorial', icon: Video, color: 'red', description: 'Video tutorial med steg-for-steg instruksjoner' },
+                    { name: 'Musikk Review', icon: Music, color: 'green', description: 'Musikkanmeldelse template med rating system' },
+                    { name: 'Blogg Post', icon: FileText, color: 'purple', description: 'Generell blogg post template' },
+                    { name: 'Nyhetsartikkel', icon: Globe, color: 'indigo', description: 'Profesjonell nyhetsartikkel format' },
+                    { name: 'Produkt Review', icon: Star, color: 'yellow', description: 'Detaljert produktanmeldelse template' }
+                  ].map((template) => (
+                    <Card key={template.name} className={`bg-gradient-to-br from-${template.color}-50 to-${template.color}-100 border-${template.color}-200 hover:shadow-xl transition-all duration-300 hover:scale-105 cursor-pointer`}>
+                      <CardContent className="p-6 text-center">
+                        <template.icon className={`h-12 w-12 text-${template.color}-500 mx-auto mb-4`} />
+                        <h3 className={`font-semibold text-${template.color}-800 mb-2`}>{template.name}</h3>
+                        <p className={`text-${template.color}-600 text-sm mb-4`}>{template.description}</p>
+                        <Button 
+                          size="sm" 
+                          className={`bg-${template.color}-500 hover:bg-${template.color}-600 text-white`}
+                          onClick={() => {
+                            setNewContent({
+                              title: `Ny ${template.name}`,
+                              content: `Template for ${template.name.toLowerCase()}...`,
+                              type: template.name.includes('Video') ? 'video' : 
+                                    template.name.includes('Musikk') ? 'audio' :
+                                    template.name.includes('Fotografi') ? 'image' : 'text',
+                              category: 'generelt',
+                              status: 'draft'
+                            });
+                            setShowCreateDialog(true);
+                          }}
+                        >
+                          <Plus className="h-4 w-4 mr-2" />
+                          Bruk Template
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </TabsContent>
+            </Tabs>
+          </CardContent>
+
+        {/* Create Content Dialog */}
+        <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Plus className="h-5 w-5" />
+                Opprett Nytt Innhold
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-2">Tittel</label>
+                <Input
+                  value={newContent.title}
+                  onChange={(e) => setNewContent({ ...newContent, title: e.target.value })}
+                  placeholder="Skriv inn tittel..."
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2">Innhold</label>
+                <Textarea
+                  value={newContent.content}
+                  onChange={(e) => setNewContent({ ...newContent, content: e.target.value })}
+                  placeholder="Skriv ditt innhold her..."
+                  rows={6}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">Type</label>
+                  <select
+                    value={newContent.type}
+                    onChange={(e) => setNewContent({ ...newContent, type: e.target.value as any })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  >
+                    <option value="text">Tekst</option>
+                    <option value="image">Bilde</option>
+                    <option value="video">Video</option>
+                    <option value="audio">Lyd</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">Kategori</label>
+                  <select
+                    value={newContent.category}
+                    onChange={(e) => setNewContent({ ...newContent, category: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  >
+                    <option value="generelt">Generelt</option>
+                    <option value="fotografering">Fotografering</option>
+                    <option value="video">Video</option>
+                    <option value="musikk">Musikk</option>
+                  </select>
+                </div>
+              </div>
+              <div className="flex justify-end gap-3">
+                <Button variant="outline" onClick={() => setShowCreateDialog(false)}>
+                  Avbryt
+                </Button>
+                <Button onClick={handleCreateContent} disabled={createContentMutation.isPending}>
+                  {createContentMutation.isPending ? 'Oppretter...' : 'Opprett Innhold'}
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Edit Content Dialog */}
+        {editingContent && (
+          <Dialog open={!!editingContent} onOpenChange={() => setEditingContent(null)}>
+            <DialogContent className="max-w-2xl">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <Edit3 className="h-5 w-5" />
+                  Rediger Innhold
+                </DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">Tittel</label>
+                  <Input
+                    value={editingContent.title}
+                    onChange={(e) => setEditingContent({ ...editingContent, title: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">Innhold</label>
+                  <Textarea
+                    value={editingContent.content}
+                    onChange={(e) => setEditingContent({ ...editingContent, content: e.target.value })}
+                    rows={6}
+                  />
+                </div>
+                <div className="grid grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Type</label>
+                    <select
+                      value={editingContent.type}
+                      onChange={(e) => setEditingContent({ ...editingContent, type: e.target.value as any })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    >
+                      <option value="text">Tekst</option>
+                      <option value="image">Bilde</option>
+                      <option value="video">Video</option>
+                      <option value="audio">Lyd</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Kategori</label>
+                    <select
+                      value={editingContent.category}
+                      onChange={(e) => setEditingContent({ ...editingContent, category: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    >
+                      <option value="generelt">Generelt</option>
+                      <option value="fotografering">Fotografering</option>
+                      <option value="video">Video</option>
+                      <option value="musikk">Musikk</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Status</label>
+                    <select
+                      value={editingContent.status}
+                      onChange={(e) => setEditingContent({ ...editingContent, status: e.target.value as any })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    >
+                      <option value="draft">Utkast</option>
+                      <option value="published">Publisert</option>
+                      <option value="archived">Arkivert</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="flex justify-end gap-3">
+                  <Button variant="outline" onClick={() => setEditingContent(null)}>
+                    Avbryt
+                  </Button>
+                  <Button onClick={handleUpdateContent} disabled={updateContentMutation.isPending}>
+                    {updateContentMutation.isPending ? 'Oppdaterer...' : 'Oppdater Innhold'}
+                  </Button>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
+        )}
+      </div>
+    </div>
+  );
+};
+                        <p className="text-gray-600">Legg til egendefinert styling for unike designkrav.</p>
+                        <Button className="mt-4" onClick={() => console.log('💻 CSS editor åpnet')}>
+                          Åpne CSS Editor
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  </div>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="api">
+                <div className="space-y-4">
+                  <h3 className="text-xl font-semibold text-gray-800">API Endepunkter</h3>
+                  <Card className="border border-gray-200">
+                    <CardContent className="p-6">
+                      <div className="space-y-4">
+                        <div>
+                          <h4 className="font-medium">GET /api/cms/content</h4>
+                          <p className="text-sm text-gray-600">Hent alt CMS-innhold</p>
+                        </div>
+                        <div>
+                          <h4 className="font-medium">POST /api/cms/content</h4>
+                          <p className="text-sm text-gray-600">Opprett nytt innhold</p>
+                        </div>
+                        <div>
+                          <h4 className="font-medium">PUT /api/cms/content/:id</h4>
+                          <p className="text-sm text-gray-600">Oppdater eksisterende innhold</p>
+                        </div>
+                        <div>
+                          <h4 className="font-medium">DELETE /api/cms/content/:id</h4>
+                          <p className="text-sm text-gray-600">Slett innhold</p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="rapporter">
+                <div className="space-y-4">
+                  <h3 className="text-xl font-semibold text-gray-800">Innholdsrapporter</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <Card className="border border-gray-200">
+                      <CardHeader>
+                        <CardTitle>Populært Innhold</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-2">
+                          {(cmsContent || []).slice(0, 5).map((content, index) => (
+                            <div key={content.id} className="flex justify-between items-center">
+                              <span className="text-sm">{content.title}</span>
+                              <Badge variant="outline">{Math.floor(Math.random() * 1000)} visninger</Badge>
+                            </div>
+                          ))}
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    <Card className="border border-gray-200">
+                      <CardHeader>
+                        <CardTitle>Innholdsaktivitet</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-2">
+                          <div className="flex justify-between">
+                            <span className="text-sm">I dag</span>
+                            <span className="text-sm font-medium">
+                              {(cmsContent || []).filter(c => new Date(c.createdAt).toDateString() === new Date().toDateString()).length || 0}
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-sm">Denne uken</span>
+                            <span className="text-sm font-medium">
+                              {(cmsContent || []).filter(c => {
+                                const weekAgo = new Date();
+                                weekAgo.setDate(weekAgo.getDate() - 7);
+                                return new Date(c.createdAt) > weekAgo;
+                              }).length || 0}
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-sm">Denne måneden</span>
+                            <span className="text-sm font-medium">
+                              {(cmsContent || []).filter(c => {
+                                const monthAgo = new Date();
+                                monthAgo.setMonth(monthAgo.getMonth() - 1);
+                                return new Date(c.createdAt) > monthAgo;
+                              }).length || 0}
+                            </span>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </div>
+                </div>
+              </TabsContent>
+            </Tabs>
+          </CardContent>
+        </Card>
+
+        {/* Create Content Dialog */}
+        <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Opprett Nytt Innhold</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-2">Tittel</label>
+                <Input
+                  value={newContent.title}
+                  onChange={(e) => setNewContent({ ...newContent, title: e.target.value })}
+                  placeholder="Skriv inn tittel..."
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2">Innhold</label>
+                <Textarea
+                  value={newContent.content}
+                  onChange={(e) => setNewContent({ ...newContent, content: e.target.value })}
+                  placeholder="Skriv inn innhold..."
+                  rows={6}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">Type</label>
+                  <select
+                    value={newContent.type}
+                    onChange={(e) => setNewContent({ ...newContent, type: e.target.value as any })}
+                    className="w-full p-2 border rounded-md"
+                  >
+                    <option value="text">Tekst</option>
+                    <option value="image">Bilde</option>
+                    <option value="video">Video</option>
+                    <option value="audio">Lyd</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">Kategori</label>
+                  <select
+                    value={newContent.category}
+                    onChange={(e) => setNewContent({ ...newContent, category: e.target.value })}
+                    className="w-full p-2 border rounded-md"
+                  >
+                    <option value="generelt">Generelt</option>
+                    <option value="tutorials">Tutorials</option>
+                    <option value="nyheter">Nyheter</option>
+                    <option value="dokumentasjon">Dokumentasjon</option>
+                    <option value="faq">FAQ</option>
+                    <option value="markedsføring">Markedsføring</option>
+                  </select>
+                </div>
+              </div>
+              <div className="flex gap-3">
+                <Button 
+                  onClick={handleCreateContent}
+                  disabled={createContentMutation.isPending}
+                  className="bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700"
+                >
+                  <Save className="h-4 w-4 mr-2" />
+                  {createContentMutation.isPending ? 'Lagrer...' : 'Lagre'}
+                </Button>
+                <Button 
+                  variant="outline" 
+                  onClick={() => setShowCreateDialog(false)}
+                >
+                  Avbryt
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Edit Content Dialog */}
+        <Dialog open={!!editingContent} onOpenChange={() => setEditingContent(null)}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Rediger Innhold</DialogTitle>
+            </DialogHeader>
+            {editingContent && (
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">Tittel</label>
+                  <Input
+                    value={editingContent.title}
+                    onChange={(e) => setEditingContent({ ...editingContent, title: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">Innhold</label>
+                  <Textarea
+                    value={editingContent.content}
+                    onChange={(e) => setEditingContent({ ...editingContent, content: e.target.value })}
+                    rows={6}
+                  />
+                </div>
+                <div className="grid grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Type</label>
+                    <select
+                      value={editingContent.type}
+                      onChange={(e) => setEditingContent({ ...editingContent, type: e.target.value as any })}
+                      className="w-full p-2 border rounded-md"
+                    >
+                      <option value="text">Tekst</option>
+                      <option value="image">Bilde</option>
+                      <option value="video">Video</option>
+                      <option value="audio">Lyd</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Kategori</label>
+                    <select
+                      value={editingContent.category}
+                      onChange={(e) => setEditingContent({ ...editingContent, category: e.target.value })}
+                      className="w-full p-2 border rounded-md"
+                    >
+                      <option value="generelt">Generelt</option>
+                      <option value="tutorials">Tutorials</option>
+                      <option value="nyheter">Nyheter</option>
+                      <option value="dokumentasjon">Dokumentasjon</option>
+                      <option value="faq">FAQ</option>
+                      <option value="markedsføring">Markedsføring</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Status</label>
+                    <select
+                      value={editingContent.status}
+                      onChange={(e) => setEditingContent({ ...editingContent, status: e.target.value as any })}
+                      className="w-full p-2 border rounded-md"
+                    >
+                      <option value="draft">Utkast</option>
+                      <option value="published">Publisert</option>
+                      <option value="archived">Arkivert</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="flex gap-3">
+                  <Button 
+                    onClick={handleUpdateContent}
+                    disabled={updateContentMutation.isPending}
+                    className="bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700"
+                  >
+                    <Save className="h-4 w-4 mr-2" />
+                    {updateContentMutation.isPending ? 'Oppdaterer...' : 'Oppdater'}
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    onClick={() => setEditingContent(null)}
+                  >
+                    Avbryt
+                  </Button>
+                </div>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
+      </div>
+    </div>
+  );
+};
+
+export default CMSCreateDashboard;

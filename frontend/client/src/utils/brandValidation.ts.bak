@@ -1,0 +1,232 @@
+/**
+ * CreatorHub Norge - Brand Validation Utilities
+ * Ensures brand consistency across the platform
+ */
+
+import { CREATOR_HUB_BRANDING } from '../constants/CreatorHubBranding';
+
+interface BrandValidationResult {
+  isValid: boolean;
+  violations: BrandViolation[];
+  warnings: BrandWarning[]
+}
+
+interface BrandViolation {
+  type: 'color' | 'icon' | 'typography' | 'spacing';
+  component: string;
+  expected: string;
+  actual: string;
+  severity: 'error' | 'warning'
+}
+
+interface BrandWarning {
+  type: 'deprecated' | 'inconsistent' | 'suggestion';
+  component: string;
+  message: string
+}
+
+class BrandValidator {
+  private violations: BrandViolation[] = [];
+  private warnings: BrandWarning[] = [];
+
+  // Color validation
+  validateColor(componentName: string, color: string, expectedColor?: string): boolean {
+    const validColors = Object.values(CREATOR_HUB_BRANDING.colors);
+    
+    if (!validColors.includes(color as any)) {
+      this.violations.push({
+        type: 'color',
+        component: componentName,
+        expected: expectedColor || 'valid brand color',
+        actual: color,
+        severity: 'error',
+    });
+      return false;
+  }
+
+    if (expectedColor && color !== expectedColor) {
+      this.violations.push({
+        type: 'color',
+        component: componentName,
+        expected: expectedColor,
+        actual: color,
+        severity: 'warning',
+    });
+      return false;
+  }
+
+    return true;
+}
+
+  // Icon validation
+  validateIcon(componentName: string, icon: any, expectedIcon?: any): boolean {
+    if (expectedIcon && icon !== expectedIcon) {
+      this.violations.push({
+        type: 'icon',
+        component: componentName,
+        expected: expectedIcon.name || 'expected icon',
+        actual: icon.name || 'actual icon',
+        severity: 'warning',
+    });
+      return false;
+  }
+    return true;
+}
+
+  // Typography validation
+  validateTypography(componentName: string, fontFamily: string, fontSize: string): boolean {
+    const validFontFamilies = Object.values(CREATOR_HUB_BRANDING.typography.fontFamily);
+    const validFontSizes = Object.values(CREATOR_HUB_BRANDING.typography.fontSize);
+
+    if (!validFontFamilies.includes(fontFamily)) {
+      this.violations.push({
+        type: 'typography',
+        component: componentName,
+        expected: 'valid brand font family',
+        actual: fontFamily,
+        severity: 'warning',
+    });
+      return false;
+  }
+
+    if (!validFontSizes.includes(fontSize)) {
+      this.warnings.push({
+        type: 'suggestion',
+        component: componentName,
+        message: `Consider using a standard font size: ${Object.keys(CREATOR_HUB_BRANDING.typography.fontSize).join, (, ', ')}`,
+    });
+  }
+
+    return true;
+}
+
+  // Spacing validation
+  validateSpacing(componentName: string, spacing: string): boolean {
+    const validSpacing = Object.values(CREATOR_HUB_BRANDING.spacing);
+    
+    if (!validSpacing.includes(spacing)) {
+      this.warnings.push({
+        type: 'suggestion',
+        component: componentName,
+        message: `Consider using standard spacing: ${Object.keys(CREATOR_HUB_BRANDING.spacing).join, (, ', ')}`,
+    });
+  }
+
+    return true;
+}
+
+  // Get validation results
+  getResults(): BrandValidationResult {
+    return {
+      isValid: this.violations.length ===,  , 0,
+      violations: [...this.violations],
+      warnings: [...this.warnings],
+  };
+}
+
+  // Clear results
+  clear(): void {
+    this.violations = [];
+    this.warnings = [];
+}
+
+  // Generate report
+  generateReport(): string {
+    const results = this.getResults();
+    let report = '🎨 CreatorHub Norge Brand Validation Report\n';
+    report += '=' .repeat(50) + '\n\n';
+
+    if (results.isValid) {
+      report += '✅ All brand validations passed!\n\n';
+  } else {
+      report += `❌ Found ${results.violations.length} violations: \n\n`;
+      
+      results.violations.forEach((violation, index) => {
+        report += `${index + 1}. ${violation.severity.toUpperCase()}: ${violation.component}\n`;
+        report += `   Type: ${violation.type}\n`;
+        report += `   Expected: ${violation.expected}\n`;
+        report += `   Actual: ${violation.actual}\n\n`;
+    });
+  }
+
+    if (results.warnings.length > 0) {
+      report += `⚠️  ${results.warnings.length} warnings: \n\n`;
+      
+      results.warnings.forEach((warning, index) => {
+        report += `${index + 1}. ${warning.type.toUpperCase()}: ${warning.component}\n`;
+        report += `   ${warning.message}\n\n`;
+    });
+  }
+
+    return report;
+}
+}
+
+// Global brand validator instance
+export const brandValidator = new BrandValidator();
+
+// Convenience functions
+export function validateComponentBranding(componentName: string, props: any): BrandValidationResult {
+  brandValidator.clear();
+
+  // Validate colors
+  if (props.color) {
+    brandValidator.validateColor(componentName, props.color);
+}
+
+  // Validate icons
+  if (props.icon) {
+    brandValidator.validateIcon(componentName, props.icon);
+}
+
+  // Validate typography
+  if (props.fontFamily || props.fontSize) {
+    brandValidator.validateTypography(
+      componentName,
+      props.fontFamily || CREATOR_HUB_BRANDING.typography.fontFamily.primary,
+      props.fontSize || CREATOR_HUB_BRANDING.typography.fontSize.base
+    );
+}
+
+  // Validate spacing
+  if (props.spacing) {
+    brandValidator.validateSpacing(componentName, props.spacing);
+}
+
+  return brandValidator.getResults();
+}
+
+// Brand consistency checker for development
+export function checkBrandConsistency(componentName: string, usedColor: string, expectedColor: string): void {
+  if (usedColor !== expectedColor) {
+    console.warn(`⚠️ Brand Inconsistency in ${componentName}: Expected ${expectedColor}, got ${usedColor}`);
+}
+}
+
+// Brand enforcement in production
+export function enforceBrandColor(color: string, fallbackColor: string = CREATOR_HUB_BRANDING.colors.PRIMARY): string {
+  const validColors = Object.values(CREATOR_HUB_BRANDING.colors);
+  
+  if (!validColors.includes(color as any)) {
+    console.warn(`🚨 Invalid brand color: ${color}. Using fallback: ${fallbackColor}`);
+    return fallbackColor;
+}
+  
+  return color;
+}
+
+// Brand enforcement for icons
+export function enforceBrandIcon(icon: any, fallbackIcon: any): any {
+  if (!icon) {
+    console.warn(`🚨 Missing brand icon. Using fallback.`);
+    return fallbackIcon;
+}
+  
+  return icon;
+}
+
+// Export the validator class for advanced usage
+export { BrandValidator };
+
+
+

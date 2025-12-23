@@ -1,0 +1,386 @@
+/**
+ * Split Sheet Security Settings
+ * Allows music producers to set PIN/password for client portal access
+ * Similar to wedding timeline security implementation
+ */
+
+import React, { useState } from 'react';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
+import {
+  Box,
+  Card,
+  CardContent,
+  Typography,
+  TextField,
+  Button,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Alert,
+  Switch,
+  FormControlLabel,
+  Stack,
+  Divider,
+  Chip,
+  IconButton,
+  Tooltip,
+} from '@mui/material';
+import {
+  Key as KeyIcon,
+  Lock as LockIcon,
+  Visibility as VisibilityIcon,
+  VisibilityOff as VisibilityOffIcon,
+  ContentCopy as CopyIcon,
+  Refresh as RefreshIcon,
+  Security as SecurityIcon,
+} from '@mui/icons-material';
+
+interface SplitSheetSecuritySettingsProps {
+  splitSheetId: string;
+  onUpdate?: () => void;
+}
+
+export default function SplitSheetSecuritySettings({
+  splitSheetId,
+  onUpdate,
+}: SplitSheetSecuritySettingsProps) {
+  const [securityEnabled, setSecurityEnabled] = useState(false);
+  const [newPin, setNewPin] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [resetType, setResetType] = useState<'pin' | 'password' | 'both'>('both');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [accessCode, setAccessCode] = useState('');
+  const [requirePinForSignature, setRequirePinForSignature] = useState(false);
+  const [requirePasswordForSignature, setRequirePasswordForSignature] = useState(false);
+
+  // Fetch current security settings
+  const { data: securityData, refetch } = useQuery({
+    queryKey: ['split-sheet-security', splitSheetId],
+    queryFn: async () => {
+      const response = await apiRequest(`/api/split-sheets/${splitSheetId}/security`);
+      return response;
+    },
+    enabled: !!splitSheetId,
+  });
+
+  React.useEffect(() => {
+    if (securityData?.data) {
+      setSecurityEnabled(securityData.data.security_enabled || false);
+      setAccessCode(securityData.data.access_code || '');
+      setRequirePinForSignature(securityData.data.require_pin_for_signature || false);
+      setRequirePasswordForSignature(securityData.data.require_password_for_signature || false);
+    }
+  }, [securityData]);
+
+  // Generate access code mutation
+  const generateAccessCodeMutation = useMutation({
+    mutationFn: async () => {
+      return await apiRequest(`/api/split-sheets/${splitSheetId}/security/access-code`, {
+        method: 'POST',
+      });
+    },
+    onSuccess: (response) => {
+      setAccessCode(response.data.access_code);
+      refetch();
+      if (onUpdate) onUpdate();
+    },
+  });
+
+  // Update security settings mutation
+  const updateSecurityMutation = useMutation({
+    mutationFn: async (settings: any) => {
+      return await apiRequest(`/api/split-sheets/${splitSheetId}/security`, {
+        method: 'PUT',
+        headers: { 'Content-Type' : 'application/json' },
+        body: JSON.stringify(settings),
+      });
+    },
+    onSuccess: () => {
+      setNewPin('');
+      setNewPassword('');
+      setConfirmPassword('');
+      refetch();
+      if (onUpdate) onUpdate();
+    },
+  });
+
+  const handleUpdateSecurity = () => {
+    if (resetType === 'password' && newPassword !== confirmPassword) {
+      return;
+    }
+
+    const settings: any = {
+      security_enabled: securityEnabled,
+      require_pin_for_signature: requirePinForSignature,
+      require_password_for_signature: requirePasswordForSignature,
+    };
+
+    if (resetType === 'pin' || resetType === 'both') {
+      if (newPin.length === 4) {
+        settings.pin = newPin;
+      }
+    }
+
+    if (resetType === 'password' || resetType === 'both') {
+      if (newPassword && newPassword === confirmPassword) {
+        settings.password = newPassword;
+      }
+    }
+
+    updateSecurityMutation.mutate(settings);
+  };
+
+  const copyAccessCode = () => {
+    if (accessCode) {
+      navigator.clipboard.writeText(accessCode);
+    }
+  };
+
+  const getClientPortalUrl = () => {
+    if (!accessCode) return ', ';
+    return `${window.location.origin}/split-sheet/portal/${accessCode}`;
+  };
+
+  return (
+    <Card>
+      <CardContent>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 3 }}>
+          <SecurityIcon sx={{ color: '#9f7aea' }} />
+          <Typography variant="h6" sx={{ fontWeight: 600}}>
+            Sikkerhetsinnstillinger
+          </Typography>
+        </Box>
+
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+          Beskytt split sheet-portalen med PIN og/eller passord. Bidragsytere må oppgi disse for å se og signere split sheets.
+        </Typography>
+
+        {/* Security Toggle */}
+        <FormControlLabel
+          control={
+            <Switch
+              checked={securityEnabled}
+              onChange={(e) => setSecurityEnabled(e.target.checked)}
+              sx={{
+                '& .MuiSwitch-switchBase.Mui-checked': {
+                  color: '#9f7aea',
+                }, '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
+                  backgroundColor: '#9f7aea',
+                }}}
+            />
+          }
+          label="Aktiver sikkerhet for klientportal"
+          sx={{ mb: 3 }}
+        />
+
+        {securityEnabled && (
+          <>
+            <Divider sx={{ my: 3 }} />
+
+            {/* Access Code Section */}
+            <Box sx={{ mb: 3 }}>
+              <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+                <KeyIcon sx={{ color: '#9f7aea' }} />
+                Tilgangskode
+              </Typography>
+              <Stack direction="row" spacing={2} alignItems="center">
+                <TextField
+                  label="Tilgangskode"
+                  value={accessCode}
+                  InputProps={{
+                    readOnly: true,
+                    endAdornment: (
+                      <Tooltip title="Kopier">
+                        <IconButton size="small" onClick={copyAccessCode}>
+                          <CopyIcon />
+                        </IconButton>
+                      </Tooltip>
+                    )}}
+                  sx={{ flexGrow: 1 }}
+                />
+                <Button
+                  variant="outlined"
+                  startIcon={<RefreshIcon />}
+                  onClick={() => generateAccessCodeMutation.mutate()}
+                  disabled={generateAccessCodeMutation.isPending}
+                >
+                  Generer ny
+                </Button>
+              </Stack>
+              {accessCode && (
+                <Alert severity="info" sx={{ mt: 2 }}>
+                  <Typography variant="body2" sx={{ mb: 1 }}>
+                    <strong>Klientportal URL:</strong>
+                  </Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Typography variant="body2" sx={{ fontFamily: 'monospace', bgcolor: 'background.paper', p: 1, borderRadius: 1 }}>
+                      {getClientPortalUrl()}
+                    </Typography>
+                    <Tooltip title="Kopier URL">
+                      <IconButton size="small" onClick={() => navigator.clipboard.writeText(getClientPortalUrl())}>
+                        <CopyIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  </Box>
+                </Alert>
+              )}
+            </Box>
+
+            <Divider sx={{ my: 3 }} />
+
+            {/* PIN/Password Settings */}
+            <Box sx={{ mb: 3 }}>
+              <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+                <LockIcon sx={{ color: '#9f7aea' }} />
+                PIN / Passord
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Endre PIN eller passord for klienttilgang
+              </Typography>
+
+              <FormControl fullWidth sx={{ mb: 2 }}>
+                <InputLabel>Endre</InputLabel>
+                <Select
+                  value={resetType}
+                  label="Endre"
+                  onChange={(e) => setResetType(e.target.value as 'pin' | 'password' | 'both')}
+                >
+                  <MenuItem value="pin">Kun PIN</MenuItem>
+                  <MenuItem value="password">Kun Passord</MenuItem>
+                  <MenuItem value="both">Begge</MenuItem>
+                </Select>
+              </FormControl>
+
+              {(resetType === 'pin' || resetType === 'both') && (
+                <TextField
+                  fullWidth
+                  label="Ny PIN (4 siffer)"
+                  type="password"
+                  value={newPin}
+                  onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ', ').substring(0, 4))}
+                  sx={{ mb: 2 }}
+                  inputProps={{ maxLength: 4, inputMode: 'numeric' }}
+                  helperText="4 siffer"
+                />
+              )}
+
+              {(resetType === 'password' || resetType === 'both') && (
+                <>
+                  <TextField
+                    fullWidth
+                    label="Nytt Passord"
+                    type={showPassword ? 'text' : 'password'}
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    sx={{ mb: 2 }}
+                    InputProps={{
+                      endAdornment: (
+                        <IconButton
+                          size="small"
+                          onClick={() => setShowPassword(!showPassword)}
+                          edge="end"
+                        >
+                          {showPassword ? <VisibilityOffIcon /> : <VisibilityIcon />}
+                        </IconButton>
+                      )}}
+                  />
+                  <TextField
+                    fullWidth
+                    label="Bekreft Passord"
+                    type={showConfirmPassword ? 'text' : 'password'}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    error={newPassword !== confirmPassword && confirmPassword !== ', '}
+                    helperText={newPassword !== confirmPassword && confirmPassword !== ', ' ? 'Passordene matcher ikke' : ', '}
+                    InputProps={{
+                      endAdornment: (
+                        <IconButton
+                          size="small"
+                          onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                          edge="end"
+                        >
+                          {showConfirmPassword ? <VisibilityOffIcon /> : <VisibilityIcon />}
+                        </IconButton>
+                      )}}
+                  />
+                </>
+              )}
+
+              <Button
+                fullWidth
+                variant="contained"
+                onClick={handleUpdateSecurity}
+                disabled={
+                  updateSecurityMutation.isPending ||
+                  (resetType === 'pin' || resetType === 'both') && newPin.length !== 4 ||
+                  (resetType === 'password' || resetType === 'both') && (!newPassword || newPassword !== confirmPassword)
+                }
+                sx={{ mt: 2, bgcolor: '#9f7aea','&:hover': { bgcolor: '#8e6ed6' } }}
+              >
+                {updateSecurityMutation.isPending ? 'Oppdaterer...' : 'Oppdater'}
+              </Button>
+            </Box>
+
+            <Divider sx={{ my: 3 }} />
+
+            {/* Signature Requirements */}
+            <Box>
+              <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
+                Signaturkrav
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Krev PIN/passord når bidragsytere signerer split sheets
+              </Typography>
+
+              <Stack spacing={2}>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={requirePinForSignature}
+                      onChange={(e) => setRequirePinForSignature(e.target.checked)}
+                      disabled={!securityEnabled}
+                    />
+                  }
+                  label="Krev PIN ved signering"
+                />
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={requirePasswordForSignature}
+                      onChange={(e) => setRequirePasswordForSignature(e.target.checked)}
+                      disabled={!securityEnabled}
+                    />
+                  }
+                  label="Krev passord ved signering"
+                />
+              </Stack>
+
+              <Button
+                variant="outlined"
+                onClick={() => {
+                  updateSecurityMutation.mutate({
+                    security_enabled: securityEnabled,
+                    require_pin_for_signature: requirePinForSignature,
+                    require_password_for_signature: requirePasswordForSignature,
+                  });
+                }}
+                disabled={updateSecurityMutation.isPending}
+                sx={{ mt: 2 }}
+              >
+                Lagre signaturkrav
+              </Button>
+            </Box>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+
+
+

@@ -1,0 +1,822 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Multi-Model Face Detection Test</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+      color: #fff;
+    }
+    .container {
+      max-width: 1600px;
+      margin: 0 auto;
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
+      border-radius: 20px;
+      padding: 30px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    }
+    h1 {
+      margin-bottom: 10px;
+      font-size: 2.5em;
+    }
+    .model-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 20px;
+      margin: 20px 0;
+    }
+    .model-card {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 10px;
+      padding: 20px;
+      border-left: 4px solid #4CAF50;
+    }
+    .model-card h3 {
+      color: #4CAF50;
+      margin-bottom: 15px;
+    }
+    button {
+      background: #4CAF50;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      margin: 5px;
+      transition: all 0.3s;
+    }
+    button:hover:not(:disabled) {
+      background: #45a049;
+      transform: translateY(-2px);
+    }
+    button:disabled {
+      background: #666;
+      cursor: not-allowed;
+      opacity: 0.6;
+    }
+    .video-container {
+      margin: 20px 0;
+    }
+    video {
+      width: 100%;
+      max-width: 800px;
+      border-radius: 10px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    }
+    .progress-bar {
+      width: 100%;
+      height: 25px;
+      background: rgba(0, 0, 0, 0.3);
+      border-radius: 12px;
+      overflow: hidden;
+      margin: 10px 0;
+    }
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #4CAF50, #81c784);
+      transition: width 0.3s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: 600;
+      font-size: 12px;
+    }
+    #log {
+      background: rgba(0, 0, 0, 0.3);
+      padding: 20px;
+      border-radius: 10px;
+      font-family: 'Courier New', monospace;
+      font-size: 13px;
+      max-height: 500px;
+      overflow-y: auto;
+      margin: 20px 0;
+      white-space: pre-wrap;
+    }
+    .log-entry {
+      margin: 6px 0;
+      padding: 6px;
+      border-left: 3px solid;
+      padding-left: 12px;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    .log-success { border-color: #4CAF50; background: rgba(76, 175, 80, 0.2); }
+    .log-error { border-color: #f44336; background: rgba(244, 67, 54, 0.2); }
+    .log-info { border-color: #2196F3; background: rgba(33, 150, 243, 0.2); }
+    .results-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+      gap: 20px;
+      margin: 20px 0;
+    }
+    .result-card {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 10px;
+      padding: 20px;
+      border-left: 4px solid #4CAF50;
+    }
+    .result-card h3 {
+      color: #4CAF50;
+      margin-bottom: 15px;
+    }
+    .result-item {
+      margin: 10px 0;
+      padding: 10px;
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: 5px;
+    }
+    .timeline {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 2px;
+      margin: 10px 0;
+    }
+    .timeline-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 1px;
+      cursor: pointer;
+    }
+    .timeline-dot.has-face { background: #4CAF50; }
+    .timeline-dot.no-face { background: #666; }
+    .comparison-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 20px 0;
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .comparison-table th,
+    .comparison-table td {
+      padding: 12px;
+      text-align: left;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    .comparison-table th {
+      background: rgba(76, 175, 80, 0.3);
+      font-weight: 600;
+    }
+    .comparison-table tr:hover {
+      background: rgba(255, 255, 255, 0.05);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🎭 Multi-Model Face Detection Test</h1>
+    <p style="opacity: 0.9; margin-bottom: 20px;">
+      Test multiple face analysis models on Martin4k.mp4
+    </p>
+    
+    <div class="video-container">
+      <h2>📹 Video Input</h2>
+      <input type="file" id="videoInput" accept="video/*" style="margin: 10px 0; padding: 10px; border-radius: 8px; border: 2px solid rgba(255,255,255,0.3); background: rgba(255,255,255,0.1); color: white;">
+      <video id="video" controls style="display: none; margin-top: 10px;"></video>
+    </div>
+    
+    <div>
+      <h2>🤖 Available Models</h2>
+      <div class="model-grid">
+        <div class="model-card">
+          <h3>FaceXFormer</h3>
+          <p style="opacity: 0.8; margin-bottom: 10px; font-size: 0.9em;">
+            Comprehensive face analysis: parsing, landmarks, headpose, attributes
+          </p>
+          <button id="testFaceXFormer">Test FaceXFormer</button>
+        </div>
+        
+        <div class="model-card">
+          <h3>FaceXFormer - Parsing Only</h3>
+          <p style="opacity: 0.8; margin-bottom: 10px; font-size: 0.9em;">
+            Face segmentation and parsing mask
+          </p>
+          <button id="testParsing">Test Parsing</button>
+        </div>
+        
+        <div class="model-card">
+          <h3>FaceXFormer - Landmarks</h3>
+          <p style="opacity: 0.8; margin-bottom: 10px; font-size: 0.9em;">
+            68 facial landmark points detection
+          </p>
+          <button id="testLandmarks">Test Landmarks</button>
+        </div>
+        
+        <div class="model-card">
+          <h3>FaceXFormer - Head Pose</h3>
+          <p style="opacity: 0.8; margin-bottom: 10px; font-size: 0.9em;">
+            Head pose estimation (pitch, yaw, roll)
+          </p>
+          <button id="testHeadPose">Test Head Pose</button>
+        </div>
+        
+        <div class="model-card">
+          <h3>FaceXFormer - Attributes</h3>
+          <p style="opacity: 0.8; margin-bottom: 10px; font-size: 0.9em;">
+            40 binary face attributes recognition
+          </p>
+          <button id="testAttributes">Test Attributes</button>
+        </div>
+        
+        <div class="model-card">
+          <h3>Full Video Scan (All Tasks)</h3>
+          <p style="opacity: 0.8; margin-bottom: 10px; font-size: 0.9em;">
+            Scan entire video with all FaceXFormer tasks (parsing, landmarks, headpose, attributes)
+          </p>
+          <div style="margin: 10px 0;">
+            <label style="display: block; margin: 5px 0;">
+              FPS: <input type="number" id="fpsInput" value="0.5" min="0.1" max="2" step="0.1" style="width: 80px; padding: 5px; border-radius: 5px; border: 2px solid rgba(255,255,255,0.3); background: rgba(255,255,255,0.1); color: white; margin-left: 5px;">
+            </label>
+          </div>
+          <button id="testFullScan">Scan Entire Video</button>
+        </div>
+        
+        <div class="model-card">
+          <h3>Compare All Models</h3>
+          <p style="opacity: 0.8; margin-bottom: 10px; font-size: 0.9em;">
+            Test all FaceXFormer tasks on the same frame for comparison
+          </p>
+          <button id="testAllModels">Test All Models</button>
+        </div>
+        
+        <div class="model-card">
+          <h3>Batch Test Multiple Frames</h3>
+          <p style="opacity: 0.8; margin-bottom: 10px; font-size: 0.9em;">
+            Test specific frames at different timestamps
+          </p>
+          <div style="margin: 10px 0;">
+            <label style="display: block; margin: 5px 0;">
+              Timestamps (comma-separated, seconds):
+              <input type="text" id="timestampsInput" value="0,10,20,30,40,50,60" placeholder="0,10,20,30" style="width: 100%; padding: 5px; border-radius: 5px; border: 2px solid rgba(255,255,255,0.3); background: rgba(255,255,255,0.1); color: white; margin-top: 5px;">
+            </label>
+          </div>
+          <button id="testBatchFrames">Test Batch Frames</button>
+        </div>
+      </div>
+    </div>
+    
+    <div class="progress-bar" id="progressBar" style="display: none;">
+      <div class="progress-fill" id="progressFill" style="width: 0%">0%</div>
+    </div>
+    
+    <div>
+      <h2>📋 Log</h2>
+      <div id="log"></div>
+    </div>
+    
+    <div id="resultsSection" style="display: none;">
+      <h2>📊 Results Comparison</h2>
+      <div class="results-grid" id="results"></div>
+      
+      <h3 style="margin-top: 30px;">📈 Model Comparison</h3>
+      <table class="comparison-table" id="comparisonTable">
+        <thead>
+          <tr>
+            <th>Model/Task</th>
+            <th>Frames Analyzed</th>
+            <th>Faces Detected</th>
+            <th>Detection Rate</th>
+            <th>Avg Confidence</th>
+            <th>Processing Time</th>
+          </tr>
+        </thead>
+        <tbody id="comparisonBody">
+        </tbody>
+      </table>
+    </div>
+  </div>
+  
+  <script>
+    const videoInput = document.getElementById('videoInput');
+    const video = document.getElementById('video');
+    const fpsInput = document.getElementById('fpsInput');
+    const logDiv = document.getElementById('log');
+    const progressBar = document.getElementById('progressBar');
+    const progressFill = document.getElementById('progressFill');
+    const resultsSection = document.getElementById('resultsSection');
+    const resultsDiv = document.getElementById('results');
+    const comparisonBody = document.getElementById('comparisonBody');
+    
+    const API_BASE = 'http://localhost:3001/api/face-analysis';
+    const API_URLS = {
+      all: `${API_BASE}/analyze?task=all`,
+      parsing: `${API_BASE}/parse`,
+      landmarks: `${API_BASE}/landmarks`,
+      headpose: `${API_BASE}/headpose`,
+      attributes: `${API_BASE}/attributes`,
+    };
+    
+    let videoDuration = 0;
+    let videoFile = null;
+    const modelResults = [];
+    
+    function log(message, type = 'info') {
+      const entry = document.createElement('div');
+      entry.className = `log-entry log-${type}`;
+      const time = new Date().toLocaleTimeString();
+      entry.textContent = `[${time}] ${message}`;
+      logDiv.appendChild(entry);
+      logDiv.scrollTop = logDiv.scrollHeight;
+      console.log(`[${type.toUpperCase()}] ${message}`);
+    }
+    
+    function updateProgress(percent) {
+      progressBar.style.display = 'block';
+      progressFill.style.width = `${percent}%`;
+      progressFill.textContent = `${Math.round(percent)}%`;
+    }
+    
+    function extractFrame(video, timestamp) {
+      return new Promise((resolve, reject) => {
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth || 1920;
+        canvas.height = video.videoHeight || 1080;
+        
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          reject(new Error('Could not get canvas context'));
+          return;
+        }
+        
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        
+        canvas.toBlob((blob) => {
+          if (!blob) {
+            reject(new Error('Could not create blob'));
+            return;
+          }
+          
+          const file = new File([blob], `frame_${timestamp.toFixed(2)}.jpg`, { type: 'image/jpeg' });
+          resolve(file);
+        }, 'image/jpeg', 0.9);
+      });
+    }
+    
+    async function establishSession() {
+      try {
+        await fetch('http://localhost:3001/api/auth/user', {
+          method: 'GET',
+          credentials: 'include',
+          mode: 'cors',
+        });
+      } catch (error) {
+        log(`⚠️ Session: ${error.message}`, 'info');
+      }
+    }
+    
+    async function analyzeFrame(frameFile, task = 'all') {
+      await establishSession();
+      
+      const formData = new FormData();
+      formData.append('image', frameFile);
+      if (task !== 'all') {
+        formData.append('task', task);
+      }
+      
+      const url = API_URLS[task] || API_URLS.all;
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        credentials: 'include',
+        mode: 'cors',
+        body: formData,
+      });
+      
+      if (response.status === 401 || response.status === 403) {
+        await establishSession();
+        const retryResponse = await fetch(url, {
+          method: 'POST',
+          credentials: 'include',
+          mode: 'cors',
+          body: formData,
+        });
+        
+        if (!retryResponse.ok) {
+          throw new Error(`API error (${retryResponse.status})`);
+        }
+        
+        return await retryResponse.json();
+      }
+      
+      if (!response.ok) {
+        throw new Error(`API error (${response.status})`);
+      }
+      
+      return await response.json();
+    }
+    
+    async function scanVideo(task = 'all', singleFrame = false) {
+      if (!videoFile || !videoDuration) {
+        log('❌ Please load a video first', 'error');
+        return;
+      }
+      
+      const startTime = Date.now();
+      const taskName = task === 'all' ? 'FaceXFormer (All)' : `FaceXFormer (${task})`;
+      log(`🎬 Starting ${taskName} analysis...`, 'info');
+      
+      progressBar.style.display = 'block';
+      updateProgress(0);
+      
+      let timestamps = [];
+      if (singleFrame) {
+        timestamps = [videoDuration * 0.5]; // Middle frame
+      } else {
+        const fps = parseFloat(fpsInput.value) || 0.5;
+        const frameInterval = 1 / fps;
+        const totalFrames = Math.ceil(videoDuration * fps);
+        
+        for (let i = 0; i < totalFrames; i++) {
+          const timestamp = i * frameInterval;
+          if (timestamp < videoDuration) {
+            timestamps.push(timestamp);
+          }
+        }
+        
+        if (timestamps[0] !== 0) timestamps.unshift(0);
+        if (timestamps[timestamps.length - 1] !== videoDuration - 0.1) {
+          timestamps.push(Math.max(0, videoDuration - 0.1));
+        }
+        
+        timestamps = [...new Set(timestamps)].sort((a, b) => a - b);
+      }
+      
+      log(`📊 Analyzing ${timestamps.length} frame(s)...`, 'info');
+      
+      const results = [];
+      let bestResult = null;
+      let hasFace = false;
+      
+      for (let i = 0; i < timestamps.length; i++) {
+        const timestamp = timestamps[i];
+        const progress = ((i + 1) / timestamps.length) * 100;
+        updateProgress(progress);
+        
+        try {
+          if (!singleFrame || i % 5 === 0) {
+            log(`📸 Frame ${i + 1}/${timestamps.length} at ${timestamp.toFixed(2)}s...`, 'info');
+          }
+          
+          video.currentTime = timestamp;
+          await new Promise((resolve) => {
+            video.addEventListener('seeked', resolve, { once: true });
+          });
+          
+          const frameFile = await extractFrame(video, timestamp);
+          const result = await analyzeFrame(frameFile, task);
+          
+          results.push({ timestamp, result });
+          
+          const detected = !!(result.results?.landmarks?.length || result.results?.parsing);
+          if (detected) {
+            hasFace = true;
+            if (!bestResult || (result.results?.landmarks?.length || 0) > (bestResult.results?.landmarks?.length || 0)) {
+              bestResult = { timestamp, result };
+            }
+            if (!singleFrame || i % 5 === 0) {
+              log(`✅ Face detected at ${timestamp.toFixed(2)}s!`, 'success');
+            }
+          }
+          
+        } catch (error) {
+          log(`❌ Error at ${timestamp.toFixed(2)}s: ${error.message}`, 'error');
+        }
+      }
+      
+      updateProgress(100);
+      
+      const processingTime = ((Date.now() - startTime) / 1000).toFixed(1);
+      const framesWithFaces = results.filter(r => r.result?.results?.landmarks?.length || r.result?.results?.parsing).length;
+      const detectionRate = results.length > 0 ? (framesWithFaces / results.length) * 100 : 0;
+      
+      // Store results
+      modelResults.push({
+        task,
+        taskName,
+        totalFrames: results.length,
+        framesWithFaces,
+        detectionRate,
+        processingTime,
+        bestResult,
+        hasFace,
+        results,
+      });
+      
+      // Display results
+      displayResults(task, {
+        totalFrames: results.length,
+        framesWithFaces,
+        detectionRate,
+        processingTime,
+        bestResult,
+        hasFace,
+        results,
+      });
+      
+      updateComparisonTable();
+      
+      log(`✅ ${taskName} complete! ${framesWithFaces}/${results.length} frames with faces (${detectionRate.toFixed(1)}%) in ${processingTime}s`, 'success');
+    }
+    
+    function displayResults(task, stats) {
+      resultsSection.style.display = 'block';
+      
+      const card = document.createElement('div');
+      card.className = 'result-card';
+      card.id = `result-${task}`;
+      
+      const taskName = task === 'all' ? 'FaceXFormer (All Tasks)' : `FaceXFormer (${task})`;
+      
+      card.innerHTML = `
+        <h3>${taskName}</h3>
+        <div class="result-item">
+          <strong>Total Frames:</strong> ${stats.totalFrames}
+        </div>
+        <div class="result-item">
+          <strong>Frames with Faces:</strong> ${stats.framesWithFaces}
+        </div>
+        <div class="result-item">
+          <strong>Detection Rate:</strong> ${stats.detectionRate.toFixed(1)}%
+        </div>
+        <div class="result-item">
+          <strong>Processing Time:</strong> ${stats.processingTime}s
+        </div>
+      `;
+      
+      if (stats.bestResult) {
+        const { result } = stats.bestResult;
+        card.innerHTML += `
+          <div class="result-item" style="background: rgba(76, 175, 80, 0.2); margin-top: 10px;">
+            <strong>Best Result at ${stats.bestResult.timestamp.toFixed(2)}s:</strong><br>
+            ${result.results?.landmarks ? `Landmarks: ${result.results.landmarks.length} points<br>` : ''}
+            ${result.results?.headpose ? `Head Pose: pitch=${result.results.headpose.pitch.toFixed(1)}°, yaw=${result.results.headpose.yaw.toFixed(1)}°, roll=${result.results.headpose.roll.toFixed(1)}°<br>` : ''}
+            ${result.results?.parsing ? 'Face Parsing: Available<br>' : ''}
+            ${result.results?.attributes ? `Attributes: ${result.results.attributes.length} detected` : ''}
+          </div>
+        `;
+        
+        // Timeline
+        if (stats.results.length > 1) {
+          const timeline = stats.results.map(r => {
+            const hasFace = !!(r.result?.results?.landmarks?.length || r.result?.results?.parsing);
+            return `<div class="timeline-dot ${hasFace ? 'has-face' : 'no-face'}" title="${r.timestamp.toFixed(1)}s"></div>`;
+          }).join('');
+          
+          card.innerHTML += `
+            <div style="margin-top: 15px;">
+              <strong>Timeline:</strong>
+              <div class="timeline" style="margin-top: 5px;">
+                ${timeline}
+              </div>
+            </div>
+          `;
+        }
+      }
+      
+      // Remove existing result card for this task if it exists
+      const existing = document.getElementById(`result-${task}`);
+      if (existing) {
+        existing.remove();
+      }
+      
+      resultsDiv.appendChild(card);
+    }
+    
+    function updateComparisonTable() {
+      comparisonBody.innerHTML = '';
+      
+      modelResults.forEach(model => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td>${model.taskName}</td>
+          <td>${model.totalFrames}</td>
+          <td>${model.framesWithFaces}</td>
+          <td>${model.detectionRate.toFixed(1)}%</td>
+          <td>${model.hasFace ? 'High' : 'Low'}</td>
+          <td>${model.processingTime}s</td>
+        `;
+        comparisonBody.appendChild(row);
+      });
+    }
+    
+    videoInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      
+      videoFile = file;
+      const url = URL.createObjectURL(file);
+      video.src = url;
+      video.style.display = 'block';
+      
+      video.addEventListener('loadedmetadata', () => {
+        videoDuration = video.duration;
+        log(`✅ Video loaded: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB, ${videoDuration.toFixed(2)}s)`, 'success');
+        
+        // Enable all buttons
+        document.querySelectorAll('button').forEach(btn => {
+          if (btn.id && btn.id.startsWith('test')) {
+            btn.disabled = false;
+          }
+        });
+      });
+    });
+    
+    async function testAllModelsOnFrame() {
+      if (!videoFile || !videoDuration) {
+        log('❌ Please load a video first', 'error');
+        return;
+      }
+      
+      const timestamp = videoDuration * 0.5; // Middle frame
+      log(`🎬 Testing all models on frame at ${timestamp.toFixed(2)}s...`, 'info');
+      
+      progressBar.style.display = 'block';
+      updateProgress(0);
+      
+      video.currentTime = timestamp;
+      await new Promise((resolve) => {
+        video.addEventListener('seeked', resolve, { once: true });
+      });
+      
+      const frameFile = await extractFrame(video, timestamp);
+      
+      const tasks = ['all', 'parsing', 'landmarks', 'headpose', 'attributes'];
+      const totalTasks = tasks.length;
+      
+      for (let i = 0; i < tasks.length; i++) {
+        const task = tasks[i];
+        updateProgress((i / totalTasks) * 100);
+        
+        try {
+          log(`🔍 Testing ${task}...`, 'info');
+          const result = await analyzeFrame(frameFile, task);
+          
+          const detected = !!(result.results?.landmarks?.length || result.results?.parsing);
+          
+          modelResults.push({
+            task,
+            taskName: `FaceXFormer (${task})`,
+            totalFrames: 1,
+            framesWithFaces: detected ? 1 : 0,
+            detectionRate: detected ? 100 : 0,
+            processingTime: 'N/A',
+            bestResult: detected ? { timestamp, result } : null,
+            hasFace: detected,
+            results: [{ timestamp, result }],
+          });
+          
+          displayResults(task, {
+            totalFrames: 1,
+            framesWithFaces: detected ? 1 : 0,
+            detectionRate: detected ? 100 : 0,
+            processingTime: 'N/A',
+            bestResult: detected ? { timestamp, result } : null,
+            hasFace: detected,
+            results: [{ timestamp, result }],
+          });
+          
+          if (detected) {
+            log(`✅ ${task}: Face detected!`, 'success');
+          } else {
+            log(`⚠️ ${task}: No face detected`, 'info');
+          }
+          
+        } catch (error) {
+          log(`❌ ${task} failed: ${error.message}`, 'error');
+        }
+      }
+      
+      updateProgress(100);
+      updateComparisonTable();
+      log(`✅ All models tested!`, 'success');
+    }
+    
+    async function testBatchFrames() {
+      if (!videoFile || !videoDuration) {
+        log('❌ Please load a video first', 'error');
+        return;
+      }
+      
+      const timestampsInput = document.getElementById('timestampsInput').value;
+      const timestamps = timestampsInput.split(',').map(t => parseFloat(t.trim())).filter(t => !isNaN(t) && t >= 0 && t < videoDuration);
+      
+      if (timestamps.length === 0) {
+        log('❌ Please enter valid timestamps', 'error');
+        return;
+      }
+      
+      log(`🎬 Testing ${timestamps.length} frames with all tasks...`, 'info');
+      progressBar.style.display = 'block';
+      updateProgress(0);
+      
+      const tasks = ['all', 'parsing', 'landmarks', 'headpose', 'attributes'];
+      const totalOperations = timestamps.length * tasks.length;
+      let currentOp = 0;
+      
+      for (const timestamp of timestamps) {
+        try {
+          video.currentTime = timestamp;
+          await new Promise((resolve) => {
+            video.addEventListener('seeked', resolve, { once: true });
+          });
+          
+          const frameFile = await extractFrame(video, timestamp);
+          
+          for (const task of tasks) {
+            currentOp++;
+            updateProgress((currentOp / totalOperations) * 100);
+            
+            try {
+              const result = await analyzeFrame(frameFile, task);
+              const detected = !!(result.results?.landmarks?.length || result.results?.parsing);
+              
+              // Store or update results for this task
+              let modelResult = modelResults.find(r => r.task === task);
+              if (!modelResult) {
+                modelResult = {
+                  task,
+                  taskName: `FaceXFormer (${task})`,
+                  totalFrames: 0,
+                  framesWithFaces: 0,
+                  detectionRate: 0,
+                  processingTime: 'N/A',
+                  bestResult: null,
+                  hasFace: false,
+                  results: [],
+                };
+                modelResults.push(modelResult);
+              }
+              
+              modelResult.totalFrames++;
+              if (detected) {
+                modelResult.framesWithFaces++;
+                if (!modelResult.bestResult || (result.results?.landmarks?.length || 0) > (modelResult.bestResult.result?.results?.landmarks?.length || 0)) {
+                  modelResult.bestResult = { timestamp, result };
+                }
+                modelResult.hasFace = true;
+              }
+              
+              modelResult.results.push({ timestamp, result });
+              modelResult.detectionRate = (modelResult.framesWithFaces / modelResult.totalFrames) * 100;
+              
+            } catch (error) {
+              log(`❌ Error testing ${task} at ${timestamp.toFixed(2)}s: ${error.message}`, 'error');
+            }
+          }
+          
+        } catch (error) {
+          log(`❌ Error extracting frame at ${timestamp.toFixed(2)}s: ${error.message}`, 'error');
+        }
+      }
+      
+      updateProgress(100);
+      
+      // Display all results
+      modelResults.forEach(model => {
+        displayResults(model.task, {
+          totalFrames: model.totalFrames,
+          framesWithFaces: model.framesWithFaces,
+          detectionRate: model.detectionRate,
+          processingTime: model.processingTime,
+          bestResult: model.bestResult,
+          hasFace: model.hasFace,
+          results: model.results,
+        });
+      });
+      
+      updateComparisonTable();
+      log(`✅ Batch test complete! Tested ${timestamps.length} frames with ${tasks.length} models`, 'success');
+    }
+    
+    // Button handlers
+    document.getElementById('testFaceXFormer').addEventListener('click', () => scanVideo('all', true));
+    document.getElementById('testParsing').addEventListener('click', () => scanVideo('parsing', true));
+    document.getElementById('testLandmarks').addEventListener('click', () => scanVideo('landmarks', true));
+    document.getElementById('testHeadPose').addEventListener('click', () => scanVideo('headpose', true));
+    document.getElementById('testAttributes').addEventListener('click', () => scanVideo('attributes', true));
+    document.getElementById('testFullScan').addEventListener('click', () => scanVideo('all', false));
+    document.getElementById('testAllModels').addEventListener('click', testAllModelsOnFrame);
+    document.getElementById('testBatchFrames').addEventListener('click', testBatchFrames);
+    
+    window.addEventListener('load', () => {
+      log('🚀 Multi-Model Face Detection Test Page Loaded', 'info');
+      log('📝 Load Martin4k.mp4 or any video file to test', 'info');
+      log('💡 Test individual models or run full video scan', 'info');
+    });
+  </script>
+</body>
+</html>

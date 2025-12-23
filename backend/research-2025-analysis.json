@@ -1,0 +1,229 @@
+{
+  "totalPapers": 150,
+  "papers2025": 147,
+  "papers2024": 3,
+  "dependencies": [
+    {
+      "name": "@huggingface/diffusers",
+      "type": "npm",
+      "package": "@huggingface/diffusers",
+      "category": "Generative AI",
+      "papers": 25,
+      "citations": 25,
+      "priority": "high",
+      "reason": "Mentioned in 2025 research papers on diffusion",
+      "researchBacking": [
+        "Multi Task Denoiser Training for Solving Linear Inverse Problems",
+        "OmniScaleSR: Unleashing Scale-Controlled Diffusion Prior for Faithful and Realistic Arbitrary-Scale Image Super-Resolution",
+        "Channel Knowledge Map Construction via Physics-Inspired Diffusion Model Without Prior Observations",
+        "PGP-DiffSR: Phase-Guided Progressive Pruning for Efficient Diffusion-based Image Super-Resolution",
+        "FaithFusion: Harmonizing Reconstruction and Generation via Pixel-wise Information Gain",
+        "DiP: Taming Diffusion Models in Pixel Space",
+        "Measurement-Constrained Sampling for Text-Prompted Blind Face Restoration",
+        "GeoMVD: Geometry-Enhanced Multi-View Generation Model Based on Geometric Information Extraction",
+        "Equivariant Sampling for Improving Diffusion Model-based Image Restoration",
+        "Physics-Informed Image Restoration via Progressive PDE Integration",
+        "Luminance-Aware Statistical Quantization: Unsupervised Hierarchical Learning for Illumination Enhancement",
+        "CoatFusion: Controllable Material Coating in Images",
+        "Charts Are Not Images: On the Challenges of Scientific Chart Editing",
+        "Inversion-Free Style Transfer with Dual Rectified Flows",
+        "Delta Sampling: Data-Free Knowledge Transfer Across Diffusion Models",
+        "GCC: Generative Color Constancy via Diffusing a Color Checker",
+        "HalluGen: Synthesizing Realistic and Controllable Hallucinations for Evaluating Image Restoration",
+        "Diffusion-Based Synthesis of 3D T1w MPRAGE Images from Multi-Echo GRE with Multi-Parametric MRI Integration",
+        "ConvRot: Rotation-Based Plug-and-Play 4-bit Quantization for Diffusion Transformers",
+        "Plug-and-Play Homeostatic Spark: Zero-Cost Acceleration for SNN Training Across Paradigms",
+        "Value Gradient Guidance for Flow Matching Alignment",
+        "NeuralRemaster: Phase-Preserving Diffusion for Structure-Aligned Generation"
+      ],
+      "year": 2025
+    },
+    {
+      "name": "diffusers",
+      "type": "python",
+      "package": "diffusers",
+      "category": "Generative AI",
+      "papers": 25,
+      "citations": 25,
+      "priority": "high",
+      "reason": "Mentioned in 2025 research papers on diffusion",
+      "researchBacking": [
+        "Multi Task Denoiser Training for Solving Linear Inverse Problems",
+        "OmniScaleSR: Unleashing Scale-Controlled Diffusion Prior for Faithful and Realistic Arbitrary-Scale Image Super-Resolution",
+        "Channel Knowledge Map Construction via Physics-Inspired Diffusion Model Without Prior Observations",
+        "PGP-DiffSR: Phase-Guided Progressive Pruning for Efficient Diffusion-based Image Super-Resolution",
+        "FaithFusion: Harmonizing Reconstruction and Generation via Pixel-wise Information Gain",
+        "DiP: Taming Diffusion Models in Pixel Space",
+        "Measurement-Constrained Sampling for Text-Prompted Blind Face Restoration",
+        "GeoMVD: Geometry-Enhanced Multi-View Generation Model Based on Geometric Information Extraction",
+        "Equivariant Sampling for Improving Diffusion Model-based Image Restoration",
+        "Physics-Informed Image Restoration via Progressive PDE Integration",
+        "Luminance-Aware Statistical Quantization: Unsupervised Hierarchical Learning for Illumination Enhancement",
+        "CoatFusion: Controllable Material Coating in Images",
+        "Charts Are Not Images: On the Challenges of Scientific Chart Editing",
+        "Inversion-Free Style Transfer with Dual Rectified Flows",
+        "Delta Sampling: Data-Free Knowledge Transfer Across Diffusion Models",
+        "GCC: Generative Color Constancy via Diffusing a Color Checker",
+        "HalluGen: Synthesizing Realistic and Controllable Hallucinations for Evaluating Image Restoration",
+        "Diffusion-Based Synthesis of 3D T1w MPRAGE Images from Multi-Echo GRE with Multi-Parametric MRI Integration",
+        "ConvRot: Rotation-Based Plug-and-Play 4-bit Quantization for Diffusion Transformers",
+        "Plug-and-Play Homeostatic Spark: Zero-Cost Acceleration for SNN Training Across Paradigms",
+        "Value Gradient Guidance for Flow Matching Alignment",
+        "NeuralRemaster: Phase-Preserving Diffusion for Structure-Aligned Generation"
+      ],
+      "year": 2025
+    },
+    {
+      "name": "transformers",
+      "type": "python",
+      "package": "transformers",
+      "category": "NLP/ML",
+      "papers": 18,
+      "citations": 18,
+      "priority": "high",
+      "reason": "Mentioned in 2025 research papers on transformers",
+      "researchBacking": [
+        "PGP-DiffSR: Phase-Guided Progressive Pruning for Efficient Diffusion-based Image Super-Resolution",
+        "Two-Stage Vision Transformer for Image Restoration: Colorization Pretraining + Residual Upsampling",
+        "Semantic-Guided Two-Stage GAN for Face Inpainting with Hybrid Perceptual Encoding",
+        "GeoPE:A Unified Geometric Positional Embedding for Structured Tensors",
+        "Dual Cross-Attention Siamese Transformer for Rectal Tumor Regrowth Assessment in Watch-and-Wait Endoscopy",
+        "ConvRot: Rotation-Based Plug-and-Play 4-bit Quantization for Diffusion Transformers",
+        "UniQL: Unified Quantization and Low-rank Compression for Adaptive Edge LLMs",
+        "The Universal Weight Subspace Hypothesis",
+        "TV2TV: A Unified Framework for Interleaved Language and Video Generation",
+        "Neural Decoding of Overt Speech from ECoG Using Vision Transformers and Contrastive Representation Learning"
+      ],
+      "year": 2025
+    },
+    {
+      "name": "accelerate",
+      "type": "python",
+      "package": "accelerate",
+      "category": "ML Optimization",
+      "papers": 4,
+      "citations": 4,
+      "priority": "high",
+      "reason": "Mentioned in 2025 research papers on accelerate",
+      "researchBacking": [
+        "Plug-and-Play Image Restoration with Flow Matching: A Continuous Viewpoint",
+        "Integral Fast Fourier Color Constancy",
+        "Plug-and-Play Homeostatic Spark: Zero-Cost Acceleration for SNN Training Across Paradigms",
+        "EvoIR: Towards All-in-One Image Restoration via Evolutionary Frequency Modulation"
+      ],
+      "year": 2025
+    },
+    {
+      "name": "@xenova/transformers",
+      "type": "npm",
+      "package": "@xenova/transformers",
+      "category": "NLP/ML",
+      "papers": 25,
+      "citations": 25,
+      "priority": "medium",
+      "reason": "Mentioned in 2025 research papers on transformer",
+      "researchBacking": [
+        "PGP-DiffSR: Phase-Guided Progressive Pruning for Efficient Diffusion-based Image Super-Resolution",
+        "Two-Stage Vision Transformer for Image Restoration: Colorization Pretraining + Residual Upsampling",
+        "Semantic-Guided Two-Stage GAN for Face Inpainting with Hybrid Perceptual Encoding",
+        "DiP: Taming Diffusion Models in Pixel Space",
+        "GeoPE:A Unified Geometric Positional Embedding for Structured Tensors",
+        "Exploiting Domain Properties in Language-Driven Domain Generalization for Semantic Segmentation",
+        "NAS-LoRA: Empowering Parameter-Efficient Fine-Tuning for Visual Foundation Models with Searchable Adaptation",
+        "Controllable Long-term Motion Generation with Extended Joint Targets",
+        "Dual Cross-Attention Siamese Transformer for Rectal Tumor Regrowth Assessment in Watch-and-Wait Endoscopy",
+        "LiteVGGT: Boosting Vanilla VGGT via Geometry-aware Cached Token Merging",
+        "ConvRot: Rotation-Based Plug-and-Play 4-bit Quantization for Diffusion Transformers",
+        "UniQL: Unified Quantization and Low-rank Compression for Adaptive Edge LLMs",
+        "The Universal Weight Subspace Hypothesis",
+        "CNN on `Top': In Search of Scalable &amp; Lightweight Image-based Jet Taggers",
+        "TV2TV: A Unified Framework for Interleaved Language and Video Generation",
+        "Neural Decoding of Overt Speech from ECoG Using Vision Transformers and Contrastive Representation Learning"
+      ],
+      "year": 2025
+    },
+    {
+      "name": "three",
+      "type": "npm",
+      "package": "three",
+      "category": "3D Rendering",
+      "papers": 1,
+      "citations": 1,
+      "priority": "medium",
+      "reason": "Mentioned in 2025 research papers on nerf",
+      "researchBacking": [
+        "SplatSuRe: Selective Super-Resolution for Multi-view Consistent 3D Gaussian Splatting"
+      ],
+      "year": 2025
+    },
+    {
+      "name": "nerfstudio",
+      "type": "python",
+      "package": "nerfstudio",
+      "category": "3D Rendering",
+      "papers": 1,
+      "citations": 1,
+      "priority": "medium",
+      "reason": "Mentioned in 2025 research papers on nerf",
+      "researchBacking": [
+        "SplatSuRe: Selective Super-Resolution for Multi-view Consistent 3D Gaussian Splatting"
+      ],
+      "year": 2025
+    },
+    {
+      "name": "peft",
+      "type": "python",
+      "package": "peft",
+      "category": "Efficient Fine-tuning",
+      "papers": 1,
+      "citations": 1,
+      "priority": "medium",
+      "reason": "Mentioned in 2025 research papers on peft",
+      "researchBacking": [
+        "NAS-LoRA: Empowering Parameter-Efficient Fine-Tuning for Visual Foundation Models with Searchable Adaptation"
+      ],
+      "year": 2025
+    },
+    {
+      "name": "@tensorflow/tfjs-converter",
+      "type": "npm",
+      "package": "@tensorflow/tfjs-converter",
+      "category": "Model Optimization",
+      "papers": 18,
+      "citations": 18,
+      "priority": "low",
+      "reason": "Mentioned in 2025 research papers on pruning",
+      "researchBacking": [
+        "PGP-DiffSR: Phase-Guided Progressive Pruning for Efficient Diffusion-based Image Super-Resolution",
+        "Luminance-Aware Statistical Quantization: Unsupervised Hierarchical Learning for Illumination Enhancement",
+        "Lean Unet: A Compact Model for Image Segmentation",
+        "LiteVGGT: Boosting Vanilla VGGT via Geometry-aware Cached Token Merging",
+        "SignRoundV2: Closing the Performance Gap in Extremely Low-Bit Post-Training Quantization for LLMs",
+        "Hardware-aware Neural Architecture Search of Early Exiting Networks on Edge Accelerators",
+        "TARDis: Time Attenuated Representation Disentanglement for Incomplete Multi-Modal Tumor Segmentation and Classification",
+        "Context-Aware Mixture-of-Experts Inference on CXL-Enabled GPU-NDP Systems",
+        "Quantum geometry and linear orbital response in arbitrary $SU(2)$ representation",
+        "PSA: Pyramid Sparse Attention for Efficient Video Understanding and Generation",
+        "ConvRot: Rotation-Based Plug-and-Play 4-bit Quantization for Diffusion Transformers",
+        "SELF: A Robust Singular Value and Eigenvalue Approach for LLM Fingerprinting",
+        "UniQL: Unified Quantization and Low-rank Compression for Adaptive Edge LLMs",
+        "Cache What Lasts: Token Retention for Memory-Bounded KV Cache in LLMs"
+      ],
+      "year": 2025
+    }
+  ],
+  "improvements": [
+    "Quality enhancement techniques",
+    "Memory-efficient algorithms",
+    "Improved accuracy methods",
+    "Speed optimization techniques",
+    "Real-time processing improvements"
+  ],
+  "newTechniques": [
+    "diffusion",
+    "transformer",
+    "nerf",
+    "attention",
+    "quantization"
+  ]
+}

@@ -1,0 +1,18 @@
+import { useTheming } from '../utils/theming-helper';
+import React from 'react';
+import { useMediaQuery, useTheme } from '@mui/material';
+import LandingDesktop from './landing-desktop';
+import LandingMobile from'./landing-mobile';
+
+const LandingResponsive: React.FC = () => {
+  const theme = useTheme();
+  
+  // Theming system
+  const theming = useTheming('photographer');
+  const isDesktop = useMediaQuery(theme.breakpoints.up('md'));
+
+  // Show desktop version on medium screens and above, mobile version otherwise
+  return isDesktop ? <LandingDesktop /> : <LandingMobile />;
+};
+
+export default LandingResponsive;

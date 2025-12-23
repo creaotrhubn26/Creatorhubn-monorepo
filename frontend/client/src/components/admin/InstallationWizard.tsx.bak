@@ -1,0 +1,603 @@
+import { useTheming } from '../../utils/theming-helper';
+import React, { useState, useEffect } from 'react';
+import {
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Button,
+  Stepper,
+  Step,
+  StepLabel,
+  StepContent,
+  Typography,
+  Box,
+  Alert,
+  LinearProgress,
+  List,
+  ListItem,
+  ListItemIcon,
+  ListItemText,
+  Chip,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
+  Paper,
+  Grid,
+  Stack,
+  Card,
+  CardContent,
+  Divider,
+  CircularProgress,
+  Avatar,
+  Fade,
+  Zoom,
+  Slide
+} from '@mui/material';
+import {
+  CheckCircle,
+  Error,
+  Warning,
+  Info,
+  GetApp,
+  Update,
+  Security,
+  Speed,
+  BugReport,
+  AutoFixHigh,
+  SmartToy,
+  Visibility,
+  Code,
+  PlayArrow,
+  Pause,
+  ExpandMore,
+  TrendingUp,
+  Shield,
+  Rocket,
+  Build
+} from '@mui/icons-material';
+import { keyframes } from '@mui/system';
+
+// Animation keyframes
+const pulse = keyframes`
+  0% { transform: scale(1); opacity: 0.8; }
+  50% { transform: scale(1.05); opacity: 1; }
+  100% { transform: scale(1); opacity: 0.8; }
+`;
+
+const slideIn = keyframes`
+  0% { transform: translateX(-20px); opacity: 0; }
+  100% { transform: translateX(0); opacity: 1; }
+`;
+
+interface InstallationStep {
+  id: string;
+  title: string;
+  description: string;
+  type: 'scan' | 'analyze' | 'install' | 'configure' | 'verify';
+  status: 'pending' | 'running' | 'completed' | 'error';
+  progress: number;
+  details: string[];
+  benefits: string[];
+  risks: string[];
+  changes: {
+    files: string[];
+    dependencies: string[];
+    configurations: string[];
+};
+  estimatedTime: string;
+}
+
+interface PackageInfo {
+  name: string;
+  current: string;
+  latest: string;
+  description: string;
+  category: string;
+  size: string;
+  dependencies: string[];
+  vulnerabilities: number;
+  benefits: string[];
+  breaking: boolean;
+}
+
+interface InstallationWizardProps {
+  open: boolean;
+  onClose: () => void;
+  packages: PackageInfo[];
+  mode: 'install' | 'update';
+  onComplete: () => void;
+}
+
+const InstallationWizard: React.FC<InstallationWizardProps> = ({
+  open,
+  onClose,
+  packages,
+  mode,
+  onComplete
+}) => {
+  const [activeStep, setActiveStep] = useState(
+  
+  // Theming system
+  const theming = useTheming('prototype_tester');0);
+  const [steps, setSteps] = useState<InstallationStep[]>([]);
+  const [isRunning, setIsRunning] = useState(false);
+  const [aiAnalysis, setAiAnalysis] = useState<any>(null);
+  const [showDetails, setShowDetails] = useState(false);
+
+  // Initialize steps
+  useEffect(() => {
+    const initialSteps: InstallationStep[] = [
+      {
+        id: 'scan',
+        title: 'Skanner eksisterende system',
+        description: 'AI-drevet skanning av nåværende konfigurasjon og avhengigheter',
+        type: 'scan',
+        status: 'pending',
+        progress:  0,
+        details: [
+          'Skanner package.json og installerte pakker',
+          'Analyserer kodebase for bruk av dependencies',
+          'Sjekker for konflikter og kompatibilitet',
+          'Genererer installasjonsplan med AI'
+        ],
+        benefits: ['Unngår konflikter', 'Optimalisert installasjon', 'Sikkerhetsskanning'],
+        risks:  [],
+        changes: { files: [], dependencies:  [], configurations: [, ],},
+        estimatedTime: '30 sekunder'
+  },
+      {
+        id: 'analyze',
+        title: 'AI-analyse og planlegging',
+        description: 'OpenAI analyserer beste installasjonsmetode og genererer custom script',
+        type: 'analyze',
+        status: 'pending',
+        progress:  0,
+        details: [
+          'OpenAI analyserer pakke-avhengigheter',
+          'Genererer optimalisert installasjonsskript',
+          'Identifiserer potensielle problemer',
+          'Foreslår konfigurasjonsendringer'
+        ],
+        benefits: ['Intelligent installasjon', 'Færre feil', 'Optimalisert rekkefølge'],
+        risks:  [],
+        changes: { files: [], dependencies:  [], configurations: [, ],},
+        estimatedTime: '15 sekunder'
+  },
+      {
+        id: 'install',
+        title: mode === 'install' ? 'Installerer pakker' : 'Oppdaterer pakker',
+        description: `${mode === 'install' ? 'Installerer' : 'Oppdaterer'} ${packages.length} pakke(r) med AI-generert script`,
+        type: 'install',
+        status: 'pending',
+        progress:  0,
+        details: packages.map(pkg => `${mode === 'install' ? 'Installerer' : 'Oppdaterer'} ${pkg.name} til ${pkg.latest}`),
+        benefits: packages.flatMap(pkg => pkg.benefits),
+        risks: packages.filter(pkg => pkg.breaking).map(pkg => `${pkg.name} har breaking changes`),
+        changes: {
+          files: ['package.json', 'package-lock.json'],
+          dependencies: packages.map(pkg => pkg.name),
+          configurations: ['vite.config.ts', 'tsconfig.json']
+      },
+        estimatedTime: '2-5 minutter'
+  },
+      {
+        id: 'configure',
+        title: 'Konfigurerer system',
+        description: 'Automatisk konfigurasjon og optimalisering av nye pakker',
+        type: 'configure',
+        status: 'pending',
+        progress:  0,
+        details: [
+          'Oppdaterer TypeScript konfigurasjoner',
+          'Konfigurerer build-system',
+          'Oppdaterer import-paths',
+          'Optimaliserer bundle-størrelse'
+        ],
+        benefits: ['Automatisk setup', 'Optimal konfigurasjon', 'Reduserte build-tider'],
+        risks:  [],
+        changes: { files: [], dependencies:  [], configurations: [, ],},
+        estimatedTime: '1 minutt'
+  },
+      {
+        id: 'verify',
+        title: 'Verifiserer installasjon',
+        description: 'Tester at alt fungerer korrekt og starter applikasjon',
+        type: 'verify',
+        status: 'pending',
+        progress:  0,
+        details: [
+          'Sjekker for installasjonsfeil',
+          'Tester import av nye pakker',
+          'Verifiserer TypeScript kompilering',
+          'Starter applikasjon i test-modus'
+        ],
+        benefits: ['Sikker installasjon', 'Ingen build-feil', 'Klar til bruk'],
+        risks:  [],
+        changes: { files: [], dependencies:  [], configurations: [, ],},
+        estimatedTime: '30 sekunder'
+  }
+    ];
+
+    setSteps(initialSteps);
+}, [packages, mode]);
+
+  // Simulate AI analysis
+  const performAIAnalysis = async () => {
+    // Simulate OpenAI API call
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        resolve({
+          recommendedOrder: packages.map(pkg => pkg.name),
+          conflicts:  [],
+          optimizations: [
+            'Bruk --legacy-peer-deps for kompatibilitet',
+            'Installer peer dependencies automatisk',
+            'Optimalisér cache for raskere installer'
+          ],
+          script: `#!/bin/bash
+# AI-generert installasjonsskript for CreatorHub Norge
+# Optimalisert rekkefølge basert på avhengigheter
+
+echo "🤖 AI-optimalisert installasjon starter..."
+
+${packages.map(pkg => `
+echo "📦 Installerer ${pkg.name}..."
+npm install ${pkg.name}@${pkg.latest} --save
+`).join('')}
+
+echo "✅ Installasjon fullført!"
+echo "🔧 Kjører post-install konfigurasjon..."
+npm run build: check
+echo "🚀 Systemet er klart!, ", `,
+          estimatedSuccess:  95,
+          warnings: packages.filter(pkg => pkg.breaking).map(pkg => 
+            `${pkg.name} har breaking changes - test applikasjonen grundig`
+          )
+      });
+    }, 2000);
+  });
+};
+
+  // Execute installation step
+  const executeStep = async (stepIndex: number) => {
+    const step = steps[stepIndex];
+    
+    // Update step status to running
+    setSteps(prev => prev.map(, (i) => 
+      i === stepIndex ? { ...s, status: 'running' as const, progress:  0 } : s
+    ));
+
+    // Simulate step execution with progress
+    for (let progress = 0; progress <= 100; progress += 10) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+      setSteps(prev => prev.map((s, i) => 
+        i === stepIndex ? { ...s, progress } : s
+      ));
+  }
+
+    // Special handling for AI analysis step
+    if (step.type === 'analyze') {
+      const analysis = await performAIAnalysis();
+      setAiAnalysis(analysis);
+  }
+
+    // Mark step as completed
+    setSteps(prev => prev.map((s, i) => 
+      i === stepIndex ? { ...s, status: 'completed' as const, progress: 10, 0,} : s
+    ));
+};
+
+  // Start installation process
+  const startInstallation = async () => {
+    setIsRunning(true);
+    
+    for (let i = 0; i < steps.length; i++) {
+      setActiveStep(i);
+      await executeStep(i);
+      await new Promise(resolve => setTimeout(resolve, 500)); // Brief pause between steps
+  }
+    
+    setIsRunning(false);
+    onComplete();
+};
+
+  const getStepIcon = (step: InstallationStep) => {
+    switch (step.status) {
+      case 'completed':
+        return <CheckCircle color="success" />;
+      case 'running':
+        return <CircularProgress size={4} />;
+      case 'error':
+        return <Error color="error" />;
+      default: return <Typography variant="body2">{steps.indexOf(step) +,  , 1}</Typography>;
+  }
+};
+
+  const getStepColor = (step: InstallationStep) => {
+    switch (step.status) {
+      case 'completed':
+        return 'success';
+      case 'running':
+        return 'primary';
+      case 'error':
+        return 'error';
+      default:
+        return 'inherit';
+}
+};
+
+  return (
+    <Dialog
+      open={open}
+      onClose={!isRunning ? onClose : undefined}
+      maxWidth="md"
+      fullWidth
+      disableEscapeKeyDown={isRunning}
+    >
+      <DialogTitle>
+        <Stack direction="row" alignItems="center" spacing={2}>
+          <SmartToy sx={{ color: 'primary.main, ',}} />
+          <Typography variant="h6" sx={{ ...{}, color: theming.colors.primary }}>
+            AI-drevet {mode === 'install' ? 'Installasjon' : 'Oppdatering'}
+          </Typography>
+          <Chip 
+            label={`${packages.length} pakke(r)`}
+            color="primary" 
+            size="small" 
+          />
+        </Stack>
+      </DialogTitle>
+
+      <DialogContent>
+        {/* Overview Section */}
+        <Card sx={{ mb: 3, bgcolor: 'primary.50, ',}} sx={theming.getThemedCardSx()}>
+          <CardContent sx={theming.getThemedCardSx()}>
+            <Typography variant="h6" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>
+              📊 Installasjonsoversikt
+            </Typography>
+            <Grid container spacing={2}>
+              <Grid size={{ xs:  6 }}>
+                <Typography variant="body2" color="text.secondary">
+                  Pakker som {mode === 'install' ? 'installeres' : 'oppdateres'}
+                </Typography>
+                <Typography variant="h6" sx={{ ...{}, color: theming.colors.primary }}>{packages.length}</Typography>
+              </Grid>
+              <Grid size={{ xs:  6 }}>
+                <Typography variant="body2" color="text.secondary">
+                  Estimert tid
+                </Typography>
+                <Typography variant="h6" sx={{ ...{}, color: theming.colors.primary }}>3-7 minutter</Typography>
+              </Grid>
+            </Grid>
+          </CardContent>
+        </Card>
+
+        {/* Packages List */}
+        <Accordion sx={{ mb: 3 }}>
+          <AccordionSummary expandIcon={{theming.getThemedIcon('expandMore')}}>
+            <Typography>Pakker som behandles</Typography>
+          </AccordionSummary>
+          <AccordionDetails>
+            <List dense>
+              {packages.map((pkg, index) => (
+                <ListItem key={pkg.name} sx={{ 
+                  animation: `${sliden} 0.5s ease-out ${index * 0.1}s both` 
+              }}>
+                  <ListItemIcon>
+                    <Avatar sx={{ width:  32, height:  32, bgcolor: 'primary.main, ',}}>
+                      {pkg.name.charAt(0).toUpperCase()}
+                    </Avatar>
+                  </ListItemIcon>
+                  <ListItemText
+                    primary={
+                      <Stack direction="row" alignItems="center" spacing={2}>
+                        <Typography>{pkg.name}</Typography>
+                        <Chip 
+                          label={`${pkg.current} → ${pkg.latest}`}
+                          size="small" 
+                          color={pkg.breaking ? 'warning' : 'success'}
+                        />
+                        {pkg.vulnerabilities > 0 && (
+                          <Chip 
+                            label={`${pkg.vulnerabilities} sårbarhet(er)`}
+                            size="small" 
+                            color="error" 
+                            icon={{theming.getThemedIcon('security')}}
+                          />
+                        )}
+                      </Stack>
+                  }
+                    secondary={pkg.description}
+                  />
+                </ListItem>
+              ))}
+            </List>
+          </AccordionDetails>
+        </Accordion>
+
+        {/* Installation Steps */}
+        <Paper sx={{ p:  2 }} sx={theming.getThemedCardSx()}>
+          <Stepper activeStep={activeStep} orientation="vertical">
+            {steps.map((step, index) => (
+              <Step key={step.id}>
+                <StepLabel 
+                  icon={getStepIcon(step)}
+                  sx={{
+                    '& .MuiStepIcon-root': {
+                      color: step.status === 'running' ? 'primary.main' : undefined,
+                      animation: step.status === 'running' ? `${pulse} 2s ease-in-out infinite` : 'none'
+                  }
+                }}
+                >
+                  <Stack direction="row" alignItems="center" spacing={2}>
+                    <Typography variant="subtitle1">{step.title}</Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      ({step.estimatedTime})
+                    </Typography>
+                  </Stack>
+                </StepLabel>
+                <StepContent>
+                  <Box sx={{ mb: 2 }}>
+                    <Typography variant="body2" color="text.secondary" paragraph>
+                      {step.description}
+                    </Typography>
+
+                    {step.status === 'running' && (
+                      <Box sx={{ mb: 2 }}>
+                        <LinearProgress 
+                          variant="determinate" 
+                          value={step.progress}
+                          sx={{ mb: 1 }}
+                        />
+                        <Typography variant="caption" color="text.secondary">
+                          {step.progress}% fullført
+                        </Typography>
+                      </Box>
+                    )}
+
+                    {/* Benefits */}
+                    {step.benefits.length > 0 && (
+                      <Alert severity="success" sx={{ mb: 1 }}>
+                        <Typography variant="subtitle2" gutterBottom>
+                          🎯 Fordeler: </Typography>
+                        <List dense>
+                          {step.benefits.map((benefit, i) => (
+                            <ListItem key={i} sx={{ py: 0 }}>
+                              <ListItemIcon sx={{ minWidth: 3, 2,}}>
+                                <TrendingUp fontSize="small" color="success" />
+                              </ListItemIcon>
+                              <ListItemText 
+                                primary={
+                                  <Typography variant="body2">{benefit}</Typography>
+                              }
+                              />
+                            </ListItem>
+                          ))}
+                        </List>
+                      </Alert>
+                    )}
+
+                    {/* Risks/Warnings */}
+                    {step.risks.length > 0 && (
+                      <Alert severity="warning" sx={{ mb: 1 }}>
+                        <Typography variant="subtitle2" gutterBottom>
+                          ⚠️ Viktige merknader: </Typography>
+                        <List dense>
+                          {step.risks.map((risk, i) => (
+                            <ListItem key={i} sx={{ py: 0 }}>
+                              <ListItemIcon sx={{ minWidth: 3, 2,}}>
+                                <Warning fontSize="small" color="warning" />
+                              </ListItemIcon>
+                              <ListItemText 
+                                primary={
+                                  <Typography variant="body2">{risk}</Typography>
+                              }
+                              />
+                            </ListItem>
+                          ))}
+                        </List>
+                      </Alert>
+                    )}
+
+                    {/* AI Analysis Results */}
+                    {step.type === 'analyze' && aiAnalysis && (
+                      <Zoom in={true}>
+                        <Card sx={{ mt: ,  2bgcolor: 'info.50, ',}} sx={theming.getThemedCardSx()}>
+                          <CardContent sx={theming.getThemedCardSx()}>
+                            <Typography variant="subtitle2" gutterBottom>
+                              🤖 AI-analyse resultater
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary" paragraph>
+                              Suksessrate: {aiAnalysis.estimatedSuccess}%
+                            </Typography>
+                            <Accordion size="small">
+                              <AccordionSummary expandIcon={{theming.getThemedIcon('expandMore')}}>
+                                <Typography variant="body2">
+                                  Vis generert script
+                                </Typography>
+                              </AccordionSummary>
+                              <AccordionDetails>
+                                <Box sx={{ 
+                                  bgcolor: 'grey.10', 
+                                  p:  ,  2
+                                  borderRadius:  1,
+                                  fontFamily: 'monospace'
+                            }}>
+                                  <Typography variant="body2" component="pre">
+                                    {aiAnalysis.script}
+                                  </Typography>
+                                </Box>
+                              </AccordionDetails>
+                            </Accordion>
+                          </CardContent>
+                        </Card>
+                      </Zoom>
+                    )}
+
+                    {/* Step Details */}
+                    <Accordion size="small">
+                      <AccordionSummary expandIcon={{theming.getThemedIcon('expandMore')}}>
+                        <Typography variant="body2">
+                          Vis detaljer for dette steget
+                        </Typography>
+                      </AccordionSummary>
+                      <AccordionDetails>
+                        <List dense>
+                          {step.details.map((detail, i) => (
+                            <ListItem key={i}>
+                              <ListItemIcon>
+                                <Info fontSize="small" />
+                              </ListItemIcon>
+                              <ListItemText 
+                                primary={
+                                  <Typography variant="body2">{detail}</Typography>
+                              }
+                              />
+                            </ListItem>
+                          ))}
+                        </List>
+                      </AccordionDetails>
+                    </Accordion>
+                  </Box>
+                </StepContent>
+              </Step>
+            ))}
+          </Stepper>
+        </Paper>
+
+        {/* Progress Summary */}
+        {isRunning && (
+          <Fade in={true}>
+            <Alert severity="info" sx={{ mt: 2 }}>
+              <Stack direction="row" alignItems="center" spacing={2}>
+                <CircularProgress size={20} />
+                <Typography>
+                  Installasjon pågår... Ikke lukk dette vinduet.
+                </Typography>
+              </Stack>
+            </Alert>
+          </Fade>
+        )}
+      </DialogContent>
+
+      <DialogActions>
+        <Button 
+          onClick={onClose}
+          disabled={isRunning}
+        >
+          {isRunning ? 'Installasjon pågår...' : 'Avbryt'}
+        </Button>
+        <Button variant="contained"
+          onClick={startInstallation}
+          disabled={isRunning}
+          startIcon={isRunning ? <CircularProgress size={16} sx={theming.getThemedButtonSx()}> : <Rocket />}
+        >
+          {isRunning ? 'Installerer...' : `Start ${mode === 'install' ? 'Installasjon' : 'Oppdatering'}`}
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+};
+
+export default InstallationWizard;

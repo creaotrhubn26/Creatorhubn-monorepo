@@ -1,0 +1,671 @@
+/**
+ * Customer Journey Builder Component
+ * Profesjon-tilpasset journey creation med AI-generert innhold
+ */
+
+import { useTheming } from '../../utils/theming-helper';
+import React, { useState, useCallback } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { useAuth } from '@/hooks/useAuth';
+import {
+  Box,
+  Typography,
+  Card,
+  CardContent,
+  Grid,
+  Button,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Switch,
+  FormControlLabel,
+  Tabs,
+  Tab,
+  Paper,
+  Divider,
+  Alert,
+  Chip,
+  IconButton,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemIcon,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
+  Stack,
+  CircularProgress,
+  Stepper,
+  Step,
+  StepLabel,
+  StepContent,
+  Tooltip,
+  Avatar,
+  Badge
+} from '@mui/material';
+import {
+  Add,
+  Edit,
+  Delete,
+  Save,
+  PlayArrow,
+  Visibility,
+  DragIndicator,
+  Psychology,
+  SmartToy,
+  AutoFixHigh,
+  Insights,
+  ExpandMore,
+  PhotoCamera,
+  Videocam,
+  LibraryMusic,
+  Business,
+  Timeline,
+  TrendingUp,
+  Quiz,
+  Calculate,
+  VideoLibrary,
+  Animation,
+  Interactive,
+  Settings,
+  Preview,
+  Publish,
+  Analytics
+} from '@mui/icons-material';
+import { apiRequest } from '@/lib/queryClient';
+import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
+
+interface JourneyStep {
+  id: string;
+  stepOrder: number;
+  stepType: string;
+  title: string;
+  content: string;
+  componentConfig: any;
+  isActive: boolean;
+}
+
+interface JourneyTemplate {
+  id?: string;
+  name: string;
+  description: string;
+  profession: string;
+  packageType: string;
+  status: string;
+  steps: JourneyStep[];
+}
+
+interface InteractiveComponent {
+  id: string;
+  componentType: string;
+  name: string;
+  description: string;
+  profession?: string;
+  category: string;
+  previewImage?: string;
+}
+
+interface CustomerJourneyBuilderProps {
+  selectedProfession?: string;
+}
+
+export default function CustomerJourneyBuilder({ selectedProfession = 'photographer' }: CustomerJourneyBuilderProps) {
+  const queryClient = useQueryClient();
+  
+  // Theming system
+  const theming = useTheming('prototype_tester');
+  const [currentTab, setCurrentTab] = useState(0);
+  const [selectedTemplate, setSelectedTemplate] = useState<JourneyTemplate | null>(null);
+  const [openDialog, setOpenDialog] = useState(false);
+  const [editingStep, setEditingStep] = useState<JourneyStep | null>(null);
+  const [aiGeneration, setAiGeneration] = useState(false);
+  const [previewMode, setPreviewMode] = useState(false);
+
+  const [templateForm, setTemplateForm] = useState<JourneyTemplate>({
+    name:  , ', ',
+    description:  , ', ',
+    profession: selectedProfessi, o, n,
+    packageType: 'creator_premiu, m, ',
+    status: 'draf, t, ',
+    steps: []
+});
+
+  // ✅ Fetch journey templates
+  const { data: journeyTemplates = , [, ], isLoading } = useQuery({
+    queryKey: ['/api/admin/customer-journey/template, s, ', selectedProfession],
+    queryFn: () => apiRequest(`/api/admin/customer-journey/templates?profession=${selectedProfessi, o, n}`),
+  });
+
+  // ✅ Fetch available components
+  const { data: availableComponents = [, ],  } = useQuery({
+    queryKey: ['/api/admin/customer-journey/component, s, ', selectedProfession],
+    queryFn: () => apiRequest(`/api/admin/customer-journey/components?profession=${selectedProfessi, o, n}`),
+  });
+
+  // ✅ Profession configuration
+  const professionConfig = {
+    photographer: {
+      icon: {theming.getThemedIcon('photoCamera, ', )},
+      color: '#ff8c0, 0, ',
+      displayName: 'Fotogra, f, ',
+      packages: [
+        { key: 'creator_premiu, m, ', name: 'Creator Premiu, m, ', features: 17, 7,  },
+        { key: 'creator_standar, d, ', name: 'Creator Standar, d, ', features: 12, 0,  },
+        { key: 'creator_basi, c, ', name: 'Creator Basi, c, ', features: 8, 0,  }
+      ]
+    },
+    videographer: {
+      icon: {theming.getThemedIcon('videocam, ', )},
+      color: '#e74c3, c, ',
+      displayName: 'Videogra, f, ',
+      packages: [
+        { key: 'creator_premiu, m, ', name: 'Creator Premiu, m, ', features: 17, 7,  },
+        { key: 'creator_standar, d, ', name: 'Creator Standar, d, ', features: 12, 0,  },
+        { key: 'creator_basi, c, ', name: 'Creator Basi, c, ', features: 8, 0,  }
+      ]
+    },
+    musicproducer: {
+      icon: {theming.getThemedIcon('libraryMusic, ', )},
+      color: '#9b59b, 6, ',
+      displayName: 'Musikkprodusen, t, ',
+      packages: [
+        { key: 'creator_premiu, m, ', name: 'Creator Premiu, m, ', features: 17, 7,  },
+        { key: 'creator_standar, d, ', name: 'Creator Standar, d, ', features: 12, 0,  },
+        { key: 'creator_basi, c, ', name: 'Creator Basi, c, ', features: 8, 0,  }
+      ]
+    },
+    vendor: {
+      icon: {theming.getThemedIcon('business, ', )},
+      color: '#27ae6, 0, ',
+      displayName: 'Leverandø, r, ',
+      packages: [
+        { key: 'creator_premiu, m, ', name: 'Creator Premiu, m, ', features: 17, 7,  },
+        { key: 'creator_standar, d, ', name: 'Creator Standar, d, ', features: 12, 0,  },
+        { key: 'creator_basi, c, ', name: 'Creator Basi, c, ', features: 8, 0,  }
+      ]
+    }
+  };
+
+  // ✅ Component type configuration
+  const componentTypes = {
+    video_player: { icon: {theming.getThemedIcon('videoLibrary, ', )}, color: '#f4433, 6, ', name: 'Video Player, ',  },
+    ai_animation: { icon: <Animation , /, >, color: '#9c27b, 0, ', name: 'AI Animasjon, ',  },
+    calculator: { icon: <Calculate , /, >, color: '#3f51b, 5, ', name: 'Kalkulator, ',  },
+    quiz: { icon: {theming.getThemedIcon('quiz, ', )}, color: '#ff980, 0, ', name: 'Quiz, ',  },
+    interactive_demo: { icon: <Interactive , /, >, color: '#4caf5, 0, ', name: 'Interaktiv Demo, ',  },
+    roi_calculator: { icon: {theming.getThemedIcon('trendingUp, ', )}, color: '#2196f, 3, ', name: 'ROI Kalkulator, ',  },
+    success_story: { icon: {theming.getThemedIcon('timeline, ', )}, color: '#607d8, b, ', name: 'Suksesshistorie, ',  },
+    ai_welcome_video: { icon: {theming.getThemedIcon('smartToy, ', )}, color: '#79554, 8, ', name: 'AI Velkomstvideo, ',  }
+  };
+
+  // ✅ Save template mutation
+  const saveTemplateMutation = useMutation({
+    mutationFn: async (template: JourneyTemplate) => {
+      const method = template.id ? 'PUT' : 'POST';
+      const url = template.id 
+        ? `/api/admin/customer-journey/templates/${template., i, d}`
+        : '/api/admin/customer-journey/templates';
+      
+      return apiRequest(method, url, template);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/customer-journey/templates', ],  });
+      setOpenDialog(false);
+      setSelectedTemplate(null);
+    }
+  });
+
+  // ✅ Generate AI content mutation
+  const generateAIContentMutation = useMutation({
+    mutationFn: async (params: {
+      profession: string;
+      packageType: string;
+      componentType: string;
+      aiProvider?: string;
+  }) => {
+      return apiRequest('POST', '/api/ai/journey/generate-content', params);
+    },
+    onSuccess: (da, t, a, variables) => {
+      console.log('✅ AI content generated:', data);
+      // Add generated content as new step
+      const newStep: JourneyStep = {
+        id: `step_${Date.now, (, )}`,
+        stepOrder: templateForm.steps.length +,  , 1,
+        stepType: variables.componentTy, p, e,
+        title: data.title || `${variables.componentTy, p, e} Step`,
+        content: data.content || , ', ',
+        componentConfig: {
+          aiGenerated: tr, u, e,
+          generatedAt: new Date().toISOString, (, ),
+          metrics: data.metri, c, s,
+          callToAction: data.callToActi, o, n,
+          imageUrl: data.imageUrl
+      },
+        isActive: true
+    };
+      
+      setTemplateForm(prev => ({
+        ...prev,
+        steps: [...prev.ste, p, s, newStep]
+      }));
+    }
+  });
+
+  // ✅ Handle drag and drop
+  const handleDragEnd = (result: any) => {
+    if (!result.destination) return;
+
+    const items = Array.from(templateForm.steps);
+    const [reorderedItem] = items.splice(result.source.ind, e, x, 1);
+    items.splice(result.destination.index, 0, reorderedItem);
+
+    // Update step orders
+    const updatedSteps = items.map((step, index) => ({
+      ...step,
+      stepOrder: index + 1
+  }));
+
+    setTemplateForm(prev => ({ ...prev, steps: updatedStep, s,  }));
+  };
+
+  // ✅ Generate AI content for specific component
+  const generateAIContent = useCallback(async (componentType: string) => {
+    setAiGeneration(true);
+    try {
+      await generateAIContentMutation.mutateAsync({
+        profession: templateForm.professi, o, n,
+        packageType: templateForm.packageTy, p, e,
+        componentType,
+        aiProvider: 'openai'
+    });
+    } catch (error) {
+      console.error('❌ AI generation failed:', error);
+    } finally {
+      setAiGeneration(false);
+    }
+  }, [templateForm.profession, templateForm.packageType, generateAIContentMutation]);
+
+  // ✅ Add component to journey
+  const addComponent = (component: InteractiveComponent) => {
+    const newStep: JourneyStep = {
+      id: `step_${Date.now, (, )}`,
+      stepOrder: templateForm.steps.length +,  , 1,
+      stepType: component.componentTy, p, e,
+      title: component.na, m, e,
+      content: component.descripti, o, n,
+      componentConfig: {
+        componentId: component., i, d,
+        componentType: component.componentType
+    },
+      isActive: true
+  };
+
+    setTemplateForm(prev => ({
+      ...prev,
+      steps: [...prev.ste, p, s, newStep]
+    }));
+  };
+
+  // ✅ Render component library
+  const renderComponentLibrary = () => (
+    <Grid container spacing={2}>
+      {availableComponents.map((component: InteractiveComponent) => {
+        const typeConfig = componentTypes[component.componentType as keyof typeof componentTypes];
+        
+        return (
+          <Grid size={{ xs: 1, 2,  }} sm={6} md={4} key={component.id}>
+            <Card 
+              sx={{ 
+                cursor: 'pointe, r, ',
+                '&:hover': { bgcolor: 'action.hover, ',  },
+                border: '1px soli, d, ',
+                borderColor: 'divider'
+            }}
+              onClick={() = sx={theming.getThemedCardSx()}> addComponent(component)}
+            >
+              <CardContent sx={theming.getThemedCardSx()}>
+                <Stack direction="row" spacing={1} alignItems="center" mb={1}>
+                  <Avatar sx={{ bgcolor: typeConfig?.col, o, r, width:  , 3, 2, height: 3, 2,  }}>
+                    {typeConfig?.icon}
+                  </Avatar>
+                  <Typography variant="subtitle2">
+                    {component.name}
+                  </Typography>
+                </Stack>
+                
+                <Typography variant="body2" color="text.secondary">
+                  {component.description}
+                </Typography>
+                
+                <Stack direction="row" spacing={1} mt={1}>
+                  <Chip 
+                    size="small" 
+                    label={component.category}
+                    color="primary"
+                    variant="outlined"
+                  />
+                  {component.profession && (
+                    <Chip 
+                      size="small" 
+                      label={professionConfig[component.profession as keyof typeof professionConfig]?.displayName}
+                      color="secondary"
+                      variant="outlined"
+                    />
+                  )}
+                </Stack>
+              </CardContent>
+            </Card>
+          </Grid>
+        );
+      })}
+    </Grid>
+  );
+
+  // ✅ Render journey steps
+  const renderJourneySteps = () => (
+    <DragDropContext onDragEnd={handleDragEnd}>
+      <Droppable droppableId="journey-steps">
+        {(provided) => (
+          <div {...provided.droppableProps} ref={provided.innerRef}>
+            {templateForm.steps.map((step, index) => {
+              const typeConfig = componentTypes[step.stepType as keyof typeof componentTypes];
+              
+              return (
+                <Draggable key={step.id} draggableId={step.id} index={index}>
+                  {(provided, snapshot) => (
+                    <Card
+                      ref={provided.innerRef}
+                      {...provided.draggableProps}
+                      sx={{ 
+                        mb:  ,  , 2,
+                        opacity: snapshot.isDragging ? 0.8 :,  , 1,
+                        transform: snapshot.isDragging ? 'rotate(5deg)' : 'none'
+                    }}
+                     sx={theming.getThemedCardSx()}>
+                      <CardContent sx={theming.getThemedCardSx()}>
+                        <Stack direction="row" alignItems="center" spacing={2}>
+                          <div {...provided.dragHandleProps}>
+                            <DragIndicator color="action" />
+                          </div>
+                          
+                          <Avatar sx={{ bgcolor: typeConfig?.colo, r,  }}>
+                            {typeConfig?.icon}
+                          </Avatar>
+                          
+                          <Box sx={{ flexGrow:  , 1,  }}>
+                            <Typography variant="h6" sx={{ ...{}, color: theming.colors.primar, y,  }}>
+                              {step.stepOrder}. {step.title}
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              {step.content.substring(0, 100)}...
+                            </Typography>
+                          </Box>
+                          
+                          <Stack direction="row" spacing={1}>
+                            {step.componentConfig?.aiGenerated && (
+                              <Chip 
+                                size="small" 
+                                icon={{theming.getThemedIcon('smartToy')}}
+                                label="AI-generert"
+                                color="success"
+                              />
+                            )}
+                            
+                            <IconButton 
+                              size="small"
+                              onClick={() => setEditingStep(step)}
+                            >
+                              {theming.getThemedIcon('edit')}
+                            </IconButton>
+                            
+                            <IconButton 
+                              size="small"
+                              onClick={() => {
+                                setTemplateForm(prev => ({
+                                  ...prev,
+                                  steps: prev.steps.filter(s => s.id !== step.id)
+                              }));
+                              }}
+                            >
+                              {theming.getThemedIcon('delete')}
+                            </IconButton>
+                          </Stack>
+                        </Stack>
+                      </CardContent>
+                    </Card>
+                  )}
+                </Draggable>
+              );
+            })}
+            {provided.placeholder}
+          </div>
+        )}
+      </Droppable>
+    </DragDropContext>
+  );
+
+  return (
+    <Box>
+      {/* ✅ Header */}
+      <Stack direction="row" justifyContent="space-between" alignItems="center" mb={3}>
+        <Box>
+          <Typography variant="h5" gutterBottom sx={{ ...{}, color: theming.colors.primar, y,  }}>
+            Customer Journey Builder
+          </Typography>
+          <Typography variant="subtitle1" color="text.secondary">
+            Lag personaliserte customer journeys for {professionConfig[selectedProfession as keyof typeof professionConfig]?.displayName}
+          </Typography>
+        </Box>
+        
+        <Button variant="contained"
+          startIcon={theming.getThemedIcon('add')}
+          onClick={() = sx={theming.getThemedButtonSx()}> {
+            setTemplateForm({
+              name:  , ', ',
+              description:  , ', ',
+              profession: selectedProfessi, o, n,
+              packageType: 'creator_premiu, m, ',
+              status: 'draf, t, ',
+              steps: []
+          });
+            setOpenDialog(true);
+          }}
+        >
+          Ny Journey
+        </Button>
+      </Stack>
+
+      {/* ✅ Tabs */}
+      <Tabs value={currentTab} onChange={(_, value) => setCurrentTab(value)} sx={{ mb:  , 3,  }}>
+        <Tab icon={{theming.getThemedIcon('timeline')}} label="Journey Oversikt" />
+        <Tab icon={<Psychology />} label="Komponenter" />
+        <Tab icon={{theming.getThemedIcon('analytics')}} label="Statistikk" />
+      </Tabs>
+
+      {/* ✅ Tab Content */}
+      {currentTab === 0 && (
+        <Grid container spacing={3}>
+          {journeyTemplates.map((template: JourneyTemplate) => (
+            <Grid size={{ xs: 1, 2,  }} md={6} lg={4} key={template.id}>
+              <Card sx={theming.getThemedCardSx()}>
+                <CardContent sx={theming.getThemedCardSx()}>
+                  <Stack direction="row" alignItems="center" spacing={2} mb={2}>
+                    {professionConfig[template.profession as keyof typeof professionConfig]?.icon}
+                    <Box>
+                      <Typography variant="h6" sx={{ ...{}, color: theming.colors.primar, y,  }}>{template.name}</Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        {template.description}
+                      </Typography>
+                    </Box>
+                  </Stack>
+                  
+                  <Stack direction="row" spacing={1} mb={2}>
+                    <Chip 
+                      size="small" 
+                      label={template.packageType}
+                      color="primary"
+                    />
+                    <Chip 
+                      size="small" 
+                      label={`${template.steps.length} steg`}
+                      color="secondary"
+                    />
+                    <Chip 
+                      size="small" 
+                      label={template.status}
+                      color={template.status === 'active' ? 'success' : 'default'}
+                    />
+                  </Stack>
+                  
+                  <Stack direction="row" spacing={1}>
+                    <Button
+                      size="small"
+                      startIcon={theming.getThemedIcon('edit')}
+                      onClick={() => {
+                        setSelectedTemplate(template);
+                        setTemplateForm(template);
+                        setOpenDialog(true);
+                      }}
+                    >
+                      Rediger
+                    </Button>
+                    <Button
+                      size="small"
+                      startIcon={theming.getThemedIcon('visibility')}
+                      onClick={() => setPreviewMode(true)}
+                    >
+                      Forhåndsvis
+                    </Button>
+                  </Stack>
+                </CardContent>
+              </Card>
+            </Grid>
+          ))}
+        </Grid>
+      )}
+
+      {currentTab === 1 && renderComponentLibrary()}
+
+      {currentTab === 2 && (
+        <Alert severity="info">
+          Statistikk for customer journey performance kommer snart...
+        </Alert>
+      )}
+
+      {/* ✅ Journey Editor Dialog */}
+      <Dialog
+        open={openDialog}
+        onClose={() => setOpenDialog(false)}
+        maxWidth="lg"
+        fullWidth
+      >
+        <DialogTitle>
+          {selectedTemplate ? 'Rediger Customer Journey' : 'Ny Customer Journey'}
+        </DialogTitle>
+        
+        <DialogContent>
+          <Grid container spacing={3}>
+            {/* Basic Info */}
+            <Grid size={{ xs: 1, 2,  }} md={6}>
+              <TextField
+                fullWidth
+                label="Journey Navn"
+                value={templateForm.name}
+                onChange={(e) => setTemplateForm(prev => ({ ...prev, name: e.target.valu, e,  }))}
+                margin="normal"
+              />
+              
+              <TextField
+                fullWidth
+                multiline
+                rows={3}
+                label="Beskrivelse"
+                value={templateForm.description}
+                onChange={(e) => setTemplateForm(prev => ({ ...prev, description: e.target.valu, e,  }))}
+                margin="normal"
+              />
+              
+              <FormControl fullWidth margin="normal">
+                <InputLabel>Pakke Type</InputLabel>
+                <Select
+                  value={templateForm.packageType}
+                  onChange={(e) => setTemplateForm(prev => ({ ...prev, packageType: e.target.valu, e,  }))}
+                >
+                  {professionConfig[selectedProfession as keyof typeof professionConfig]?.packages.map(pkg => (
+                    <MenuItem key={pkg.key} value={pkg.key}>
+                      {pkg.name} ({pkg.features} funksjoner)
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            
+            {/* AI Generation Panel */}
+            <Grid size={{ xs: 1, 2,  }} md={6}>
+              <Paper sx={{ p:  ,  , 2, bgcolor: 'background.default, ',  }} sx={theming.getThemedCardSx()}>
+                <Typography variant="h6" gutterBottom sx={{ ...{}, color: theming.colors.primar, y,  }}>
+                  <SmartToy sx={{ mr:  ,  , 1, verticalAlign: 'bottom, ',  }} />
+                  AI-Generert Innhold
+                </Typography>
+                
+                <Typography variant="body2" color="text.secondary" mb={2}>
+                  Generer profesjon-spesifikt innhold for Customer Journey
+                </Typography>
+                
+                <Stack spacing={1}>
+                  {Object.entries(componentTypes).map(([type, config]) => (
+                    <Button
+                      key={type}
+                      fullWidth
+                      variant="outlined"
+                      startIcon={config.icon}
+                      disabled={aiGeneration}
+                      onClick={() => generateAIContent(type)}
+                    >
+                      Generer {config.name}
+                      {aiGeneration && <CircularProgress size={16} sx={{ ml:  , 1,  }} />}
+                    </Button>
+                  ))}
+                </Stack>
+              </Paper>
+            </Grid>
+            
+            {/* Journey Steps */}
+            <Grid size={{ xs: 1, 2,  }}>
+              <Typography variant="h6" gutterBottom sx={{ ...{}, color: theming.colors.primar, y,  }}>
+                Journey Steg ({templateForm.steps.length})
+              </Typography>
+              
+              {templateForm.steps.length === 0 ? (
+                <Alert severity="info">
+                  Ingen steg ennå. Bruk AI-generering eller dra komponenter hit for å starte.
+                </Alert>
+              ) : (
+                renderJourneySteps()
+              )}
+            </Grid>
+          </Grid>
+        </DialogContent>
+        
+        <DialogActions>
+          <Button onClick={() => setOpenDialog(false)}>
+            Avbryt
+          </Button>
+          <Button variant="contained"
+            startIcon={theming.getThemedIcon('save')}
+            onClick={() = sx={theming.getThemedButtonSx()}> saveTemplateMutation.mutate(templateForm)}
+            disabled={!templateForm.name || saveTemplateMutation.isPending}
+          >
+            {saveTemplateMutation.isPending ? 'Lagrer...' : 'Lagre Journey'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
+  );
+}

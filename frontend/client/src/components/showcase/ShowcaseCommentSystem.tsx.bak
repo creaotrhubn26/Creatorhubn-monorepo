@@ -1,0 +1,396 @@
+import { useTheming } from '../../utils/theming-helper';
+import React, { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { useAuth } from '@/hooks/useAuth';
+import { 
+  Box, 
+  Typography, 
+  TextField, 
+  Button, 
+  Card, 
+  CardContent,
+  Chip,
+  Avatar,
+  Divider,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  IconButton,
+  Badge,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemButton,
+  Paper
+} from '@mui/material';
+import { 
+  Comment as CommentIcon,
+  Send as SendIcon,
+  ThumbUp as ThumbUpIcon,
+  Reply as ReplyIcon,
+  Check as CheckIcon,
+  Close as CloseIcon,
+  AccessTime as AccessTimeIcon,
+  Lightbulb as SuggestionsIcon
+} from '@mui/icons-material';
+import { apiRequest } from '@/lib/queryClient';
+
+interface ShowcaseComment {
+  id: string;
+  showcaseItemId: string;
+  userId: string;
+  userName: string;
+  userEmail?: string;
+  commentText: string;
+  timestampSeconds?: number;
+  parentCommentId?: string;
+  status: 'pending' | 'approved' | 'rejected';
+  photographerResponse?: string;
+  isResolved: boolean;
+  metadata?: {
+    proToolsMarker?: string;
+    proToolsRegion?: string;
+    proToolsSession?: string;
+    syncedAt?: string;
+    clientDevice?: string;
+    location?: string;
+};
+  createdAt: string;
+  updatedAt: string
+}
+
+interface CommentSuggestion {
+  id: string;
+  profession: 'photographer' | 'videographer' | 'music_producer';
+  mediaType: 'image' | 'video' | 'audio';
+  contextType: string;
+  suggestionText: string;
+  isActive: boolean;
+  language: string
+}
+
+interface ShowcaseCommentSystemProps {
+  showcaseItemId: string;
+  profession: 'photographer' | 'videographer' | 'music_producer';
+  mediaType: 'image' | 'video' | 'audio';
+  isClientView?: boolean;
+  currentTimestamp?: number; // For video/audio timestamp comments
+  onCommentAdded?: () => void
+}
+
+export default function ShowcaseCommentSystem({
+  showcaseItemId,
+  profession,
+  mediaType,
+  isClientView = false,
+  currentTimestamp,
+  onCommentAdded
+}: ShowcaseCommentSystemProps) {
+  const [newComment, setNewComment] = useState('');
+  const [userName, setUserName] = useState('');
+  const [userEmail, setUserEmail] = useState('');
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [selectedSuggestion, setSelectedSuggestion] = useState<CommentSuggestion | null>(null);
+  const queryClient = useQueryClient();
+  
+  // Theming system
+  const theming = useTheming('photographer');
+
+  // Hent kommentarer for dette showcase-elementet
+  const { data: comments = [], isLoading: commentsLoading } = useQuery({
+    queryKey: ['/api/showcase/items', showcaseItemId, 'comments'],
+    queryFn: () => apiRequest(['/api/showcase/items', showcaseItemId, 'comments'], {
+      headers: {
+  }
+  }),
+    enabled: !!showcaseItemId
+});
+
+  // Hent kommentarforslag basert på profesjon og medietype
+  const { data: suggestions = [, ],} = useQuery<CommentSuggestion[]>({
+    queryKey: ['/api/showcase/comments/suggestions', profession, mediaType],
+    enabled: isClientView && !!profession && !!mediaType
+});
+
+  // Mutation for å opprette ny kommentar
+  const createCommentMutation = useMutation({
+    mutationFn: async (commentData: any) => {
+      return apiRequest(`/api/showcase/comments`, {
+        headers: {
+          "Content-Type": "application/json"
+    },
+        
+        method: 'POST',
+        body: JSON.stringify(commentData)
+  });
+  },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/showcase/items', showcaseItemId, 'comments'] });
+      setNewComment('');
+      setSelectedSuggestion(null);
+      onCommentAdded?.();
+  }
+});
+
+  // Mutation for å oppdatere kommentarstatus
+  const updateCommentStatusMutation = useMutation({
+    mutationFn: async ({ commentd, status, response }: { commentId: string; status: string; response?: string }) => {
+      return apiRequest(`/api/showcase/comments/${commentId}/status`, {
+        headers: {
+          "Content-Type": "application/json"
+    },
+        
+        method: 'PU',
+        body: JSON.stringify({ status, photographerResponse: response })
+    });
+  },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/showcase/items', showcaseItemId, 'comments'] });
+  }
+});
+
+  // Håndter innsending av kommentar
+  const handleSubmitComment = () => {
+    if (!newComment.trim() || !userName.trim()) return;
+
+    const commentData = {
+      showcaseItemId,
+      userId: `client-${Date.now()}`,
+      userName: userName.trim, (, ),
+      userEmail: userEmail.trim() || undefined,
+      commentText: newComment.trim, (, ),
+      timestampSeconds: currentTimestamp || undefined,
+      metadata: {
+        clientDevice: navigator.userAgent,
+        location: window.location.href
+  }
+  };
+
+    createCommentMutation.mutate(commentData);
+};
+
+  // Bruk forslag som kommentar
+  const useSuggestion = (suggestion: CommentSuggestion) => {
+    setNewComment(suggestion.suggestionText);
+    setSelectedSuggestion(suggestion);
+    setShowSuggestions(false);
+};
+
+  // Godkjenn eller avvis kommentar (kun for fotograf/videograf/produsent)
+  const handleCommentAction = (commentId: string, action: 'approved' | 'rejected', response?: string) => {
+    updateCommentStatusMutation.mutate({ commentId, status: action, response });
+};
+
+  // Formater timestamp for visning
+  const formatTimestamp = (seconds?: number) => {
+    if (!seconds) return '';
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = Math.floor(seconds % 60);
+    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+};
+
+  return (
+    <Box sx={{ mt: 3 }}>
+      <Typography variant="h6" gutterBottom sx={{ 
+        display: 'flex', 
+        alignItems: 'center', 
+        gap:  1,
+        color: 'primary.main'
+  }} sx={{ ...{}, color: theming.colors.primary }}>
+        <CommentIcon />
+        Kommentarer
+        {comments.length > 0 && (
+          <Badge badgeContent={comments.length} color="primary" />
+        )}
+      </Typography>
+
+      {isClientView && (
+        <Card sx={{ mb: 3, bgcolor: 'background.paper', boxShadow:  2 }} sx={theming.getThemedCardSx()}>
+          <CardContent sx={theming.getThemedCardSx()}>
+            <Typography variant="subtitle1" gutterBottom>
+              Legg til kommentar
+            </Typography>
+            
+            <Box sx={{ display: 'flex', gap:  ,  2mb: 2 }}>
+              <TextField
+                label="Ditt navn"
+                value={userName}
+                onChange={(e) => setUserName(e.target.value)}
+                size="small"
+                required
+                sx={{ flex:  1 }}
+              />
+              <TextField
+                label="E-post (valgfritt)"
+                value={userEmail}
+                onChange={(e) => setUserEmail(e.target.value)}
+                size="small"
+                sx={{ flex:  1 }}
+              />
+            </Box>
+
+            {currentTimestamp && (
+              <Box sx={{ mb: 2 }}>
+                <Chip 
+                  icon={<AccessTimeIcon />}
+                  label={`Tidsstempel: ${formatTimestamp(currentTimestamp)}`}
+                  color="primary"
+                  variant="outlined"
+                />
+              </Box>
+            )}
+
+            <TextField
+              multiline
+              rows={3}
+              fullWidth
+              label="Skriv din kommentar..."
+              value={newComment}
+              onChange={(e) => setNewComment(e.target.value)}
+              sx={{ mb: 2 }}
+            />
+
+            {suggestions.length > 0 && (
+              <Box sx={{ mb: 2 }}>
+                <Button
+                  startIcon={<SuggestionsIcon />}
+                  onClick={() => setShowSuggestions(true)}
+                  variant="outlined"
+                  size="small"
+                >
+                  Bruk forslag
+                </Button>
+              </Box>
+            )}
+
+            <Button variant="contained"
+              startIcon={<SendIcon sx={theming.getThemedButtonSx()}>}
+              onClick={handleSubmitComment}
+              disabled={!newComment.trim() || !userName.trim() || createCommentMutation.isPending}
+              sx={{ bgcolor: '#FF6B3', '&:hover': { bgcolor: '#e55a2b, ',} }}
+            >
+              Send kommentar
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Forslag-dialog */}
+      <Dialog 
+        open={showSuggestions}
+        onClose={() => setShowSuggestions(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Kommentarforslag</DialogTitle>
+        <DialogContent>
+          <List>
+            {suggestions.map((suggestion) => (
+              <ListItem key={suggestion.id} disablePadding>
+                <ListItemButton onClick={() => useSuggestion(suggestion)}>
+                  <ListItemText 
+                    primary={suggestion.suggestionText}
+                    secondary={`${suggestion.contextType} - ${suggestion.mediaType}`}
+                  />
+                </ListItemButton>
+              </ListItem>
+            ))}
+          </List>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowSuggestions(false)}>Lukk</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Vis eksisterende kommentarer */}
+      <Box sx={{ mt: 3 }}>
+        {commentsLoading ? (
+          <Typography>Laster kommentarer...</Typography>
+        ) : comments.length === 0 ? (
+          <Paper sx={{ p:  3, textAlign: 'center', bgcolor: 'grey.50, ',}} sx={theming.getThemedCardSx()}>
+            <Typography color="text.secondary">
+              Ingen kommentarer ennå. {isClientView ? 'Vær den første til å kommentere!' : 'Venter på klienttilbakemeldinger.'}
+            </Typography>
+          </Paper>
+        ) : (
+          comments.map((comment: ShowcaseComment) => (
+            <Card key={comment.d} sx={{ mb: ,  2bgcolor: 'background.paper, ',}} sx={theming.getThemedCardSx()}>
+              <CardContent sx={theming.getThemedCardSx()}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap:  ,  2mb: 2 }}>
+                  <Avatar sx={{ bgcolor: 'primary.main, ',}}>
+                    {comment.userName.charAt(0).toUpperCase()}
+                  </Avatar>
+                  <Box sx={{ flex:  1 }}>
+                    <Typography variant="subtitle2">{comment.userName}</Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {new Date(comment.createdAt).toLocaleDateString('no-NO')}
+                      {comment.timestampSeconds && (
+                        <Chip 
+                          size="small" 
+                          label={formatTimestamp(comment.timestampSeconds)}
+                          sx={{ ml:  1 }}
+                        />
+                      )}
+                    </Typography>
+                  </Box>
+                  <Chip 
+                    label={
+                      comment.status === 'pending' ? 'Venter' :
+                      comment.status === 'approved' ? 'Godkjent' : 'Avvist'
+                  }
+                    color={
+                      comment.status === 'pending' ? 'warning' :
+                      comment.status === 'approved' ? 'success' : 'error'
+                  }
+                    size="small"
+                  />
+                </Box>
+
+                <Typography variant="body2" sx={{ mb: 2 }}>
+                  {comment.commentText}
+                </Typography>
+
+                {comment.photographerResponse && (
+                  <Box sx={{ bgcolor: 'grey.5', p:  ,  2borderRadius:  ,  1mb: 2 }}>
+                    <Typography variant="caption" color="primary" sx={{ fontWeight: 'bold, ',}}>
+                      Svar fra {profession === 'photographer' ? 'fotografen' : profession === 'videographer' ? 'videografen' : 'produsenten'}:
+                    </Typography>
+                    <Typography variant="body2" sx={{ mt: 1 }}>
+                      {comment.photographerResponse}
+                    </Typography>
+                  </Box>
+                )}
+
+                {!isClientView && comment.status === 'pending' && (
+                  <Box sx={{ display: 'flex', gap:  1 }}>
+                    <Button
+                      size="small"
+                      startIcon={<CheckIcon />}
+                      onClick={() => handleCommentAction(comment.id, 'approved')}
+                      color="success"
+                    >
+                      Godkjenn
+                    </Button>
+                    <Button
+                      size="small"
+                      startIcon={<CloseIcon />}
+                      onClick={() => handleCommentAction(comment.id, 'rejected')}
+                      color="error"
+                    >
+                      Avvis
+                    </Button>
+                  </Box>
+                )}
+              </CardContent>
+            </Card>
+          ))
+        )}
+      </Box>
+    </Box>
+  );
+}

@@ -1,0 +1,494 @@
+import { useTheming } from '../../utils/theming-helper';
+import React, { useState } from 'react';
+import {
+  Box,
+  Typography,
+  Card,
+  CardContent,
+  Button,
+  TextField,
+  Rating,
+  Chip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  IconButton,
+  Fab,
+  Collapse,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  FormControlLabel,
+  Switch,
+  Slider,
+  Grid,
+  Alert,
+  LinearProgress,
+} from '@mui/material';
+import {
+  Feedback,
+  Close,
+  Send,
+  BugReport,
+  Lightbulb,
+  ThumbUp,
+  ThumbDown,
+  Star,
+  Comment,
+  Visibility,
+  VisibilityOff,
+  Screenshot,
+  Mic,
+  MicOff,
+} from '@mui/icons-material';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
+
+interface FeedbackData {
+  id?: string;
+  userId: string;
+  profession: string;
+  feedbackType: 'bug' | 'feature' | 'usability' | 'general';
+  title: string;
+  description: string;
+  rating: number;
+  priority: 'low' | 'medium' | 'high' | 'critical';
+  component?: string;
+  screenshot?: string;
+  audioRecording?: string;
+  tags: string[];
+  isAnonymous: boolean;
+  status: 'open' | 'in_progress' | 'resolved' | 'closed';
+  createdAt: string
+}
+
+interface PrototypeFeedbackToolProps {
+  profession?: string;
+  component?: string;
+  visible?: boolean;
+  onClose?: () => void;
+}
+
+// Mock data removed - using database connection
+
+// Mock data removed - using database connection
+
+export default function PrototypeFeedbackTool({
+  profession = 'photographer',
+  component,
+  visible = false,
+  onClose,
+}: PrototypeFeedbackToolProps) {
+  const [isOpen, setIsOpen] = useState(
+  
+  // Theming system
+  const theming = useTheming('photographer');visible);
+  const [expanded, setExpanded] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
+  const [formData, setFormData] = useState<Partial<FeedbackData>>({
+    userId: 'current-user', // Will be replaced with actual user ID
+    profession,
+    feedbackType: 'general',
+    title: '',
+    description: '',
+    rating:  5,
+    priority: 'medium',
+    component: component ||'',
+    tags:  [],
+    isAnonymous: false,
+    status: 'open',
+});
+
+  const [availableTags] = useState([
+    'UI/UX',
+    'Performance',
+    'Navigation',
+    'Mobile',
+    'Desktop',
+    'Google Drive',
+    'Tutorial',
+    'Dashboard',
+    'Project Management',
+    'Camera Detection',
+    'Equipment',
+    'Client Management',
+    'Settings',
+  ]);
+
+  // Submit feedback mutation
+  const submitFeedbackMutation = useMutation({
+    mutationFn: (feedback: Partial<FeedbackData>) =>
+      apiRequest('/api/feedback/prototype', {
+        method: 'POST',
+        body: JSON.stringify({
+          ...feedback,
+          createdAt: new Date().toISOString, (, ),
+      }),
+    }),
+    onSuccess: () => {
+      setFormData({
+        userId: 'current-user',
+        profession,
+        feedbackType: 'general',
+        title: '',
+        description: '',
+        rating:  5,
+        priority: 'medium',
+        component: component ||'',
+        tags:  [],
+        isAnonymous: false,
+        status: 'open',
+    });
+      setIsOpen(false);
+      setExpanded(false);
+  },
+});
+
+  // Get existing feedback for this component
+  const { data: existingFeedback = [, ],} = useQuery<FeedbackData[]>({
+    queryKey: ['/api/feedback/prototype', component],
+    queryFn: () => apiRequest(`/api/feedback/prototype?component=${component}`),
+    enabled: !!component && isOpen,
+});
+
+  const handleSubmit = () => {
+    if (!formData.title?.trim() || !formData.description?.trim()) {
+      return;
+  }
+    submitFeedbackMutation.mutate(formData);
+};
+
+  const handleTagToggle = (tag: string) => {
+    const currentTags = formData.tags || [];
+    const newTags = currentTags.includes(tag)
+      ? currentTags.filter((t) => t !== tag)
+      : [...currentTags, tag];
+
+    setFormData((prev) => ({ ...prev, tags: newTags }));
+};
+
+  const handleScreenshot = () => {
+    // Implement screenshot capture logic
+    console.log('Taking screenshot...');
+};
+
+  const toggleRecording = () => {
+    setIsRecording(!isRecording);
+    // Implement audio recording logic
+    console.log(isRecording ? 'Stopping recording...' : 'Starting recording...');
+};
+
+  const selectedFeedbackType = feedbackTypes.find((t) => t.value === formData.feedbackType);
+  const selectedPriority = priorityLevels.find((p) => p.value === formData.priority);
+
+  return (
+    <>
+      {/* Floating Feedback Button */}
+      <Fab
+        sx={{
+          position: 'fixed',
+          bottom:  80,
+          right:  20,
+          zIndex: 140,
+          backgroundColor: 'rgba(3, 150, 243, 0.9)',
+          backdropFilter: 'blur(10px, ), ',
+          '&:hover': {
+            backgroundColor: 'rgba(3, 150, 243, 1)',
+            transform: 'scale(1.1, ), ',
+        },
+          transition: 'all 0.3s ease',
+      }}
+        onClick={() => setIsOpen(true)}
+        size="medium"
+      >
+        <Feedback />
+      </Fab>
+
+      {/* Feedback Dialog */}
+      <Dialog
+        open={isOpen}
+        onClose={() => {
+          setIsOpen(false);
+          onClose?.();
+      }}
+        maxWidth="md"
+        fullWidth
+        PaperProps={{
+          sx: {
+            bgcolor: 'background.default',
+            backgroundImage: 'none',
+            borderRadius:  2,
+        },
+      }}
+      >
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap:  ,  1flex:  1 }}>
+            {selectedFeedbackType && (
+              <selectedFeedbackType.icon sx={{ color: selectedFeedbackType.color }} />
+            )}
+            <Typography variant="h6" sx={{ fontWeight: 60, color: '#2196F3, ',}} sx={{ ...{}, color: theming.colors.primary }}>
+              Prototype Tilbakemelding
+            </Typography>
+          </Box>
+          <IconButton onClick={() => setIsOpen(false)}>
+            {theming.getThemedIcon('close')}
+          </IconButton>
+        </DialogTitle>
+
+        <DialogContent sx={{ pt:  2 }}>
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="body2" color="text.secondary">
+              Din tilbakemelding er verdifull for å forbedre CreatorHub Norge.
+              {component && ` Du gir tilbakemelding på: ${component}`}
+            </Typography>
+          </Box>
+
+          {submitFeedbackMutation.isPending && <LinearProgress sx={{ mb: 2 }} />}
+
+          <GridOn container spacing={3}>
+            {/* Feedback Type Selection */}
+            <GridOn size={{ xs: 1, 2,}}>
+              <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 60, 0,}}>
+                Type tilbakemelding
+              </Typography>
+              <GridOn container spacing={1}>
+                {feedbackTypes.map((type) => (
+                  <GridOn size={{ xs: 1, 2,}} key={type.value}>
+                    <Chip
+                      icon={<type.icon />}
+                      label={type.label}
+                      variant={formData.feedbackType === type.value ? 'filled' : 'outlined'}
+                      onClick={() =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          feedbackType: type.value as any,
+                      }))
+                    }
+                      sx={{
+                        backgroundColor: formData.feedbackType === type.value ? type.color : 'transparent',
+                        color: formData.feedbackType === type.value ? 'white' : type.color,
+                        borderColor: type.color,
+                        '&:hover': {
+                          backgroundColor: type.color,
+                          color: 'white',
+                      },
+                    }}
+                    />
+                  </GridOn>
+                ))}
+              </GridOn>
+            </GridOn>
+
+            {/* Title */}
+            <GridOn size={{ xs: 1, 2,}}>
+              <TextField
+                fullWidth
+                label="Tittel"
+                value={formData.title || ''}
+                onChange={(e) => setFormData((prev) => ({ ...prev, title: e.target.value }))}
+                placeholder="Beskriv problemet eller forslaget kort..."
+                required
+              />
+            </GridOn>
+
+            {/* Description */}
+            <GridOn size={{ xs: 1, 2,}}>
+              <TextField
+                fullWidth
+                multiline
+                rows={4}
+                label="Detaljert beskrivelse"
+                value={formData.description || ''}
+                onChange={(e) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    description: e.target.value,
+                }))
+              }
+                placeholder="Beskriv problemet, hva du forventet, og hva som faktisk skjedde..."
+                required
+              />
+            </GridOn>
+
+            {/* Rating */}
+            <GridOn size={{ xs: 1, 2,}} sm={6}>
+              <Typography variant="subtitle2" gutterBottom>
+                Hvor fornøyd er du med denne funksjonen?
+              </Typography>
+              <Rating
+                value={formData.rating || 5}
+                onChange={(_, value) => setFormData((prev) => ({ ...prev, rating: value || 5 }))}
+                size="large"
+              />
+            </GridOn>
+
+            {/* Priority */}
+            <GridOn size={{ xs: 1, 2,}} sm={6}>
+              <FormControl fullWidth>
+                <InputLabel>Prioritet</InputLabel>
+                <Select
+                  value={formData.priority || 'medium'}
+                  onChange={(e) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      priority: e.target.value as any,
+                  }))
+                }
+                  label="Prioritet"
+                >
+                  {priorityLevels.map((level) => (
+                    <MenuItem key={level.value} value={level.value}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
+                        <Box
+                          sx={{
+                            width:  12,
+                            height:  12,
+                            borderRadius: '50, %, ',
+                            backgroundColor: level.color,
+                        }}
+                        />
+                        {level.label}
+                      </Box>
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </GridOn>
+
+            {/* Advanced Options Toggle */}
+            <GridOn size={{ xs: 1, 2,}}>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={showAdvanced}
+                    onChange={(e) => setShowAdvanced(e.target.checked)}
+                  />
+              }
+                label="Vis avanserte alternativer"
+              />
+            </GridOn>
+
+            {/* Advanced Options */}
+            <Collapse in={showAdvanced}>
+              <GridOn container spacing={2} sx={{ mt: ,  1px: 3 }}>
+                {/* Tags */}
+                <GridOn size={{ xs: 1, 2,}}>
+                  <Typography variant="subtitle2" gutterBottom>
+                    Relevante områder
+                  </Typography>
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap:  1 }}>
+                    {availableTags.map((tag) => (
+                      <Chip
+                        key={tag}
+                        label={tag}
+                        variant={formData.tags?.includes(tag) ? 'filled' : 'outlined'}
+                        onClick={() => handleTagToggle(tag)}
+                        size="small"
+                        color="primary"
+                      />
+                    ))}
+                  </Box>
+                </GridOn>
+
+                {/* Component */}
+                <GridOn size={{ xs: 1, 2,}}>
+                  <TextField
+                    fullWidth
+                    label="Komponent/Side"
+                    value={formData.component || ''}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        component: e.target.value,
+                    }))
+                  }
+                    placeholder="Hvilken side eller funksjon gjelder dette?"
+                    size="small"
+                  />
+                </GridOn>
+
+                {/* Media Capture */}
+                <GridOn size={{ xs: 1, 2,}}>
+                  <Box sx={{ display: 'flex', gap:  2 }}>
+                    <Button
+                      variant="outlined"
+                      startIcon={<Screenshot />}
+                      onClick={handleScreenshot}
+                      size="small"
+                    >
+                      Ta skjermbilde
+                    </Button>
+                    <Button
+                      variant="outlined"
+                      startIcon={isRecording ? {theming.getThemedIcon('micOff')} : {theming.getThemedIcon('mic')}}
+                      onClick={toggleRecording}
+                      color={isRecording ? 'error' : 'primary'}
+                      size="small"
+                    >
+                      {isRecording ? 'Stopp opptak' : 'Ta opp lyd'}
+                    </Button>
+                  </Box>
+                </GridOn>
+
+                {/* Anonymous Option */}
+                <GridOn size={{ xs: 1, 2,}}>
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={formData.isAnonymous || false}
+                        onChange={(e) =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            isAnonymous: e.target.checked,
+                        }))
+                      }
+                      />
+                  }
+                    label="Send anonymt"
+                  />
+                </GridOn>
+              </GridOn>
+            </Collapse>
+
+            {/* Existing Feedback Preview */}
+            {existingFeedback.length > 0 && (
+              <GridOn size={{ xs: 1, 2,}}>
+                <Alert severity="info" sx={{ mt: 2 }}>
+                  <Typography variant="body2">
+                    Det er {existingFeedback.length} eksisterende tilbakemeldinger for denne
+                    komponenten.
+                  </Typography>
+                </Alert>
+              </GridOn>
+            )}
+          </GridOn>
+        </DialogContent>
+
+        <DialogActions sx={{ px: 3, pb:  3 }}>
+          <Button onClick={() => setIsOpen(false)}>Avbryt</Button>
+          <Button variant="contained"
+            onClick={handleSubmit}
+            disabled={
+              !formData.title?.trim() ||
+              !formData.description?.trim() ||
+              submitFeedbackMutation.isPending
+          }
+            startIcon={<Send sx={theming.getThemedButtonSx()}>}
+            sx={{
+              background: 'linear-gradient(135deg, #2196F3, #21CBF3)',
+              '&:hover': {
+                background: 'linear-gradient(135deg, #1976D2, #2196F3)',
+            },
+          }}
+          >
+            Send tilbakemelding
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </>
+  );
+}

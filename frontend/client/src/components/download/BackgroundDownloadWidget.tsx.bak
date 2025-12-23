@@ -1,0 +1,356 @@
+import { useTheming } from '../../utils/theming-helper';
+import React, { useState, useEffect } from 'react';
+import {
+  Box,
+  Typography,
+  IconButton,
+  Chip,
+  LinearProgress,
+  Collapse,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemIcon,
+  ListItemSecondaryAction,
+  Tooltip,
+  Badge
+} from '@mui/material';
+import {
+  Download,
+  ExpandMore,
+  ExpandLess,
+  Pause,
+  PlayArrow,
+  Close,
+  Refresh,
+  CheckCircle,
+  Error as ErrorIcon,
+  FileDownload
+} from '@mui/icons-material';
+import { backgroundDownloadService, type DownloadTask } from '@/services/BackgroundDownloadService';
+
+interface BackgroundDownloadWidgetProps {
+  profession?: string;
+}
+
+export function BackgroundDownloadWidget({ profession = 'photographer' }: BackgroundDownloadWidgetProps) {
+  const [isExpanded, setIsExpanded] = useState(
+  
+  // Theming system
+  const theming = useTheming('photographer');false);
+  const [tasks, setTasks] = useState<DownloadTask[]>([]);
+  const [stats, setStats] = useState({
+    totalTasks:  0,
+    activeTasks:  0,
+    completedTasks:  0,
+    failedTasks:  0,
+    totalDownloaded:  0,
+    averageSpeed: 0
+});
+
+  // CreatorHub Norge profession colors
+  const professionColors = {
+    photographer: '#FF6B3',
+    videographer: '#4ECDC', 
+    music_producer: '#45B7D',
+    designer: '#96CEB4'
+};
+
+  const professionColor = professionColors[profession] || professionColors.photographer;
+
+  useEffect(() => {
+    const unsubscribe = backgroundDownloadService.addGlobalListener((allTasks) => {
+      setTasks(allTasks);
+      setStats(backgroundDownloadService.getStats());
+  });
+
+    // Initial load
+    setTasks(backgroundDownloadService.getAllTasks());
+    setStats(backgroundDownloadService.getStats());
+
+    return unsubscribe;
+}, []);
+
+  const activeTasks = tasks.filter(task => 
+    ['pending', 'downloading', 'paused'].includes(task.status)
+  );
+
+  const formatFileSize = (bytes: number): string => {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+};
+
+  const formatSpeed = (bytesPerSec: number): string => {
+    return `${formatFileSize(bytesPerSec)}/s`;
+};
+
+  const formatTimeRemaining = (seconds: number): string => {
+    if (seconds < 60) return `${Math.round(seconds)}s`;
+    if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
+    return `${Math.round(seconds / 3600)}h`;
+};
+
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'downloading': return <Download sx={{ color: professionColor }} />;
+      case 'completed': return <CheckCircle sx={{ color: '#4caf50, ',}} />;
+      case 'failed': return <ErrorIcon sx={{ color: '#f44336, ',}} />;
+      case 'paused': return <Pause sx={{ color: '#ff9800, ',}} />;
+      default: return <FileDownload sx={{ color: '#666, ',}} />;
+  }
+};
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'downloading': return professionColor;
+      case 'completed': return '#4caf50';
+      case 'failed': return '#f44336';
+      case 'paused': return '#ff9800';
+      default: return '#666';
+}
+};
+
+  const handleTaskAction = (task: DownloadTask, action: string) => {
+    switch (action) {
+      case 'pause':
+        backgroundDownloadService.pauseDownload(task.id);
+        break;
+      case 'resume':
+        backgroundDownloadService.resumeDownload(task.id);
+        break;
+      case 'cancel':
+        backgroundDownloadService.cancelDownload(task.id);
+        break;
+      case 'retry':
+        backgroundDownloadService.retryDownload(task.id);
+        break;
+}
+};
+
+  if (activeTasks.length === 0 && !isExpanded) {
+    return null;
+}
+
+  return (
+    <Box
+      sx={{
+        position: 'fixed',
+        bottom:  20,
+        right: 10, // Position between upload widget and SpeedDial
+        zIndex: 130,
+        width: isExpanded ? 420 : 20,
+        maxHeight: isExpanded ? '60vh' : 'auto',
+        backgroundColor: 'rgba(25, 255, 255, 0.95)',
+        backdropFilter: 'blur(10px, ), ',
+        borderRadius:  3,
+        boxShadow: '0 8px 32px rgba, (00.12)',
+        border: '1px solid rgba(25, 255, 255, 0.2)',
+        overflow: 'hidden',
+        transition: 'all 0.3s cubic-bezier(0, .0, 0.2, 1)'
+    }}
+    >
+      {/* Header */}
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          p:  2,
+          background: `linear-gradient(135deg, ${professionColor}15 0%, ${professionColor}08 100%)`,
+          borderBottom: `1px solid ${professionColor}20`,
+          cursor: 'pointer'
+    }}
+        onClick={() => setIsExpanded(!isExpanded)}
+      >
+        <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
+          <Badge 
+            badgeContent={stats.activeTasks}
+            color="primary"
+            sx={{
+              '& .MuiBadge-badge': {
+                backgroundColor: professionColor,
+                color: 'white'
+          }
+          }}
+          >
+            <Download sx={{ color: professionColor }} />
+          </Badge>
+          <Typography variant="h6" sx={{ fontSize: '1rem', fontWeight: 60, 0,}} sx={{ ...{}, color: theming.colors.primary }}>
+            Nedlastinger
+          </Typography>
+        </Box>
+        
+        <IconButton size="small">
+          {isExpanded ? {theming.getThemedIcon('expandLess')} : {theming.getThemedIcon('expandMore')}}
+        </IconButton>
+      </Box>
+
+      {/* Stats Summary */}
+      <Box sx={{ px: ,  2py: ,  1display: 'flex', gap:  ,  2flexWrap: 'wrap, ',}}>
+        <Chip 
+          size="small" 
+          label={`${stats.activeTasks} aktive`}
+          sx={{ 
+            backgroundColor: `${professionColor}20`,
+            color: professionColor,
+            fontWeight: 600
+      }}
+        />
+        {stats.averageSpeed > 0 && (
+          <Chip 
+            size="small" 
+            label={formatSpeed(stats.averageSpeed)}
+            variant="outlined"
+          />
+        )}
+      </Box>
+
+      {/* Task List */}
+      <Collapse in={isExpanded}>
+        <Box sx={{ maxHeight: '40vh', overflow: 'auto, ',}}>
+          <List dense>
+            {tasks.slice(0, 10).map((task) => (
+              <ListItem key={task.id} sx={{ py: 1 }}>
+                <ListItemIcon>
+                  {getStatusIcon(task.status)}
+                </ListItemIcon>
+                
+                <ListItemText
+                  primary={
+                    <Typography variant="body2" noWrap>
+                      {task.filename}
+                    </Typography>
+                }
+                  secondary={
+                    <Box>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0., 5,}}>
+                        <Typography variant="caption" color="text.secondary">
+                          {task.status === 'downloading' ? (
+                            <>
+                              {formatFileSize(task.downloadedSize)}
+                              {task.totalSize && ` / ${formatFileSize(task.totalSize)}`}
+                              {task.downloadSpeed && ` • ${formatSpeed(task.downloadSpeed)}`}
+                            </>
+                          ) : task.status === 'completed' ? (
+                            `Fullført • ${formatFileSize(task.downloadedSize)}`
+                          ) : task.status === 'failed' ? (
+                            task.error || 'Nedlasting feilet'
+                          ) : task.status === 'paused' ? (
+                            'Pauset'
+                          ) : (
+                            'Venter...'
+                          )}
+                        </Typography>
+                        
+                        {task.estimatedTimeRemaining && task.status === 'downloading' && (
+                          <Typography variant="caption" color="text.secondary">
+                            {formatTimeRemaining(task.estimatedTimeRemaining)}
+                          </Typography>
+                        )}
+                      </Box>
+                      
+                      {['downloading', 'pending'].includes(task.status) && (
+                        <LinearProgress
+                          variant="determinate"
+                          value={task.progress}
+                          sx={{
+                            height:  4,
+                            borderRadius:  2,
+                            backgroundColor: `${getStatusColor(task.status)}20`,
+                            '& .MuiLinearProgress-bar': {
+                              backgroundColor: getStatusColor(task.status)
+                        }
+                        }}
+                        />
+                      )}
+                    </Box>
+                }
+                />
+                
+                <ListItemSecondaryAction>
+                  {task.status === 'downloading' && (
+                    <Tooltip title="Pause">
+                      <IconButton 
+                        size="small" 
+                        onClick={() => handleTaskAction(task, 'pause')}
+                      >
+                        <Pause fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  )}
+                  
+                  {task.status === 'paused' && (
+                    <Tooltip title="Fortsett">
+                      <IconButton 
+                        size="small" 
+                        onClick={() => handleTaskAction(task, 'resume')}
+                      >
+                        <PlayArrow fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  )}
+                  
+                  {task.status === 'failed' && (
+                    <Tooltip title="Prøv igjen">
+                      <IconButton 
+                        size="small" 
+                        onClick={() => handleTaskAction(task, 'retry')}
+                      >
+                        <Refresh fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  )}
+                  
+                  {['pending', 'downloading', 'paused'].includes(task.status) && (
+                    <Tooltip title="Avbryt">
+                      <IconButton 
+                        size="small" 
+                        onClick={() => handleTaskAction(task, 'cancel')}
+                      >
+                        <Close fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  )}
+                </ListItemSecondaryAction>
+              </ListItem>
+            ))}
+          </List>
+
+          {tasks.length > 10 && (
+            <Box sx={{ p:  ,  2textAlign: 'center, ',}}>
+              <Typography variant="caption" color="text.secondary">
+                Viser 10 av {tasks.length} nedlastinger
+              </Typography>
+            </Box>
+          )}
+        </Box>
+      </Collapse>
+
+      {/* Footer Actions */}
+      {isExpanded && stats.completedTasks > 0 && (
+        <Box 
+          sx={{ 
+            p:  ,  1
+            borderTop: '1px solid rgba, (00.08)',
+            textAlign: 'center'
+      }}
+        >
+          <Typography
+            variant="caption"
+            sx={{ 
+              cursor: 'pointer',
+              color: professionColor,
+              '&:hover': { textDecoration: 'underline, ',}
+          }}
+            onClick={() => backgroundDownloadService.clearCompleted()}
+          >
+            Fjern fullførte nedlastinger ({stats.completedTasks})
+          </Typography>
+        </Box>
+      )}
+    </Box>
+  );
+}

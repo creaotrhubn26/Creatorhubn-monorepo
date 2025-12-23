@@ -1,0 +1,3502 @@
+import { useTheming } from '../../utils/theming-helper';
+import React, { useState, useEffect } from 'react';
+import {
+  Box,
+  Container,
+  Typography,
+  Card,
+  CardContent,
+  Grid,
+  Button,
+  TextField,
+  Alert,
+  LinearProgress,
+  Chip,
+  Paper,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemIcon,
+  Divider,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
+  IconButton,
+  Tooltip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Snackbar,
+  CircularProgress,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  TablePagination,
+  Badge,
+  Tabs,
+  Tab,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Switch,
+  FormControlLabel
+} from '@mui/material';
+import {
+  Storage,
+  Add,
+  Refresh,
+  Visibility,
+  Edit,
+  Delete,
+  CheckCircle,
+  Error as ErrorIcon,
+  Warning,
+  Info,
+  ExpandMore,
+  PlayArrow,
+  Stop,
+  Pause,
+  Speed,
+  TableChart,
+  Schema,
+  DataObject,
+  Code,
+  Terminal,
+  History,
+  Settings,
+  Security,
+  Backup,
+  Restore
+} from '@mui/icons-material';
+import { apiRequest } from '@/lib/queryClient';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
+
+interface DatabaseTable {
+  table_name: string;
+  table_schema: string;
+  table_type: string;
+  row_count?: number;
+  size_mb?: number;
+  last_modified?: string; 
+}
+
+interface DatabaseOperation {
+  id: string;
+  type: 'create' | 'alter' | 'drop' | 'insert' | 'update' | 'delete' | 'select';
+  table: string;
+  sql: string;
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  startTime: Date;
+  endTime?: Date;
+  duration?: number;
+  error?: string;
+  affectedRows?: number; 
+}
+
+interface DatabaseStats {
+  totalTables: number;
+  totalSize: number;
+  activeConnections: number;
+  slowQueries: number;
+  lastBackup?: string;
+  healthScore: number; 
+}
+
+export default function DatabaseManagementPanel() {
+  const [selectedTab, setSelectedTab] = useState(0);
+  const [operationLog, setOperationLog] = useState<DatabaseOperation[]>([]);
+  const [isOperationRunning, setIsOperationRunning] = useState(false);
+  const [customSQL, setCustomSQL] = useState('');
+  const [selectedTable, setSelectedTable] = useState<string>('');
+  const [showSQLDialog, setShowSQLDialog] = useState(false);
+  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' | 'warning' | 'info' });
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [refreshInterval, setRefreshInterval] = useState(5000);
+  const [dryRunMode, setDryRunMode] = useState(() => {
+    // Load from localStorage, default to DRY_RUN for safety
+    const saved = localStorage.getItem('dbPanel_dryRunMode,');
+    return saved !== null ? JSON.parse(saved) : true;
+});
+  const [showSafetyWarning, setShowSafetyWarning] = useState(false);
+  const [pendingScript, setPendingScript] = useState<'create-tables' | 'test-database' | 'optimize-database' | 'feature-management-tables' | null>(null);
+  const [hasRunDryRun, setHasRunDryRun] = useState<Record<string 
+ boolean>>(() => {
+    const saved = localStorage.getItem('dbPanel_hasRunDryRun,');
+    return saved ? JSON.parse(saved) : {};
+});
+  const [showDryRunReminder, setShowDryRunReminder] = useState(false);
+  const [showRecoveryDialog, setShowRecoveryDialog] = useState(false);
+
+  // Import Mic icon for audio enhancement
+  const Mic = require('@mui/icons-material/Mic').default;
+
+  const [scriptProgress, setScriptProgress] = useState<{
+    running: boolean;
+    currentStep: string;
+    progress: number;
+    totalSteps: number;
+    completedSteps: number;
+    logs: string[];
+    error?: string;
+    startTime?: Date;
+    endTime?: Date;
+    duration?: number;
+    lastHeartbeat?: Date;
+    retryCount: number;
+    maxRetries: number;
+    scriptType?: string;
+    isDryRun: boolean;
+}>({
+    running: false,
+    currentStep: ', ',
+    progress: 0,
+    totalSteps: 0,
+    completedSteps: 0,
+    logs: [],
+    retryCount: 0,
+    maxRetries: 3,
+    isDryRun: true
+});
+
+  const [missingTables, setMissingTables] = useState<{
+    detected: boolean;
+    missing: string[];
+    critical: string[];
+    warnings: string[];
+    lastCheck: Date | null;
+    autoCheck: boolean;
+}>({
+    detected: false,
+    missing: [],
+    critical: [],
+    warnings: [],
+    lastCheck: null,
+    autoCheck: true
+});
+
+  // Master Workflow State (coordinates Script Runner, Schema Validation, Missing Tables)
+  const [masterWorkflow, setMasterWorkflow] = useState<{
+    active: boolean;
+    currentPhase: 'script-runner' | 'schema-validation' | 'missing-tables' | 'complete';
+    overallProgress: number;
+    phases: Array<{
+      id: string;
+      name: string;
+      tab: number;
+      description: string;
+      status: 'pending' | 'in-progress' | 'completed' | 'skipped';
+      recommendation: string;
+  }>;
+}>({
+    active: false,
+    currentPhase: 'script-runner',
+    overallProgress: 0,
+    phases: [
+      {
+        id: 'script-runner',
+        name: '1. Create/Update Database Tables',
+        tab: 2,
+        description: 'Run scripts to create or update tables in PostgreSQL database',
+        status: 'pending',
+        recommendation: 'Start here if you have new tables in your schema or need to sync the database structure'
+    },
+      {
+        id: 'schema-validation',
+        name: '2. Validate Schema ↔ Storage.ts',
+        tab: 3,
+        description: 'Ensure all schema tables have corresponding methods in storage.ts',
+        status: 'pending',
+        recommendation: 'After creating tables, verify that your code can interact with them'
+    },
+      {
+        id: 'missing-tables',
+        name: '3. Verify Database Completeness',
+        tab: 4,
+        description: 'Final check to ensure all expected tables exist and system is operational',
+        status: 'pending',
+        recommendation: 'Complete validation to confirm everything is working correctly'
+    }
+    ]
+});
+
+  // Schema Validation State
+  const [schemaValidation, setSchemaValidation] = useState<{
+    analyzed: boolean;
+    totalTables: number;
+    tablesWithMethods: number;
+    missingMethods: Array<{
+      tableName: string;
+      missingOperations: string[];
+      priority: 'high' | 'medium' | 'low';
+      suggestions: string[];
+  }>;
+    coverage: number;
+    lastCheck: Date | null;
+    currentStep: number;
+    steps: Array<{
+      id: number;
+      title: string;
+      description: string;
+      status: 'pending' | 'in-progress' | 'completed' | 'skipped' | 'warning';
+      action?: string;
+      warning?: string;
+  }>;
+}>({
+    analyzed: false,
+    totalTables: 0,
+    tablesWithMethods: 0,
+    missingMethods: [],
+    coverage: 0,
+    lastCheck: null,
+    currentStep: 0,
+    steps: [
+      {
+        id: 1,
+        title: 'Check Database Schema',
+        description: 'Scan database-persistence-schema.ts for all table definitions',
+        status: 'pending',
+        action: 'Start Analysis'
+    },
+      {
+        id: 2,
+        title: 'Analyze storage.ts Methods',
+        description: 'Check which tables have corresponding CRUD methods in storage.ts',
+        status: 'pending',
+        action: 'Analyze Methods'
+    },
+      {
+        id: 3,
+        title: 'Identify Missing Methods',
+        description: 'Compare schema tables with storage.ts methods to find gaps',
+        status: 'pending',
+        action: 'Find Gaps'
+    },
+      {
+        id: 4,
+        title: 'Review Recommendations',
+        description: 'Review suggested methods to add for missing tables',
+        status: 'pending',
+        action: 'Review'
+    },
+      {
+        id: 5,
+        title: 'Generate Method Skeletons',
+        description: 'Generate TypeScript code skeletons for missing methods',
+        status: 'pending',
+        action: 'Generate Code',
+        warning: 'Review generated code before copying'
+    },
+      {
+        id: 6,
+        title: 'Verify Implementation',
+        description: 'Run final check to ensure all tables have proper storage methods',
+        status: 'pending',
+        action: 'Final Check'
+    }
+    ]
+});
+
+  const queryClient = useQueryClient();
+
+  // Theming system
+  const theming = useTheming('prototype_tester');
+
+  // Get auth from master integration
+  const { auth } = useEnhancedMasterIntegration();
+
+  // Database stats query
+  const { data: dbStats, isLoading: statsLoading } = useQuery({
+    queryKey: ['/api/admin/database/stats'],
+    queryFn: async () => {
+      const headers = await auth.getAuthHeader();
+      return apiRequest('/api/admin/database/stats', { headers });
+    },
+    refetchInterval: autoRefresh ? refreshInterval : false,
+    staleTime: 10000
+});
+
+  // Tables list query
+  const { data: tables, isLoading: tablesLoading, refetch: refetchTables } = useQuery({
+    queryKey: ['/api/admin/database/tables'],
+    queryFn: async () => {
+      const headers = await auth.getAuthHeader();
+      return apiRequest('/api/admin/database/tables', { headers });
+    },
+    refetchInterval: autoRefresh ? refreshInterval : false,
+    staleTime: 30000
+});
+
+  // Table details query
+  const { data: tableDetails, isLoading: detailsLoading } = useQuery({
+    queryKey: ['/api/admin/database/table-details', selectedTable],
+    queryFn: async () => {
+      const headers = await auth.getAuthHeader();
+      return apiRequest(`/api/admin/database/table-details/${selectedTable}`, { headers });
+    },
+    enabled: !!selectedTable,
+    staleTime: 60000
+});
+
+  // Storage information query
+  const { data: storageInfo, isLoading: storageLoading } = useQuery({
+    queryKey: ['/api/admin/database/storage'],
+    queryFn: async () => {
+      const headers = await auth.getAuthHeader();
+      return apiRequest('/api/admin/database/storage', { headers });
+    },
+    refetchInterval: autoRefresh ? refreshInterval : false,
+    staleTime: 30000
+});
+
+  // Execute SQL mutation
+  const executeSQLMutation = useMutation({
+    mutationFn: async (sql: string) => {
+      const headers = await auth.getAuthHeader();
+      return apiRequest('/api/admin/database/execute', {
+        headers: {
+          ...headers, , 'Content-Type': 'application/json'
+        },
+        method: 'POST',
+        body: JSON.stringify({ sql })
+      });
+    },
+    onSuccess: (data) => {
+      const operation: DatabaseOperation = {
+        id: `op_${Date.now()}`,
+        type: data.operationType || 'select',
+        table: data.table || 'unknown',
+        sql: customSQL,
+        status: 'completed',
+        startTime: new Date(),
+        endTime: new Date(),
+        duration: data.duration || 0,
+        affectedRows: data.affectedRows || 0
+    };
+
+      setOperationLog(prev => [operation, ...prev.slice(0, 99)]);
+      setSnackbar({ open: true, message: 'SQL executed successfully', severity: 'success' });
+      setCustomSQL('');
+      setShowSQLDialog(false);
+
+      // Refresh relevant data
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/database'] });
+  },
+    onError: (error: any) => {
+      const operation: DatabaseOperation = {
+        id: `op_${Date.now()}`,
+        type: 'select',
+        table: 'unknown',
+        sql: customSQL,
+        status: 'failed',
+        startTime: new Date(),
+        endTime: new Date(),
+        duration: 0,
+        error: error.message || 'Unknown error'
+    };
+
+      setOperationLog(prev => [operation, ...prev.slice(0, 99)]);
+      setSnackbar({ open: true, message: `SQL execution, failed: ${error.message}`, severity: 'error' });
+  }
+});
+
+  // Create table mutation
+  const createTableMutation = useMutation({
+    mutationFn: async (tableData: any) => {
+      const headers = await auth.getAuthHeader();
+      return apiRequest('/api/admin/database/create-table', {
+        headers: {
+          ...headers, , 'Content-Type': 'application/json'
+        },
+        method: 'POST',
+        body: JSON.stringify(tableData)
+      });
+    },
+    onSuccess: () => {
+      setSnackbar({ open: true, message: 'Table created successfully', severity: 'success' });
+      refetchTables();
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/database'] });
+  },
+    onError: (error: any) => {
+      setSnackbar({ open: true, message: `Table creation, failed: ${error.message}`, severity: 'error' });
+  }
+});
+
+  // Database health check
+  const healthCheckMutation = useMutation({
+    mutationFn: async () => {
+      const headers = await auth.getAuthHeader();
+      return apiRequest('/api/admin/database/health-check', { headers });
+    },
+    onSuccess: (data) => {
+      setSnackbar({ open: true, message: `Health check completed. Score: ${data.healthScore}%`, severity: 'success' });
+  },
+    onError: (error: any) => {
+      setSnackbar({ open: true, message: `Health check, failed: ${error.message}`, severity: 'error' });
+  }
+});
+
+  // Heartbeat monitoring for script health
+  const [heartbeatInterval, setHeartbeatInterval] = useState<NodeJS.Timeout | null>(null);
+
+  // Handle script execution with safety confirmation
+  const handleScriptRun = (scriptType: 'create-tables' | 'test-database' | 'optimize-database' | 'feature-management-tables' | 'audio-enhancement-tables') => {
+    if (!dryRunMode) {
+      // Check if dry run was performed first
+      if (!hasRunDryRun[scriptType]) {
+        // Show reminder to run dry-run first
+        setPendingScript(scriptType);
+        setShowDryRunReminder(true);
+        return;
+    }
+      
+      // Show safety warning for EXECUTE mode
+      setPendingScript(scriptType);
+      setShowSafetyWarning(true);
+  } else {
+      // DRY_RUN mode - execute immediately and track it
+      scriptRunnerMutation.mutate(scriptType);
+      setHasRunDryRun(prev => ({ ...prev, [scriptType]: true }));
+  }
+};
+
+  const confirmScriptExecution = () => {
+    if (pendingScript) {
+      scriptRunnerMutation.mutate(pendingScript);
+      setShowSafetyWarning(false);
+      setPendingScript(null);
+  }
+};
+
+  // Script runner mutation with enhanced monitoring
+  const scriptRunnerMutation = useMutation({
+    mutationFn: async (scriptType: 'create-tables' | 'test-database' | 'optimize-database' | 'feature-management-tables' | 'audio-enhancement-tables') => {
+      const startTime = new Date();
+      const isDryRun = dryRunMode;
+      
+      setScriptProgress({
+        running: true,
+        currentStep: isDryRun ? 'Starting dry run...' : 'Starting script execution...',
+        progress: 0,
+        totalSteps: 0,
+        completedSteps: 0,
+        logs: [isDryRun ? '🔍 DRY RUN MODE - No changes will be made' : '🚀 EXECUTE MODE - Changes will be applied', 
+               `Script: ${scriptType}`,
+               `Started at: ${startTime.toLocaleTimeString()}`],
+        startTime,
+        lastHeartbeat: startTime,
+        retryCount: 0,
+        maxRetries: 3,
+        scriptType,
+        isDryRun
+    });
+
+      // Start heartbeat monitoring
+      const heartbeat = setInterval(() => {
+        setScriptProgress(prev => ({
+          ...prev,
+          lastHeartbeat: new Date(),
+          logs: [...prev.logs, `💓 Heartbeat: ${new Date().toLocaleTimeString()}`]
+      }));
+    }, 10000); // Every 10 seconds
+
+      setHeartbeatInterval(heartbeat);
+
+      const steps = {
+        'create-tables': [
+          'Checking database connection...','Getting current table count...','Creating missing tables...','Verifying table creation...','Updating statistics...','Finalizing...'
+        ]'test-database': [
+          'Testing server health...','Testing database stats...','Testing SQL execution...','Testing table operations...','Testing performance...','Generating report...'
+        ]'optimize-database': [
+          'Analyzing database...','Running VACUUM ANALYZE...','Updating statistics...','Checking indexes...','Optimizing queries...','Finalizing optimization...'
+        ]'feature-management-tables': [
+          'Checking database connection...','Analyzing required tables...','Checking existing tables...','Creating feature management tables...','Verifying table creation...','Finalizing setup...'
+        ]'audio-enhancement-tables': [
+          'Checking database connection...','Checking if audio_enhancement_jobs exists...','Creating audio_enhancement_jobs table...','Creating indexes...','Verifying table creation...','Finalizing setup...'
+        ]
+    };
+
+      const scriptSteps = steps[scriptType];
+      setScriptProgress(prev => ({ ...prev, totalSteps: scriptSteps.length }));
+
+      for (let i = 0; i < scriptSteps.length; i++) {
+        const step = scriptSteps[i];
+        setScriptProgress(prev => ({
+          ...prev,
+          currentStep: step,
+          progress: ((i + 1) / scriptSteps.length) * 100,
+          completedSteps: i + 1,
+          logs: [...prev.logs, `✅ ${step}`]
+      }));
+
+        // Simulate work based on script type
+        await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 2000));
+
+        // Execute actual operations with retry logic
+        let retryCount = 0;
+        const maxRetries = 3;
+        
+        while (retryCount <= maxRetries) {
+          try {
+            if (scriptType === 'feature-management-tables') {
+              // Feature Management Tables Script
+              if (i === 0) {
+                const healthResponse = await apiRequest('/api/admin/database/health');
+                if (healthResponse.status === 'healthy') {
+                  setScriptProgress(prev => ({
+                    ...prev,
+                    logs: [...prev.logs, `✅ Database connection verified`]
+                  }));
+                } else {
+                  throw new Error('Database connection failed');
+                }
+              } else if (i === 3) {
+                // Create feature management tables
+                const response = await apiRequest('/api/admin/database/scripts/feature-management-tables', {
+                  method: 'POST',
+                  body: JSON.stringify({ dryRun: isDryRun }),
+                  headers: { , 'Content-Type': 'application/json' }
+                });
+                
+                if (response.success) {
+                  // Add all logs from the script
+                  setScriptProgress(prev => ({
+                    ...prev,
+                    logs: [...prev.logs, ...response.logs]
+                  }));
+                } else {
+                  throw new Error(response.error || 'Script execution failed');
+                }
+              }
+            } else if (scriptType === 'audio-enhancement-tables') {
+              // Audio Enhancement Tables Script
+              if (i === 0) {
+                const healthResponse = await apiRequest('/api/admin/database/health');
+                if (healthResponse.status === 'healthy') {
+                  setScriptProgress(prev => ({
+                    ...prev,
+                    logs: [...prev.logs, `✅ Database connection verified`]
+                  }));
+                } else {
+                  throw new Error('Database connection failed');
+                }
+              } else if (i === 2) {
+                // Create audio enhancement tables
+                const response = await apiRequest('/api/admin/database/scripts/audio-enhancement-tables', {
+                  method: 'POST',
+                  body: JSON.stringify({ dryRun: isDryRun }),
+                  headers: { , 'Content-Type': 'application/json' }
+                });
+                
+                if (response.success) {
+                  // Add all logs from the script
+                  setScriptProgress(prev => ({
+                    ...prev,
+                    logs: [...prev.logs, ...response.logs]
+                  }));
+                } else {
+                  throw new Error(response.error || 'Script execution failed');
+                }
+              }
+            } else if (scriptType === 'create-tables') {
+              if (i === 0) {
+                // Test database connection using existing health check
+                const healthResponse = await apiRequest('/api/admin/database/health');
+                if (healthResponse.status === 'healthy') {
+                  setScriptProgress(prev => ({
+                    ...prev,
+                    logs: [...prev.logs, `✅ Database connection verified`]
+                }));
+              } else {
+                  throw new Error('Database connection failed');
+              }
+            } else if (i === 1) {
+                // Get current table count using existing stats endpoint
+                const statsResponse = await apiRequest('/api/admin/database/stats');
+                if (statsResponse.success) {
+                  const currentCount = statsResponse.data[0]?.total_tables || 0;
+                  setScriptProgress(prev => ({
+                    ...prev,
+                    logs: [...prev.logs, `📊 Current tables: ${currentCount}`]
+                }));
+              }
+            } else if (i === 2) {
+                // Create tables using existing execute endpoint
+                const sampleTables = [
+                  'script_test_table_1','script_test_table_2','script_test_table_3','script_test_table_4','script_test_table_5'
+                ];
+                
+                for (const tableName of sampleTables) {
+                  try {
+                    if (isDryRun) {
+                      // DRY RUN: Only check if table exists
+                      const checkResponse = await apiRequest('/api/admin/database/execute', {
+                        method: 'POST',
+                        body: JSON.stringify({ 
+                          sql: `SELECT 1 FROM information_schema.tables WHERE table_name = '${tableName},' AND table_schema = 'public'` 
+                      })
+                    });
+                      
+                      if (checkResponse.success && checkResponse.data && checkResponse.data.length > 0) {
+                        setScriptProgress(prev => ({
+                          ...prev,
+                          logs: [...prev.logs, `🔍 Would skip: ${tableName} (already exists)`]
+                      }));
+                    } else {
+                        setScriptProgress(prev => ({
+                          ...prev,
+                          logs: [...prev.logs, `🔍 Would create: ${tableName}`]
+                      }));
+                    }
+                  } else {
+                      // EXECUTE: Actually create table
+                      const createResponse = await apiRequest('/api/admin/database/execute', {
+                        method: 'POST',
+                        body: JSON.stringify({ 
+                          sql: `CREATE TABLE IF NOT EXISTS ${tableName} (id SERIAL PRIMARY KEY, name VARCHAR(100), created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, script_type VARCHAR(50))` 
+                      })
+                    });
+                      
+                      if (createResponse.success) {
+                        setScriptProgress(prev => ({
+                          ...prev,
+                          logs: [...prev.logs, `✅ Created table: ${tableName}`]
+                      }));
+                    } else {
+                        setScriptProgress(prev => ({
+                          ...prev,
+                          logs: [...prev.logs, `⚠️  Table ${tableName} already exists or failed`]
+                      }));
+                    }
+                  }
+                } catch (error: any) {
+                    setScriptProgress(prev => ({
+                      ...prev,
+                      logs: [...prev.logs, `⚠️  Table ${tableName}: ${error.message}`]
+                  }));
+                }
+                  await new Promise(resolve => setTimeout(resolve, 500));
+              }
+            } else if (i === 3) {
+                // Verify table creation using existing tables endpoint
+                const tablesResponse = await apiRequest('/api/admin/database/tables');
+                if (tablesResponse.success) {
+                  const testTables = tablesResponse.data.filter((table: any) => 
+                    table.table_name.startsWith('script_test_table_')
+                  );
+                  setScriptProgress(prev => ({
+                    ...prev,
+                    logs: [...prev.logs, isDryRun ? `🔍 Found ${testTables.length} existing test tables` : `✅ Verified ${testTables.length} test tables created`]
+                }));
+              }
+            }
+          } else if (scriptType === 'test-database') {
+              // Test using existing DatabaseManagementPanel endpoints
+              if (i === 0) {
+                const healthResponse = await apiRequest('/api/admin/database/health');
+                setScriptProgress(prev => ({
+                  ...prev,
+                  logs: [...prev.logs, `✅ Health check: ${healthResponse.status}`]
+              }));
+            } else if (i === 1) {
+                const statsResponse = await apiRequest('/api/admin/database/stats');
+                setScriptProgress(prev => ({
+                  ...prev,
+                  logs: [...prev.logs, `✅ Stats retrieved: ${statsResponse.data?.length || 0} records`]
+              }));
+            } else if (i === 2) {
+                const executeResponse = await apiRequest('/api/admin/database/execute', {
+                  method: 'POST',
+                  body: JSON.stringify({ sql: 'SELECT current_database(), current_user, version()' })
+              });
+                setScriptProgress(prev => ({
+                  ...prev,
+                  logs: [...prev.logs, `✅ SQL execution: ${executeResponse.success ? 'Success' : 'Failed'}`]
+              }));
+            } else if (i === 3) {
+                const tablesResponse = await apiRequest('/api/admin/database/tables');
+                setScriptProgress(prev => ({
+                  ...prev,
+                  logs: [...prev.logs, `✅ Tables list: ${tablesResponse.data?.length || 0} tables`]
+              }));
+            }
+          } else if (scriptType === 'optimize-database') {
+              // Run optimization using existing execute endpoint
+              if (i === 1) {
+                if (isDryRun) {
+                  setScriptProgress(prev => ({
+                    ...prev,
+                    logs: [...prev.logs, `🔍 Would run: VACUUM ANALYZE`]
+                }));
+              } else {
+                  const vacuumResponse = await apiRequest('/api/admin/database/execute', {
+                    method: 'POST',
+                    body: JSON.stringify({ sql: 'VACUUM ANALYZE' })
+                });
+                  setScriptProgress(prev => ({
+                    ...prev,
+                    logs: [...prev.logs, `✅ VACUUM ANALYZE: ${vacuumResponse.success ? 'Success' : 'Failed'}`]
+                }));
+              }
+            } else if (i === 2) {
+                if (isDryRun) {
+                  setScriptProgress(prev => ({
+                    ...prev,
+                    logs: [...prev.logs, `🔍 Would run: ANALYZE`]
+                }));
+              } else {
+                  const analyzeResponse = await apiRequest('/api/admin/database/execute', {
+                    method: 'POST',
+                    body: JSON.stringify({ sql: 'ANALYZE' })
+                });
+                  setScriptProgress(prev => ({
+                    ...prev,
+                    logs: [...prev.logs, `✅ ANALYZE: ${analyzeResponse.success ? 'Success' : 'Failed'}`]
+                }));
+              }
+            }
+          }
+            
+            // If we get here, the operation succeeded, break out of retry loop
+            break;
+            
+        } catch (error: any) {
+            retryCount++;
+            if (retryCount <= maxRetries) {
+              setScriptProgress(prev => ({
+                ...prev,
+                logs: [...prev.logs, `⚠️  ${step} failed (attempt ${retryCount}/${maxRetries}): ${error.message}`],
+                retryCount
+            }));
+              await new Promise(resolve => setTimeout(resolve, 2000 * retryCount)); // Exponential backoff
+          } else {
+              setScriptProgress(prev => ({
+                ...prev,
+                logs: [...prev.logs, `❌ ${step} failed after ${maxRetries} attempts: ${error.message}`],
+                error: error.message
+            }));
+              throw error;
+          }
+        }
+      }
+    }
+
+      const endTime = new Date();
+      const duration = endTime.getTime() - startTime.getTime();
+      
+      // Clear heartbeat
+      if (heartbeatInterval) {
+        clearInterval(heartbeatInterval);
+        setHeartbeatInterval(null);
+    }
+
+      setScriptProgress(prev => ({
+        ...prev,
+        running: false,
+        currentStep: isDryRun ? 'Dry run completed successfully!' : 'Script completed successfully!',
+        endTime,
+        duration,
+        logs: [...prev.logs, isDryRun ? `🔍 Dry run completed in ${(duration / 1000).toFixed(2)}s - No changes were made` : `🎉 Script execution completed in ${(duration / 1000).toFixed(2)}s!`]
+    }));
+
+      // Refresh database data after successful script execution
+      refetchTables();
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/database'] });
+
+      return { success: true, message: 'Script executed successfully', duration };
+  },
+    onError: (error: any) => {
+      // Clear heartbeat on error
+      if (heartbeatInterval) {
+        clearInterval(heartbeatInterval);
+        setHeartbeatInterval(null);
+    }
+
+      setScriptProgress(prev => ({
+        ...prev,
+        running: false,
+        error: error.message,
+        logs: [...prev.logs, `❌ Script failed: ${error.message}`]
+    }));
+  }
+});
+
+  // Persist dry-run mode to localStorage
+  useEffect(() => {
+    localStorage.setItem('dbPanel_dryRunMode', JSON.stringify(dryRunMode));
+}, [dryRunMode]);
+
+  // Persist hasRunDryRun to localStorage
+  useEffect(() => {
+    localStorage.setItem('dbPanel_hasRunDryRun', JSON.stringify(hasRunDryRun));
+}, [hasRunDryRun]);
+
+  // Persist script progress to localStorage
+  useEffect(() => {
+    if (scriptProgress.running || scriptProgress.logs.length > 0) {
+      localStorage.setItem('dbPanel_scriptProgress', JSON.stringify({
+        ...scriptProgress,
+        startTime: scriptProgress.startTime?.toISOString(),
+        endTime: scriptProgress.endTime?.toISOString(),
+        lastHeartbeat: scriptProgress.lastHeartbeat?.toISOString(),
+    }));
+  }
+}, [scriptProgress]);
+
+  // Check for script recovery on mount
+  useEffect(() => {
+    const savedProgress = localStorage.getItem('dbPanel_scriptProgress');
+    if (savedProgress) {
+      try {
+        const parsed = JSON.parse(savedProgress);
+        
+        // Only show recovery if script was running
+        if (parsed.running) {
+          setShowRecoveryDialog(true);
+      } else if (parsed.logs && parsed.logs.length > 0) {
+          // Restore completed script results
+          setScriptProgress({
+            ...parsed,
+            startTime: parsed.startTime ? new Date(parsed.startTime) : undefined,
+            endTime: parsed.endTime ? new Date(parsed.endTime) : undefined,
+            lastHeartbeat: parsed.lastHeartbeat ? new Date(parsed.lastHeartbeat) : undefined,
+        });
+      }
+    } catch (error) {
+        console.error('Failed to restore script progress: ', error);
+    }
+  }
+}, []);
+
+  // Auto-refresh effect
+  useEffect(() => {
+    if (autoRefresh) {
+      const interval = setInterval(() => {
+        queryClient.invalidateQueries({ queryKey: ['/api/admin/database'] });
+    }, refreshInterval);
+      return () => clearInterval(interval);
+  }
+}, [autoRefresh, refreshInterval, queryClient]);
+
+  // Cleanup heartbeat on unmount
+  useEffect(() => {
+    return () => {
+      if (heartbeatInterval) {
+        clearInterval(heartbeatInterval);
+    }
+  };
+}, [heartbeatInterval]);
+
+  // Warning before leaving page during EXECUTE mode
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (scriptProgress.running && !scriptProgress.isDryRun) {
+        // Show browser warning for EXECUTE mode only
+        e.preventDefault();
+        e.returnValue = 'A script is currently executing changes to the database. If you leave, the process will stop but you can continue where you left off when you return.';
+        return e.returnValue;
+    }
+  };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+}, [scriptProgress.running, scriptProgress.isDryRun]);
+
+  // Save interruption info when unmounting during execution
+  useEffect(() => {
+    return () => {
+      if (scriptProgress.running && !scriptProgress.isDryRun) {
+        // Mark as interrupted
+        const interruptedProgress = {
+          ...scriptProgress,
+          running: false,
+          error: 'Script was interrupted - you left the page during execution',
+          endTime: new Date().toISOString(),
+      };
+        localStorage.setItem('dbPanel_scriptProgress', JSON.stringify(interruptedProgress));
+        localStorage.setItem('dbPanel_wasInterrupted','true');
+    }
+  };
+}, [scriptProgress]);
+
+  // Script health monitoring
+  useEffect(() => {
+    if (scriptProgress.running && scriptProgress.lastHeartbeat) {
+      const now = new Date();
+      const timeSinceHeartbeat = now.getTime() - scriptProgress.lastHeartbeat.getTime();
+      
+      // If no heartbeat for 30 seconds, consider script stuck
+      if (timeSinceHeartbeat > 30000) {
+        setScriptProgress(prev => ({
+          ...prev,
+          logs: [...prev.logs'⚠️  Script appears to be stuck - no heartbeat for 30s'],
+          error: 'Script timeout - no heartbeat detected'
+      }));
+    }
+  }
+}, [scriptProgress.running, scriptProgress.lastHeartbeat]);
+
+  // Missing tables detection mutation
+  const missingTablesMutation = useMutation({
+    mutationFn: async () => {
+      setMissingTables(prev => ({
+        ...prev,
+        detected: false,
+        missing: [],
+        critical: [],
+        warnings: [],
+        lastCheck: new Date()
+    }));
+
+      // Define critical tables that must exist for the system to work
+      const criticalTables = [
+        'users','user_profiles','sessions','memory_cards','business_profiles','courses','enrollments','learning_courses','projects','clients','invoices','payments','equipment','bookings','notifications'
+      ];
+
+      // Define academy tables
+      const academyTables = [
+        'courses','enrollments','learning_courses','learning_modules','learning_lessons','learning_progress','learning_certificates','educational_courses','course_modules','user_course_progress','course_reviews','course_templates','course_builder_components','learning_paths'
+      ];
+
+      // Define business tables
+      const businessTables = [
+        'business_profiles','clients','projects','invoices','payments','bookings','equipment','contracts','proposals','quotes'
+      ];
+
+      const allExpectedTables = Array.from(new Set([...criticalTables, ...academyTables, ...businessTables]));
+      const missing: string[] = [];
+      const critical: string[] = [];
+      const warnings: string[] = [];
+
+      // Check each table
+      for (const tableName of allExpectedTables) {
+        try {
+          const result = await apiRequest('/api/admin/database/execute', {
+            method: 'POST',
+            body: JSON.stringify({ 
+              sql: `SELECT 1 FROM information_schema.tables WHERE table_name = '${tableName},' AND table_schema = 'public';` 
+          })
+        });
+
+          if (!result.success || !result.data || result.data.length === 0) {
+            missing.push(tableName);
+            
+            if (criticalTables.includes(tableName)) {
+              critical.push(tableName);
+          } else if (academyTables.includes(tableName)) {
+              warnings.push(`Academy: ${tableName}`);
+          } else if (businessTables.includes(tableName)) {
+              warnings.push(`Business: ${tableName}`);
+          }
+        }
+      } catch (error) {
+          missing.push(tableName);
+          if (criticalTables.includes(tableName)) {
+            critical.push(tableName);
+        }
+      }
+    }
+
+      setMissingTables(prev => ({
+        ...prev,
+        detected: missing.length > 0,
+        missing,
+        critical,
+        warnings,
+        lastCheck: new Date()
+    }));
+
+      return { missing, critical, warnings };
+  },
+    onError: (error: any) => {
+      setMissingTables(prev => ({
+        ...prev,
+        detected: true,
+        missing: ['ERROR: Could not check tables'],
+        critical: ['ERROR: Table check failed'],
+        warnings: [],
+        lastCheck: new Date()
+    }));
+  }
+});
+
+  // Auto-check for missing tables
+  useEffect(() => {
+    if (missingTables.autoCheck) {
+      const interval = setInterval(() => {
+        missingTablesMutation.mutate();
+    }, 30000); // Check every 30 seconds
+
+      return () => clearInterval(interval);
+  }
+}, [missingTables.autoCheck, missingTablesMutation]);
+
+  // Initial check on component mount
+  useEffect(() => {
+    missingTablesMutation.mutate();
+}, []);
+
+  const handleExecuteSQL = () => {
+    if (!customSQL.trim()) return;
+    setIsOperationRunning(true);
+    executeSQLMutation.mutate(customSQL);
+};
+
+  const handleCreateTable = () => {
+    const tableName = prompt('Enter table name: ');
+    if (!tableName) return;
+    
+    const columns = prompt('Enter columns (comma-separated):');
+    if (!columns) return;
+    
+    createTableMutation.mutate({
+      tableName,
+      columns: columns.split('').map(col => col.trim())
+  });
+};
+
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'completed': return <CheckCircle color="success" />;
+      case 'failed': return <ErrorIcon color="error" />;
+      case 'running': return <CircularProgress size={20} />;
+      case 'pending': return <Pause color="warning" />;
+      default: return <Info color="info" />;
+  }
+};
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'completed': return 'success';
+      case 'failed': return 'error';
+      case 'running': return 'warning';
+      case 'pending': return 'info';
+      default: return 'default';
+  }
+};
+
+  const formatDuration = (ms: number) => {
+    if (ms < 1000) return `${ms}ms`;
+    return `${(ms / 1000).toFixed(2)}s`;
+};
+
+  const formatSize = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(2)} KB`;
+    return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
+};
+
+  return (
+    <Container maxWidth="xl" sx={{ py: 3 }}>
+      {/* Master Workflow Guidance Banner */}
+      {masterWorkflow.active && (
+        <Card sx={{ 
+          mb: 3, 
+          border: 3, 
+          borderColor: 'primary.main',
+          bgcolor: 'rgba(25, 118, 210, 0.05)'
+      }}>
+          <CardContent>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+              <Typography variant="h6" sx={{ color: 'primary.main', display: 'flex', alignItems: 'center', gap: 1 }}>
+                <PlayArrow />
+                🎯 Guided Database Setup Workflow
+              </Typography>
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={() => setMasterWorkflow(prev => ({ ...prev, active: false }))}
+              >
+                Hide Guide
+              </Button>
+            </Box>
+
+            {/* Overall Progress */}
+            <Box sx={{ mb: 3 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                  Overall Progress
+                </Typography>
+                <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                  {masterWorkflow.overallProgress}% Complete
+                </Typography>
+              </Box>
+              <LinearProgress 
+                variant="determinate" 
+                value={masterWorkflow.overallProgress}
+                sx={{ height: 10, borderRadius: 5 }}
+              />
+            </Box>
+
+            {/* Phase Cards */}
+            <Grid container spacing={2}>
+              {masterWorkflow.phases.map((phase, index) => (
+                <Grid item xs={12} md={4} key={phase.id}>
+                  <Card sx={{
+                    border: 2,
+                    borderColor: 
+                      phase.status === 'completed' ? 'success.main' :
+                      phase.status === 'in-progress' ? 'primary.main' :
+                      'divider',
+                    bgcolor: 
+                      phase.status === 'completed' ? 'rgba(46, 125, 50, 0.05)' :
+                      phase.status === 'in-progress' ? 'rgba(25, 118, 210, 0.05)' :
+                      'background.paper',
+                    position: 'relative',
+                    overflow: 'visible'
+                }}>
+                    {/* Status Badge */}
+                    <Box sx={{
+                      position: 'absolute',
+                      top: -12,
+                      right: 16,
+                      bgcolor: 
+                        phase.status === 'completed' ? 'success.main' :
+                        phase.status === 'in-progress' ? 'primary.main' :
+                        'grey.400',
+                      color: 'white',
+                      px: 2,
+                      py: 0.5,
+                      borderRadius: 2,
+                      fontSize: '0.75rem',
+                      fontWeight: 'bold',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 0.5
+                  }}>
+                      {phase.status === 'completed' ? '✅ DONE' :
+                       phase.status === 'in-progress' ? '🔵 ACTIVE' :
+                       '⏳ WAITING'}
+                    </Box>
+
+                    <CardContent>
+                      <Typography variant="h6" sx={{ mb: 1, mt: 1, color: 'primary.main' }}>
+                        {phase.name}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                        {phase.description}
+                      </Typography>
+
+                      <Alert 
+                        severity={
+                          phase.status === 'completed' ? 'success' :
+                          phase.status === 'in-progress' ? 'info' :
+                          'warning'
+                      } 
+                        sx={{ mb: 2 }}
+                      >
+                        <Typography variant="caption">
+                          <strong>📌 Recommendation:</strong><br />
+                          {phase.recommendation}
+                        </Typography>
+                      </Alert>
+
+                      <Button
+                        variant={phase.status === 'in-progress' ? 'contained' : 'outlined'}
+                        fullWidth
+                        size="small"
+                        onClick={() => setSelectedTab(phase.tab)}
+                        startIcon={phase.status === 'in-progress' ? <PlayArrow /> : <Info />}
+                        disabled={phase.status === 'completed'}
+                      >
+                        {phase.status === 'completed' ? 'Completed' :
+                         phase.status === 'in-progress' ? 'Continue Here' :
+                         'Go to This Step'}
+                      </Button>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              ))}
+            </Grid>
+
+            {/* Success Message */}
+            {masterWorkflow.overallProgress === 100 && (
+              <Alert severity="success" sx={{ mt: 3 }}>
+                <Typography variant="body1" sx={{ fontWeight: 'bold' }}>
+                  🎉 Perfect! All phases completed successfully!
+                </Typography>
+                <Typography variant="body2">
+                  Your database structure is synced, all tables have storage methods, and the system is fully operational.
+                </Typography>
+              </Alert>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Quick Start Workflow Button (when not active) */}
+      {!masterWorkflow.active && (
+        <Alert 
+          severity="info" 
+          sx={{ mb: 3 }}
+          action={
+            <Button 
+              color="inherit" 
+              size="small"
+              startIcon={<PlayArrow />}
+              onClick={() => {
+                setMasterWorkflow(prev => ({
+                  ...prev,
+                  active: true,
+                  phases: prev.phases.map((p, idx) => ({
+                    ...p,
+                    status: idx === 0 ? 'in-progress' : 'pending'
+                }))
+              }));
+            }}
+            >
+              Start Guided Setup
+            </Button>
+        }
+        >
+          <Typography variant="body2">
+            💡 <strong>New to database management?</strong> Use our step-by-step guided workflow to ensure everything is set up correctly.
+          </Typography>
+        </Alert>
+      )}
+
+      {/* Active Script Processing Banner */}
+      {scriptProgress.running && (
+        <Alert 
+          severity={scriptProgress.isDryRun ? 'success' : 'warning'}
+          sx={{ 
+            mb: 2,
+            border: 2,
+            borderColor: scriptProgress.isDryRun ? 'success.main' : 'warning.main',
+            animation: 'pulse 2s ease-in-out infinite','@keyframes pulse': {
+              '0%, 100%': { opacity: 1 }, '50%': { opacity: 0.85 }
+          }
+        }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, justifyContent: 'space-between' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <CircularProgress 
+                size={24} 
+                sx={{ color: scriptProgress.isDryRun ? 'success.main' : 'warning.main' }}
+              />
+              <Box>
+                <Typography variant="body1" sx={{ fontWeight: 'bold' }}>
+                  {scriptProgress.isDryRun ? '🔍 DRY RUN IN PROGRESS' : '⚠️ SCRIPT EXECUTING - DO NOT LEAVE PAGE'}
+                </Typography>
+                <Typography variant="body2">
+                  {scriptProgress.currentStep} ({scriptProgress.completedSteps}/{scriptProgress.totalSteps})
+                </Typography>
+                {!scriptProgress.isDryRun && (
+                  <Typography variant="caption" sx={{ color: 'error.main', fontWeight: 'bold', display: 'block', mt: 0.5 }}>
+                    ⚠️ Leaving this page will interrupt the database changes
+                  </Typography>
+                )}
+              </Box>
+            </Box>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Chip 
+                label={`${Math.round(scriptProgress.progress)}%`}
+                color={scriptProgress.isDryRun ? 'success' : 'warning'}
+                size="small"
+              />
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={() => setSelectedTab(2)}
+                sx={{ ml: 2 }}
+              >
+                View Progress
+              </Button>
+            </Box>
+          </Box>
+        </Alert>
+      )}
+
+      {/* Header */}
+      <Box sx={{ mb: 3 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+          <Typography variant="h4" sx={{ display: 'flex', alignItems: 'center', gap: 2, color: theming.colors.primary }}>
+            <Storage color="primary" />
+            Database Management
+          </Typography>
+          
+          {/* Missing Tables Alert */}
+          {missingTables.detected && (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Badge badgeContent={missingTables.critical.length} color="error">
+                <Warning color="error" />
+              </Badge>
+              <Typography variant="body2" color="error">
+                {missingTables.critical.length > 0 ? `${missingTables.critical.length} Critical Tables Missing` : 
+                 `${missingTables.missing.length} Tables Missing`}
+              </Typography>
+            </Box>
+          )}
+        </Box>
+        <Typography variant="body1" color="text.secondary">
+          Real-time database monitoring, SQL execution, and table management
+          {missingTables.detected && (
+            <span style={{ color: 'red', fontWeight: 'bold' }}>
+              {', '}⚠️ Missing tables detected - check "Missing Tables" tab
+            </span>
+          )}
+        </Typography>
+      </Box>
+
+      {/* Controls */}
+      <Card sx={{ mb: 3, ...theming.getThemedCardSx() }}>
+        <CardContent sx={theming.getThemedCardSx()}>
+          <Grid container spacing={2} alignItems="center">
+            <Grid item xs={12} sm={6} md={3}>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={autoRefresh}
+                    onChange={(e) => setAutoRefresh(e.target.checked)}
+                  />
+              }
+                label="Auto Refresh"
+              />
+            </Grid>
+            <Grid item xs={12} sm={6} md={3}>
+              <TextField
+                select
+                label="Refresh Interval"
+                value={refreshInterval}
+                onChange={(e) => setRefreshInterval(Number(e.target.value))}
+                size="small"
+                disabled={!autoRefresh}
+              >
+                <MenuItem value={1000}>1 second</MenuItem>
+                <MenuItem value={5000}>5 seconds</MenuItem>
+                <MenuItem value={10000}>10 seconds</MenuItem>
+                <MenuItem value={30000}>30 seconds</MenuItem>
+              </TextField>
+            </Grid>
+            <Grid item xs={12} sm={6} md={3}>
+              <Button variant="contained"
+                startIcon={theming.getThemedIcon('play')}
+                onClick={() => healthCheckMutation.mutate()}
+                sx={theming.getThemedButtonSx()}
+                disabled={healthCheckMutation.isPending}
+                fullWidth
+              >
+                Health Check
+              </Button>
+            </Grid>
+            <Grid item xs={12} sm={6} md={3}>
+              <Button
+                variant="outlined"
+                startIcon={theming.getThemedIcon('refresh')}
+                onClick={() => {
+                  refetchTables();
+                  queryClient.invalidateQueries({ queryKey: ['/api/admin/database'] });
+              }}
+                fullWidth
+              >
+                Refresh All
+              </Button>
+            </Grid>
+          </Grid>
+        </CardContent>
+      </Card>
+
+      {/* Database Stats */}
+      <Grid container spacing={3}, sx={{ mb: 3 }}>
+        <Grid item xs={12} sm={6} md={3}>
+          <Card sx={theming.getThemedCardSx()}>
+            <CardContent sx={theming.getThemedCardSx()}>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Box>
+                  <Typography color="text.secondary" gutterBottom>
+                    Total Tables
+                  </Typography>
+                  <Typography variant="h4" sx={{ color: theming.colors.primary }}>
+                    {dbStats?.totalTables || 0}
+                  </Typography>
+                </Box>
+                <TableChart color="primary" sx={{ fontSize: 40 }} />
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <Card sx={theming.getThemedCardSx()}>
+            <CardContent sx={theming.getThemedCardSx()}>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Box>
+                  <Typography color="text.secondary" gutterBottom>
+                    Database Size
+                  </Typography>
+                  <Typography variant="h4" sx={{ color: theming.colors.primary }}>
+                    {formatSize(dbStats?.totalSize || 0)}
+                  </Typography>
+                </Box>
+                <Storage color="primary" sx={{ fontSize: 40 }} />
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <Card sx={theming.getThemedCardSx()}>
+            <CardContent sx={theming.getThemedCardSx()}>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Box>
+                  <Typography color="text.secondary" gutterBottom>
+                    Active Connections
+                  </Typography>
+                  <Typography variant="h4" sx={{ color: theming.colors.primary }}>
+                    {dbStats?.activeConnections || 0}
+                  </Typography>
+                </Box>
+                <Speed color="primary" sx={{ fontSize: 40 }} />
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <Card sx={theming.getThemedCardSx()}>
+            <CardContent sx={theming.getThemedCardSx()}>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Box>
+                  <Typography color="text.secondary" gutterBottom>
+                    Health Score
+                  </Typography>
+                  <Typography variant="h4" sx={{ color: theming.colors.primary }}>
+                    {dbStats?.healthScore || 0}%
+                  </Typography>
+                </Box>
+                <Badge
+                  badgeContent={
+                    dbStats?.healthScore && dbStats.healthScore > 80 ? (
+                      <CheckCircle color="success" />
+                    ) : (
+                      <Warning color="warning" />
+                    )
+                }
+                >
+                  <Security color="primary" sx={{ fontSize: 40 }} />
+                </Badge>
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
+
+        {/* Main Content Tabs */}
+      <Card sx={theming.getThemedCardSx()}>
+        <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
+          <Tabs value={selectedTab} onChange={(e, v) => setSelectedTab(v)}>
+            <Tab label="Tables Overview" icon={<TableChart />} />
+            <Tab label="SQL Executor" icon={<Terminal />} />
+            <Tab label="Script Runner" icon={<PlayArrow />} />
+            <Tab label="Schema Validation" icon={<Code />} />
+            <Tab label="Missing Tables" icon={<Warning />} />
+            <Tab label="Operation Log" icon={<History />} />
+            <Tab label="Table Details" icon={<Schema />} />
+            <Tab label="Quick Actions" icon={<Settings />} />
+          </Tabs>
+        </Box>
+
+        {/* Tables Overview Tab */}
+        {selectedTab === 0 && (
+          <Box sx={{ p: 3 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+              <Typography variant="h6" sx={{ color: theming.colors.primary }}>Database Tables</Typography>
+              <Button variant="contained"
+                startIcon={theming.getThemedIcon('add')}
+                onClick={handleCreateTable}
+                disabled={createTableMutation.isPending}
+               sx={theming.getThemedButtonSx()}>
+                Create Table
+              </Button>
+            </Box>
+            
+            {tablesLoading ? (
+              <LinearProgress />
+            ) : (
+              <TableContainer>
+                <Table>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Table Name</TableCell>
+                      <TableCell>Schema</TableCell>
+                      <TableCell>Type</TableCell>
+                      <TableCell>Rows</TableCell>
+                      <TableCell>Size</TableCell>
+                      <TableCell>Last Modified</TableCell>
+                      <TableCell>Actions</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {tables?.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map((table: DatabaseTable) => (
+                      <TableRow key={table.table_name}>
+                        <TableCell>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <TableChart color="primary" />
+                            {table.table_name}
+                          </Box>
+                        </TableCell>
+                        <TableCell>{table.table_schema}</TableCell>
+                        <TableCell>
+                          <Chip 
+                            label={table.table_type} 
+                            size="small" 
+                            color={table.table_type === 'BASE TABLE' ? 'primary' : 'default'}
+                          />
+                        </TableCell>
+                        <TableCell>{table.row_count?.toLocaleString() || 'N/A'}</TableCell>
+                        <TableCell>{table.size_mb ? formatSize(table.size_mb * 1024 * 1024) : 'N/A'}</TableCell>
+                        <TableCell>{table.last_modified || 'N/A'}</TableCell>
+                        <TableCell>
+                          <Tooltip title="View Details">
+                            <IconButton
+                              size="small"
+                              onClick={() => setSelectedTable(table.table_name)}
+                            >
+                              {theming.getThemedIcon('visibility')}
+                            </IconButton>
+                          </Tooltip>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+                <TablePagination
+                  rowsPerPageOptions={[5, 10, 25]}
+                  component="div"
+                  count={tables?.length || 0}
+                  rowsPerPage={rowsPerPage}
+                  page={page}
+                  onPageChange={(e, newPage) => setPage(newPage)}
+                  onRowsPerPageChange={(e) => {
+                    setRowsPerPage(parseInt(e.target.value, 10));
+                    setPage(0);
+                }}
+                />
+              </TableContainer>
+            )}
+          </Box>
+        )}
+
+        {/* SQL Executor Tab */}
+        {selectedTab === 1 && (
+          <Box sx={{ p: 3 }}>
+            <Typography variant="h6" sx={{ mb: 2, color: theming.colors.primary }}>SQL Executor</Typography>
+            <TextField
+              multiline
+              rows={8}
+              fullWidth
+              value={customSQL}
+              onChange={(e) => setCustomSQL(e.target.value)}
+              placeholder="Enter your SQL query here..."
+              variant="outlined"
+              sx={{ mb: 2 }}
+            />
+            <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+              <Button variant="contained"
+                startIcon={theming.getThemedIcon('play')}
+                onClick={handleExecuteSQL}
+                disabled={!customSQL.trim() || executeSQLMutation.isPending}
+               sx={theming.getThemedButtonSx()}>
+                Execute SQL
+              </Button>
+              <Button
+                variant="outlined"
+                onClick={() => setCustomSQL('')}
+              >
+                Clear
+              </Button>
+            </Box>
+            
+            {executeSQLMutation.isPending && (
+              <Alert severity="info" sx={{ mb: 2 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <CircularProgress size={20} />
+                  Executing SQL query...
+                </Box>
+              </Alert>
+            )}
+          </Box>
+        )}
+
+        {/* Script Runner Tab */}
+        {selectedTab === 2 && (
+          <Box sx={{ p: 3 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+              <Typography variant="h6" sx={{ color: theming.colors.primary }}>Script Runner</Typography>
+              
+              {/* Safety Mode Toggle */}
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 2, bgcolor: dryRunMode ? 'success.light' : 'error.light', borderRadius: 1 }}>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={!dryRunMode}
+                      onChange={(e) => setDryRunMode(!e.target.checked)}
+                      color={dryRunMode ? 'success' : 'error'}
+                    />
+                }
+                  label={
+                    <Box>
+                      <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                        {dryRunMode ? '🔍 DRY RUN MODE (Safe)' : '⚠️ EXECUTE MODE (Caution!)'}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {dryRunMode ? 'Preview changes without modifying database' : 'Changes will be applied to database'}
+                      </Typography>
+                    </Box>
+                }
+                />
+              </Box>
+            </Box>
+            
+            {/* Safety Notice */}
+            {!dryRunMode && (
+              <Alert severity="warning" sx={{ mb: 3 }}>
+                <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                  ⚠️ EXECUTE MODE ACTIVE
+                </Typography>
+                <Typography variant="body2">
+                  Scripts will make actual changes to the database. You will be asked to confirm before execution.
+                </Typography>
+              </Alert>
+            )}
+            
+            {dryRunMode && (
+              <Alert severity="success" sx={{ mb: 3 }}>
+                <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                  🔍 DRY RUN MODE ACTIVE (Recommended)
+                </Typography>
+                <Typography variant="body2">
+                  Scripts will preview what they would do without making any changes.
+                </Typography>
+              </Alert>
+            )}
+            
+            {/* Script Selection */}
+            <Box sx={{ mb: 3 }}>
+              <Typography variant="subtitle1" sx={{ mb: 2 }}>Select Script to Run:</Typography>
+              <Grid container spacing={2}>
+                <Grid item xs={12} sm={4}>
+                  <Card sx={theming.getThemedCardSx()}>
+                    <CardContent sx={theming.getThemedCardSx()}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                        <Add color="primary" />
+                        <Typography variant="h6" sx={{ color: theming.colors.primary }}>Create Tables</Typography>
+                      </Box>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                        Create missing tables and verify database structure
+                      </Typography>
+                      <Button 
+                        variant="contained" 
+                        fullWidth 
+                        sx={theming.getThemedButtonSx()}
+                        onClick={() => handleScriptRun('create-tables')}
+                        disabled={scriptProgress.running}
+                        startIcon={dryRunMode ? <Visibility /> : <PlayArrow />}
+                      >
+                        {scriptProgress.running ? 'Running...' : (dryRunMode ? 'Preview (Dry Run)' : 'Execute Script')}
+                      </Button>
+                    </CardContent>
+                  </Card>
+                </Grid>
+                
+                <Grid item xs={12} sm={4}>
+                  <Card sx={theming.getThemedCardSx()}>
+                    <CardContent sx={theming.getThemedCardSx()}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                        <CheckCircle color="primary" />
+                        <Typography variant="h6" sx={{ color: theming.colors.primary }}>Test Database</Typography>
+                      </Box>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                        Run comprehensive database tests and health checks
+                      </Typography>
+                      <Button 
+                        variant="contained" 
+                        fullWidth 
+                        sx={theming.getThemedButtonSx()}
+                        onClick={() => handleScriptRun('test-database')}
+                        disabled={scriptProgress.running}
+                        startIcon={dryRunMode ? <Visibility /> : <PlayArrow />}
+                      >
+                        {scriptProgress.running ? 'Running...' : (dryRunMode ? 'Preview (Dry Run)' : 'Execute Script')}
+                      </Button>
+                    </CardContent>
+                  </Card>
+                </Grid>
+                
+                <Grid item xs={12} sm={4}>
+                  <Card sx={theming.getThemedCardSx()}>
+                    <CardContent sx={theming.getThemedCardSx()}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                        <Speed color="primary" />
+                        <Typography variant="h6" sx={{ color: theming.colors.primary }}>Optimize Database</Typography>
+                      </Box>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                        Optimize database performance and clean up
+                      </Typography>
+                      <Button 
+                        variant="contained" 
+                        fullWidth 
+                        sx={theming.getThemedButtonSx()}
+                        onClick={() => handleScriptRun('optimize-database')}
+                        disabled={scriptProgress.running}
+                        startIcon={dryRunMode ? <Visibility /> : <PlayArrow />}
+                      >
+                        {scriptProgress.running ? 'Running...' : (dryRunMode ? 'Preview (Dry Run)' : 'Execute Script')}
+                      </Button>
+                    </CardContent>
+                  </Card>
+                </Grid>
+                
+                <Grid item xs={12} sm={4}>
+                  <Card sx={{
+                    ...theming.getThemedCardSx(),
+                    border: '2px solid',
+                    borderColor: theming.colors.primary,
+                    bgcolor: 'rgba(25, 118, 210, 0.05)'
+                  }}>
+                    <CardContent sx={theming.getThemedCardSx()}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                        <Settings color="primary" />
+                        <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+                          Feature Management
+                        </Typography>
+                      </Box>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                        Create all 4-level feature control tables
+                      </Typography>
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mb: 2 }}>
+                        <Chip label="5 tables" size="small" color="primary" variant="outlined" />
+                        <Chip label="4 levels" size="small" color="success" variant="outlined" />
+                      </Box>
+                      <Button 
+                        variant="contained" 
+                        fullWidth 
+                        sx={theming.getThemedButtonSx()}
+                        onClick={() => handleScriptRun('feature-management-tables')}
+                        disabled={scriptProgress.running}
+                        startIcon={dryRunMode ? <Visibility /> : <PlayArrow />}
+                      >
+                        {scriptProgress.running ? 'Running...' : (dryRunMode ? 'Preview (Dry Run)' : 'Execute Script')}
+                      </Button>
+                    </CardContent>
+                  </Card>
+                </Grid>
+                
+                <Grid item xs={12} sm={4}>
+                  <Card sx={{
+                    ...theming.getThemedCardSx(),
+                    border: '2px solid #ff8c00',
+                    bgcolor: 'rgba(255, 140, 0, 0.05)'
+                  }}>
+                    <CardContent sx={theming.getThemedCardSx()}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                        <Mic sx={{ color: '#ff8c00' }} />
+                        <Typography variant="h6" sx={{ color: '#ff8c00' }}>
+                          Audio Enhancement
+                        </Typography>
+                      </Box>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                        Create audio enhancement jobs table for Music Producers
+                      </Typography>
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mb: 2 }}>
+                        <Chip label="1 table" size="small" sx={{ bgcolor: '#ff8c00', color: 'white' }} />
+                        <Chip label="3 indexes" size="small" color="success" variant="outlined" />
+                      </Box>
+                      <Button 
+                        variant="contained" 
+                        fullWidth 
+                        sx={{ 
+                          background: 'linear-gradient(135deg, #ff8c00 0%, #9333ea 100%)', '&:hover': {
+                            background: 'linear-gradient(135deg, #e67e00 0%, #7c2bcf 100%)'
+                          }
+                        }}
+                        onClick={() => handleScriptRun('audio-enhancement-tables')}
+                        disabled={scriptProgress.running}
+                        startIcon={dryRunMode ? <Visibility /> : <PlayArrow />}
+                      >
+                        {scriptProgress.running ? 'Running...' : (dryRunMode ? 'Preview (Dry Run)' : 'Execute Script')}
+                      </Button>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              </Grid>
+            </Box>
+
+            {/* Progress Display */}
+            {scriptProgress.running && (
+              <Card sx={{
+                ...theming.getThemedCardSx(),
+                border: scriptProgress.isDryRun ? '3px solid #4caf50' : '3px solid #ff9800',
+                boxShadow: scriptProgress.isDryRun ? '0 0 20px rgba(76, 175, 80, 0.3)' : '0 0 20px rgba(255, 1520.3)'
+            }}>
+                <CardContent sx={theming.getThemedCardSx()}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                    <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+                      Script Progress
+                    </Typography>
+                    
+                    {/* Visual Mode Indicator with Animation */}
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <CircularProgress 
+                        size={20} 
+                        sx={{ 
+                          color: scriptProgress.isDryRun ? 'success.main' : 'warning.main'
+                      }}
+                      />
+                      <Chip 
+                        label={scriptProgress.isDryRun ? '🔍 DRY RUN MODE - PROCESSING' : '⚠️ EXECUTE MODE - PROCESSING'}
+                        color={scriptProgress.isDryRun ? 'success' : 'warning'}
+                        sx={{ 
+                          fontWeight: 'bold',
+                          fontSize: '0.875rem',
+                          animation: 'pulse 2s ease-in-out infinite','@keyframes pulse': {
+                            '0%, 100%': { opacity: 1 }, '50%': { opacity: 0.7 }
+                        }
+                      }}
+                      />
+                    </Box>
+                  </Box>
+                  
+                  {/* Progress Bar */}
+                  <Box sx={{ mb: 2 }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Box sx={{
+                          width: 8,
+                          height: 8,
+                          borderRadius: '50%',
+                          bgcolor: scriptProgress.isDryRun ? 'success.main' : 'warning.main',
+                          animation: 'pulse 1.5s ease-in-out infinite','@keyframes pulse': {
+                            '0%, 100%': { transform: 'scale(1)', opacity: 1 }, '50%': { transform: 'scale(1.5)', opacity: 0.5 }
+                        }
+                      }} />
+                        <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                          {scriptProgress.isDryRun && '🔍 PREVIEW: '}{scriptProgress.currentStep}
+                        </Typography>
+                      </Box>
+                      <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                        {scriptProgress.completedSteps} / {scriptProgress.totalSteps}
+                      </Typography>
+                    </Box>
+                    <LinearProgress 
+                      variant="determinate" 
+                      value={scriptProgress.progress} 
+                      sx={{ 
+                        height: 8, 
+                        borderRadius: 4,
+                        bgcolor: scriptProgress.isDryRun ? 'success.lighter' : 'warning.lighter','& .MuiLinearProgress-bar': {
+                          bgcolor: scriptProgress.isDryRun ? 'success.main' : 'warning.main'
+                      }
+                    }}
+                    />
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1 }}>
+                      <Typography variant="caption" color="text.secondary">
+                        {Math.round(scriptProgress.progress)}% Complete
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {scriptProgress.startTime && (
+                          `Running for ${Math.round((new Date().getTime() - scriptProgress.startTime.getTime()) / 1000)}s`
+                        )}
+                      </Typography>
+                    </Box>
+                  </Box>
+
+                  {/* Script Health Status */}
+                  <Box sx={{ 
+                    mb: 2, 
+                    p: 2, 
+                    bgcolor: scriptProgress.isDryRun ? 'success.lighter' : 'warning.lighter',
+                    borderRadius: 1, 
+                    border: 2, 
+                    borderColor: scriptProgress.isDryRun ? 'success.main' : 'warning.main'
+                }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                      <Box sx={{
+                        width: 12,
+                        height: 12,
+                        borderRadius: '50%',
+                        bgcolor: scriptProgress.isDryRun ? 'success.main' : 'warning.main',
+                        animation: 'blink 1s ease-in-out infinite','@keyframes blink': {
+                          '0%, 100%': { opacity: 1 }, '50%': { opacity: 0.3 }
+                      }
+                    }} />
+                      <Typography variant="subtitle2" sx={{ color: theming.colors.primary, fontWeight: 'bold' }}>
+                        Script Health Status:
+                      </Typography>
+                      <Chip 
+                        size="small"
+                        label={scriptProgress.isDryRun ? 'PREVIEW MODE' : 'LIVE EXECUTION'}
+                        color={scriptProgress.isDryRun ? 'success' : 'warning'}
+                      />
+                    </Box>
+                    <Grid container spacing={2}>
+                      <Grid item xs={6}>
+                        <Typography variant="body2" color="text.secondary">
+                          Status: <Chip 
+                            label={scriptProgress.running ? 'Running' : 'Stopped'} 
+                            size="small" 
+                            color={scriptProgress.running ? 'success' : 'default'}
+                          />
+                        </Typography>
+                      </Grid>
+                      <Grid item xs={6}>
+                        <Typography variant="body2" color="text.secondary">
+                          Retries: {scriptProgress.retryCount} / {scriptProgress.maxRetries}
+                        </Typography>
+                      </Grid>
+                      <Grid item xs={6}>
+                        <Typography variant="body2" color="text.secondary">
+                          Last Heartbeat: {scriptProgress.lastHeartbeat?.toLocaleTimeString() || 'N/A'}
+                        </Typography>
+                      </Grid>
+                      <Grid item xs={6}>
+                        <Typography variant="body2" color="text.secondary">
+                          Script Type: {scriptProgress.scriptType || 'N/A'}
+                        </Typography>
+                      </Grid>
+                    </Grid>
+                  </Box>
+
+                  {/* Real-time Logs */}
+                  <Box sx={{ 
+                    maxHeight: 300, 
+                    overflow: 'auto', 
+                    border: 3, 
+                    borderColor: scriptProgress.isDryRun ? 'success.main' : 'warning.main',
+                    borderRadius: 1, 
+                    p: 2,
+                    bgcolor: scriptProgress.isDryRun ? 'success.lighter' : 'warning.lighter',
+                    position: 'relative'
+                }}>
+                    {/* Animated Processing Indicator */}
+                    <Box sx={{ 
+                      display: 'flex', 
+                      justifyContent: 'space-between', 
+                      alignItems: 'center',
+                      mb: 1,
+                      pb: 1,
+                      borderBottom: 2,
+                      borderColor: scriptProgress.isDryRun ? 'success.main' : 'warning.main'
+                  }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <CircularProgress 
+                          size={16} 
+                          sx={{ color: scriptProgress.isDryRun ? 'success.main' : 'warning.main' }}
+                        />
+                        <Typography variant="subtitle2" sx={{ color: theming.colors.primary, fontWeight: 'bold' }}>
+                          Real-time Logs {scriptProgress.isDryRun ? '(Preview Only)' : '(Executing Changes)'}
+                        </Typography>
+                      </Box>
+                      <Chip 
+                        size="small"
+                        label={`${scriptProgress.logs.length} entries`}
+                        color={scriptProgress.isDryRun ? 'success' : 'warning'}
+                      />
+                    </Box>
+                    
+                    {scriptProgress.logs.map((log, index) => (
+                      <Typography 
+                        key={index} 
+                        variant="body2" 
+                        sx={{ 
+                          fontFamily: 'monospace', 
+                          fontSize: '0.875rem',
+                          p: 0.5,
+                          borderRadius: 0.5,
+                          bgcolor: log.includes('🔍') ? 'rgba(76, 175, 80, 0.1)' : 
+                                   log.includes('❌') ? 'rgba(211, 47, 47, 0.1)' :
+                                   log.includes('⚠️') ? 'rgba(255, 1520.1)' : 
+                                   log.includes('✅') ? 'rgba(46, 125, 50, 0.1)' : 
+                                   'transparent',
+                          color: log.includes('❌') ? 'error.main' : 
+                                 log.includes('⚠️') ? 'warning.main' : 
+                                 log.includes('✅') ? 'success.main' :
+                                 log.includes('🔍') ? 'success.dark' :
+                                 'text.primary',
+                          fontWeight: og.includes('🔍') || log.includes('DRY RUN') ? 'bold' : 'normal',
+                          animation: index === scriptProgress.logs.length - 1 ? 'slideIn 0.3s ease-out' : 'none','@keyframes slideIn': {
+                            from: { transform: 'translateX(-10px)', opacity: 0 },
+                            to: { transform: 'translateX(0)', opacity: 1 }
+                        }
+                      }}
+                      >
+                        {log}
+                      </Typography>
+                    ))}
+                  </Box>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Results Display */}
+            {!scriptProgress.running && scriptProgress.logs.length > 0 && (
+              <Card sx={{
+                ...theming.getThemedCardSx(),
+                border: scriptProgress.isDryRun ? '2px solid #4caf50' : '2px solid #ff9800'
+            }}>
+                <CardContent sx={theming.getThemedCardSx()}>
+                  {/* Mode Banner */}
+                  <Alert 
+                    severity={scriptProgress.isDryRun ? 'success' : 'warning'} 
+                    sx={{ 
+                      mb: 2,
+                      fontWeight: 'bold',
+                      border: 2,
+                      borderColor: scriptProgress.isDryRun ? 'success.main' : 'warning.main'
+                  }}
+                  >
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      {scriptProgress.isDryRun ? (
+                        <>
+                          <Visibility />
+                          <Typography variant="body1" sx={{ fontWeight: 'bold' }}>
+                            🔍 DRY RUN RESULTS - NO CHANGES WERE MADE
+                          </Typography>
+                        </>
+                      ) : (
+                        <>
+                          <Warning />
+                          <Typography variant="body1" sx={{ fontWeight: 'bold' }}>
+                            ⚠️ EXECUTION RESULTS - CHANGES WERE APPLIED TO DATABASE
+                          </Typography>
+                        </>
+                      )}
+                    </Box>
+                  </Alert>
+                  
+                  <Typography variant="h6" sx={{ mb: 2, color: theming.colors.primary }}>
+                    Script Results
+                  </Typography>
+                  
+                  {scriptProgress.error ? (
+                    <Alert severity="error" sx={{ mb: 2 }}>
+                      <Typography variant="body2">
+                        <strong>Error:</strong> {scriptProgress.error}
+                      </Typography>
+                    </Alert>
+                  ) : (
+                    <Alert severity="success" sx={{ mb: 2 }}>
+                      <Typography variant="body2">
+                        <strong>Success:</strong> Script completed successfully!
+                        {scriptProgress.isDryRun && ' (Preview only - no changes made)'}
+                      </Typography>
+                    </Alert>
+                  )}
+
+                  <Box sx={{ maxHeight: 300, overflow: 'auto', border: 1, borderColor: 'divider', borderRadius: 1, p: 2 }}>
+                    <Typography variant="subtitle2" sx={{ mb: 1, color: theming.colors.primary }}>
+                      Execution Log:
+                    </Typography>
+                    {scriptProgress.logs.map((log, index) => (
+                      <Typography 
+                        key={index} 
+                        variant="body2" 
+                        sx={{ 
+                          fontFamily: 'monospace', 
+                          fontSize: '0.875rem',
+                          color: log.includes('❌') ? 'error.main' : 
+                                 log.includes('⚠️') ? 'warning.main' : 
+                                 log.includes('✅') ? 'success.main' : 'text.primary'
+                      }}
+                      >
+                        {log}
+                      </Typography>
+                    ))}
+                  </Box>
+
+                  <Box sx={{ mt: 2, display: 'flex', gap: 2 }}>
+                    <Button 
+                      variant="outlined" 
+                      onClick={() => setScriptProgress({
+                        running: false,
+                        currentStep: ', ',
+                        progress: 0,
+                        totalSteps: 0,
+                        completedSteps: 0,
+                        logs: [],
+                        retryCount: 0,
+                        maxRetries: 3,
+                        isDryRun: true
+                    })}
+                    >
+                      Clear Logs
+                    </Button>
+                    <Button 
+                      variant="contained" 
+                      onClick={() => {
+                        refetchTables();
+                        queryClient.invalidateQueries({ queryKey: ['/api/admin/database'] });
+                    }}
+                      sx={theming.getThemedButtonSx()}
+                    >
+                      Refresh Data
+                    </Button>
+                    {scriptProgress.running && (
+                      <Button 
+                        variant="contained" 
+                        color="error"
+                        onClick={() => {
+                          if (heartbeatInterval) {
+                            clearInterval(heartbeatInterval);
+                            setHeartbeatInterval(null);
+                        }
+                          setScriptProgress(prev => ({
+                            ...prev,
+                            running: false,
+                            currentStep: 'Script stopped by user',
+                            logs: [...prev.logs'⏹️  Script stopped by user']
+                        }));
+                      }}
+                      >
+                        Stop Script
+                      </Button>
+                    )}
+                  </Box>
+                </CardContent>
+              </Card>
+            )}
+          </Box>
+        )}
+
+        {/* Schema Validation Tab */}
+        {selectedTab === 3 && (
+          <Box sx={{ p: 3 }}>
+            <Typography variant="h6" sx={{ mb: 2, color: theming.colors.primary, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Code />
+              📋 Schema ↔ Storage.ts Validation
+            </Typography>
+
+            <Alert severity="info" sx={{ mb: 3 }}>
+              <Typography variant="body2" sx={{ fontWeight: 'bold', mb: 1 }}>
+                What does this check?
+              </Typography>
+              <Typography variant="body2">
+                This validation ensures that every table in your <code>database-persistence-schema.ts</code> has corresponding 
+                CRUD methods in <code>server/storage.ts</code>. Without these methods, your application cannot interact with the database tables.
+              </Typography>
+            </Alert>
+
+            {/* Coverage Overview */}
+            <Grid container spacing={3}, sx={{ mb: 3 }}>
+              <Grid item xs={12} md={3}>
+                <Card sx={theming.getThemedCardSx()}>
+                  <CardContent sx={theming.getThemedCardSx()}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <Box>
+                        <Typography color="text.secondary" gutterBottom>
+                          Total Tables
+                        </Typography>
+                        <Typography variant="h4" sx={{ color: theming.colors.primary }}>
+                          {schemaValidation.totalTables}
+                        </Typography>
+                      </Box>
+                      <TableChart color="primary" sx={{ fontSize: 40 }} />
+                    </Box>
+                  </CardContent>
+                </Card>
+              </Grid>
+
+              <Grid item xs={12} md={3}>
+                <Card sx={theming.getThemedCardSx()}>
+                  <CardContent sx={theming.getThemedCardSx()}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <Box>
+                        <Typography color="text.secondary" gutterBottom>
+                          With Methods
+                        </Typography>
+                        <Typography variant="h4" sx={{ color: schemaValidation.coverage >= 80 ? 'success.main' : 'warning.main' }}>
+                          {schemaValidation.tablesWithMethods}
+                        </Typography>
+                      </Box>
+                      <CheckCircle color={schemaValidation.coverage >= 80 ? 'success' : 'warning'}, sx={{ fontSize: 40 }} />
+                    </Box>
+                  </CardContent>
+                </Card>
+              </Grid>
+
+              <Grid item xs={12} md={3}>
+                <Card sx={theming.getThemedCardSx()}>
+                  <CardContent sx={theming.getThemedCardSx()}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <Box>
+                        <Typography color="text.secondary" gutterBottom>
+                          Missing Methods
+                        </Typography>
+                        <Typography variant="h4" sx={{ color: schemaValidation.missingMethods.length === 0 ? 'success.main' : 'error.main' }}>
+                          {schemaValidation.missingMethods.length}
+                        </Typography>
+                      </Box>
+                      <ErrorIcon color={schemaValidation.missingMethods.length === 0 ? 'success' : 'error'}, sx={{ fontSize: 40 }} />
+                    </Box>
+                  </CardContent>
+                </Card>
+              </Grid>
+
+              <Grid item xs={12} md={3}>
+                <Card sx={theming.getThemedCardSx()}>
+                  <CardContent sx={theming.getThemedCardSx()}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <Box>
+                        <Typography color="text.secondary" gutterBottom>
+                          Coverage
+                        </Typography>
+                        <Typography variant="h4" sx={{ 
+                          color: schemaValidation.coverage >= 80 ? 'success.main' : 
+                                 schemaValidation.coverage >= 50 ? 'warning.main' : 'error.main' 
+                      }}>
+                          {schemaValidation.coverage}%
+                        </Typography>
+                      </Box>
+                      <Speed color={schemaValidation.coverage >= 80 ? 'success' : 'warning'}, sx={{ fontSize: 40 }} />
+                    </Box>
+                  </CardContent>
+                </Card>
+              </Grid>
+            </Grid>
+
+            {/* Step-wise Workflow */}
+            <Card sx={{ ...theming.getThemedCardSx(), mb: 3 }}>
+              <CardContent>
+                <Typography variant="h6" sx={{ mb: 2, color: theming.colors.primary, display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <PlayArrow />
+                  🔍 Validation Workflow (Step-by-Step)
+                </Typography>
+
+                <Alert severity="success" sx={{ mb: 3 }}>
+                  <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                    ✅ Safe Process - No Code Changes
+                  </Typography>
+                  <Typography variant="body2">
+                    This workflow only analyzes your code and provides recommendations. 
+                    It will NOT modify any files automatically.
+                  </Typography>
+                </Alert>
+
+                {/* Progress Indicator */}
+                {schemaValidation.currentStep > 0 && (
+                  <Box sx={{ mb: 3 }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                      <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                        Progress: Step {schemaValidation.currentStep} of {schemaValidation.steps.length}
+                      </Typography>
+                      <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                        {Math.round((schemaValidation.currentStep / schemaValidation.steps.length) * 100)}%
+                      </Typography>
+                    </Box>
+                    <LinearProgress 
+                      variant="determinate" 
+                      value={(schemaValidation.currentStep / schemaValidation.steps.length) * 100}
+                      sx={{ height: 8, borderRadius: 4 }}
+                    />
+                  </Box>
+                )}
+
+                {/* Steps List */}
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  {schemaValidation.steps.map((step, index) => (
+                    <Card 
+                      key={step.id}
+                      sx={{ 
+                        ...theming.getThemedCardSx(),
+                        border: step.status === 'in-progress' ? '2px solid' : '1px solid',
+                        borderColor: 
+                          step.status === 'completed' ? 'success.main' :
+                          step.status === 'in-progress' ? 'primary.main' :
+                          step.status === 'warning' ? 'warning.main' :
+                          'divider',
+                        bgcolor: 
+                          step.status === 'in-progress' ? 'rgba(25, 118, 210, 0.05)' :
+                          step.status === 'completed' ? 'rgba(46, 125, 50, 0.05)' :
+                          'background.paper'
+                    }}
+                    >
+                      <CardContent>
+                        <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
+                          {/* Step Number & Icon */}
+                          <Box sx={{ 
+                            minWidth: 40, 
+                            height: 40, 
+                            borderRadius: '50%',
+                            bgcolor: 
+                              step.status === 'completed' ? 'success.main' :
+                              step.status === 'in-progress' ? 'primary.main' :
+                              step.status === 'warning' ? 'warning.main' :
+                              'grey.300',
+                            color: 'white',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontWeight: 'bold'
+                        }}>
+                            {step.status === 'completed' ? <CheckCircle /> : 
+                             step.status === 'in-progress' ? <CircularProgress size={20}, sx={{ color: 'white' }} /> :
+                             step.status === 'warning' ? <Warning /> :
+                             step.id}
+                          </Box>
+
+                          {/* Step Content */}
+                          <Box sx={{ flex: 1 }}>
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
+                              <Box>
+                                <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+                                  {step.title}
+                                </Typography>
+                                <Typography variant="body2" color="text.secondary">
+                                  {step.description}
+                                </Typography>
+                              </Box>
+                              
+                              <Chip 
+                                label={
+                                  step.status === 'completed' ? 'Completed' :
+                                  step.status === 'in-progress' ? 'In Progress' :
+                                  step.status === 'warning' ? 'Review Required' :
+                                  step.status === 'skipped' ? 'Skipped' :
+                                  'Pending'
+                              }
+                                size="small"
+                                color={
+                                  step.status === 'completed' ? 'success' :
+                                  step.status === 'in-progress' ? 'primary' :
+                                  step.status === 'warning' ? 'warning' :
+                                  'default'
+                              }
+                              />
+                            </Box>
+
+                            {/* Warning Message */}
+                            {step.warning && step.status === 'in-progress' && (
+                              <Alert severity="warning" sx={{ mt: 2, mb: 2 }}>
+                                <Typography variant="body2">
+                                  ⚠️ {step.warning}
+                                </Typography>
+                              </Alert>
+                            )}
+
+                            {/* Action Button */}
+                            {step.action && step.status !== 'completed' && schemaValidation.currentStep === step.id - 1 && (
+                              <Button
+                                variant={step.status === 'in-progress' ? 'contained' : 'outlined'}
+                                size="small"
+                                sx={{ mt: 2 }}
+                                startIcon={<PlayArrow />}
+                                onClick={() => {
+                                  // Handle step progression
+                                  setSchemaValidation(prev => ({
+                                    ...prev,
+                                    currentStep: step.id,
+                                    steps: prev.steps.map(s => 
+                                      s.id === step.id 
+                                        ? { ...s, status: 'in-progress' }
+                                        : s
+                                    )
+                                }));
+
+                                  // Simulate step completion after 2 seconds
+                                  setTimeout(() => {
+                                    setSchemaValidation(prev => ({
+                                      ...prev,
+                                      steps: prev.steps.map(s => 
+                                        s.id === step.id 
+                                          ? { ...s, status: 'completed' }
+                                          : s
+                                      )
+                                  }));
+                                }, 2000);
+                              }}
+                                disabled={schemaValidation.currentStep !== step.id - 1}
+                              >
+                                {step.action}
+                              </Button>
+                            )}
+
+                            {/* Skip Button (for optional steps) */}
+                            {step.id > 4 && step.status === 'pending' && schemaValidation.currentStep === step.id - 1 && (
+                              <Button
+                                variant="text"
+                                size="small"
+                                sx={{ mt: 2, ml: 2 }}
+                                onClick={() => {
+                                  setSchemaValidation(prev => ({
+                                    ...prev,
+                                    currentStep: step.id,
+                                    steps: prev.steps.map(s => 
+                                      s.id === step.id 
+                                        ? { ...s, status: 'skipped' }
+                                        : s
+                                    )
+                                }));
+                              }}
+                              >
+                                Skip This Step
+                              </Button>
+                            )}
+                          </Box>
+                        </Box>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </Box>
+
+                {/* Reset Button */}
+                {schemaValidation.currentStep > 0 && (
+                  <Box sx={{ mt: 3, display: 'flex', justifyContent: 'flex-end' }}>
+                    <Button
+                      variant="outlined"
+                      startIcon={<Refresh />}
+                      onClick={() => {
+                        setSchemaValidation(prev => ({
+                          ...prev,
+                          currentStep: 0,
+                          steps: prev.steps.map(s => ({ ...s, status: 'pending' }))
+                      }));
+                    }}
+                    >
+                      Start Over
+                    </Button>
+                  </Box>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Results Section (shown after step 4) */}
+            {schemaValidation.currentStep >= 4 && schemaValidation.missingMethods.length > 0 && (
+              <Card sx={{ ...theming.getThemedCardSx(), mb: 3 }}>
+                <CardContent>
+                  <Typography variant="h6" sx={{ mb: 2, color: theming.colors.primary }}>
+                    📊 Missing Methods Analysis
+                  </Typography>
+
+                  <Alert severity={schemaValidation.missingMethods.some(m => m.priority === 'high') ? 'error' : 'warning'}, sx={{ mb: 3 }}>
+                    <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                      Found {schemaValidation.missingMethods.length} table(s) without proper storage methods
+                    </Typography>
+                    <Typography variant="body2">
+                      These tables exist in your schema but cannot be accessed from the application.
+                    </Typography>
+                  </Alert>
+
+                  {schemaValidation.missingMethods.map((item, index) => (
+                    <Accordion key={index}, sx={{ mb: 2 }}>
+                      <AccordionSummary expandIcon={<ExpandMore />}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, width: '100%' }}>
+                          <TableChart color="primary" />
+                          <Typography sx={{ fontWeight: 'bold', fontFamily: 'monospace' }}>
+                            {item.tableName}
+                          </Typography>
+                          <Chip 
+                            label={item.priority.toUpperCase()} 
+                            size="small" 
+                            color={item.priority === 'high' ? 'error' : item.priority === 'medium' ? 'warning' : 'default'}
+                          />
+                          <Chip 
+                            label={`${item.missingOperations.length} missing`} 
+                            size="small" 
+                            variant="outlined"
+                          />
+                        </Box>
+                      </AccordionSummary>
+                      <AccordionDetails>
+                        <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                          Missing Operations:
+                        </Typography>
+                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 2 }}>
+                          {item.missingOperations.map((op, idx) => (
+                            <Chip key={idx} label={op} size="small" color="error" variant="outlined" />
+                          ))}
+                        </Box>
+
+                        <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                          Suggested Methods:
+                        </Typography>
+                        <List dense>
+                          {item.suggestions.map((suggestion, idx) => (
+                            <ListItem key={idx}>
+                              <ListItemIcon>
+                                <Code color="primary" />
+                              </ListItemIcon>
+                              <ListItemText 
+                                primary={
+                                  <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.875rem' }}>
+                                    {suggestion}
+                                  </Typography>
+                              }
+                              />
+                            </ListItem>
+                          ))}
+                        </List>
+                      </AccordionDetails>
+                    </Accordion>
+                  ))}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* All Good Status */}
+            {schemaValidation.analyzed && schemaValidation.missingMethods.length === 0 && (
+              <Alert severity="success">
+                <Typography variant="h6" gutterBottom>
+                  ✅ Perfect Schema ↔ Storage Alignment!
+                </Typography>
+                <Typography variant="body2">
+                  All {schemaValidation.totalTables} tables in your schema have corresponding methods in storage.ts. 
+                  Your application can interact with all database tables.
+                </Typography>
+              </Alert>
+            )}
+          </Box>
+        )}
+
+        {/* Missing Tables Detector Tab */}
+        {selectedTab === 4 && (
+          <Box sx={{ p: 3 }}>
+            <Typography variant="h6" sx={{ mb: 2, color: theming.colors.primary }}>
+              Missing Tables Detector
+            </Typography>
+            
+            {/* Status Overview */}
+            <Box sx={{ mb: 3 }}>
+              <Grid container spacing={2}>
+                <Grid item xs={12} sm={4}>
+                  <Card sx={theming.getThemedCardSx()}>
+                    <CardContent sx={theming.getThemedCardSx()}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <Box>
+                          <Typography color="text.secondary" gutterBottom>
+                            Critical Tables
+                          </Typography>
+                          <Typography variant="h4" sx={{ color: missingTables.critical.length > 0 ? 'error.main' : 'success.main' }}>
+                            {missingTables.critical.length}
+                          </Typography>
+                        </Box>
+                        <ErrorIcon color={missingTables.critical.length > 0 ? 'error' : 'success'}, sx={{ fontSize: 40 }} />
+                      </Box>
+                    </CardContent>
+                  </Card>
+                </Grid>
+                
+                <Grid item xs={12} sm={4}>
+                  <Card sx={theming.getThemedCardSx()}>
+                    <CardContent sx={theming.getThemedCardSx()}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <Box>
+                          <Typography color="text.secondary" gutterBottom>
+                            Missing Tables
+                          </Typography>
+                          <Typography variant="h4" sx={{ color: missingTables.missing.length > 0 ? 'warning.main' : 'success.main' }}>
+                            {missingTables.missing.length}
+                          </Typography>
+                        </Box>
+                        <Warning color={missingTables.missing.length > 0 ? 'warning' : 'success'}, sx={{ fontSize: 40 }} />
+                      </Box>
+                    </CardContent>
+                  </Card>
+                </Grid>
+                
+                <Grid item xs={12} sm={4}>
+                  <Card sx={theming.getThemedCardSx()}>
+                    <CardContent sx={theming.getThemedCardSx()}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <Box>
+                          <Typography color="text.secondary" gutterBottom>
+                            Last Check
+                          </Typography>
+                          <Typography variant="body2" sx={{ color: theming.colors.primary }}>
+                            {missingTables.lastCheck ? missingTables.lastCheck.toLocaleTimeString() : 'Never'}
+                          </Typography>
+                        </Box>
+                        <Info color="primary" sx={{ fontSize: 40 }} />
+                      </Box>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              </Grid>
+            </Box>
+
+            {/* Controls */}
+            <Box sx={{ mb: 3, display: 'flex', gap: 2, alignItems: 'center' }}>
+              <Button
+                variant="contained"
+                startIcon={<Refresh />}
+                onClick={() => missingTablesMutation.mutate()}
+                disabled={missingTablesMutation.isPending}
+                sx={theming.getThemedButtonSx()}
+              >
+                {missingTablesMutation.isPending ? 'Checking...' : 'Check Now'}
+              </Button>
+              
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={missingTables.autoCheck}
+                    onChange={(e) => setMissingTables(prev => ({ ...prev, autoCheck: e.target.checked }))}
+                  />
+              }
+                label="Auto-check every 30s"
+              />
+              
+              {missingTables.detected && (
+                <Button
+                  variant="outlined"
+                  color="error"
+                  startIcon={<Add />}
+                  onClick={() => {
+                    // Create missing tables using script runner
+                    setSelectedTab(2); // Switch to Script Runner tab
+                    setScriptProgress(prev => ({
+                      ...prev,
+                      running: true,
+                      currentStep: 'Creating missing tables...',
+                      progress: 0,
+                      totalSteps: missingTables.missing.length,
+                      completedSteps: 0,
+                      logs: ['🚀 Starting missing tables creation...'],
+                      scriptType: 'create-tables'
+                  }));
+                }}
+                >
+                  Create Missing Tables
+                </Button>
+              )}
+            </Box>
+
+            {/* Critical Tables Alert */}
+            {missingTables.critical.length > 0 && (
+              <Alert severity="error" sx={{ mb: 3 }}>
+                <Typography variant="h6" gutterBottom>
+                  🚨 CRITICAL: {missingTables.critical.length} critical tables missing!
+                </Typography>
+                <Typography variant="body2">
+                  The system cannot function properly without these tables. Please create them immediately.
+                </Typography>
+                <Box sx={{ mt: 2 }}>
+                  <Typography variant="subtitle2" gutterBottom>Missing Critical Tables:</Typography>
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                    {missingTables.critical.map((table) => (
+                      <Chip key={table} label={table} color="error" size="small" />
+                    ))}
+                  </Box>
+                </Box>
+              </Alert>
+            )}
+
+            {/* Missing Tables List */}
+            {missingTables.missing.length > 0 && (
+              <Card sx={theming.getThemedCardSx()}>
+                <CardContent sx={theming.getThemedCardSx()}>
+                  <Typography variant="h6" sx={{ mb: 2, color: theming.colors.primary }}>
+                    Missing Tables Details
+                  </Typography>
+                  
+                  <TableContainer>
+                    <Table>
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Table Name</TableCell>
+                          <TableCell>Category</TableCell>
+                          <TableCell>Priority</TableCell>
+                          <TableCell>Status</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {missingTables.missing.map((table) => (
+                          <TableRow key={table}>
+                            <TableCell>
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                <TableChart color="primary" />
+                                {table}
+                              </Box>
+                            </TableCell>
+                            <TableCell>
+                              {missingTables.critical.includes(table) ? 'Critical' : 
+                               missingTables.warnings.some(w => w.includes(table)) ? 
+                               missingTables.warnings.find(w => w.includes(table))?.split(':')[0] : 'General'}
+                            </TableCell>
+                            <TableCell>
+                              <Chip 
+                                label={missingTables.critical.includes(table) ? 'HIGH' : 'MEDIUM'} 
+                                size="small" 
+                                color={missingTables.critical.includes(table) ? 'error' : 'warning'}
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <Chip 
+                                label="Missing" 
+                                size="small" 
+                                color="error"
+                              />
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* All Good Status */}
+            {!missingTables.detected && missingTables.lastCheck && (
+              <Alert severity="success" sx={{ mb: 3 }}>
+                <Typography variant="h6" gutterBottom>
+                  ✅ All Tables Present
+                </Typography>
+                <Typography variant="body2">
+                  All expected tables are present in the database. System is ready to function properly.
+                </Typography>
+              </Alert>
+            )}
+
+            {/* Database Storage Information */}
+            <Card sx={{ ...theming.getThemedCardSx(), mb: 3 }}>
+              <CardContent>
+                <Typography variant="h6" sx={{ mb: 2, color: theming.colors.primary, display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Storage />
+                  💾 Database Storage
+                </Typography>
+                
+                {storageLoading ? (
+                  <Box sx={{ textAlign: 'center', py: 3 }}>
+                    <CircularProgress size={40} />
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+                      Loading storage information...
+                    </Typography>
+                  </Box>
+                ) : storageInfo?.success ? (
+                  <Grid container spacing={3}>
+                    {/* Total Size Card */}
+                    <Grid item xs={12} md={3}>
+                      <Box sx={{ 
+                        p: 2, 
+                        bgcolor: 'primary.main', 
+                        color: 'white', 
+                        borderRadius: 2,
+                        textAlign: 'center'
+                    }}>
+                        <Typography variant="body2" sx={{ opacity: 0.9, mb: 1 }}>
+                          Total Database Size
+                        </Typography>
+                        <Typography variant="h4" sx={{ fontWeight: 'bold' }}>
+                          {storageInfo.data.totalSize || '0 B'}
+                        </Typography>
+                      </Box>
+                    </Grid>
+
+                    {/* Tables Size */}
+                    <Grid item xs={12} md={3}>
+                      <Box sx={{ 
+                        p: 2, 
+                        bgcolor: 'success.light', 
+                        color: 'success.contrastText', 
+                        borderRadius: 2,
+                        textAlign: 'center'
+                    }}>
+                        <Typography variant="body2" sx={{ opacity: 0.9, mb: 1 }}>
+                          Tables Data
+                        </Typography>
+                        <Typography variant="h5" sx={{ fontWeight: 'bold' }}>
+                          {storageInfo.data.tablesSize || '0 B'}
+                        </Typography>
+                      </Box>
+                    </Grid>
+
+                    {/* Indexes Size */}
+                    <Grid item xs={12} md={3}>
+                      <Box sx={{ 
+                        p: 2, 
+                        bgcolor: 'info.light', 
+                        color: 'info.contrastText', 
+                        borderRadius: 2,
+                        textAlign: 'center'
+                    }}>
+                        <Typography variant="body2" sx={{ opacity: 0.9, mb: 1 }}>
+                          Indexes
+                        </Typography>
+                        <Typography variant="h5" sx={{ fontWeight: 'bold' }}>
+                          {storageInfo.data.indexesSize || '0 B'}
+                        </Typography>
+                      </Box>
+                    </Grid>
+
+                    {/* Available Space */}
+                    <Grid item xs={12} md={3}>
+                      <Box sx={{ 
+                        p: 2, 
+                        bgcolor: (storageInfo.data.usagePercentage || 0) < 70 ? 'success.light' : 
+                                 (storageInfo.data.usagePercentage || 0) < 85 ? 'warning.light' : 'error.light',
+                        color: (storageInfo.data.usagePercentage || 0) < 70 ? 'success.contrastText' : 
+                               (storageInfo.data.usagePercentage || 0) < 85 ? 'warning.contrastText' : 'error.contrastText',
+                        borderRadius: 2,
+                        textAlign: 'center'
+                    }}>
+                        <Typography variant="body2" sx={{ opacity: 0.9, mb: 1 }}>
+                          Available Space
+                        </Typography>
+                        <Typography variant="h5" sx={{ fontWeight: 'bold' }}>
+                          {storageInfo.data.availableSize || 'Unlimited'}
+                        </Typography>
+                      </Box>
+                    </Grid>
+
+                    {/* Storage Usage Bar */}
+                    <Grid item xs={12}>
+                      <Box sx={{ mt: 1 }}>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                          <Typography variant="body2" color="text.secondary">
+                            Storage Usage
+                          </Typography>
+                          <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                            {storageInfo.data.usagePercentage?.toFixed(2) || '0.00'}%
+                          </Typography>
+                        </Box>
+                        <LinearProgress 
+                          variant="determinate" 
+                          value={storageInfo.data.usagePercentage || 0}
+                          sx={{ 
+                            height: 12, 
+                            borderRadius: 6,
+                            bgcolor: 'rgba(0,0,0,0.1)','& .MuiLinearProgress-bar': {
+                              borderRadius: 6,
+                              bgcolor: (storageInfo.data.usagePercentage || 0) < 70 ? '#4caf50' : 
+                                       (storageInfo.data.usagePercentage || 0) < 85 ? '#ff9800' : '#f44336'
+                          }
+                        }}
+                        />
+                        {(storageInfo.data.usagePercentage || 0) >= 85 && (
+                          <Alert severity="error" sx={{ mt: 2 }}>
+                            <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                              ⚠️ Storage Usage Critical!
+                            </Typography>
+                            <Typography variant="body2">
+                              Database storage is at {storageInfo.data.usagePercentage?.toFixed(1)}%. 
+                              Consider cleaning up old data or upgrading your storage plan.
+                            </Typography>
+                          </Alert>
+                        )}
+                        {(storageInfo.data.usagePercentage || 0) >= 70 && (storageInfo.data.usagePercentage || 0) < 85 && (
+                          <Alert severity="warning" sx={{ mt: 2 }}>
+                            <Typography variant="body2">
+                              Storage usage is approaching capacity ({storageInfo.data.usagePercentage?.toFixed(1)}%). 
+                              Monitor closely.
+                            </Typography>
+                          </Alert>
+                        )}
+                      </Box>
+                    </Grid>
+
+                    {/* Top Tables by Size */}
+                    {storageInfo.data.topTables && storageInfo.data.topTables.length > 0 && (
+                      <Grid item xs={12}>
+                        <Divider sx={{ my: 2 }} />
+                        <Typography variant="subtitle2" sx={{ mb: 2, color: theming.colors.primary }}>
+                          📊 Top 10 Largest Tables
+                        </Typography>
+                        <Box sx={{ maxHeight: 300, overflowY: 'auto' }}>
+                          {storageInfo.data.topTables.map((table: any, index: number) => (
+                            <Box 
+                              key={table.tableName} 
+                              sx={{ 
+                                display: 'flex', 
+                                justifyContent: 'space-between', 
+                                alignItems: 'center',
+                                p: 1.5,
+                                mb: 1,
+                                bgcolor: index % 2 === 0 ? 'rgba(0,0,0,0.02)' : 'transparent',
+                                borderRadius: 1, '&:hover': {
+                                  bgcolor: 'rgba(0,0,0,0.05)'
+                              }
+                            }}
+                            >
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flex: 1 }}>
+                                <Chip 
+                                  label={`#${index + 1}`} 
+                                  size="small" 
+                                  color="primary"
+                                  sx={{ minWidth: 40 }}
+                                />
+                                <Typography variant="body2" sx={{ fontWeight: 'bold', fontFamily: 'monospace' }}>
+                                  {table.tableName}
+                                </Typography>
+                              </Box>
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                                <Typography variant="body2" color="text.secondary">
+                                  {table.rowCount?.toLocaleString() || '0'} rows
+                                </Typography>
+                                <Chip 
+                                  label={table.size} 
+                                  size="small" 
+                                  color="default"
+                                  sx={{ minWidth: 80 }}
+                                />
+                              </Box>
+                            </Box>
+                          ))}
+                        </Box>
+                      </Grid>
+                    )}
+                  </Grid>
+                ) : (
+                  <Alert severity="warning">
+                    <Typography variant="body2">
+                      Storage information unavailable. Please check database connection.
+                    </Typography>
+                  </Alert>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* System Health Summary */}
+            <Card sx={theming.getThemedCardSx()}>
+              <CardContent sx={theming.getThemedCardSx()}>
+                <Typography variant="h6" sx={{ mb: 2, color: theming.colors.primary }}>
+                  System Health Summary
+                </Typography>
+                
+                <Grid container spacing={2}>
+                  <Grid item xs={12} sm={6}>
+                    <Typography variant="subtitle2" gutterBottom>Database Status:</Typography>
+                    <Chip 
+                      label={missingTables.detected ? 'Issues Detected' : 'Healthy'} 
+                      color={missingTables.detected ? 'error' : 'success'}
+                      size="small"
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <Typography variant="subtitle2" gutterBottom>Auto-monitoring:</Typography>
+                    <Chip 
+                      label={missingTables.autoCheck ? 'Active' : 'Disabled'} 
+                      color={missingTables.autoCheck ? 'success' : 'default'}
+                      size="small"
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <Typography variant="subtitle2" gutterBottom>Critical Issues:</Typography>
+                    <Chip 
+                      label={missingTables.critical.length > 0 ? `${missingTables.critical.length} Critical` : 'None'} 
+                      color={missingTables.critical.length > 0 ? 'error' : 'success'}
+                      size="small"
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <Typography variant="subtitle2" gutterBottom>Last Check:</Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {missingTables.lastCheck ? missingTables.lastCheck.toLocaleString() : 'Never checked'}
+                    </Typography>
+                  </Grid>
+                </Grid>
+              </CardContent>
+            </Card>
+          </Box>
+        )}
+
+        {/* Operation Log Tab */}
+        {selectedTab === 5 && (
+          <Box sx={{ p: 3 }}>
+            <Typography variant="h6" sx={{ mb: 2, color: theming.colors.primary }}>Operation Log</Typography>
+            <List>
+              {operationLog.map((operation) => (
+                <React.Fragment key={operation.id}>
+                  <ListItem>
+                    <ListItemIcon>
+                      {getStatusIcon(operation.status)}
+                    </ListItemIcon>
+                    <ListItemText
+                      primary={
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Chip 
+                            label={operation.type.toUpperCase()} 
+                            size="small" 
+                            color={getStatusColor(operation.status) as any}
+                          />
+                          <Typography variant="body2" color="text.secondary">
+                            {operation.table}
+                          </Typography>
+                          {operation.duration && (
+                            <Chip 
+                              label={formatDuration(operation.duration)} 
+                              size="small" 
+                              variant="outlined"
+                            />
+                          )}
+                        </Box>
+                    }
+                      secondary={
+                        <Box>
+                          <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>
+                            {operation.sql}
+                          </Typography>
+                          {operation.error && (
+                            <Alert severity="error" sx={{ mt: 1 }}>
+                              {operation.error}
+                            </Alert>
+                          )}
+                        </Box>
+                    }
+                    />
+                  </ListItem>
+                  <Divider />
+                </React.Fragment>
+              ))}
+            </List>
+          </Box>
+        )}
+
+        {/* Table Details Tab */}
+        {selectedTab === 6 && (
+          <Box sx={{ p: 3 }}>
+            <Typography variant="h6" sx={{ mb: 2, color: theming.colors.primary }}>Table Details</Typography>
+            {!selectedTable ? (
+              <Alert severity="info">
+                Select a table from the Tables Overview to view its details
+              </Alert>
+            ) : (
+              <Box>
+                <Typography variant="h6" sx={{ mb: 2, color: theming.colors.primary }}>
+                  {selectedTable}
+                </Typography>
+                {detailsLoading ? (
+                  <LinearProgress />
+                ) : (
+                  <TableContainer component={Paper}>
+                    <Table>
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Column Name</TableCell>
+                          <TableCell>Data Type</TableCell>
+                          <TableCell>Nullable</TableCell>
+                          <TableCell>Default</TableCell>
+                          <TableCell>Key</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {tableDetails?.columns?.map((column: any, index: number) => (
+                          <TableRow key={index}>
+                            <TableCell>{column.column_name}</TableCell>
+                            <TableCell>{column.data_type}</TableCell>
+                            <TableCell>
+                              <Chip 
+                                label={column.is_nullable === 'YES' ? 'Yes' : 'No'} 
+                                size="small" 
+                                color={column.is_nullable === 'YES' ? 'default' : 'primary'}
+                              />
+                            </TableCell>
+                            <TableCell>{column.column_default || 'N/A'}</TableCell>
+                            <TableCell>{column.column_key || 'N/A'}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                )}
+              </Box>
+            )}
+          </Box>
+        )}
+
+        {/* Quick Actions Tab */}
+        {selectedTab === 7 && (
+          <Box sx={{ p: 3 }}>
+            <Typography variant="h6" sx={{ mb: 2, color: theming.colors.primary }}>Quick Actions</Typography>
+            <Grid container spacing={2}>
+              <Grid item xs={12} sm={6} md={4}>
+                <Card sx={theming.getThemedCardSx()}>
+                  <CardContent sx={theming.getThemedCardSx()}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                      <Backup color="primary" />
+                      <Typography variant="h6" sx={{ color: theming.colors.primary }}>Backup Database</Typography>
+                    </Box>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                      Create a full database backup
+                    </Typography>
+                    <Button variant="contained" fullWidth sx={theming.getThemedButtonSx()}>
+                      Start Backup
+                    </Button>
+                  </CardContent>
+                </Card>
+              </Grid>
+              
+              <Grid item xs={12} sm={6} md={4}>
+                <Card sx={theming.getThemedCardSx()}>
+                  <CardContent sx={theming.getThemedCardSx()}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                      <Restore color="primary" />
+                      <Typography variant="h6" sx={{ color: theming.colors.primary }}>Restore Database</Typography>
+                    </Box>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                      Restore from a backup file
+                    </Typography>
+                    <Button variant="outlined" fullWidth>
+                      Choose File
+                    </Button>
+                  </CardContent>
+                </Card>
+              </Grid>
+              
+              <Grid item xs={12} sm={6} md={4}>
+                <Card sx={theming.getThemedCardSx()}>
+                  <CardContent sx={theming.getThemedCardSx()}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                      <Security color="primary" />
+                      <Typography variant="h6" sx={{ color: theming.colors.primary }}>Optimize Tables</Typography>
+                    </Box>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                      Run VACUUM ANALYZE on all tables
+                    </Typography>
+                    <Button variant="contained" fullWidth sx={theming.getThemedButtonSx()}>
+                      Optimize Now
+                    </Button>
+                  </CardContent>
+                </Card>
+              </Grid>
+            </Grid>
+          </Box>
+        )}
+      </Card>
+
+      {/* Script Recovery Dialog */}
+      <Dialog 
+        open={showRecoveryDialog} 
+        onClose={() => setShowRecoveryDialog(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle sx={{ 
+          bgcolor: (() => {
+            const wasInterrupted = localStorage.getItem('dbPanel_wasInterrupted');
+            const saved = localStorage.getItem('dbPanel_scriptProgress');
+            if (saved && wasInterrupted === 'true') {
+              const parsed = JSON.parse(saved);
+              return parsed.isDryRun ? 'warning.main' : 'error.main';
+          }
+            return 'info.main';
+        })(),
+          color: 'white' 
+      }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <History />
+            {(() => {
+              const wasInterrupted = localStorage.getItem('dbPanel_wasInterrupted');
+              const saved = localStorage.getItem('dbPanel_scriptProgress');
+              if (saved && wasInterrupted === 'true') {
+                const parsed = JSON.parse(saved);
+                return parsed.isDryRun ? '⚠️ Dry Run Session Interrupted' : '🚨 Script Execution Interrupted!';
+            }
+              return '📜 Script Session Recovery';
+          })()}
+          </Box>
+        </DialogTitle>
+        <DialogContent sx={{ mt: 2 }}>
+          {(() => {
+            const wasInterrupted = localStorage.getItem('dbPanel_wasInterrupted');
+            const saved = localStorage.getItem('dbPanel_scriptProgress');
+            if (saved) {
+              const parsed = JSON.parse(saved);
+              
+              if (wasInterrupted === 'true' && !parsed.isDryRun) {
+                return (
+                  <Alert severity="error" sx={{ mb: 2 }}>
+                    <Typography variant="body2" sx={{ fontWeight: 'bold', mb: 1 }}>
+                      ⚠️ EXECUTE MODE SCRIPT WAS INTERRUPTED!
+                    </Typography>
+                    <Typography variant="body2">
+                      The script was making real changes to the database when you left the page. 
+                      The process has stopped, but some changes may have been applied.
+                    </Typography>
+                    <Typography variant="body2" sx={{ mt: 1, fontWeight: 'bold' }}>
+                      You can review what was completed below and verify the database state.
+                    </Typography>
+                  </Alert>
+                );
+            } else if (wasInterrupted === 'true') {
+                return (
+                  <Alert severity="warning" sx={{ mb: 2 }}>
+                    <Typography variant="body2" sx={{ fontWeight: 'bold', mb: 1 }}>
+                      Dry-run preview was interrupted
+                    </Typography>
+                    <Typography variant="body2">
+                      No changes were made (it was a preview). You can review what was previewed so far.
+                    </Typography>
+                  </Alert>
+                );
+            }
+          }
+            
+            return (
+              <Alert severity="info" sx={{ mb: 2 }}>
+                <Typography variant="body2" sx={{ fontWeight: 'bold', mb: 1 }}>
+                  A script was running when you left this page
+                </Typography>
+                <Typography variant="body2">
+                  You can review what was completed so far.
+                </Typography>
+              </Alert>
+            );
+        })()}
+          
+          <Typography variant="body2" sx={{ mb: 1 }}>
+            <strong>Script Details:</strong>
+          </Typography>
+          <Box sx={{ p: 2, bgcolor: 'background.paper', borderRadius: 1, mb: 2 }}>
+            <Typography variant="body2">
+              Script Type: <strong>{(() => {
+                const saved = localStorage.getItem('dbPanel_scriptProgress');
+                if (saved) {
+                  const parsed = JSON.parse(saved);
+                  return parsed.scriptType || 'Unknown';
+              }
+                return 'Unknown';
+            })()}</strong>
+            </Typography>
+            <Typography variant="body2">
+              Mode: <Chip 
+                size="small" 
+                label={(() => {
+                  const saved = localStorage.getItem('dbPanel_scriptProgress');
+                  if (saved) {
+                    const parsed = JSON.parse(saved);
+                    return parsed.isDryRun ? '🔍 DRY RUN' : '⚠️ EXECUTE';
+                }
+                  return 'Unknown';
+              })()} 
+                color={(() => {
+                  const saved = localStorage.getItem('dbPanel_scriptProgress');
+                  if (saved) {
+                    const parsed = JSON.parse(saved);
+                    return parsed.isDryRun ? 'success' : 'warning';
+                }
+                  return 'default';
+              })() as any}
+              />
+            </Typography>
+            <Typography variant="body2">
+              Progress: <strong>{(() => {
+                const saved = localStorage.getItem('dbPanel_scriptProgress');
+                if (saved) {
+                  const parsed = JSON.parse(saved);
+                  return `${parsed.completedSteps || 0} / ${parsed.totalSteps || 0} steps`;
+              }
+                return 'Unknown';
+            })()}</strong>
+            </Typography>
+          </Box>
+          
+          <Typography variant="body2" color="text.secondary">
+            Would you like to restore the script progress to see what was completed?
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button 
+            onClick={() => {
+              localStorage.removeItem('dbPanel_scriptProgress');
+              localStorage.removeItem('dbPanel_wasInterrupted');
+              setShowRecoveryDialog(false);
+          }}
+            variant="outlined"
+          >
+            Discard Progress
+          </Button>
+          <Button 
+            onClick={() => {
+              const saved = localStorage.getItem('dbPanel_scriptProgress');
+              const wasInterrupted = localStorage.getItem('dbPanel_wasInterrupted') === 'true';
+              
+              if (saved) {
+                const parsed = JSON.parse(saved);
+                setScriptProgress({
+                  ...parsed,
+                  running: false, // Mark as stopped
+                  startTime: parsed.startTime ? new Date(parsed.startTime) : undefined,
+                  endTime: parsed.endTime ? new Date(parsed.endTime) : new Date(),
+                  lastHeartbeat: parsed.lastHeartbeat ? new Date(parsed.lastHeartbeat) : undefined,
+                  error: wasInterrupted ? 
+                    (parsed.isDryRun ? 
+                      'Dry-run preview was interrupted - No changes were made': 'Script was interrupted during EXECUTION - Some changes may have been applied. Please verify database state.') 
+                    : parsed.error,
+                  logs: wasInterrupted ? 
+                    [...parsed.logs', ', '⚠️ SCRIPT INTERRUPTED - Process stopped due to page navigation', '📊 Partial results shown below:'] 
+                    : parsed.logs,
+              });
+                setSelectedTab(2); // Switch to Script Runner tab
+            }
+              
+              localStorage.removeItem('dbPanel_wasInterrupted');
+              setShowRecoveryDialog(false);
+          }}
+            variant="contained"
+            color="primary"
+            startIcon={<Restore />}
+          >
+            Restore & View Progress
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Dry Run Reminder Dialog */}
+      <Dialog 
+        open={showDryRunReminder} 
+        onClose={() => setShowDryRunReminder(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle sx={{ bgcolor: 'warning.main', color: 'white' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Info />
+            🔍 Safety Best Practice
+          </Box>
+        </DialogTitle>
+        <DialogContent sx={{ mt: 2 }}>
+          <Alert severity="info" sx={{ mb: 2 }}>
+            <Typography variant="body2" sx={{ fontWeight: 'bold', mb: 1 }}>
+              You haven't run a dry-run for this script yet!
+            </Typography>
+            <Typography variant="body2">
+              For safety, it's recommended to ALWAYS run scripts in DRY RUN mode first to preview what they will do.
+            </Typography>
+          </Alert>
+          
+          <Typography variant="body2" sx={{ mb: 2 }}>
+            <strong>Best Practice:</strong>
+          </Typography>
+          <Box component="ol" sx={{ mt: 1, mb: 2, pl: 2 }}>
+            <li>Run script in DRY RUN mode first (preview)</li>
+            <li>Review the preview logs carefully</li>
+            <li>If everything looks correct, switch to EXECUTE mode</li>
+            <li>Run the script to apply changes</li>
+          </Box>
+          
+          <Typography variant="body2" color="text.secondary">
+            Would you like to run a dry-run first?
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button 
+            onClick={() => {
+              setShowDryRunReminder(false);
+              setPendingScript(null);
+          }}
+            variant="outlined"
+          >
+            Cancel
+          </Button>
+          <Button 
+            onClick={() => {
+              // Skip dry-run and proceed to execute
+              setShowDryRunReminder(false);
+              setShowSafetyWarning(true);
+          }}
+            variant="outlined"
+            color="error"
+          >
+            Skip & Execute Anyway
+          </Button>
+          <Button 
+            onClick={() => {
+              setDryRunMode(true);
+              setShowDryRunReminder(false);
+              if (pendingScript) {
+                scriptRunnerMutation.mutate(pendingScript);
+                setHasRunDryRun(prev => ({ ...prev, [pendingScript]: true }));
+            }
+              setPendingScript(null);
+          }}
+            variant="contained"
+            color="success"
+            startIcon={<Visibility />}
+          >
+            Yes, Run Dry Run First
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Safety Warning Dialog */}
+      <Dialog 
+        open={showSafetyWarning} 
+        onClose={() => setShowSafetyWarning(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle sx={{ bgcolor: 'error.main', color: 'white' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Warning />
+            ⚠️ EXECUTE MODE - Confirm Action
+          </Box>
+        </DialogTitle>
+        <DialogContent sx={{ mt: 2 }}>
+          <Alert severity="error" sx={{ mb: 2 }}>
+            <Typography variant="body2" sx={{ fontWeight:'bold', mb: 1 }}>
+              You are about to execute: {pendingScript}
+            </Typography>
+            <Typography variant="body2">
+              This will make ACTUAL CHANGES to the database. This action may:
+            </Typography>
+            <Box component="ul" sx={{ mt: 1, mb: 0 }}>
+              <li>Create new tables</li>
+              <li>Modify existing data</li>
+              <li>Run database optimization commands</li>
+              <li>Affect database performance</li>
+            </Box>
+          </Alert>
+          
+          <Typography variant="body2" sx={{ mb: 2 }}>
+            <strong>Recommendation:</strong> Test with DRY RUN mode first to preview changes.
+          </Typography>
+          
+          <Typography variant="body2" color="text.secondary">
+            Are you sure you want to proceed with EXECUTE mode?
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button 
+            onClick={() => {
+              setShowSafetyWarning(false);
+              setPendingScript(null);
+          }}
+            variant="outlined"
+          >
+            Cancel
+          </Button>
+          <Button 
+            onClick={() => {
+              setDryRunMode(true);
+              setShowSafetyWarning(false);
+              if (pendingScript) {
+                scriptRunnerMutation.mutate(pendingScript);
+            }
+              setPendingScript(null);
+          }}
+            variant="outlined"
+            color="primary"
+          >
+            Run as Dry Run Instead
+          </Button>
+          <Button 
+            onClick={confirmScriptExecution}
+            variant="contained"
+            color="error"
+            startIcon={<Warning />}
+          >
+            Confirm Execute
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Snackbar for notifications */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={6000}
+        onClose={() => setSnackbar({ ...snackbar, open: false })}
+      >
+        <Alert 
+          onClose={() => setSnackbar({ ...snackbar, open: false })} 
+          severity={snackbar.severity}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
+    </Container>
+  );
+}

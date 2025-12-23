@@ -1,0 +1,413 @@
+/**
+ * Notification System Demo Component
+ * Demonstrates all notification types and functionality
+ */
+
+import { useTheming } from '../../utils/theming-helper';
+import React, { useState } from 'react';
+import { apiRequest } from '@/lib/queryClient';
+import { useQuery } from '@tanstack/react-query';
+import { useAuth } from '@/hooks/useAuth';
+import {
+  Box,
+  Button,
+  Card as MuiCard,
+  CardContent,
+  Typography,
+  Grid,
+  TextField,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  Chip,
+  Alert
+} from '@mui/material';
+import {
+  CloudUpload as UploadIcon,
+  Folder as ProjectIcon,
+  Sync as SyncIcon,
+  Notifications as NotificationIcon
+} from '@mui/icons-material';
+import { 
+  triggerUploadNotification,
+  triggerUploadProgress,
+  triggerUploadComplete,
+  triggerUploadError,
+  triggerProjectCreated,
+  triggerProjectShared,
+  triggerSyncComplete
+} from './NotificationSystem';
+import { AnimatedButton, AnimatedMuiCard } from '../animations/MicroAnimations';
+
+export default function NotificationTestCenter() {
+  const queryClient = useQueryClient();
+  
+  // Theming system
+  const theming = useTheming('photographer');
+  
+  // Real notification test data from database
+  const { data: notificationTests = [], isLoading } = useQuery({
+    queryKey: ['/api/notifications/test-history', ],
+    queryFn: () => apiRequest('/api/notifications/test-history', ),
+    retry: false,
+});
+
+  // Real notification test logging
+  const logNotificationTest = useMutation({
+    mutationFn: async (data: any) => {
+      return apiRequest('/api/notifications/log-test', {
+        headers: {
+          "Content-Type" : "application/json"
+    },
+        method: 'POS',
+        body: JSON.stringify(data)
+  });
+  },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/notifications', ],});
+  }
+});
+
+
+  const [testSettings, setTestSettings] = useState({
+    fileName: 'test_upload.zip',
+    fileCount:  1,
+    projectName: 'Test Project',
+    projectId: 'test-' + Date.now(),
+    shareCode: 'TEST' + Math.random().toString(36).substr, (4).toUpperCase()
+});
+
+  const [isUploading, setIsUploading] = useState(false);
+
+  const simulateFileUpload = async () => {
+    setIsUploading(true);
+    const fileId = `upload_${Date.now()}`;
+    
+    // Start upload
+    triggerUploadNotification({
+      fileId,
+      fileName: demoSettings.fileName,
+      fileCount: demoSettings.fileCount
+});
+
+    // Simulate progress
+    for (let progress = 0; progress <= 100; progress += 10) {
+      await new Promise(resolve => setTimeout(resolve, 200));
+      triggerUploadProgress({
+        fileId,
+        fileName: demoSettings.fileName,
+        progress
+    });
+  }
+
+    // Complete upload
+    triggerUploadComplete({
+      fileId,
+      fileName: demoSettings.fileName,
+      fileCount: demoSettings.fileCount,
+      projectId: demoSettings.projectId,
+      folderUrl: `https://drive.google.com/drive/folders/${demoSettings.projectId}`
+  });
+
+    setIsUploading(false);
+};
+
+  const simulateUploadError = () => {
+    const fileId = `upload_error_${Date.now()}`;
+    triggerUploadError({
+      fileId,
+      fileName: demoSettings.fileName,
+      error: 'Nettverksfeil - prøv igjen senere'
+});
+};
+
+  const simulateProjectCreation = () => {
+    triggerProjectCreated({
+      projectName: demoSettings.projectName,
+      projectId: demoSettings.projectId,
+      folderUrl: `https://drive.google.com/drive/folders/${demoSettings.projectId}`
+  });
+};
+
+  const simulateProjectSharing = () => {
+    triggerProjectShared({
+      projectName: demoSettings.projectName,
+      shareCode: demoSettings.shareCode
+});
+};
+
+  const simulateSync = () => {
+    triggerSyncComplete({
+      projectCount:  5,
+      syncedCount: 4 });
+};
+
+  const sendTestNotification = async (type: string) => {
+    try {
+      await fetch('/api/notifications/test', {
+        headers: {
+          ...auth'Content-Type' : 'application/json'
+      },
+        method: 'POS',
+        body: JSON.stringify({
+          type,
+          title: getTestTitle(type),
+          message: getTestMessage(type),
+          userId: 'photographer-daniel'
+    })
+    });
+  } catch (error) {
+      console.error('Failed to send test notification: ', error);
+  }
+};
+
+  const getTestTitle = (type: string) => {
+    switch (type) {
+      case 'success': return 'Operasjon fullført';
+      case 'error': return 'Det oppstod en feil';
+      case 'warning': return 'Advarsel';
+      case 'info': return 'Informasjon';
+      default: return 'Test notifikasjon';
+}
+};
+
+  const getTestMessage = (type: string) => {
+    switch (type) {
+      case 'success': return 'Filen ble lastet opp successfully til Google Drive';
+      case 'error': return 'Kunne ikke koble til Google Drive - sjekk internettforbindelsen';
+      case 'warning': return 'Lagringsplass nesten full - vurder å rydde opp i gamle prosjekter';
+      case 'info': return 'Nytt programvareoppdatering tilgjengelig for CreatorHub Norge';
+      default: return 'Dette er en test notifikasjon fra systemet';
+}
+};
+
+  return (
+    <Box sx={{ p:  3 }}>
+      <Typography variant="h4" gutterBottom sx={{ color: theming.colors.primary }}>
+        Notifikasjonssystem Demo
+      </Typography>
+      
+      <Alert severity="info" sx={{ mb:  3 }}>
+        Denne demoen viser alle typer notifikasjoner i CreatorHub Norge systemet. 
+        Klikk på knappene nedenfor for å teste forskjellige notifikasjonstyper.
+      </Alert>
+
+      <Grid container spacing={3}>
+        {/* Settings Panel */}
+        <Grid size={{ xs: 12 }} md={4}>
+          <AnimatedMuiCard>
+            <CardContent sx={theming.getThemedCardSx()}>
+              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                Demo Innstillinger
+              </Typography>
+              
+              <TextField
+                fullWidth
+                label="Filnavn"
+                value={demoSettings.fileName}
+                onChange={(e) => setDemoSettings(prev => ({ ...prev, fileName: e.target.value }))}
+                sx={{ mb:  2 }}
+              />
+              
+              <TextField
+                fullWidth
+                label="Antall filer"
+                type="number"
+                value={demoSettings.fileCount}
+                onChange={(e) => setDemoSettings(prev => ({ ...prev, fileCount: parseInt(e.target.value, ),}))}
+                sx={{ mb:  2 }}
+              />
+              
+              <TextField
+                fullWidth
+                label="Prosjektnavn"
+                value={demoSettings.projectName}
+                onChange={(e) => setDemoSettings(prev => ({ ...prev, projectName: e.target.value }))}
+                sx={{ mb:  2 }}
+              />
+              
+              <TextField
+                fullWidth
+                label="Delingskode"
+                value={demoSettings.shareCode}
+                onChange={(e) => setDemoSettings(prev => ({ ...prev, shareCode: e.target.value }))}
+              />
+            </CardContent>
+          </AnimatedMuiCard>
+        </Grid>
+
+        {/* Upload Notifications */}
+        <Grid size={{ xs: 12 }} md={4}>
+          <AnimatedMuiCard>
+            <CardContent sx={theming.getThemedCardSx()}>
+              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                <UploadIcon sx={{ mr: 1, verticalAlign: 'middle'}} />
+                Opplastingsnotifikasjoner
+              </Typography>
+              
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap:  2 }}>
+                <AnimatedButton
+                  onClick={simulateFileUpload}
+                  loading={isUploading}
+                  disabled={isUploading}
+                  fullWidth
+                >
+                  Simuler filopplasting
+                </AnimatedButton>
+                
+                <Button
+                  variant="outlined"
+                  color="error"
+                  onClick={simulateUploadError}
+                  fullWidth
+                >
+                  Simuler opplastingsfeil
+                </Button>
+                
+                <Typography variant="body2" color="text.secondary">
+                  Test komplett opplastingsflyt med fremgang og fullføring
+                </Typography>
+              </Box>
+            </CardContent>
+          </AnimatedMuiCard>
+        </Grid>
+
+        {/* Project Notifications */}
+        <Grid size={{ xs: 12 }} md={4}>
+          <AnimatedMuiCard>
+            <CardContent sx={theming.getThemedCardSx()}>
+              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                <ProjectIcon sx={{ mr: 1, verticalAlign: 'middle'}} />
+                Prosjektnotifikasjoner
+              </Typography>
+              
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap:  2 }}>
+                <Button variant="contained"
+                  onClick={simulateProjectCreation}
+                  fullWidth
+                 sx={theming.getThemedButtonSx()}>
+                  Prosjekt opprettet
+                </Button>
+                
+                <Button
+                  variant="outlined"
+                  onClick={simulateProjectSharing}
+                  fullWidth
+                >
+                  Prosjekt delt
+                </Button>
+                
+                <Typography variant="body2" color="text.secondary">
+                  Test prosjektrelaterte hendelser og handlinger
+                </Typography>
+              </Box>
+            </CardContent>
+          </AnimatedMuiCard>
+        </Grid>
+
+        {/* System Notifications */}
+        <Grid size={{ xs: 12 }} md={6}>
+          <AnimatedMuiCard>
+            <CardContent sx={theming.getThemedCardSx()}>
+              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                <SyncIcon sx={{ mr: 1, verticalAlign: 'middle'}} />
+                Systemnotifikasjoner
+              </Typography>
+              
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap:  2 }}>
+                <Button variant="contained"
+                  onClick={simulateSync}
+                  fullWidth
+                 sx={theming.getThemedButtonSx()}>
+                  Synkronisering fullført
+                </Button>
+                
+                <Grid container spacing={1}>
+                  <Grid size={{ xs:  6 }}>
+                    <Button
+                      variant="outlined"
+                      color="success"
+                      onClick={() => sendTestNotification('success')}
+                      fullWidth
+                      size="small"
+                    >
+                      Success
+                    </Button>
+                  </Grid>
+                  <Grid size={{ xs:  6 }}>
+                    <Button
+                      variant="outlined"
+                      color="error"
+                      onClick={() => sendTestNotification('error')}
+                      fullWidth
+                      size="small"
+                    >
+                      Error
+                    </Button>
+                  </Grid>
+                  <Grid size={{ xs:  6 }}>
+                    <Button
+                      variant="outlined"
+                      color="warning"
+                      onClick={() => sendTestNotification('warning')}
+                      fullWidth
+                      size="small"
+                    >
+                      Warning
+                    </Button>
+                  </Grid>
+                  <Grid size={{ xs:  6 }}>
+                    <Button
+                      variant="outlined"
+                      color="info"
+                      onClick={() => sendTestNotification('info')}
+                      fullWidth
+                      size="small"
+                    >
+                      Info
+                    </Button>
+                  </Grid>
+                </Grid>
+              </Box>
+            </CardContent>
+          </AnimatedMuiCard>
+        </Grid>
+
+        {/* Notification Types Reference */}
+        <Grid size={{ xs: 12 }} md={6}>
+          <AnimatedMuiCard>
+            <CardContent sx={theming.getThemedCardSx()}>
+              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                <NotificationIcon sx={{ mr: 1, verticalAlign: 'middle'}} />
+                Notifikasjonstyper
+              </Typography>
+              
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap:  1 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
+                  <Chip size="small" label="Upload" color="primary" />
+                  <Typography variant="body2">Filopplasting med fremgang</Typography>
+                </Box>
+                
+                <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
+                  <Chip size="small" label="Project" color="secondary" />
+                  <Typography variant="body2">Prosjektoppdateringer og handlinger</Typography>
+                </Box>
+                
+                <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
+                  <Chip size="small" label="Sync" color="info" />
+                  <Typography variant="body2">Synkronisering med sky-tjenester</Typography>
+                </Box>
+                
+                <Box sx={{ display: 'flex', alignItems:'center', gap:  1 }}>
+                  <Chip size="small" label="System" color="default" />
+                  <Typography variant="body2">Generelle systemhendelser</Typography>
+                </Box>
+              </Box>
+            </CardContent>
+          </AnimatedMuiCard>
+        </Grid>
+      </Grid>
+    </Box>
+  );
+}

@@ -1,0 +1,1051 @@
+/**
+ * CreatorHub Norge - Advanced Branding Hook
+ * Enforces consistent branding across all components
+ * 
+ * NEW FEATURES:
+ * - Theme persistence (localStorage)
+ * - Multiple brand presets
+ * - Live preview mode
+ * - Export/Import branding configs
+ * - Dark/Light mode support
+ * - Accessibility contrast checker
+ * - Brand consistency validator
+ * - PUBLISH/DRAFT/PREVIEW workflow ✨
+ */
+
+import { useMemo, useState, useEffect, useCallback } from 'react';
+import { 
+  CREATOR_HUB_BRANDING, 
+  ProfessionType, 
+  ProjectCategoryType,
+  BrandColorType 
+} from '../constants/CreatorHubBranding';
+
+interface UseBrandingOptions {
+  profession?: ProfessionType;
+  projectCategory?: ProjectCategoryType;
+  customColor?: string;
+  validate?: boolean;
+  persist?: boolean;
+  mode?: 'light' | 'dark';
+  previewMode?: boolean;
+  logo?: LogoConfig; // NEW: Logo configuration
+}
+
+interface LogoConfig {
+  primary?: string; // Main logo URL
+  secondary?: string; // Alternative logo URL
+  favicon?: string; // Favicon URL
+  darkMode?: string; // Dark mode logo variant
+  placement: {
+    navbar: boolean;
+    sidebar: boolean;
+    footer: boolean;
+    modals: boolean;
+    emails: boolean;
+    invoices: boolean;
+    contracts: boolean;
+    reports: boolean;
+};
+  dimensions?: {
+    width?: number;
+    height?: number;
+    maxWidth?: number;
+    maxHeight?: number;
+};
+  alignment?: 'left' | 'center' | 'right';
+  padding?: string;
+  margin?: string;
+}
+
+interface BrandPreset {
+  id: string;
+  name: string;
+  description: string;
+  profession?: ProfessionType;
+  category?: ProjectCategoryType;
+  customColor?: string;
+  mode?: 'light' | 'dark';
+  logo?: LogoConfig; // NEW: Logo configuration
+  status: 'draft' | 'published' | 'preview';
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+  publishedAt?: string;
+  publishedBy?: string;
+  previewUrl?: string;
+  changelog?: string[];
+}
+
+interface BrandingVersion {
+  id: string;
+  presetId: string;
+  version: number;
+  config: UseBrandingOptions;
+  status: 'draft' | 'published' | 'archived';
+  createdAt: string;
+  createdBy: string;
+  notes?: string;
+}
+
+export function useCreatorHubBranding(options: UseBrandingOptions = {}) {
+  const { 
+    profession, 
+    projectCategory, 
+    customColor, 
+    validate = true,
+    persist = true,
+    mode = 'light',
+    previewMode = false,
+    logo: logoConfig
+} = options;
+
+  // State for preset management
+  const [savedPresets, setSavedPresets] = useState<BrandPreset[]>([]);
+  const [activePresetId, setActivePresetId] = useState<string | null>(null);
+  const [previewPresetId, setPreviewPresetId] = useState<string | null>(null);
+  const [brandingHistory, setBrandingHistory] = useState<BrandingVersion[]>([]);
+  
+  // NEW: Draft management
+  const [draftChanges, setDraftChanges] = useState<Partial<BrandPreset> | null>(null);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  
+  // NEW: Logo management
+  const [logoFiles, setLogoFiles] = useState<LogoConfig | null>(logoConfig || null);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+
+  // Load saved branding from localStorage on mount
+  useEffect(() => {
+    if (persist) {
+      try {
+        const saved = localStorage.getItem('creatorhub_branding_presets');
+        if (saved) {
+          setSavedPresets(JSON.parse(saved));
+      }
+        
+        const activeId = localStorage.getItem('creatorhub_active_preset');
+        if (activeId) {
+          setActivePresetId(activeId);
+      }
+        
+        const history = localStorage.getItem('creatorhub_branding_history');
+        if (history) {
+          setBrandingHistory(JSON.parse(history));
+      }
+    } catch (error) {
+        console.error('Failed to load branding presets: ', error);
+    }
+  }
+}, [persist]);
+
+  // NEW: Track changes for draft detection
+  useEffect(() => {
+    if (draftChanges || logoFiles) {
+      setHasUnsavedChanges(true);
+  }
+}, [draftChanges, logoFiles]);
+
+  // NEW: Upload logo file
+  const uploadLogo = useCallback(async (
+    file: File, 
+    type: 'primary' | 'secondary' | 'favicon' | 'darkMode'
+  ): Promise<string | null> => {
+    setUploadingLogo(true);
+    
+    try {
+      // Convert to base64 for storage
+      const reader = new FileReader();
+      const base64Promise = new Promise<string>((resolve, reject) => {
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+    });
+
+      const base64 = await base64Promise;
+      
+      // Update logo config
+      setLogoFiles(prev => ({
+        ...prev,
+        [type]: base64,
+        placement: prev?.placement || {
+          navbar: true,
+          sidebar: true,
+          footer: true,
+          modals: false,
+          emails: true,
+          invoices: true,
+          contracts: true,
+          reports: true
+      }
+    }));
+
+      // Save to localStorage
+      if (persist) {
+        const logoData = {
+          ...(logoFiles || {}),
+          [type]: base64,
+          uploadedAt: new Date().toISOString()
+      };
+        localStorage.setItem('creatorhub_branding_logo', JSON.stringify(logoData));
+    }
+
+      setHasUnsavedChanges(true);
+      return base64;
+  } catch (error) {
+      console.error('Logo upload failed:', error);
+      return null;
+  } finally {
+      setUploadingLogo(false);
+  }
+}, [logoFiles, persist]);
+
+  // NEW: Update logo placement
+  const updateLogoPlacement = useCallback((placement: Partial<LogoConfig['placement']>) => {
+    setLogoFiles(prev => ({
+      ...prev,
+      placement: {
+        ...(prev?.placement || {
+          navbar: true,
+          sidebar: true,
+          footer: true,
+          modals: false,
+          emails: true,
+          invoices: true,
+          contracts: true,
+          reports: true
+      }),
+        ...placement
+    }
+  }));
+
+    setHasUnsavedChanges(true);
+}, []);
+
+  // NEW: Update logo dimensions
+  const updateLogoDimensions = useCallback((dimensions: LogoConfig['dimensions']) => {
+    setLogoFiles(prev => prev ? ({
+      ...prev,
+      dimensions
+  }) : null);
+
+    setHasUnsavedChanges(true);
+}, []);
+
+  // NEW: Remove logo
+  const removeLogo = useCallback((type: 'primary' | 'secondary' | 'favicon' | 'darkMode') => {
+    setLogoFiles(prev => {
+      if (!prev) return null;
+      
+      const updated = { ...prev };
+      delete (updated as any)[type];
+      
+      return updated;
+  });
+
+    if (persist) {
+      const logoData = { ...logoFiles };
+      delete (logoData as any)[type];
+      localStorage.setItem('creatorhub_branding_logo', JSON.stringify(logoData));
+  }
+
+    setHasUnsavedChanges(true);
+}, [logoFiles, persist]);
+
+  // Load logos from localStorage
+  useEffect(() => {
+    if (persist && !logoConfig) {
+      try {
+        const saved = localStorage.getItem('creatorhub_branding_logo');
+        if (saved) {
+          setLogoFiles(JSON.parse(saved));
+      }
+    } catch (error) {
+        console.error('Failed to load logo config:', error);
+    }
+  }
+}, [persist, logoConfig]);
+
+  // NEW: Save as draft
+  const saveDraft = useCallback((preset: Omit<BrandPreset, 'id' | 'createdAt' | 'updatedAt' | 'status' | 'version'>) => {
+    const existingDraft = savedPresets.find(p => p.name === preset.name && p.status === 'draft');
+    
+    if (existingDraft) {
+      // Update existing draft
+      const updated = savedPresets.map(p => 
+        p.id === existingDraft.id 
+          ? { 
+              ...p, 
+              ...preset, 
+              updatedAt: new Date().toISOString(),
+              changelog: [...(p.changelog || []), `Updated draft at ${new Date().toLocaleString()}`]
+          }
+          : p
+      );
+      setSavedPresets(updated);
+      
+      if (persist) {
+        localStorage.setItem('creatorhub_branding_presets', JSON.stringify(updated));
+    }
+      
+      setHasUnsavedChanges(false);
+      return existingDraft;
+  } else {
+      // Create new draft
+      const newDraft: BrandPreset = {
+        ...preset,
+        id: `preset_${Date.now()}`,
+        status: 'draft',
+        version: 1,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        changelog: [`Created draft at ${new Date().toLocaleString()}`]
+    };
+      
+      const updated = [...savedPresets, newDraft];
+      setSavedPresets(updated);
+      
+      if (persist) {
+        localStorage.setItem('creatorhub_branding_presets', JSON.stringify(updated));
+    }
+      
+      setHasUnsavedChanges(false);
+      return newDraft;
+  }
+}, [savedPresets, persist]);
+
+  // NEW: Publish preset (draft → published)
+  const publishPreset = useCallback((presetId: string, publishedBy: string = 'system') => {
+    const preset = savedPresets.find(p => p.id === presetId);
+    
+    if (!preset) {
+      console.error('Preset not found:', presetId);
+      return null;
+  }
+
+    // Create version history entry
+    const versionEntry: BrandingVersion = {
+      id: `version_${Date.now()}`,
+      presetId,
+      version: preset.version,
+      config: {
+        profession: preset.profession,
+        projectCategory: preset.category,
+        customColor: preset.customColor,
+        mode: preset.mode
+    },
+      status: preset.status === 'published' ? 'archived' : 'draft',
+      createdAt: new Date().toISOString(),
+      createdBy: publishedBy,
+      notes: `Published version ${preset.version + 1}`
+  };
+
+    const updatedHistory = [...brandingHistory, versionEntry];
+    setBrandingHistory(updatedHistory);
+
+    // Update preset to published
+    const updated = savedPresets.map(p => 
+      p.id === presetId 
+        ? { 
+            ...p, 
+            status: 'published' as const,
+            version: p.version + 1,
+            publishedAt: new Date().toISOString(),
+            publishedBy,
+            updatedAt: new Date().toISOString(),
+            changelog: [...(p.changelog || []), `Published v${p.version + 1} by ${publishedBy} at ${new Date().toLocaleString()}`]
+        }
+        : p
+    );
+    
+    setSavedPresets(updated);
+    
+    if (persist) {
+      localStorage.setItem('creatorhub_branding_presets', JSON.stringify(updated));
+      localStorage.setItem('creatorhub_branding_history', JSON.stringify(updatedHistory));
+  }
+    
+    setHasUnsavedChanges(false);
+    return updated.find(p => p.id === presetId);
+}, [savedPresets, brandingHistory, persist]);
+
+  // NEW: Enter preview mode
+  const enterPreviewMode = useCallback((presetId: string) => {
+    const preset = savedPresets.find(p => p.id === presetId);
+    
+    if (!preset) {
+      console.error('Preset not found for preview:', presetId);
+      return null;
+  }
+
+    // Mark as preview
+    const updated = savedPresets.map(p => 
+      p.id === presetId 
+        ? { 
+            ...p, 
+            status: 'preview' as const,
+            previewUrl: `/preview/${presetId}`,
+            updatedAt: new Date().toISOString(),
+            changelog: [...(p.changelog || []), `Entered preview mode at ${new Date().toLocaleString()}`]
+        }
+        : p
+    );
+    
+    setSavedPresets(updated);
+    setPreviewPresetId(presetId);
+    
+    if (persist) {
+      localStorage.setItem('creatorhub_branding_presets', JSON.stringify(updated));
+      localStorage.setItem('creatorhub_preview_preset', presetId);
+  }
+    
+    return updated.find(p => p.id === presetId);
+}, [savedPresets, persist]);
+
+  // NEW: Exit preview mode
+  const exitPreviewMode = useCallback(() => {
+    if (!previewPresetId) return;
+
+    const updated = savedPresets.map(p => 
+      p.id === previewPresetId 
+        ? { 
+            ...p, 
+            status: 'draft' as const,
+            updatedAt: new Date().toISOString(),
+            changelog: [...(p.changelog || []), `Exited preview mode at ${new Date().toLocaleString()}`]
+        }
+        : p
+    );
+    
+    setSavedPresets(updated);
+    setPreviewPresetId(null);
+    
+    if (persist) {
+      localStorage.setItem('creatorhub_branding_presets', JSON.stringify(updated));
+      localStorage.removeItem('creatorhub_preview_preset');
+  }
+}, [previewPresetId, savedPresets, persist]);
+
+  // NEW: Revert to previous version
+  const revertToVersion = useCallback((versionId: string) => {
+    const version = brandingHistory.find(v => v.id === versionId);
+    
+    if (!version) {
+      console.error('Version not found:', versionId);
+      return null;
+  }
+
+    // Create new draft from old version
+    const revertedPreset: BrandPreset = {
+      id: `preset_${Date.now()}`,
+      name: `${version.presetId} (Reverted)`,
+      description: `Reverted to version ${version.version}`,
+      profession: version.config.profession,
+      category: version.config.projectCategory,
+      customColor: version.config.customColor,
+      mode: version.config.mode,
+      status: 'draft',
+      version: 1,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      changelog: [`Reverted from version ${version.version} at ${new Date().toLocaleString()}`]
+  };
+
+    const updated = [...savedPresets, revertedPreset];
+    setSavedPresets(updated);
+    
+    if (persist) {
+      localStorage.setItem('creatorhub_branding_presets', JSON.stringify(updated));
+  }
+
+    return revertedPreset;
+}, [brandingHistory, savedPresets, persist]);
+
+  // Save preset (basic - creates draft by default)
+  const savePreset = useCallback((preset: Omit<BrandPreset, 'id' | 'createdAt' | 'updatedAt' | 'status' | 'version'>) => {
+    return saveDraft(preset);
+}, [saveDraft]);
+
+  // Load preset
+  const loadPreset = useCallback((presetId: string) => {
+    const preset = savedPresets.find(p => p.id === presetId);
+    if (preset) {
+      setActivePresetId(presetId);
+      if (persist) {
+        localStorage.setItem('creatorhub_active_preset', presetId);
+    }
+      return preset;
+  }
+    return null;
+}, [savedPresets, persist]);
+
+  // Delete preset
+  const deletePreset = useCallback((presetId: string) => {
+    const updated = savedPresets.filter(p => p.id !== presetId);
+    setSavedPresets(updated);
+    
+    if (persist) {
+      localStorage.setItem('creatorhub_branding_presets', JSON.stringify(updated));
+  }
+    
+    if (activePresetId === presetId) {
+      setActivePresetId(null);
+      if (persist) {
+        localStorage.removeItem('creatorhub_active_preset');
+    }
+  }
+}, [savedPresets, activePresetId, persist]);
+
+  // NEW: Get preset status summary
+  const getPresetStatus = useCallback((presetId: string) => {
+    const preset = savedPresets.find(p => p.id === presetId);
+    if (!preset) return null;
+
+    const versions = brandingHistory.filter(v => v.presetId === presetId);
+    
+    return {
+      preset,
+      isDraft: preset.status === 'draft',
+      isPublished: preset.status === 'published',
+      isPreview: preset.status === 'preview',
+      hasUnsavedChanges: presetId === activePresetId && hasUnsavedChanges,
+      versionCount: versions.length,
+      latestVersion: preset.version,
+      canPublish: preset.status === 'draft' || preset.status === 'preview',
+      canPreview: preset.status === 'draft',
+      publishedDate: preset.publishedAt ? new Date(preset.publishedAt) : null
+  };
+}, [savedPresets, brandingHistory, activePresetId, hasUnsavedChanges]);
+
+  // Check color contrast for accessibility
+  const checkContrast = useCallback((foreground: string, background: string): {
+    ratio: number;
+    passes: { aa: boolean; aaa: boolean };
+    recommendation: string;
+} => {
+    const hexToRgb = (hex: string) => {
+      const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+      return result ? {
+        r: parseInt(result[1], 16),
+        g: parseInt(result[2], 16),
+        b: parseInt(result[3], 16)
+    } : { r: 0, g: 0, b: 0 };
+  };
+
+    const getLuminance = (r: number, g: number, b: number) => {
+      const [rs, gs, bs] = [r, g, b].map(c => {
+        c = c / 255;
+        return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    });
+      return 0.2126 * rs + 0.7152 * gs + 0.0722 * bs;
+  };
+
+    const fg = hexToRgb(foreground);
+    const bg = hexToRgb(background);
+    
+    const l1 = getLuminance(fg.r, fg.g, fg.b);
+    const l2 = getLuminance(bg.r, bg.g, bg.b);
+    
+    const ratio = (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+    
+    return {
+      ratio: Math.round(ratio * 100) / 100,
+      passes: {
+        aa: ratio >= 4.5,
+        aaa: ratio >= 7.0
+    },
+      recommendation: ratio >= 7.0 ? 'Excellent contrast (AAA)' :
+                       ratio >= 4.5 ? 'Good contrast (AA)' :
+                       'Poor contrast - consider changing colors'
+  };
+}, []);
+
+  const branding = useMemo(() => {
+    // Determine which preset to use
+    const activePreset = previewMode && previewPresetId 
+      ? savedPresets.find(p => p.id === previewPresetId)
+      : activePresetId 
+        ? savedPresets.find(p => p.id === activePresetId)
+        : null;
+
+    // Override options with active preset if exists
+    const effectiveProfession = activePreset?.profession || profession;
+    const effectiveCategory = activePreset?.category || projectCategory;
+    const effectiveColor = activePreset?.customColor || customColor;
+    const effectiveMode = activePreset?.mode || mode;
+    const effectiveLogo = activePreset?.logo || logoFiles;
+
+    // Get profession branding if specified
+    const professionBranding = effectiveProfession 
+      ? CREATOR_HUB_BRANDING.professions[effectiveProfession]
+      : null;
+
+    // Get project category branding if specified
+    const categoryBranding = effectiveCategory
+      ? CREATOR_HUB_BRANDING.projectCategories[effectiveCategory]
+      : null;
+
+    // Determine primary branding
+    const primaryBranding = professionBranding || categoryBranding || {
+      name: 'CreatorHub Norge',
+      color: CREATOR_HUB_BRANDING.colors.PRIMARY,
+      icon: null,
+      description: 'Professional creative services',
+  };
+
+    // Validate custom color if provided
+    if (effectiveColor && validate) {
+      const isValid = CREATOR_HUB_BRANDING.helpers.validateBrandColor(effectiveColor);
+      if (!isValid) {
+        console.warn(`⚠️ Invalid brand color: ${effectiveColor}. Using default: ${primaryBranding.color}`);
+    }
+  }
+
+    // Use custom color if valid, otherwise use primary branding color
+    const finalColor = effectiveColor && (!validate || CREATOR_HUB_BRANDING.helpers.validateBrandColor(effectiveColor))
+      ? effectiveColor
+      : primaryBranding.color;
+
+    // Apply dark mode adjustments
+    const modeAdjustedColor = effectiveMode === 'dark' 
+      ? adjustColorForDarkMode(finalColor)
+      : finalColor;
+
+    // NEW: Add preview indicator
+    const displayName = previewMode && previewPresetId 
+      ? `${primaryBranding.name} (Preview)`
+      : primaryBranding.name;
+
+    return {
+      // Core branding
+      name: displayName,
+      color: modeAdjustedColor,
+      icon: primaryBranding.icon,
+      description: primaryBranding.description,
+      mode: effectiveMode,
+      
+      // NEW: Workflow status
+      isPreviewMode: previewMode && !!previewPresetId,
+      isDraft: activePreset?.status === 'draft',
+      isPublished: activePreset?.status === 'published',
+      hasUnsavedChanges,
+      currentVersion: activePreset?.version || 1,
+      
+      // NEW: Logo configuration
+      logo: effectiveLogo,
+      hasLogo: !!(effectiveLogo?.primary || effectiveLogo?.secondary),
+      uploadingLogo,
+      
+      // Brand system access
+      colors: CREATOR_HUB_BRANDING.colors,
+      typography: CREATOR_HUB_BRANDING.typography,
+      spacing: CREATOR_HUB_BRANDING.spacing,
+      shadows: CREATOR_HUB_BRANDING.shadows,
+      borderRadius: CREATOR_HUB_BRANDING.borderRadius,
+      
+      // Helper functions
+      getProfessionBranding: CREATOR_HUB_BRANDING.helpers.getProfessionBranding,
+      getProjectCategoryBranding: CREATOR_HUB_BRANDING.helpers.getProjectCategoryBranding,
+      getBrandColor: CREATOR_HUB_BRANDING.helpers.getBrandColor,
+      validateBrandColor: CREATOR_HUB_BRANDING.helpers.validateBrandColor,
+      checkBrandConsistency: CREATOR_HUB_BRANDING.helpers.checkBrandConsistency,
+      
+      // Advanced helpers
+      checkContrast,
+      savePreset,
+      saveDraft,
+      publishPreset,
+      loadPreset,
+      deletePreset,
+      enterPreviewMode,
+      exitPreviewMode,
+      revertToVersion,
+      getPresetStatus,
+      savedPresets,
+      activePresetId,
+      previewPresetId,
+      brandingHistory,
+      
+      // NEW: Logo management
+      uploadLogo,
+      updateLogoPlacement,
+      updateLogoDimensions,
+      removeLogo,
+      
+      // Style helpers
+      getIconProps: (size: number = 24) => ({
+        sx: { 
+          color: modeAdjustedColor, 
+          fontSize: size,
+          ...(previewMode && previewPresetId ? {
+            opacity: 0.85,
+            border: '2px dashed rgba(255, 1520.5)'
+        } : {})
+      }
+    }),
+      
+      // NEW: Logo rendering helper
+      getLogoProps: (placement: keyof LogoConfig['placement'] = 'navbar') => {
+        const shouldShow = effectiveLogo?.placement?.[placement] ?? false;
+        const logoUrl = effectiveMode === 'dark' && effectiveLogo?.darkMode 
+          ? effectiveLogo.darkMode 
+          : effectiveLogo?.primary;
+
+        return {
+          src: logoUrl,
+          alt: `${primaryBranding.name} Logo`,
+          style: {
+            display: shouldShow ? 'block' : 'none',
+            width: effectiveLogo?.dimensions?.width || 'auto',
+            height: effectiveLogo?.dimensions?.height || 'auto',
+            maxWidth: effectiveLogo?.dimensions?.maxWidth || '200px',
+            maxHeight: effectiveLogo?.dimensions?.maxHeight || '60px',
+            padding: effectiveLogo?.padding || '0',
+            margin: effectiveLogo?.margin || '0',
+            objectFit: 'contain' as const
+        },
+          sx: {
+            ...(previewMode && previewPresetId ? {
+              border: '2px dashed rgba(255, 1520.5)',
+              padding: 1
+          } : {})
+        }
+      };
+    },
+      getTextProps: (variant: 'primary' | 'secondary' | 'accent' = 'primary') => ({
+        sx: {
+          color: variant === 'primary' ? modeAdjustedColor : 
+                variant === 'secondary' ? CREATOR_HUB_BRANDING.colors.GRAY_600 :
+                CREATOR_HUB_BRANDING.colors.PRIMARY,
+          fontFamily: CREATOR_HUB_BRANDING.typography.fontFamily.primary,
+          // NEW: Preview mode indicator
+          ...(previewMode && previewPresetId ? {
+            '&::after': {
+              content: '" (PREVIEW)"',
+              fontSize: '0.7em',
+              opacity: 0.6,
+              marginLeft: '4px'
+            }
+          } : {})
+      }
+    }),
+      getButtonProps: (variant: 'contained' | 'outlined' | 'text' = 'contained') => ({
+        sx: {
+          backgroundColor: variant === 'contained' ? modeAdjustedColor : 'transparent',
+          color: variant === 'contained' ? CREATOR_HUB_BRANDING.colors.WHITE : modeAdjustedColor,
+          borderColor: modeAdjustedColor,
+          '&:hover': {
+            backgroundColor: variant === 'contained' ? `${modeAdjustedColor}dd` : `${modeAdjustedColor}15`,
+            borderColor: modeAdjustedColor,
+        },
+          // NEW: Preview mode indicator
+          ...(previewMode && previewPresetId ? {
+            border: '2px dashed rgba(255, 1520.5)',
+            position: 'relative','&::before': {
+              content: '"PREVIEW"',
+              position: 'absolute',
+              top: -10,
+              right: -10,
+              bgcolor: 'warning.main',
+              color: 'white',
+              fontSize: 10,
+              padding: '2px 6px',
+              borderRadius: 1,
+              fontWeight: 60
+          }
+        } : {})
+      }
+    }),
+      getCardProps: () => ({
+        sx: {
+          border: `1px solid ${modeAdjustedColor}20`,
+          boxShadow: CREATOR_HUB_BRANDING.shadows.md,
+          borderRadius: CREATOR_HUB_BRANDING.borderRadius.lg,
+          bgcolor: effectiveMode === 'dark' ? 'rgba(255,255,255,0.05)' : 'white',
+          // NEW: Preview mode indicator
+          ...(previewMode && previewPresetId ? {
+            border: `2px dashed ${modeAdjustedColor}`,
+            '&::before': {
+              content: ', "PREVIEW MODE"',
+              display: 'block',
+              bgcolor: 'warning.light',
+              color: 'warning.dark',
+              padding: '4px 8px',
+              marginBottom: 2,
+              borderRadius: 1,
+              fontSize: 12,
+              fontWeight: 600,
+              textAlign: 'center'
+          }
+        } : {})
+      }
+    }),
+      
+      // Export current config
+      exportConfig: () => ({
+        profession: effectiveProfession,
+        projectCategory: effectiveCategory,
+        customColor: effectiveColor,
+        mode: effectiveMode,
+        logo: effectiveLogo,
+        previewMode,
+        timestamp: new Date().toISOString(),
+        version: '2.1.0',
+        status: activePreset?.status || 'draft'
+    }),
+      
+      // Get CSS variables for theming
+      getCSSVariables: () => ({
+        '--brand-primary': modeAdjustedColor,
+        '--brand-secondary': CREATOR_HUB_BRANDING.colors.SECONDARY,
+        '--brand-background': effectiveMode === 'dark' ? '#1a1a1a' : '#ffffff','--brand-text': effectiveMode === 'dark' ? '#ffffff' : '#212121','--brand-border': effectiveMode === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)','--brand-shadow': effectiveMode === 'dark' ? '0 4px 6px rgba(0,0,0,0.5)' : CREATOR_HUB_BRANDING.shadows.md,
+        '--brand-font-primary': CREATOR_HUB_BRANDING.typography.fontFamily.primary,
+        '--brand-spacing-sm': CREATOR_HUB_BRANDING.spacing.sm,
+        '--brand-spacing-md': CREATOR_HUB_BRANDING.spacing.md,
+        '--brand-spacing-lg': CREATOR_HUB_BRANDING.spacing.lg,
+        '--brand-radius-sm': CREATOR_HUB_BRANDING.borderRadius.sm,
+        '--brand-radius-md': CREATOR_HUB_BRANDING.borderRadius.md,
+        '--brand-radius-lg': CREATOR_HUB_BRANDING.borderRadius.lg,
+        // NEW: Preview mode indicator
+        '--brand-preview-mode': previewMode && previewPresetId ? '1' : '0',
+        // NEW: Logo URLs
+        '--brand-logo-primary': effectiveLogo?.primary || ', ','--brand-logo-secondary': effectiveLogo?.secondary || ', ','--brand-logo-favicon': effectiveLogo?.favicon || ', ','--brand-logo-dark': effectiveLogo?.darkMode || ', ',
+    }),
+  };
+}, [
+    profession, 
+    projectCategory, 
+    customColor, 
+    validate, 
+    mode, 
+    previewMode,
+    savedPresets, 
+    activePresetId,
+    previewPresetId,
+    brandingHistory,
+    hasUnsavedChanges,
+    logoFiles,
+    uploadingLogo,
+    checkContrast, 
+    savePreset, 
+    saveDraft,
+    publishPreset,
+    loadPreset, 
+    deletePreset,
+    enterPreviewMode,
+    exitPreviewMode,
+    revertToVersion,
+    getPresetStatus,
+    uploadLogo,
+    updateLogoPlacement,
+    updateLogoDimensions,
+    removeLogo
+  ]);
+
+  // Apply CSS variables to document
+  useEffect(() => {
+    if (persist) {
+      const cssVars = branding.getCSSVariables();
+      Object.entries(cssVars).forEach(([key, value]) => {
+        document.documentElement.style.setProperty(key, value as string);
+    });
+
+      // NEW: Add preview mode class to body
+      if (previewMode && previewPresetId) {
+        document.body.classList.add('branding-preview-mode');
+    } else {
+        document.body.classList.remove('branding-preview-mode');
+    }
+  }
+
+    return () => {
+      if (previewMode && previewPresetId) {
+        document.body.classList.remove('branding-preview-mode');
+    }
+  };
+}, [branding, persist, previewMode, previewPresetId]);
+
+  return branding;
+}
+
+// Helper: Adjust color brightness for dark mode
+function adjustColorForDarkMode(color: string): string {
+  const hexToRgb = (hex: string) => {
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    return result ? {
+      r: parseInt(result[1], 16),
+      g: parseInt(result[2], 16),
+      b: parseInt(result[3], 16)
+  } : { r: 0, g: 0, b: 0 };
+};
+
+  const rgbToHex = (r: number, g: number, b: number) => {
+    return '#' + [r, g, b].map(x => {
+      const hex = Math.round(x).toString(16);
+      return hex.length === 1 ? '0' + hex : hex;
+  }).join('');
+};
+
+  const rgb = hexToRgb(color);
+  const lighten = (value: number) => Math.min(255, value + (255 - value) * 0.3);
+  
+  return rgbToHex(lighten(rgb.r), lighten(rgb.g), lighten(rgb.b));
+}
+
+// Convenience hooks for specific use cases
+export function usePhotographyBranding(options?: Omit<UseBrandingOptions, 'profession'>) {
+  return useCreatorHubBranding({ ...options, profession: 'photographer' });
+}
+
+export function useVideographyBranding(options?: Omit<UseBrandingOptions, 'profession'>) {
+  return useCreatorHubBranding({ ...options, profession: 'videographer' });
+}
+
+export function useMusicBranding(options?: Omit<UseBrandingOptions, 'profession'>) {
+  return useCreatorHubBranding({ ...options, profession: 'music_producer' });
+}
+
+export function useCorporateBranding(options?: Omit<UseBrandingOptions, 'profession'>) {
+  return useCreatorHubBranding({ ...options, profession: 'vendor' });
+}
+
+export function useWeddingBranding(options?: Omit<UseBrandingOptions, 'projectCategory'>) {
+  return useCreatorHubBranding({ ...options, projectCategory: 'wedding' });
+}
+
+// Dark mode branding hook
+export function useDarkModeBranding(profession?: ProfessionType) {
+  return useCreatorHubBranding({ profession, mode: 'dark', persist: true });
+}
+
+// Brand enforcement hook for development
+export function useBrandEnforcement(componentName: string) {
+  return {
+    enforceColor: (expectedColor: string, actualColor: string) => {
+      if (actualColor !== expectedColor) {
+        console.error(`🚨 Brand Violation in ${componentName}: Expected ${expectedColor}, got ${actualColor}`);
+        return expectedColor;
+    }
+      return actualColor;
+  },
+    enforceIcon: (expectedIcon: any, actualIcon: any) => {
+      if (actualIcon !== expectedIcon) {
+        console.error(`🚨 Brand Violation in ${componentName}: Icon mismatch`);
+        return expectedIcon;
+    }
+      return actualIcon;
+  },
+    enforceTypography: (expectedFont: string, actualFont: string) => {
+      if (actualFont !== expectedFont) {
+        console.error(`🚨 Brand Violation in ${componentName}: Expected font ${expectedFont}, got ${actualFont}`);
+        return expectedFont;
+    }
+      return actualFont;
+  },
+    validateAccessibility: (foreground: string, background: string, minRatio: number = 4.5) => {
+      const branding = useCreatorHubBranding();
+      const contrast = branding.checkContrast(foreground, background);
+      
+      if (contrast.ratio < minRatio) {
+        console.warn(`⚠️ Accessibility Issue in ${componentName}: Contrast ratio ${contrast.ratio} is below ${minRatio}`);
+        return false;
+    }
+      
+      return true;
+  }
+};
+}
+
+// Multi-brand hook for organizations with multiple brands
+export function useMultiBranding() {
+  const [brands, setBrands] = useState<Record<string, any>>({});
+  const [activeBrand, setActiveBrand] = useState<string>('default');
+
+  const addBrand = useCallback((brandId: string, options: UseBrandingOptions) => {
+    const branding = useCreatorHubBranding(options);
+    setBrands(prev => ({ ...prev, [brandId]: branding }));
+}, []);
+
+  const switchBrand = useCallback((brandId: string) => {
+    if (brands[brandId]) {
+      setActiveBrand(brandId);
+      return true;
+  }
+    return false;
+}, [brands]);
+
+  return {
+    brands,
+    activeBrand: brands[activeBrand],
+    addBrand,
+    switchBrand,
+    removeBrand: (brandId: string) => {
+      setBrands(prev => {
+        const updated = { ...prev };
+        delete updated[brandId];
+        return updated;
+    });
+  }
+};
+}
+
+// Brand animation hook for smooth transitions
+export function useBrandTransition(duration: number = 300) {
+  const [isTransitioning, setIsTransitioning] = useState(false);
+
+  const transitionBrand = useCallback((fromColor: string, toColor: string, onComplete?: () => void) => {
+    setIsTransitioning(true);
+    
+    document.documentElement.style.setProperty('--brand-transition', `all ${duration}ms cubic-bezier(0.40.2, 1)`);
+    
+    setTimeout(() => {
+      setIsTransitioning(false);
+      onComplete?.();
+  }, duration);
+}, [duration]);
+
+  return {
+    isTransitioning,
+    transitionBrand
+};
+}
+
+// NEW: Hook for managing branding workflows
+export function useBrandingWorkflow() {
+  const branding = useCreatorHubBranding({ persist: true });
+  const [workflowState, setWorkflowState] = useState<'idle' | 'editing' | 'previewing' |'publishing'>('idle');
+
+  const startEditing = useCallback(() => {
+    setWorkflowState('editing');
+}, []);
+
+  const startPreview = useCallback((presetId: string) => {
+    branding.enterPreviewMode(presetId);
+    setWorkflowState('previewing');
+}, [branding]);
+
+  const publish = useCallback((presetId: string, publishedBy: string) => {
+    setWorkflowState('publishing');
+    const result = branding.publishPreset(presetId, publishedBy);
+    setWorkflowState('idle');
+    return result;
+}, [branding]);
+
+  const cancelEdit = useCallback(() => {
+    if (branding.isPreviewMode) {
+      branding.exitPreviewMode();
+  }
+    setWorkflowState('idle');
+}, [branding]);
+
+  return {
+    branding,
+    workflowState,
+    startEditing,
+    startPreview,
+    publish,
+    cancelEdit,
+    canPublish: branding.isDraft || branding.isPreviewMode,
+    canPreview: branding.isDraft,
+    hasUnsavedChanges: branding.hasUnsavedChanges
+};
+}

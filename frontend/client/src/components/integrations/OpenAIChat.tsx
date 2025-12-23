@@ -1,0 +1,186 @@
+/**
+ * OpenAIChat Component - Auto-generated
+ * Generated: 2025-10-07T12:00:00.000Z
+ * 
+ * This component was automatically created to demonstrate openai API usage.
+ * Customize as needed for your application.
+ */
+
+import React, { useState } from 'react';
+import { 
+  Box, 
+  Card, 
+  CardContent, 
+  Typography, 
+  Button, 
+  TextField, 
+  CircularProgress,
+  Paper,
+  Avatar,
+  Chip
+} from '@mui/material';
+import { 
+  Send as SendIcon,
+  SmartToy as AIIcon,
+  Person as PersonIcon
+} from '@mui/icons-material';
+import useOpenAIApi from '@/hooks/useOpenAIApi';
+
+interface Message {
+  role: 'system' | 'user' | 'assistant';
+  content: string;
+}
+
+export const OpenAIChat: React.FC = () => {
+  const { chat, isChatting } = useOpenAIApi();
+  const [input, setInput] = useState('');
+  const [messages, setMessages] = useState<Message[]>([
+    { role: 'system', content: 'You are a helpful assistant for CreatorHub Norge.' }
+  ]);
+
+  const handleSend = () => {
+    if (!input.trim()) return;
+
+    const userMessage: Message = { role: 'user', content: input };
+    const newMessages = [...messages, userMessage];
+    setMessages(newMessages);
+    setInput(', ');
+
+    chat({ 
+      messages: newMessages,
+      model: 'gpt-4'
+  }, {
+      onSuccess: (data: any) => {
+        const assistantMessage: Message = {
+          role: 'assistant',
+          content: data.data?.choices?.[0]?.message?.content || 'No response'
+      };
+        setMessages([...newMessages, assistantMessage]);
+    },
+      onError: (error: any) => {
+        console.error('Chat error: ', error);
+        const errorMessage: Message = {
+          role: 'assistant',
+          content: `Error: ${error.message || 'Failed to get response'}`
+      };
+        setMessages([...newMessages, errorMessage]);
+    }
+  });
+};
+
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+  }
+};
+
+  return (
+    <Card sx={{ maxWidth: 800, mx: 'auto', mt: 2 }}>
+      <CardContent>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 3 }}>
+          <AIIcon sx={{ fontSize: 32, color: 'primary.main' }} />
+          <Typography variant="h5" component="h2">
+            OpenAI Chat
+          </Typography>
+          <Chip 
+            label="Auto-generated" 
+            size="small" 
+            color="success" 
+            sx={{ ml: 'auto' }}
+          />
+        </Box>
+
+        {/* Chat Messages */}
+        <Paper 
+          sx={{ 
+            p: 2, 
+            mb: 2, 
+            maxHeight: 400, 
+            overflowY: 'auto',
+            bgcolor: 'grey.50'
+        }}
+        >
+          {messages
+            .filter(msg => msg.role !== 'system')
+            .map((msg, i) => (
+              <Box 
+                key={i} 
+                sx={{ 
+                  display: 'flex', 
+                  gap: 1, 
+                  mb: 2,
+                  flexDirection: msg.role === 'user' ? 'row-reverse' : 'row'
+              }}
+              >
+                <Avatar 
+                  sx={{ 
+                    bgcolor: msg.role === 'user' ? 'primary.main' : 'secondary.main',
+                    width: 32,
+                    height: 32
+                }}
+                >
+                  {msg.role === 'user' ? <PersonIcon /> : <AIIcon />}
+                </Avatar>
+                <Paper 
+                  sx={{ 
+                    p: 1.5, 
+                    maxWidth: '70%',
+                    bgcolor: msg.role === 'user' ? 'primary.light' : 'white'
+                }}
+                >
+                  <Typography 
+                    variant="body2"
+                    sx={{ 
+                      color: msg.role === 'user' ? 'primary.contrastText' : 'text.primary'
+                  }}
+                  >
+                    {msg.content}
+                  </Typography>
+                </Paper>
+              </Box>
+            ))}
+
+          {isChatting && (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <CircularProgress size={20} />
+              <Typography variant="caption" color="text.secondary">
+                AI is thinking...
+              </Typography>
+            </Box>
+          )}
+        </Paper>
+
+        {/* Input Area */}
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          <TextField
+            fullWidth
+            multiline
+            maxRows={3}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyPress}
+            placeholder="Type your message... (Enter to send, Shift+Enter for new line)"
+            disabled={isChatting}
+          />
+          <Button
+            variant="contained"
+            onClick={handleSend}
+            disabled={isChatting || !input.trim()}
+            endIcon={isChatting ? <CircularProgress size={20} /> : <SendIcon />}
+          >
+            Send
+          </Button>
+        </Box>
+
+        {/* Info */}
+        <Typography variant="caption" color="text.secondary" sx={{ display:'block', mt: 1 }}>
+          💡 This component was auto-generated when you added your OpenAI API key!
+        </Typography>
+      </CardContent>
+    </Card>
+  );
+};
+
+export default OpenAIChat;
+

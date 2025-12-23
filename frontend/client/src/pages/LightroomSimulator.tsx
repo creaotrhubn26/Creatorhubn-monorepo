@@ -1,0 +1,464 @@
+import { useTheming } from '../utils/theming-helper';
+import React, { useState, useEffect } from 'react';
+import {
+  Box,
+  Container,
+  Typography,
+  Card,
+  CardContent,
+  Button,
+  Grid,
+  Chip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  LinearProgress,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemIcon,
+  Alert,
+  Divider,
+  Paper,
+} from '@mui/material';
+import { PhotographyIcon } from '../components/shared/CreatorHubIcons';
+import { 
+  PhotoLibrary,
+  CloudUpload,
+  CheckCircle,
+  Info,
+  Settings,
+  Sync,
+  Collections,
+  Publish,
+  Google, 
+} from '@mui/icons-material';
+import { CREATOR_HUB_BRANDING } from '../constants/CreatorHubBranding';
+
+interface PhotoMetadata {
+  filename: string;
+  rating: number;
+  title: string;
+  caption: string;
+  camera: string;
+  lens: string;
+  iso: number;
+  aperture: string;
+  shutterSpeed: string;
+  dateTime: string; 
+}
+
+interface SimulatedPhoto {
+  id: string;
+  metadata: PhotoMetadata;
+  uploadStatus: 'pending' | 'uploading' | 'completed' | 'error';
+  showcaseUrl?: string
+}
+
+const LightroomSimulator: React.FC = () => {
+  const [isConnected, setIsConnected] = useState(false);
+  
+  // Theming system
+  const theming = useTheming('photographer');
+  const [showAuthDialog, setShowAuthDialog] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [isUploading, setIsUploading] = useState(false);
+  const [photos, setPhotos] = useState<SimulatedPhoto[]>([]);
+  const [selectedCollection, setSelectedCollection] = useState('Bryllup - Lars & Maria');
+
+  // Simulerte Lightroom bilder
+  const simulatedPhotos: PhotoMetadata[] = [
+    {
+      filename: 'IMG_8421.CR',
+      rating:  5,
+      title: 'Brudepar ved kirken',
+      caption: 'Romantisk portrett av brudeparet utenfor Holmenkollen kapell',
+      camera: 'Canon R5 Mark I',
+      lens: 'RF 85mm f/1.2L US',
+      iso: 40,
+      aperture: 'f/1.',
+      shutterSpeed: '1/25',
+      dateTime: '2025-08-08 14:30:0',
+  },
+    {
+      filename: 'IMG_8422.CR',
+      rating:  4,
+      title: 'Vielsesseremoni',
+      caption: 'Brudens far følger henne opp midtgangen',
+      camera: 'Canon R5 Mark I',
+      lens: 'RF 24-70mm f/2.8L IS US',
+      iso: 80,
+      aperture: 'f/2.',
+      shutterSpeed: '1/12',
+      dateTime: '2025-08-08 15:15:0',
+  },
+    {
+      filename: 'IMG_8423.CR',
+      rating:  5,
+      title: 'Ringeveksling',
+      caption: 'Det magiske øyeblikket når ringene veksles',
+      camera: 'Canon R5 Mark I',
+      lens: 'RF 85mm f/1.2L US',
+      iso: 120,
+      aperture: 'f/2.',
+      shutterSpeed: '1/16',
+      dateTime: '2025-08-08 15:45:0',
+  },
+  ];
+
+  const handleGoogleAuth = () => {
+    setShowAuthDialog(true);
+
+    // Direkte testing autentisering uten API kall
+    setTimeout(() => {
+      setIsConnected(true);
+      setShowAuthDialog(false);
+
+      // Laster inn bilder for testing
+      const simulatedPhotoObjects = simulatedPhotos.map((metadata, index) => ({
+        id: `photo_${index + 1}`,
+        metadata,
+        uploadStatus: 'pending' as const,
+    }));
+      setPhotos(simulatedPhotoObjects);
+
+      console.log('✅ Lightroom plugin klar for testing');
+  }, 2000);
+};
+
+  const handlePublishToShowcase = async () => {
+    setIsUploading(true);
+    setUploadProgress(0);
+
+    for (let i = 0; i < photos.length; i++) {
+      const photo = photos[i];
+
+      // Marker som uploading
+      setPhotos((prev) =>
+        prev.map((p) => (p.id === photo.id ? { ...p, uploadStatus: 'uploading',} : p)),
+      );
+
+      try {
+        // Faktisk API kall for å "uploade" foto metadata
+        const uploadData = {
+          metadata: {
+            ...photo.metadata,
+            creatorhubMetadata: {
+              plugin: 'lightroom',
+              version: '1.0.0',
+              syncedAt: new Date().toISOString(),
+              collection: selectedCollection,
+          },
+        },
+          settings: {
+            quality: 95,
+            generateXMP: true,
+            includeMetadata: true,
+        },
+      };
+
+        const response = await fetch('/api/gallery/upload', {
+          method: 'POS',
+          headers: {
+            'Content-Type' : 'application/json',
+            Authorization: 'Bearer test-api-key',
+        },
+          body: JSON.stringify(uploadData),
+      });
+
+        const result = await response.json();
+
+        if (result.success) {
+          // Marker som komplett med faktisk URL fra backend
+          setPhotos((prev) =>
+            prev.map((p) =>
+              p.id === photo.id
+                ? {
+                    ...p,
+                    uploadStatus: 'completed',
+                    showcaseUrl: result.photoUl,
+                }
+                : p,
+            ),
+          );
+
+          console.log('✅ Photo uploaded: ', result.photoId);
+      } else {
+          throw new Error(result.error || 'Upload failed');
+      }
+    } catch (error) {
+        console.error('❌ Upload error:', error);
+        setPhotos((prev) =>
+          prev.map((p) => (p.id === photo.id ? { ...p, uploadStatus: 'error',} : p)),
+        );
+    }
+
+      setUploadProgress(((i + 1) / photos.length) * 100);
+
+      // Pause mellom uploads
+      await new Promise((resolve) => setTimeout(resolve, 800));
+  }
+
+    setIsUploading(false);
+};
+
+  return (
+    <Container maxWidth="lg" sx={{ py: 4 }}>
+      <Typography variant="h4" gutterBottom sx={{ color: theming.colors.primary, fontWeight: 'bold' }}>
+        🎯 CreatorHub Norge - Lightroom Plugin Simulator
+      </Typography>
+
+      <Typography variant="subtitle1" gutterBottom sx={{ mb: 4 }}>
+        Test av komplett Lightroom integrasjon med showcase publisering
+      </Typography>
+
+      <Grid container spacing={3}>
+        {/* Plugin Status */}
+        <Grid item xs={12} md={4}>
+          <Card sx={theming.getThemedCardSx()}>
+            <CardContent sx={theming.getThemedCardSx()}>
+              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                <Settings sx={{ mr: 1, verticalAlign: 'middle',}} />
+                Plugin Status
+              </Typography>
+
+              {isConnected ? (
+                <Alert severity="success" sx={{ mb:  2 }}>
+                  <Typography variant="body2">
+                    Tilkoblet CreatorHub Norge via Google OAuth
+                  </Typography>
+                </Alert>
+              ) : (
+                <Alert severity="warning" sx={{ mb:  2 }}>
+                  <Typography variant="body2">
+                    Ikke tilkoblet - krever Google autentisering
+                  </Typography>
+                </Alert>
+              )}
+
+              <List dense>
+                <ListItem>
+                  <ListItemIcon>
+                    <CheckCircle color={isConnected ? 'success' : 'disabled'} />
+                  </ListItemIcon>
+                  <ListItemText primary="Google OAuth" />
+                </ListItem>
+                <ListItem>
+                  <ListItemIcon>
+                    <CheckCircle color={isConnected ? 'success' : 'disabled'} />
+                  </ListItemIcon>
+                  <ListItemText primary="Showcase tilgang" />
+                </ListItem>
+                <ListItem>
+                  <ListItemIcon>
+                    <CheckCircle color={isConnected ? 'success' : 'disabled'} />
+                  </ListItemIcon>
+                  <ListItemText primary="Metadata synkronisering" />
+                </ListItem>
+              </List>
+
+              {!isConnected && (
+                <Button variant="contained"
+                  startIcon={<Google />}
+                  onClick={handleGoogleAuth}
+                  sx={{
+                    mt:  2,
+                    background: `linear-gradient(45deg, ${CREATOR_HUB_BRANDING.colors.PHOTOGRAPHY}, #ffa500)`, '&:hover': {
+                      background: `linear-gradient(45deg, #e67300, ${CREATOR_HUB_BRANDING.colors.PHOTOGRAPHY})`,
+                  },
+                }}
+                  fullWidth
+                >
+                  Logg inn med Google
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* Collection Info */}
+        <Grid item xs={12} md={8}>
+          <Card sx={theming.getThemedCardSx()}>
+            <CardContent sx={theming.getThemedCardSx()}>
+              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                <Collections sx={{ mr: 1, verticalAlign: 'middle',}} />
+                Lightroom Collection: {selectedCollection}
+              </Typography>
+
+              <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
+                <Chip label={`${photos.length} bilder`} color="primary" size="small" />
+                <Chip label="Canon R5 Mark II" color="secondary" size="small" />
+                <Chip label="Bryllupsfotografering" color="default" size="small" />
+              </Box>
+
+              {isConnected && photos.length > 0 && (
+                <Button variant="contained"
+                  startIcon={<Publish />}
+                  onClick={handlePublishToShowcase}
+                  disabled={isUploading}
+                  sx={{
+                    background: `linear-gradient(45deg, ${CREATOR_HUB_BRANDING.colors.PHOTOGRAPHY}, #ffa500)`, '&:hover': {
+                      background: `linear-gradient(45deg, #e67300, ${CREATOR_HUB_BRANDING.colors.PHOTOGRAPHY})`
+                    }
+                  }}
+                >
+                  Publiser til CreatorHub Showcase
+                </Button>
+              )}
+
+              {isUploading && (
+                <Box sx={{ mt:  2 }}>
+                  <Typography variant="body2" gutterBottom>
+                    Publiserer bilder til showcase... {Math.round(uploadProgress)}%
+                  </Typography>
+                  <LinearProgress
+                    variant="determinate"
+                    value={uploadProgress}
+                    sx={{ height:  8, borderRadius:  4 }}
+                  />
+                </Box>
+              )}
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* Photos List */}
+        {isConnected && photos.length > 0 && (
+          <Grid item xs={12}>
+            <Card sx={theming.getThemedCardSx()}>
+              <CardContent sx={theming.getThemedCardSx()}>
+                <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                  <PhotoLibrary sx={{ mr: 1, verticalAlign: 'middle',}} />
+                  Lightroom Photos i Collection
+                </Typography>
+
+                <Grid container spacing={2}>
+                  {photos.map((photo) => (
+                    <Grid item xs={12} md={4} key={photo.id}>
+                      <Paper
+                        elevation={2}
+                        sx={{
+                          ...theming.getThemedCardSx(),
+                          p: 2,
+                          border: photo.uploadStatus === 'completed'
+                              ? '2px solid #4caf50'
+                              : photo.uploadStatus === 'uploading'
+                                ? `2px solid ${CREATOR_HUB_BRANDING.colors.PHOTOGRAPHY}`
+                                : '1px solid #e0e0e0',
+                        }}
+                      >
+                        <Box
+                          sx={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            mb: 1,
+                          }}
+                        >
+                          <Typography variant="subtitle2" noWrap>
+                            {photo.metadata.filename}
+                          </Typography>
+                          <Chip
+                            label={
+                              photo.uploadStatus === 'completed'
+                                ? 'Publisert'
+                                : photo.uploadStatus === 'uploading'
+                                  ? 'Laster opp...'
+                                  : photo.uploadStatus === 'error'
+                                    ? 'Feil'
+                                    : 'Klar'
+                          }
+                            color={
+                              photo.uploadStatus === 'completed'
+                                ? 'success'
+                                : photo.uploadStatus === 'uploading'
+                                  ? 'warning'
+                                  : photo.uploadStatus === 'error'
+                                    ? 'error': 'default'
+                          }
+                            size="small"
+                          />
+                        </Box>
+
+                        <Typography variant="body2" sx={{ fontWeight: 'bold', mb:  1 }}>
+                          {photo.metadata.title}
+                        </Typography>
+
+                        <Typography
+                          variant="caption"
+                          color="text.secondary"
+                          sx={{ mb: 1, display: 'block',}}
+                        >
+                          {photo.metadata.caption}
+                        </Typography>
+
+                        <Divider sx={{ my:  1 }} />
+
+                        <Box
+                          sx={{
+                            display: 'flex',
+                            flexWrap: 'wrap',
+                            gap: 0.5,
+                            mb:  1,
+                        }}
+                        >
+                          <Chip label={`⭐ ${photo.metadata.rating}`} size="small" />
+                          <Chip label={photo.metadata.camera} size="small" />
+                          <Chip label={`ISO ${photo.metadata.iso}`} size="small" />
+                          <Chip label={photo.metadata.aperture} size="small" />
+                        </Box>
+
+                        {photo.showcaseUrl && (
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            href={photo.showcaseUrl}
+                            target="_blank"
+                            sx={{ mt:  1 }}
+                            fullWidth
+                          >
+                            Vis i Showcase
+                          </Button>
+                        )}
+                      </Paper>
+                    </Grid>
+                  ))}
+                </Grid>
+              </CardContent>
+            </Card>
+          </Grid>
+        )}
+      </Grid>
+
+      {/* Google Auth Dialog */}
+      <Dialog open={showAuthDialog} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          <Google sx={{ mr: 1, verticalAlign:'middle',}} />
+          Google OAuth Autentisering
+        </DialogTitle>
+        <DialogContent>
+          <Alert severity="info" sx={{ mb:  2 }}>
+            Simulerer Google OAuth login prosess...
+          </Alert>
+
+          <Typography variant="body2" gutterBottom>
+            1. Åpner Google OAuth i nettleser
+          </Typography>
+          <Typography variant="body2" gutterBottom>
+            2. Bruker logger inn med Google konto
+          </Typography>
+          <Typography variant="body2" gutterBottom>
+            3. Autoriserer CreatorHub Norge tilgang
+          </Typography>
+          <Typography variant="body2" gutterBottom>
+            4. Kobler plugin til showcase område
+          </Typography>
+
+          <LinearProgress sx={{ mt:  2 }} />
+        </DialogContent>
+      </Dialog>
+    </Container>
+  );
+};
+
+export default LightroomSimulator;

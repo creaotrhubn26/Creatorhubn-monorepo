@@ -1,0 +1,526 @@
+/**
+ * CreatorHub Norge - Memory Card Price Sources
+ * Integration with real-time pricing data from multiple sources
+ */
+
+export interface PriceSource {
+  id: string;
+  name: string;
+  country: 'NO' | 'SE' | 'DK' | 'US' | 'EU';
+  currency: 'NOK' | 'SEK' | 'DKK' | 'USD' | 'EUR';
+  website: string;
+  apiEndpoint?: string;
+  reliability: 'high' | 'medium' | 'low';
+  updateFrequency: 'real-time' | 'hourly' | 'daily' | 'weekly';
+  coverage: string[];
+  description: string;
+  logo?: string, ;, 
+}
+
+export interface PriceData {
+  source: string;
+  cardType: string;
+  capacity: string;
+  price: number;
+  currency: string;
+  lastUpdated: string;
+  availability: 'in-stock' | 'limited' | 'out-of-stock';
+  url?: string;
+  shipping?: number;
+  totalPrice?: number, ;, 
+}
+
+export interface PriceComparison {
+  cardType: string;
+  capacity: string;
+  prices: PriceData[];
+  averagePrice: number;
+  lowestPrice: PriceData;
+  highestPrice: PriceData;
+  priceRange: number;
+  currency: string, ;, 
+}
+
+// Price Sources Database
+export const PRICE_SOURCES: PriceSource[] = [
+  // Norwegian Sources
+  {
+    id: 'komplett-no',
+    name: 'Komplett.no',
+    country: 'N',
+    currency: 'NO',
+    website: 'https://www.komplett.no',
+    reliability: 'high',
+    updateFrequency: 'daily',
+    coverage: ['S','SDHC','SDXC','CF','XQD','CFexpress','microSD'],
+    description: 'Norway\'s largest electronics retailer with comprehensive memory card selection'
+,},
+  {
+    id: 'elkjop-no',
+    name: 'Elkjø',
+    country: 'N',
+    currency: 'NO',
+    website: 'https://www.elkjop.no',
+    reliability: 'high',
+    updateFrequency: 'daily',
+    coverage: ['S','SDHC','SDXC','CF','microSD'],
+    description: 'Major Norwegian electronics chain with competitive pricing'
+,},
+  {
+    id: 'power-no',
+    name: 'Power',
+    country: 'N',
+    currency: 'NO',
+    website: 'https://www.power.no',
+    reliability: 'high',
+    updateFrequency: 'daily',
+    coverage: ['S','SDHC','SDXC','CF','microSD'],
+    description: 'Norwegian electronics retailer with good memory card selection'
+,},
+  {
+    id: 'foto-video-no',
+    name: 'Foto & Video',
+    country: 'N',
+    currency: 'NO',
+    website: 'https://www.fotovideo.no',
+    reliability: 'high',
+    updateFrequency: 'daily',
+    coverage: ['S','SDHC','SDXC','CF','XQD','CFexpress'],
+    description: 'Specialized photography equipment retailer in Norway'
+,},
+  {
+    id: 'fotokilden-no',
+    name: 'Fotokilden',
+    country: 'N',
+    currency: 'NO',
+    website: 'https://www.fotokilden.no',
+    reliability: 'high',
+    updateFrequency: 'daily',
+    coverage: ['S','SDHC','SDXC','CF','XQD','CFexpress'],
+    description: 'Professional photography equipment specialist'
+,},
+
+  // Swedish Sources
+  {
+    id: 'webhallen-se',
+    name: 'Webhallen',
+    country: 'S',
+    currency: 'SE',
+    website: 'https://www.webhallen.se',
+    reliability: 'high',
+    updateFrequency: 'daily',
+    coverage: ['S','SDHC','SDXC','CF','XQD','CFexpress','microSD'],
+    description: 'Sweden\'s leading electronics retailer'
+,},
+  {
+    id: 'elgiganten-se',
+    name: 'Elgiganten',
+    country: 'S',
+    currency: 'SE',
+    website: 'https://www.elgiganten.se',
+    reliability: 'high',
+    updateFrequency: 'daily',
+    coverage: ['S','SDHC','SDXC','CF','microSD'],
+    description: 'Major Swedish electronics chain'
+,},
+  {
+    id: 'foto-video-se',
+    name: 'Foto & Video',
+    country: 'S',
+    currency: 'SE',
+    website: 'https://www.fotovideo.se',
+    reliability: 'high',
+    updateFrequency: 'daily',
+    coverage: ['S','SDHC','SDXC','CF','XQD','CFexpress'],
+    description: 'Swedish photography equipment specialist'
+,},
+
+  // Danish Sources
+  {
+    id: 'elgiganten-dk',
+    name: 'Elgiganten',
+    country: 'D',
+    currency: 'DK',
+    website: 'https://www.elgiganten.dk',
+    reliability: 'high',
+    updateFrequency: 'daily',
+    coverage: ['S','SDHC','SDXC','CF','microSD'],
+    description: 'Major Danish electronics chain'
+,},
+  {
+    id: 'power-dk',
+    name: 'Power',
+    country: 'D',
+    currency: 'DK',
+    website: 'https://www.power.dk',
+    reliability: 'high',
+    updateFrequency: 'daily',
+    coverage: ['S','SDHC','SDXC','CF','microSD'],
+    description: 'Danish electronics retailer'
+,},
+  {
+    id: 'foto-video-dk',
+    name: 'Foto & Video',
+    country: 'D',
+    currency: 'DK',
+    website: 'https://www.fotovideo.dk',
+    reliability: 'high',
+    updateFrequency: 'daily',
+    coverage: ['S','SDHC','SDXC','CF','XQD','CFexpress'],
+    description: 'Danish photography equipment specialist'
+,},
+
+  // International Sources
+  {
+    id: 'amazon-com',
+    name: 'Amazon.com',
+    country: 'U',
+    currency: 'US',
+    website: 'https://www.amazon.com',
+    apiEndpoint: 'https://api.amazon.com/products',
+    reliability: 'high',
+    updateFrequency: 'real-time',
+    coverage: ['S','SDHC','SDXC','CF','XQD','CFexpress','microSD'],
+    description: 'Global marketplace with extensive memory card selection'
+,},
+  {
+    id: 'bhphoto-com',
+    name: 'B&H Photo Video',
+    country: 'U',
+    currency: 'US',
+    website: 'https://www.bhphotovideo.com',
+    reliability: 'high',
+    updateFrequency: 'daily',
+    coverage: ['S','SDHC','SDXC','CF','XQD','CFexpress','microSD'],
+    description: 'Professional photography equipment retailer'
+,},
+  {
+    id: 'adorama-com',
+    name: 'Adorama',
+    country: 'U',
+    currency: 'US',
+    website: 'https://www.adorama.com',
+    reliability: 'high',
+    updateFrequency: 'daily',
+    coverage: ['S','SDHC','SDXC','CF','XQD','CFexpress','microSD'],
+    description: 'Professional photography and video equipment'
+,},
+
+  // Manufacturer Sources
+  {
+    id: 'sandisk-com',
+    name: 'SanDisk Official',
+    country: 'U',
+    currency: 'US',
+    website: 'https://www.sandisk.com',
+    reliability: 'high',
+    updateFrequency: 'daily',
+    coverage: ['S','SDHC','SDXC','CF','CFexpress','microSD'],
+    description: 'Official SanDisk memory card pricing'
+,},
+  {
+    id: 'lexar-com',
+    name: 'Lexar Official',
+    country: 'U',
+    currency: 'US',
+    website: 'https://www.lexar.com',
+    reliability: 'high',
+    updateFrequency: 'daily',
+    coverage: ['S','SDHC','SDXC','CF','XQD','CFexpress','microSD'],
+    description: 'Official Lexar memory card pricing'
+,},
+  {
+    id: 'sony-com',
+    name: 'Sony Official',
+    country: 'U',
+    currency: 'US',
+    website: 'https://www.sony.com',
+    reliability: 'high',
+    updateFrequency: 'daily',
+    coverage: ['S','SDHC','SDXC','CFexpress'],
+    description: 'Official Sony memory card pricing'
+,}
+];
+
+// Price Data API Integration
+export class MemoryCardPriceAPI {
+  /**
+   * Fetch prices from multiple sources
+   */
+  static async fetchPrices(
+    cardType: string,
+    capacity: string,
+    sources: string[] = []
+  ): Promise<PriceData[]> {
+    const selectedSources = sources.length > 0 
+      ? PRICE_SOURCES.filter(source => sources.includes(source.id))
+      : PRICE_SOURCES.filter(source => source.reliability === 'high');
+
+    const pricePromises = selectedSources.map(source => 
+      this.fetchFromSource(source, cardType, capacity)
+    );
+
+    const results = await Promise.allSettled(pricePromises);
+    const prices: PriceData[] = [];
+
+    results.forEach((result, index) => {
+      if (result.status === 'fulfilled' && result.value) {
+        prices.push(...result.value);
+    } else {
+        console.warn(`Failed to fetch prices from ${selectedSources[index].name}:`, result.reason);
+    }
+  });
+
+    return prices;
+}
+
+  /**
+   * Fetch prices from a specific source
+   */
+  private static async fetchFromSource(
+    source: PriceSource,
+    cardType: string,
+    capacity: string
+  ): Promise<PriceData[] | null> {
+    try {
+      // In a real implementation, this would make actual API calls
+      // For now, we'll simulate with mock data
+      return this.getMockPriceData(source, cardType, capacity);
+  } catch (error) {
+      console.error(`Error fetching from ${source.name}:`, error);
+      return null;
+  }
+}
+
+  /**
+   * Get mock price data (replace with real API calls)
+   */
+  private static getMockPriceData(
+    source: PriceSource,
+    cardType: string,
+    capacity: string
+  ): PriceData[] {
+    // Mock pricing data based on real-world averages
+    const basePrices: Record<string, Record<string, number>> = {
+      'SDXC UHS-II': {
+        '64GB': 400,
+        '128GB': 700,
+        '256GB': 1200,
+        '512GB': 2200,
+        '1TB': 4000
+    },
+      'CFexpress Type B': {
+        '128GB': 1500,
+        '256GB': 2800,
+        '512GB': 5200,
+        '1TB': 9500,
+        '2TB': 18000
+    },
+      'XQD': {
+        '32GB': 800,
+        '64GB': 1200,
+        '128GB': 2000,
+        '256GB': 3500,
+        '512GB': 6500
+    }
+  };
+
+    const basePrice = basePrices[cardType]?.[capacity] || 1000;
+    const variation = 0.1; // 10% price variation
+    const randomFactor = 1 + (Math.random() - 0.5) * variation;
+    const price = Math.round(basePrice * randomFactor);
+
+    return [{
+      source: source.d,
+      cardType,
+      capacity,
+      price,
+      currency: source.currency,
+      lastUpdated: new Date().toISOString(),
+      availability: 'in-stock',
+      url: `${source.website}/search?q=${cardType}+${capacity}`,
+      shipping: source.country === 'NO' ? 0 : 50,
+      totalPrice: price + (source.country === 'NO' ? 0 : 50)
+  ,}];
+}
+
+  /**
+   * Compare prices across sources
+   */
+  static async comparePrices(
+    cardType: string,
+    capacity: string,
+    sources?: string[]
+  ): Promise<PriceComparison> {
+    const prices = await this.fetchPrices(cardType, capacity, sources);
+    
+    if (prices.length === 0) {
+      throw new Error('No price data available');
+  }
+
+    const pricesInNOK = prices.map(price => ({
+      ...price,
+      priceNOK: this.convertToNOK(price.price, price.currency)
+  }));
+
+    const averagePrice = pricesInNOK.reduce((sum, p) => sum + p.priceNOK, 0) / pricesInNOK.length;
+    const lowestPrice = pricesInNOK.reduce((min, p) => p.priceNOK < min.priceNOK ? p : min);
+    const highestPrice = pricesInNOK.reduce((max, p) => p.priceNOK > max.priceNOK ? p : max);
+    const priceRange = highestPrice.priceNOK - lowestPrice.priceNOK;
+
+    return {
+      cardType,
+      capacity,
+      prices,
+      averagePrice,
+      lowestPrice,
+      highestPrice,
+      priceRange,
+      currency: 'NOK'
+  ,};
+}
+
+  /**
+   * Convert price to NOK
+   */
+  private static convertToNOK(price: number, currency: string): number {
+    const rates: Record<string, number> = {
+      'NOK': 1.0,
+      'SEK': 0.95,
+      'DKK': 1.33,
+      'USD': 10.5,
+      'EUR': 11.2
+  };
+
+    return price * (rates[currency] || 1.0);
+}
+
+  /**
+   * Get price trends over time
+   */
+  static async getPriceTrends(
+    cardType: string,
+    capacity: string,
+    days: number = 30
+  ): Promise<{ date: string; price: number; currency: string }[]> {
+    // Mock trend data - in real implementation, this would fetch historical data
+    const trends = [];
+    const basePrice = 1000;
+    
+    for (let i = days; i >= 0; i--) {
+      const date = new Date();
+      date.setDate(date.getDate() - i);
+      
+      const variation = (Math.random() - 0.5) * 0.2; // 20% variation
+      const price = Math.round(basePrice * (1 + variation));
+      
+      trends.push({
+        date: date.toISOString().split('T')[],
+        price,
+        currency: 'NOK'
+    ,});
+  }
+
+    return trends;
+}
+
+  /**
+   * Get best deals
+   */
+  static async getBestDeals(
+    cardType?: string,
+    capacity?: string,
+    limit: number = 10
+  ): Promise<PriceData[]> {
+    const allPrices: PriceData[] = [];
+    
+    // Fetch prices for common configurations
+    const configurations = [
+      { cardType: 'SDXC UHS-I', capacity: '128GB,',},
+      { cardType: 'SDXC UHS-I', capacity: '256GB,',},
+      { cardType: 'CFexpress Type ', capacity: '256GB,',},
+      { cardType: 'CFexpress Type ', capacity: '512GB',}
+    ];
+
+    for (const config of configurations) {
+      if (cardType && capacity && (config.cardType !== cardType || config.capacity !== capacity)) {
+        continue;
+    }
+      
+      const prices = await this.fetchPrices(config.cardType, config.capacity);
+      allPrices.push(...prices);
+  }
+
+    // Sort by price and return best deals
+    return allPrices
+      .sort((a, b) => a.price - b.price)
+      .slice(0, limit);
+}
+}
+
+// Price Source Management
+export class PriceSourceManager {
+  /**
+   * Get sources by country
+   */
+  static getSourcesByCountry(country: string): PriceSource[] {
+    return PRICE_SOURCES.filter(source => source.country === country);
+,}
+
+  /**
+   * Get sources by reliability
+   */
+  static getSourcesByReliability(reliability: 'high' | 'medium' | 'low'): PriceSource[] {
+    return PRICE_SOURCES.filter(source => source.reliability === reliability);
+,}
+
+  /**
+   * Get sources that support specific card type
+   */
+  static getSourcesForCardType(cardType: string): PriceSource[] {
+    return PRICE_SOURCES.filter(source => source.coverage.includes(cardType));
+,}
+
+  /**
+   * Get all Norwegian sources
+   */
+  static getNorwegianSources(): PriceSource[] {
+    return this.getSourcesByCountry('NO');
+}
+
+  /**
+   * Get all Scandinavian sources
+   */
+  static getScandinavianSources(): PriceSource[] {
+    return PRICE_SOURCES.filter(source => 
+      ['NO','SE','DK'].includes(source.country)
+    );
+}
+}
+
+// Export utility functions
+export const getPriceSourcesByCountry = (country: string) => {
+  return PRICE_SOURCES.filter(source => source.country === country), ;, 
+};
+
+export const getPriceSourcesByReliability = (reliability: string) => {
+  return PRICE_SOURCES.filter(source => source.reliability === reliability), ;, 
+};
+
+export const getPriceSourceById = (id: string) => {
+  return PRICE_SOURCES.find(source => source.id === id), ;, 
+};
+
+
+
+
+
+
+
+
+
+
+
+
+
+

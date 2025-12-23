@@ -1,0 +1,86 @@
+name: Production Verification
+
+on:
+  push:
+    branches: [main, production]
+  pull_request:
+    branches: [main, production]
+  workflow_dispatch:
+
+jobs:
+  verify-database:
+    name: Verify Database Schema
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: test_db
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Run Production Verification
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
+        run: npm run db:verify-production
+      
+      - name: Upload verification report
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: verification-report
+          path: server/scripts/production-verification-report.json
+
+  verify-schema-sync:
+    name: Verify Schema Synchronization
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Check schema files
+        run: |
+          echo "Checking schema file exists..."
+          test -f shared/database-persistence-schema.ts || exit 1
+          echo "✅ Schema file found"
+          
+          echo "Checking for table definitions..."
+          TABLE_COUNT=$(grep -c "pgTable(" shared/database-persistence-schema.ts || echo "0")
+          echo "Found $TABLE_COUNT table definitions"
+          
+          if [ "$TABLE_COUNT" -lt 100 ]; then
+            echo "⚠️ Warning: Less than 100 tables defined"
+          else
+            echo "✅ Schema file contains $TABLE_COUNT tables"
+          fi
+
+
+

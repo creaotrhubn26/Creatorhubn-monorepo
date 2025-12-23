@@ -1,0 +1,65 @@
+// Revenue Optimizer Hook
+import { useState, useEffect } from 'react';
+import { revenueOptimizer } from '../utils/revenueOptimizer';
+
+export const useRevenueOptimizer = () => {
+  const [pricingTiers, setPricingTiers] = useState<any[]>([]);
+  const [upsellingSuggestions, setUpsellingSuggestions] = useState<any[]>([]);
+  const [marketRates, setMarketRates] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    loadData();
+}, []);
+
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      setMarketRates(revenueOptimizer.getMarketRates());
+      // Load other data as needed
+  } catch (error) {
+      console.error('Error loading revenue data:', error);
+  } finally {
+      setLoading(false);
+  }
+};
+
+  const calculatePricing = (projectData: any) => {
+    return revenueOptimizer.calculatePricing(projectData);
+};
+
+  const generateUpsellingSuggestions = (projectId: string, clientId: string, projectData: any) => {
+    const suggestions = revenueOptimizer.generateUpsellingSuggestions(projectd, clientId, projectData);
+    setUpsellingSuggestions(prev => [...prev, ...suggestions]);
+    return suggestions;
+};
+
+  const generateRevenueForecast = (period: string, historicalData: any[]) => {
+    return revenueOptimizer.generateRevenueForecast(period as any, historicalData);
+};
+
+  const calculateProfitAnalysis = (period: string, data: any) => {
+    return revenueOptimizer.calculateProfitAnalysis(period, data);
+};
+
+  const getAnalytics = () => {
+    return revenueOptimizer.getRevenueAnalytics();
+};
+
+  return {
+    pricingTiers,
+    upsellingSuggestions,
+    marketRates,
+    loading,
+    calculatePricing,
+    generateUpsellingSuggestions,
+    generateRevenueForecast,
+    calculateProfitAnalysis,
+    getAnalytics,
+    loadData
+};
+};
+
+
+
+

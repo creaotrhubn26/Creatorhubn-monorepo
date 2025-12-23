@@ -1,0 +1,536 @@
+/**
+ * Universal Integration Dashboard
+ * Shows all 700+ integrated components and their connections
+ * Provides real-time monitoring of the entire platform
+ */
+
+import React, { useState, useEffect } from 'react';
+import {
+  Box,
+  Container,
+  Typography,
+  Grid,
+  Card,
+  CardContent,
+  CardActions,
+  Button,
+  Chip,
+  LinearProgress,
+  Tabs,
+  Tab,
+  TextField,
+  InputAdornment,
+  IconButton,
+  Badge,
+  Tooltip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemIcon,
+  ListItemSecondaryAction,
+  Divider,
+  Paper,
+  Stack,
+  Alert,
+  CircularProgress
+} from '@mui/material';
+import {
+  Search,
+  Refresh,
+  Settings,
+  Visibility,
+  VisibilityOff,
+  PlayArrow,
+  Pause,
+  Stop,
+  FilterList,
+  Sort,
+  Info,
+  Warning,
+  Error,
+  CheckCircle,
+  Dashboard,
+  Widgets,
+  Pages,
+  Edit,
+  ShowChart,
+  Chat,
+  Storage,
+  Security,
+  Business,
+  PhotoCamera,
+  Videocam,
+  LibraryMusic,
+  Store
+} from '@mui/icons-material';
+import { useIntegratedComponents } from './UniversalIntegrationSystem';
+import { useEnhancedMasterIntegration } from "@/integration/EnhancedMasterIntegrationProvider";
+import { useTheming } from '../../utils/theming-helper';
+
+interface ComponentStatus {
+  id: string;
+  name: string;
+  type: string;
+  category: string;
+  profession?: string;
+  status: 'active' | 'inactive' | 'error' | 'loading';
+  lastSeen: number;
+  capabilities: string[];
+  connections: number;
+  messages: number;
+  errors: number;
+}
+
+const UniversalIntegrationDashboard: React.FC = () => {
+  const { 
+    getAllComponents, 
+    getComponentsByType, 
+    getComponentsByCategory, 
+    searchComponents,
+    getComponentHealth,
+    broadcastToAll,
+    broadcastToType,
+    broadcastToCategory
+} = useIntegratedComponents();
+  
+  const { integration, communication, dataFlow } = useEnhancedMasterIntegration();
+  
+  // Theming system
+  const theming = useTheming('prototype_tester');
+  
+  const [selectedTab, setSelectedTab] = useState(0);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterType, setFilterType] = useState('all');
+  const [filterCategory, setFilterCategory] = useState('all');
+  const [sortBy, setSortBy] = useState('name');
+  const [showInactive, setShowInactive] = useState(false);
+  const [selectedComponent, setSelectedComponent] = useState<ComponentStatus | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [realTimeUpdates, setRealTimeUpdates] = useState(true);
+  
+  const [components, setComponents] = useState<ComponentStatus[]>([]);
+  const [health, setHealth] = useState({ total: 0, active: 0, inactive: 0, error: 0 });
+
+  // Load components data
+  const loadComponents = async () => {
+    setIsRefreshing(true);
+    try {
+      const allComponents = getAllComponents();
+      const healthData = getComponentHealth();
+      
+      const componentStatuses: ComponentStatus[] = allComponents.map((comp: any) => ({
+        id: comp.id,
+        name: comp.name,
+        type: comp.type,
+        category: comp.category,
+        profession: comp.profession,
+        status: comp.status,
+        lastSeen: comp.lastSeen,
+        capabilities: comp.capabilities,
+        connections: Math.floor(Math.random() * 10), // Mock data
+        messages: Math.floor(Math.random() * 100),
+        errors: Math.floor(Math.random() * 5)
+    }));
+      
+      setComponents(componentStatuses);
+      setHealth(healthData);
+  } catch (error) {
+      console.error('Error loading components:', error);
+  } finally {
+      setIsRefreshing(false);
+  }
+};
+
+  // Load components on mount
+  useEffect(() => {
+    loadComponents();
+}, []);
+
+  // Set up real-time updates
+  useEffect(() => {
+    if (!realTimeUpdates) return;
+
+    const interval = setInterval(() => {
+      loadComponents();
+  }, 5000); // Update every 5 seconds
+
+    return () => clearInterval(interval);
+}, [realTimeUpdates]);
+
+  // Filter and sort components
+  const filteredComponents = components
+    .filter(comp => {
+      if (!showInactive && comp.status === 'inactive') return false;
+      if (filterType !== 'all' && comp.type !== filterType) return false;
+      if (filterCategory !== 'all' && comp.category !== filterCategory) return false;
+      if (searchQuery && !comp.name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
+      return true;
+  })
+    .sort((a, b) => {
+      switch (sortBy) {
+        case 'name': return a.name.localeCompare(b.name);
+        case 'type': return a.type.localeCompare(b.type);
+        case 'category': return a.category.localeCompare(b.category);
+        case 'status': return a.status.localeCompare(b.status);
+        case 'lastSeen': return b.lastSeen - a.lastSeen;
+        default: return 0;
+    }
+  });
+
+  // Get status icon
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'active': return <CheckCircle color="success" />;
+      case 'inactive': return <Pause color="warning" />;
+      case 'error': return <Error color="error" />;
+      case 'loading': return <CircularProgress size={20} />;
+      default: return <Info color="info" />;
+  }
+};
+
+  // Get type icon
+  const getTypeIcon = (type: string) => {
+    switch (type) {
+      case 'dashboard': return <Dashboard />;
+      case 'widget': return <Widgets />;
+      case 'page': return <Pages />;
+      case 'editor': return <Edit />;
+      case 'chart': return <ShowChart />;
+      case 'chat': return <Chat />;
+      case 'storage': return <Storage />;
+      case 'security': return <Security />;
+      case 'business': return <Business />;
+      case 'photography': return <PhotoCamera />;
+      case 'videography': return <Videocam />;
+      case 'music': return <LibraryMusic />;
+      case 'vendor': return <Store />;
+      default: return <Widgets />;
+  }
+};
+
+  // Handle component selection
+  const handleComponentSelect = (component: ComponentStatus) => {
+    setSelectedComponent(component);
+};
+
+  // Handle broadcast to all components
+  const handleBroadcastToAll = () => {
+    broadcastToAll('test: message', { 
+      message: 'Test message from Universal Integration Dashboard',
+      timestamp: Date.now()
+  });
+};
+
+  // Handle broadcast to component type
+  const handleBroadcastToType = (type: string) => {
+    broadcastToType(type, 'test: message', {
+      message: `Test message for ${type} components`,
+      timestamp: Date.now()
+  });
+};
+
+  // Handle broadcast to category
+  const handleBroadcastToCategory = (category: string) => {
+    broadcastToCategory(category, 'test: message', {
+      message: `Test message for ${category} components`,
+      timestamp: Date.now()
+  });
+};
+
+  return (
+    <Container maxWidth="xl" sx={{ py: 4 }}>
+      <Box sx={{ mb: 4 }}>
+        <Typography variant="h4" gutterBottom sx={{ color: theming.colors.primary }}>
+          Universal Integration Dashboard
+        </Typography>
+        <Typography variant="body1" color="textSecondary" gutterBottom>
+          Monitor and control all {health.total} integrated components across the platform
+        </Typography>
+        
+        {/* Health Overview */}
+        <Grid container spacing={2} sx={{ mb: 3 }}>
+          <Grid item xs={12} sm={3}>
+            <Card>
+              <CardContent>
+                <Typography color="textSecondary" gutterBottom>Total Components</Typography>
+                <Typography variant="h4" sx={{ color: theming.colors.primary }}>{health.total}</Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+          <Grid item xs={12} sm={3}>
+            <Card>
+              <CardContent>
+                <Typography color="textSecondary" gutterBottom>Active</Typography>
+                <Typography variant="h4" color="success.main">{health.active}</Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+          <Grid item xs={12} sm={3}>
+            <Card>
+              <CardContent>
+                <Typography color="textSecondary" gutterBottom>Inactive</Typography>
+                <Typography variant="h4" color="warning.main">{health.inactive}</Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+          <Grid item xs={12} sm={3}>
+            <Card>
+              <CardContent>
+                <Typography color="textSecondary" gutterBottom>Errors</Typography>
+                <Typography variant="h4" color="error.main">{health.error}</Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+        </Grid>
+
+        {/* Controls */}
+        <Paper sx={{ p: 2, mb: 3 }}>
+          <Grid container spacing={2} alignItems="center">
+            <Grid item xs={12} md={4}>
+              <TextField
+                fullWidth
+                placeholder="Search components..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <Search />
+                    </InputAdornment>
+                  ),
+              }}
+              />
+            </Grid>
+            <Grid item xs={12} md={2}>
+              <TextField
+                fullWidth
+                select
+                label="Type"
+                value={filterType}
+                onChange={(e) => setFilterType(e.target.value)}
+                SelectProps={{ native: true }}
+              >
+                <option value="all">All Types</option>
+                <option value="dashboard">Dashboard</option>
+                <option value="widget">Widget</option>
+                <option value="page">Page</option>
+                <option value="editor">Editor</option>
+                <option value="admin">Admin</option>
+              </TextField>
+            </Grid>
+            <Grid item xs={12} md={2}>
+              <TextField
+                fullWidth
+                select
+                label="Category"
+                value={filterCategory}
+                onChange={(e) => setFilterCategory(e.target.value)}
+                SelectProps={{ native: true }}
+              >
+                <option value="all">All Categories</option>
+                <option value="administration">Administration</option>
+                <option value="analytics">Analytics</option>
+                <option value="communication">Communication</option>
+                <option value="equipment">Equipment</option>
+                <option value="project">Project</option>
+                <option value="showcase">Showcase</option>
+              </TextField>
+            </Grid>
+            <Grid item xs={12} md={2}>
+              <Button
+                fullWidth
+                variant="outlined"
+                startIcon={isRefreshing ? <CircularProgress size={20} /> : <Refresh />}
+                onClick={loadComponents}
+                disabled={isRefreshing}
+              >
+                Refresh
+              </Button>
+            </Grid>
+            <Grid item xs={12} md={2}>
+              <Button
+                fullWidth
+                variant={realTimeUpdates ? "contained" : "outlined"}
+                startIcon={realTimeUpdates ? <Pause /> : <PlayArrow />}
+                onClick={() => setRealTimeUpdates(!realTimeUpdates)}
+              >
+                {realTimeUpdates ? 'Pause' : 'Resume'}
+              </Button>
+            </Grid>
+          </Grid>
+        </Paper>
+
+        {/* Tabs */}
+        <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
+          <Tabs value={selectedTab} onChange={(_, newValue) => setSelectedTab(newValue)}>
+            <Tab label={`All Components (${filteredComponents.length})`} />
+            <Tab label={`Active (${health.active})`} />
+            <Tab label={`Inactive (${health.inactive})`} />
+            <Tab label={`Errors (${health.error})`} />
+          </Tabs>
+        </Box>
+
+        {/* Components Grid */}
+        <Grid container spacing={2}>
+          {filteredComponents.map((component) => (
+            <Grid item xs={12} sm={6} md={4} lg={3} key={component.id}>
+              <Card 
+                sx={{ 
+                  cursor: 'pointer',
+                  '&:hover': { boxShadow: 4 },
+                  border: component.status === 'error' ? 2 : 0,
+                  borderColor: component.status === 'error' ? 'error.main' : 'transparent'
+              }}
+                onClick={() => handleComponentSelect(component)}
+              >
+                <CardContent>
+                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                    {getTypeIcon(component.type)}
+                    <Box sx={{ ml: 1, flexGrow: 1 }}>
+                      <Typography variant="h6" noWrap sx={{ color: theming.colors.primary }}>
+                        {component.name}
+                      </Typography>
+                      <Typography variant="body2" color="textSecondary">
+                        {component.type} • {component.category}
+                      </Typography>
+                    </Box>
+                    {getStatusIcon(component.status)}
+                  </Box>
+                  
+                  <Box sx={{ mb: 2 }}>
+                    <Chip 
+                      label={component.status} 
+                      size="small" 
+                      color={component.status === 'active' ? 'success' : component.status === 'error' ? 'error' : 'warning'}
+                    />
+                    {component.profession && (
+                      <Chip 
+                        label={component.profession} 
+                        size="small" 
+                        variant="outlined" 
+                        sx={{ ml: 1 }}
+                      />
+                    )}
+                  </Box>
+
+                  <Box sx={{ mb: 2 }}>
+                    <Typography variant="body2" color="textSecondary" gutterBottom>
+                      Capabilities: {component.capabilities.length}
+                    </Typography>
+                    <Typography variant="body2" color="textSecondary" gutterBottom>
+                      Connections: {component.connections}
+                    </Typography>
+                    <Typography variant="body2" color="textSecondary">
+                      Messages: {component.messages}
+                    </Typography>
+                  </Box>
+
+                  <LinearProgress 
+                    variant="determinate" 
+                    value={(component.connections / 10) * 100} 
+                    sx={{ mb: 1 }}
+                  />
+                </CardContent>
+                
+                <CardActions>
+                  <Button size="small" onClick={() => handleComponentSelect(component)}>
+                    View Details
+                  </Button>
+                  <Button 
+                    size="small" 
+                    onClick={() => handleBroadcastToType(component.type)}
+                  >
+                    Test
+                  </Button>
+                </CardActions>
+              </Card>
+            </Grid>
+          ))}
+        </Grid>
+
+        {/* Component Details Dialog */}
+        <Dialog 
+          open={!!selectedComponent} 
+          onClose={() => setSelectedComponent(null)}
+          maxWidth="md"
+          fullWidth
+        >
+          {selectedComponent && (
+            <>
+              <DialogTitle>
+                <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                  {getTypeIcon(selectedComponent.type)}
+                  <Box sx={{ ml: 1 }}>
+                    <Typography variant="h6" sx={{ color: theming.colors.primary }}>{selectedComponent.name}</Typography>
+                    <Typography variant="body2" color="textSecondary">
+                      {selectedComponent.type} • {selectedComponent.category}
+                    </Typography>
+                  </Box>
+                </Box>
+              </DialogTitle>
+              
+              <DialogContent>
+                <Grid container spacing={2}>
+                  <Grid item xs={12} md={6}>
+                    <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>Status</Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                      {getStatusIcon(selectedComponent.status)}
+                      <Typography sx={{ ml: 1 }}>{selectedComponent.status}</Typography>
+                    </Box>
+                    
+                    <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>Capabilities</Typography>
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 2 }}>
+                      {selectedComponent.capabilities.map((capability) => (
+                        <Chip key={capability} label={capability} size="small" />
+                      ))}
+                    </Box>
+                  </Grid>
+                  
+                  <Grid item xs={12} md={6}>
+                    <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>Statistics</Typography>
+                    <List dense>
+                      <ListItem>
+                        <ListItemText primary="Connections" secondary={selectedComponent.connections} />
+                      </ListItem>
+                      <ListItem>
+                        <ListItemText primary="Messages" secondary={selectedComponent.messages} />
+                      </ListItem>
+                      <ListItem>
+                        <ListItemText primary="Errors" secondary={selectedComponent.errors} />
+                      </ListItem>
+                      <ListItem>
+                        <ListItemText 
+                          primary="Last Seen" 
+                          secondary={new Date(selectedComponent.lastSeen).toLocaleString()} 
+                        />
+                      </ListItem>
+                    </List>
+                  </Grid>
+                </Grid>
+              </DialogContent>
+              
+              <DialogActions>
+                <Button onClick={() => setSelectedComponent(null)}>Close</Button>
+                <Button variant="contained" 
+                  onClick={() => handleBroadcastToType(selectedComponent.type)}
+                >
+                  Send Test Message
+                </Button>
+              </DialogActions>
+            </>
+          )}
+        </Dialog>
+      </Box>
+    </Container>
+  );
+};
+
+export default UniversalIntegrationDashboard;
+
+
+
+

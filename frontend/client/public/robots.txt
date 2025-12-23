@@ -1,0 +1,51 @@
+# Robots.txt for CreatorHub Norge (creatorhubn.no)
+# Updated: December 24, 2024
+
+User-agent: *
+Allow: /
+
+# Important pages for SEO
+Allow: /
+Allow: /academy
+Allow: /courses
+Allow: /instructors
+Allow: /portfolio
+Allow: /blog
+Allow: /faq
+Allow: /sitemap
+Allow: /features
+
+# Allow access to static assets
+Allow: /assets/
+Allow: /images/
+Allow: /videos/
+Allow: /*.css
+Allow: /*.js
+Allow: /*.png
+Allow: /*.jpg
+Allow: /*.jpeg
+Allow: /*.gif
+Allow: /*.svg
+Allow: /*.webp
+
+# Block admin and private areas
+Disallow: /admin/
+Disallow: /api/
+Disallow: /*.json
+Disallow: /private/
+Disallow: /temp/
+Disallow: /*?*utm_*
+Disallow: /*?*sessionid*
+Disallow: /*?*sid*
+
+# Block search and form endpoints
+Disallow: /search?
+Disallow: /login
+Disallow: /logout
+Disallow: /register
+
+# XML Sitemap location
+Sitemap: https://creatorhubn.no/sitemap.xml
+
+# Crawl delay for respectful crawling
+Crawl-delay: 1

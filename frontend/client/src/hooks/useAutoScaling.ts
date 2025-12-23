@@ -1,0 +1,312 @@
+/**
+ * useAutoScaling Hook
+ * React hook for auto-scaling functionality
+ */
+
+import { useCallback, useEffect, useState, useRef } from 'react';
+import { autoScalingSystem, ScalingMetrics, ScalingDecision, ResourceProfile, ScalingPolicy, FileScalingProfile, OperationScalingProfile } from'@/utils/autoScaling';
+
+export interface UseAutoScalingOptions {
+  enableAutoScaling?: boolean;
+  minInstances?: number;
+  maxInstances?: number;
+  targetCpuUsage?: number;
+  targetMemoryUsage?: number;
+  targetResponseTime?: number;
+  scaleUpThreshold?: number;
+  scaleDownThreshold?: number;
+  enableFileSizeScaling?: boolean;
+  largeFileThreshold?: number;
+  enableOperationScaling?: boolean;
+  heavyOperationThreshold?: number;
+  onScalingDecision?: (decision: ScalingDecision) => void;
+  onResourceUpdate?: (profiles: ResourceProfile[]) => void;
+  onMetricsUpdate?: (metrics: ScalingMetrics[]) => void;
+}
+
+export interface UseAutoScalingReturn {
+  // Core functionality
+  getFileScalingProfile: (fileSize: number, fileType: string) => FileScalingProfile | null;
+  getOperationScalingProfile: (operationType: string) => OperationScalingProfile | null;
+  shouldScaleForFile: (fileSize: number, fileType: string) => boolean;
+  shouldScaleForOperation: (operationType: string, estimatedDuration: number) => boolean;
+  getScalingRecommendations: () => string[];
+  
+  // Data access
+  getMetrics: () => ScalingMetrics[];
+  getScalingDecisions: () => ScalingDecision[];
+  getResourceProfiles: () => ResourceProfile[];
+  getCurrentInstances: () => number;
+  getScalingPolicies: () => ScalingPolicy[];
+  
+  // Configuration
+  updateConfig: (config: Partial<UseAutoScalingOptions>) => void;
+  
+  // State
+  isScaling: boolean;
+  currentInstances: number;
+  metrics: ScalingMetrics[];
+  scalingDecisions: ScalingDecision[];
+  resourceProfiles: ResourceProfile[];
+  scalingPolicies: ScalingPolicy[];
+  recommendations: string[];
+  
+  // Performance indicators
+  cpuUsage: number;
+  memoryUsage: number;
+  responseTime: number;
+  throughput: number;
+  errorRate: number;
+  
+  // Scaling status
+  canScaleUp: boolean;
+  canScaleDown: boolean;
+  isAtMinInstances: boolean;
+  isAtMaxInstances: boolean;
+  
+  // Cost and performance
+  currentCost: number;
+  estimatedCost: number;
+  currentPerformance: number;
+  estimatedPerformance: number;
+}
+
+export const useAutoScaling = (options: UseAutoScalingOptions = {}): UseAutoScalingReturn => {
+  const {
+    enableAutoScaling = true,
+    minInstances = 1,
+    maxInstances = 10,
+    targetCpuUsage = 70,
+    targetMemoryUsage = 80,
+    targetResponseTime = 1000,
+    scaleUpThreshold = 0.8,
+    scaleDownThreshold = 0.3,
+    enableFileSizeScaling = true,
+    largeFileThreshold = 10 * 1024 * 1024,
+    enableOperationScaling = true,
+    heavyOperationThreshold = 5000,
+    onScalingDecision,
+    onResourceUpdate,
+    onMetricsUpdate
+} = options;
+
+  const [isScaling, setIsScaling] = useState(false);
+  const [currentInstances, setCurrentInstances] = useState(1);
+  const [metrics, setMetrics] = useState<ScalingMetrics[]>([]);
+  const [scalingDecisions, setScalingDecisions] = useState<ScalingDecision[]>([]);
+  const [resourceProfiles, setResourceProfiles] = useState<ResourceProfile[]>([]);
+  const [scalingPolicies, setScalingPolicies] = useState<ScalingPolicy[]>([]);
+  const [recommendations, setRecommendations] = useState<string[]>([]);
+  const [cpuUsage, setCpuUsage] = useState(0);
+  const [memoryUsage, setMemoryUsage] = useState(0);
+  const [responseTime, setResponseTime] = useState(0);
+  const [throughput, setThroughput] = useState(0);
+  const [errorRate, setErrorRate] = useState(0);
+
+  const updateIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const isScalingRef = useRef(false);
+
+  // Auto scaling config is managed within the hook
+  // useEffect(() => {
+  //   // Configuration would be sent to auto-scaling system here
+  // }, [
+  //   enableAutoScaling,
+  //   minInstances,
+  //   maxInstances,
+  //   targetCpuUsage,
+  //   targetMemoryUsage,
+  //   targetResponseTime,
+  //   scaleUpThreshold,
+  //   scaleDownThreshold,
+  //   enableFileSizeScaling,
+  //   largeFileThreshold,
+  //   enableOperationScaling,
+  //   heavyOperationThreshold
+  // ]);
+
+  // Update data periodically
+  useEffect(() => {
+    if (!enableAutoScaling) return;
+
+    const updateData = () => {
+      try {
+        // Data fetching would happen here from auto-scaling system
+        const currentMetrics: ScalingMetrics[] = [];
+        const currentDecisions: ScalingDecision[] = [];
+        const currentProfiles: ResourceProfile[] = [];
+        const currentPolicies: ScalingPolicy[] = [];
+        const currentInstances = 1;
+        const currentRecommendations: string[] = [];
+
+        setMetrics(currentMetrics);
+        setScalingDecisions(currentDecisions);
+        setResourceProfiles(currentProfiles);
+        setScalingPolicies(currentPolicies);
+        setCurrentInstances(currentInstances);
+        setRecommendations(currentRecommendations);
+
+        // Update performance indicators
+        if (currentMetrics.length > 0) {
+          const latestMetrics = currentMetrics[currentMetrics.length - 1];
+          setCpuUsage(latestMetrics.cpuUsage);
+          setMemoryUsage(latestMetrics.memoryUsage);
+          setResponseTime(latestMetrics.responseTime);
+          setThroughput(latestMetrics.throughput);
+          setErrorRate(latestMetrics.errorRate);
+      }
+
+        // Check if scaling is in progress
+        const isCurrentlyScaling = isScalingRef.current;
+        setIsScaling(isCurrentlyScaling);
+
+        // Trigger callbacks
+        onResourceUpdate?.(currentProfiles);
+        onMetricsUpdate?.(currentMetrics);
+
+        // Check for new scaling decisions
+        if (currentDecisions.length > scalingDecisions.length) {
+          const newDecisions = currentDecisions.slice(scalingDecisions.length);
+          newDecisions.forEach(decision => {
+            onScalingDecision?.(decision);
+        });
+      }
+
+    } catch (error) {
+        console.error('Failed to update auto scaling data: ', error);
+    }
+  };
+
+    updateData();
+    updateIntervalRef.current = setInterval(updateData, 1000); // Update every second
+
+    return () => {
+      if (updateIntervalRef.current) {
+        clearInterval(updateIntervalRef.current);
+    }
+  };
+}, [enableAutoScaling, scalingDecisions.length, onScalingDecision, onResourceUpdate, onMetricsUpdate]);
+
+  // Get file scaling profile
+  const getFileScalingProfile = useCallback((fileSize: number, fileType: string): FileScalingProfile | null => {
+    return null; // autoScalingSystem method not available
+}, []);
+
+  // Get operation scaling profile
+  const getOperationScalingProfile = useCallback((operationType: string): OperationScalingProfile | null => {
+    return null; // autoScalingSystem method not available
+}, []);
+
+  // Check if should scale for file
+  const shouldScaleForFile = useCallback((fileSize: number, fileType: string): boolean => {
+    return fileSize > largeFileThreshold;
+}, [largeFileThreshold]);
+
+  // Check if should scale for operation
+  const shouldScaleForOperation = useCallback((operationType: string, estimatedDuration: number): boolean => {
+    return estimatedDuration > heavyOperationThreshold;
+}, [heavyOperationThreshold]);
+
+  // Get scaling recommendations
+  const getScalingRecommendations = useCallback((): string[] => {
+    return recommendations;
+}, [recommendations]);
+
+  // Get metrics
+  const getMetrics = useCallback((): ScalingMetrics[] => {
+    return metrics;
+}, [metrics]);
+
+  // Get scaling decisions
+  const getScalingDecisions = useCallback((): ScalingDecision[] => {
+    return scalingDecisions;
+}, [scalingDecisions]);
+
+  // Get resource profiles
+  const getResourceProfiles = useCallback((): ResourceProfile[] => {
+    return resourceProfiles;
+}, [resourceProfiles]);
+
+  // Get current instances
+  const getCurrentInstances = useCallback((): number => {
+    return currentInstances;
+}, [currentInstances]);
+
+  // Get scaling policies
+  const getScalingPolicies = useCallback((): ScalingPolicy[] => {
+    return scalingPolicies;
+}, [scalingPolicies]);
+
+  // Update configuration
+  const updateConfig = useCallback((config: Partial<UseAutoScalingOptions>) => {
+    // Update configuration logic here
+    console.log('Updating config:', config);
+}, []);
+
+  // Computed values
+  const canScaleUp = currentInstances < maxInstances && !isScaling;
+  const canScaleDown = currentInstances > minInstances && !isScaling;
+  const isAtMinInstances = currentInstances <= minInstances;
+  const isAtMaxInstances = currentInstances >= maxInstances;
+
+  // Calculate costs (simplified)
+  const currentCost = currentInstances * 0.1; // $0.1 per instance per hour
+  const estimatedCost = currentCost; // Would be calculated based on scaling decisions
+
+  // Calculate performance (simplified)
+  const currentPerformance = Math.max(0, 100 - (cpuUsage + memoryUsage + responseTime / 20) / 3);
+  const estimatedPerformance = currentPerformance; // Would be calculated based on scaling decisions
+
+  return {
+    // Core functionality
+    getFileScalingProfile,
+    getOperationScalingProfile,
+    shouldScaleForFile,
+    shouldScaleForOperation,
+    getScalingRecommendations,
+    
+    // Data access
+    getMetrics,
+    getScalingDecisions,
+    getResourceProfiles,
+    getCurrentInstances,
+    getScalingPolicies,
+    
+    // Configuration
+    updateConfig,
+    
+    // State
+    isScaling,
+    currentInstances,
+    metrics,
+    scalingDecisions,
+    resourceProfiles,
+    scalingPolicies,
+    recommendations,
+    
+    // Performance indicators
+    cpuUsage,
+    memoryUsage,
+    responseTime,
+    throughput,
+    errorRate,
+    
+    // Scaling status
+    canScaleUp,
+    canScaleDown,
+    isAtMinInstances,
+    isAtMaxInstances,
+    
+    // Cost and performance
+    currentCost,
+    estimatedCost,
+    currentPerformance,
+    estimatedPerformance
+};
+};
+
+export default useAutoScaling;
+
+
+
+
+

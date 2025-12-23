@@ -1,0 +1,372 @@
+import { useTheming } from '../../utils/theming-helper';
+import React, { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useAuth } from '@/hooks/useAuth';
+import {
+  Box,
+  Typography,
+  Grid,
+  Card,
+  CardContent,
+  Button,
+  Chip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemIcon,
+  Avatar,
+  Switch,
+  FormControlLabel,
+  Alert,
+  Paper,
+  IconButton,
+  Divider
+} from '@mui/material';
+import {
+  Add,
+  Settings,
+  Category,
+  CheckCircle,
+  RadioButtonUnchecked,
+  Lightbulb,
+  Extension,
+  Info
+} from '@mui/icons-material';
+import { apiRequest } from '@/lib/queryClient';
+import { getAllVendorTypes, enableVendorType, VendorTypeConfig } from '@shared/vendor-type-registry';
+
+interface VendorTypeManagerProps {
+  onTypeEnabled?: (typeId: string) => void;
+  onMeetingCreate?: (meeting: any) => void;
+  onProjectUpdate?: (project: any) => void;
+  onWorklogCreate?: (worklog: any) => void;
+  onClientSelect?: (client: any) => void;
+  onClientUpdate?: (client: any) => void;
+  onShowcaseCreate?: (showcase: any) => void;
+  onFileUpload?: (file: any) => void;
+  onFileDownload?: (file: any) => void;
+  selectedProject?: any;
+  onProjectSelect?: (project: any) => void;
+  selectedClient?: any;
+  onSettingsUpdate?: (settings: any) => void;
+  onNotificationCreate?: (notification: any) => void
+}
+
+export default function VendorTypeManager({ 
+  onTypeEnabled,
+  onMeetingCreate,
+  onProjectUpdate,
+  onWorklogCreate,
+  onClientSelect,
+  onClientUpdate,
+  onShowcaseCreate,
+  onFileUpload,
+  onFileDownload,
+  selectedProject,
+  onProjectSelect,
+  selectedClient,
+  onSettingsUpdate,
+  onNotificationCreate
+}: VendorTypeManagerProps) {
+  const [enableDialogOpen, setEnableDialogOpen] = useState(false);
+  const [selectedType, setSelectedType] = useState<VendorTypeConfig | null>(null);
+  
+  const queryClient = useQueryClient();
+  
+  // Theming system
+  const theming = useTheming('vendor');
+
+  // Fetch current vendor types
+  const { data: vendorTypesData, isLoading } = useQuery({
+    queryKey: ['/api/vendor-types'],
+    queryFn: () => apiRequest('/api/vendor-types')
+  });
+
+  // Fetch available expandable types
+  const { data: availableTypes } = useQuery({
+    queryKey: ['/api/vendor-types/expandable/available'],
+    queryFn: () => apiRequest('/api/vendor-types/expandable/available')
+  });
+
+  // Enable vendor type mutation
+  const enableTypeMutation = useMutation({
+    mutationFn: async (typeId: string) => {
+      return apiRequest(`/api/vendor-types/enable/${typeId}`, {
+        method: 'POST',
+        headers: {
+          "Content-Type": "application/json"
+        }
+      });
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/vendor-types']});
+      queryClient.invalidateQueries({ queryKey: ['/api/vendor-types/expandable/available']});
+      setEnableDialogOpen(false);
+      if (onTypeEnabled) {
+        onTypeEnabled(data.config.id);
+      }
+    }
+  });
+
+  const handleEnableType = (type: VendorTypeConfig) => {
+    setSelectedType(type);
+    setEnableDialogOpen(true);
+};
+
+  const confirmEnableType = () => {
+    if (selectedType) {
+      enableTypeMutation.mutate(selectedType.id);
+  }
+};
+
+  const getCategoryColor = (category: string) => {
+    const colors = {
+      creative: '#e91e63',
+      technology: '#2196f3',
+      service: '#ff9800',
+      physical: '#795548',
+      education: '#4caf50',
+      lifestyle: '#9c27b0'
+  };
+    return colors[category as keyof typeof colors] || '#9e9e9e';
+};
+
+  if (isLoading) {
+    return (
+      <Box sx={{ p: 3, textAlign: 'center' }}>
+        <Typography>Laster vendor typer...</Typography>
+      </Box>
+    );
+}
+
+  return (
+    <Box sx={{ p: 3 }}>
+      {/* Header */}
+      <Paper sx={{ p: 3, mb: 3, background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Avatar sx={{ bgcolor: 'rgba(255,255,255,0.2)', width: 60, height: 60 }}>
+            <Category sx={{ fontSize: 30, color: 'white' }} />
+          </Avatar>
+          <Box>
+            <Typography variant="h4" sx={{ color: 'white', fontWeight: 700 }}>
+              Vendor Type Manager
+            </Typography>
+            <Typography variant="h6" sx={{ color: 'rgba(255,255,255,0.8)' }}>
+              Administrer og utvid vendor kategorier
+            </Typography>
+          </Box>
+        </Box>
+      </Paper>
+
+      {/* Current Vendor Types */}
+      <Paper sx={{ p: 3, mb: 3 }}>
+        <Typography variant="h5" sx={{ mb: 3, fontWeight: 600, display: 'flex', alignItems: 'center' }}>
+          <CheckCircle sx={{ mr: 2, color: 'success.main' }} />
+          Aktive Vendor Typer ({vendorTypesData?.totalTypes || 0})
+        </Typography>
+        
+        <Grid container spacing={2}>
+          {vendorTypesData?.vendorTypes?.map((type: VendorTypeConfig) => (
+            <Grid item xs={12} sm={6} md={4} key={type.id}>
+              <Card sx={{ 
+                height: '100%',
+                border: `2px solid ${type.color}30`,
+                '&:hover': { borderColor: type.color }
+            }}>
+                <CardContent>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                    <Avatar sx={{ bgcolor: type.color }}>
+                      <Category />
+                    </Avatar>
+                    <Box>
+                      <Typography variant="h6" sx={{ fontSize: '1rem', fontWeight: 600 }}>
+                        {type.name}
+                      </Typography>
+                      <Chip 
+                        label={type.category}
+                        size="small"
+                        sx={{ 
+                          bgcolor: getCategoryColor(type.category),
+                          color: 'white',
+                          fontSize: '0.7rem'
+                      }}
+                      />
+                    </Box>
+                  </Box>
+                  
+                  <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2 }}>
+                    {type.targetCustomers.slice(0, 2).join(', ')}
+                    {type.targetCustomers.length > 2 && '...'}
+                  </Typography>
+                  
+                  <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                    {Object.entries(type.supportedFeatures)
+                      .filter(([, enabled]) => enabled)
+                      .slice(0, 3)
+                      .map(([feature]) => (
+                        <Chip 
+                          key={feature}
+                          label={feature}
+                          size="small"
+                          variant="outlined"
+                          sx={{ fontSize: '0.6rem' }}
+                        />
+                      ))}
+                  </Box>
+                </CardContent>
+              </Card>
+            </Grid>
+          ))}
+        </Grid>
+      </Paper>
+
+      {/* Available Expandable Types */}
+      {availableTypes?.availableTypes?.length > 0 && (
+        <Paper sx={{ p: 3 }}>
+          <Typography variant="h5" sx={{ mb: 3, fontWeight: 600, display: 'flex', alignItems: 'center' }}>
+            <Extension sx={{ mr: 2, color: 'primary.main' }} />
+            Tilgjengelige Utvidelser ({availableTypes.count})
+          </Typography>
+          
+          <Alert severity="info" sx={{ mb: 3 }}>
+            <Typography variant="body2">
+              Disse vendor typene kan aktiveres for å utvide plattformen med nye kategorier og funktionalitet.
+            </Typography>
+          </Alert>
+          
+          <Grid container spacing={2}>
+            {availableTypes.availableTypes.map((type: VendorTypeConfig) => (
+              <Grid item xs={12} sm={6} md={4} key={type.id}>
+                <Card sx={{ 
+                  height: '100%',
+                  border: `2px dashed ${type.color}50`,
+                  '&:hover': { 
+                    borderColor: type.color,
+                    borderStyle: 'solid'
+                }
+              }}>
+                  <CardContent>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                      <Avatar sx={{ bgcolor: `${type.color}20`, color: type.color }}>
+                        {React.createElement(type.icon)}
+                      </Avatar>
+                      <Box>
+                        <Typography variant="h6" sx={{ fontSize: '1rem', fontWeight: 600 }}>
+                          {type.name}
+                        </Typography>
+                        <Chip 
+                          label={type.category}
+                          size="small"
+                          variant="outlined"
+                          sx={{ 
+                            borderColor: getCategoryColor(type.category),
+                            color: getCategoryColor(type.category),
+                            fontSize: '0.7rem'
+                        }}
+                        />
+                      </Box>
+                    </Box>
+                    
+                    <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2 }}>
+                      Målgruppe: {type.targetCustomers.slice(0, 2).join(', ')}
+                    </Typography>
+                    
+                    <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 2 }}>
+                      {type.marketplaceCategory.slice(0, 3).map(cat => (
+                        <Chip 
+                          key={cat}
+                          label={cat}
+                          size="small"
+                          variant="outlined"
+                          sx={{ fontSize: '0.6rem' }}
+                        />
+                      ))}
+                    </Box>
+                    
+                    <Button
+                      fullWidth
+                      variant="outlined"
+                      startIcon={theming.getThemedIcon('add')}
+                      onClick={() => handleEnableType(type)}
+                      sx={{
+                        borderColor: type.color,
+                        color: type.color,
+                        '&:hover': {
+                          borderColor: type.color,
+                          bgcolor: `${type.color}10`
+                      }
+                    }}
+                    >
+                      Aktiver Type
+                    </Button>
+                  </CardContent>
+                </Card>
+              </Grid>
+            ))}
+          </Grid>
+        </Paper>
+      )}
+
+      {/* Enable Type Dialog */}
+      <Dialog open={enableDialogOpen} onClose={() => setEnableDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Avatar sx={{ bgcolor: selectedType?.color || 'primary.main' }}>
+              {selectedType && React.createElement(selectedType.icon)}
+            </Avatar>
+            Aktiver {selectedType?.name}
+          </Box>
+        </DialogTitle>
+        
+        <DialogContent>
+          {selectedType && (
+            <Box>
+              <Alert severity="info" sx={{ mb: 3 }}>
+                Du er i ferd med å aktivere en ny vendor type. Dette vil legge til nye funksjoner og kategorier.
+              </Alert>
+              
+              <Typography variant="h6" sx={{ mb: 2, color: theming.colors.primary }}>
+                Funksjoner som aktiveres:
+              </Typography>
+              <List dense>
+                {Object.entries(selectedType.supportedFeatures)
+                  .filter(([, enabled]) => enabled)
+                  .map(([feature]) => (
+                    <ListItem key={feature}>
+                      <ListItemIcon>
+                        <CheckCircle color="success" />
+                      </ListItemIcon>
+                      <ListItemText primary={feature.replace('_', ' ')} />
+                    </ListItem>
+                  ))}
+              </List>
+              
+              <Divider sx={{ my: 2 }} />
+              
+              <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                Kategorier: {selectedType.marketplaceCategory.join(', ')}
+              </Typography>
+            </Box>
+          )}
+        </DialogContent>
+        
+        <DialogActions>
+          <Button onClick={() => setEnableDialogOpen(false)}>
+            Avbryt
+          </Button>
+          <Button variant="contained" 
+            onClick={confirmEnableType}
+            disabled={enableTypeMutation.isPending}
+            sx={{ bgcolor: selectedType?.color }}
+          >
+            {enableTypeMutation.isPending ? 'Aktiverer...' : 'Aktiver Type'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
+  );
+}

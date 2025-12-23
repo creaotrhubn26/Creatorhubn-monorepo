@@ -1,0 +1,272 @@
+// client/src/services/TrialFeatureManager.ts
+import { apiRequest } from '../lib/queryClient';
+
+export interface TrialFeature {
+  id: string;
+  name: string;
+  description: string;
+  benefits: string[];
+  trialDuration: number; // days
+  componentId: string;
+  featureId: string;
+  previewComponent: React.ComponentType<any>;
+  upgradeRequired: boolean;
+  category: 'editor' | 'analytics' | 'ai' | 'productivity' | 'communication';
+  icon?: string;
+  color?: string; 
+}
+
+export interface TrialStatus {
+  featureId: string;
+  userId: string;
+  startDate: Date;
+  endDate: Date;
+  isActive: boolean;
+  hasExpired: boolean;
+  daysRemaining: number;
+  usageCount: number;
+  lastUsed: Date;
+  canUpgrade?: boolean; 
+}
+
+export interface TrialEligibility {
+  eligible: boolean;
+  reason?: string;
+  canUpgrade?: boolean;
+  trialStatus?: TrialStatus; 
+}
+
+export class TrialFeatureManager {
+  private static instance: TrialFeatureManager;
+  private trialFeatures = new Map<string, TrialFeature>();
+  private activeTrials = new Map<string, TrialStatus>();
+
+  static getInstance(): TrialFeatureManager {
+    if (!this.instance) {
+      this.instance = new TrialFeatureManager();
+    }
+    return this.instance;
+  }
+
+  registerTrialFeature(feature: TrialFeature) {
+    this.trialFeatures.set(feature.id, feature);
+  }
+
+  getFeature(featureId: string): TrialFeature | undefined {
+    return this.trialFeatures.get(featureId);
+  }
+
+  getAllFeatures(): TrialFeature[] {
+    return Array.from(this.trialFeatures.values());
+  }
+
+  getFeaturesForComponent(componentId: string): TrialFeature[] {
+    return Array.from(this.trialFeatures.values())
+      .filter(feature => feature.componentId === componentId);
+  }
+
+  async checkTrialEligibility(featureId: string, userId: string): Promise<TrialEligibility> {
+    try {
+      const feature = this.trialFeatures.get(featureId);
+      if (!feature) {
+        return { eligible: false, reason: 'Feature not found' };
+      }
+
+      // Check if user already has access to this feature
+      const hasAccess = await this.checkUserAccess(featureId, userId);
+      if (hasAccess) {
+        return { eligible: false, reason: 'User already has access' };
+      }
+
+      const trialStatus = await this.getTrialStatus(featureId, userId);
+      
+      if (trialStatus?.isActive) {
+        return { 
+          eligible: false, 
+          reason: 'Trial already active',
+          trialStatus 
+        };
+      }
+      
+      if (trialStatus?.hasExpired) {
+        return { 
+          eligible: false, 
+          reason: 'Trial expired', 
+          canUpgrade: true,
+          trialStatus 
+        };
+      }
+
+      return { eligible: true };
+    } catch (error) {
+      console.error('Error checking trial eligibility: ', error);
+      return { eligible: false, reason: 'Error checking eligibility' };
+    }
+  }
+
+  async startTrial(featureId: string, userId: string): Promise<TrialStatus> {
+    try {
+      const feature = this.trialFeatures.get(featureId);
+      if (!feature) {
+        throw new Error('Feature not found');
+      }
+
+      const startDate = new Date();
+      const endDate = new Date(Date.now() + feature.trialDuration * 24 * 60 * 60 * 1000);
+      const daysRemaining = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+      
+      const trialStatus: TrialStatus = {
+        featureId,
+        userId,
+        startDate,
+        endDate,
+        isActive: true,
+        hasExpired: false,
+        daysRemaining,
+        usageCount: 0,
+        lastUsed: new Date()
+      };
+
+      // Save to backend
+      await this.saveTrialStatus(trialStatus);
+      
+      // Cache locally
+      this.activeTrials.set(`${featureId}-${userId}`, trialStatus);
+      
+      // Track trial start
+      this.trackTrialStart(featureId, userId);
+      
+      return trialStatus;
+    } catch (error) {
+      console.error('Error starting trial:', error);
+      throw error;
+    }
+  }
+
+  async getTrialStatus(featureId: string, userId: string): Promise<TrialStatus | null> {
+    try {
+      const cacheKey = `${featureId}-${userId}`;
+      
+      // Check cache first
+      if (this.activeTrials.has(cacheKey)) {
+        const status = this.activeTrials.get(cacheKey)!;
+        
+        // Check if trial has expired
+        if (new Date() > status.endDate && status.isActive) {
+          status.isActive = false;
+          status.hasExpired = true;
+          status.canUpgrade = true;
+        }
+        
+        return status;
+      }
+
+      // Fetch from backend
+      const response = await apiRequest(`/api/trials/${featureId}/status`, {
+        method: 'GET',
+        headers: {
+          'X-User-ID': userId
+        }
+      });
+
+      if (response.success && response.data) {
+        const startDate = new Date(response.data.startDate);
+        const endDate = new Date(response.data.endDate);
+        const now = new Date();
+        const daysRemaining = Math.max(0, Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)));
+        
+        const status = {
+          ...response.data,
+          startDate,
+          endDate,
+          daysRemaining,
+          lastUsed: new Date(response.data.lastUsed)
+        };
+        
+        this.activeTrials.set(cacheKey, status);
+        return status;
+      }
+
+      return null;
+    } catch (error) {
+      console.error('Error getting trial status:', error);
+      return null;
+    }
+  }
+
+  async trackTrialUsage(featureId: string, userId: string, action: string) {
+    try {
+      const trialStatus = await this.getTrialStatus(featureId, userId);
+      if (trialStatus?.isActive) {
+        trialStatus.usageCount++;
+        trialStatus.lastUsed = new Date();
+        
+        // Update backend
+        await apiRequest(`/api/trials/${featureId}/usage`, {
+          method: 'POST',
+          body: JSON.stringify({
+            userId,
+            action,
+            usageCount: trialStatus.usageCount,
+            lastUsed: trialStatus.lastUsed.toISOString()
+          })
+        });
+      }
+    } catch (error) {
+      console.error('Error tracking trial usage:', error);
+    }
+  }
+
+  private async checkUserAccess(featureId: string, userId: string): Promise<boolean> {
+    try {
+      const response = await apiRequest(`/api/features/${featureId}/access`, {
+        method: 'GET',
+        headers: {
+          'X-User-ID': userId
+        }
+      });
+      
+      return response.success && response.hasAccess;
+    } catch (error) {
+      console.error('Error checking user access:', error);
+      return false;
+    }
+  }
+
+  private async saveTrialStatus(trialStatus: TrialStatus): Promise<void> {
+    await apiRequest(`/api/trials/${trialStatus.featureId}/start`, {
+      method: 'POST',
+      body: JSON.stringify({
+        userId: trialStatus.userId,
+        startDate: trialStatus.startDate.toISOString(),
+        endDate: trialStatus.endDate.toISOString(),
+        trialDuration: Math.ceil((trialStatus.endDate.getTime() - trialStatus.startDate.getTime()) / (1000 * 60 * 60 * 24))
+      })
+    });
+  }
+
+  private trackTrialStart(featureId: string, userId: string) {
+    // Track analytics
+    if (typeof window !=='undefined' && (window as any).gtag) {
+      (window as any).gtag('event', 'trial_started', {
+        feature_id: featureId,
+        user_id: userId,
+        timestamp: new Date().toISOString()
+      });
+    }
+  }
+
+  // Clean up expired trials
+  cleanupExpiredTrials() {
+    const now = new Date();
+    for (const [key, status] of this.activeTrials.entries()) {
+      if (now > status.endDate && status.isActive) {
+        status.isActive = false;
+        status.hasExpired = true;
+        status.canUpgrade = true;
+      }
+    }
+  }
+}
+
+export const trialFeatureManager = TrialFeatureManager.getInstance();

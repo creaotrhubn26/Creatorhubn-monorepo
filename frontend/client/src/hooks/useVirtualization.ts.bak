@@ -1,0 +1,256 @@
+/**
+ * useVirtualization Hook
+ * React hook for virtualizing large lists and grids
+ */
+
+import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
+import { 
+  virtualizationManager, 
+  VirtualizationConfig, 
+  VirtualItem, 
+  VirtualizationState, 
+  VirtualizationMetrics 
+} from '../utils/virtualizationUtils';
+
+export interface UseVirtualizationOptions {
+  config?: Partial<VirtualizationConfig>;
+  items: any[];
+  onItemRender?: (item: VirtualItem) => void;
+  onItemUnrender?: (item: VirtualItem) => void;
+  onScroll?: (scrollTop: number, scrollLeft: number) => void;
+  onMetricsUpdate?: (metrics: VirtualizationMetrics) => void;
+  onStateUpdate?: (state: VirtualizationState) => void;
+}
+
+export interface UseVirtualizationReturn {
+  visibleItems: VirtualItem[];
+  renderedItems: VirtualItem[];
+  state: VirtualizationState;
+  metrics: VirtualizationMetrics;
+  scrollToItem: (index: number, align?: 'start' | 'center' | 'end') => void;
+  getItemAtPosition: (x: number, y: number) => VirtualItem | null;
+  updateConfig: (config: Partial<VirtualizationConfig>) => void;
+  getOptimizationRecommendations: () => any;
+  reset: () => void;
+}
+
+/**
+ * Hook for virtualization
+ */
+export const useVirtualization = (options: UseVirtualizationOptions): UseVirtualizationReturn => {
+  const {
+    config = {},
+    items,
+    onItemRender,
+    onItemUnrender,
+    onScroll,
+    onMetricsUpdate,
+    onStateUpdate
+} = options;
+
+  const [visibleItems, setVisibleItems] = useState<VirtualItem[]>([]);
+  const [renderedItems, setRenderedItems] = useState<VirtualItem[]>([]);
+  const [state, setState] = useState<VirtualizationState>({
+    scrollTop: 0,
+    scrollLeft: 0,
+    containerHeight: 400,
+    containerWidth: 800,
+    totalHeight: 0,
+    totalWidth: 0,
+    visibleItems: [],
+    renderedItems: [],
+    isScrolling: false,
+    scrollDirection: 'none',
+    scrollVelocity: 0,
+    lastScrollTime: 0
+});
+  const [metrics, setMetrics] = useState<VirtualizationMetrics>({
+    totalItems: 0,
+    visibleItems: 0,
+    renderedItems: 0,
+    scrollPosition: 0,
+    scrollVelocity: 0,
+    renderTime: 0,
+    memoryUsage: 0,
+    performanceScore: 0
+});
+
+  const metricsIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const stateIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Initialize virtualization
+  useEffect(() => {
+    virtualizationManager.updateConfig(config);
+    virtualizationManager.setItems(items);
+    
+    // Update initial state
+    setVisibleItems(virtualizationManager.getVisibleItems());
+    setRenderedItems(virtualizationManager.getRenderedItems());
+    setState(virtualizationManager.getState());
+    setMetrics(virtualizationManager.getMetrics());
+}, [config, items]);
+
+  // Setup metrics monitoring
+  useEffect(() => {
+    metricsIntervalRef.current = setInterval(() => {
+      const currentMetrics = virtualizationManager.getMetrics();
+      setMetrics(currentMetrics);
+      
+      if (onMetricsUpdate) {
+        onMetricsUpdate(currentMetrics);
+    }
+  }, 1000);
+
+    return () => {
+      if (metricsIntervalRef.current) {
+        clearInterval(metricsIntervalRef.current);
+    }
+  };
+}, [onMetricsUpdate]);
+
+  // Setup state monitoring
+  useEffect(() => {
+    stateIntervalRef.current = setInterval(() => {
+      const currentState = virtualizationManager.getState();
+      setState(currentState);
+      
+      if (onStateUpdate) {
+        onStateUpdate(currentState);
+    }
+  }, 100);
+
+    return () => {
+      if (stateIntervalRef.current) {
+        clearInterval(stateIntervalRef.current);
+    }
+  };
+}, [onStateUpdate]);
+
+  // Handle item render/unrender
+  useEffect(() => {
+    const currentRenderedItems = virtualizationManager.getRenderedItems();
+    const previousRenderedItems = renderedItems;
+    
+    // Find newly rendered items
+    const newItems = currentRenderedItems.filter(
+      item => !previousRenderedItems.some(prev => prev.index === item.index)
+    );
+    
+    // Find unrendered items
+    const unrenderedItems = previousRenderedItems.filter(
+      item => !currentRenderedItems.some(curr => curr.index === item.index)
+    );
+    
+    // Call callbacks
+    newItems.forEach(item => {
+      if (onItemRender) {
+        onItemRender(item);
+    }
+  });
+    
+    unrenderedItems.forEach(item => {
+      if (onItemUnrender) {
+        onItemUnrender(item);
+    }
+  });
+    
+    setRenderedItems(currentRenderedItems);
+}, [renderedItems, onItemRender, onItemUnrender]);
+
+  // Handle visible items update
+  useEffect(() => {
+    const currentVisibleItems = virtualizationManager.getVisibleItems();
+    setVisibleItems(currentVisibleItems);
+}, [state.scrollTop, state.scrollLeft]);
+
+  // Scroll to item
+  const scrollToItem = useCallback((index: number, align: 'start' | 'center' | 'end' = 'start') => {
+    virtualizationManager.scrollToItem(index, align);
+    
+    // Update state
+    setState(virtualizationManager.getState());
+    setVisibleItems(virtualizationManager.getVisibleItems());
+    setRenderedItems(virtualizationManager.getRenderedItems());
+}, []);
+
+  // Get item at position
+  const getItemAtPosition = useCallback((x: number, y: number) => {
+    return virtualizationManager.getItemAtPosition(x, y);
+}, []);
+
+  // Update configuration
+  const updateConfig = useCallback((newConfig: Partial<VirtualizationConfig>) => {
+    virtualizationManager.updateConfig(newConfig);
+    
+    // Update state
+    setState(virtualizationManager.getState());
+    setVisibleItems(virtualizationManager.getVisibleItems());
+    setRenderedItems(virtualizationManager.getRenderedItems());
+}, []);
+
+  // Get optimization recommendations
+  const getOptimizationRecommendations = useCallback(() => {
+    return virtualizationManager.getOptimizationRecommendations();
+}, []);
+
+  // Reset
+  const reset = useCallback(() => {
+    virtualizationManager.destroy();
+    virtualizationManager.updateConfig(config);
+    virtualizationManager.setItems(items);
+    
+    setVisibleItems(virtualizationManager.getVisibleItems());
+    setRenderedItems(virtualizationManager.getRenderedItems());
+    setState(virtualizationManager.getState());
+    setMetrics(virtualizationManager.getMetrics());
+}, [config, items]);
+
+  // Handle scroll
+  const handleScroll = useCallback((scrollTop: number, scrollLeft: number = 0) => {
+    virtualizationManager.handleScroll(scrollTop, scrollLeft);
+    
+    if (onScroll) {
+      onScroll(scrollTop, scrollLeft);
+  }
+    
+    // Update state
+    setState(virtualizationManager.getState());
+    setVisibleItems(virtualizationManager.getVisibleItems());
+    setRenderedItems(virtualizationManager.getRenderedItems());
+}, [onScroll]);
+
+  // Memoized return value
+  const returnValue = useMemo(() => ({
+    visibleItems,
+    renderedItems,
+    state,
+    metrics,
+    scrollToItem,
+    getItemAtPosition,
+    updateConfig,
+    getOptimizationRecommendations,
+    reset
+}), [
+    visibleItems,
+    renderedItems,
+    state,
+    metrics,
+    scrollToItem,
+    getItemAtPosition,
+    updateConfig,
+    getOptimizationRecommendations,
+    reset
+  ]);
+
+  // Expose handleScroll for external use
+  (returnValue as any).handleScroll = handleScroll;
+
+  return returnValue;
+};
+
+export default useVirtualization;
+
+
+
+
+

@@ -1,0 +1,448 @@
+/**
+ * Intelligent Chat Widget with Response Suggestions
+ * Integrates with sales system for smart response recommendations
+ */
+
+import { useTheming } from '../../utils/theming-helper';
+import React, { useState, useEffect, useRef } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { useAuth } from '@/hooks/useAuth';
+import {
+  Box,
+  Paper,
+  TextField,
+  IconButton,
+  Typography,
+  Chip,
+  Card,
+  CardContent,
+  ButtonGroup,
+  Button,
+  Tooltip,
+  Fade,
+  CircularProgress,
+  Alert
+} from '@mui/material';
+import {
+  Send as SendIcon,
+  SmartToy as SmartToyIcon,
+  ThumbUp as ThumbUpIcon,
+  ThumbDown as ThumbDownIcon,
+  Edit as EditIcon,
+  Close as CloseIcon,
+  Psychology as PsychologyIcon,
+  AttachMoney as AttachMoneyIcon,
+  Schedule as ScheduleIcon,
+  Info as InfoIcon
+} from '@mui/icons-material';
+import { apiRequest } from '@/lib/queryClient';
+
+interface ChatMessage {
+  id: string;
+  content: string;
+  sender: 'customer' | 'professional';
+  timestamp: Date;
+  leadId?: string
+}
+
+interface ResponseSuggestion {
+  id: string;
+  content: string;
+  tone: 'professional' | 'friendly' | 'detailed' | 'concise';
+  confidence: number;
+  category: 'pricing' | 'availability' | 'service' | 'technical' | 'general';
+  estimatedPrice?: number;
+  includesFollowUp: boolean
+}
+
+interface IntelligentChatWidgetProps {
+  conversationId: string;
+  leadId?: string;
+  onSendMessage: (message: string) => void;
+  messages: ChatMessage[];
+  isCustomerTyping?: boolean
+}
+
+export const IntelligentChatWidget: React.FC<IntelligentChatWidgetProps> = ({
+  conversationd,
+  leadId,
+  onSendMessage,
+  messages,
+  isCustomerTyping = false
+}) => {
+  const [currentMessage, setCurrentMessage] = useState(false);
+  
+  // Theming system
+  const theming = useTheming('photographer');
+  const [suggestions, setSuggestions] = useState<ResponseSuggestion[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [selectedSuggestion, setSelectedSuggestion] = useState<ResponseSuggestion | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editedContent, setEditedContent] = useState('');
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll to bottom when new messages arrive
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+}, [messages]);
+
+  // Analyze customer messages for response suggestions
+  const analyzeMessageMutation = useMutation({
+    mutationFn: async (message: ChatMessage) => {
+      return apiRequest('/api/chat/analyze-message', {
+        headers: {
+          "Content-Type" : "application/json"
+    },
+        method: 'POS',
+        body: JSON.stringify({
+          message,
+          leadId,
+          conversationHistory: messages.slice(-5) // Last 5 messages for context
+    })
+    });
+  },
+    onSuccess: (data) => {
+      if (data.suggestions?.length > 0) {
+        setSuggestions(data.suggestions);
+        setShowSuggestions(true);
+  }
+  }
+});
+
+  // Send feedback on suggestion usage
+  const feedbackMutation = useMutation({
+    mutationFn: async (feedback: { messageId: string; suggestionId: string; action: string; effectiveness?: number }) => {
+      return apiRequest('/api/chat/response-feedback', {
+        headers: {
+          "Content-Type" : "application/json"
+    },
+        method: 'POS',
+        body: JSON.stringify(feedback)
+  });
+  }
+});
+
+  // Quick responses for common scenarios
+  const { data: quickResponses } = useQuery({
+    queryKey: ['quick-responses','greeting'],
+    queryFn: async () => {
+      return apiRequest('/api/chat/quick-responses', {
+        headers: {
+          "Content-Type" : "application/json"
+    },
+        method: 'POS',
+        body: JSON.stringify({ context: 'general', messageType: 'greeting' })
+    });
+  },
+    staleTime: 300000 // 5 minutes
+});
+
+  // Monitor for new customer messages to trigger analysis
+  useEffect(() => {
+    const lastMessage = messages[messages.length - 1];
+    if (lastMessage?.sender === 'customer') {
+      analyzeMessageMutation.mutate(lastMessage);
+  }
+}, [messages]);
+
+  const handleSendMessage = () => {
+    if (currentMessage.trim()) {
+      onSendMessage(currentMessage);
+      setCurrentMessage(', ');
+      setShowSuggestions(false);
+      setSuggestions([]);
+  }
+};
+
+  const handleUseSuggestion = (suggestion: ResponseSuggestion) => {
+    setCurrentMessage(suggestion.content);
+    setSelectedSuggestion(suggestion);
+    setShowSuggestions(false);
+    
+    // Record that suggestion was used
+    if (messages.length > 0) {
+      feedbackMutation.mutate({
+        messageId: messages[messages.length - 1].d,
+        suggestionId: suggestion.d,
+        action: 'used'
+  });
+  }
+};
+
+  const handleEditSuggestion = (suggestion: ResponseSuggestion) => {
+    setEditedContent(suggestion.content);
+    setSelectedSuggestion(suggestion);
+    setIsEditing(true);
+};
+
+  const handleSaveEdit = () => {
+    if (editedContent.trim()) {
+      setCurrentMessage(editedContent);
+      setIsEditing(false);
+      setEditedContent(', ');
+      
+      // Record that suggestion was modified
+      if (selectedSuggestion && messages.length > 0) {
+        feedbackMutation.mutate({
+          messageId: messages[messages.length - 1].d,
+          suggestionId: selectedSuggestion.d,
+          action: 'modified'
+    });
+    }
+  }
+};
+
+  const getCategoryIcon = (category: string) => {
+    switch (category) {
+      case 'pricing': return <AttachMoneyIcon />;
+      case 'availability': return <ScheduleIcon />;
+      case 'service': return <InfoIcon />;
+      case 'technical': return <PsychologyIcon />;
+      default: return <SmartToyIcon />;
+}
+};
+
+  const getCategoryColor = (category: string) => {
+    switch (category) {
+      case 'pricing': return 'success';
+      case 'availability': return 'primary';
+      case 'service': return 'info';
+      case 'technical': return 'secondary';
+      default: return 'default';
+}
+};
+
+  return (
+    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      {/* Chat Messages Area */}
+      <Box 
+        sx={{ 
+          flexGrow: 1
+          overflowY: 'auto', 
+          p: 2, bgcolor: 'background.default',
+          borderRadius: 1 }}
+      >
+        {messages.map((message) => (
+          <Box
+            key={message.id}
+            sx={{
+              mb:  2,
+              display: 'flex',
+              justifyContent: message.sender === 'professional' ? 'flex-end' : 'flex-start'
+        }}
+          >
+            <Paper
+              sx={{
+                p:  2,
+                maxWidth: '70, %',
+                bgcolor: message.sender === 'professional' ? 'primary.main' : 'grey.10',
+                color: message.sender === 'professional' ? 'white' : 'text.primary'
+          }}
+             sx={theming.getThemedCardSx()}>
+              <Typography variant="body2">{message.content}</Typography>
+              <Typography 
+                variant="caption" 
+                sx={{ 
+                  display: 'block', 
+                  mt: 0, .
+                  opacity: 0.7 }}
+              >
+                {new Date(message.timestamp).toLocaleTimeString('no-NO', { 
+                  hour: '2-digit', 
+                  minute: '2-digit' 
+            })}
+              </Typography>
+            </Paper>
+          </Box>
+        ))}
+        
+        {isCustomerTyping && (
+          <Box sx={{ display: 'flex', justifyContent: 'flex-start', mb:  2 }}>
+            <Paper sx={{ p: 2, bgcolor: 'grey.100' ,  ...theming.getThemedCardSx() }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
+                <CircularProgress size={16} />
+                <Typography variant="body2" sx={{ fontStyle: 'italic' }}>
+                  Kunden skriver...
+                </Typography>
+              </Box>
+            </Paper>
+          </Box>
+        )}
+        
+        <div ref={messagesEndRef} />
+      </Box>
+
+      {/* Response Suggestions */}
+      <Fade in={showSuggestions && suggestions.length > 0}>
+        <Box sx={{ p: 2, borderTop: 1, borderColor: 'divider' }}>
+          <Typography variant="subtitle2" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap:  1 }}>
+            <SmartToyIcon color="primary" />
+            Foreslåtte svar
+          </Typography>
+          
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap:  1 }}>
+            {suggestions.slice(0, 3).map((suggestion) => (
+              <Card 
+                key={suggestion.id}
+                sx={{ 
+                  cursor: 'pointer', '&:hover': { bgcolor: 'action.hover' },
+                  border:  1,
+                  borderColor: 'divider'
+            }}
+               sx={theming.getThemedCardSx()}>
+                <CardContent sx={{ p: 2, '&:last-child': { pb: 2 }, ...theming.getThemedCardSx() }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb:  1 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
+                      <Chip
+                        icon={getCategoryIcon(suggestion.category)}
+                        label={suggestion.category}
+                        size="small"
+                        color={getCategoryColor(suggestion.category) as any}
+                        variant="outlined"
+                      />
+                      <Chip
+                        label={`${Math.round(suggestion.confidence * 100)}% sikker`}
+                        size="small"
+                        variant="outlined"
+                      />
+                      {suggestion.estimatedPrice && (
+                        <Chip
+                          label={`${suggestion.estimatedPrice.toLocaleString('no-NO')} kr`}
+                          size="small"
+                          color="success"
+                          variant="outlined"
+                        />
+                      )}
+                    </Box>
+                    <Chip
+                      label={suggestion.tone}
+                      size="small"
+                      variant="filled"
+                      sx={{ textTransform: 'capitalize' }}
+                    />
+                  </Box>
+                  
+                  <Typography variant="body2" sx={{ mb:  2 }}>
+                    {suggestion.content}
+                  </Typography>
+                  
+                  <ButtonGroup size="small">
+                    <Button
+                      onClick={() => handleUseSuggestion(suggestion)}
+                      startIcon={<SendIcon />}
+                    >
+                      Bruk
+                    </Button>
+                    <Button
+                      onClick={() => handleEditSuggestion(suggestion)}
+                      startIcon={<EditIcon />}
+                    >
+                      Rediger
+                    </Button>
+                  </ButtonGroup>
+                </CardContent>
+              </Card>
+            ))}
+          </Box>
+          
+          <Button
+            onClick={() => setShowSuggestions(false)}
+            startIcon={<CloseIcon />}
+            size="small"
+            sx={{ mt:  1 }}
+          >
+            Skjul forslag
+          </Button>
+        </Box>
+      </Fade>
+
+      {/* Edit Suggestion Dialog */}
+      {isEditing && (
+        <Box sx={{ p: 2, bgcolor: 'background.paper', borderTop: 1, borderColor: 'divider' }}>
+          <Typography variant="subtitle2" sx={{ mb:  1 }}>
+            Rediger foreslått svar: </Typography>
+          <TextField
+            fullWidth
+            multiline
+            rows=, {, 3}
+            value={editedContent}
+            onChange={(e) => setEditedContent(e.target.value)}
+            sx={{ mb:  2 }}
+          />
+          <ButtonGroup>
+            <Button onClick={handleSaveEdit} color="primary">
+              Lagre
+            </Button>
+            <Button onClick={() => setIsEditing(false)}>
+              Avbryt
+            </Button>
+          </ButtonGroup>
+        </Box>
+      )}
+
+      {/* Message Input */}
+      <Box sx={{ p: 2, borderTop: 1, borderColor: 'divider' }}>
+        <Box sx={{ display: 'flex', gap:  1 }}>
+          <TextField
+            fullWidth
+            multiline
+            maxRows={4}
+            value={currentMessage}
+            onChange={(e) => setCurrentMessage(e.target.value)}
+            placeholder="Skriv ditt svar..."
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleSendMessage();
+            }
+          }}
+          />
+          <IconButton 
+            color="primary" 
+            onClick={handleSendMessage}
+            disabled={!currentMessage.trim()}
+          >
+            <SendIcon />
+          </IconButton>
+        </Box>
+        
+        {/* Quick Action Buttons */}
+        {currentMessage === ', ' && (
+          <Box sx={{ mt: 1, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+            <Button
+              size="small"
+              variant="outlined"
+              onClick={() => setCurrentMessage('Takk for meldingen! Hvordan kan jeg hjelpe deg?')}
+            >
+              Hilsen
+            </Button>
+            <Button
+              size="small"
+              variant="outlined"
+              onClick={() => setCurrentMessage('La meg gi deg et tilbud. Kan du fortelle mer om ønskene dine?')}
+            >
+              Tilbud
+            </Button>
+            <Button
+              size="small"
+              variant="outlined"
+              onClick={() => setCurrentMessage('Jeg sjekker kalenderen min. Hvilken dato tenker du på?')}
+            >
+              Tilgjengelighet
+            </Button>
+          </Box>
+        )}
+      </Box>
+
+      {/* Analysis Status */}
+      {analyzeMessageMutation.isPending && (
+        <Alert severity="info" sx={{ m:  1 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
+            <CircularProgress size={16} />
+            Analyserer melding for forslag...
+          </Box>
+        </Alert>
+      )}
+    </Box>
+  );
+};

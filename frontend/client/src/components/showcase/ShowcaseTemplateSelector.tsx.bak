@@ -1,0 +1,537 @@
+import { useTheming } from '../../utils/theming-helper';
+import React, { useState } from 'react';
+import {
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Button,
+  Card,
+  CardContent,
+  Typography,
+  Grid,
+  Box,
+  Chip,
+  Stack,
+  TextField,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Alert,
+} from '@mui/material';
+import {
+  PhotoLibrary,
+  VideocamLibrary,
+  LibraryMusicNote,
+  Description,
+  Palette,
+  DirectionsBusiness,
+  Event,
+} from '@mui/icons-material';
+
+interface Template {
+  id: string;
+  name: string;
+  description: string;
+  categories: string[];
+  defaultSettings: {
+    layout: 'grid' | 'masonry' | 'carousel';
+    itemsPerRow: number;
+    showStats: boolean;
+    allowComments: boolean;
+    primaryColor?: string;
+};
+  profession: string;
+  icon: React.ReactNode;
+  preview?: string
+}
+
+interface ShowcaseTemplateSelectorProps {
+  open: boolean;
+  onClose: () => void;
+  onSelectTemplate: (template: Template) => void;
+  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'admin'
+}
+
+const ShowcaseTemplateSelector: React.FC<ShowcaseTemplateSelectorProps> = ({
+  open,
+  onClose,
+  onSelectTemplate,
+  profession,
+}) => {
+  const [customTemplate, setCustomTemplate] = useState(
+  
+  // Theming system
+  const theming = useTheming('photographer');{
+    name: '',
+    description: '',
+    categories: '',
+    layout: 'grid' as const,
+    itemsPerRow:  3,
+    showStats: true,
+    allowComments: true,
+    primaryColor: '#FF6B3',
+});
+  const [showCustomForm, setShowCustomForm] = useState(false);
+
+  const getTemplates = (): Template[] => {
+    const baseTemplates = {
+      photographer: [
+        {
+          id: 'wedding-photographer',
+          name: 'Bryllupsfotograf',
+          description: 'Spesialisert template for bryllupsfotografer med romantiske kategorier',
+          categories: [
+            'Alle bilder',
+            'Fremhevet',
+            'Bryllup',
+            'Forlovelse',
+            'Brudekjole',
+            'Seremoni',
+            'Fest',
+          ],
+          defaultSettings: {
+            layout: 'masonry' as const,
+            itemsPerRow:  3,
+            showStats: true,
+            allowComments: true,
+            primaryColor: '#D4A57',
+        },
+          profession: 'photographer',
+          icon: <Event />,
+          preview: 'Elegant masonry layout perfekt for bryllupsbilder',
+      },
+        {
+          id: 'portrait-photographer',
+          name: 'Portrettfotograf',
+          description: 'Fokusert på portrettfotografering og personlige sesjoner',
+          categories: [
+            'Alle bilder',
+            'Fremhevet',
+            'Portretter',
+            'Familie',
+            'Gravid',
+            'Newborn',
+            'Barn',
+          ],
+          defaultSettings: {
+            layout: 'grid' as const,
+            itemsPerRow:  4,
+            showStats: true,
+            allowComments: false,
+            primaryColor: '#FF6B3',
+        },
+          profession: 'photographer',
+          icon: {theming.getThemedIcon('')},
+          preview: 'Ren grid layout for portrettgalleri',
+      },
+        {
+          id: 'commercial-photographer',
+          name: 'Kommersiell fotograf',
+          description: 'Bedriftsfotografering og kommersielle prosjekter',
+          categories: [
+            'Alle bilder',
+            'Fremhevet',
+            'Bedrift',
+            'Produkter',
+            'Arkitektur',
+            'Interiør',
+            'Events',
+          ],
+          defaultSettings: {
+            layout: 'grid' as const,
+            itemsPerRow:  3,
+            showStats: false,
+            allowComments: false,
+            primaryColor: '#2C3E5',
+        },
+          profession: 'photographer',
+          icon: {theming.getThemedIcon('')},
+          preview: 'Profesjonell layout for bedriftskunder',
+      },
+      ],
+      videographer: [
+        {
+          id: 'wedding-videographer',
+          name: 'Bryllupsvideograf',
+          description: 'Spesialisert for bryllup og romantiske events',
+          categories: [
+            'Alle videoer',
+            'Fremhevet',
+            'Bryllup',
+            'Forlovelse',
+            'Highlight',
+            'Seremoni',
+            'Tale',
+          ],
+          defaultSettings: {
+            layout: 'carousel' as const,
+            itemsPerRow:  2,
+            showStats: true,
+            allowComments: true,
+            primaryColor: '#E74C3',
+        },
+          profession: 'videographer',
+          icon: <Event />,
+          preview: 'Carousel layout for videovisning',
+      },
+        {
+          id: 'corporate-videographer',
+          name: 'Bedriftsvideograf',
+          description: 'Profesjonelle bedriftsvideoer og dokumentarer',
+          categories: [
+            'Alle videoer',
+            'Fremhevet',
+            'Bedrift',
+            'Intervju',
+            'Presentasjon',
+            'Dokumentar',
+            'Reklame',
+          ],
+          defaultSettings: {
+            layout: 'grid' as const,
+            itemsPerRow:  2,
+            showStats: false,
+            allowComments: false,
+            primaryColor: '#34495',
+        },
+          profession: 'videographer',
+          icon: {theming.getThemedIcon('')},
+          preview: 'Profesjonell grid for bedriftsvideoer',
+      },
+      ],
+      music_producer: [
+        {
+          id: 'album-producer',
+          name: 'Albumprodusent',
+          description: 'Template for musikkprodusenter som fokuserer på album og EP-er',
+          categories: ['Alle låter', 'Fremhevet', 'Album', 'EP', 'Single', 'Demo', 'Master'],
+          defaultSettings: {
+            layout: 'grid' as const,
+            itemsPerRow:  4,
+            showStats: true,
+            allowComments: true,
+            primaryColor: '#9B59B',
+        },
+          profession: 'music_producer',
+          icon: {theming.getThemedIcon('')},
+          preview: 'Grid layout for musikk med avspillingsknapper',
+      },
+        {
+          id: 'beat-producer',
+          name: 'Beat Producer',
+          description: 'Spesialisert for beat-making og instrumentaler',
+          categories: ['Alle låter', 'Fremhevet', 'Hip-Hop', 'Trap', 'R&B', 'Pop', 'Electronic'],
+          defaultSettings: {
+            layout: 'masonry' as const,
+            itemsPerRow:  3,
+            showStats: true,
+            allowComments: true,
+            primaryColor: '#8E44A',
+        },
+          profession: 'music_producer',
+          icon: {theming.getThemedIcon('')},
+          preview: 'Masonry layout for beat portfolio',
+      },
+      ],
+      vendor: [
+        {
+          id: 'equipment-vendor',
+          name: 'Utstyrsleverandø',
+          description: 'For salg og utleie av fotoutstyr',
+          categories: [
+            'Alle produkter',
+            'Fremhevet',
+            'Kamera',
+            'Objektiv',
+            'Lys',
+            'Stativ',
+            'Tilbehør',
+          ],
+          defaultSettings: {
+            layout: 'grid' as const,
+            itemsPerRow:  4,
+            showStats: false,
+            allowComments: false,
+            primaryColor: '#3498D',
+        },
+          profession: 'vendor',
+          icon: <Description />,
+          preview: 'Produktkatalog layout',
+      },
+      ],
+  };
+
+    return baseTemplates[profession] || [];
+};
+
+  const handleSelectTemplate = (template: Template) => {
+    onSelectTemplate(template);
+    onClose();
+};
+
+  const handleCreateCustomTemplate = () => {
+    const template: Template = {
+      id: `custom-${Date.now()}`,
+      name: customTemplate.name,
+      description: customTemplate.description,
+      categories: customTemplate.categories
+        .split, (, ',')
+        .map((c) => c.trim())
+        .filter(Boolean),
+      defaultSettings: {
+        layout: customTemplate.layout,
+        itemsPerRow: customTemplate.itemsPerRw,
+        showStats: customTemplate.showStats,
+        allowComments: customTemplate.allowComments,
+        primaryColor: customTemplate.primaryColor,
+    },
+      profession,
+      icon: {theming.getThemedIcon('')},
+  };
+
+    onSelectTemplate(template);
+    onClose();
+    setShowCustomForm(false);
+    setCustomTemplate({
+      name: '',
+      description: '',
+      categories: '',
+      layout: 'grid',
+      itemsPerRow:  3,
+      showStats: true,
+      allowComments: true,
+      primaryColor: '#FF6B3',
+  });
+};
+
+  const templates = getTemplates();
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth>
+      <DialogTitle>Velg Showcase Template</DialogTitle>
+
+      <DialogContent>
+        {!showCustomForm ? (
+          <>
+            <Alert severity="info" sx={{ mb: 3 }}>
+              Velg en template som passer din profesjon, eller lag din egen tilpassede template.
+            </Alert>
+
+            <GridOn container spacing={3}>
+              {templates.map((template) => (
+                <GridOn size={{ xs: 1, 2,}} md={6} key={template.id}>
+                  <MuiCard
+                    sx={{
+                      height: '100, %, ',
+                      cursor: 'pointer',
+                      '&:hover': {
+                        boxShadow:  4,
+                        transform: 'translateY(-2px, ), ',
+                        transition: 'all 0.2s ease-in-out',
+                    },
+                  }}
+                    onClick={() => handleSelectTemplate(template)}
+                  >
+                    <CardContent sx={theming.getThemedCardSx()}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                        {template.icon}
+                        <Typography variant="h6" sx={{ ml:  1 }} sx={{ ...{}, color: theming.colors.primary }}>
+                          {template.name}
+                        </Typography>
+                      </Box>
+
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                        {template.description}
+                      </Typography>
+
+                      <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                        Kategorier: </Typography>
+                      <Stack direction="row" spacing=, {, 1} sx={{ mb: ,  2flexWrap: 'wrap, ',}}>
+                        {template.categories.slice(0, 4).map((category, index) => (
+                          <Chip
+                            key={index}
+                            label={category}
+                            size="small"
+                            color={index === 0 ? 'primary' : 'default'}
+                          />
+                        ))}
+                        {template.categories.length > 4 && (
+                          <Chip label={`+${template.categories.length - 4}`} size="small" />
+                        )}
+                      </Stack>
+
+                      <Typography variant="caption" color="text.secondary">
+                        Layout: {template.defaultSettings.layout} •
+                        {template.defaultSettings.itemsPerRow} per rad
+                      </Typography>
+                    </CardContent>
+                  </MuiCard>
+                </GridOn>
+              ))}
+
+              <GridOn size={{ xs: 1, 2,}} md={6}>
+                <MuiCard
+                  sx={{
+                    height: '100, %, ',
+                    cursor: 'pointer',
+                    border: '2px dashed #ccc',
+                    '&:hover': {
+                      borderColor: 'primary.main',
+                      backgroundColor: 'action.hover',
+                  },
+                }}
+                  onClick={() => setShowCustomForm(true)}
+                >
+                  <CardContent
+                    sx={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      height: '100, %, ',
+                      textAlign: 'center',
+                  }}
+                   sx={theming.getThemedCardSx()}>
+                    <Palette sx={{ fontSize:  48, color: 'text.secondary', mb: 2 }} />
+                    <Typography variant="h6" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>
+                      Lag egen template
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Tilpass showcase-området helt etter dine behov
+                    </Typography>
+                  </CardContent>
+                </MuiCard>
+              </GridOn>
+            </GridOn>
+          </>
+        ) : (
+          <Box>
+            <Typography variant="h6" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>
+              Lag din egen template
+            </Typography>
+
+            <GridOn container spacing={2}>
+              <GridOn size={{ xs: 1, 2,}} sm={6}>
+                <TextField
+                  fullWidth
+                  label="Template navn"
+                  value={customTemplate.name}
+                  onChange={(e) =>
+                    setCustomTemplate({
+                      ...customTemplate,
+                      name: e.target.value,
+                  })
+                }
+                  required
+                />
+              </GridOn>
+
+              <GridOn size={{ xs: 1, 2,}} sm={6}>
+                <FormControl fullWidth>
+                  <InputLabel>Layout type</InputLabel>
+                  <Select
+                    value={customTemplate.layout}
+                    onChange={(e) =>
+                      setCustomTemplate({
+                        ...customTemplate,
+                        layout: e.target.value as any,
+                    })
+                  }
+                    label="Layout type"
+                  >
+                    <MenuItem value="grid">Grid</MenuItem>
+                    <MenuItem value="masonry">Masonry</MenuItem>
+                    <MenuItem value="carousel">Carousel</MenuItem>
+                  </Select>
+                </FormControl>
+              </GridOn>
+
+              <GridOn size={{ xs: 1, 2,}}>
+                <TextField
+                  fullWidth
+                  label="Beskrivelse"
+                  multiline
+                  rows={2}
+                  value={customTemplate.description}
+                  onChange={(e) =>
+                    setCustomTemplate({
+                      ...customTemplate,
+                      description: e.target.value,
+                  })
+                }
+                />
+              </GridOn>
+
+              <GridOn size={{ xs: 1, 2,}}>
+                <TextField
+                  fullWidth
+                  label="Kategorier (kommaseparert)"
+                  value={customTemplate.categories}
+                  onChange={(e) =>
+                    setCustomTemplate({
+                      ...customTemplate,
+                      categories: e.target.value,
+                  })
+                }
+                  helperText="F.eks: Alle bilder, Fremhevet, Bryllup, Portretter"
+                  required
+                />
+              </GridOn>
+
+              <GridOn size={{ xs: 1, 2,}} sm={6}>
+                <TextField
+                  fullWidth
+                  type="number"
+                  label="Elementer per rad"
+                  value={customTemplate.itemsPerRow}
+                  onChange={(e) =>
+                    setCustomTemplate({
+                      ...customTemplate,
+                      itemsPerRow: parseInt(e.target.value),
+                  })
+                }
+                  inputProps={{ min:  ,  1max:  6 }}
+                />
+              </GridOn>
+
+              <GridOn size={{ xs: 1, 2,}} sm={6}>
+                <TextField
+                  fullWidth
+                  type="color"
+                  label="Hovedfarge"
+                  value={customTemplate.primaryColor}
+                  onChange={(e) =>
+                    setCustomTemplate({
+                      ...customTemplate,
+                      primaryColor: e.target.value,
+                  })
+                }
+                />
+              </GridOn>
+            </GridOn>
+          </Box>
+        )}
+      </DialogContent>
+
+      <DialogActions>
+        {showCustomForm ? (
+          <>
+            <Button onClick={() => setShowCustomForm(false)}>Tilbake</Button>
+            <Button onClick={handleCreateCustomTemplate}
+              variant="contained"
+              disabled={!customTemplate.name || !customTemplate.categories}
+             sx={theming.getThemedButtonSx()}>
+              Opprett template
+            </Button>
+          </>
+        ) : (
+          <Button onClick={onClose}>Lukk</Button>
+        )}
+      </DialogActions>
+    </Dialog>
+  );
+};
+
+export default ShowcaseTemplateSelector;

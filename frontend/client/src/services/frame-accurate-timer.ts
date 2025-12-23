@@ -1,0 +1,199 @@
+/**
+ * FRAME-ACCURATE TIMING SYSTEM
+ * Using framesync for perfect frame timing
+ * Like Premiere Pro's frame-accurate playback
+ */
+
+import { cancelSync, onFrameUpdate, onFrameStart, onFrameRender } from 'framesync';
+
+export interface FrameCallback {
+  id: string;
+  callback: (timestamp: number, frame: number) => void;
+  priority?: 'high' | 'normal' | 'low';
+}
+
+export class FrameAccurateTimer {
+  private callbacks: Map<string, FrameCallback> = new Map();
+  private isPlaying: boolean = false;
+  private frameRate: number = 25; // PAL standard
+  private startTime: number = 0;
+  private currentFrame: number = 0;
+  private cancelFunctions: Array<() => void> = [];
+  
+  /**
+   * Set frame rate (PAL: 25fps, NTSC: 29.97fps, Cinema: 24fps)
+   */
+  setFrameRate(fps: number) {
+    this.frameRate = fps;
+  }
+  
+  /**
+   * Start playback with frame-accurate timing
+   */
+  start(startFrame: number = 0) {
+    this.currentFrame = startFrame;
+    this.startTime = performance.now();
+    this.isPlaying = true;
+    
+    // Register frame update callback
+    const cancel = onFrameUpdate((timestamp) => {
+      if (!this.isPlaying) return;
+      
+      // Calculate current frame based on elapsed time
+      const elapsed = timestamp - this.startTime;
+      const expectedFrame = Math.floor((elapsed / 1000) * this.frameRate);
+      this.currentFrame = startFrame + expectedFrame;
+      
+      // Call all registered callbacks
+      this.callbacks.forEach(cb => {
+        cb.callback(timestamp, this.currentFrame);
+      });
+    });
+    
+    this.cancelFunctions.push(cancel);
+    
+    console.log(`▶️  Playback started at frame ${startFrame} (${this.frameRate}fps)`);
+  }
+  
+  /**
+   * Stop playback
+   */
+  stop() {
+    this.isPlaying = false;
+    this.cancelFunctions.forEach(cancel => cancel());
+    this.cancelFunctions = [];
+    
+    console.log(`⏹️  Playback stopped at frame ${this.currentFrame}`);
+  }
+  
+  /**
+   * Pause playback
+   */
+  pause() {
+    this.isPlaying = false;
+    console.log(`⏸️  Playback paused at frame ${this.currentFrame}`);
+  }
+  
+  /**
+   * Resume playback
+   */
+  resume() {
+    if (!this.isPlaying) {
+      this.start(this.currentFrame);
+      console.log(`▶️  Playback resumed from frame ${this.currentFrame}`);
+    }
+  }
+  
+  /**
+   * Seek to specific frame
+   */
+  seekToFrame(frame: number) {
+    this.currentFrame = frame;
+    this.startTime = performance.now();
+    
+    // Trigger one frame update to reflect seek
+    this.callbacks.forEach(cb => {
+      cb.callback(performance.now(), this.currentFrame);
+    });
+    
+    console.log(`⏩ Seeked to frame ${frame}`);
+  }
+  
+  /**
+   * Seek to specific time (seconds)
+   */
+  seekToTime(seconds: number) {
+    const frame = this.secondsToFrames(seconds);
+    this.seekToFrame(frame);
+  }
+  
+  /**
+   * Register callback for frame updates
+   */
+  registerCallback(id: string, callback: (timestamp: number, frame: number) => void, priority: 'high' | 'normal' | 'low' = 'normal') {
+    this.callbacks.set(id, { id, callback, priority });
+  }
+  
+  /**
+   * Unregister callback
+   */
+  unregisterCallback(id: string) {
+    this.callbacks.delete(id);
+  }
+  
+  /**
+   * Get current frame
+   */
+  getCurrentFrame(): number {
+    return this.currentFrame;
+  }
+  
+  /**
+   * Get current time (seconds)
+   */
+  getCurrentTime(): number {
+    return this.framesToSeconds(this.currentFrame);
+  }
+  
+  /**
+   * Convert frames to seconds
+   */
+  framesToSeconds(frames: number): number {
+    return frames / this.frameRate;
+  }
+  
+  /**
+   * Convert seconds to frames
+   */
+  secondsToFrames(seconds: number): number {
+    return Math.floor(seconds * this.frameRate);
+  }
+  
+  /**
+   * Get timecode (HH:MM:SS:FF)
+   */
+  getTimecode(frame?: number): string {
+    const f = frame ?? this.currentFrame;
+    const totalSeconds = this.framesToSeconds(f);
+    
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = Math.floor(totalSeconds % 60);
+    const frames = f % this.frameRate;
+    
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2,'0')}:${String(seconds).padStart(2, '0')}:${String(frames).padStart(2, '0')}`;
+  }
+  
+  /**
+   * Step forward one frame
+   */
+  stepForward() {
+    this.seekToFrame(this.currentFrame + 1);
+  }
+  
+  /**
+   * Step backward one frame
+   */
+  stepBackward() {
+    this.seekToFrame(Math.max(0, this.currentFrame - 1));
+  }
+  
+  /**
+   * Check if playing
+   */
+  isActive(): boolean {
+    return this.isPlaying;
+  }
+  
+  /**
+   * Cleanup
+   */
+  dispose() {
+    this.stop();
+    this.callbacks.clear();
+  }
+}
+
+export const frameTimer = new FrameAccurateTimer();
+
+

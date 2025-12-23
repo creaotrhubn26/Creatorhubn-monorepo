@@ -1,0 +1,978 @@
+import { useTheming } from '../../utils/theming-helper';
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  Box,
+  Paper,
+  Typography,
+  Button,
+  Grid,
+  TextField,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Switch,
+  FormControlLabel,
+  Slider,
+  Chip,
+  Card,
+  CardContent,
+  CardHeader,
+  Divider,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
+  Tabs,
+  Tab,
+  Alert,
+  IconButton,
+  Tooltip,
+  Badge,
+  LinearProgress,
+  Avatar,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemIcon,
+  ListItemSecondaryAction,
+} from '@mui/material';
+import {
+  ExpandMore,
+  PlayArrow,
+  Stop,
+  Save,
+  Refresh,
+  Preview,
+  Settings,
+  ColorLens,
+  VideoSettings,
+  AudioSettings,
+  Timeline,
+  CloudUpload,
+  Download,
+  Share,
+  Info,
+  Warning,
+  CheckCircle,
+  Error,
+  Edit,
+  Delete,
+  Add,
+  Remove,
+  Visibility,
+  VisibilityOff,
+} from '@mui/icons-material';
+
+interface ClientInformation {
+  projectName: string;
+  clientName: string;
+  eventType: string;
+  culture: string;
+  clientEmail: string;
+  clientPhone: string;
+  projectNotes: string, ;, 
+}
+
+interface TechnicalSettings {
+  frameRate: number;
+  resolution: string;
+  colorSpace: string;
+  audioSampleRate: number;
+  audioChannels: number;
+  audioBitrate: number;
+  videoBitrate: number;
+  codec: string;
+  quality: string, ;, 
+}
+
+interface WorkflowParameters {
+  timelineConfiguration: {
+    trackCount: number;
+    transitionStyle: string;
+    transitionDuration: number;
+    defaultClipLength: number;
+,  ,};
+  exportSettings: {
+    format: string;
+    compression: string;
+    metadata: boolean;
+    watermark: boolean;
+,  ,};
+  deliveryFormat: {
+    platform: string;
+    aspectRatio: string;
+    fileSize: string;
+    quality: string;
+,  ,};
+}
+
+interface ScriptConfiguration {
+  clientInfo: ClientInformation;
+  technicalSettings: TechnicalSettings;
+  workflowParameters: WorkflowParameters;
+  customParameters: Record<string, any>;
+  previewSettings: {
+    enabled: boolean;
+    quality: 'low' | 'medium' | 'high';
+    duration: number;
+,  ,};
+}
+
+interface AdvancedScriptConfiguratorProps {
+  scriptId: string;
+  scriptName: string;
+  scriptDescription: string;
+  onConfigurationChange: (config: ScriptConfiguration) => void;
+  onGenerate: (config: ScriptConfiguration) => void;
+  onSave: (config: ScriptConfiguration) => void;
+  onLoad: (configId: string) => void;
+  initialConfig?: ScriptConfiguration, ;, 
+}
+
+const AdvancedScriptConfigurator: React.FC<AdvancedScriptConfiguratorProps> = ({
+  scriptd,
+  scriptName,
+  scriptDescription,
+  onConfigurationChange,
+  onGenerate,
+  onSave,
+  onLoad,
+  initialConfig,
+}) => {
+  const [activeTab, setActiveTab] = useState(
+  
+  // Theming system
+  const theming = useTheming('videographer');0);
+  const [isPreviewMode, setIsPreviewMode] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [previewProgress, setPreviewProgress] = useState(0);
+  const [savedConfigs, setSavedConfigs] = useState<string[]>([]);
+  
+  const [configuration, setConfiguration] = useState<ScriptConfiguration>({
+    clientInfo: {
+      projectName:'',
+      clientName: '',
+      eventType: 'wedding',
+      culture: 'western',
+      clientEmail: '',
+      clientPhone: '',
+      projectNotes: '',
+  },
+    technicalSettings: {
+      frameRate: 25,
+      resolution: '1920x108',
+      colorSpace: 'Rec.70',
+      audioSampleRate: 4800,
+      audioChannels:  2,
+      audioBitrate: 30,
+      videoBitrate: 2500,
+      codec: 'H.26',
+      quality: 'high',
+  },
+    workflowParameters: {
+      timelineConfiguration: {
+        trackCount:,  , 4,
+        transitionStyle: 'dissolve',
+        transitionDuration: 1.0,
+        defaultClipLength: 5.0,
+    },
+      exportSettings: {
+        format: 'mp',
+        compression: 'medium',
+        metadata: true,
+        watermark: false,
+    },
+      deliveryFormat: {
+        platform: 'youtube',
+        aspectRatio: '16:',
+        fileSize: 'medium',
+        quality: 'high',
+    },
+  },
+    customParameters:  ,  , {},
+    previewSettings: {
+      enabled: true,
+      quality: 'medium',
+      duration:  30,
+  },
+});
+
+  // Initialize with provided config
+  useEffect(() => {
+    if (initialConfig) {
+      setConfiguration(initialConfig);
+  }
+}, [initialConfig]);
+
+  // Notify parent of configuration changes
+  useEffect(() => {
+    onConfigurationChange(configuration);
+}, [configuration, onConfigurationChange]);
+
+  const handleClientInfoChange = useCallback((field: keyof ClientInformation, value: string) => {
+    setConfiguration(prev => ({
+      ...prev,
+      clientInfo: {
+        ...prev.clientInfo,
+        [field]: value,
+    },
+  }));
+}, []);
+
+  const handleTechnicalSettingsChange = useCallback((field: keyof TechnicalSettings, value: any) => {
+    setConfiguration(prev => ({
+      ...prev,
+      technicalSettings: {
+        ...prev.technicalSettings,
+        [field]: value,
+    },
+  }));
+}, []);
+
+  const handleWorkflowParametersChange = useCallback((section: keyof WorkflowParameters, field: string, value: any) => {
+    setConfiguration(prev => ({
+      ...prev,
+      workflowParameters: {
+        ...prev.workflowParameters,
+        [section]: {
+          ...prev.workflowParameters[section],
+          [field]: value,
+      },
+    },
+  }));
+}, []);
+
+  const handleCustomParameterChange = useCallback((key: string, value: any) => {
+    setConfiguration(prev => ({
+      ...prev,
+      customParameters: {
+        ...prev.customParameters,
+        [key]: value,
+    },
+  }));
+}, []);
+
+  const handlePreviewSettingsChange = useCallback((field: keyof ScriptConfiguration['previewSettings, ']value: any) => {
+    setConfiguration(prev => ({
+      ...prev,
+      previewSettings: {
+        ...prev.previewSettings,
+        [field]: value,
+    },
+  }));
+}, []);
+
+  const handleGenerate = useCallback(async () => {
+    setIsGenerating(true);
+    setPreviewProgress(0);
+    
+    try {
+      // Simulate generation progress
+      const interval = setInterval(() => {
+        setPreviewProgress(prev => {
+          if (prev >= 100) {
+            clearInterval(interval);
+            setIsGenerating(false);
+            return 100;
+        }
+          return prev + 10;
+      });
+    }, 200);
+      
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      onGenerate(configuration);
+  } catch (error) {
+      console.error('Generation failed:', error);
+      setIsGenerating(false);
+  }
+}, [configuration, onGenerate]);
+
+  const handleSave = useCallback(() => {
+    const configId = `config_${Date.now()}`;
+    setSavedConfigs(prev => [...prev, configId]);
+    onSave(configuration);
+}, [configuration, onSave]);
+
+  const handleLoad = useCallback((configId: string) => {
+    onLoad(configId);
+, isPhotoOptimized: false, addedDate: "2024-01-01", lastUpdated: "2024-01-01", isNew: false, isRecentlyUpdated: false, source: "manual" as const, version: 1 }, [onLoad]);
+
+  const eventTypes = [
+    'wedding', 'corporate', 'event', 'documentary', 'commercial', 'music_video',
+    'real_estate', 'sports', 'educational', 'social_media', 'presentation'
+  ];
+
+  const cultures = [
+    'western', 'eastern', 'middle_eastern', 'african', 'latin_american',
+    'scandinavian', 'mediterranean', 'asian', 'european', 'american'
+  ];
+
+  const resolutions = [
+    '3840x2160', '1920x1080', '1280x720', '854x480', '640x360'
+  ];
+
+  const colorSpaces = [
+    'Rec.709', 'Rec.2020', 'DCI-P3', 'sRGB', 'Adobe RGB', 'ProPhoto RGB'
+  ];
+
+  const frameRates = [24, 25, 30, 50, 60];
+
+  const codecs = ['H.264', 'H.265', 'ProRes', 'DNxHD', 'AV1'];
+
+  const platforms = ['youtube', 'instagram', 'facebook', 'tiktok', 'vimeo', 'twitter'];
+
+  const aspectRatios = ['16:  9', '9: 1', '1:  1', '4:  3', '21: 9'];
+
+  return (
+    <Box sx={{ height: '100, %, ', display: 'flex', flexDirection: 'column, ',}}>
+      {/* Header */}
+      <Paper sx={{ p:  ,  2mb: 2 }} sx={theming.getThemedCardSx()}>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between, ',}}>
+          <Box>
+            <Typography variant="h5" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>
+              {scriptName} - Advanced Configuration
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              {scriptDescription}
+            </Typography>
+          </Box>
+          <Box sx={{ display: 'flex', gap:  1 }}>
+            <Button
+              variant="outlined"
+              startIcon={<Preview />}
+              onClick={() => setIsPreviewMode(!isPreviewMode)}
+              color={isPreviewMode ? 'primary' : 'inherit'}
+            >
+              {isPreviewMode ? 'Hide Preview' : 'Show Preview'}
+            </Button>
+            <Button
+              variant="outlined"
+              startIcon={theming.getThemedIcon('save')}
+              onClick={handleSave}
+            >
+              Save Config
+            </Button>
+            <Button variant="contained"
+              startIcon={isGenerating ? {theming.getThemedIcon('stop')} : {theming.getThemedIcon('play')}}
+              onClick={handleGenerate}
+              disabled={isGenerating}
+              sx={{ minWidth: 12, 0,}}
+             sx={theming.getThemedButtonSx()}>
+              {isGenerating ? 'Generating...' : 'Generate'}
+            </Button>
+          </Box>
+        </Box>
+        
+        {isGenerating && (
+          <Box sx={{ mt: 2 }}>
+            <LinearProgress variant="determinate" value={previewProgress} />
+            <Typography variant="caption" color="text.secondary">
+              Generating preview... {previewProgress}%
+            </Typography>
+          </Box>
+        )}
+      </Paper>
+
+      <Box sx={{ display: 'flex', flex:  ,  1gap:  2 }}>
+        {/* Configuration Panel */}
+        <Box sx={{ flex:  1 }}>
+          <Paper sx={{ height: '100, %, ', overflow: 'auto, ',}} sx={theming.getThemedCardSx()}>
+            <Tabs value={activeTab} onChange={(_, newValue) => setActiveTab(newValue)}>
+              <Tab label="Client Info" icon={{theming.getThemedIcon('settings')}} />
+              <Tab label="Technical" icon={<VideoSettings />} />
+              <Tab label="Workflow" icon={{theming.getThemedIcon('timeline')}} />
+              <Tab label="Custom" icon={{theming.getThemedIcon('edit')}} />
+            </Tabs>
+
+            <Box sx={{ p:  3 }}>
+              {/* Client Information Tab */}
+              {activeTab === 0 && (
+                <Grid container spacing={3}>
+                  <Grid item xs={12} md={6}>
+                    <TextField
+                      fullWidth
+                      label="Project Name"
+                      value={configuration.clientInfo.projectName}
+                      onChange={(e) => handleClientInfoChange('projectName', e.target.value)}
+                      placeholder="Enter project name"
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <TextField
+                      fullWidth
+                      label="Client Name"
+                      value={configuration.clientInfo.clientName}
+                      onChange={(e) => handleClientInfoChange('clientName', e.target.value)}
+                      placeholder="Enter client name"
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <FormControl fullWidth>
+                      <InputLabel>Event Type</InputLabel>
+                      <Select
+                        value={configuration.clientInfo.eventType}
+                        onChange={(e) => handleClientInfoChange('eventType', e.target.value)}
+                      >
+                        {eventTypes.map(type => (
+                          <MenuItem key={type} value={type}>
+                            {type.replace('_', ' ').toUpperCase()}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <FormControl fullWidth>
+                      <InputLabel>Culture</InputLabel>
+                      <Select
+                        value={configuration.clientInfo.culture}
+                        onChange={(e) => handleClientInfoChange('culture', e.target.value)}
+                      >
+                        {cultures.map(culture => (
+                          <MenuItem key={culture} value={culture}>
+                            {culture.replace('_', ' ').toUpperCase()}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <TextField
+                      fullWidth
+                      label="Client Email"
+                      type="email"
+                      value={configuration.clientInfo.clientEmail}
+                      onChange={(e) => handleClientInfoChange('clientEmail', e.target.value)}
+                      placeholder="client@example.com"
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <TextField
+                      fullWidth
+                      label="Client Phone"
+                      value={configuration.clientInfo.clientPhone}
+                      onChange={(e) => handleClientInfoChange('clientPhone', e.target.value)}
+                      placeholder="+1 (555) 123-4567"
+                    />
+                  </Grid>
+                  <Grid item xs={12}>
+                    <TextField
+                      fullWidth
+                      multiline
+                      rows={4}
+                      label="Project Notes"
+                      value={configuration.clientInfo.projectNotes}
+                      onChange={(e) => handleClientInfoChange('projectNotes', e.target.value)}
+                      placeholder="Enter project notes and special requirements..."
+                    />
+                  </Grid>
+                </Grid>
+              )}
+
+              {/* Technical Settings Tab */}
+              {activeTab === 1 && (
+                <Grid container spacing={3}>
+                  <Grid item xs={12} md={6}>
+                    <FormControl fullWidth>
+                      <InputLabel>Resolution</InputLabel>
+                      <Select
+                        value={configuration.technicalSettings.resolution}
+                        onChange={(e) => handleTechnicalSettingsChange('resolution', e.target.value)}
+                      >
+                        {resolutions.map(res => (
+                          <MenuItem key={res} value={res}>
+                            {res} {res === '3840x2160' ? '(4K)' : res === '1920x1080' ? '(HD)' : ''}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <FormControl fullWidth>
+                      <InputLabel>Frame Rate</InputLabel>
+                      <Select
+                        value={configuration.technicalSettings.frameRate}
+                        onChange={(e) => handleTechnicalSettingsChange('frameRate', e.target.value)}
+                      >
+                        {frameRates.map(fps => (
+                          <MenuItem key={fps} value={fps}>
+                            {fps} FPS
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <FormControl fullWidth>
+                      <InputLabel>Color Space</InputLabel>
+                      <Select
+                        value={configuration.technicalSettings.colorSpace}
+                        onChange={(e) => handleTechnicalSettingsChange('colorSpace', e.target.value)}
+                      >
+                        {colorSpaces.map(space => (
+                          <MenuItem key={space} value={space}>
+                            {space}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <FormControl fullWidth>
+                      <InputLabel>Codec</InputLabel>
+                      <Select
+                        value={configuration.technicalSettings.codec}
+                        onChange={(e) => handleTechnicalSettingsChange('codec', e.target.value)}
+                      >
+                        {codecs.map(codec => (
+                          <MenuItem key={codec} value={codec}>
+                            {codec}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <Typography gutterBottom>Audio Sample Rate (Hz)</Typography>
+                    <Slider
+                      value={configuration.technicalSettings.audioSampleRate}
+                      onChange={(_, value) => handleTechnicalSettingsChange('audioSampleRate', value)}
+                      min={22050}
+                      max={192000}
+                      step={22050}
+                      marks={[
+                        { value: 2200, label: '22.05k, ',},
+                        { value: 4410, label: '44.1k, ',},
+                        { value: 4800, label: '48k, ',},
+                        { value: 9600, label: '96k, ',},
+                        { value: 19200, label: '192k, ',},
+                      ]}
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <Typography gutterBottom>Audio Channels</Typography>
+                    <Slider
+                      value={configuration.technicalSettings.audioChannels}
+                      onChange={(_, value) => handleTechnicalSettingsChange('audioChannels', value)}
+                      min={1}
+                      max={8}
+                      step={1}
+                      marks={[
+                        { value:  ,  1label: 'Mono, ',},
+                        { value:  ,  2label: 'Stereo, ',},
+                        { value:  6, label: '5.1, ',},
+                        { value:  8, label: '7.1, ',},
+                      ]}
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <Typography gutterBottom>Video Bitrate (kbps)</Typography>
+                    <Slider
+                      value={configuration.technicalSettings.videoBitrate}
+                      onChange={(_, value) => handleTechnicalSettingsChange('videoBitrate', value)}
+                      min={1000}
+                      max={50000}
+                      step={1000}
+                      marks={[
+                        { value: 100, label: '1M, ',},
+                        { value: 500, label: '5M, ',},
+                        { value: 1000, label: '10M, ',},
+                        { value: 2500, label: '25M, ',},
+                        { value: 5000, label: '50M, ',},
+                      ]}
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <Typography gutterBottom>Audio Bitrate (kbps)</Typography>
+                    <Slider
+                      value={configuration.technicalSettings.audioBitrate}
+                      onChange={(_, value) => handleTechnicalSettingsChange('audioBitrate', value)}
+                      min={64}
+                      max={512}
+                      step={32}
+                      marks={[
+                        { value:  64, label: '64k, ',},
+                        { value: 18, label: '128k, ',},
+                        { value: 26, label: '256k, ',},
+                        { value: 30, label: '320k, ',},
+                        { value: 52, label: '512k, ',},
+                      ]}
+                    />
+                  </Grid>
+                </Grid>
+              )}
+
+              {/* Workflow Parameters Tab */}
+              {activeTab === 2 && (
+                <Grid container spacing={3}>
+                  <Grid item xs={12}>
+                    <Typography variant="h6" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>
+                      Timeline Configuration
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <Typography gutterBottom>Track Count</Typography>
+                    <Slider
+                      value={configuration.workflowParameters.timelineConfiguration.trackCount}
+                      onChange={(_, value) => handleWorkflowParametersChange('timelineConfiguration', 'trackCount', value)}
+                      min={2}
+                      max={16}
+                      step={1}
+                      marks={[
+                        { value:  ,  2label: '2, ',},
+                        { value:  4, label: '4, ',},
+                        { value:  8, label: '8, ',},
+                        { value:  16, label: '16, ',},
+                      ]}
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <FormControl fullWidth>
+                      <InputLabel>Transition Style</InputLabel>
+                      <Select
+                        value={configuration.workflowParameters.timelineConfiguration.transitionStyle}
+                        onChange={(e) => handleWorkflowParametersChange('timelineConfiguration', 'transitionStyle', e.target.value)}
+                      >
+                        <MenuItem value="dissolve">Dissolve</MenuItem>
+                        <MenuItem value="wipe">Wipe</MenuItem>
+                        <MenuItem value="slide">Slide</MenuItem>
+                        <MenuItem value="fade">Fade</MenuItem>
+                        <MenuItem value="zoom">Zoom</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <Typography gutterBottom>Transition Duration (seconds)</Typography>
+                    <Slider
+                      value={configuration.workflowParameters.timelineConfiguration.transitionDuration}
+                      onChange={(_, value) => handleWorkflowParametersChange('timelineConfiguration', 'transitionDuration', value)}
+                      min={0.5}
+                      max={5.0}
+                      step={0.1}
+                      marks={[
+                        { value: 0, .label: '0.5s, ',},
+                        { value: 1, .label: '1.0s, ',},
+                        { value: 2, .label: '2.0s, ',},
+                        { value: 5, .label: '5.0s, ',},
+                      ]}
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <Typography gutterBottom>Default Clip Length (seconds)</Typography>
+                    <Slider
+                      value={configuration.workflowParameters.timelineConfiguration.defaultClipLength}
+                      onChange={(_, value) => handleWorkflowParametersChange('timelineConfiguration', 'defaultClipLength', value)}
+                      min={1.0}
+                      max={30.0}
+                      step={0.5}
+                      marks={[
+                        { value: 1, .label: '1s, ',},
+                        { value: 5, .label: '5s, ',},
+                        { value: 10, .label: '10s, ',},
+                        { value: 30, .label: '30s, ',},
+                      ]}
+                    />
+                  </Grid>
+
+                  <Grid item xs={12}>
+                    <Divider sx={{ my:  2 }} />
+                    <Typography variant="h6" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>
+                      Export Settings
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <FormControl fullWidth>
+                      <InputLabel>Format</InputLabel>
+                      <Select
+                        value={configuration.workflowParameters.exportSettings.format}
+                        onChange={(e) => handleWorkflowParametersChange('exportSettings', 'format', e.target.value)}
+                      >
+                        <MenuItem value="mp4">MP4</MenuItem>
+                        <MenuItem value="mov">MOV</MenuItem>
+                        <MenuItem value="avi">AVI</MenuItem>
+                        <MenuItem value="mkv">MKV</MenuItem>
+                        <MenuItem value="webm">WebM</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <FormControl fullWidth>
+                      <InputLabel>Compression</InputLabel>
+                      <Select
+                        value={configuration.workflowParameters.exportSettings.compression}
+                        onChange={(e) => handleWorkflowParametersChange('exportSettings', 'compression', e.target.value)}
+                      >
+                        <MenuItem value="low">Low (Fast)</MenuItem>
+                        <MenuItem value="medium">Medium (Balanced)</MenuItem>
+                        <MenuItem value="high">High (Quality)</MenuItem>
+                        <MenuItem value="lossless">Lossless (Best)</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          checked={configuration.workflowParameters.exportSettings.metadata}
+                          onChange={(e) => handleWorkflowParametersChange('exportSettings', 'metadata', e.target.checked)}
+                        />
+                    }
+                      label="Include Metadata"
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          checked={configuration.workflowParameters.exportSettings.watermark}
+                          onChange={(e) => handleWorkflowParametersChange('exportSettings', 'watermark', e.target.checked)}
+                        />
+                    }
+                      label="Add Watermark"
+                    />
+                  </Grid>
+
+                  <Grid item xs={12}>
+                    <Divider sx={{ my:  2 }} />
+                    <Typography variant="h6" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>
+                      Delivery Format
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <FormControl fullWidth>
+                      <InputLabel>Platform</InputLabel>
+                      <Select
+                        value={configuration.workflowParameters.deliveryFormat.platform}
+                        onChange={(e) => handleWorkflowParametersChange('deliveryFormat', 'platform', e.target.value)}
+                      >
+                        {platforms.map(platform => (
+                          <MenuItem key={platform} value={platform}>
+                            {platform.charAt(0).toUpperCase() + platform.slice(1)}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <FormControl fullWidth>
+                      <InputLabel>Aspect Ratio</InputLabel>
+                      <Select
+                        value={configuration.workflowParameters.deliveryFormat.aspectRatio}
+                        onChange={(e) => handleWorkflowParametersChange('deliveryFormat', 'aspectRatio', e.target.value)}
+                      >
+                        {aspectRatios.map(ratio => (
+                          <MenuItem key={ratio} value={ratio}>
+                            {ratio}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <FormControl fullWidth>
+                      <InputLabel>File Size</InputLabel>
+                      <Select
+                        value={configuration.workflowParameters.deliveryFormat.fileSize}
+                        onChange={(e) => handleWorkflowParametersChange('deliveryFormat', 'fileSize', e.target.value)}
+                      >
+                        <MenuItem value="small">Small (< 100MB)</MenuItem>
+                        <MenuItem value="medium">Medium (100-500MB)</MenuItem>
+                        <MenuItem value="large">Large (500MB-2GB)</MenuItem>
+                        <MenuItem value="xlarge">Extra Large (> 2GB)</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <FormControl fullWidth>
+                      <InputLabel>Quality</InputLabel>
+                      <Select
+                        value={configuration.workflowParameters.deliveryFormat.quality}
+                        onChange={(e) => handleWorkflowParametersChange('deliveryFormat', 'quality', e.target.value)}
+                      >
+                        <MenuItem value="low">Low (Fast)</MenuItem>
+                        <MenuItem value="medium">Medium (Balanced)</MenuItem>
+                        <MenuItem value="high">High (Quality)</MenuItem>
+                        <MenuItem value="ultra">Ultra (Best)</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                </Grid>
+              )}
+
+              {/* Custom Parameters Tab */}
+              {activeTab === 3 && (
+                <Grid container spacing={3}>
+                  <Grid item xs={12}>
+                    <Typography variant="h6" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>
+                      Custom Script Parameters
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" paragraph>
+                      Configure additional parameters specific to this script.
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={12}>
+                    <Alert severity="info">
+                      Custom parameters will be passed to the script during execution.
+                      Use the script documentation to understand available parameters.
+                    </Alert>
+                  </Grid>
+                  <Grid item xs={12}>
+                    <Button
+                      variant="outlined"
+                      startIcon={theming.getThemedIcon('add')}
+                      onClick={() => {
+                        const key = prompt('Enter parameter name: ');
+                        if (key) {
+                          handleCustomParameterChange(key, '');
+                      }
+                    }}
+                    >
+                      Add Custom Parameter
+                    </Button>
+                  </Grid>
+                  {Object.entries(configuration.customParameters).map(([key, value]) => (
+                    <Grid item xs={12} md={6} key={key}>
+                      <TextField
+                        fullWidth
+                        label={key}
+                        value={value}
+                        onChange={(e) => handleCustomParameterChange(key, e.target.value)}
+                        InputProps={{
+                          endAdornment: (
+                            <IconButton
+                              onClick={() => {
+                                const newParams = { ...configuration.customParameters };
+                                delete newParams[key];
+                                setConfiguration(prev => ({
+                                  ...prev,
+                                  customParameters: newParams,
+                              }));
+                            }}
+                            >
+                              {theming.getThemedIcon('delete')}
+                            </IconButton>
+                          ),
+                      }}
+                      />
+                    </Grid>
+                  ))}
+                </Grid>
+              )}
+            </Box>
+          </Paper>
+        </Box>
+
+        {/* Preview Panel */}
+        {isPreviewMode && (
+          <Box sx={{ width: 40, 0,}}>
+            <Paper sx={{ height: '100, %, ', p:  2 }} sx={theming.getThemedCardSx()}>
+              <Typography variant="h6" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>
+                Real-time Preview
+              </Typography>
+              
+              <Box sx={{ mb: 2 }}>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={configuration.previewSettings.enabled}
+                      onChange={(e) => handlePreviewSettingsChange('enabled', e.target.checked)}
+                    />
+                }
+                  label="Enable Preview"
+                />
+              </Box>
+
+              {configuration.previewSettings.enabled && (
+                <>
+                  <Box sx={{ mb: 2 }}>
+                    <Typography gutterBottom>Preview Quality</Typography>
+                    <FormControl fullWidth>
+                      <Select
+                        value={configuration.previewSettings.quality}
+                        onChange={(e) => handlePreviewSettingsChange('quality', e.target.value)}
+                      >
+                        <MenuItem value="low">Low (Fast)</MenuItem>
+                        <MenuItem value="medium">Medium (Balanced)</MenuItem>
+                        <MenuItem value="high">High (Quality)</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Box>
+
+                  <Box sx={{ mb: 2 }}>
+                    <Typography gutterBottom>Preview Duration (seconds)</Typography>
+                    <Slider
+                      value={configuration.previewSettings.duration}
+                      onChange={(_, value) => handlePreviewSettingsChange('duration', value)}
+                      min={5}
+                      max={120}
+                      step={5}
+                      marks={[
+                        { value:  5, label: '5s, ',},
+                        { value:  30, label: '30s, ',},
+                        { value:  60, label: '1m, ',},
+                        { value: 10, label: '2m, ',},
+                      ]}
+                    />
+                  </Box>
+
+                  <Box sx={{ 
+                    border: '2px dashed #ccc', 
+                    borderRadius:  ,  1
+                    p:  ,  2
+                    textAlign: 'center',
+                    minHeight: 20,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexDirection: 'column',
+                    gap: 2
+                ,  ,}}>
+                    <VideoSettings sx={{ fontSize:  48, color: 'text.secondary, ',}} />
+                    <Typography variant="body2" color="text.secondary">
+                      Preview will appear here
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {configuration.technicalSettings.resolution} @ {configuration.technicalSettings.frameRate}fps
+                    </Typography>
+                  </Box>
+
+                  <Box sx={{ mt: 2 }}>
+                    <Button
+                      fullWidth
+                      variant="outlined"
+                      startIcon={theming.getThemedIcon('play')}
+                      onClick={() => {
+                        // Simulate preview generation
+                        console.log('Generating preview...');
+                    }}
+                    >
+                      Generate Preview
+                    </Button>
+                  </Box>
+                </>
+              )}
+            </Paper>
+          </Box>
+        )}
+      </Box>
+    </Box>
+  );
+};
+
+export default AdvancedScriptConfigurator;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

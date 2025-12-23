@@ -1,0 +1,720 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Noroff Data Analyst – Studieapp</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --fg: #ffffff;
+      --header-bg: #1e3a8a;
+      --card-bg: #1e293b;
+      --accent: #38bdf8;
+      --accent-soft: #0ea5e9;
+      --border-subtle: #4b5563;
+    }
+    body.light {
+      --bg: #f9fafb;
+      --fg: #0f172a;
+      --header-bg: #e5e7eb;
+      --card-bg: #ffffff;
+      --accent: #2563eb;
+      --accent-soft: #3b82f6;
+      --border-subtle: #cbd5f5;
+    }
+    body {
+      font-family: Arial, sans-serif;
+      background: var(--bg);
+      color: var(--fg);
+      margin: 0;
+      padding: 0;
+      transition: background 0.25s ease, color 0.25s ease;
+    }
+    header {
+      background: var(--header-bg);
+      padding: 20px 70px 20px 20px;
+      text-align: center;
+      position: relative;
+    }
+    h1 { margin: 0; }
+    header p { margin: 6px 0 0; font-size: 0.9rem; opacity: 0.9; }
+    #themeToggle {
+      position: absolute;
+      right: 16px;
+      top: 16px;
+      padding: 6px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--border-subtle);
+      background: var(--card-bg);
+      color: var(--fg);
+      cursor: pointer;
+      font-size: 0.8rem;
+    }
+    .container { padding: 20px; max-width: 1200px; margin: 0 auto 40px; }
+    .tabs { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+    .tab {
+      padding: 8px 16px;
+      border: 1px solid var(--accent);
+      border-radius: 999px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      background: transparent;
+      color: var(--fg);
+    }
+    .tab.active {
+      background: var(--accent);
+      color: #0f172a;
+      font-weight: 600;
+    }
+    .section { display: none; }
+    .section.active { display: block; }
+    .module, .lexicon-entry, .notes-entry, .project, .exercise-box, .dataset-box {
+      background: var(--card-bg);
+      padding: 15px;
+      margin-bottom: 12px;
+      border-radius: 8px;
+      border: 1px solid var(--border-subtle);
+    }
+    .module h3 { margin-top: 0; }
+    .task { display: flex; gap: 10px; align-items: flex-start; margin: 5px 0; font-size: 0.9rem; }
+    .task input { margin-top: 3px; }
+    .chart-container {
+      width: 100%;
+      height: 260px;
+      margin-bottom: 8px;
+      background: var(--card-bg);
+      border-radius: 8px;
+      padding: 8px;
+      border: 1px solid var(--border-subtle);
+    }
+    textarea {
+      width: 100%;
+      height: 140px;
+      border-radius: 8px;
+      border: 1px solid var(--border-subtle);
+      padding: 10px;
+      background: var(--bg);
+      color: var(--fg);
+      resize: vertical;
+    }
+    button {
+      padding: 8px 14px;
+      border: none;
+      border-radius: 999px;
+      cursor: pointer;
+      margin-top: 8px;
+      font-size: 0.9rem;
+    }
+    .primary { background: var(--accent); color: #0f172a; }
+    .secondary { background: transparent; color: var(--fg); border: 1px solid var(--border-subtle); }
+    a { color: var(--accent-soft); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    ul { padding-left: 18px; margin: 6px 0; }
+    details summary { cursor: pointer; font-size: 0.85rem; margin-top: 4px; }
+    pre { background: #020617; color: #e5e7eb; padding: 8px; border-radius: 6px; overflow-x: auto; font-size: 0.8rem; }
+    body.light pre { background: #0f172a; color: #e5e7eb; }
+    small { font-size: 0.8rem; opacity: 0.8; }
+  </style>
+</head>
+<body>
+<header>
+  <h1>Noroff Data Analyst – Studieapp</h1>
+  <p>Visuell progresjon · Oppgaver · Prosjekter · Leksikon · Øvingsgenerator · Notater</p>
+  <button id="themeToggle">🌙 Mørk / ☀️ Lys</button>
+</header>
+<div class="container">
+  <div class="tabs" id="tabs"></div>
+  <div id="sections"></div>
+</div>
+<script>
+// ---------------- Tabs ----------------
+const tabs = [
+  { id: "year1", name: "📘 Første studieår" },
+  { id: "year2", name: "📗 Andre studieår" },
+  { id: "guide", name: "🧭 Studieguide" },
+  { id: "report", name: "📄 Rapport-mal" },
+  { id: "examplan", name: "🎓 Exam Project Plan" },
+  { id: "projects", name: "🧪 Prosjektmaler (Kaggle / Mode / Egen)" },
+  { id: "exercises", name: "🎯 Øvingsoppgaver" },
+  { id: "notes", name: "📝 Notater" },
+  { id: "lexicon", name: "📚 Leksikon" },
+  { id: "progress", name: "📊 Progresjon" }
+];
+
+document.getElementById("tabs").innerHTML = tabs
+  .map(t => `<div class="tab" data-id="${t.id}">${t.name}</div>`)
+  .join("");
+
+// ---------------- Content (HTML-skall) ----------------
+const content = {
+  report: `
+    <h2>📄 Rapport-mal (bruk i alle fag og prosjekter)</h2>
+    <div class='module'>
+      <h3>1. Tittel + sammendrag</h3>
+      <ul>
+        <li>Gi prosjektet et tydelig navn.</li>
+        <li>Skriv 3–4 linjer som oppsummerer problemstillingen og funnene.</li>
+      </ul>
+    </div>
+    <div class='module'>
+      <h3>2. Problemstilling</h3>
+      <p>Svar på: <em>Hva prøver jeg å finne ut?</em></p>
+      <ul>
+        <li>Hvilket spørsmål skal besvares?</li>
+        <li>Hvem trenger svaret (og hvorfor)?</li>
+      </ul>
+    </div>
+    <div class='module'>
+      <h3>3. Datasett</h3>
+      <ul>
+        <li>Beskriv datakilden(e).</li>
+        <li>Antall rader / kolonner.</li>
+        <li>Eventuelle svakheter eller mangler.</li>
+      </ul>
+    </div>
+    <div class='module'>
+      <h3>4. Metode</h3>
+      <ul>
+        <li>Hvilke analyser bruker du? (statistikk, Python, SQL, ML osv.)</li>
+        <li>Forklar kort hvordan du renset datasettet.</li>
+        <li>Nei, du trenger ikke skrive lange faglige avhandlinger — bare konkret hva du gjorde.</li>
+      </ul>
+    </div>
+    <div class='module'>
+      <h3>5. Analyse og funn</h3>
+      <ul>
+        <li>Vis grafer og tabeller.</li>
+        <li>Forklar <strong>hva</strong> grafene viser — ikke bare lim inn figurer.</li>
+        <li>Pek på trender, mønstre, avvik og potensielle feilkilder.</li>
+      </ul>
+    </div>
+    <div class='module'>
+      <h3>6. Konklusjon</h3>
+      <ul>
+        <li>Oppsummer svaret på problemstillingen.</li>
+        <li>Gi konkrete anbefalinger.</li>
+      </ul>
+    </div>
+    <div class='module'>
+      <h3>7. Videre arbeid</h3>
+      <p>Hva ville du gjort dersom du hadde mer tid? (Noroff elsker dette punktet!)</p>
+    </div>
+  `,
+
+  examplan: `
+    <h2>🎓 Exam Project Plan</h2>
+    <p>Bruk denne planen for både År 1 og År 2-eksamen. Alt er brutt ned i konkrete trinn.</p>
+
+    <div class='module'>
+      <h3>1. Forstå oppgaveteksten</h3>
+      <ul>
+        <li>Lim hele oppgaven inn i Notater eller i Oppgaveassistenten.</li>
+        <li>Marker nøkkelord: «analyser», «visualiser», «forklar», «diskuter» osv.</li>
+      </ul>
+    </div>
+
+    <div class='module'>
+      <h3>2. Velg datasett</h3>
+      <ul>
+        <li>Last opp datasettet i «Egne datasett» i Prosjekt-fanen.</li>
+        <li>Skriv kort databeskrivelse.</li>
+      </ul>
+    </div>
+
+    <div class='module'>
+      <h3>3. Planlegg analysen</h3>
+      <ul>
+        <li>Hva må renses?</li>
+        <li>Hvilke metoder trenger du? (Excel/SQL/Python/ML?)</li>
+        <li>Hvilke grafer må lages?</li>
+      </ul>
+    </div>
+
+    <div class='module'>
+      <h3>4. Gjennomfør analysen</h3>
+      <ul>
+        <li>Bruk Python-malene eller SQL-malene fra Prosjekt-fanen.</li>
+        <li>Test ulike modeller dersom det er ML-oppgave.</li>
+        <li>Lag visuelle figurer.</li>
+      </ul>
+    </div>
+
+    <div class='module'>
+      <h3>5. Skriv rapport</h3>
+      <p>Bruk rapport-malen i appen. TIPS: Skriv ferdig kapittel 1–3 før du analyserer dataene.</p>
+    </div>
+
+    <div class='module'>
+      <h3>6. Kvalitetssjekk før levering</h3>
+      <ul>
+        <li>Er problemstillingen faktisk besvart?</li>
+        <li>Er konklusjonen tydelig?</li>
+        <li>Er alle grafer og tabeller forklart?</li>
+        <li>Er koden ryddig og reproduserbar?</li>
+      </ul>
+    </div>
+  `,
+
+  guide: `<h2>🧭 Studieguide – slik gjør du studiet enklere</h2>
+    <div class='module'>
+      <h3>1. År 1 – Bygg fundamentet uten stress</h3>
+      <ul>
+        <li>Fokuser først på <strong>Excel/Google Sheets</strong> og grunnleggende analyse.</li>
+        <li>Lær deg SUMIFS/COUNTIFS, filtrering, pivottabeller og enkle grafer.</li>
+        <li>Bruk små datasett (f.eks. fra Kaggle) og svar på 3–5 spørsmål per datasett.</li>
+        <li>Bruk notat-fanen til å lagre begreper fra fagene: Data Analysis Fundamentals, Data-Driven Decision Making.</li>
+      </ul>
+    </div>
+    <div class='module'>
+      <h3>2. År 2 – SQL, Python og «ordentlig» dataanalyse</h3>
+      <ul>
+        <li>Lær <strong>SQL</strong> (SELECT, JOIN, GROUP BY, HAVING, vindusfunksjoner).</li>
+        <li>Lær <strong>Python + Pandas</strong> for datarensing og analyse.</li>
+        <li>Bygg noen små prosjekter med ekte datasett (Kaggle) knyttet til Programmatic Data Analysis.</li>
+        <li>Bruk prosjektfanen til å holde orden på Kaggle/Mode-prosjektene dine.</li>
+      </ul>
+    </div>
+    <div class='module'>
+      <h3>3. Ukerytme du kan følge hele studiet</h3>
+      <ul>
+        <li><strong>Mandag:</strong> Les teori + se forelesninger.</li>
+        <li><strong>Tirsdag:</strong> Gjør øvingsoppgaver fra fagene.</li>
+        <li><strong>Onsdag:</strong> Python/SQL-trening (bruk Kaggle/Mode).</li>
+        <li><strong>Torsdag:</strong> Lag eller forbedre et lite dashboard eller en visualisering.</li>
+        <li><strong>Fredag:</strong> Oppsummer i notat-fanen + oppdater progresjon (huk av oppgaver).</li>
+        <li><strong>Lørdag (valgfritt):</strong> Bruk øvingsgeneratoren til en liten ekstra utfordring.</li>
+      </ul>
+    </div>
+    <div class='module'>
+      <h3>4. Månedlig sjekkpunkt</h3>
+      <ul>
+        <li>Fullfør minst <strong>ett lite prosjekt</strong> (Python/SQL/BI).</li>
+        <li>Legg inn hva du har gjort i notat-fanen («Måned X – prosjekter»).</li>
+        <li>Gå gjennom leksikonet og legg til nye begreper du møter i undervisningen.</li>
+      </ul>
+    </div>
+    <div class='module'>
+      <h3>5. Før semester- og eksamensprosjekter</h3>
+      <ul>
+        <li>Bruk denne appen til å planlegge prosjektet: notater, progresjon, datasetter og øving.</li>
+        <li>Lag en enkel rapport-struktur i notat-fanen med: problemstilling, data, metode, funn, konklusjon.</li>
+        <li>Bruk prosjektfanen til å notere hvilke Kaggle- eller egne datasett du bruker.</li>
+      </ul>
+    </div>
+  `,
+
+  year1: `<h2>Første studieår</h2>
+    <div class='module'>
+      <h3>Data Analysis Fundamentals</h3>
+      <div class='task'><input type='checkbox' data-year='year1' data-key='y1_daf_1'> Definer analyseformer med egne ord.</div>
+      <div class='task'><input type='checkbox' data-year='year1' data-key='y1_daf_2'> Lag et prosesskart fra rådata til innsikt.</div>
+      <div class='task'><input type='checkbox' data-year='year1' data-key='y1_daf_3'> Velg et datasett og skriv 5 spørsmål du vil svare på.</div>
+    </div>
+    <div class='module'>
+      <h3>Spreadsheet Fundamentals</h3>
+      <div class='task'><input type='checkbox' data-year='year1' data-key='y1_ss_1'> Lag tabell (100+ rader) med filtrering og sortering.</div>
+      <div class='task'><input type='checkbox' data-year='year1' data-key='y1_ss_2'> Bruk SUMIFS og COUNTIFS på egne data.</div>
+      <div class='task'><input type='checkbox' data-year='year1' data-key='y1_ss_3'> Lag Pivot-tabell og minst én graf.</div>
+    </div>
+  `,
+
+  year2: `<h2>Andre studieår</h2>
+    <div class='module'>
+      <h3>Databases and Cloud Services</h3>
+      <div class='task'><input type='checkbox' data-year='year2' data-key='y2_db_1'> Sett opp database lokalt eller i sky (PostgreSQL/MySQL).</div>
+      <div class='task'><input type='checkbox' data-year='year2' data-key='y2_db_2'> Lag 3+ SQL-joins med GROUP BY og HAVING.</div>
+      <div class='task'><input type='checkbox' data-year='year2' data-key='y2_db_3'> Bygg en enkel ETL: CSV → Pandas → DB.</div>
+    </div>
+    <div class='module'>
+      <h3>Programmatic Data Analysis</h3>
+      <div class='task'><input type='checkbox' data-year='year2' data-key='y2_pa_1'> Importer et datasett (10k+ rader) i Pandas.</div>
+      <div class='task'><input type='checkbox' data-year='year2' data-key='y2_pa_2'> Lag en komplett ML-pipeline (train/test + evaluering).</div>
+      <div class='task'><input type='checkbox' data-year='year2' data-key='y2_pa_3'> Dokumenter analysen i en Notebook.</div>
+    </div>
+  `,
+
+  projects: `<h2>Prosjektmaler – Kaggle, Mode & Egne datasett</h2>
+    <div class='project'>
+      <h3>Kaggle: Python Course – Data Cleanser Notebook</h3>
+      <small>Kurs: <a href='https://www.kaggle.com/learn/python' target='_blank'>Kaggle Learn · Python</a></small>
+      <p>Mål: Fullfør kurset og bygg en egen notebook som kan laste, rense og lagre datasett.</p>
+      <ul>
+        <li>Gjør ferdig alle "Python"-modulene på Kaggle.</li>
+        <li>Velg et Kaggle-datasett du synes er interessant.</li>
+        <li>Lag funksjoner for å laste, rense og eksportere.</li>
+      </ul>
+      <details>
+        <summary>Notebook-mal (Python)</summary>
+        <pre><code>import pandas as pd
+
+DATA_PATH = "data.csv"  # bytt til ditt datasett
+
+def load_data(path: str) -&gt; pd.DataFrame:
+    df = pd.read_csv(path)
+    return df
+
+def clean_data(df: pd.DataFrame) -&gt; pd.DataFrame:
+    # TODO: legg inn rensing (dropp kolonner, håndter NaN osv.)
+    return df
+
+def main():
+    df = load_data(DATA_PATH)
+    print("Rådata:", df.shape)
+    df_clean = clean_data(df)
+    print("Renset:", df_clean.shape)
+    print(df_clean.head())
+    df_clean.to_csv("cleaned_" + DATA_PATH, index=False)
+
+if __name__ == "__main__":
+    main()</code></pre>
+      </details>
+    </div>
+
+    <div class='project'>
+      <h3>Kaggle: Intro to Machine Learning – Mini ML Pipeline</h3>
+      <small>Kurs: <a href='https://www.kaggle.com/learn/intro-to-machine-learning' target='_blank'>Kaggle Learn · Intro to ML</a></small>
+      <p>Mål: Bygg en enkel prediksjonsmodell (f.eks. boligpris) og evaluer feilen.</p>
+      <details>
+        <summary>Notebook-mal (ML)</summary>
+        <pre><code>import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.metrics import mean_absolute_error
+
+# 1. Last data
+raw = pd.read_csv("data.csv")
+
+# 2. Velg features/target
+features = ["col1", "col2", "col3"]  # bytt ut
+X = raw[features]
+y = raw["target"]
+
+# 3. Train/test-split
+X_train, X_valid, y_train, y_valid = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# 4. Modell
+model = RandomForestRegressor(random_state=42)
+model.fit(X_train, y_train)
+
+# 5. Evaluer
+preds = model.predict(X_valid)
+mae = mean_absolute_error(y_valid, preds)
+print("MAE:", mae)</code></pre>
+      </details>
+    </div>
+
+    <div class='project'>
+      <h3>Mode Analytics: SQL for Data Analysis</h3>
+      <small>Kurs: <a href='https://mode.com/sql-tutorial' target='_blank'>Mode SQL Tutorial</a></small>
+      <p>Mål: Øv på SELECT, JOIN, GROUP BY, HAVING og vindusfunksjoner.</p>
+      <ul>
+        <li>Følg Mode-tutorialen steg for steg.</li>
+        <li>Lag egne spørringer som beregner gjennomsnitt, sum og per-gruppe-statistikk.</li>
+        <li>Lagre spørringene i en .sql-fil i GitHub-repoet ditt.</li>
+      </ul>
+    </div>
+
+    <div class='dataset-box'>
+      <h3>Egne datasett som prosjekter</h3>
+      <p>Last opp datasett (bare lokalt navn + metadata lagres her – filene ligger fortsatt på maskinen din).</p>
+      <input type="file" id="datasetInput" multiple />
+      <button class="secondary" id="clearDatasetsBtn">Tøm listen</button>
+      <div id="datasetList" style="margin-top:10px;"></div>
+    </div>
+  `,
+
+  exercises: `<h2>🎯 Øvingsoppgaver (random generator)</h2>
+    <p>Klikk for å få en ny liten øvingsoppgave innen Python, SQL, ML eller dashboards.</p>
+    <button class='primary' id='exerciseBtn'>Generer tilfeldig oppgave</button>
+    <button class='secondary' id='exerciseClearBtn'>Tøm</button>
+    <div class='exercise-box' id='exerciseBox' style='display:none;'></div>
+  `,
+
+  notes: `<h2>📝 Notater</h2>
+    <div class='notes-entry'>
+      <h3>Felles notater for studiet</h3>
+      <small>Alt du skriver her lagres automatisk i nettleseren (localStorage).</small>
+      <textarea id='notesMain' placeholder='Skriv notater, begreper, huskelister osv...'></textarea>
+    </div>
+  `,
+
+  lexicon: `<h2>📚 Leksikon</h2>
+    <p>Liten ordbok du kan bruke som oppslagsverk under studiet.</p>
+    <div class='lexicon-entry'><h3>Feature</h3><small>ML</small><p>En variabel/kolonne som brukes som input til en modell (f.eks. alder, pris).</p></div>
+    <div class='lexicon-entry'><h3>Target</h3><small>ML</small><p>Variabelen du prøver å predikere (f.eks. pris, sannsynlighet for kjøp).</p></div>
+    <div class='lexicon-entry'><h3>JOIN</h3><small>SQL</small><p>Kobler sammen rader fra to tabeller basert på felles nøkkel.</p></div>
+    <div class='lexicon-entry'><h3>GROUP BY</h3><small>SQL</small><p>Samler rader i grupper for å beregne f.eks. SUM/COUNT per gruppe.</p></div>
+    <div class='lexicon-entry'><h3>Standardavvik</h3><small>Statistikk</small><p>Måler hvor mye verdiene i et datasett i snitt avviker fra gjennomsnittet.</p></div>
+    <div class='lexicon-entry'><h3>Bias</h3><small>Kritisk tenkning</small><p>Systematiske skjevheter i data som gir urettferdige eller misvisende resultater.</p></div>
+  `,
+
+  progress: `<h2>📊 Progresjon</h2>
+    <p>Grafen viser hvor stor andel av oppgavene du har huket av, fordelt på År 1, År 2 og totalt.</p>
+    <div class='chart-container'><canvas id='progressChart'></canvas></div>
+    <p id='progressText' style='font-size:0.9rem;'></p>
+  `
+};
+
+// Render sections
+const sectionsEl = document.getElementById("sections");
+sectionsEl.innerHTML = Object.entries(content)
+  .map(([id, html]) => `<div class='section' id='section-${id}'>${html}</div>`)
+  .join("");
+
+// ---------------- Enkle "test cases" / sanity checks ----------------
+(function runSanityChecks() {
+  try {
+    const tabIds = tabs.map(t => t.id).sort();
+    const contentIds = Object.keys(content).sort();
+    const missingInContent = tabIds.filter(id => !contentIds.includes(id));
+    const extraInContent = contentIds.filter(id => !tabIds.includes(id));
+    if (missingInContent.length || extraInContent.length) {
+      console.warn("[SanityCheck] Ulikhet mellom tabs og content-keys", {
+        missingInContent,
+        extraInContent
+      });
+    } else {
+      console.log("[SanityCheck] Tabs og content matcher.");
+    }
+  } catch (e) {
+    console.error("[SanityCheck] Feil under sanity check", e);
+  }
+})();
+
+// ---------------- Persistens ----------------
+let taskState = JSON.parse(localStorage.getItem("noroff_tasks") || "{}");
+let notesState = localStorage.getItem("noroff_notes") || "";
+let themeState = localStorage.getItem("noroff_theme") || "dark";
+let datasetProjects = JSON.parse(localStorage.getItem("noroff_datasets") || "[]");
+
+// ---------------- Tema-toggle ----------------
+function applyTheme() {
+  if (themeState === "light") {
+    document.body.classList.add("light");
+  } else {
+    document.body.classList.remove("light");
+  }
+}
+applyTheme();
+
+const themeToggleBtn = document.getElementById("themeToggle");
+if (themeToggleBtn) {
+  themeToggleBtn.addEventListener("click", () => {
+    themeState = themeState === "light" ? "dark" : "light";
+    localStorage.setItem("noroff_theme", themeState);
+    applyTheme();
+  });
+}
+
+// ---------------- Tabs-aktivering ----------------
+function activateTab(id) {
+  document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+  const activeTab = document.querySelector(`.tab[data-id="${id}"]`);
+  if (activeTab) activeTab.classList.add("active");
+  document.querySelectorAll(".section").forEach(s => s.classList.remove("active"));
+  const sec = document.getElementById(`section-${id}`);
+  if (sec) sec.classList.add("active");
+}
+
+activateTab("year1");
+
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => activateTab(tab.dataset.id));
+});
+
+// ---------------- Oppgaver + progresjon ----------------
+function initTasks() {
+  const checkboxes = document.querySelectorAll('.task input[type="checkbox"]');
+  checkboxes.forEach((cb, idx) => {
+    let key = cb.dataset.key || `task_${idx}`;
+    cb.dataset.key = key;
+    if (taskState[key]) {
+      cb.checked = true;
+    }
+    cb.addEventListener('change', () => {
+      taskState[key] = cb.checked;
+      localStorage.setItem("noroff_tasks", JSON.stringify(taskState));
+      drawProgressChart();
+    });
+  });
+}
+
+function computeProgress() {
+  const checkboxes = document.querySelectorAll('.task input[type="checkbox"]');
+  let total = 0, done = 0;
+  let yearTotals = { year1: 0, year2: 0 };
+  let yearDone = { year1: 0, year2: 0 };
+
+  checkboxes.forEach(cb => {
+    total++;
+    const y = cb.dataset.year;
+    if (y && yearTotals[y] !== undefined) yearTotals[y]++;
+    if (cb.checked) {
+      done++;
+      if (y && yearDone[y] !== undefined) yearDone[y]++;
+    }
+  });
+
+  const pctTotal = total ? Math.round((done / total) * 100) : 0;
+  const pctY1 = yearTotals.year1 ? Math.round((yearDone.year1 / yearTotals.year1) * 100) : 0;
+  const pctY2 = yearTotals.year2 ? Math.round((yearDone.year2 / yearTotals.year2) * 100) : 0;
+
+  return { total, done, pctTotal, pctY1, pctY2, yearTotals, yearDone };
+}
+
+function drawProgressChart() {
+  const canvas = document.getElementById('progressChart');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width;
+  canvas.height = rect.height;
+
+  const { pctTotal, pctY1, pctY2 } = computeProgress();
+
+  const w = canvas.width;
+  const h = canvas.height;
+
+  ctx.clearRect(0, 0, w, h);
+
+  // Bakgrunn
+  ctx.fillStyle = getComputedStyle(document.body).getPropertyValue('--bg');
+  ctx.fillRect(0, 0, w, h);
+
+  const barWidth = 60;
+  const gap = 40;
+  const startX = (w - (3 * barWidth + 2 * gap)) / 2;
+  const maxBarHeight = h - 60;
+
+  const bars = [
+    { label: 'År 1', value: pctY1 },
+    { label: 'År 2', value: pctY2 },
+    { label: 'Totalt', value: pctTotal }
+  ];
+
+  bars.forEach((b, i) => {
+    const x = startX + i * (barWidth + gap);
+    const barHeight = (b.value / 100) * maxBarHeight;
+    const y = h - 30 - barHeight;
+
+    // Bakgrunnsbar
+    ctx.fillStyle = 'rgba(148,163,184,0.4)';
+    ctx.fillRect(x, h - 30 - maxBarHeight, barWidth, maxBarHeight);
+
+    // Fyll
+    const gradient = ctx.createLinearGradient(x, y, x, h - 30);
+    gradient.addColorStop(0, getComputedStyle(document.body).getPropertyValue('--accent-soft'));
+    gradient.addColorStop(1, '#22c55e');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(x, y, barWidth, barHeight);
+
+    // Label
+    ctx.fillStyle = getComputedStyle(document.body).getPropertyValue('--fg');
+    ctx.font = '12px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText(b.label, x + barWidth / 2, h - 14);
+    ctx.fillText(b.value + '%', x + barWidth / 2, y - 4);
+  });
+
+  const p = computeProgress();
+  const txtEl = document.getElementById('progressText');
+  if (txtEl) {
+    txtEl.textContent = `År 1: ${p.pctY1}% (${p.yearDone.year1}/${p.yearTotals.year1}) · År 2: ${p.pctY2}% (${p.yearDone.year2}/${p.yearTotals.year2}) · Totalt: ${p.pctTotal}% (${p.done}/${p.total})`;
+  }
+}
+
+// ---------------- Notater ----------------
+function initNotes() {
+  const notesEl = document.getElementById('notesMain');
+  if (!notesEl) return;
+  notesEl.value = notesState;
+  notesEl.addEventListener('input', () => {
+    notesState = notesEl.value;
+    localStorage.setItem('noroff_notes', notesState);
+  });
+}
+
+// ---------------- Datasett-opplasting ----------------
+function renderDatasetList() {
+  const listEl = document.getElementById('datasetList');
+  if (!listEl) return;
+  if (!datasetProjects.length) {
+    listEl.innerHTML = "<small>Ingen datasett registrert ennå.</small>";
+    return;
+  }
+  listEl.innerHTML = datasetProjects
+    .map(d => `<div><strong>${d.name}</strong> <small>(${(d.size/1024).toFixed(1)} kB)</small></div>`)
+    .join('');
+}
+
+function initDatasets() {
+  const input = document.getElementById('datasetInput');
+  const clearBtn = document.getElementById('clearDatasetsBtn');
+  if (input) {
+    input.addEventListener('change', () => {
+      Array.from(input.files || []).forEach(file => {
+        datasetProjects.push({
+          name: file.name,
+          size: file.size,
+          lastModified: file.lastModified
+        });
+      });
+      localStorage.setItem('noroff_datasets', JSON.stringify(datasetProjects));
+      renderDatasetList();
+      input.value = '';
+    });
+  }
+  if (clearBtn) {
+    clearBtn.addEventListener('click', () => {
+      datasetProjects = [];
+      localStorage.setItem('noroff_datasets', JSON.stringify(datasetProjects));
+      renderDatasetList();
+    });
+  }
+  renderDatasetList();
+}
+
+// ---------------- Øvingsgenerator ----------------
+const exerciseList = [
+  "Python: Lag en funksjon som renser et Pandas-datasett (dropp NaN, trim strenger).",
+  "Python: Lag en CLI som ber om filnavn og skriver ut antall rader og kolonner.",
+  "SQL: Lag en JOIN mellom 3 tabeller og beregn totalomsetning per kunde.",
+  "SQL: Lag en spørring med GROUP BY + HAVING for å filtrere bort små grupper.",
+  "ML: Bygg en RandomForest-modell og sammenlign MAE med en enkel baseline-modell.",
+  "ML: Del datasettet i train/validation og lag en confusion matrix.",
+  "Dashboards: Lag et Power BI-dashboard med 1 KPI, 1 tidsserie og 1 filter.",
+  "Big Data: Les et stort datasett i PySpark og kjør groupBy().count().",
+  "Critical Thinking: Velg en graf fra media og skriv hva som kan være misvisende."
+];
+
+function initExerciseGenerator() {
+  const box = document.getElementById('exerciseBox');
+  const btn = document.getElementById('exerciseBtn');
+  const clearBtn = document.getElementById('exerciseClearBtn');
+  if (btn && box) {
+    btn.addEventListener('click', () => {
+      box.style.display = 'block';
+      box.textContent = exerciseList[Math.floor(Math.random() * exerciseList.length)];
+    });
+  }
+  if (clearBtn && box) {
+    clearBtn.addEventListener('click', () => {
+      box.style.display = 'none';
+      box.textContent = '';
+    });
+  }
+}
+
+// ---------------- Init ----------------
+initTasks();
+initNotes();
+initDatasets();
+initExerciseGenerator();
+
+// Draw initial progress (after layout)
+setTimeout(drawProgressChart, 100);
+window.addEventListener('resize', drawProgressChart);
+</script>
+</body>
+</html>

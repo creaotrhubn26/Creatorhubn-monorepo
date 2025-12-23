@@ -1,0 +1,1486 @@
+import { useTheming } from '../../utils/theming-helper';
+import React, { useState, useEffect } from 'react';
+import {
+  Box,
+  Card,
+  CardContent,
+  Typography,
+  Grid,
+  Paper,
+  Tabs,
+  Tab,
+  Stack,
+  LinearProgress,
+  Chip,
+  Button,
+  IconButton,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  Alert,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemIcon,
+  Divider,
+  Avatar,
+  Tooltip,
+  CircularProgress,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Badge,
+} from '@mui/material';
+import {
+  CameraAlt,
+  Videocamcam,
+  HeadsetMic,
+  Memory,
+  Computer,
+  TrendingUp,
+  TrendingDown,
+  Warning,
+  CheckCircle,
+  Schedule,
+  Build,
+  AttachMoney,
+  Analytics,
+  Refresh,
+  Download,
+  Settings,
+  Speed,
+  BatteryUnknown,
+  Storage,
+  CloudSync,
+  Update,
+  Assignment,
+  MonitorFavorite,
+  CalendarTodayToday,
+  Euro,
+  SwapHoriz,
+  CompareArrows,
+  Assessment,
+  Insights,
+  Engineering,
+} from '@mui/icons-material';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
+import {
+  BarChart,
+  Bar,
+  LineChart,
+  Line,
+  PieChart,
+  Pie,
+  Cell,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip as RechartsTooltip,
+  Legend,
+  ResponsiveContainer,
+  RadialBarChart,
+  RadialBar,
+} from 'recharts';
+
+// Import dynamic profession system
+import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
+
+interface EquipmentAnalyticsProps {
+  profession: string;
+  userId: string
+}
+
+interface EquipmentUsage {
+  id: string;
+  name: string;
+  type: 'camera' | 'lens' | 'audio' | 'lighting' | 'computer' | 'drone';
+  totalHours: number;
+  projectsUsed: number;
+  utilizationRate: number;
+  revenueGenerated: number;
+  lastUsed: string;
+  condition: 'excellent' | 'good' | 'fair' | 'poor';
+  maintenanceScheduled: boolean
+}
+
+interface ROIData {
+  equipmentId: string;
+  name: string;
+  purchasePrice: number;
+  currentValue: number;
+  totalRevenue: number;
+  roiPercentage: number;
+  paybackPeriod: number;
+  annualRevenue: number
+}
+
+interface MaintenanceRecord {
+  equipmentId: string;
+  equipmentName: string;
+  lastMaintenance: string;
+  nextMaintenance: string;
+  maintenanceType: 'routine' | 'repair' | 'calibration' | 'upgrade';
+  cost: number;
+  status: 'scheduled' | 'overdue' | 'completed';
+  urgency: 'low' | 'medium' | 'high' | 'critical'
+}
+
+interface ReplacementRecommendation {
+  equipmentId: string;
+  name: string;
+  currentAge: number;
+  condition: string;
+  utilizationRate: number;
+  maintenanceCost: number;
+  recommendedAction: 'maintain' | 'upgrade' | 'replace';
+  timeframe: 'immediate' | 'within_3_months' | 'within_6_months' | 'within_year';
+  estimatedCost: number;
+  potentialSavings: number
+}
+
+const EquipmentAnalytics: React.FC<EquipmentAnalyticsProps> = ({ profession, userId }) => {
+  const [selectedTab, setSelectedTab] = useState(0);
+  const [timeRange, setTimeRange] = useState('12m');
+
+  // Use dynamic profession system
+  const { professionConfigs, isLoading: professionsLoading } = useDynamicProfessions();
+  
+  // Theming system
+  const theming = useTheming('photographer,');
+  const professionConfig = professionConfigs?.[profession];
+  const [equipmentFilter, setEquipmentFilter] = useState('all');
+
+  const queryClient = useQueryClient();
+
+  // Fetch equipment usage data
+  const { data: equipmentUsage = [], isLoading: usageLoading } = useQuery({
+    queryKey: ['/api/analytics/equipment/usage', profession, userId, timeRange],
+    queryFn: async () => {
+      return (
+        (await apiRequest(
+          `/api/analytics/equipment/usage?profession=${profession}&userId=${userId}&range=${timeRange}`,
+        )) || mockEquipmentUsage
+      );
+  },
+    staleTime: 5 * 60 * 100,
+});
+
+  // Fetch ROI calculations
+  const { data: roiData = [], isLoading: roiLoading } = useQuery({
+    queryKey: ['/api/analytics/equipment/roi', profession, userId, timeRange],
+    queryFn: async () => {
+      return (
+        (await apiRequest(
+          `/api/analytics/equipment/roi?profession=${profession}&userId=${userId}&range=${timeRange}`,
+        )) || mockROIData
+      );
+  },
+    staleTime: 5 * 60 * 100,
+});
+
+  // Fetch maintenance analytics
+  const { data: maintenanceData = [], isLoading: maintenanceLoading } = useQuery({
+    queryKey: ['/api/analytics/equipment/maintenance', profession, userId],
+    queryFn: async () => {
+      return (
+        (await apiRequest(
+          `/api/analytics/equipment/maintenance?profession=${profession}&userId=${userId}`,
+        )) || mockMaintenanceData
+      );
+  },
+    staleTime: 5 * 60 * 100,
+});
+
+  // Fetch replacement recommendations
+  const { data: replacementRecommendations = [], isLoading: recommendationsLoading } = useQuery({
+    queryKey: ['/api/analytics/equipment/recommendations', profession, userId],
+    queryFn: async () => {
+      return (
+        (await apiRequest(
+          `/api/analytics/equipment/recommendations?profession=${profession}&userId=${userId}`,
+        )) || mockReplacementRecommendations
+      );
+  },
+    staleTime: 5 * 60 * 100,
+});
+
+  // Schedule maintenance mutation
+  const scheduleMaintenanceMutation = useMutation({
+    mutationFn: async (data: { equipmentId: string; date: string; type: string }) => {
+      return await apiRequest('/api/equipment/schedule-maintenance', {
+        method: 'POS',
+        body: JSON.stringify(data),
+    });
+  },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['/api/analytics/equipment/maintenance', ],
+    });
+  },
+});
+
+  // Export analytics report
+  const exportAnalyticsMutation = useMutation({
+    mutationFn: async (reportType: string) => {
+      return await apiRequest('/api/analytics/equipment/export', {
+        method: 'POS',
+        body: JSON.stringify({
+          profession,
+          userId,
+          reportType,
+          timeRange,
+      }),
+    });
+  },
+    onSuccess: (data) => {
+      if (data.downloadUrl) {
+        window.open(data.downloadU, rl'_blank');
+    }
+  },
+});
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('nb-N', {
+      style: 'currency',
+      currency: 'NO',
+  }).format(amount);
+};
+
+  const formatPercentage = (value: number) => {
+    return `${value.toFixed()}%`;
+};
+
+  const getEquipmentIcon = (type: string) => {
+    switch (type) {
+      case 'camera':
+        return <CameraAlt />;
+      case 'lens':
+        return <CameraAlt />;
+      case 'audio':
+        return <HeadsetMic />;
+      case 'lighting':
+        return theming.getThemedIcon('');
+      case 'computer':
+        return <Computer />;
+      case 'drone':
+        return theming.getThemedIcon('speed');
+      default: return theming.getThemedIcon('');
+  }
+};
+
+  const getConditionColor = (condition: string) => {
+    switch (condition) {
+      case 'excellent':
+        return 'success';
+      case 'good':
+        return 'primary';
+      case 'fair':
+        return 'warning';
+      case 'poor':
+        return 'error';
+      default:
+        return 'default';
+}
+};
+
+  const getUrgencyColor = (urgency: string) => {
+    switch (urgency) {
+      case 'critical':
+        return 'error';
+      case 'high':
+        return 'warning';
+      case 'medium':
+        return 'info';
+      case 'low':
+        return 'success';
+      default:
+        return 'default';
+}
+};
+
+  const tabData = [
+    { label: 'Bruksstatistikk', icon: theming.getThemedIcon(',') },
+    { label: 'ROI-analyse', icon: theming.getThemedIcon(',') },
+    { label: 'Vedlikehold', icon: theming.getThemedIcon(',') },
+    { label: 'Anbefalinger', icon: <Insights />,},
+  ];
+
+  // Mock data for development
+  const mockEquipmentUsage: EquipmentUsage[] = [
+    {
+      id: '',
+      name: 'Canon EOS R',
+      type: 'camera',
+      totalHours: 25,
+      projectsUsed:  28,
+      utilizationRate: 78.5,
+      revenueGenerated: 28500,
+      lastUsed: '2024-01-1',
+      condition: 'excellent',
+      maintenanceScheduled: false,
+  },
+    {
+      id: '',
+      name: 'Sony FX',
+      type: 'camera',
+      totalHours: 19,
+      projectsUsed:  22,
+      utilizationRate: 65.2,
+      revenueGenerated: 22000,
+      lastUsed: '2024-01-1',
+      condition: 'good',
+      maintenanceScheduled: true,
+  },
+    {
+      id: '',
+      name: 'MacBook Pro M',
+      type: 'computer',
+      totalHours: 120,
+      projectsUsed:  45,
+      utilizationRate: 95.8,
+      revenueGenerated: 45000,
+      lastUsed: '2024-01-1',
+      condition: 'good',
+      maintenanceScheduled: false,
+  },
+  ];
+
+  const mockROIData: ROIData[] = [
+    {
+      equipmentId: '',
+      name: 'Canon EOS R',
+      purchasePrice: 4500,
+      currentValue: 3800,
+      totalRevenue: 28500,
+      roiPercentage: 533.3,
+      paybackPeriod: 2.8,
+      annualRevenue: 14250,
+  },
+    {
+      equipmentId: '',
+      name: 'Sony FX',
+      purchasePrice: 3500,
+      currentValue: 2900,
+      totalRevenue: 22000,
+      roiPercentage: 528.6,
+      paybackPeriod: 3.2,
+      annualRevenue: 11000,
+  },
+    {
+      equipmentId: '',
+      name: 'MacBook Pro M',
+      purchasePrice: 2800,
+      currentValue: 2400,
+      totalRevenue: 45000,
+      roiPercentage: 1507.1,
+      paybackPeriod: 1.2,
+      annualRevenue: 22500,
+  },
+  ];
+
+  const mockMaintenanceData: MaintenanceRecord[] = [
+    {
+      equipmentId: '',
+      equipmentName: 'Canon EOS R',
+      lastMaintenance: '2023-12-1',
+      nextMaintenance: '2024-03-1',
+      maintenanceType: 'routine',
+      cost: 250,
+      status: 'scheduled',
+      urgency: 'medium',
+  },
+    {
+      equipmentId: '',
+      equipmentName: 'Sony FX',
+      lastMaintenance: '2023-11-2',
+      nextMaintenance: '2024-02-2',
+      maintenanceType: 'calibration',
+      cost: 180,
+      status: 'overdue',
+      urgency: 'high',
+  },
+    {
+      equipmentId: ', ',
+      equipmentName: 'MacBook Pro M',
+      lastMaintenance: '2024-01-1',
+      nextMaintenance: '2024-07-1',
+      maintenanceType: 'upgrade',
+      cost: 350,
+      status: 'completed',
+      urgency: 'low',
+  },
+  ];
+
+  const mockReplacementRecommendations: ReplacementRecommendation[] = [
+    {
+      equipmentId: ', ',
+      name: 'Canon 5D Mark I',
+      currentAge: 4.2,
+      condition: 'fair',
+      utilizationRate: 45.2,
+      maintenanceCost: 850,
+      recommendedAction: 'upgrade',
+      timeframe: 'within_6_months',
+      estimatedCost: 4200,
+      potentialSavings: 1500,
+  },
+    {
+      equipmentId: ', ',
+      name: 'Old Lighting Kit',
+      currentAge: 6.8,
+      condition: 'poor',
+      utilizationRate: 25.5,
+      maintenanceCost: 1200,
+      recommendedAction: 'replace',
+      timeframe: 'within_3_months',
+      estimatedCost: 2500,
+      potentialSavings: 1800,
+  },
+  ];
+
+  return (
+    <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column'}}>
+      {/* Header */}
+      <Paper elevation={1} sx={{ p:  3, borderRadius:  0 ,  ...theming.getThemedCardSx() }}>
+        <Stack direction="row" spacing={2} alignItems="center" justifyContent="space-between">
+          <Box>
+            <Typography variant="h5"
+              sx={{ 
+                display: 'flex',
+                alignItems: 'center',
+                gap:  2,
+                fontWeight: 600, color: theming.colors.primary }}>
+              <Avatar sx={{ bgcolor: '#f57c00'}}>
+                <Engineering />
+              </Avatar>
+              Utstyrsanalyse
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mt:  1 }}>
+              Omfattende analyse av utstyrbruk, ROI og vedlikeholdsoptimalisering
+            </Typography>
+          </Box>
+
+          <Stack direction="row" spacing={2} alignItems="center">
+            <FormControl size="small" sx={{ minWidth: 120}}>
+              <InputLabel>Tidsperiode</InputLabel>
+              <Select
+                value={timeRange}
+                onChange={(e) => setTimeRange(e.target.value)}
+                label="Tidsperiode"
+              >
+                <MenuItem value="3m">3 måneder</MenuItem>
+                <MenuItem value="6m">6 måneder</MenuItem>
+                <MenuItem value="12m">12 måneder</MenuItem>
+                <MenuItem value="24m">24 måneder</MenuItem>
+              </Select>
+            </FormControl>
+
+            <FormControl size="small" sx={{ minWidth: 120}}>
+              <InputLabel>Utstyr</InputLabel>
+              <Select
+                value={equipmentFilter}
+                onChange={(e) => setEquipmentFilter(e.target.value)}
+                label="Utstyr"
+              >
+                <MenuItem value="all">Alle</MenuItem>
+                <MenuItem value="camera">Kamera</MenuItem>
+                <MenuItem value="audio">Lyd</MenuItem>
+                <MenuItem value="computer">Data</MenuItem>
+                <MenuItem value="lighting">Lys</MenuItem>
+              </Select>
+            </FormControl>
+
+            <Button
+              variant="outlined"
+              startIcon={theming.getThemedIcon('refresh')}
+              onClick={() =>
+                queryClient.invalidateQueries({
+                  queryKey: ['/api/analytics/equipment', ],
+              })
+            }
+            >
+              Oppdater
+            </Button>
+
+            <Button variant="contained"
+              startIcon={theming.getThemedIcon('download')}
+              onClick={() => exportAnalyticsMutation.mutate('comprehensive')}
+              disabled={exportAnalyticsMutation.isPending}
+            >
+              Eksporter
+            </Button>
+          </Stack>
+        </Stack>
+      </Paper>
+
+      <Box sx={{ flex: 1, display: 'flex'}}>
+        {/* Main Content */}
+        <Box sx={{ flex: 1, p: 3 }}>
+          {/* Tabs */}
+          <Paper sx={{ mb:  3 ,  ...theming.getThemedCardSx() }}>
+            <Tabs
+              value={selectedTab}
+              onChange={(_, newValue) => setSelectedTab(newValue)}
+              indicatorColor="primary"
+              textColor="primary"
+              variant="fullWidth"
+            >
+              {tabData.map((tab, index) => (
+                <Tab key={index} icon={tab.icon} label={tab.label} iconPosition="start" />
+              ))}
+            </Tabs>
+          </Paper>
+
+          {/* Usage Tracking Tab */}
+          {selectedTab === 0 && (
+            <Box>
+              {/* Usage Overview */}
+              <Grid container spacing={3} sx={{ mb:  3 }}>
+                <Grid item xs={12} md={3}>
+                  <Card sx={theming.getThemedCardSx()}>
+                    <CardContent sx={theming.getThemedCardSx()}>
+                      <Stack direction="row" alignItems="center" justifyContent="space-between">
+                        <Box>
+                          <Typography variant="body2" color="text.secondary">
+                            Total brukstimer
+                          </Typography>
+                          <Typography variant="h5" color="primary" sx={{ color: theming.colors.primary }}>
+                            {equipmentUsage.reduce((sum, item) => sum + item.totalHours, 0)}
+                          </Typography>
+                        </Box>
+                        <Avatar sx={{ bgcolor: '#1976d2'}}>
+                          {theming.getThemedIcon('schedule')}
+                        </Avatar>
+                      </Stack>
+                    </CardContent>
+                  </Card>
+                </Grid>
+
+                <Grid item xs={12} md={3}>
+                  <Card sx={theming.getThemedCardSx()}>
+                    <CardContent sx={theming.getThemedCardSx()}>
+                      <Stack direction="row" alignItems="center" justifyContent="space-between">
+                        <Box>
+                          <Typography variant="body2" color="text.secondary">
+                            Gjennomsnittlig utnyttelse
+                          </Typography>
+                          <Typography variant="h5" color="success.main" sx={{ color: theming.colors.primary }}>
+                            {equipmentUsage.length > 0
+                              ? formatPercentage(
+                                  equipmentUsage.reduce(
+                                    (sum, item) => sum + item.utilizationRate,
+                                    0,
+                                  ) / equipmentUsage.length,
+                                )
+                              : '0%'}
+                          </Typography>
+                        </Box>
+                        <Avatar sx={{ bgcolor: '#4caf50'}}>
+                          {theming.getThemedIcon('speed')}
+                        </Avatar>
+                      </Stack>
+                    </CardContent>
+                  </Card>
+                </Grid>
+
+                <Grid item xs={12} md={3}>
+                  <Card sx={theming.getThemedCardSx()}>
+                    <CardContent sx={theming.getThemedCardSx()}>
+                      <Stack direction="row" alignItems="center" justifyContent="space-between">
+                        <Box>
+                          <Typography variant="body2" color="text.secondary">
+                            Prosjekter totalt
+                          </Typography>
+                          <Typography variant="h5" color="secondary" sx={{ color: theming.colors.primary }}>
+                            {equipmentUsage.reduce((sum, item) => sum + item.projectsUsed, 0)}
+                          </Typography>
+                        </Box>
+                        <Avatar sx={{ bgcolor: '#9c27b0'}}>
+                          {theming.getThemedIcon('assignment')}
+                        </Avatar>
+                      </Stack>
+                    </CardContent>
+                  </Card>
+                </Grid>
+
+                <Grid item xs={12} md={3}>
+                  <Card sx={theming.getThemedCardSx()}>
+                    <CardContent sx={theming.getThemedCardSx()}>
+                      <Stack direction="row" alignItems="center" justifyContent="space-between">
+                        <Box>
+                          <Typography variant="body2" color="text.secondary">
+                            Generert inntekt
+                          </Typography>
+                          <Typography variant="h5" color="info.main" sx={{ color: theming.colors.primary }}>
+                            {formatCurrency(
+                              equipmentUsage.reduce((sum, item) => sum + item.revenueGenerated, 0),
+                            )}
+                          </Typography>
+                        </Box>
+                        <Avatar sx={{ bgcolor: '#0288d1'}}>
+                          <Euro />
+                        </Avatar>
+                      </Stack>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              </Grid>
+
+              {/* Equipment Usage Chart */}
+              <Card sx={{ mb:  3 ,  ...theming.getThemedCardSx() }}>
+                <CardContent sx={theming.getThemedCardSx()}>
+                  <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                    Utstyrsutnyttelse
+                  </Typography>
+                  {usageLoading ? (
+                    <LinearProgress />
+                  ) : (
+                    <ResponsiveContainer width="100%" height={400}>
+                      <BarChart data={equipmentUsage}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="name" angle={-45} textAnchor="end" height={100} />
+                        <YAxis />
+                        <RechartsTooltip />
+                        <Legend />
+                        <Box dataKey="utilizationRate" fill="#1976d2" name="Utnyttelsesgrad (%)" />
+                        <Box dataKey="totalHours" fill="#4caf50" name="Brukstimer" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Detailed Equipment List */}
+              <Card sx={theming.getThemedCardSx()}>
+                <CardContent sx={theming.getThemedCardSx()}>
+                  <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                    Detaljert utstyrsstatistikk
+                  </Typography>
+                  <TableContainer>
+                    <Table>
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Utstyr</TableCell>
+                          <TableCell>Type</TableCell>
+                          <TableCell align="right">Brukstimer</TableCell>
+                          <TableCell align="right">Utnyttelse</TableCell>
+                          <TableCell align="right">Prosjekter</TableCell>
+                          <TableCell align="right">Inntekt</TableCell>
+                          <TableCell>Status</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {equipmentUsage.map((equipment) => (
+                          <TableRow key={equipment.id}>
+                            <TableCell>
+                              <Stack direction="row" alignItems="center" spacing={2}>
+                                {getEquipmentIcon(equipment.type)}
+                                <Box>
+                                  <Typography variant="body2" fontWeight={500}>
+                                    {equipment.name}
+                                  </Typography>
+                                  <Typography variant="caption" color="text.secondary">
+                                    Sist brukt: {', '}
+                                    {new Date(equipment.lastUsed).toLocaleDateString('nb-NO')}
+                                  </Typography>
+                                </Box>
+                              </Stack>
+                            </TableCell>
+                            <TableCell>
+                              <Chip size="small" label={equipment.type} variant="outlined" />
+                            </TableCell>
+                            <TableCell align="right">{equipment.totalHours}t</TableCell>
+                            <TableCell align="right">
+                              <Box
+                                sx={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'flex-end'}}
+                              >
+                                <Box sx={{ width: 10, mr:  1 }}>
+                                  <LinearProgress
+                                    variant="determinate"
+                                    value={equipment.utilizationRate}
+                                    color={
+                                      equipment.utilizationRate > 70
+                                        ? 'success'
+                                        : equipment.utilizationRate > 40
+                                          ? 'warning'
+                                          : 'error'
+                                  }
+                                  />
+                                </Box>
+                                <Typography variant="body2">
+                                  {formatPercentage(equipment.utilizationRate)}
+                                </Typography>
+                              </Box>
+                            </TableCell>
+                            <TableCell align="right">{equipment.projectsUsed}</TableCell>
+                            <TableCell align="right">
+                              {formatCurrency(equipment.revenueGenerated)}
+                            </TableCell>
+                            <TableCell>
+                              <Stack direction="row" spacing={1}>
+                                <Chip
+                                  size="small"
+                                  label={equipment.condition}
+                                  color={getConditionColor(equipment.condition)}
+                                />
+                                {equipment.maintenanceScheduled && (
+                                  <Chip
+                                    size="small"
+                                    label="Service"
+                                    color="warning"
+                                    icon={theming.getThemedIcon('build')}}
+                                  />
+                                )}
+                              </Stack>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </CardContent>
+              </Card>
+            </Box>
+          )}
+
+          {/* ROI Analysis Tab */}
+          {selectedTab === 1 && (
+            <Box>
+              {/* ROI Overview */}
+              <Grid container spacing={3} sx={{ mb:  3 }}>
+                <Grid item xs={12} md={3}>
+                  <Card sx={theming.getThemedCardSx()}>
+                    <CardContent sx={theming.getThemedCardSx()}>
+                      <Stack direction="row" alignItems="center" justifyContent="space-between">
+                        <Box>
+                          <Typography variant="body2" color="text.secondary">
+                            Gjennomsnittlig ROI
+                          </Typography>
+                          <Typography variant="h5" color="success.main" sx={{ color: theming.colors.primary }}>
+                            {roiData.length > 0
+                              ? formatPercentage(
+                                  roiData.reduce((sum, item) => sum + item.roiPercentage, 0) /
+                                    roiData.length,
+                                )
+                              : '0%'}
+                          </Typography>
+                        </Box>
+                        <Avatar sx={{ bgcolor: '#4caf50'}}>
+                          {theming.getThemedIcon('trendingUp')}
+                        </Avatar>
+                      </Stack>
+                    </CardContent>
+                  </Card>
+                </Grid>
+
+                <Grid item xs={12} md={3}>
+                  <Card sx={theming.getThemedCardSx()}>
+                    <CardContent sx={theming.getThemedCardSx()}>
+                      <Stack direction="row" alignItems="center" justifyContent="space-between">
+                        <Box>
+                          <Typography variant="body2" color="text.secondary">
+                            Total investering
+                          </Typography>
+                          <Typography variant="h5" color="primary" sx={{ color: theming.colors.primary }}>
+                            {formatCurrency(
+                              roiData.reduce((sum, item) => sum + item.purchasePrice, 0),
+                            )}
+                          </Typography>
+                        </Box>
+                        <Avatar sx={{ bgcolor: '#1976d2'}}>
+                          {theming.getThemedIcon('money')}
+                        </Avatar>
+                      </Stack>
+                    </CardContent>
+                  </Card>
+                </Grid>
+
+                <Grid item xs={12} md={3}>
+                  <Card sx={theming.getThemedCardSx()}>
+                    <CardContent sx={theming.getThemedCardSx()}>
+                      <Stack direction="row" alignItems="center" justifyContent="space-between">
+                        <Box>
+                          <Typography variant="body2" color="text.secondary">
+                            Total avkastning
+                          </Typography>
+                          <Typography variant="h5" color="secondary" sx={{ color: theming.colors.primary }}>
+                            {formatCurrency(
+                              roiData.reduce((sum, item) => sum + item.totalRevenue, 0),
+                            )}
+                          </Typography>
+                        </Box>
+                        <Avatar sx={{ bgcolor: '#9c27b0'}}>
+                          <Euro />
+                        </Avatar>
+                      </Stack>
+                    </CardContent>
+                  </Card>
+                </Grid>
+
+                <Grid item xs={12} md={3}>
+                  <Card sx={theming.getThemedCardSx()}>
+                    <CardContent sx={theming.getThemedCardSx()}>
+                      <Stack direction="row" alignItems="center" justifyContent="space-between">
+                        <Box>
+                          <Typography variant="body2" color="text.secondary">
+                            Snitt nedbetalingstid
+                          </Typography>
+                          <Typography variant="h5" color="info.main" sx={{ color: theming.colors.primary }}>
+                            {roiData.length > 0
+                              ? `${(roiData.reduce((sum, item) => sum + item.paybackPeriod, 0) / roiData.length).toFixed(1)} mnd`
+                              : '0 mnd'}
+                          </Typography>
+                        </Box>
+                        <Avatar sx={{ bgcolor: '#0288d1'}}>
+                          {theming.getThemedIcon('schedule')}
+                        </Avatar>
+                      </Stack>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              </Grid>
+
+              {/* ROI Comparison Chart */}
+              <Card sx={{ mb:  3 ,  ...theming.getThemedCardSx() }}>
+                <CardContent sx={theming.getThemedCardSx()}>
+                  <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                    ROI-sammenligning
+                  </Typography>
+                  {roiLoading ? (
+                    <LinearProgress />
+                  ) : (
+                    <ResponsiveContainer width="100%" height={400}>
+                      <BarChart data={roiData}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="name" angle={-45} textAnchor="end" height={100} />
+                        <YAxis />
+                        <RechartsTooltip
+                          formatter={(value, name) => {
+                            if (name === 'ROI (%)') return [formatPercentage(Number(value)), name];
+                            return [formatCurrency(Number(value)), name];
+                        }}
+                        />
+                        <Legend />
+                        <Box dataKey="roiPercentage" fill="#4caf50" name="ROI (%)" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Detailed ROI Table */}
+              <Card sx={theming.getThemedCardSx()}>
+                <CardContent sx={theming.getThemedCardSx()}>
+                  <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                    Detaljert ROI-analyse
+                  </Typography>
+                  <TableContainer>
+                    <Table>
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Utstyr</TableCell>
+                          <TableCell align="right">Kjøpspris</TableCell>
+                          <TableCell align="right">Nåverdi</TableCell>
+                          <TableCell align="right">Total inntekt</TableCell>
+                          <TableCell align="right">ROI</TableCell>
+                          <TableCell align="right">Nedbetalingstid</TableCell>
+                          <TableCell align="right">Årlig inntekt</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {roiData.map((item) => (
+                          <TableRow key={item.equipmentId}>
+                            <TableCell>
+                              <Typography variant="body2" fontWeight={500}>
+                                {item.name}
+                              </Typography>
+                            </TableCell>
+                            <TableCell align="right">
+                              {formatCurrency(item.purchasePrice)}
+                            </TableCell>
+                            <TableCell align="right">{formatCurrency(item.currentValue)}</TableCell>
+                            <TableCell align="right">{formatCurrency(item.totalRevenue)}</TableCell>
+                            <TableCell align="right">
+                              <Chip
+                                label={formatPercentage(item.roiPercentage)}
+                                color={
+                                  item.roiPercentage > 300
+                                    ? 'success'
+                                    : item.roiPercentage > 150
+                                      ? 'primary'
+                                      : 'warning'
+                              }
+                              />
+                            </TableCell>
+                            <TableCell align="right">{item.paybackPeriod.toFixed(1)} mnd</TableCell>
+                            <TableCell align="right">
+                              {formatCurrency(item.annualRevenue)}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </CardContent>
+              </Card>
+            </Box>
+          )}
+
+          {/* Maintenance Analytics Tab */}
+          {selectedTab === 2 && (
+            <Box>
+              {/* Maintenance Overview */}
+              <Grid container spacing={3} sx={{ mb:  3 }}>
+                <Grid item xs={12} md={3}>
+                  <Card sx={theming.getThemedCardSx()}>
+                    <CardContent sx={theming.getThemedCardSx()}>
+                      <Stack direction="row" alignItems="center" justifyContent="space-between">
+                        <Box>
+                          <Typography variant="body2" color="text.secondary">
+                            Planlagt vedlikehold
+                          </Typography>
+                          <Typography variant="h5" color="primary" sx={{ color: theming.colors.primary }}>
+                            {maintenanceData.filter((item) => item.status === 'scheduled').length}
+                          </Typography>
+                        </Box>
+                        <Avatar sx={{ bgcolor: '#1976d2'}}>
+                          {theming.getThemedIcon('schedule')}
+                        </Avatar>
+                      </Stack>
+                    </CardContent>
+                  </Card>
+                </Grid>
+
+                <Grid item xs={12} md={3}>
+                  <Card sx={theming.getThemedCardSx()}>
+                    <CardContent sx={theming.getThemedCardSx()}>
+                      <Stack direction="row" alignItems="center" justifyContent="space-between">
+                        <Box>
+                          <Typography variant="body2" color="text.secondary">
+                            Forfalte vedlikehold
+                          </Typography>
+                          <Typography variant="h5" color="error.main" sx={{ color: theming.colors.primary }}>
+                            {maintenanceData.filter((item) => item.status === 'overdue').length}
+                          </Typography>
+                        </Box>
+                        <Avatar sx={{ bgcolor: '#d32f2f'}}>
+                          {theming.getThemedIcon('warning')}
+                        </Avatar>
+                      </Stack>
+                    </CardContent>
+                  </Card>
+                </Grid>
+
+                <Grid item xs={12} md={3}>
+                  <Card sx={theming.getThemedCardSx()}>
+                    <CardContent sx={theming.getThemedCardSx()}>
+                      <Stack direction="row" alignItems="center" justifyContent="space-between">
+                        <Box>
+                          <Typography variant="body2" color="text.secondary">
+                            Fullførte i år
+                          </Typography>
+                          <Typography variant="h5" color="success.main" sx={{ color: theming.colors.primary }}>
+                            {maintenanceData.filter((item) => item.status === 'completed').length}
+                          </Typography>
+                        </Box>
+                        <Avatar sx={{ bgcolor: '#4caf50'}}>
+                          {theming.getThemedIcon('checkCircle')}
+                        </Avatar>
+                      </Stack>
+                    </CardContent>
+                  </Card>
+                </Grid>
+
+                <Grid item xs={12} md={3}>
+                  <Card sx={theming.getThemedCardSx()}>
+                    <CardContent sx={theming.getThemedCardSx()}>
+                      <Stack direction="row" alignItems="center" justifyContent="space-between">
+                        <Box>
+                          <Typography variant="body2" color="text.secondary">
+                            Vedlikeholdskostnad
+                          </Typography>
+                          <Typography variant="h5" color="secondary" sx={{ color: theming.colors.primary }}>
+                            {formatCurrency(
+                              maintenanceData.reduce((sum, item) => sum + item.cost, 0),
+                            )}
+                          </Typography>
+                        </Box>
+                        <Avatar sx={{ bgcolor: '#9c27b0'}}>
+                          {theming.getThemedIcon('build')}
+                        </Avatar>
+                      </Stack>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              </Grid>
+
+              {/* Maintenance Schedule */}
+              <Card sx={{ mb:  3 ,  ...theming.getThemedCardSx() }}>
+                <CardContent sx={theming.getThemedCardSx()}>
+                  <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                    Vedlikeholdsplan
+                  </Typography>
+                  {maintenanceLoading ? (
+                    <LinearProgress />
+                  ) : (
+                    <List>
+                      {maintenanceData.map((maintenance, index) => (
+                        <ListItem key={index} divider>
+                          <ListItemIcon>
+                            <Badge variant="dot" color={getUrgencyColor(maintenance.urgency)}>
+                              {theming.getThemedIcon('build')}
+                            </Badge>
+                          </ListItemIcon>
+                          <ListItemText
+                            primary={maintenance.equipmentName}
+                            secondary={
+                              <Stack direction="row" spacing={2} alignItems="center">
+                                <Typography variant="body2">
+                                  {maintenance.maintenanceType}
+                                </Typography>
+                                <Typography variant="body2" color="text.secondary">
+                                  Neste: {', '}
+                                  {new Date(maintenance.nextMaintenance).toLocaleDateString(
+                                    'nb-NO',
+                                  )}
+                                </Typography>
+                                <Typography variant="body2">
+                                  {formatCurrency(maintenance.cost)}
+                                </Typography>
+                              </Stack>
+                          }
+                          />
+                          <Stack direction="row" spacing={1}>
+                            <Chip
+                              size="small"
+                              label={maintenance.status}
+                              color={
+                                maintenance.status === 'overdue'
+                                  ? 'error'
+                                  : maintenance.status === 'scheduled'
+                                    ? 'warning'
+                                    : 'success'
+                            }
+                            />
+                            <Chip
+                              size="small"
+                              label={maintenance.urgency}
+                              color={getUrgencyColor(maintenance.urgency)}
+                              variant="outlined"
+                            />
+                          </Stack>
+                        </ListItem>
+                      ))}
+                    </List>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Maintenance Cost Trends */}
+              <Card sx={theming.getThemedCardSx()}>
+                <CardContent sx={theming.getThemedCardSx()}>
+                  <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                    Vedlikeholdskostnader over tid
+                  </Typography>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <ShowChart
+                      data={maintenanceData.map((item, index) => ({
+                        month: `Mnd ${index +, 1}`,
+                        cost: item.cost,
+                    }))}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="month" />
+                      <YAxis />
+                      <RechartsTooltip formatter={(value) => formatCurrency(Number(value))} />
+                      <Box
+                        type="monotone"
+                        dataKey="cost"
+                        stroke="#f57c00"
+                        strokeWidth={3}
+                        name="Kostnad"
+                      />
+                    </ShowChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+            </Box>
+          )}
+
+          {/* Replacement Recommendations Tab */}
+          {selectedTab === 3 && (
+            <Box>
+              {/* Recommendation Overview */}
+              <Grid container spacing={3} sx={{ mb:  3 }}>
+                <Grid item xs={12} md={3}>
+                  <Card sx={theming.getThemedCardSx()}>
+                    <CardContent sx={theming.getThemedCardSx()}>
+                      <Stack direction="row" alignItems="center" justifyContent="space-between">
+                        <Box>
+                          <Typography variant="body2" color="text.secondary">
+                            Umiddelbare tiltak
+                          </Typography>
+                          <Typography variant="h5" color="error.main" sx={{ color: theming.colors.primary }}>
+                            {
+                              replacementRecommendations.filter(
+                                (item) => item.timeframe === 'immediate',
+                              ).length
+                          }
+                          </Typography>
+                        </Box>
+                        <Avatar sx={{ bgcolor: '#d32f2f'}}>
+                          {theming.getThemedIcon('warning')}
+                        </Avatar>
+                      </Stack>
+                    </CardContent>
+                  </Card>
+                </Grid>
+
+                <Grid item xs={12} md={3}>
+                  <Card sx={theming.getThemedCardSx()}>
+                    <CardContent sx={theming.getThemedCardSx()}>
+                      <Stack direction="row" alignItems="center" justifyContent="space-between">
+                        <Box>
+                          <Typography variant="body2" color="text.secondary">
+                            Planlagte oppgraderinger
+                          </Typography>
+                          <Typography variant="h5" color="warning.main" sx={{ color: theming.colors.primary }}>
+                            {
+                              replacementRecommendations.filter(
+                                (item) => item.recommendedAction === 'upgrade',
+                              ).length
+                          }
+                          </Typography>
+                        </Box>
+                        <Avatar sx={{ bgcolor: '#ed6c02'}}>
+                          <Update />
+                        </Avatar>
+                      </Stack>
+                    </CardContent>
+                  </Card>
+                </Grid>
+
+                <Grid item xs={12} md={3}>
+                  <Card sx={theming.getThemedCardSx()}>
+                    <CardContent sx={theming.getThemedCardSx()}>
+                      <Stack direction="row" alignItems="center" justifyContent="space-between">
+                        <Box>
+                          <Typography variant="body2" color="text.secondary">
+                            Potensielle besparelser
+                          </Typography>
+                          <Typography variant="h5" color="success.main" sx={{ color: theming.colors.primary }}>
+                            {formatCurrency(
+                              replacementRecommendations.reduce(
+                                (sum, item) => sum + item.potentialSavings,
+                                0,
+                              ),
+                            )}
+                          </Typography>
+                        </Box>
+                        <Avatar sx={{ bgcolor: '#4caf50'}}>
+                          {theming.getThemedIcon('trendingUp')}
+                        </Avatar>
+                      </Stack>
+                    </CardContent>
+                  </Card>
+                </Grid>
+
+                <Grid item xs={12} md={3}>
+                  <Card sx={theming.getThemedCardSx()}>
+                    <CardContent sx={theming.getThemedCardSx()}>
+                      <Stack direction="row" alignItems="center" justifyContent="space-between">
+                        <Box>
+                          <Typography variant="body2" color="text.secondary">
+                            Estimert investering
+                          </Typography>
+                          <Typography variant="h5" color="primary" sx={{ color: theming.colors.primary }}>
+                            {formatCurrency(
+                              replacementRecommendations.reduce(
+                                (sum, item) => sum + item.estimatedCost,
+                                0,
+                              ),
+                            )}
+                          </Typography>
+                        </Box>
+                        <Avatar sx={{ bgcolor: '#1976d2'}}>
+                          {theming.getThemedIcon('money')}
+                        </Avatar>
+                      </Stack>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              </Grid>
+
+              {/* Recommendations List */}
+              <Card sx={{ mb:  3 ,  ...theming.getThemedCardSx() }}>
+                <CardContent sx={theming.getThemedCardSx()}>
+                  <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                    Anbefalinger
+                  </Typography>
+                  {recommendationsLoading ? (
+                    <LinearProgress />
+                  ) : (
+                    <TableContainer>
+                      <Table>
+                        <TableHead>
+                          <TableRow>
+                            <TableCell>Utstyr</TableCell>
+                            <TableCell>Alder</TableCell>
+                            <TableCell>Tilstand</TableCell>
+                            <TableCell>Utnyttelse</TableCell>
+                            <TableCell>Anbefaling</TableCell>
+                            <TableCell>Tidsramme</TableCell>
+                            <TableCell align="right">Kostnad</TableCell>
+                            <TableCell align="right">Besparelse</TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {replacementRecommendations.map((recommendation) => (
+                            <TableRow key={recommendation.equipmentId}>
+                              <TableCell>
+                                <Typography variant="body2" fontWeight={500}>
+                                  {recommendation.name}
+                                </Typography>
+                              </TableCell>
+                              <TableCell>{recommendation.currentAge.toFixed(1)} år</TableCell>
+                              <TableCell>
+                                <Chip
+                                  size="small"
+                                  label={recommendation.condition}
+                                  color={getConditionColor(recommendation.condition)}
+                                />
+                              </TableCell>
+                              <TableCell>
+                                {formatPercentage(recommendation.utilizationRate)}
+                              </TableCell>
+                              <TableCell>
+                                <Chip
+                                  size="small"
+                                  label={recommendation.recommendedAction}
+                                  color={
+                                    recommendation.recommendedAction === 'replace'
+                                      ? 'error'
+                                      : recommendation.recommendedAction === 'upgrade'
+                                        ? 'warning'
+                                        : 'success'
+                                }
+                                />
+                              </TableCell>
+                              <TableCell>
+                                <Chip
+                                  size="small"
+                                  label={recommendation.timeframe.replace('_', ', ')}
+                                  color={
+                                    recommendation.timeframe === 'immediate'
+                                      ? 'error'
+                                      : recommendation.timeframe.includes('3_months')
+                                        ? 'warning'
+                                        : 'info'
+                                }
+                                />
+                              </TableCell>
+                              <TableCell align="right">
+                                {formatCurrency(recommendation.estimatedCost)}
+                              </TableCell>
+                              <TableCell align="right">
+                                <Typography variant="body2" color="success.main">
+                                  {formatCurrency(recommendation.potentialSavings)}
+                                </Typography>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Priority Actions */}
+              <Card sx={theming.getThemedCardSx()}>
+                <CardContent sx={theming.getThemedCardSx()}>
+                  <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                    Prioriterte tiltak
+                  </Typography>
+                  <List>
+                    {replacementRecommendations
+                      .filter(
+                        (item) =>
+                          item.timeframe === 'immediate' || item.timeframe === 'within_3_months',
+                      )
+                      .map((item, index) => (
+                        <ListItem key={index} divider>
+                          <ListItemIcon>
+                            <Avatar
+                              sx={{
+                                bgcolor: item.timeframe === 'immediate' ? '#d32f2f' : '#ed6c00',
+                                width:  32,
+                                height:  32}}
+                            >
+                              {index + 1}
+                            </Avatar>
+                          </ListItemIcon>
+                          <ListItemText
+                            primary={item.name}
+                            secondary={
+                              <Stack direction="row" spacing={2} alignItems="center">
+                                <Typography variant="body2">
+                                  {item.recommendedAction}: {formatCurrency(item.estimatedCost)}
+                                </Typography>
+                                <Typography variant="body2" color="success.main">
+                                  Besparelse: {formatCurrency(item.potentialSavings)}
+                                </Typography>
+                              </Stack>
+                          }
+                          />
+                          <Button
+                            variant="outlined"
+                            size="small"
+                            onClick={() => {
+                              // Handle action planning
+                          }}
+                          >
+                            Planlegg
+                          </Button>
+                        </ListItem>
+                      ))}
+                  </List>
+                </CardContent>
+              </Card>
+            </Box>
+          )}
+        </Box>
+
+        {/* Sidebar */}
+        <Paper
+          sx={{
+            width: 30,
+            borderRadius:  0,
+            borderLeft:  1,
+            borderColor: 'divider',
+            p:  2}}
+         sx={theming.getThemedCardSx()}>
+          <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+            Hurtighandlinger
+          </Typography>
+
+          <Stack spacing={2}>
+            {/* Equipment Status */}
+            <Card variant="outlined" sx={theming.getThemedCardSx()}>
+              <CardContent sx={{ pb:  1 ,  ...theming.getThemedCardSx() }}>
+                <Typography variant="subtitle2" gutterBottom>
+                  Utstyrsstatus
+                </Typography>
+                <Stack spacing={1}>
+                  <Stack direction="row" justifyContent="space-between">
+                    <Typography variant="body2">Utmerkede: </Typography>
+                    <Chip
+                      size="small"
+                      label={equipmentUsage.filter((e) => e.condition === 'excellent').length}
+                      color="success"
+                    />
+                  </Stack>
+                  <Stack direction="row" justifyContent="space-between">
+                    <Typography variant="body2">Trenger service: </Typography>
+                    <Chip
+                      size="small"
+                      label={equipmentUsage.filter((e) => e.maintenanceScheduled).length}
+                      color="warning"
+                    />
+                  </Stack>
+                  <Stack direction="row" justifyContent="space-between">
+                    <Typography variant="body2">Dårlig tilstand: </Typography>
+                    <Chip
+                      size="small"
+                      label={equipmentUsage.filter((e) => e.condition === 'poor').length}
+                      color="error"
+                    />
+                  </Stack>
+                </Stack>
+              </CardContent>
+            </Card>
+
+            {/* Quick Actions */}
+            <Card variant="outlined" sx={theming.getThemedCardSx()}>
+              <CardContent sx={{ pb:  1 ,  ...theming.getThemedCardSx() }}>
+                <Typography variant="subtitle2" gutterBottom>
+                  Hurtighandlinger
+                </Typography>
+                <Stack spacing={1}>
+                  <Button
+                    size="small"
+                    variant="text"
+                    startIcon={theming.getThemedIcon('build')}
+                    fullWidth
+                    sx={{ justifyContent: 'flex-start'}}
+                  >
+                    Planlegg vedlikehold
+                  </Button>
+                  <Button
+                    size="small"
+                    variant="text"
+                    startIcon={<Update />}
+                    fullWidth
+                    sx={{ justifyContent: 'flex-start'}}
+                  >
+                    Sjekk oppgraderinger
+                  </Button>
+                  <Button
+                    size="small"
+                    variant="text"
+                    startIcon={theming.getThemedIcon('assessment')}
+                    fullWidth
+                    sx={{ justifyContent: 'flex-start'}}
+                  >
+                    ROI-kalkulator
+                  </Button>
+                </Stack>
+              </CardContent>
+            </Card>
+
+            {/* Equipment Value */}
+            <Card variant="outlined" sx={theming.getThemedCardSx()}>
+              <CardContent sx={theming.getThemedCardSx()}>
+                <Typography variant="subtitle2" gutterBottom>
+                  Utstyrsverdier
+                </Typography>
+                <Stack spacing={1}>
+                  <Stack direction="row" justifyContent="space-between">
+                    <Typography variant="body2">Total verdi: </Typography>
+                    <Typography variant="body2" fontWeight={50}>
+                      {formatCurrency(roiData.reduce((sum, item) => sum + item.currentValue, 0))}
+                    </Typography>
+                  </Stack>
+                  <Stack direction="row" justifyContent="space-between">
+                    <Typography variant="body2">Årlig avskrivning: </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {formatCurrency(2500)}
+                    </Typography>
+                  </Stack>
+                  <Stack direction="row" justifyContent="space-between">
+                    <Typography variant="body2">Forsikringsverdi: </Typography>
+                    <Typography variant="body2" color="primary">
+                      {formatCurrency(
+                        roiData.reduce((sum, item) => sum + item.currentValue * 1.1, 0),
+                      )}
+                    </Typography>
+                  </Stack>
+                </Stack>
+              </CardContent>
+            </Card>
+          </Stack>
+        </Paper>
+      </Box>
+    </Box>
+  );
+};
+
+export default EquipmentAnalytics;

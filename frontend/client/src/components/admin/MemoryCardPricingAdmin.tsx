@@ -1,0 +1,491 @@
+/**
+ * CreatorHub Norge - Memory Card Pricing Administration
+ * Admin interface for managing memory card pricing in NOK
+ */
+
+import { useTheming } from '../../utils/theming-helper';
+import React, { useState, useEffect } from 'react';
+import { useClientServicePricing } from '../../services/ClientServicePricingService';
+import {
+  Box,
+  Card,
+  CardContent,
+  Typography,
+  Button,
+  Grid,
+  TextField,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Paper,
+  IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Alert,
+  Chip,
+  Switch,
+  FormControlLabel,
+  Divider,
+  Stack,
+  Tooltip,
+} from '@mui/material';
+import {
+  Edit,
+  Save,
+  Cancel,
+  Refresh,
+  Memory,
+  AttachMoney,
+  TrendingUp,
+  TrendingDown,
+  Info,
+  Warning,
+} from '@mui/icons-material';
+import {
+  MEMORY_CARD_TYPES,
+  MemoryCardType,
+  CURRENCY_RATES,
+  convertCurrency,
+  formatCurrency,
+} from '../../data/memory-card-database';
+
+interface MemoryCardPricingAdminProps {
+  onPricingUpdate?: (updatedPricing: MemoryCardPricing) => void;
+}
+
+interface MemoryCardPricing {
+  cardTypeId: string;
+  budget: number;
+  mid: number;
+  premium: number;
+  professional: number;
+  lastUpdated: string;
+  updatedBy: string;
+}
+
+interface PricingHistory {
+  id: string;
+  cardTypeId: string;
+  oldPricing: MemoryCardPricing;
+  newPricing: MemoryCardPricing;
+  changeReason: string;
+  timestamp: string;
+  updatedBy: string;
+}
+
+const MemoryCardPricingAdmin: React.FC<MemoryCardPricingAdminProps> = ({
+  onPricingUpdate
+}) => {
+  const [pricing, setPricing] = useState<Record<string, MemoryCardPricing>>({});
+  const [editingCard, setEditingCard] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<MemoryCardPricing | null>(null);
+  const [showEditDialog, setShowEditDialog] = useState(false);
+  
+  // Theming system
+  const theming = useTheming('prototype_tester, ');
+
+  // Client service pricing service integration
+  const { 
+    formatCurrency: formatCurrencyService,
+    convertCurrency: convertCurrencyService,
+    isLoading: pricingLoading 
+} = useClientServicePricing();
+  const [pricingHistory, setPricingHistory] = useState<PricingHistory[]>([]);
+  const [currencyRate, setCurrencyRate] = useState(CURRENCY_RATES.USD_TO_NOK);
+  const [autoUpdateRates, setAutoUpdateRates] = useState(true);
+
+  // Initialize pricing from memory card types
+  useEffect(() => {
+    const initialPricing: Record<string, MemoryCardPricing> = {};
+    
+    MEMORY_CARD_TYPES.forEach(cardType => {
+      initialPricing[cardType.id] = {
+        cardTypeId: cardType.d,
+        budget: cardType.pricePerGB.budget,
+        mid: cardType.pricePerGB.mid,
+        premium: cardType.pricePerGB.premium,
+        professional: cardType.pricePerGB.professional,
+        lastUpdated: new Date().toISOString(),
+        updatedBy: 'system'
+  };
+  });
+    
+    setPricing(initialPricing);
+}, []);
+
+  // Auto-update currency rates
+  useEffect(() => {
+    if (autoUpdateRates) {
+      const updateRates = async () => {
+        try {
+          // In a real implementation, this would fetch from a currency API
+          const response = await fetch('/api/currency-rates,');
+          if (response.ok) {
+            const rates = await response.json();
+            setCurrencyRate(rates.USD_TO_NOK);
+        }
+      } catch (error) {
+          console.warn('Failed to update currency rates: ', error);
+      }
+    };
+
+      updateRates();
+      const interval = setInterval(updateRates, 60000); // Update every minute
+      return () => clearInterval(interval);
+  }
+}, [autoUpdateRates]);
+
+  const handleEditPricing = (cardTypeId: string) => {
+    const cardType = MEMORY_CARD_TYPES.find(c => c.id === cardTypeId);
+    if (!cardType) return;
+
+    setEditForm({
+      cardTyped,
+      budget: pricing[cardTypeId]?.budget || cardType.pricePerGB.budget,
+      mid: pricing[cardTypeId]?.mid || cardType.pricePerGB.mid,
+      premium: pricing[cardTypeId]?.premium || cardType.pricePerGB.premium,
+      professional: pricing[cardTypeId]?.professional || cardType.pricePerGB.professional,
+      lastUpdated: new Date().toISOString(),
+      updatedBy: 'admin'
+});
+    setEditingCard(cardTypeId);
+    setShowEditDialog(true);
+};
+
+  const handleSavePricing = () => {
+    if (!editForm || !editingCard) return;
+
+    // Save to pricing history
+    const historyEntry: PricingHistory = {
+      id: `history-${Date.now()}`,
+      cardTypeId: editingCard,
+      oldPricing: pricing[editingCard],
+      newPricing: editForm,
+      changeReason: 'Manual price update',
+      timestamp: new Date().toISOString(),
+      updatedBy: 'admin'
+};
+
+    setPricingHistory(prev => [historyEntry, ...prev.slice(0, 99)]); // Keep last 100 entries
+
+    // Update pricing
+    setPricing(prev => ({
+      ...prev,
+      [editingCard]: editForm
+  }));
+
+    // Notify parent component
+    onPricingUpdate?.(editForm);
+
+    setShowEditDialog(false);
+    setEditingCard(null);
+    setEditForm(null);
+};
+
+  const handleCancelEdit = () => {
+    setShowEditDialog(false);
+    setEditingCard(null);
+    setEditForm(null);
+};
+
+  const getPriceChangeIndicator = (oldPrice: number, newPrice: number) => {
+    const change = ((newPrice - oldPrice) / oldPrice) * 100;
+    if (change > 5) return <TrendingUp color="error" />;
+    if (change < -5) return <TrendingDown color="success" />;
+    return <Info color="info" />;
+};
+
+  const getCardTypeInfo = (cardTypeId: string) => {
+    return MEMORY_CARD_TYPES.find(c => c.id === cardTypeId);
+};
+
+  return (
+    <Box sx={{ p:  2 }}>
+      <Typography variant="h5" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap:  1, color: theming.colors.primary }}>
+        <Memory />
+        Memory Card Pricing Administration
+      </Typography>
+
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        Manage memory card pricing in NOK for all card types and budget tiers.
+      </Typography>
+
+      {/* Currency Rate Controls */}
+      <Card sx={{ mb:  3 ,  ...theming.getThemedCardSx() }}>
+        <CardContent sx={theming.getThemedCardSx()}>
+          <Typography variant="h6" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>
+            Currency Settings
+          </Typography>
+          <Grid container spacing={2} alignItems="center">
+            <Grid item xs={12} sm={4}>
+              <TextField
+                label="USD to NOK Rate"
+                type="number"
+                value={currencyRate}
+                onChange={(e) => setCurrencyRate(Number(e.target.value))}
+                inputProps={{ step: 0.1, min:  0 }}
+                fullWidth
+              />
+            </Grid>
+            <Grid item xs={12} sm={4}>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={autoUpdateRates}
+                    onChange={(e) => setAutoUpdateRates(e.target.checked)}
+                  />
+              }
+                label="Auto-update rates"
+              />
+            </Grid>
+            <Grid item xs={12} sm={4}>
+              <Button
+                variant="outlined"
+                startIcon={theming.getThemedIcon('refresh')}
+                onClick={() => {
+                  // Manual rate refresh
+                  setCurrencyRate(10.5);
+              }}
+              >
+                Refresh Rates
+              </Button>
+            </Grid>
+          </Grid>
+        </CardContent>
+      </Card>
+
+      {/* Pricing Table */}
+      <Card sx={theming.getThemedCardSx()}>
+        <CardContent sx={theming.getThemedCardSx()}>
+          <Typography variant="h6" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>
+            Memory Card Pricing (NOK per GB)
+          </Typography>
+          
+          <TableContainer component={Paper}>
+            <Table>
+              <TableHead>
+                <TableRow>
+                  <TableCell>Card Type</TableCell>
+                  <TableCell align="right">Budget</TableCell>
+                  <TableCell align="right">Mid-range</TableCell>
+                  <TableCell align="right">Premium</TableCell>
+                  <TableCell align="right">Professional</TableCell>
+                  <TableCell align="right">Last Updated</TableCell>
+                  <TableCell align="center">Actions</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {Object.entries(pricing).map(([cardTypeId, cardPricing]) => {
+                  const cardType = getCardTypeInfo(cardTypeId);
+                  if (!cardType) return null;
+
+                  return (
+                    <TableRow key={cardTypeId}>
+                      <TableCell>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
+                          <Typography variant="body2">{cardType.icon}</Typography>
+                          <Box>
+                            <Typography variant="body2" fontWeight="bold">
+                              {cardType.fullName}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              {cardType.category}
+                            </Typography>
+                          </Box>
+                        </Box>
+                      </TableCell>
+                      <TableCell align="right">
+                        <Typography variant="body2">
+                          {formatCurrencyService(cardPricing.budget, 'NOK')}
+                        </Typography>
+                      </TableCell>
+                      <TableCell align="right">
+                        <Typography variant="body2">
+                          {formatCurrencyService(cardPricing.mid, 'NOK')}
+                        </Typography>
+                      </TableCell>
+                      <TableCell align="right">
+                        <Typography variant="body2">
+                          {formatCurrencyService(cardPricing.premium, 'NOK')}
+                        </Typography>
+                      </TableCell>
+                      <TableCell align="right">
+                        <Typography variant="body2">
+                          {formatCurrencyService(cardPricing.professional, 'NOK')}
+                        </Typography>
+                      </TableCell>
+                      <TableCell align="right">
+                        <Typography variant="caption">
+                          {new Date(cardPricing.lastUpdated).toLocaleDateString()}
+                        </Typography>
+                      </TableCell>
+                      <TableCell align="center">
+                        <IconButton
+                          size="small"
+                          onClick={() => handleEditPricing(cardTypeId)}
+                          color="primary"
+                        >
+                          {theming.getThemedIcon('edit')}
+                        </IconButton>
+                      </TableCell>
+                    </TableRow>
+                  );
+              })}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </CardContent>
+      </Card>
+
+      {/* Edit Dialog */}
+      <Dialog open={showEditDialog} onClose={handleCancelEdit} maxWidth="md" fullWidth>
+        <DialogTitle>
+          Edit Memory Card Pricing
+          {editingCard && (
+            <Typography variant="body2" color="text.secondary">
+              {getCardTypeInfo(editingCard)?.fullName}
+            </Typography>
+          )}
+        </DialogTitle>
+        <DialogContent>
+          {editForm && (
+            <Grid container spacing={2} sx={{ mt:  1 }}>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  label="Budget (NOK/GB)"
+                  type="number"
+                  value={editForm.budget}
+                  onChange={(e) => setEditForm(prev => prev ? {
+                    ...prev,
+                    budget: Number(e.target.value)
+              } : null)}
+                  inputProps={{ step: 0.1, min:  0 }}
+                  fullWidth
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  label="Mid-range (NOK/GB)"
+                  type="number"
+                  value={editForm.mid}
+                  onChange={(e) => setEditForm(prev => prev ? {
+                    ...prev,
+                    mid: Number(e.target.value)
+              } : null)}
+                  inputProps={{ step: 0.1, min:  0 }}
+                  fullWidth
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  label="Premium (NOK/GB)"
+                  type="number"
+                  value={editForm.premium}
+                  onChange={(e) => setEditForm(prev => prev ? {
+                    ...prev,
+                    premium: Number(e.target.value)
+              } : null)}
+                  inputProps={{ step: 0.1, min:  0 }}
+                  fullWidth
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  label="Professional (NOK/GB)"
+                  type="number"
+                  value={editForm.professional}
+                  onChange={(e) => setEditForm(prev => prev ? {
+                    ...prev,
+                    professional: Number(e.target.value)
+              } : null)}
+                  inputProps={{ step: 0.1, min:  0 }}
+                  fullWidth
+                />
+              </Grid>
+            </Grid>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCancelEdit} startIcon={theming.getThemedIcon('cancel')}>
+            Cancel
+          </Button>
+          <Button onClick={handleSavePricing} startIcon={theming.getThemedIcon('save')} variant="contained" sx={theming.getThemedButtonSx()}>
+            Save Changes
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Pricing History */}
+      {pricingHistory.length > 0 && (
+        <Card sx={{ mt:  3 ,  ...theming.getThemedCardSx() }}>
+          <CardContent sx={theming.getThemedCardSx()}>
+            <Typography variant="h6" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>
+              Recent Price Changes
+            </Typography>
+            <TableContainer component={Paper}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Card Type</TableCell>
+                    <TableCell align="right">Old Price</TableCell>
+                    <TableCell align="right">New Price</TableCell>
+                    <TableCell align="center">Change</TableCell>
+                    <TableCell align="right">Date</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {pricingHistory.slice(0, 10).map((entry) => {
+                    const cardType = getCardTypeInfo(entry.cardTypeId);
+                    return (
+                      <TableRow key={entry.id}>
+                        <TableCell>
+                          <Typography variant="body2">
+                            {cardType?.fullName || entry.cardTypeId}
+                          </Typography>
+                        </TableCell>
+                        <TableCell align="right">
+                          <Typography variant="body2">
+                            {formatCurrencyService(entry.oldPricing.mid, 'NOK')}
+                          </Typography>
+                        </TableCell>
+                        <TableCell align="right">
+                          <Typography variant="body2">
+                            {formatCurrencyService(entry.newPricing.mid, 'NOK')}
+                          </Typography>
+                        </TableCell>
+                        <TableCell align="center">
+                          {getPriceChangeIndicator(entry.oldPricing.mid, entry.newPricing.mid)}
+                        </TableCell>
+                        <TableCell align="right">
+                          <Typography variant="caption">
+                            {new Date(entry.timestamp).toLocaleDateString()}
+                          </Typography>
+                        </TableCell>
+                      </TableRow>
+                    );
+                })}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </CardContent>
+        </Card>
+      )}
+    </Box>
+  );
+};
+
+export default MemoryCardPricingAdmin;
+
+
+
+
+

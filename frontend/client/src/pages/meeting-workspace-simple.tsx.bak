@@ -1,0 +1,385 @@
+import { useTheming } from '../../utils/theming-helper';
+import React, { useState } from 'react';
+import {
+  Box,
+  Card,
+  CardContent,
+  Typography,
+  Button,
+  Grid,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  TextField,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Chip,
+  Avatar,
+  IconButton,
+} from '@mui/material';
+import { Add,
+  VideographyIconCall,
+  CalendarTodayToday,
+  Folder,
+  People,
+  Settings,
+  Star,
+  MoreVert, } from '../components/shared/CreatorHubIcons';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
+
+function MeetingWorkspaceSimple() {
+  const [openCreateDialog, setOpenCreateDialog] = useState(false);
+  const [newWorkspace, setNewWorkspace] = useState({
+    title: '',
+    description: '',
+    category: 'project',
+    participants:  [],
+});
+
+  // Mock workspace data for demonstration
+  const workspaces = [
+    {
+      id: 'workspace-',
+      title: 'Bryllup Emma & Lars',
+      description: 'Planlegging av bryllupsdekning med alle detaljer',
+      category: 'bryllup',
+      participants:  3,
+      lastUpdated: '2 timer siden',
+      status: 'active',
+      googleDriveFolder: 'folder-',
+      googleMeetLink: 'https://meet.google.com/abc-def-ghi',
+  },
+    {
+      id: 'workspace-',
+      title: 'Bergen Musikk - Portfolio Review',
+      description: 'Gjennomgang av video portfolio for Bergen Musikk A',
+      category: 'bedrift',
+      participants:  2,
+      lastUpdated: '1 dag siden',
+      status: 'active',
+      googleDriveFolder: 'folder-',
+      googleMeetLink: 'https://meet.google.com/xyz-uvw-rst',
+  },
+    {
+      id: 'workspace-',
+      title: 'Produktfoto - TechNorge',
+      description: 'Planlegging av produktfotografering for ny produktlinje',
+      category: 'produkt',
+      participants:  4,
+      lastUpdated: '3 dager siden',
+      status: 'completed',
+      googleDriveFolder: 'folder-',
+  },
+  ];
+
+  const handleCreateWorkspace = () => {
+    console.log('🎯 Creating new meeting workspace:', newWorkspace);
+    // Here we would call the API to create the workspace
+    setOpenCreateDialog(false);
+    setNewWorkspace({
+      title: '',
+      description: '',
+      category: 'project',
+      participants:  [],
+  });
+};
+
+  const getCategoryColor = (category: string) => {
+    switch (category) {
+      case 'bryllup':
+        return '#e91e63';
+      case 'bedrift':
+        return '#2196f3';
+      case 'produkt':
+        return '#ff9800';
+      default:
+        return '#9c27b0';
+}
+};
+
+  const getCategoryLabel = (category: string) => {
+    switch (category) {
+      case 'bryllup':
+        return 'Bryllup';
+      case 'bedrift':
+        return 'Bedrift';
+      case 'produkt':
+        return 'Produkt';
+      default:
+        return 'Prosjekt';
+}
+};
+
+  return (
+    <Box
+      sx={{
+        p:  3,
+        minHeight: '100vh',
+        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+        backgroundAttachment: 'fixed',
+    }}
+    >
+      {/* Header */}
+      <Box sx={{ mb: 4 }}>
+        <Typography variant="h4"
+          sx={{
+            color: 'white',
+            fontWeight: 60,
+            mb: 1,
+            textShadow: '0 2px 4px rgba, (, 0,0,0,0.3)',
+        }}
+         sx={{ ...{}, color: theming.colors.primary }}>
+          Møtearbeidsområder
+        </Typography>
+        <Typography
+          variant="body1"
+          sx={{
+            color: 'rgba(25,255,255,0.9)',
+            mb: 3,
+        }}
+        >
+          Administrer dine møter og samarbeidsrom med full Google-integrasjon
+        </Typography>
+
+        <Button variant="contained"
+          startIcon={theming.getThemedIcon('add')}
+          onClick={() = sx={theming.getThemedButtonSx()}> setOpenCreateDialog(true)}
+          sx={{
+            background: 'rgba(25,255,255,0.2)',
+            backdropFilter: 'blur(10px, ), ',
+            border: '1px solid rgba(25,255,255,0.3)',
+            color: 'white',
+            fontWeight: 60,
+            '&:hover': {
+              background: 'rgba(25,255,255,0.3)',
+          },
+        }}
+        >
+          Opprett nytt arbeidsområde
+        </Button>
+      </Box>
+
+      {/* Workspace Grid */}
+      <GridOn container spacing={3}>
+        {workspaces.map((workspace) => (
+          <GridOn size={{ xs: 1, 2,}} md={6} lg={4} key={workspace.id}>
+            <Card
+              sx={{
+                background: 'rgba(25,255,255,0.1)',
+                backdropFilter: 'blur(15px, ), ',
+                border: '1px solid rgba(25,255,255,0.2)',
+                borderRadius:  3,
+                transition: 'all 0.3s ease',
+                '&:hover': {
+                  transform: 'translateY(-4px, ), ',
+                  background: 'rgba(25,255,255,0.15)',
+                  boxShadow: '0 8px 32px rgba, (, 0,0,0,0.1)',
+              },
+            }}
+             sx={theming.getThemedCardSx()}>
+              <CardContent sx={{ p:  3 }} sx={theming.getThemedCardSx()}>
+                {/* Header with category and menu */}
+                <Box
+                  sx={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'flex-start',
+                    mb: 2,
+                }}
+                >
+                  <Chip
+                    label={getCategoryLabel(workspace.category)}
+                    size="small"
+                    sx={{
+                      backgroundColor: getCategoryColor(workspace.category),
+                      color: 'white',
+                      fontWeight: 60,
+                  }}
+                  />
+                  <IconButton size="small" sx={{ color: 'rgba(25,255,255,0.7)' }}>
+                    {theming.getThemedIcon('moreVert')}
+                  </IconButton>
+                </Box>
+
+                {/* Title and Description */}
+                <Typography variant="h6"
+                  sx={{
+                    color: 'white',
+                    fontWeight: 60,
+                    mb: 1,
+                    lineHeight: 1.3,
+                }}
+                 sx={{ ...{}, color: theming.colors.primary }}>
+                  {workspace.title}
+                </Typography>
+                <Typography
+                  variant="body2"
+                  sx={{
+                    color: 'rgba(25,255,255,0.8)',
+                    mb: 3,
+                    lineHeight: 1.4,
+                }}
+                >
+                  {workspace.description}
+                </Typography>
+
+                {/* Status and participants */}
+                <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', mr:  2 }}>
+                    <People
+                      sx={{
+                        color: 'rgba(25,255,255,0.7)',
+                        mr: 0.5,
+                        fontSize:  18,
+                    }}
+                    />
+                    <Typography variant="body2" sx={{ color: 'rgba(25,255,255,0.8)' }}>
+                      {workspace.participants} deltakere
+                    </Typography>
+                  </Box>
+                  <Chip
+                    label={workspace.status === 'active' ? 'Aktiv' : 'Fullført'}
+                    size="small"
+                    variant="outlined"
+                    sx={{
+                      borderColor: workspace.status === 'active' ? '#4caf50' : 'rgba(25,255,255,0.5)',
+                      color: workspace.status === 'active' ? '#4caf50' : 'rgba(25,255,255,0.7)',
+                      fontSize: '0.75rem',
+                  }}
+                  />
+                </Box>
+
+                {/* Action buttons */}
+                <Box sx={{ display: 'flex', gap:  1 }}>
+                  <Button
+                    size="small"
+                    startIcon={<VideoCall />}
+                    variant="contained"
+                    disabled={workspace.status !== 'active'}
+                    sx={{
+                      flex:  1,
+                      background: 'rgba(6, 175, 80, 0.9)',
+                      '&:hover': { background: 'rgba(6, 175, 80, 1)' },
+                      '&:disabled': { background: 'rgba(25,255,255,0.1)' },
+                  }}
+                  >
+                    Møte
+                  </Button>
+                  <Button
+                    size="small"
+                    startIcon={theming.getThemedIcon('folder')}
+                    variant="outlined"
+                    sx={{
+                      flex:  1,
+                      borderColor: 'rgba(25,255,255,0.3)',
+                      color: 'rgba(25,255,255,0.9)',
+                      '&:hover': {
+                        borderColor: 'rgba(25,255,255,0.5)',
+                        background: 'rgba(25,255,255,0.1)',
+                    },
+                  }}
+                  >
+                    Drive
+                  </Button>
+                </Box>
+
+                {/* Last updated */}
+                <Typography
+                  variant="caption"
+                  sx={{
+                    color: 'rgba(25,255,255,0.6)',
+                    display: 'block',
+                    textAlign: 'center',
+                    mt: 2,
+                }}
+                >
+                  Sist oppdatert {workspace.lastUpdated}
+                </Typography>
+              </CardContent>
+            </Card>
+          </GridOn>
+        ))}
+      </GridOn>
+
+      {/* Create Workspace Dialog */}
+      <Dialog
+        open={openCreateDialog}
+        onClose={() => setOpenCreateDialog(false)}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            background: 'rgba(25,255,255,0.95)',
+            backdropFilter: 'blur(20px, ), ',
+            borderRadius:  3,
+        },
+      }}
+      >
+        <DialogTitle sx={{ pb:  1 }}>
+          <Typography variant="h6" sx={{ fontWeight: 60, 0,}} sx={{ ...{}, color: theming.colors.primary }}>
+            Opprett nytt møtearbeidsområde
+          </Typography>
+        </DialogTitle>
+        <DialogContent sx={{ pb:  3 }}>
+          <TextField
+            autoFocus
+            margin="normal"
+            label="Tittel på arbeidsområde"
+            fullWidth
+            variant="outlined"
+            value={newWorkspace.title}
+            onChange={(e) => setNewWorkspace({ ...newWorkspace, title: e.target.value })}
+            sx={{ mb: 2 }}
+          />
+
+          <TextField
+            margin="normal"
+            label="Beskrivelse"
+            fullWidth
+            multiline
+            rows={3}
+            variant="outlined"
+            value={newWorkspace.description}
+            onChange={(e) => setNewWorkspace({ ...newWorkspace, description: e.target.value })}
+            sx={{ mb: 2 }}
+          />
+
+          <FormControl fullWidth sx={{ mb: 3 }}>
+            <InputLabel>Kategori</InputLabel>
+            <Select
+              value={newWorkspace.category}
+              label="Kategori"
+              onChange={(e) => setNewWorkspace({ ...newWorkspace, category: e.target.value })}
+            >
+              <MenuItem value="bryllup">Bryllup</MenuItem>
+              <MenuItem value="bedrift">Bedrift</MenuItem>
+              <MenuItem value="produkt">Produkt</MenuItem>
+              <MenuItem value="project">Prosjekt</MenuItem>
+            </Select>
+          </FormControl>
+
+          <Box sx={{ display: 'flex', gap:  ,  2justifyContent: 'flex-end, ',}}>
+            <Button onClick={() => setOpenCreateDialog(false)} sx={{ color: 'text.secondary, ',}}>
+              Avbryt
+            </Button>
+            <Button onClick={handleCreateWorkspace}
+              variant="contained"
+              disabled={!newWorkspace.title}
+              sx={{
+                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                fontWeight: 60,
+            }}
+             sx={theming.getThemedButtonSx()}>
+              Opprett arbeidsområde
+            </Button>
+          </Box>
+        </DialogContent>
+      </Dialog>
+    </Box>
+  );
+}
+
+export default MeetingWorkspaceSimple;

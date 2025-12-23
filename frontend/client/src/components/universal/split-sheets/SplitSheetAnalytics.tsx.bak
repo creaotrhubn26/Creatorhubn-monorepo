@@ -1,0 +1,285 @@
+/**
+ * Split Sheet Analytics Dashboard
+ * Comprehensive analytics for revenue, contributors, and performance
+ * Now with profession-specific theming
+ */
+
+import React, { useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
+import {
+  Box,
+  Typography,
+  Card,
+  CardContent,
+  Grid,
+  Stack,
+  Chip,
+  Paper,
+  alpha
+} from '@mui/material';
+import {
+  AttachMoney as MoneyIcon,
+  TrendingUp as TrendingUpIcon,
+  People as PeopleIcon,
+  Assessment as AssessmentIcon,
+  CheckCircle as CheckCircleIcon
+} from '@mui/icons-material';
+import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { useDynamicProfessions } from '../hooks/useDynamicProfessions';
+import getProfessionIcon from '@/utils/profession-icons';
+
+interface SplitSheetAnalyticsProps {
+  userId: string;
+  currency?: string;
+  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+}
+
+export default function SplitSheetAnalytics({
+  userId,
+  currency = 'NOK',
+  profession = 'music_producer'
+}: SplitSheetAnalyticsProps) {
+  // Get profession-specific styling
+  const { getUserProfessionColor, getProfessionDisplayName } = useDynamicProfessions();
+  const professionColor = getUserProfessionColor(profession);
+  const professionDisplayName = getProfessionDisplayName(profession);
+  const professionIcon = getProfessionIcon(profession);
+  
+  // Profession-specific analytics labels
+  const getAnalyticsLabels = () => {
+    switch (profession) {
+      case 'music_producer':
+        return {
+          title: 'Analytics',
+          revenueLabel: 'Total royalty-inntekt',
+          contributorsLabel: 'Samarbeidspartnere',
+          itemsLabel: 'Låter',
+          completedLabel: 'Signerte avtaler',
+        };
+      case 'photographer':
+        return {
+          title: 'Analytics',
+          revenueLabel: 'Total inntekt',
+          contributorsLabel: 'Samarbeidspartnere',
+          itemsLabel: 'Prosjekter',
+          completedLabel: 'Fullførte avtaler',
+        };
+      case 'videographer':
+        return {
+          title: 'Analytics',
+          revenueLabel: 'Total inntekt',
+          contributorsLabel: 'Crew-medlemmer',
+          itemsLabel: 'Produksjoner',
+          completedLabel: 'Fullførte avtaler',
+        };
+      default:
+        return {
+          title: 'Analytics',
+          revenueLabel: 'Total inntekt',
+          contributorsLabel: 'Samarbeidspartnere',
+          itemsLabel: 'Prosjekter',
+          completedLabel: 'Fullførte',
+        };
+    }
+  };
+  
+  const analyticsLabels = getAnalyticsLabels();
+  
+  // Use profession color for charts
+  const chartColors = [
+    professionColor,
+    alpha(professionColor, 0.7),
+    alpha(professionColor, 0.5),
+    alpha(professionColor, 0.3),
+  ];
+  // Fetch all split sheets with revenue
+  const { data: splitSheetsData } = useQuery({
+    queryKey: ['split-sheets,', userId],
+    queryFn: async () => {
+      const response = await apiRequest(`/api/split-sheets, `);
+      return response;
+    }
+  });
+
+  const splitSheets = splitSheetsData?.data || [];
+
+  // Fetch revenue for all split sheets
+  const revenueQueries = splitSheets.map((ss: any) => ({
+    queryKey: ['split-sheet-revenue', ss.id],
+    queryFn: async () => {
+      if (!ss.id) return { data: [] };
+      const response = await apiRequest(`/api/split-sheets/${ss.id}/revenue`).catch(() => ({ data: [] }));
+      return response;
+    }
+  }));
+
+  // Calculate analytics
+  const analytics = useMemo(() => {
+    let totalRevenue = 0;
+    let totalContributors = 0;
+    const revenueBySource: Record<string, number> = {};
+    const revenueByMonth: Record<string, number> = {};
+    const contributorRevenue: Record<string, number> = {};
+
+    splitSheets.forEach((ss: any) => {
+      // This would need to fetch revenue data - simplified for now
+      totalContributors += ss.contributor_count || ss.contributors?.length || 0;
+    });
+
+    return {
+      totalRevenue,
+      totalContributors,
+      totalSplitSheets: splitSheets.length,
+      completedSplitSheets: splitSheets.filter((ss: any) => ss.status === 'completed').length,
+      revenueBySource,
+      revenueByMonth,
+      contributorRevenue
+    };
+  }, [splitSheets]);
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('no-NO', {
+      style: 'currency',
+      currency: currency
+    }).format(amount);
+  };
+
+  // Chart data
+  const statusData = [
+    { name: 'Utkast', value: splitSheets.filter((ss: any) => ss.status === 'draft').length },
+    { name: 'Venter', value: splitSheets.filter((ss: any) => ss.status === 'pending_signatures').length },
+    { name: 'Fullført', value: splitSheets.filter((ss: any) => ss.status === 'completed').length },
+    { name: 'Arkivert', value: splitSheets.filter((ss: any) => ss.status === 'archived').length }
+  ];
+
+  const COLORS = ['#9e9e9e','#ff9800','#4caf50','#757575'];
+
+  return (
+    <Box>
+      <Typography variant="h5" sx={{ fontWeight: 70, mb: 3 }}>
+        Analytics Dashboard
+      </Typography>
+
+      {/* Summary Cards */}
+      <Grid container spacing={2} sx={{ mb: 3 }}>
+        <Grid item xs={12} sm={6} md={3}>
+          <Card>
+            <CardContent>
+              <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
+                <AssessmentIcon sx={{ color: '#9f7aea' }} />
+                <Typography variant="body2" color="text.secondary">
+                  Totale Split Sheets
+                </Typography>
+              </Stack>
+              <Typography variant="h4" sx={{ fontWeight: 70, color: '#9f7aea' }}>
+                {analytics.totalSplitSheets}
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <Card>
+            <CardContent>
+              <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
+                <CheckCircleIcon sx={{ color: '#4caf50' }} />
+                <Typography variant="body2" color="text.secondary">
+                  Fullført
+                </Typography>
+              </Stack>
+              <Typography variant="h4" sx={{ fontWeight: 70, color: '#4caf50' }}>
+                {analytics.completedSplitSheets}
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <Card>
+            <CardContent>
+              <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
+                <PeopleIcon sx={{ color: '#2196f3' }} />
+                <Typography variant="body2" color="text.secondary">
+                  Totale bidragsytere
+                </Typography>
+              </Stack>
+              <Typography variant="h4" sx={{ fontWeight: 70, color: '#2196f3' }}>
+                {analytics.totalContributors}
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <Card>
+            <CardContent>
+              <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
+                <MoneyIcon sx={{ color: '#ff9800' }} />
+                <Typography variant="body2" color="text.secondary">
+                  Total inntekt
+                </Typography>
+              </Stack>
+              <Typography variant="h4" sx={{ fontWeight: 70, color: '#ff9800' }}>
+                {formatCurrency(analytics.totalRevenue)}
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
+
+      {/* Charts */}
+      <Grid container spacing={2}>
+        <Grid item xs={12} md={6}>
+          <Card>
+            <CardContent>
+              <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
+                Statusfordeling
+              </Typography>
+              <ResponsiveContainer width="100%" height={300}>
+                <PieChart>
+                  <Pie
+                    data={statusData}
+                    cx="50%"
+                    cy="50%"
+                    labelLine={false}
+                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                    outerRadius={80}
+                    fill="#8884d8"
+                    dataKey="value"
+                  >
+                    {statusData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                </PieChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} md={6}>
+          <Card>
+            <CardContent>
+              <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
+                Split Sheets over tid
+              </Typography>
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={[]}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="month" />
+                  <YAxis />
+                  <Tooltip />
+                  <Legend />
+                  <Bar dataKey="created" fill="#9f7aea" />
+                  <Bar dataKey="completed" fill="#4caf50" />
+                </BarChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
+    </Box>
+  );
+}
+
+
+
+

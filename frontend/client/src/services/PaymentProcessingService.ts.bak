@@ -1,0 +1,396 @@
+// client/src/services/PaymentProcessingService.ts
+import { apiRequest } from '../lib/queryClient';
+import { pricingService, type FeaturePricing } from './PricingService';
+
+export interface PaymentIntent {
+  id: string;
+  productId: string;
+  productName: string;
+  amount: number;
+  currency: string;
+  userId: string;
+  status: 'pending' | 'processing' | 'succeeded' | 'failed' | 'cancelled';
+  paymentMethod: 'google-pay' | 'stripe' | 'vipps';
+  billingCycle: 'monthly' | 'yearly';
+  createdAt: string;
+  expiresAt: string;
+}
+
+export interface PaymentResult {
+  success: boolean;
+  paymentIntent?: PaymentIntent;
+  error?: string;
+  redirectUrl?: string;
+}
+
+export class PaymentProcessingService {
+  private static instance: PaymentProcessingService;
+
+  static getInstance(): PaymentProcessingService {
+    if (!this.instance) {
+      this.instance = new PaymentProcessingService();
+    }
+    return this.instance;
+  }
+
+  // Create payment intent for a feature
+  async createPaymentIntent(
+    featureId: string,
+    billingCycle: 'monthly' | 'yearly',
+    paymentMethod: 'google-pay' | 'stripe' | 'vipps',
+    userId: string
+  ): Promise<PaymentResult> {
+    try {
+      const pricing = pricingService.getFeaturePricing(featureId);
+      if (!pricing) {
+        return {
+          success: false,
+          error: 'Feature pricing not found'
+        };
+      }
+
+      const amount = billingCycle === 'monthly' ? pricing.pricing.monthly : pricing.pricing.yearly;
+      const productId = `${featureId}_${billingCycle}`;
+
+      const response = await apiRequest('/api/payments/create-intent', {
+        method: 'POST',
+        body: JSON.stringify({
+          productId,
+          featureId,
+          productName: pricing.name,
+          amount,
+          currency: pricing.pricing.currency,
+          billingCycle,
+          paymentMethod,
+          userId
+        })
+      });
+
+      if (response.success) {
+        return {
+          success: true,
+          paymentIntent: response.paymentIntent
+        };
+      } else {
+        return {
+          success: false,
+          error: response.error || 'Failed to create payment intent'
+        };
+      }
+    } catch (error) {
+      console.error('Error creating payment intent:', error);
+      return {
+        success: false,
+        error: 'Network error creating payment intent'
+      };
+    }
+  }
+
+  // Process Google Pay payment
+  async processGooglePayPayment(
+    paymentData: any,
+    paymentIntent: PaymentIntent
+  ): Promise<PaymentResult> {
+    try {
+      const response = await apiRequest('/api/google-pay/process-payment', {
+        method: 'POST',
+        body: JSON.stringify({
+          paymentData,
+          paymentIntent
+        })
+      });
+
+      if (response.success) {
+        return {
+          success: true,
+          paymentIntent: response.paymentIntent
+        };
+      } else {
+        return {
+          success: false,
+          error: response.error || 'Google Pay payment failed'
+        };
+      }
+    } catch (error) {
+      console.error('Error processing Google Pay payment:', error);
+      return {
+        success: false,
+        error: 'Network error processing Google Pay payment'
+      };
+    }
+  }
+
+  // Process Stripe payment
+  async processStripePayment(paymentIntent: PaymentIntent): Promise<PaymentResult> {
+    try {
+      const response = await apiRequest('/api/stripe/create-checkout-session', {
+        method: 'POST',
+        body: JSON.stringify({
+          paymentIntent,
+          successUrl: `${window.location.origin}/payment/success?intent=${paymentIntent.id}`,
+          cancelUrl: `${window.location.origin}/payment/cancel?intent=${paymentIntent.id}`
+        })
+      });
+
+      if (response.success) {
+        return {
+          success: true,
+          redirectUrl: response.checkoutUrl
+        };
+      } else {
+        return {
+          success: false,
+          error: response.error || 'Stripe payment failed'
+        };
+      }
+    } catch (error) {
+      console.error('Error processing Stripe payment:', error);
+      return {
+        success: false,
+        error: 'Network error processing Stripe payment'
+      };
+    }
+  }
+
+  // Process Vipps payment
+  async processVippsPayment(paymentIntent: PaymentIntent): Promise<PaymentResult> {
+    try {
+      const response = await apiRequest('/api/vipps/create-payment', {
+        method: 'POST',
+        body: JSON.stringify({
+          paymentIntent,
+          returnUrl: `${window.location.origin}/payment/vipps/return?intent=${paymentIntent.id}`,
+          cancelUrl: `${window.location.origin}/payment/cancel?intent=${paymentIntent.id}`
+        })
+      });
+
+      if (response.success) {
+        return {
+          success: true,
+          redirectUrl: response.paymentUrl
+        };
+      } else {
+        return {
+          success: false,
+          error: response.error || 'Vipps payment failed'
+        };
+      }
+    } catch (error) {
+      console.error('Error processing Vipps payment:', error);
+      return {
+        success: false,
+        error: 'Network error processing Vipps payment'
+      };
+    }
+  }
+
+  // Get payment status
+  async getPaymentStatus(paymentIntentId: string): Promise<PaymentResult> {
+    try {
+      const response = await apiRequest(`/api/payments/status/${paymentIntentId}`);
+
+      if (response.success) {
+        return {
+          success: true,
+          paymentIntent: response.paymentIntent
+        };
+      } else {
+        return {
+          success: false,
+          error: response.error || 'Failed to get payment status'
+        };
+      }
+    } catch (error) {
+      console.error('Error getting payment status:', error);
+      return {
+        success: false,
+        error: 'Network error getting payment status'
+      };
+    }
+  }
+
+  // Cancel payment
+  async cancelPayment(paymentIntentId: string): Promise<PaymentResult> {
+    try {
+      const response = await apiRequest(`/api/payments/cancel/${paymentIntentId}`, {
+        method: 'POST'
+      });
+
+      if (response.success) {
+        return {
+          success: true,
+          paymentIntent: response.paymentIntent
+        };
+      } else {
+        return {
+          success: false,
+          error: response.error || 'Failed to cancel payment'
+        };
+      }
+    } catch (error) {
+      console.error('Error cancelling payment:', error);
+      return {
+        success: false,
+        error: 'Network error cancelling payment'
+      };
+    }
+  }
+
+  // Get user's active subscriptions
+  async getUserSubscriptions(userId: string): Promise<any[]> {
+    try {
+      const response = await apiRequest(`/api/subscriptions/user/${userId}`);
+      return response.subscriptions || [];
+    } catch (error) {
+      console.error('Error getting user subscriptions:', error);
+      return [];
+    }
+  }
+
+  // Get subscription details
+  async getSubscriptionDetails(subscriptionId: string): Promise<any> {
+    try {
+      const response = await apiRequest(`/api/subscriptions/${subscriptionId}`);
+      return response.subscription || null;
+    } catch (error) {
+      console.error('Error getting subscription details:', error);
+      return null;
+    }
+  }
+
+  // Cancel subscription
+  async cancelSubscription(subscriptionId: string): Promise<PaymentResult> {
+    try {
+      const response = await apiRequest(`/api/subscriptions/${subscriptionId}/cancel`, {
+        method: 'POST'
+      });
+
+      if (response.success) {
+        return {
+          success: true
+        };
+      } else {
+        return {
+          success: false,
+          error: response.error || 'Failed to cancel subscription'
+        };
+      }
+    } catch (error) {
+      console.error('Error cancelling subscription:', error);
+      return {
+        success: false,
+        error: 'Network error cancelling subscription'
+      };
+    }
+  }
+
+  // Update subscription
+  async updateSubscription(
+    subscriptionId: string,
+    updates: {
+      billingCycle?: 'monthly' | 'yearly';
+      paymentMethod?: 'google-pay' | 'stripe' | 'vipps';
+    }
+  ): Promise<PaymentResult> {
+    try {
+      const response = await apiRequest(`/api/subscriptions/${subscriptionId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(updates)
+      });
+
+      if (response.success) {
+        return {
+          success: true,
+          paymentIntent: response.subscription
+        };
+      } else {
+        return {
+          success: false,
+          error: response.error || 'Failed to update subscription'
+        };
+      }
+    } catch (error) {
+      console.error('Error updating subscription:', error);
+      return {
+        success: false,
+        error: 'Network error updating subscription'
+      };
+    }
+  }
+
+  // Get payment methods
+  async getPaymentMethods(userId: string): Promise<any[]> {
+    try {
+      const response = await apiRequest(`/api/payments/methods/${userId}`);
+      return response.paymentMethods || [];
+    } catch (error) {
+      console.error('Error getting payment methods:', error);
+      return [];
+    }
+  }
+
+  // Add payment method
+  async addPaymentMethod(
+    userId: string,
+    paymentMethod: {
+      type: 'google-pay' | 'stripe' | 'vipps';
+      token: string;
+      metadata?: any;
+    }
+  ): Promise<PaymentResult> {
+    try {
+      const response = await apiRequest('/api/payments/methods', {
+        method: 'POST',
+        body: JSON.stringify({
+          userId,
+          ...paymentMethod
+        })
+      });
+
+      if (response.success) {
+        return {
+          success: true
+        };
+      } else {
+        return {
+          success: false,
+          error: response.error || 'Failed to add payment method'
+        };
+      }
+    } catch (error) {
+      console.error('Error adding payment method:', error);
+      return {
+        success: false,
+        error: 'Network error adding payment method'
+      };
+    }
+  }
+
+  // Remove payment method
+  async removePaymentMethod(paymentMethodId: string): Promise<PaymentResult> {
+    try {
+      const response = await apiRequest(`/api/payments/methods/${paymentMethodId}`, {
+        method: 'DELETE'
+      });
+
+      if (response.success) {
+        return {
+          success: true
+        };
+      } else {
+        return {
+          success: false,
+          error: response.error || 'Failed to remove payment method'
+        };
+      }
+    } catch (error) {
+      console.error('Error removing payment method:', error);
+      return {
+        success: false,
+        error: 'Network error removing payment method'
+      };
+    }
+  }
+}
+
+export const paymentProcessingService = PaymentProcessingService.getInstance();

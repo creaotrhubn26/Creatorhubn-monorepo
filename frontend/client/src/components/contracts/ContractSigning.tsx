@@ -1,0 +1,432 @@
+import { useTheming } from '../../utils/theming-helper';
+import React, { useState, useRef, useEffect } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useAuth } from '@/hooks/useAuth';
+import { useParams, useNavigate } from 'wouter';
+import {
+  Box,
+  Paper,
+  Typography,
+  Button,
+  TextField,
+  Alert,
+  CircularProgress,
+  Divider,
+  Card,
+  CardContent,
+  Grid,
+} from '@mui/material';
+import { CheckCircle, SignatureOutlined, EmailOutlined } from '@mui/icons-material';
+import { apiRequest } from '@/lib/queryClient';
+
+interface Contract {
+  id: string;
+  contractNumber: string;
+  clientName: string;
+  clientEmail: string;
+  projectDescription: string;
+  totalAmount: string;
+  eventDate: string;
+  eventLocation: string;
+  status: 'draft' | 'sent' | 'signed' | 'completed' | 'cancelled';
+  createdAt: string;
+  digitalSignature?: string;
+  signedDate?: string;
+  signerName?: string;
+}
+
+interface ContractSigningProps {
+  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+}
+
+const ContractSigning: React.FC<ContractSigningProps> = ({ 
+  profession = 'photographer' 
+}) => {
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+
+  // Theming system - use dynamic profession instead of hardcoded value
+  const theming = useTheming(profession);
+  const queryClient = useQueryClient();
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  const [signerName, setSignerName] = useState(' , ');
+  const [signerEmail, setSignerEmail] = useState('');
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [signatureComplete, setSignatureComplete] = useState(false);
+
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+
+  // Fetch contract details
+  const { data: contractData, isLoading: contractLoading } = useQuery({
+    queryKey: [`/api/contracts/${id}`],
+    queryFn: async () => {
+      return apiRequest(`/api/contracts/${id}`);
+    },
+    enabled: !!id,
+  });
+
+  // Fetch signature status
+  const { data: signatureStatus, refetch: refetchSignatureStatus } = useQuery({
+    queryKey: [`/api/contracts/${id}/signature-status`],
+    queryFn: async () => {
+      return apiRequest(`/api/contracts/${id}/signature-status`);
+    },
+    enabled: !!id,
+  });
+
+  // Sign contract mutation
+  const signContractMutation = useMutation({
+    mutationFn: async (signatureData: {
+      digitalSignature: string;
+      signerName: string;
+      signerEmail: string;
+    }) => {
+      return apiRequest(`/api/contracts/${id}/sign`, {
+        headers: {
+          'Content-Type' : 'application/json',
+        },
+        method: 'POST',
+        body: JSON.stringify(signatureData),
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/contracts/${id}`] });
+      refetchSignatureStatus();
+    },
+  });
+
+  const contract: Contract | undefined = contractData?.contract;
+
+  // Canvas drawing functions
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+
+    // Set canvas background
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }, []);
+
+  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    setIsDrawing(true);
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+    }
+  };
+
+  const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!isDrawing) return;
+
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.lineTo(x, y);
+      ctx.stroke();
+    }
+  };
+
+  const stopDrawing = () => {
+    setIsDrawing(false);
+    setSignatureComplete(true);
+  };
+
+  const clearSignature = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+    setSignatureComplete(false);
+  };
+
+  const handleSign = () => {
+    if (!signatureComplete || !signerName || !signerEmail) {
+      return;
+    }
+
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const digitalSignature = canvas.toDataURL();
+
+    signContractMutation.mutate({
+      digitalSignature,
+      signerName,
+      signerEmail,
+    });
+  };
+
+  if (contractLoading) {
+    return (
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="50vh">
+        <CircularProgress />
+      </Box>
+    );
+  }
+
+  if (!contract) {
+    return (
+      <Box p={4}>
+        <Alert severity="error">Kontrakten ble ikke funnet. Kontroller lenken og prøv igjen.</Alert>
+      </Box>
+    );
+  }
+
+  if (signatureStatus?.signatureStatus?.isSigned) {
+    return (
+      <Box p={4}>
+        <Paper elevation={3} sx={{ p: 4, maxWidth: 800, mx: 'auto', ...theming.getThemedCardSx() }}>
+          <Box textAlign="center" mb={4}>
+            <CheckCircle color="success" sx={{ fontSize: 64, mb: 2 }} />
+            <Typography
+              variant="h4"
+              gutterBottom
+              color="success.main"
+              sx={{ color: theming.colors.primary }}
+            >
+              Kontrakt Signert!
+            </Typography>
+            <Typography variant="body1" color="textSecondary">
+              Kontrakten ble signert{' '}
+              {new Date(signatureStatus.signatureStatus.signedDate).toLocaleDateString('no-NO')}
+            </Typography>
+          </Box>
+
+          <Divider sx={{ my: 3 }} />
+
+          <Grid container spacing={2}>
+            <Grid size={{ xs: 12 }} sm={6}>
+              <Typography variant="subtitle2" color="textSecondary">
+                Signert av:{' '}
+              </Typography>
+              <Typography variant="body1">{signatureStatus.signatureStatus.signerName}</Typography>
+            </Grid>
+            <Grid size={{ xs: 12 }} sm={6}>
+              <Typography variant="subtitle2" color="textSecondary">
+                Kontraktnummer:{' '}
+              </Typography>
+              <Typography variant="body1">{contract.contractNumber}</Typography>
+            </Grid>
+          </Grid>
+        </Paper>
+      </Box>
+    );
+  }
+
+  return (
+    <Box p={4}>
+      <Paper elevation={3} sx={{ p: 4, maxWidth: 900, mx: 'auto', ...theming.getThemedCardSx() }}>
+        <Typography
+          variant="h4"
+          gutterBottom
+          align="center"
+          color="primary"
+          sx={{ color: theming.colors.primary }}
+        >
+          Digital Kontraktsignering
+        </Typography>
+
+        <Divider sx={{ my: 3 }} />
+
+        {/* Contract Details */}
+        <Card sx={{ mb: 4 ,  ...theming.getThemedCardSx() }}>
+          <CardContent sx={theming.getThemedCardSx()}>
+            <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+              Kontraktdetaljer
+            </Typography>
+            <Grid container spacing={2}>
+              <Grid size={{ xs: 12 }} sm={6}>
+                <Typography variant="subtitle2" color="textSecondary">
+                  Kontraktnummer:{' '}
+                </Typography>
+                <Typography variant="body1" gutterBottom>
+                  {contract.contractNumber}
+                </Typography>
+              </Grid>
+              <Grid size={{ xs: 12 }} sm={6}>
+                <Typography variant="subtitle2" color="textSecondary">
+                  Kunde:{' '}
+                </Typography>
+                <Typography variant="body1" gutterBottom>
+                  {contract.clientName}
+                </Typography>
+              </Grid>
+              <Grid size={{ xs: 12 }}>
+                <Typography variant="subtitle2" color="textSecondary">
+                  Prosjekt:{' '}
+                </Typography>
+                <Typography variant="body1" gutterBottom>
+                  {contract.projectDescription}
+                </Typography>
+              </Grid>
+              <Grid size={{ xs: 12 }} sm={6}>
+                <Typography variant="subtitle2" color="textSecondary">
+                  Total beløp:{', '}
+                </Typography>
+                <Typography variant="body1" gutterBottom>
+                  NOK {contract.totalAmount} (inkl. 25% MVA)
+                </Typography>
+              </Grid>
+              <Grid size={{ xs: 12 }} sm={6}>
+                <Typography variant="subtitle2" color="textSecondary">
+                  Dato:{', '}
+                </Typography>
+                <Typography variant="body1" gutterBottom>
+                  {contract.eventDate
+                    ? new Date(contract.eventDate).toLocaleDateString('no-NO')
+                    : 'Ikke satt'}
+                </Typography>
+              </Grid>
+            </Grid>
+          </CardContent>
+        </Card>
+
+        {/* Signer Information */}
+        <Card sx={{ mb: 4 ,  ...theming.getThemedCardSx() }}>
+          <CardContent sx={theming.getThemedCardSx()}>
+            <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+              Signaturinformasjon
+            </Typography>
+            <Grid container spacing={2}>
+              <Grid size={{ xs: 12 }} sm={6}>
+                <TextField
+                  fullWidth
+                  label="Fullt navn"
+                  value={signerName}
+                  onChange={(e) => setSignerName(e.target.value)}
+                  required
+                  placeholder={contract.clientName}
+                />
+              </Grid>
+              <Grid size={{ xs: 12 }} sm={6}>
+                <TextField
+                  fullWidth
+                  label="E-postadresse"
+                  type="email"
+                  value={signerEmail}
+                  onChange={(e) => setSignerEmail(e.target.value)}
+                  required
+                  placeholder={contract.clientEmail}
+                />
+              </Grid>
+            </Grid>
+          </CardContent>
+        </Card>
+
+        {/* Digital Signature Pad */}
+        <Card sx={{ mb: 4 ,  ...theming.getThemedCardSx() }}>
+          <CardContent sx={theming.getThemedCardSx()}>
+            <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+              Digital signatur
+            </Typography>
+            <Typography variant="body2" color="textSecondary" gutterBottom>
+              Tegn din signatur i feltet nedenfor
+            </Typography>
+
+            <Box
+              border="2px dashed #ccc"
+              borderRadius={2}
+              p={2}
+              mb={2}
+              sx={{ backgroundColor: '#fafafa' }}
+            >
+              <canvas
+                ref={canvasRef}
+                width={600}
+                height={200}
+                style={{
+                  width: '100%',
+                  maxWidth: '600px',
+                  height: 'auto',
+                  cursor: 'crosshair',
+                  backgroundColor: 'white',
+                  borderRadius: 4}}
+                onMouseDown={startDrawing}
+                onMouseMove={draw}
+                onMouseUp={stopDrawing}
+                onMouseLeave={stopDrawing}
+              />
+            </Box>
+
+            <Box display="flex" gap={2}>
+              <Button variant="outlined" onClick={clearSignature} size="small">
+                Slett signatur
+              </Button>
+            </Box>
+          </CardContent>
+        </Card>
+
+        {/* Sign Button */}
+        <Box textAlign="center">
+          <Button
+            variant="contained"
+            size="large"
+            onClick={handleSign}
+            disabled={
+              !signatureComplete || !signerName || !signerEmail || signContractMutation.isPending
+            }
+            startIcon={
+              signContractMutation.isPending ? (
+                <CircularProgress size={20} />
+              ) : (
+                <SignatureOutlined />
+              )
+            }
+            sx={{ px: 6, py: 2 }}
+          >
+            {signContractMutation.isPending ? 'Signerer...': 'Signer kontrakt'}
+          </Button>
+        </Box>
+
+        {signContractMutation.error && (
+          <Alert severity="error" sx={{ mt: 3 }}>
+            {signContractMutation.error.message ||'Feil ved signering av kontrakt'}
+          </Alert>
+        )}
+
+        {signContractMutation.isSuccess && (
+          <Alert severity="success" sx={{ mt: 3 }}>
+            Kontrakten er signert! Du vil motta en kopi på e-post.
+          </Alert>
+        )}
+
+        <Box mt={4}>
+          <Typography variant="caption" color="textSecondary" align="center" display="block">
+            Ved å signere denne kontrakten aksepterer du alle vilkårene som er beskrevet.
+            <br />
+            Denne signaturen er juridisk bindende i henhold til norsk lov.
+          </Typography>
+        </Box>
+      </Paper>
+    </Box>
+  );
+};
+
+export default ContractSigning;

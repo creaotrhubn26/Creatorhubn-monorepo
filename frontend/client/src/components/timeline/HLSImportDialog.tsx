@@ -1,0 +1,118 @@
+/**
+ * HLS IMPORT DIALOG
+ * Import from YouTube, Vimeo via HLS streaming
+ */
+
+import React, { useState } from 'react';
+import {
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Box,
+  Typography,
+  TextField,
+  Button,
+  Stack,
+  IconButton,
+  Alert,
+  Chip
+} from '@mui/material';
+import { Close, YouTube, VideoLibrary } from '@mui/icons-material';
+
+interface HLSImportDialogProps {
+  open: boolean;
+  onClose: () => void;
+  onImport: (url: string, type: 'youtube' | 'vimeo' | 'hls') => void;
+}
+
+export default function HLSImportDialog({
+  open,
+  onClose,
+  onImport
+}: HLSImportDialogProps) {
+  const [url, setUrl] = useState('');
+  const [type, setType] = useState<'youtube' | 'vimeo' | 'hls'>('youtube');
+  
+  const detectType = (inputUrl: string): 'youtube' | 'vimeo' | 'hls' => {
+    if (inputUrl.includes('youtube.com') || inputUrl.includes('youtu.be')) {
+      return 'youtube';
+    } else if (inputUrl.includes('vimeo.com')) {
+      return 'vimeo';
+    } else {
+      return 'hls';
+    }
+  };
+  
+  const handleUrlChange = (newUrl: string) => {
+    setUrl(newUrl);
+    setType(detectType(newUrl));
+  };
+  
+  const handleImport = () => {
+    onImport(url, type);
+    onClose();
+  };
+  
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+      <DialogTitle sx={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white' }}>
+        <Stack direction="row" justifyContent="space-between">
+          <Box>
+            <Typography variant="h6">Import from Streaming</Typography>
+            <Typography variant="caption" sx={{ opacity: 0.9 }}>YouTube, Vimeo, or HLS URL</Typography>
+          </Box>
+          <IconButton onClick={onClose} sx={{ color: 'white' }}>
+            <Close />
+          </IconButton>
+        </Stack>
+      </DialogTitle>
+      
+      <DialogContent>
+        <Alert severity="info" sx={{ mb: 2 }}>
+          <Typography variant="body2">
+            Stream videos directly without downloading. Supports YouTube, Vimeo, and any HLS (.m3u8) source.
+          </Typography>
+        </Alert>
+        
+        <TextField
+          fullWidth
+          label="Video URL"
+          placeholder="https: //youtube.com/watch?v=... or, https://example.com/video.m3u8"
+          value={url}
+          onChange={(e) => handleUrlChange(e.target.value)}
+          sx={{ mb: 2 }}
+        />
+        
+        {url && (
+          <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
+            <Chip 
+              label={type === 'youtube' ? 'YouTube' : type === 'vimeo' ? 'Vimeo' : 'HLS Stream'}
+              icon={type ==='youtube' ? <YouTube /> : <VideoLibrary />}
+              color="primary"
+            />
+            <Chip label="Adaptive Quality" size="small" />
+            <Chip label="No Download" size="small" />
+          </Stack>
+        )}
+        
+        <Typography variant="caption" color="text.secondary">
+          Note: For YouTube, ensure you have permission to edit the content.
+        </Typography>
+      </DialogContent>
+      
+      <DialogActions>
+        <Button onClick={onClose}>Cancel</Button>
+        <Button
+          variant="contained"
+          onClick={handleImport}
+          disabled={!url}
+        >
+          Import Stream
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
+

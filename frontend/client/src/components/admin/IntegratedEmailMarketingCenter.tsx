@@ -1,0 +1,737 @@
+import { useTheming } from '../../utils/theming-helper';
+import React, { useState, useEffect } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
+import { usePushNotifications } from '../../hooks/usePushNotifications';
+import { PushNotificationSettings } from '../shared/PushNotificationSettings';
+import {
+  Box,
+  Paper,
+  Typography,
+  Tabs,
+  Tab,
+  Button,
+  Grid,
+  Card as MuiCard,
+  CardContent,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Chip,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemIcon,
+  IconButton,
+  Divider,
+  // Alert removed - Zero Toast Compliance
+  CircularProgress,
+  Fab,
+  Tooltip
+} from '@mui/material';
+import {
+  Email,
+  ContactMail,
+  Campaign,
+  Analytics,
+  AddCircle as Add,
+  Edit,
+  Delete,
+  Send,
+  People,
+  Schedule,
+  CheckCircle,
+  Warning,
+  Refresh,
+  ContentCopy,
+  Visibility,
+  Notifications,
+  NotificationsActive,
+} from '@mui/icons-material';
+import { apiRequest } from '@/lib/queryClient';
+
+interface TabPanelProps {
+  children?: React.ReactNode;
+  index: number;
+  value: number;
+}
+
+function TabPanel(props: TabPanelProps) {
+  const { children, value, index, ...other } = props;
+  return (
+    <div
+      role="tabpanel"
+      hidden={value !== index}
+      id={`email-marketing-tabpanel-${index}`}
+      aria-labelledby={`email-marketing-tab-${index}`}
+      {...other}
+    >
+      {value === index && <Box sx={{ p:  3 }}>{children}</Box>}
+    </div>
+  );
+}
+
+export default function IntegratedEmailMarketingCenter() {
+  const queryClient = useQueryClient();
+  const { auth } = useEnhancedMasterIntegration();
+
+  // Theming system
+  const theming = useTheming('prototype_tester, ');
+  const adminEmail = auth.user?.email;
+
+  // ========== DATA FETCHING ==========
+
+  const { data: contacts = [], isLoading: contactsLoading, refetch: refetchContacts } = useQuery({
+    queryKey: ['/api/email-marketing/contacts,', ],
+    queryFn: async () => {
+      const headers = await auth.getAuthHeader();
+      return apiRequest('/api/email-marketing/contacts', {
+        headers: {
+          ...headers,
+          "Content-Type" : "application/json"
+    },
+        params: { email: adminEmail }
+    });
+  }
+});
+
+  const { data: campaigns = [], isLoading: campaignsLoading, refetch: refetchCampaigns } = useQuery({
+    queryKey: ['/api/email-marketing/campaigns', ],
+    queryFn: async () => {
+      const headers = await auth.getAuthHeader();
+      return apiRequest('/api/email-marketing/campaigns', {
+        headers: {
+          ...headers,
+          "Content-Type" : "application/json"
+    },
+        params: { email: adminEmail }
+    });
+  }
+});
+
+  const { data: lists = [], isLoading: listsLoading, refetch: refetchLists } = useQuery({
+    queryKey: ['/api/email-marketing/lists', ],
+    queryFn: async () => {
+      const headers = await auth.getAuthHeader();
+      return apiRequest('/api/email-marketing/lists', {
+        headers: {
+          ...headers,
+          "Content-Type" : "application/json"
+    },
+        params: { email: adminEmail }
+    });
+  }
+});
+
+  const { data: templates = [], isLoading: templatesLoading } = useQuery({
+    queryKey: ['/api/email-marketing/templates', ],
+    queryFn: async () => {
+      const headers = await auth.getAuthHeader();
+      return apiRequest('/api/email-marketing/templates', {
+        headers: {
+          ...headers,
+          "Content-Type" : "application/json"
+    },
+        params: { email: adminEmail }
+    });
+  }
+});
+
+  const { data: analytics, isLoading: analyticsLoading } = useQuery({
+    queryKey: ['/api/email-marketing/analytics', ],
+    queryFn: async () => {
+      const headers = await auth.getAuthHeader();
+      return apiRequest('/api/email-marketing/analytics', {
+        headers: {
+          ...headers,
+          "Content-Type" : "application/json"
+    },
+        params: { email: adminEmail }
+    });
+  }
+});
+
+  // ========== MUTATIONS ==========
+
+  const createContactMutation = useMutation({
+    mutationFn: async (contactData: any) => {
+      const headers = await auth.getAuthHeader();
+      return apiRequest('/api/email-marketing/contacts', {
+        headers: {
+          ...headers,
+          "Content-Type" : "application/json"
+    },
+        method: 'POST',
+        body: JSON.stringify({ ...contactData, adminEmail })
+    });
+  },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/email-marketing/contacts', ]});
+      setContactDialog(false);
+  }
+});
+
+  const [tabValue, setTabValue] = useState(0);
+  const [contactDialog, setContactDialog] = useState(false);
+  const [campaignDialog, setCampaignDialog] = useState(false);
+  const [listDialog, setListDialog] = useState(false);
+  const [emailDialog, setEmailDialog] = useState(false);
+  const [selectedContacts, setSelectedContacts] = useState<number[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [pushSettingsOpen, setPushSettingsOpen] = useState(false);
+  
+  // Push notifications
+  const userId = auth.user?.id || auth.user?.sub;
+  const { pushEnabled, isSupported } = usePushNotifications(userId);
+
+  const createCampaignMutation = useMutation({
+    mutationFn: async (campaignData: any) => {
+      const headers = await auth.getAuthHeader();
+      return apiRequest('/api/email-marketing/campaigns', {
+        headers: {
+          ...headers,
+          "Content-Type" : "application/json"
+    },
+        method: 'POST',
+        body: JSON.stringify({ ...campaignData, createdBy: adminEmail })
+    });
+  },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/email-marketing/campaigns', ]});
+      setCampaignDialog(false);
+  }
+});
+
+  const sendSingleEmailMutation = useMutation({
+    mutationFn: async (emailData: any) => {
+      const headers = await auth.getAuthHeader();
+      return apiRequest('/api/email-marketing/send-single', {
+        headers: {
+          ...headers,
+          "Content-Type" : "application/json"
+    },
+        method: 'POST',
+        body: JSON.stringify({ ...emailData, adminEmail })
+    });
+  },
+    onSuccess: () => {
+      setEmailDialog(false);
+}
+});
+
+  // ========== CONTACT MANAGEMENT ==========
+
+  const ContactsPanel = () => {
+    const [newContact, setNewContact] = useState({
+      firstName: '',
+      lastName: '',
+      email: '',
+      phone: '',
+      company: '',
+      position: '',
+      industry: '',
+      status: 'lead' as const,
+      notes: '',
+      emailOptIn: true,
+      marketingConsent: false
+});
+
+    const handleCreateContact = () => {
+      if (!newContact.firstName.trim()) return;
+      createContactMutation.mutate(newContact);
+      setNewContact({
+        firstName: '',
+        lastName: '',
+        email: '',
+        phone: '',
+        company: ', ',
+        position: ', ',
+        industry: ', ',
+        status: 'lead',
+        notes: ', ',
+        emailOptIn: true,
+        marketingConsent: false
+  });
+  };
+
+    return (
+      <Box>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb:  3 }}>
+          <Typography variant="h5" sx={{  color: '#FF8C00', fontWeight: 'bold' }}>
+            CRM Kontakter
+          </Typography>
+          <Button variant="contained"
+            startIcon={theming.getThemedIcon('add')}
+            onClick={() => setContactDialog(true)}
+            sx={{
+              background: 'linear-gradient(135deg, #FF8C00 0%, #FF6B00 100%)', '&:hover': { background: 'linear-gradient(135deg, #FF6B00 0%, #E55A00 100%)' }
+          }}
+          >
+            Ny Kontakt
+          </Button>
+        </Box>
+
+        <Grid container spacing={3}>
+          <Grid size={{ xs: 12 }} md={4}>
+            <MuiCard sx={{ background: 'linear-gradient(135deg, #2D3748 0%, #1A202C 100%)', color: 'white'}}>
+              <CardContent sx={theming.getThemedCardSx()}>
+                <Typography variant="h6" sx={{ color: theming.colors.primary }}>Totale Kontakter</Typography>
+                <Typography variant="h3" sx={{  color: theming.colors.primary }}>
+                  {contacts.length}
+                </Typography>
+              </CardContent>
+            </MuiCard>
+          </Grid>
+          <Grid size={{ xs: 12 }} md={4}>
+            <MuiCard sx={{ background: 'linear-gradient(135deg, #2D3748 0%, #1A202C 100%)', color: 'white'}}>
+              <CardContent sx={theming.getThemedCardSx()}>
+                <Typography variant="h6" sx={{ color: theming.colors.primary }}>Aktive Leads</Typography>
+                <Typography variant="h3" sx={{  color: theming.colors.primary }}>
+                  {contacts.filter((c: any) => c.status === 'lead').length}
+                </Typography>
+              </CardContent>
+            </MuiCard>
+          </Grid>
+          <Grid size={{ xs: 12 }} md={4}>
+            <MuiCard sx={{ background: 'linear-gradient(135deg, #2D3748 0%, #1A202C 100%)', color: 'white'}}>
+              <CardContent sx={theming.getThemedCardSx()}>
+                <Typography variant="h6" sx={{ color: theming.colors.primary }}>Kunder</Typography>
+                <Typography variant="h3" sx={{  color: theming.colors.primary }}>
+                  {contacts.filter((c: any) => c.status === 'customer').length}
+                </Typography>
+              </CardContent>
+            </MuiCard>
+          </Grid>
+        </Grid>
+
+        <Paper sx={{ mt:  3, borderRadius: 2, overflow: 'hidden',  ...theming.getThemedCardSx() }}>
+          <TableContainer>
+            <Table>
+              <TableHead sx={{ backgroundColor: '#2D3748'}}>
+                <TableRow>
+                  <TableCell sx={{ color: 'white', fontWeight: 'bold'}}>Navn</TableCell>
+                  <TableCell sx={{ color: 'white', fontWeight: 'bold'}}>E-post</TableCell>
+                  <TableCell sx={{ color: 'white', fontWeight: 'bold'}}>Selskap</TableCell>
+                  <TableCell sx={{ color: 'white', fontWeight: 'bold'}}>Status</TableCell>
+                  <TableCell sx={{ color: 'white', fontWeight: 'bold'}}>Opprettet</TableCell>
+                  <TableCell sx={{ color: 'white', fontWeight: 'bold'}}>Handlinger</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {contactsLoading ? (
+                  <TableRow>
+                    <TableCell colSpan={6} align="center">
+                      <CircularProgress />
+                    </TableCell>
+                  </TableRow>
+                ) : contacts.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={6} align="center">
+                      <Typography color="textSecondary">Ingen kontakter funnet</Typography>
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  contacts.map((contact: any) => (
+                    <TableRow key={contact.d} hover>
+                      <TableCell>
+                        <Typography fontWeight="bold">
+                          {contact.firstName} {contact.lastName}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>{contact.email || 'Ikke oppgitt'}</TableCell>
+                      <TableCell>{contact.company || 'Ikke oppgitt'}</TableCell>
+                      <TableCell>
+                        <Chip
+                          label={contact.status}
+                          color={
+                            contact.status === 'customer' ? 'success' :
+                            contact.status === 'prospect' ? 'warning' :
+                            contact.status === 'lead' ? 'info' : 'default'
+                        }
+                          size="small"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        {new Date(contact.createdAt).toLocaleDateString('no-NO')}
+                      </TableCell>
+                      <TableCell>
+                        <IconButton size="small" color="primary">
+                          {theming.getThemedIcon('edit')}
+                        </IconButton>
+                        <IconButton size="small" color="error">
+                          {theming.getThemedIcon('delete')}
+                        </IconButton>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </Paper>
+
+        {/* Create Contact Dialog */}
+        <Dialog open={contactDialog} onClose={() => setContactDialog(false)} maxWidth="md" fullWidth>
+          <DialogTitle sx={{ background: 'linear-gradient(135deg, #2D3748 0%, #1A202C 100%)', color: 'white'}}>
+            Opprett Ny Kontakt
+          </DialogTitle>
+          <DialogContent sx={{ mt:  2 }}>
+            <Grid container spacing={2}>
+              <Grid size={{ xs: 12 }} md={6}>
+                <TextField
+                  fullWidth
+                  label="Fornavn *"
+                  value={newContact.firstName}
+                  onChange={(e) => setNewContact({...newContact, firstName: e.target.value})}
+                />
+              </Grid>
+              <Grid size={{ xs: 12 }} md={6}>
+                <TextField
+                  fullWidth
+                  label="Etternavn"
+                  value={newContact.lastName}
+                  onChange={(e) => setNewContact({...newContact, lastName: e.target.value})}
+                />
+              </Grid>
+              <Grid size={{ xs: 12 }} md={6}>
+                <TextField
+                  fullWidth
+                  label="E-post"
+                  type="email"
+                  value={newContact.email}
+                  onChange={(e) => setNewContact({...newContact, email: e.target.value})}
+                />
+              </Grid>
+              <Grid size={{ xs: 12 }} md={6}>
+                <TextField
+                  fullWidth
+                  label="Telefon"
+                  value={newContact.phone}
+                  onChange={(e) => setNewContact({...newContact, phone: e.target.value})}
+                />
+              </Grid>
+              <Grid size={{ xs: 12 }} md={6}>
+                <TextField
+                  fullWidth
+                  label="Selskap"
+                  value={newContact.company}
+                  onChange={(e) => setNewContact({...newContact, company: e.target.value})}
+                />
+              </Grid>
+              <Grid size={{ xs: 12 }} md={6}>
+                <TextField
+                  fullWidth
+                  label="Stilling"
+                  value={newContact.position}
+                  onChange={(e) => setNewContact({...newContact, position: e.target.value})}
+                />
+              </Grid>
+              <Grid size={{ xs: 12 }}>
+                <TextField
+                  fullWidth
+                  multiline
+                  rows={3}
+                  label="Notater"
+                  value={newContact.notes}
+                  onChange={(e) => setNewContact({...newContact, notes: e.target.value})}
+                />
+              </Grid>
+            </Grid>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setContactDialog(false)}>Avbryt</Button>
+            <Button variant="contained"
+              onClick={handleCreateContact}
+              disabled={createContactMutation.isPending}
+              sx={{
+                background: 'linear-gradient(135deg, #FF8C00 0%, #FF6B00 100%)','&:hover': { background: 'linear-gradient(135deg, #FF6B00 0%, #E55A00 100%)' }
+            }}
+             sx={theming.getThemedButtonSx()}>
+              {createContactMutation.isPending ? <CircularProgress size={20} /> : 'Opprett'}
+            </Button>
+          </DialogActions>
+        </Dialog>
+      </Box>
+    );
+};
+
+  // ========== CAMPAIGNS PANEL ==========
+
+  const CampaignsPanel = () => (
+    <Box>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb:  3 }}>
+        <Typography variant="h5" sx={{  color: '#FF8C00', fontWeight: 'bold' }}>
+          E-postkampanjer
+        </Typography>
+        <Button variant="contained"
+          startIcon={<Campaign />}
+          onClick={() => setCampaignDialog(true)}
+          sx={{
+            background: 'linear-gradient(135deg, #FF8C00 0%, #FF6B00 100%)','&:hover': { background: 'linear-gradient(135deg, #FF6B00 0%, #E55A00 100%)' }
+        }}
+        >
+          Ny Kampanje
+        </Button>
+      </Box>
+
+      <Grid container spacing={3}>
+        {campaigns.map((campaign: any) => (
+          <Grid size={{ xs: 12 }} md={6} lg={4} key={campaign.id}>
+            <MuiCard sx={{ 
+              background: 'linear-gradient(135deg, rgba(2, 5, 5, 1400.1) 0%, rgba(2, 5, 5, 1070.05) 100%)',
+              border: '1px solid rgba(25, 1400.2)',
+              borderRadius: 2 }}>
+              <CardContent sx={theming.getThemedCardSx()}>
+                <Typography variant="h6" sx={{  color: '#FF8C00', fontWeight: 'bold', mb:  1  }}>
+                  {campaign.name}
+                </Typography>
+                <Typography variant="body2" color="textSecondary" sx={{ mb:  2 }}>
+                  {campaign.subject}
+                </Typography>
+                <Chip
+                  label={campaign.status}
+                  color={
+                    campaign.status === 'completed' ? 'success' :
+                    campaign.status === 'active' ? 'primary' :
+                    campaign.status === 'scheduled' ? 'warning' : 'default'
+                }
+                  size="small"
+                  sx={{ mb:  2 }}
+                />
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+                  <Typography variant="body2">
+                    Sendt: {campaign.totalSent || 0}
+                  </Typography>
+                  <IconButton size="small" sx={{ color: '#FF8C00'}}>
+                    <Send />
+                  </IconButton>
+                </Box>
+              </CardContent>
+            </MuiCard>
+          </Grid>
+        ))}
+      </Grid>
+    </Box>
+  );
+
+  // ========== ANALYTICS PANEL ==========
+
+  const AnalyticsPanel = () => (
+    <Box>
+      <Typography variant="h5" sx={{  color: '#FF8C00', fontWeight: 'bold', mb:  3  }}>
+        Kampanjeanalyse
+      </Typography>
+
+      {analyticsLoading ? (
+        <Box display="flex" justifyContent="center" py={4}>
+          <CircularProgress />
+        </Box>
+      ) : analytics ? (
+        <Grid container spacing={3}>
+          <Grid size={{ xs: 12 }} md={3}>
+            <MuiCard sx={{ background: 'linear-gradient(135deg, #2D3748 0%, #1A202C 100%)', color: 'white'}}>
+              <CardContent sx={theming.getThemedCardSx()}>
+                <Typography variant="h6" sx={{ color: theming.colors.primary }}>Totale Kampanjer</Typography>
+                <Typography variant="h3" sx={{  color: theming.colors.primary }}>
+                  {analytics.totalCampaigns}
+                </Typography>
+              </CardContent>
+            </MuiCard>
+          </Grid>
+          <Grid size={{ xs: 12 }} md={3}>
+            <MuiCard sx={{ background: 'linear-gradient(135deg, #2D3748 0%, #1A202C 100%)', color: 'white'}}>
+              <CardContent sx={theming.getThemedCardSx()}>
+                <Typography variant="h6" sx={{ color: theming.colors.primary }}>Totale Kontakter</Typography>
+                <Typography variant="h3" sx={{  color: theming.colors.primary }}>
+                  {analytics.totalContacts}
+                </Typography>
+              </CardContent>
+            </MuiCard>
+          </Grid>
+          <Grid size={{ xs: 12 }} md={3}>
+            <MuiCard sx={{ background: 'linear-gradient(135deg, #2D3748 0%, #1A202C 100%)', color: 'white'}}>
+              <CardContent sx={theming.getThemedCardSx()}>
+                <Typography variant="h6" sx={{ color: theming.colors.primary }}>E-post Sendt</Typography>
+                <Typography variant="h3" sx={{  color: theming.colors.primary }}>
+                  {analytics.totalEmailsSent}
+                </Typography>
+              </CardContent>
+            </MuiCard>
+          </Grid>
+          <Grid size={{ xs: 12 }} md={3}>
+            <MuiCard sx={{ background: 'linear-gradient(135deg, #2D3748 0%, #1A202C 100%)', color: 'white'}}>
+              <CardContent sx={theming.getThemedCardSx()}>
+                <Typography variant="h6" sx={{ color: theming.colors.primary }}>Åpningsrate</Typography>
+                <Typography variant="h3" sx={{  color: theming.colors.primary }}>
+                  {analytics.averageOpenRate.toFixed(1)}%
+                </Typography>
+              </CardContent>
+            </MuiCard>
+          </Grid>
+        </Grid>
+      ) : (
+        <Typography variant="body2" sx={{ p: 2, bgcolor: 'info.light', borderRadius: 1, color: 'info.contrastText'}}>
+          Ingen analysedata tilgjengelig
+        </Typography>
+      )}
+    </Box>
+  );
+
+  // ========== MAIN RENDER ==========
+
+  return (
+    <Box sx={{ width: '100%', bgcolor: 'background.paper', borderRadius:  2 }}>
+      <Paper sx={{ 
+        background: 'linear-gradient(135deg, #2D3748 0%, #1A202C 100%)',
+        borderRadius: '16px 16px 0 0',
+        p:  3,
+        mb: 0 ,  ...theming.getThemedCardSx() }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Box>
+            <Typography variant="h4" sx={{  color: 'white', fontWeight: 'bold', mb:  1  }}>
+              Integrert E-postmarkedsføring & CRM
+            </Typography>
+            <Typography variant="subtitle1" sx={{ color: 'rgba(2, 5, 2, 552, 55, 0.7)' }}>
+              Komplett løsning for kontaktadministrasjon og e-postkampanjer
+            </Typography>
+          </Box>
+          {isSupported && (
+            <Tooltip title="Push-varsler innstillinger">
+              <IconButton onClick={() => setPushSettingsOpen(true)}, sx={{ color: pushEnabled ? '#FF8C00' : 'white' }}>
+                {pushEnabled ? <NotificationsActive /> : <Notifications />}
+              </IconButton>
+            </Tooltip>
+          )}
+        </Box>
+      </Paper>
+
+      <Box sx={{ borderBottom: 1, borderColor: 'divider'}}>
+        <Tabs 
+          value={tabValue}
+          onChange={(e, newValue) => setTabValue(newValue)}
+          sx={{
+            '& .MuiTab-root': {
+              color: '#66',
+              fontWeight: 'bold','&.Mui-selected': {
+                color: '#FF8C00'
+          }
+          }, '& .MuiTabs-indicator': {
+              backgroundColor: '#FF8C00'
+        }
+        }}
+        >
+          <Tab label="CRM Kontakter" icon={<ContactMail />} iconPosition="start" />
+          <Tab label="E-postkampanjer" icon={<Campaign />} iconPosition="start" />
+          <Tab label="Kampanjelister" icon={theming.getThemedIcon('people')}} iconPosition="start" />
+          <Tab label="E-postmaler" icon={theming.getThemedIcon('email')}} iconPosition="start" />
+          <Tab label="Analyse" icon={theming.getThemedIcon('analytics')}} iconPosition="start" />
+        </Tabs>
+      </Box>
+
+      <TabPanel value={tabValue} index={0}>
+        <ContactsPanel />
+      </TabPanel>
+
+      <TabPanel value={tabValue} index={1}>
+        <CampaignsPanel />
+      </TabPanel>
+
+      <TabPanel value={tabValue} index={2}>
+        <Typography variant="h6" sx={{ color: theming.colors.primary }}>Avansert kampanjeliste-administrasjon</Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mt:  1 }}>
+          Segmenterte kampanjelister med GDPR-konforme databaser, automatisk targeting basert på kundeadferd, og dyp integrasjon med CRM-systemet for maksimal konvertering.
+        </Typography>
+      </TabPanel>
+
+      <TabPanel value={tabValue} index={3}>
+        <Typography variant="h6" sx={{ color: theming.colors.primary }}>Profesjonelle e-postmal-system</Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mt:  1 }}>
+          Responsiv malbibliotek med merkevarebygging, A/B-testing av maler, personalisering, og automatisk optimalisering for høyere åpningsrater og konvertering.
+        </Typography>
+      </TabPanel>
+
+      <TabPanel value={tabValue} index={4}>
+        <AnalyticsPanel />
+      </TabPanel>
+
+      {/* Floating Action Button for Quick Email */}
+      <Fab
+        color="primary"
+        sx={{
+          position: 'fixed',
+          bottom:  16,
+          right:  16,
+          background: 'linear-gradient(135deg, #FF8C00 0%, #FF6B00 100%)', '&:hover': { background: 'linear-gradient(135deg, #FF6B00 0%, #E55A00 100%)' }
+      }}
+        onClick={() => setEmailDialog(true)}
+      >
+        {theming.getThemedIcon('email')}
+      </Fab>
+
+      {/* Quick Email Dialog */}
+      <Dialog open={emailDialog} onClose={() => setEmailDialog(false)} maxWidth="md" fullWidth>
+        <DialogTitle sx={{ background: 'linear-gradient(135deg, #2D3748 0%, #1A202C 100%)', color: 'white'}}>
+          Send Hurtig E-post
+        </DialogTitle>
+        <DialogContent sx={{ mt:  2 }}>
+          <TextField
+            fullWidth
+            label="Til (e-postadresse)"
+            type="email"
+            margin="dense"
+          />
+          <TextField
+            fullWidth
+            label="Emne"
+            margin="dense"
+          />
+          <TextField
+            fullWidth
+            multiline
+            rows={6}
+            label="Melding"
+            margin="dense"
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEmailDialog(false)}>Avbryt</Button>
+          <Button variant="contained"
+            startIcon={<Send />}
+            sx={{
+              background: 'linear-gradient(135deg, #FF8C00 0%, #FF6B00 100%)','&:hover': { background: 'linear-gradient(135deg, #FF6B00 0%, #E55A00 100%)' }
+          }}
+          >
+            Send E-post
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Push Notification Settings Dialog */}
+      {isSupported && (
+        <Dialog open={pushSettingsOpen} onClose={() => setPushSettingsOpen(false)} maxWidth="sm" fullWidth>
+          <DialogTitle>Push-varsler innstillinger</DialogTitle>
+          <DialogContent>
+            <Box sx={{ mt: 2 }}>
+              <PushNotificationSettings userId={userId} showDescription={false} />
+            </Box>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setPushSettingsOpen(false)}>Lukk</Button>
+          </DialogActions>
+        </Dialog>
+      )}
+    </Box>
+  );
+}

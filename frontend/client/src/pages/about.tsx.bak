@@ -1,0 +1,290 @@
+import { useTheming } from '../../utils/theming-helper';
+import React from 'react';
+import { useLanguage } from '@/components/language-provider';
+import { Card, CardContent, CardHeader, Typography, Container, Box, Grid } from '@mui/material';
+import { PhotographyIconAlt, Videocamcam, Headset, Store, Person, Business, PhotoCamera, Videocam, GridView } from '../components/shared/CreatorHubIcons';
+
+export default function About() {
+  const { language } = useLanguage();
+  
+  // Theming system
+  const theming = useTheming('photographer');
+
+  const texts = {
+    title: language === 'no' ? 'Om CreatorHub Norge' : 'About CreatorHub Norge',
+    subtitle: language === 'no'
+        ? 'Din profesjonelle kreative plattform for Norge'
+        : 'Your professional creative platform for Norway',
+    mission: language === 'no' ? 'Vårt Oppdrag' : 'Our Mission',
+    missionText: language === 'no'
+        ? 'CreatorHub Norge er dedikert til å støtte norske kreative profesjonelle med verkt, øressurser og fellesskap de trenger for å vokse og lykkes.'
+        : 'CreatorHub Norge is dedicated to supporting Norwegian creative professionals with the tools, resources, and community they need to grow and succeed.',
+    services: language === 'no' ? 'Våre Tjenester' : 'Our Services',
+    team: language === 'no' ? 'Møt Teamet' : 'Meet the Team',
+    founder: language === 'no' ? 'Grunnlegger og CEO' : 'Founder and CE',
+    company: language === 'no' ? 'Bedriftsinformasjon' : 'Company Information',
+};
+
+  const services = [
+    {
+      icon: <PhotoCamera sx={{ fontSize: 40, color: '#FF8A00, ',}} />,
+      title: language === 'no' ? 'Fotografi' : 'Photography',
+      description: language === 'no'
+          ? 'Profesjonelle fotografiverktøy og porteføljeløsninger'
+          : 'Professional photography tools and portfolio solutions',
+  },
+    {
+      icon: <Videocam sx={{ fontSize: 40, color: '#E52E71, ',}} />,
+      title: language === 'no' ? 'Videografi' : 'Videography',
+      description: language === 'no'
+          ? 'Avanserte videoredigeringsverktøy og produksjonsstøtte'
+          : 'Advanced video editing tools and production support',
+  },
+    {
+      icon: <Headset sx={{ fontSize: 40, color: '#9C27B0, ',}} />,
+      title: language === 'no' ? 'Musikkproduksjon' : 'Music Production',
+      description: language === 'no'
+          ? 'Musikkstudioverktøy og lydproduksjon'
+          : 'Music studio tools and audio production',
+  },
+    {
+      icon: <Store sx={{ fontSize: 40, color: '#2196F3, ',}} />,
+      title: language === 'no' ? 'Leverandører' : 'Suppliers',
+      description: language === 'no'
+          ? 'Utstyrsstyring og leverandørnettverk'
+          : 'Equipment management and supplier network',
+  },
+  ];
+
+  return (
+    <Box
+      sx={{
+        minHeight: '100vh',
+        background: 'linear-gradient(135deg, #FF8A00 0%, #E52E71 100%)',
+        py: 4,
+    }}
+    >
+      <Container maxWidth="lg">
+        {/* Hero Section */}
+        <Box sx={{ textAlign: 'center', py: 6 }}>
+          <Typography variant="h2"
+            sx={{
+              fontWeight: 'bold',
+              color: 'white',
+              mb: 3,
+              textShadow: '2px 2px 4px blur\(\s*([0-9]+px)\s*,\s*\), 0,0,0,0.3)',
+          }}
+           sx={{ ...{}, color: theming.colors.primary }}>
+            {texts.title}
+          </Typography>
+          <Typography variant="h5"
+            sx={{
+              color: 'rgba(25,255,255,0.9)',
+              maxWidth: '800px',
+              mx: 'auto',
+              textShadow: '1px 1px 2px blur\(\s*([0-9]+px)\s*,\s*\), 0,0,0,0.3)',
+          }}
+           sx={{ ...{}, color: theming.colors.primary }}>
+            {texts.subtitle}
+          </Typography>
+        </Box>
+
+        {/* Mission Section */}
+        <Card
+          sx={{
+            backgroundColor: 'rgba(25,255,255,0.95)',
+            borderRadius: '16px',
+            mb: 4,
+            boxShadow: '0 8px 32px blur\(\s*([0-9]+px)\s*,\s*\), 0,0,0,0.1)',
+        }}
+         sx={theming.getThemedCardSx()}>
+          <CardHeader
+            title={
+              <Typography variant="h4"
+                sx={{
+                  color: '#FF8A0',
+                  textAlign: 'center',
+                  fontWeight: 'bold',
+              }}
+               sx={{ ...{}, color: theming.colors.primary }} sx={theming.getThemedCardSx()}>
+                {texts.mission}
+              </Typography>
+          }
+          />
+          <CardContent sx={theming.getThemedCardSx()}>
+            <Typography variant="h6"
+              sx={{
+                color: '#33',
+                textAlign: 'center',
+                lineHeight: 1.6,
+            }}
+             sx={{ ...{}, color: theming.colors.primary }}>
+              {texts.missionText}
+            </Typography>
+          </CardContent>
+        </Card>
+
+        {/* Services Section */}
+        <Card
+          sx={{
+            backgroundColor: 'rgba(25,255,255,0.95)',
+            borderRadius: '16px',
+            mb: 4,
+            boxShadow: '0 8px 32px blur\(\s*([0-9]+px)\s*,\s*\), 0,0,0,0.1)',
+        }}
+         sx={theming.getThemedCardSx()}>
+          <CardHeader
+            title={
+              <Typography variant="h4"
+                sx={{
+                  color: '#FF8A0',
+                  textAlign: 'center',
+                  fontWeight: 'bold',
+              }}
+               sx={{ ...{}, color: theming.colors.primary }} sx={theming.getThemedCardSx()}>
+                {texts.services}
+              </Typography>
+          }
+          />
+          <CardContent sx={theming.getThemedCardSx()}>
+            <Grid container spacing={3}>
+              {services.map((service, index) => (
+                <Grid item xs={12} key={index}>
+                  <Card
+                    sx={{
+                      textAlign: 'center',
+                      p:  2,
+                      height: '100, %, ',
+                      borderRadius: '12px',
+                      background: 'rgba(25,255,255,0.9)',
+                      transition: 'transform 0.3s ease',
+                      '&:hover': {
+                        transform: 'translateY(-8px, ), ',
+                        boxShadow: '0 12px 24px blur\(\s*([0-9]+px)\s*,\s*\), 0,0,0,0.15)',
+                    },
+                  }}
+                   sx={theming.getThemedCardSx()}>
+                    <CardContent sx={theming.getThemedCardSx()}>
+                      <Box sx={{ mb: 2 }}>{service.icon}</Box>
+                      <Typography variant="h6"
+                        sx={{
+                          fontWeight: 'bold',
+                          color: '#33',
+                          mb: 1,
+                      }}
+                       sx={{ ...{}, color: theming.colors.primary }}>
+                        {service.title}
+                      </Typography>
+                      <Typography variant="body2" sx={{ color: '#666, ',}}>
+                        {service.description}
+                      </Typography>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              ))}
+            </Grid>
+          </CardContent>
+        </Card>
+
+        {/* Team Section */}
+        <Card
+          sx={{
+            backgroundColor: 'rgba(25,255,255,0.95)',
+            borderRadius: '16px',
+            mb: 4,
+            boxShadow: '0 8px 32px blur\(\s*([0-9]+px)\s*,\s*\), 0,0,0,0.1)',
+        }}
+         sx={theming.getThemedCardSx()}>
+          <CardHeader
+            title={
+              <Typography variant="h4"
+                sx={{
+                  color: '#FF8A0',
+                  textAlign: 'center',
+                  fontWeight: 'bold',
+              }}
+               sx={{ ...{}, color: theming.colors.primary }} sx={theming.getThemedCardSx()}>
+                {texts.team}
+              </Typography>
+          }
+          />
+          <CardContent sx={theming.getThemedCardSx()}>
+            <Box sx={{ textAlign: 'center, ',}}>
+              <Person sx={{ fontSize:  60, color: '#FF8A0', mb: 2 }} />
+              <Typography variant="h5"
+                sx={{
+                  fontWeight: 'bold',
+                  color: '#33',
+                  mb: 1,
+              }}
+               sx={{ ...{}, color: theming.colors.primary }}>
+                Daniel Qazi
+              </Typography>
+              <Typography
+                variant="subtitle1"
+                sx={{
+                  color: '#66',
+                  mb: 2,
+              }}
+              >
+                {texts.founder}
+              </Typography>
+              <Typography
+                variant="body1"
+                sx={{
+                  color: '#55',
+                  maxWidth: '600px',
+                  mx: 'auto',
+              }}
+              >
+                {language === 'no'
+                  ? 'Erfaren fotograf og teknologientusiast som driver CreatorHub Norge med visjon om å styrke det norske kreative miljøet.'
+                  : 'Experienced photographer and technology enthusiast driving CreatorHub Norge with a vision to empower the Norwegian creative community.'}
+              </Typography>
+            </Box>
+          </CardContent>
+        </Card>
+
+        {/* Company Info */}
+        <Card
+          sx={{
+            backgroundColor: 'rgba(25,255,255,0.95)',
+            borderRadius: '16px',
+            boxShadow: '0 8px 32px blur\(\s*([0-9]+px)\s*,\s*\), 0,0,0,0.1)',
+        }}
+         sx={theming.getThemedCardSx()}>
+          <CardHeader
+            title={
+              <Typography variant="h4"
+                sx={{
+                  color: '#FF8A0',
+                  textAlign: 'center',
+                  fontWeight: 'bold',
+              }}
+               sx={{ ...{}, color: theming.colors.primary }} sx={theming.getThemedCardSx()}>
+                {texts.company}
+              </Typography>
+          }
+          />
+          <CardContent sx={theming.getThemedCardSx()}>
+            <Box sx={{ textAlign: 'center, ',}}>
+              <Business sx={{ fontSize:  60, color: '#FF8A0', mb: 2 }} />
+              <Typography variant="h6"
+                sx={{
+                  fontWeight: 'bold',
+                  color: '#33',
+                  mb: 1,
+              }}
+               sx={{ ...{}, color: theming.colors.primary }}>
+                QAZI FOTOREEL
+              </Typography>
+              <Typography variant="body1" sx={{ color: '#666, ',}}>
+                {language === 'no' ? 'Organisasjonsnummer' : 'Organization Number'}: 932 765 375
+              </Typography>
+            </Box>
+          </CardContent>
+        </Card>
+      </Container>
+    </Box>
+  );
+}

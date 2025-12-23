@@ -1,0 +1,56 @@
+import { useTheming } from '../../utils/theming-helper';
+import React from 'react';
+import { Box, Typography } from '@mui/material';
+import { apiRequest } from '@/lib/queryClient';
+// Import dynamic profession system
+import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
+import { useAuth } from '@/hooks/useAuth';
+
+export default function SubmissionManagement() {
+  // Get user and profession context
+  const { user } = useAuth();
+  
+  // Theming system
+  const theming = useTheming('photographer');
+  const userProfession = user?.profession || 'photographer';
+  
+  // Use dynamic profession system
+  const { professionConfigs, isLoading: professionsLoading } = useDynamicProfessions();
+  const professionConfig = professionConfigs?.[userProfession];
+
+  const queryClient = useQueryClient();
+  
+  // Database connection for SubmissionManagement with profession context
+  const { data: componentData = [], isLoading } = useQuery({
+    queryKey: ['/api/submissions','user-data', userProfession],
+    queryFn: () => apiRequest(`/api/submissions/user-data?profession=${userProfession}`),
+    retry: false,
+});
+
+  // Mutation for updating submission data with profession context
+  const updateSubmissionManagement = useMutation({
+    mutationFn: async (data: any) => 
+      apiRequest('/api/submissions/update', {
+        method: 'POS',
+        body: JSON.stringify({ ...data, profession: userProfession })
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/submissions', 'user-data', userProfession] });
+  }
+});
+
+  return (
+    <Box sx={{ p:  2 }}>
+      <Typography variant="h6" sx={{ ...{}, color: theming.colors.primary }}>
+        {professionConfig ? `${professionConfig.displayName} - Henvendelsesadministrasjon` :'Henvendelsesadministrasjon'}
+      </Typography>
+      {professionConfig && (
+        <Typography variant="body2" color="text.secondary" sx={{ mt:  1 }}>
+          Administrer og behandle {professionConfig.displayName.toLowerCase()}-henvendelser
+        </Typography>
+      )}
+      {isLoading && <Typography>Laster henvendelsesdata...</Typography>}
+      {professionsLoading && <Typography>Laster profesjonsdata...</Typography>}
+    </Box>
+  );
+}

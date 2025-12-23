@@ -1,0 +1,740 @@
+import React, { useState } from 'react';
+import {
+  Box,
+  Card,
+  CardContent,
+  Typography,
+  List,
+  ListItem,
+  ListItemAvatar,
+  ListItemText,
+  Avatar,
+  Chip,
+  IconButton,
+  Button,
+  Divider,
+  Badge,
+  Tooltip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Alert,
+  CircularProgress,
+  Stack,
+  TextField,
+  ToggleButtonGroup,
+  ToggleButton,
+  Paper,
+  Collapse,
+  Skeleton
+} from '@mui/material';
+import {
+  Feedback,
+  PersonAdd,
+  CheckCircle,
+  Cancel,
+  BugReport,
+  ThumbUp,
+  Dashboard as DashboardIcon,
+  Refresh,
+  FilterList,
+  ArrowForward,
+  AccountCircle,
+  Payment,
+  CardMembership,
+  Login,
+  Settings as SettingsIcon,
+  ViewList,
+  ViewTimeline,
+  ExpandMore,
+  ExpandLess
+} from '@mui/icons-material';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
+import { useTheming } from '@/utils/theming-helper';
+import { useLocation } from 'wouter';
+
+interface ActivityItem {
+  id: string;
+  type: 'prototype_feedback' | 'invite_request' | 'bug_report' | 'feature_vote' | 'user_approved' | 'user_rejected' | 'account_activated' | 'subscription_created' | 'payment_completed' | 'user_login' | 'feature_enabled';
+  title: string;
+  description: string;
+  user: {
+    name: string;
+    email: string;
+    profession?: string;
+  };
+  metadata?: any;
+  timestamp: string;
+  status?: 'pending' | 'approved' | 'rejected' | 'completed' | 'active' | 'paid';
+  actionUrl?: string;
+  priority?: 'low' | 'medium' | 'high' | 'critical';
+  category?: string;
+}
+
+interface AdminActivityFeedProps {
+  maxItems?: number;
+  showFilters?: boolean;
+  autoRefresh?: boolean;
+  refreshInterval?: number;
+}
+
+export default function AdminActivityFeed({
+  maxItems = 10,
+  showFilters = true,
+  autoRefresh = true,
+  refreshInterval = 30000 // 30 seconds
+}: AdminActivityFeedProps) {
+  const [, setLocation] = useLocation();
+  const queryClient = useQueryClient();
+  const theming = useTheming('prototype_tester');
+  
+  const [selectedActivity, setSelectedActivity] = useState<ActivityItem | null>(null);
+  const [filterType, setFilterType] = useState<string>('all');
+  const [showFilterDialog, setShowFilterDialog] = useState(false);
+  const [viewMode, setViewMode] = useState<'list' | 'timeline'>('list');
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [startDate, setStartDate] = useState<string>('');
+  const [endDate, setEndDate] = useState<string>('');
+  const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+
+  // Fetch activity feed with enhanced filters
+  const { data: activityData, isLoading, error } = useQuery({
+    queryKey: ['/api/admin/activity-feed', { filterType, maxItems, searchQuery, startDate, endDate, categoryFilter }],
+    queryFn: () => {
+      const params = new URLSearchParams({
+        type: filterType,
+        limit: maxItems.toString(),
+        ...(searchQuery && { search: searchQuery }),
+        ...(startDate && { startDate }),
+        ...(endDate && { endDate }),
+        ...(categoryFilter !== 'all' && { category: categoryFilter })
+      });
+      return apiRequest(`/api/admin/activity-feed?${params.toString()}`);
+    },
+    staleTime: autoRefresh ? refreshInterval : 60000,
+    refetchInterval: autoRefresh ? refreshInterval : false,
+  });
+  
+  const activities = activityData?.activities || [];
+
+  // Fetch pending counts
+  const { data: pendingCounts } = useQuery({
+    queryKey: ['/api/admin/pending-counts'],
+    queryFn: () => apiRequest('/api/admin/pending-counts'),
+    staleTime: refreshInterval,
+    refetchInterval: autoRefresh ? refreshInterval : false,
+  });
+
+  const handleRefresh = () => {
+    queryClient.invalidateQueries({ queryKey: ['/api/admin/activity-feed'] });
+    queryClient.invalidateQueries({ queryKey: ['/api/admin/pending-counts'] });
+  };
+  
+  const handleExportCSV = async () => {
+    const params = new URLSearchParams({
+      type: filterType,
+      ...(startDate && { startDate }),
+      ...(endDate && { endDate })
+    });
+    
+    // Trigger download
+    window.open(`/api/admin/activity-feed/export?${params.toString()}`, '_blank');
+  };
+
+  const getActivityIcon = (type: string) => {
+    switch (type) {
+      case 'prototype_feedback':
+        return <Feedback sx={{ color: '#2196f3' }} />;
+      case 'invite_request':
+        return <PersonAdd sx={{ color: '#ff8c00' }} />;
+      case 'bug_report':
+        return <BugReport sx={{ color: '#f44336' }} />;
+      case 'feature_vote':
+        return <ThumbUp sx={{ color: '#4caf50' }} />;
+      case 'user_approved':
+        return <CheckCircle sx={{ color: '#4caf50' }} />;
+      case 'user_rejected':
+        return <Cancel sx={{ color: '#f44336' }} />;
+      case 'account_activated':
+        return <AccountCircle sx={{ color: '#4caf50' }} />;
+      case 'subscription_created':
+        return <CardMembership sx={{ color: '#9c27b0' }} />;
+      case 'payment_completed':
+        return <Payment sx={{ color: '#2e7d32' }} />;
+      case 'user_login':
+        return <Login sx={{ color: '#1976d2' }} />;
+      case 'feature_enabled':
+        return <SettingsIcon sx={{ color: '#ff9800' }} />;
+      default:
+        return <DashboardIcon sx={{ color: '#9e9e9e' }} />;
+    }
+  };
+
+  const getActivityColor = (type: string) => {
+    switch (type) {
+      case 'prototype_feedback':
+        return '#2196f3';
+      case 'invite_request':
+        return '#ff8c00';
+      case 'bug_report':
+        return '#f44336';
+      case 'feature_vote':
+        return '#4caf50';
+      case 'user_approved':
+        return '#4caf50';
+      case 'user_rejected':
+        return '#f44336';
+      case 'account_activated':
+        return '#4caf50';
+      case 'subscription_created':
+        return '#9c27b0';
+      case 'payment_completed':
+        return '#2e7d32';
+      case 'user_login':
+        return '#1976d2';
+      case 'feature_enabled':
+        return '#ff9800';
+      default:
+        return '#9e9e9e';
+    }
+  };
+
+  const handleActivityClick = (activity: ActivityItem) => {
+    // Navigate to relevant section based on activity type
+    switch (activity.type) {
+      case 'prototype_feedback':
+        setLocation('/admin?tab=5'); // Prototype Feedback Panel
+        break;
+      case 'invite_request':
+        setLocation('/admin/invite-system');
+        break;
+      case 'bug_report':
+        setSelectedActivity(activity);
+        break;
+      default:
+        setSelectedActivity(activity);
+    }
+  };
+
+  const formatTimestamp = (timestamp: string) => {
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMins / 60);
+    const diffDays = Math.floor(diffHours / 24);
+
+    if (diffMins < 1) return 'Akkurat nå';
+    if (diffMins < 60) return `${diffMins} min siden`;
+    if (diffHours < 24) return `${diffHours} timer siden`;
+    if (diffDays < 7) return `${diffDays} dager siden`;
+    return date.toLocaleDateString('nb-NO');
+  };
+
+  return (
+    <Card>
+      <CardContent>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+          <Stack direction="row" spacing={2} alignItems="center">
+            <DashboardIcon sx={{ color: theming.colors.primary, fontSize: 28 }} />
+            <Box>
+              <Typography variant="h6" sx={{ fontWeight: 600, color: theming.colors.primary }}>
+                Activity Feed
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                Real-time updates from across the platform
+              </Typography>
+            </Box>
+          </Stack>
+          
+          <Stack direction="row" spacing={1}>
+            {pendingCounts && (
+              <Tooltip title="Pending actions">
+                <Chip
+                  label={`${pendingCounts.total || 0} pending`}
+                  size="small"
+                  color="warning"
+                  icon={<Refresh />}
+                />
+              </Tooltip>
+            )}
+            
+            {showFilters && (
+              <IconButton 
+                size="small" 
+                onClick={() => setShowFilterDialog(true)}
+                aria-label="Filter activities"
+              >
+                <FilterList />
+              </IconButton>
+            )}
+            
+            <IconButton 
+              size="small" 
+              onClick={handleRefresh}
+              aria-label="Refresh activity feed"
+            >
+              <Refresh />
+            </IconButton>
+          </Stack>
+        </Box>
+
+        {/* Pending Action Chips */}
+        {pendingCounts && (
+          <Stack direction="row" spacing={1} sx={{ mb: 2, flexWrap: 'wrap', gap: 1 }}>
+            {pendingCounts.inviteRequests > 0 && (
+              <Chip
+                icon={<PersonAdd />}
+                label={`${pendingCounts.inviteRequests} invite requests`}
+                size="small"
+                color="warning"
+                onClick={() => setLocation('/admin/invite-system')}
+                sx={{ cursor: 'pointer' }}
+              />
+            )}
+            {pendingCounts.prototypeFeedback > 0 && (
+              <Chip
+                icon={<Feedback />}
+                label={`${pendingCounts.prototypeFeedback} feedback items`}
+                size="small"
+                color="info"
+                onClick={() => setLocation('/admin?tab=5')}
+                sx={{ cursor: 'pointer' }}
+              />
+            )}
+            {pendingCounts.bugReports > 0 && (
+              <Chip
+                icon={<BugReport />}
+                label={`${pendingCounts.bugReports} bug reports`}
+                size="small"
+                color="error"
+                onClick={() => setLocation('/admin?tab=5')}
+                sx={{ cursor: 'pointer' }}
+              />
+            )}
+          </Stack>
+        )}
+
+        <Divider sx={{ mb: 2 }} />
+
+        {/* View Mode Toggle */}
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          <ToggleButtonGroup
+            value={viewMode}
+            exclusive
+            onChange={(_, newMode) => newMode && setViewMode(newMode)}
+            size="small"
+          >
+            <ToggleButton value="list">
+              <ViewList sx={{ mr: 1 }} />
+              List
+            </ToggleButton>
+            <ToggleButton value="timeline">
+              <ViewTimeline sx={{ mr: 1 }} />
+              Timeline
+            </ToggleButton>
+          </ToggleButtonGroup>
+
+          <Button
+            size="small"
+            startIcon={showAdvancedFilters ? <ExpandLess /> : <ExpandMore />}
+            onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+          >
+            {showAdvancedFilters ? 'Hide' : 'Show'} Advanced Filters
+          </Button>
+        </Box>
+
+        {/* Advanced Filters */}
+        <Collapse in={showAdvancedFilters}>
+          <Paper sx={{ p: 2, mb: 2, bgcolor: 'background.default' }}>
+            <Typography variant="subtitle2" gutterBottom>
+              Advanced Filters
+            </Typography>
+            <Stack spacing={2}>
+              <TextField
+                fullWidth
+                size="small"
+                label="Search"
+                placeholder="Search activities..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+              <Stack direction="row" spacing={2}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  type="date"
+                  label="Start Date"
+                  InputLabelProps={{ shrink: true }}
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                />
+                <TextField
+                  fullWidth
+                  size="small"
+                  type="date"
+                  label="End Date"
+                  InputLabelProps={{ shrink: true }}
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                />
+              </Stack>
+              <Stack direction="row" spacing={1}>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  onClick={() => {
+                    setSearchQuery('');
+                    setStartDate('');
+                    setEndDate('');
+                    setCategoryFilter('all');
+                  }}
+                >
+                  Clear Filters
+                </Button>
+                <Button
+                  size="small"
+                  variant="contained"
+                  onClick={() => {
+                    queryClient.invalidateQueries({ queryKey: ['/api/admin/activity-feed'] });
+                  }}
+                >
+                  Apply Filters
+                </Button>
+              </Stack>
+            </Stack>
+          </Paper>
+        </Collapse>
+
+        {/* Activity List */}
+        {isLoading ? (
+          <Stack spacing={1}>
+            {[...Array(5)].map((_, index) => (
+              <Paper key={index} sx={{ p: 2 }}>
+                <Stack direction="row" spacing={2}>
+                  <Skeleton variant="circular" width={40} height={40} />
+                  <Box sx={{ flex: 1 }}>
+                    <Skeleton variant="text" width="60%" height={24} />
+                    <Skeleton variant="text" width="80%" height={20} />
+                    <Skeleton variant="text" width="40%" height={16} />
+                  </Box>
+                </Stack>
+              </Paper>
+            ))}
+          </Stack>
+        ) : error ? (
+          <Alert 
+            severity="error"
+            action={
+              <Button color="inherit" size="small" onClick={handleRefresh}>
+                Retry
+              </Button>
+            }
+          >
+            Failed to load activity feed. Please try again.
+          </Alert>
+        ) : activities.length === 0 ? (
+          <Alert severity="info">No recent activity</Alert>
+        ) : viewMode === 'list' ? (
+          <List sx={{ py: 0 }}>
+            {activities.map((activity: ActivityItem, index: number) => (
+              <React.Fragment key={activity.id}>
+                <ListItem
+                  sx={{
+                    cursor: 'pointer',
+                    borderRadius: 1,
+                    mb: 1,
+                    '&:hover': {
+                      bgcolor: 'action.hover'
+                    }
+                  }}
+                  secondaryAction={
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      {activity.status && (
+                        <Chip
+                          label={activity.status}
+                          size="small"
+                          color={
+                            activity.status === 'approved' ? 'success' :
+                            activity.status === 'rejected' ? 'error' :
+                            activity.status === 'pending' ? 'warning' :
+                            'default'
+                          }
+                          sx={{ fontSize: '0.7rem', height: 20 }}
+                        />
+                      )}
+                      <IconButton 
+                        size="small" 
+                        onClick={() => handleActivityClick(activity)}
+                        aria-label={`View details for ${activity.title}`}
+                      >
+                        <ArrowForward fontSize="small" />
+                      </IconButton>
+                    </Stack>
+                  }
+                >
+                  <ListItemAvatar>
+                    <Avatar sx={{ bgcolor: `${getActivityColor(activity.type)}20` }}>
+                      {getActivityIcon(activity.type)}
+                    </Avatar>
+                  </ListItemAvatar>
+                  <ListItemText
+                    primary={
+                      <Stack direction="row" spacing={1} alignItems="center">
+                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                          {activity.title}
+                        </Typography>
+                        {activity.user.profession && (
+                          <Chip
+                            label={activity.user.profession}
+                            size="small"
+                            sx={{ fontSize: '0.65rem', height: 18 }}
+                          />
+                        )}
+                      </Stack>
+                    }
+                    secondary={
+                      <React.Fragment>
+                        <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.875rem' }}>
+                          {activity.description}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                          {activity.user.name} • {formatTimestamp(activity.timestamp)}
+                        </Typography>
+                      </React.Fragment>
+                    }
+                  />
+                </ListItem>
+                {index < activities.length - 1 && <Divider variant="inset" component="li" />}
+              </React.Fragment>
+            ))}
+          </List>
+        ) : (
+          <Box sx={{ position: 'relative', pl: 4 }}>
+            {/* Timeline Line */}
+            <Box
+              sx={{
+                position: 'absolute',
+                left: 20,
+                top: 0,
+                bottom: 0,
+                width: 2,
+                bgcolor: 'divider'
+              }}
+            />
+            
+            {/* Timeline Items */}
+            <Stack spacing={2}>
+              {activities.map((activity: ActivityItem) => (
+                <Box
+                  key={activity.id}
+                  sx={{
+                    position: 'relative',
+                    cursor: 'pointer',
+                    '&:hover': {
+                      '& .timeline-dot': {
+                        transform: 'scale(1.2)'
+                      }
+                    }
+                  }}
+                  onClick={() => handleActivityClick(activity)}
+                >
+                  {/* Timeline Dot */}
+                  <Box
+                    className="timeline-dot"
+                    sx={{
+                      position: 'absolute',
+                      left: -32,
+                      top: 8,
+                      width: 16,
+                      height: 16,
+                      borderRadius: '50%',
+                      bgcolor: getActivityColor(activity.type),
+                      border: '3px solid',
+                      borderColor: 'background.paper',
+                      transition: 'transform 0.2s',
+                      zIndex: 1
+                    }}
+                  />
+                  
+                  {/* Timeline Content */}
+                  <Paper
+                    sx={{
+                      p: 2,
+                      ml: 2,
+                      transition: 'all 0.2s',
+                      '&:hover': {
+                        boxShadow: 2,
+                        transform: 'translateX(4px)'
+                      }
+                    }}
+                  >
+                    <Stack direction="row" spacing={2} alignItems="flex-start">
+                      <Avatar sx={{ bgcolor: `${getActivityColor(activity.type)}20` }}>
+                        {getActivityIcon(activity.type)}
+                      </Avatar>
+                      <Box sx={{ flex: 1 }}>
+                        <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+                          <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                            {activity.title}
+                          </Typography>
+                          {activity.status && (
+                            <Chip
+                              label={activity.status}
+                              size="small"
+                              color={
+                                activity.status === 'approved' ? 'success' :
+                                activity.status === 'rejected' ? 'error' :
+                                activity.status === 'pending' ? 'warning' :
+                                'default'
+                              }
+                              sx={{ fontSize: '0.7rem', height: 20 }}
+                            />
+                          )}
+                        </Stack>
+                        <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.875rem', mb: 1 }}>
+                          {activity.description}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {activity.user.name} • {formatTimestamp(activity.timestamp)}
+                        </Typography>
+                      </Box>
+                    </Stack>
+                  </Paper>
+                </Box>
+              ))}
+            </Stack>
+          </Box>
+        )}
+
+        {/* View All Button */}
+        {activities.length >= maxItems && (
+          <Box sx={{ mt: 2, textAlign: 'center' }}>
+            <Button
+              variant="outlined"
+              size="small"
+              onClick={() => setLocation('/admin/activity-feed')}
+              endIcon={<ArrowForward />}
+            >
+              View All Activity
+            </Button>
+          </Box>
+        )}
+      </CardContent>
+
+      {/* Activity Details Dialog */}
+      <Dialog open={!!selectedActivity} onClose={() => setSelectedActivity(null)} maxWidth="sm" fullWidth>
+        {selectedActivity && (
+          <>
+            <DialogTitle>
+              <Stack direction="row" spacing={2} alignItems="center">
+                <Avatar sx={{ bgcolor: `${getActivityColor(selectedActivity.type)}20` }}>
+                  {getActivityIcon(selectedActivity.type)}
+                </Avatar>
+                <Box>
+                  <Typography variant="h6">{selectedActivity.title}</Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    {selectedActivity.user.name} • {formatTimestamp(selectedActivity.timestamp)}
+                  </Typography>
+                </Box>
+              </Stack>
+            </DialogTitle>
+            <DialogContent>
+              <Typography variant="body1" sx={{ mb: 2 }}>
+                {selectedActivity.description}
+              </Typography>
+              
+              {selectedActivity.metadata && (
+                <Alert severity="info" sx={{ mt: 2 }}>
+                  <Typography variant="body2">
+                    <strong>From:</strong> {selectedActivity.user.email}
+                  </Typography>
+                  {selectedActivity.user.profession && (
+                    <Typography variant="body2">
+                      <strong>Profession:</strong> {selectedActivity.user.profession}
+                    </Typography>
+                  )}
+                </Alert>
+              )}
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => setSelectedActivity(null)}>
+                Close
+              </Button>
+              {selectedActivity.actionUrl && (
+                <Button
+                  variant="contained"
+                  onClick={() => {
+                    setLocation(selectedActivity.actionUrl!);
+                    setSelectedActivity(null);
+                  }}
+                >
+                  View Details
+                </Button>
+              )}
+            </DialogActions>
+          </>
+        )}
+      </Dialog>
+
+      {/* Filter Dialog */}
+      <Dialog open={showFilterDialog} onClose={() => setShowFilterDialog(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Filter Activity</DialogTitle>
+        <DialogContent>
+          <Stack spacing={1} sx={{ mt: 1 }}>
+            <Button
+              variant={filterType === 'all' ? 'contained' : 'outlined'}
+              onClick={() => {
+                setFilterType('all');
+                setShowFilterDialog(false);
+              }}
+              fullWidth
+            >
+              All Activity
+            </Button>
+            <Button
+              variant={filterType === 'prototype_feedback' ? 'contained' : 'outlined'}
+              startIcon={<Feedback />}
+              onClick={() => {
+                setFilterType('prototype_feedback');
+                setShowFilterDialog(false);
+              }}
+              fullWidth
+            >
+              Prototype Feedback
+            </Button>
+            <Button
+              variant={filterType === 'invite_request' ? 'contained' : 'outlined'}
+              startIcon={<PersonAdd />}
+              onClick={() => {
+                setFilterType('invite_request');
+                setShowFilterDialog(false);
+              }}
+              fullWidth
+            >
+              Invite Requests
+            </Button>
+            <Button
+              variant={filterType === 'bug_report' ? 'contained' : 'outlined'}
+              startIcon={<BugReport />}
+              onClick={() => {
+                setFilterType('bug_report');
+                setShowFilterDialog(false);
+              }}
+              fullWidth
+            >
+              Bug Reports
+            </Button>
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowFilterDialog(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
+    </Card>
+  );
+}
+

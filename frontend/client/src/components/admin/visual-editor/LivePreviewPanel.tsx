@@ -1,0 +1,893 @@
+/**
+ * Live Preview Panel - Renders actual UI from generated code
+ * Supports responsive preview and device simulation
+ */
+
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import {
+  Box,
+  IconButton,
+  Tooltip,
+  Select,
+  MenuItem,
+  Typography,
+  ButtonGroup,
+  ToggleButtonGroup,
+  ToggleButton,
+  Divider,
+  Slider,
+  Drawer,
+  Paper,
+  Chip,
+  List,
+  ListItem,
+  ListItemText,
+  Alert,
+  TextField,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Button,
+} from '@mui/material';
+import {
+  Visibility,
+  Refresh,
+  OpenInNew,
+  PhoneIphone,
+  Tablet,
+  Computer,
+  ZoomIn,
+  ZoomOut,
+  FitScreen,
+  Code,
+  ScreenRotation,
+  GridOn,
+  CameraAlt,
+  Accessible,
+  Speed,
+  TouchApp,
+  Close,
+} from '@mui/icons-material';
+import { useVisualEditor } from './VisualEditorContext';
+import html2canvas from 'html2canvas';
+import { AccessibilityChecker } from './AccessibilityChecker';
+
+interface LivePreviewPanelProps {
+  code?: {
+    html?: string;
+    react?: string;
+    css?: string;
+    javascript?: string;
+  };
+  mode?: 'html' | 'react';
+}
+
+type DeviceType = 'mobile' | 'tablet' | 'desktop' | 'custom';
+
+interface ConsoleLog {
+  id: string;
+  type: 'log' | 'warn' | 'error' | 'info';
+  message: string;
+  timestamp: number;
+}
+
+interface InteractionEvent {
+  id: string;
+  type: 'click' | 'hover' | 'input' | 'submit';
+  target: string;
+  timestamp: number;
+  data?: any;
+}
+
+const DEVICE_DIMENSIONS = {
+  mobile: { width: 375, height: 667, label: 'iPhone SE' },
+  tablet: { width: 768, height: 1024, label: 'iPad' },
+  desktop: { width: 1920, height: 1080, label: 'Desktop' },
+  custom: { width: 1024, height: 768, label: 'Custom' },
+};
+
+const DEVICE_PRESETS = [
+  { name: 'iPhone 15 Pro', width: 393, height: 852 },
+  { name: 'iPhone 15', width: 390, height: 844 },
+  { name: 'Galaxy S24', width: 360, height: 780 },
+  { name: 'Pixel 8', width: 412, height: 915 },
+  { name: 'iPad Pro 12.9', width: 1024, height: 1366 },
+  { name: 'MacBook Air', width: 1280, height: 832 },
+  { name: 'Desktop HD', width: 1920, height: 1080 },
+  { name: 'Desktop 4K', width: 3840, height: 2160 },
+];
+
+export const LivePreviewPanel: React.FC<LivePreviewPanelProps> = ({ code, mode = 'react' }) => {
+  const { state } = useVisualEditor();
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const [device, setDevice] = useState<DeviceType>('desktop');
+  const [zoom, setZoom] = useState(100);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [orientation, setOrientation] = useState<'portrait' | 'landscape'>('portrait');
+  const [showGrid, setShowGrid] = useState(false);
+  const [showRulers, setShowRulers] = useState(false);
+  const [consoleLogs, setConsoleLogs] = useState<ConsoleLog[]>([]);
+  const [interactions, setInteractions] = useState<InteractionEvent[]>([]);
+  const [errors, setErrors] = useState<string[]>([]);
+  const [showConsole, setShowConsole] = useState(false);
+  const [showInteractions, setShowInteractions] = useState(false);
+  const [showAccessibility, setShowAccessibility] = useState(false);
+  const [showPerformance, setShowPerformance] = useState(false);
+  const [customWidth, setCustomWidth] = useState(1024);
+  const [customHeight, setCustomHeight] = useState(768);
+  const [showCustomDialog, setShowCustomDialog] = useState(false);
+  const [performanceMetrics, setPerformanceMetrics] = useState({
+    loadTime: 0,
+    renderTime: 0,
+    fps: 60,
+  });
+  const [touchMode, setTouchMode] = useState(false);
+
+  useEffect(() => {
+    renderPreview();
+  }, [state.elements, device, orientation, code]);
+
+  const renderPreview = () => {
+    if (!iframeRef.current) return;
+
+    const startTime = performance.now();
+    setIsRefreshing(true);
+    const iframe = iframeRef.current;
+    const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+
+    if (!iframeDoc) return;
+
+    const htmlContent = generatePreviewHTML();
+
+    iframeDoc.open();
+    iframeDoc.write(htmlContent);
+    iframeDoc.close();
+
+    // Inject console capture
+    if (iframe.contentWindow) {
+      const win = iframe.contentWindow as any;
+      const originalConsole = {
+        log: win.console.log,
+        warn: win.console.warn,
+        error: win.console.error,
+        info: win.console.info,
+      };
+
+      win.console.log = (...args: unknown[]) => {
+        originalConsole.log.apply(win.console, args);
+        addConsoleLog('log', args.join(' '));
+      };
+
+      win.console.warn = (...args: unknown[]) => {
+        originalConsole.warn.apply(win.console, args);
+        addConsoleLog('warn', args.join(' '));
+      };
+
+      win.console.error = (...args: unknown[]) => {
+        originalConsole.error.apply(win.console, args);
+        addConsoleLog('error', args.join(' '));
+        setErrors((prev) => [...prev, args.join('')]);
+      };
+
+      win.console.info = (...args: unknown[]) => {
+        originalConsole.info.apply(win.console, args);
+        addConsoleLog('info', args.join(' '));
+      };
+
+      // Track interactions
+      win.document.addEventListener('click', (e: unknown) => {
+        addInteraction('click', e.target.tagName, e);
+      });
+
+      win.document.addEventListener('input', (e: unknown) => {
+        addInteraction('input', e.target.tagName, e);
+      });
+    }
+
+    const renderTime = performance.now() - startTime;
+    setPerformanceMetrics((prev) => ({ ...prev, renderTime, loadTime: renderTime }));
+    setTimeout(() => setIsRefreshing(false), 300);
+  };
+
+  const addConsoleLog = (type: ConsoleLog['type'], message: string) => {
+    const log: ConsoleLog = {
+      id: Date.now().toString(),
+      type,
+      message,
+      timestamp: Date.now(),
+    };
+    setConsoleLogs((prev) => [...prev, log].slice(-100)); // Keep last 100 logs
+  };
+
+  const addInteraction = (type: InteractionEvent['type'], target: string, data?: any) => {
+    const interaction: InteractionEvent = {
+      id: Date.now().toString(),
+      type,
+      target,
+      timestamp: Date.now(),
+      data,
+    };
+    setInteractions((prev) => [...prev, interaction].slice(-50); // Keep last 50 interactions
+  };
+
+  const generatePreviewHTML = () => {
+    const cssContent = generateCSS();
+    const jsContent = generateJS();
+    const bodyContent = generateBody();
+
+    return `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Live Preview</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background: #ffffff;
+      overflow: auto;
+    }
+    
+    .preview-container {
+      position: relative;
+      width: 100%;
+      min-height: 100vh;
+      ${
+        showGrid
+          ? `
+        background-image: linear-gradient(rgba(0,0,0,.05) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(0,0,0,.05) 1px, transparent 1px);
+        background-size: 20px 20px;
+      `
+          : ''
+      }
+    }
+    
+    ${cssContent}
+    
+    /* Element styles */
+    .element {
+      position: absolute;
+      cursor: pointer;
+      transition: box-shadow 0.2s;
+    }
+    
+    .element:hover {
+      box-shadow: 0 0 0 2px #007ACC;
+    }
+    
+    .button-element {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #007ACC;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      padding: 8px 16px;
+    }
+    
+    .button-element:hover {
+      background: #005A9E;
+    }
+    
+    .text-element {
+      display: flex;
+      align-items: center;
+      color: #333;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    
+    .container-element {
+      border: 1px dashed #ccc;
+      background: rgba(0,0,0,0.02);
+    }
+    
+    .image-element {
+      object-fit: cover;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+  <div class="preview-container">
+    ${bodyContent}
+  </div>
+  <script>
+    ${jsContent}
+    
+    // Console capture for debugging
+    const originalConsole = {
+      log: console.log,
+      error: console.error,
+      warn: console.warn
+    };
+    
+    window.addEventListener('error', (e) => {
+      console.error('Preview Error: ', e.message);
+    });
+    
+    // Element interaction tracking
+    document.addEventListener('click', (e) => {
+      const target = e.target;
+      if (target.classList.contains('element')) {
+        console.log('Element clicked:', target.id);
+      }
+    });
+  </script>
+</body>
+</html>
+    `;
+  };
+
+  const generateBody = () => {
+    if (state.elements.length === 0) {
+      return `
+        <div style="display: flex; align-items: center; justify-content: center; height: 100vh; color: #999; font-size: 16px;">
+          <div style="text-align: center;">
+            <p>No elements on canvas</p>
+            <p style="font-size: 14px; margin-top: 8px;">Drag components to start building</p>
+          </div>
+        </div>
+      `;
+    }
+
+    let html = '';
+    state.elements.forEach((element) => {
+      html += generateElementHTML(element);
+    });
+    return html;
+  };
+
+  const generateElementHTML = (element: unknown): string => {
+    const baseStyle = `
+      left: ${element.x}px;
+      top: ${element.y}px;
+      width: ${element.width}px;
+      height: ${element.height}px;
+    `;
+
+    const additionalStyles = Object.entries(element.styles || {})
+      .map(([key, value]) => {
+        // Convert camelCase to kebab-case
+        const cssKey = key.replace(/([A-Z])/g, '-$1').toLowerCase();
+        return `${cssKey}: ${value};`;
+      })
+      .join(' ');
+
+    const style = `${baseStyle} ${additionalStyles}`;
+
+    switch (element.type) {
+      case 'button': return `<button class="element button-element" id="${element.id}" style="${style}">${element.props.text || 'Button'}</button>\n`;
+
+      case 'text': return `<div class="element text-element" id="${element.id}" style="${style}">${element.props.text || 'Text'}</div>\n`;
+
+      case 'container': return `<div class="element container-element" id="${element.id}" style="${style}"></div>\n`;
+
+      case 'image': const src = element.props.src || 'https://via.placeholder.com/300x200?text=Image';
+        const alt = element.props.alt || 'Image';
+        return `<img class="element image-element" id="${element.id}" src="${src}" alt="${alt}" style="${style}" />\n`;
+
+      default: return `<div class="element" id="${element.id}" style="${style}"></div>\n`;
+    }
+  };
+
+  const generateCSS = () => {
+    let css = '';
+    state.elements.forEach((element) => {
+      if (element.styles && Object.keys(element.styles).length > 0) {
+        css += `#${element.id} {\n`;
+        Object.entries(element.styles).forEach(([key, value]) => {
+          const cssKey = key.replace(/([A-Z])/g, '-$1').toLowerCase();
+          css += `  ${cssKey}: ${value};\n`;
+        });
+        css += `}\n\n`;
+      }
+    });
+    return css;
+  };
+
+  const generateJS = () => {
+    let js = '';
+    state.elements.forEach((element) => {
+      if (element.type === 'button') {
+        js += `
+document.getElementById('${element.id}')?.addEventListener('click', function(e) {
+  console.log('Button clicked: ${element.id}');
+  // Add custom interactions here
+});
+        `;
+      }
+    });
+    return js;
+  };
+
+  const handleRefresh = () => {
+    renderPreview();
+  };
+
+  const handleOpenInNewTab = () => {
+    const htmlContent = generatePreviewHTML();
+    const blob = new Blob([htmlContent], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    window.open(url, '_blank');
+  };
+
+  const handleZoomIn = () => {
+    setZoom(Math.min(zoom + 10, 200));
+  };
+
+  const handleZoomOut = () => {
+    setZoom(Math.max(zoom - 10, 50));
+  };
+
+  const handleFitScreen = () => {
+    setZoom(100);
+  };
+
+  const handleRotate = () => {
+    setOrientation((prev) => (prev === 'portrait' ? 'landscape' : 'portrait'));
+  };
+
+  const handleScreenshot = async () => {
+    if (!iframeRef.current) return;
+
+    try {
+      const canvas = await html2canvas(iframeRef.current);
+      const dataUrl = canvas.toDataURL('image/png');
+      const link = document.createElement('a');
+      link.download = `preview-${Date.now()}.png`;
+      link.href = dataUrl;
+      link.click();
+    } catch (error) {
+      console.error('Screenshot error:', error);
+    }
+  };
+
+  const handleVideoRecord = () => {
+    // Video recording implementation
+    console.log('Video recording started');
+  };
+
+  const handleAccessibilityCheck = () => {
+    setShowAccessibility(!showAccessibility);
+  };
+
+  const handleCustomViewport = () => {
+    setShowCustomDialog(true);
+  };
+
+  const applyCustomViewport = () => {
+    setDevice('custom');
+    DEVICE_DIMENSIONS.custom = { width: customWidth, height: customHeight, label: 'Custom' };
+    setShowCustomDialog(false);
+  };
+
+  const getDimensions = () => {
+    let dims = DEVICE_DIMENSIONS[device];
+    if (device === 'custom') {
+      dims = { width: customWidth, height: customHeight, label: 'Custom' };
+    }
+    if (orientation === 'landscape' && device !== 'desktop') {
+      return { width: dims.height, height: dims.width, label: dims.label };
+    }
+    return dims;
+  };
+
+  const dimensions = getDimensions();
+  const scaledWidth = (dimensions.width * zoom) / 100;
+  const scaledHeight = (dimensions.height * zoom) / 100;
+
+  return (
+    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: '#F5F5F5' }}>
+      {/* Header */}
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          p: 1,
+          bgcolor: 'white',
+          borderBottom: '1px solid #E0E0E0'
+        }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Visibility sx={{ color: '#007ACC', fontSize: 20 }} />
+          <Typography variant="body2" sx={{ fontWeight: 600 }}>
+            Live Preview
+          </Typography>
+        </Box>
+
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          {/* Device Selector */}
+          <ToggleButtonGroup
+            value={device}
+            exclusive
+            onChange={(_, newDevice) => newDevice && setDevice(newDevice)}
+            size="small"
+          >
+            <ToggleButton value="mobile">
+              <Tooltip title="Mobile">
+                <PhoneIphone fontSize="small" />
+              </Tooltip>
+            </ToggleButton>
+            <ToggleButton value="tablet">
+              <Tooltip title="Tablet">
+                <Tablet fontSize="small" />
+              </Tooltip>
+            </ToggleButton>
+            <ToggleButton value="desktop">
+              <Tooltip title="Desktop">
+                <Computer fontSize="small" />
+              </Tooltip>
+            </ToggleButton>
+          </ToggleButtonGroup>
+
+          <Divider orientation="vertical" flexItem />
+
+          {/* Zoom Controls */}
+          <ButtonGroup size="small">
+            <Tooltip title="Zoom Out">
+              <IconButton onClick={handleZoomOut} size="small">
+                <ZoomOut fontSize="small" />
+              </IconButton>
+            </Tooltip>
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                px: 1,
+                minWidth: 60,
+                justifyContent: 'center'
+              }}>
+              <Typography variant="caption">{zoom}%</Typography>
+            </Box>
+            <Tooltip title="Zoom In">
+              <IconButton onClick={handleZoomIn} size="small">
+                <ZoomIn fontSize="small" />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Fit Screen">
+              <IconButton onClick={handleFitScreen} size="small">
+                <FitScreen fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          </ButtonGroup>
+
+          <Divider orientation="vertical" flexItem />
+
+          {/* Actions */}
+          <ButtonGroup size="small">
+            <Tooltip title="Rotate">
+              <IconButton onClick={handleRotate} size="small" disabled={device === 'desktop'}>
+                <ScreenRotation fontSize="small" />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Grid">
+              <IconButton
+                onClick={() => setShowGrid(!showGrid)}
+                size="small"
+                color={showGrid ? 'primary' : 'default'}
+              >
+                <GridOn fontSize="small" />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Screenshot">
+              <IconButton onClick={handleScreenshot} size="small">
+                <CameraAlt fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          </ButtonGroup>
+
+          <Divider orientation="vertical" flexItem />
+
+          <ButtonGroup size="small">
+            <Tooltip title="Console">
+              <IconButton
+                onClick={() => setShowConsole(!showConsole)}
+                size="small"
+                color={showConsole ? 'primary' : 'default'}
+              >
+                <Code fontSize="small" />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Accessibility">
+              <IconButton
+                onClick={handleAccessibilityCheck}
+                size="small"
+                color={showAccessibility ? 'primary' : 'default'}
+              >
+                <Accessible fontSize="small" />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Performance">
+              <IconButton
+                onClick={() => setShowPerformance(!showPerformance)}
+                size="small"
+                color={showPerformance ? 'primary' : 'default'}
+              >
+                <Speed fontSize="small" />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Touch Mode">
+              <IconButton
+                onClick={() => setTouchMode(!touchMode)}
+                size="small"
+                color={touchMode ? 'primary' : 'default'}
+              >
+                <TouchApp fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          </ButtonGroup>
+
+          <Divider orientation="vertical" flexItem />
+
+          <ButtonGroup size="small">
+            <Tooltip title="Refresh Preview">
+              <IconButton onClick={handleRefresh} size="small" disabled={isRefreshing}>
+                <Refresh fontSize="small" />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Open in New Tab">
+              <IconButton onClick={handleOpenInNewTab} size="small">
+                <OpenInNew fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          </ButtonGroup>
+        </Box>
+      </Box>
+
+      {/* Device Info Bar */}
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 2,
+          py: 0.75,
+          bgcolor: '#FAFAFA',
+          borderBottom: '1px solid #E0E0E0',
+          fontSize: '0.75rem'
+        }}>
+        <Typography variant="caption" color="text.secondary">
+          {DEVICE_DIMENSIONS[device].label}
+        </Typography>
+        <Typography variant="caption" color="text.secondary">
+          {dimensions.width} × {dimensions.height}
+        </Typography>
+        <Typography variant="caption" color="text.secondary">
+          {state.elements.length} element{state.elements.length !== 1 ? 's' : ''}
+        </Typography>
+      </Box>
+
+      {/* Preview Area */}
+      <Box
+        sx={{
+          flex: 1,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          overflow: 'auto',
+          p: 3,
+          bgcolor: '#E0E0E0'}}>
+        <Box
+          sx={{
+            width: scaledWidth,
+            height: scaledHeight,
+            bgcolor: 'white',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.1)',
+            borderRadius: 2,
+            overflow: 'hidden',
+            position: 'relative',
+            transition: 'all 0.3s ease'
+          }}>
+          <iframe
+            ref={iframeRef}
+            title="Live Preview"
+            style={{
+              width: dimensions.width,
+              height: dimensions.height,
+              border: 'none',
+              transform: `scale(${zoom / 100})`,
+              transformOrigin: 'top left',
+              background: 'white'
+            }}
+          />
+
+          {isRefreshing && (
+            <Box
+              sx={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                bgcolor: 'rgba(255,255,255,0.8)',
+                zIndex: 99
+              }}>
+              <Typography variant="body2" color="text.secondary">
+                Refreshing preview...
+              </Typography>
+            </Box>
+          )}
+        </Box>
+      </Box>
+
+      {/* Console Drawer */}
+      <Drawer
+        anchor="bottom"
+        open={showConsole}
+        onClose={() => setShowConsole(false)}
+        variant="persistent"
+        PaperProps={{ sx: { height: '40%', bgcolor: '#1E1E1E' } }}
+
+      >
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            p: 1,
+            bgcolor: '#252526',
+            borderBottom: '1px solid #3E3E42'
+          }}>
+          <Typography variant="body2" sx={{ color: '#CCCCCC', fontWeight: 600 }}>
+            Console
+          </Typography>
+          <Box>
+            <IconButton size="small" onClick={() => setConsoleLogs([])} sx={{ color: '#CCCCCC' }}>
+              <Close fontSize="small" />
+            </IconButton>
+          </Box>
+        </Box>
+        <Box sx={{ flex: 1, overflowY: 'auto', p: 1 }}>
+          {consoleLogs.length === 0 ? (
+            <Typography variant="body2" sx={{ color: '#969696', p: 2 }}>
+              No console output
+            </Typography>
+          ) : (
+            consoleLogs.map((log) => (
+              <Box key={log.id} sx={{ mb: 0.5, fontFamily: 'monospace', fontSize: '0.8rem' }}>
+                <Chip
+                  label={log.type}
+                  size="small"
+                  sx={{
+                    mr: 1,
+                    bgcolor: log.type === 'error'
+                          ? '#f44336'
+                        : log.type === 'warn'
+                          ? '#ff9800'
+                          : '#4caf50',
+                    color: 'white',
+                    height: 18,
+                    fontSize: '0.7rem'
+                  }} />
+                <Typography component="span" sx={{ color: '#D4D4D4' }}>
+                  {log.message}
+                </Typography>
+              </Box>
+            ))
+          )}
+        </Box>
+      </Drawer>
+
+      {/* Performance Panel */}
+      {showPerformance && (
+        <Paper
+          sx={{
+            position: 'absolute',
+            top: 60,
+            right: 10,
+            width: 250,
+            bgcolor: 'white',
+            boxShadow: 3,
+            zIndex: 100,
+            p: 2
+          }}>
+          <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
+            Performance Metrics
+          </Typography>
+          <Typography variant="body2" sx={{ mb: 0.5 }}>
+            Load Time: {performanceMetrics.loadTime.toFixed(2)}ms
+          </Typography>
+          <Typography variant="body2" sx={{ mb: 0.5 }}>
+            Render Time: {performanceMetrics.renderTime.toFixed(2)}ms
+          </Typography>
+          <Typography variant="body2">FPS: {performanceMetrics.fps}</Typography>
+        </Paper>
+      )}
+
+      {/* Accessibility Checker */}
+      <AccessibilityChecker
+        open={showAccessibility}
+        onClose={() => setShowAccessibility(false)}
+        iframeRef={iframeRef}
+      />
+
+      {/* Custom Viewport Dialog */}
+      <Dialog open={showCustomDialog} onClose={() => setShowCustomDialog(false)}>
+        <DialogTitle>Custom Viewport</DialogTitle>
+        <DialogContent>
+          <TextField
+            label="Width"
+            type="number"
+            value={customWidth}
+            onChange={(e) => setCustomWidth(Number(e.target.value))}
+            fullWidth
+            margin="normal"
+          />
+          <TextField
+            label="Height"
+            type="number"
+            value={customHeight}
+            onChange={(e) => setCustomHeight(Number(e.target.value))}
+            fullWidth
+            margin="normal"
+          />
+          <Box sx={{ mt: 2 }}>
+            <Typography variant="caption" color="text.secondary">
+              Device Presets: </Typography>
+            {DEVICE_PRESETS.map((preset) => (
+              <Chip
+                key={preset.name}
+                label={preset.name}
+                size="small"
+                onClick={() => {
+                  setCustomWidth(preset.width);
+                  setCustomHeight(preset.height);
+                }}
+                sx={{ m: 0.5 }} />
+            ))}
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowCustomDialog(false)}>Cancel</Button>
+          <Button onClick={applyCustomViewport} variant="contained">
+            Apply
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Status Bar */}
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          px: 2,
+          py: 0.5,
+          bgcolor: '#007ACC',
+          color: 'white',
+          fontSize: '0.75rem'
+        }}>
+        <Typography variant="caption" sx={{ color: 'white' }}>
+          Ready • {device.toUpperCase()} • {orientation.toUpperCase()}
+        </Typography>
+        <Box sx={{ display: 'flex', gap: 2 }}>
+          {errors.length > 0 && (
+            <Typography variant="caption" sx={{ color: '#ff6b6b' }}>
+              {errors.length} error{errors.length !== 1 ? 's' : ''}
+            </Typography>
+          )}
+          <Typography variant="caption" sx={{ color: 'white' }}>
+            {consoleLogs.length} logs • {interactions.length} interactions
+          </Typography>
+        </Box>
+      </Box>
+    </Box>
+  );
+};

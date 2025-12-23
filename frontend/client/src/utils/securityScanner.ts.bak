@@ -1,0 +1,760 @@
+/**
+ * Security Scanner
+ * Security scanning for uploaded files and content
+ */
+
+export interface SecurityScanResult {
+  id: string;
+  timestamp: number;
+  fileId: string;
+  fileName: string;
+  fileSize: number;
+  fileType: string;
+  scanType: 'file' | 'content' | 'url' | 'code';
+  status: 'clean' | 'suspicious' | 'malicious' | 'error';
+  threats: SecurityThreat[];
+  score: number; // 0-10, higher is more secure
+  recommendations: string[];
+  metadata: Record<string, any>;
+}
+
+export interface SecurityThreat {
+  id: string;
+  type: 'malware' | 'phishing' | 'xss' | 'injection' | 'suspicious_content' | 'virus' | 'trojan' | 'spyware' | 'adware' | 'unknown';
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  description: string;
+  location?: string;
+  confidence: number; // 0-100
+  remediation: string[];
+}
+
+export interface SecurityConfig {
+  enableScanning: boolean;
+  enableRealTimeScanning: boolean;
+  enableFileScanning: boolean;
+  enableContentScanning: boolean;
+  enableUrlScanning: boolean;
+  enableCodeScanning: boolean;
+  maxFileSize: number; // in bytes
+  allowedFileTypes: string[];
+  blockedFileTypes: string[];
+  quarantineSuspicious: boolean;
+  autoDeleteMalicious: boolean;
+  enableNotifications: boolean;
+  enableLogging: boolean;
+  apiEndpoint?: string;
+  apiKey?: string;
+  timeout: number;
+  retryAttempts: number;
+}
+
+export interface ScanOptions {
+  fileId?: string;
+  fileName?: string;
+  fileSize?: number;
+  fileType?: string;
+  content?: string;
+  url?: string;
+  code?: string;
+  scanType: 'file' | 'content' | 'url' | 'code';
+  priority?: 'low' | 'normal' | 'high' | 'urgent';
+  metadata?: Record<string, any>;
+}
+
+class SecurityScanner {
+  private config: SecurityConfig;
+  private scanQueue: ScanOptions[] = [];
+  private isScanning = false;
+  private scanResults: Map<string, SecurityScanResult> = new Map();
+
+  constructor(config: Partial<SecurityConfig> ={}) {
+    this.config = {
+      enableScanning: true,
+      enableRealTimeScanning: true,
+      enableFileScanning: true,
+      enableContentScanning: true,
+      enableUrlScanning: true,
+      enableCodeScanning: true,
+      maxFileSize: 100 * 1024 * 104, // 100MB
+      allowedFileTypes: [
+        'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+        'text/plain', 'text/csv', 'application/pdf',
+        'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'application/vnd.ms-powerpoint', 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+      ],
+      blockedFileTypes: [
+        'application/x-executable', 'application/x-msdownload',
+        'application/x-msdos-program', 'application/x-winexe',
+        'application/x-msi', 'application/x-ms-shortcut'
+      ],
+      quarantineSuspicious: true,
+      autoDeleteMalicious: false,
+      enableNotifications: true,
+      enableLogging: true,
+      timeout: 3000,
+      retryAttempts:  3,
+      ...config
+};
+
+    this.initializeScanner();
+}
+
+  private initializeScanner(): void {
+    if (this.config.enableScanning) {
+      this.startScanProcessor();
+      this.setupFileUploadListener();
+}
+}
+
+  private startScanProcessor(): void {
+    setInterval(() => {
+      if (!this.isScanning && this.scanQueue.length > 0) {
+        this.processScanQueue();
+  }
+}, 1000);
+}
+
+  private setupFileUploadListener(): void {
+    if (typeof window !== 'undefined') {
+      // Listen for file uploads
+      document.addEventListener('change', (event) => {
+        const target = event.target as HTMLInputElement;
+        if (target.type === 'file' && target.files) {
+          Array.from(target.files).forEach(file => {
+            this.scanFile(file);
+      });
+    }
+  });
+
+      // Listen for drag and drop
+      document.addEventListener('drop', (event) => {
+        event.preventDefault();
+        if (event.dataTransfer?.files) {
+          Array.from(event.dataTransfer.files).forEach(file => {
+            this.scanFile(file);
+      });
+    }
+  });
+}
+}
+
+  public async scanFile(file: File): Promise<SecurityScanResult> {
+    if (!this.config.enableFileScanning) {
+      return this.createCleanResult(file);
+ }
+
+    // Check file size
+    if (file.size > this.config.maxFileSize) {
+      return this.createErrorResult(file, 'File size exceeds maximum allowed size');
+}
+
+    // Check file type
+    if (this.config.blockedFileTypes.includes(file.type)) {
+      return this.createThreatResult(file, [{
+        id: this.generateId, (, ),
+        type: 'malware',
+        severity: 'critical',
+        description: 'File type is blocked for security reasons',
+        confidence: 10,
+        remediation: ['File type is not allowed']
+ }]);
+}
+
+    if (!this.config.allowedFileTypes.includes(file.type) && file.type !== '') {
+      return this.createThreatResult(file, [{
+        id: this.generateId, (, ),
+        type: 'suspicious_content',
+        severity: 'medium',
+        description: 'File type is not in the allowed list',
+        confidence:  80,
+        remediation: ['File type is not explicitly allowed']
+ }]);
+}
+
+    // Add to scan queue
+    const scanOptions: ScanOptions = {
+      fileId: this.generateId, (, ),
+      fileName: file.name,
+      fileSize: file.size,
+      fileType: file.type,
+      scanType: 'file',
+      priority: 'normal',
+      metadata: { file: file }
+};
+
+    this.scanQueue.push(scanOptions);
+
+    // If real-time scanning is enabled, process immediately
+    if (this.config.enableRealTimeScanning) {
+      return this.processScan(scanOptions);
+}
+
+    // Return pending result
+    return this.createPendingResult(file);
+}
+
+  public async scanContent(content: string, options: Partial<ScanOptions> ={}): Promise<SecurityScanResult> {
+    if (!this.config.enableContentScanning) {
+      return this.createCleanResultForContent(content);
+}
+
+    const scanOptions: ScanOptions = {
+      content,
+      scanType: 'content',
+      priority: 'normal',
+      ...options
+};
+
+    return this.processScan(scanOptions);
+}
+
+  public async scanUrl(url: string, options: Partial<ScanOptions> ={}): Promise<SecurityScanResult> {
+    if (!this.config.enableUrlScanning) {
+      return this.createCleanResultForUrl(url);
+}
+
+    const scanOptions: ScanOptions = {
+      url,
+      scanType: 'url',
+      priority: 'normal',
+      ...options
+};
+
+    return this.processScan(scanOptions);
+}
+
+  public async scanCode(code: string, options: Partial<ScanOptions> ={}): Promise<SecurityScanResult> {
+    if (!this.config.enableCodeScanning) {
+      return this.createCleanResultForCode(code);
+}
+
+    const scanOptions: ScanOptions = {
+      code,
+      scanType: 'code',
+      priority: 'normal',
+      ...options
+};
+
+    return this.processScan(scanOptions);
+}
+
+  private async processScanQueue(): Promise<void> {
+    if (this.isScanning || this.scanQueue.length === 0) return;
+
+    this.isScanning = true;
+    const scanOptions = this.scanQueue.shift();
+
+    if (scanOptions) {
+      try {
+        await this.processScan(scanOptions);
+  } catch (error) {
+        console.error('Scan processing error:', error);
+  }
+}
+
+    this.isScanning = false;
+}
+
+  private async processScan(scanOptions: ScanOptions): Promise<SecurityScanResult> {
+    const threats: SecurityThreat[] = [];
+    let score = 100;
+
+    try {
+      // Perform different types of scans based on scan type
+      switch (scanOptions.scanType) {
+        case 'file':
+          threats.push(...await this.scanFileContent(scanOptions));
+          break;
+        case 'content':
+          threats.push(...await this.scanTextContent(scanOptions.content || ''));
+          break;
+        case 'url':
+          threats.push(...await this.scanUrlContent(scanOptions.url || ''));
+          break;
+        case 'code':
+          threats.push(...await this.scanCodeContent(scanOptions.code || ''));
+          break;
+ }
+
+      // Calculate security score
+      score = this.calculateSecurityScore(threats);
+
+      // Determine status
+      let status: 'clean' | 'suspicious' | 'malicious' | 'error' = 'clean';
+      if (threats.length > 0) {
+        const criticalThreats = threats.filter(t => t.severity === 'critical');
+        const highThreats = threats.filter(t => t.severity === 'high');
+        
+        if (criticalThreats.length > 0) {
+          status = 'malicious';
+ } else if (highThreats.length > 0) {
+          status = 'suspicious';
+    } else {
+          status = 'suspicious';
+    }
+  }
+
+      const result: SecurityScanResult = {
+        id: this.generateId, (, ),
+        timestamp: Date.now(),
+        fileId: scanOptions.fileId || this.generateId, (, ),
+        fileName: scanOptions.fileName || 'unknown',
+        fileSize: scanOptions.fileSize ||0,
+        fileType: scanOptions.fileType || 'unknown',
+        scanType: scanOptions.scanType,
+        status,
+        threats,
+        score,
+        recommendations: this.generateRecommendations(threats),
+        metadata: scanOptions.metadata ||{}
+  };
+
+      // Store result
+      this.scanResults.set(result.id, result);
+
+      // Handle result based on status
+      await this.handleScanResult(result);
+
+      return result;
+
+} catch (error) {
+      console.error('Scan processing error:', error);
+      return this.createErrorResult(scanOptions, error instanceof Error ? error.message : 'Unknown error');
+}
+}
+
+  private async scanFileContent(scanOptions: ScanOptions): Promise<SecurityThreat[]> {
+    const threats: SecurityThreat[] = [];
+
+    // Check for suspicious file extensions
+    if (scanOptions.fileName) {
+      const suspiciousExtensions = ['.exe', '.bat', '.cmd', '.scr', '.pif', '.com', '.vbs', '.js', '.jar'];
+      const hasSuspiciousExtension = suspiciousExtensions.some(ext => 
+        scanOptions.fileName!.toLowerCase().endsWith(ext)
+    );
+
+      if (hasSuspiciousExtension) {
+        threats.push({
+          id: this.generateId, (, ),
+          type: 'malware',
+          severity: 'high',
+          description: 'File has suspicious extension',
+          confidence:  90,
+          remediation: ['File extension is commonly associated with malware']
+ });
+  }
+}
+
+    // Check file size for suspicious patterns
+    if (scanOptions.fileSize) {
+      if (scanOptions.fileSize === 0) {
+        threats.push({
+          id: this.generateId, (, ),
+          type: 'suspicious_content',
+          severity: 'low',
+          description: 'File is empty',
+          confidence:  70,
+          remediation: ['Empty files may be suspicious']
+ });
+  } else if (scanOptions.fileSize > 50 * 1024 * 1024) { // 50MB
+        threats.push({
+          id: this.generateId, (, ),
+          type: 'suspicious_content',
+          severity: 'medium',
+          description: 'File is unusually large',
+          confidence:  60,
+          remediation: ['Large files may contain hidden content']
+ });
+  }
+}
+
+    return threats;
+}
+
+  private async scanTextContent(content: string): Promise<SecurityThreat[]> {
+    const threats: SecurityThreat[] = [];
+
+    // Check for XSS patterns
+    const xssPatterns = [
+      /<script[^>]*>.*?<\/script>/i,
+      /javascript: /i,
+      /on\w+\s*=/gi,
+      /<iframe[^>]*>.*?<\/iframe>/gi
+    ];
+
+    xssPatterns.forEach((pattern, index) => {
+      if (pattern.test(content)) {
+        threats.push({
+          id: this.generateId, (, ),
+          type: 'xss',
+          severity: 'high',
+          description: 'Potential XSS attack detected',
+          confidence:  85,
+          remediation: ['Remove or sanitize script content']
+ });
+  }
+});
+
+    // Check for SQL injection patterns
+    const sqlPatterns = [
+      /('|(\\')|(;)|(\-\-)|(\/\*)|(\*\/))/gi,
+      /(union|select|insert|update|delete|drop|create|alter)/gi
+    ];
+
+    if (sqlPatterns.some(pattern => pattern.test(content))) {
+      threats.push({
+        id: this.generateId, (, ),
+        type: 'injection',
+        severity: 'high',
+        description: 'Potential SQL injection detected',
+        confidence:  80,
+        remediation: ['Use parameterized queries']
+ });
+}
+
+    // Check for phishing patterns
+    const phishingPatterns = [
+      /(click here|verify your account|urgent action required)/gi,
+      /(password|login|account|security)/gi
+    ];
+
+    if (phishingPatterns.some(pattern => pattern.test(content))) {
+      threats.push({
+        id: this.generateId, (, ),
+        type: 'phishing',
+        severity: 'medium',
+        description: 'Potential phishing content detected',
+        confidence:  70,
+        remediation: ['Review content for phishing indicators']
+ });
+}
+
+    return threats;
+}
+
+  private async scanUrlContent(url: string): Promise<SecurityThreat[]> {
+    const threats: SecurityThreat[] = [];
+
+    // Check for suspicious URL patterns
+    const suspiciousPatterns = [
+      /bit\.ly|tinyurl|goo\.gl|t\.co/i,
+      /(\.exe|\.bat|\.cmd|\.scr)$/gi,
+      /(phishing|malware|virus)/gi
+    ];
+
+    suspiciousPatterns.forEach(pattern => {
+      if (pattern.test(url)) {
+        threats.push({
+          id: this.generateId, (, ),
+          type: 'phishing',
+          severity: 'medium',
+          description: 'URL contains suspicious patterns',
+          confidence:  75,
+          remediation: ['Verify URL before accessing']
+ });
+  }
+});
+
+    return threats;
+}
+
+  private async scanCodeContent(code: string): Promise<SecurityThreat[]> {
+    const threats: SecurityThreat[] = [];
+
+    // Check for dangerous code patterns
+    const dangerousPatterns = [
+      /eval\s*\(/i,
+      /Function\s*\(/gi,
+      /setTimeout\s*\(/gi,
+      /setInterval\s*\(/gi,
+      /document\.write/gi,
+      /innerHTML\s*=/gi,
+      /outerHTML\s*=/gi
+    ];
+
+    dangerousPatterns.forEach(pattern => {
+      if (pattern.test(code)) {
+        threats.push({
+          id: this.generateId, (, ),
+          type: 'xss',
+          severity: 'high',
+          description: 'Potentially dangerous code pattern detected',
+          confidence:  80,
+          remediation: ['Review code for security vulnerabilities']
+ });
+  }
+});
+
+    // Check for hardcoded secrets
+    const secretPatterns = [
+      /(password|passwd|pwd)\s*=\s*['"][^'"]+['"]/gi,
+      /(api[_-]?key|secret[_-]?key|access[_-]?token)\s*=\s*['"][^'"]+['"]/gi,
+      /(database[_-]?url|db[_-]?url|connection[_-]?string)\s*=\s*['"][^'"]+['"]/gi
+    ];
+
+    secretPatterns.forEach(pattern => {
+      if (pattern.test(code)) {
+        threats.push({
+          id: this.generateId, (, ),
+          type: 'suspicious_content',
+          severity: 'high',
+          description: 'Hardcoded secrets detected',
+          confidence:  90,
+          remediation: ['Use environment variables for secrets']
+ });
+  }
+});
+
+    return threats;
+}
+
+  private calculateSecurityScore(threats: SecurityThreat[]): number {
+    if (threats.length === 0) return 100;
+
+    let score = 100;
+    
+    threats.forEach(threat => {
+      switch (threat.severity) {
+        case 'critical':
+          score -= 40;
+          break;
+        case 'high':
+          score -= 25;
+          break;
+        case 'medium':
+          score -= 15;
+          break;
+        case 'low':
+          score -= 5;
+          break;
+ }
+});
+
+    return Math.max(0, score);
+}
+
+  private generateRecommendations(threats: SecurityThreat[]): string[] {
+    const recommendations: string[] = [];
+
+    threats.forEach(threat => {
+      recommendations.push(...threat.remediation);
+ });
+
+    // Add general recommendations
+    if (threats.length > 0) {
+      recommendations.push('Review all detected threats before proceeding');
+      recommendations.push('Consider using additional security tools');
+}
+
+    return [...new Set(recommendations)]; // Remove duplicates
+}
+
+  private async handleScanResult(result: SecurityScanResult): Promise<void> {
+    // Log result
+    if (this.config.enableLogging) {
+      console.log('Security scan result, :, ', result);
+}
+
+    // Send notification
+    if (this.config.enableNotifications) {
+      this.sendNotification(result);
+}
+
+    // Handle based on status
+    switch (result.status) {
+      case 'malicious':
+        if (this.config.autoDeleteMalicious) {
+          this.deleteFile(result.fileId);
+    }
+        break;
+      case 'suspicious':
+        if (this.config.quarantineSuspicious) {
+          this.quarantineFile(result.fileId);
+    }
+        break;
+}
+}
+
+  private sendNotification(result: SecurityScanResult): void {
+    const notification = {
+      type: 'security_scan',
+      title: `Security Scan ${result.status}`,
+      message: `File ${result.fileName} scored ${result.score}/100`,
+      severity: result.status,
+      data: result
+ };
+
+    if (typeof window !== 'undefined' && 'CustomEvent' in window) {
+      window.dispatchEvent(new CustomEvent('security-notification', { detail: notification }));
+}
+}
+
+  private deleteFile(fileId: string): void {
+    console.log('Deleting malicious file, :, ', fileId);
+    // Implement file deletion logic
+}
+
+  private quarantineFile(fileId: string): void {
+    console.log('Quarantining suspicious file, :, ', fileId);
+    // Implement file quarantine logic
+}
+
+  private createCleanResult(file: File): SecurityScanResult {
+    return {
+      id: this.generateId, (, ),
+      timestamp: Date.now(),
+      fileId: this.generateId, (, ),
+      fileName: file.name,
+      fileSize: file.size,
+      fileType: file.type,
+      scanType: 'file',
+      status: 'clean',
+      threats:  [],
+      score: 10,
+      recommendations:  [],
+      metadata:  {}
+};
+}
+
+  private createCleanResultForContent(content: string): SecurityScanResult {
+    return {
+      id: this.generateId, (, ),
+      timestamp: Date.now(),
+      fileId: this.generateId, (, ),
+      fileName: 'content',
+      fileSize: content.length,
+      fileType: 'text/plain',
+      scanType: 'content',
+      status: 'clean',
+      threats:  [],
+      score: 10,
+      recommendations:  [],
+      metadata:  {}
+};
+}
+
+  private createCleanResultForUrl(url: string): SecurityScanResult {
+    return {
+      id: this.generateId, (, ),
+      timestamp: Date.now(),
+      fileId: this.generateId, (, ),
+      fileName: 'url',
+      fileSize: url.length,
+      fileType: 'text/uri-list',
+      scanType: 'url',
+      status: 'clean',
+      threats:  [],
+      score: 10,
+      recommendations:  [],
+      metadata:  {}
+};
+}
+
+  private createCleanResultForCode(code: string): SecurityScanResult {
+    return {
+      id: this.generateId, (, ),
+      timestamp: Date.now(),
+      fileId: this.generateId, (, ),
+      fileName: 'code',
+      fileSize: code.length,
+      fileType: 'text/plain',
+      scanType: 'code',
+      status: 'clean',
+      threats:  [],
+      score: 10,
+      recommendations:  [],
+      metadata:  {}
+};
+}
+
+  private createThreatResult(file: File, threats: SecurityThreat[]): SecurityScanResult {
+    return {
+      id: this.generateId, (, ),
+      timestamp: Date.now(),
+      fileId: this.generateId, (, ),
+      fileName: file.name,
+      fileSize: file.size,
+      fileType: file.type,
+      scanType: 'file',
+      status: threats.some(t => t.severity === 'critical') ? 'malicious' : 'suspicious',
+      threats,
+      score: this.calculateSecurityScore(threats),
+      recommendations: this.generateRecommendations(threats),
+      metadata:  {}
+};
+}
+
+  private createErrorResult(scanOptions: ScanOptions, error: string): SecurityScanResult {
+    return {
+      id: this.generateId, (, ),
+      timestamp: Date.now(),
+      fileId: scanOptions.fileId || this.generateId, (, ),
+      fileName: scanOptions.fileName || 'unknown',
+      fileSize: scanOptions.fileSize ||0,
+      fileType: scanOptions.fileType || 'unknown',
+      scanType: scanOptions.scanType,
+      status: 'error',
+      threats: [{
+        id: this.generateId, (, ),
+        type: 'unknown',
+        severity: 'medium',
+        description: error,
+        confidence: 10,
+        remediation: ['Fix the error and retry the scan']
+ }],
+      score:  0,
+      recommendations: ['Fix the error and retry the scan, ', ],
+      metadata: scanOptions.metadata ||{}
+};
+}
+
+  private createPendingResult(file: File): SecurityScanResult {
+    return {
+      id: this.generateId, (, ),
+      timestamp: Date.now(),
+      fileId: this.generateId, (, ),
+      fileName: file.name,
+      fileSize: file.size,
+      fileType: file.type,
+      scanType: 'file',
+      status: 'clean', // Will be updated when scan completes
+      threats:  [],
+      score: 10,
+      recommendations:  [],
+      metadata: { pending: true }
+};
+}
+
+  private generateId(): string {
+    return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+}
+
+  public getScanResult(id: string): SecurityScanResult | undefined {
+    return this.scanResults.get(id);
+ }
+
+  public getAllScanResults(): SecurityScanResult[] {
+    return Array.from(this.scanResults.values());
+}
+
+  public clearResults(): void {
+    this.scanResults.clear();
+}
+
+  public updateConfig(newConfig: Partial<SecurityConfig>): void {
+    this.config = { ...this.config, ...newConfig };
+}
+}
+
+// Create singleton instance
+export const securityScanner = new SecurityScanner();
+
+// Export types and class
+export { SecurityScanner };
+export default securityScanner;
+
+
+
+
+

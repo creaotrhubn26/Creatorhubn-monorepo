@@ -1,0 +1,593 @@
+import { useTheming } from '../../utils/theming-helper';
+import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
+import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
+import getProfessionIcon from '@/utils/profession-icons';
+import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
+import React, { useState, useEffect } from 'react';
+import {
+  Box,
+  Card,
+  CardContent,
+  Typography,
+  Switch,
+  FormControlLabel,
+  TextField,
+  Button,
+  Grid,
+  Divider,
+  Stack,
+  Chip,
+  Alert,
+  Slider,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  Paper,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemIcon,
+  IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions
+} from '@mui/material';
+import {
+  Schedule as ScheduleIcon,
+  AccessTime as TimeIcon,
+  Notifications as NotificationsIcon,
+  Save as SaveIcon,
+  Edit as EditIcon,
+  Delete as DeleteIcon,
+  Add as AddIcon,
+  CheckCircle as CheckCircleIcon,
+  Warning as WarningIcon,
+  Info as InfoIcon
+} from '@mui/icons-material';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
+
+interface SmartTimingPreferencesProps {
+  profession: string;
+  userId: string;
+  onPreferencesChange?: (preferences: TimingPreferences) => void;
+  selectedProject?: any;
+  onTimeEstimateUpdate?: (projectId: string, estimate: number) => void;
+  // Integration props for universal connectivity
+  onMeetingCreate?: (meeting: any) => void;
+  onProjectUpdate?: (project: any) => void;
+  onWorklogCreate?: (worklog: any) => void;
+  onProjectSelect?: (project: any) => void
+}
+
+interface WorkHours {
+  start: string;
+  end: string;
+  days: string[]
+}
+
+interface BreakTime {
+  start: string;
+  end: string;
+  name: string
+}
+
+interface TimingPreferences {
+  workHours: WorkHours;
+  breaks: BreakTime[];
+  timezone: string;
+  autoScheduling: boolean;
+  bufferTime: number; // minutes
+  maxDailyHours: number;
+  reminderSettings: {
+    email: boolean;
+    push: boolean;
+    sms: boolean;
+    advanceTime: number; // minutes
+};
+  projectTypes: {
+    [key: string]: {
+      estimatedHours: number;
+      bufferTime: number;
+      preferredDays: string[];
+};
+};
+}
+
+const SmartTimingPreferences: React.FC<SmartTimingPreferencesProps> = ({ 
+  profession, 
+  userId, 
+  onPreferencesChange,
+  selectedProject,
+  onTimeEstimateUpdate,
+  onMeetingCreate,
+  onProjectUpdate,
+  onWorklogCreate,
+  onProjectSelect 
+}) => {
+  const [preferences, setPreferences] = useState<TimingPreferences>({
+    workHours: {
+      start: '09:00',
+      end: '17:00',
+      days: ['monday','tuesday','wednesday','thursday','friday']
+    },
+    breaks: [
+      { start: '12:00', end: '13:00', name: 'Lunsj' },
+      { start: '15:00', end: '15:15', name: 'Kaffepause' }
+    ],
+    timezone: 'Europe/Oslo',
+    autoScheduling: true,
+    bufferTime: 30,
+    maxDailyHours: 8,
+    reminderSettings: {
+      email: true,
+      push: true,
+      sms: false,
+      advanceTime: 15
+    },
+    projectTypes: {
+      'photography': {
+        estimatedHours: 4,
+        bufferTime: 30,
+        preferredDays: ['monday','tuesday','wednesday','thursday','friday']
+      }, 'videography': {
+        estimatedHours: 6,
+        bufferTime: 45,
+        preferredDays: ['monday','tuesday','wednesday','thursday','friday']
+      }, 'editing': {
+        estimatedHours: 3,
+        bufferTime: 15,
+        preferredDays: ['monday','tuesday','wednesday','thursday','friday']
+      }
+    }
+  });
+
+  const [editBreakOpen, setEditBreakOpen] = useState(false);
+  const [editingBreak, setEditingBreak] = useState<BreakTime | null>(null);
+  const [newBreak, setNewBreak] = useState<BreakTime>({ start: '', end: ',', name: '' });
+
+  const queryClient = useQueryClient();
+
+  // Theming system - use dynamic profession
+  const theming = useTheming(profession || 'photographer, ');
+
+  // Fetch current preferences
+  const { data: currentPreferences, isLoading } = useQuery({
+    queryKey: ['/api/timing-preferences', profession, userId],
+    queryFn: async () => {
+      const response = await apiRequest(`/api/timing-preferences?profession=${profession}&userId=${userId}`);
+      return response || preferences;
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Save preferences mutation
+  const savePreferencesMutation = useMutation({
+    mutationFn: async (prefs: TimingPreferences) => {
+      return apiRequest('/api/timing-preferences', {
+        method: 'POST',
+        headers: { 'Content-Type' : 'application/json' },
+        body: JSON.stringify({ ...prefs, profession, userId })
+      });
+  },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/timing-preferences', ],});
+  }
+});
+
+  useEffect(() => {
+    if (currentPreferences) {
+      setPreferences(currentPreferences);
+  }
+}, [currentPreferences]);
+
+  const handleSave = () => {
+    savePreferencesMutation.mutate(preferences);
+    // Notify parent component of preference changes
+    if (onPreferencesChange) {
+      onPreferencesChange(preferences);
+  }
+};
+
+  // Calculate time estimate for selected project
+  const calculateProjectTimeEstimate = (projectType: string) => {
+    const typeConfig = preferences.projectTypes[projectType];
+    if (typeConfig) {
+      return typeConfig.estimatedHours + (typeConfig.bufferTime / 60);
+}
+    return 0;
+};
+
+  // Update time estimate when preferences change
+  useEffect(() => {
+    if (selectedProject && onTimeEstimateUpdate) {
+      const estimate = calculateProjectTimeEstimate(profession);
+      onTimeEstimateUpdate(selectedProject.id, estimate);
+  }
+}, [preferences, selectedProject, profession, onTimeEstimateUpdate]);
+
+  const addBreak = () => {
+    if (newBreak.start && newBreak.end && newBreak.name) {
+      setPreferences(prev => ({
+        ...prev,
+        breaks: [...prev.breaks, newBreak]
+    }));
+      setNewBreak({ start: ', ', end: ', ', name: ', ',});
+      setEditBreakOpen(false);
+  }
+  };
+
+  const removeBreak = (index: number) => {
+    setPreferences(prev => ({
+      ...prev,
+      breaks: prev.breaks.filter((_, i) => i !== index)
+    }));
+  };
+
+  const updateProjectType = (type: string, field: string, value: any) => {
+    setPreferences(prev => ({
+      ...prev,
+      projectTypes: {
+        ...prev.projectTypes,
+        [type]: {
+          ...prev.projectTypes[type],
+          [field]: value
+        }
+      }
+    }));
+  };
+
+  const getDayLabel = (day: string) => {
+    const days: Record<string, string> = {
+      'monday':'Mandag','tuesday':'Tirsdag','wednesday':'Onsdag','thursday':'Torsdag','friday':'Fredag','saturday':'Lørdag','sunday' : 'Søndag'
+    };
+    return days[day] || day;
+  };
+
+  const getProfessionLabel = (prof: string) => {
+    const labels: Record<string, string> = {
+      'photographer':'Fotografering','videographer':'Videografering','music_producer':'Musikkproduksjon','vendor' : 'Leverandør'
+    };
+    return labels[prof] || prof;
+  };
+
+  return (
+    <Box sx={{ p: 3 }}>
+      <Typography variant="h5" sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 2, color: theming.colors.primary }}>
+        <ScheduleIcon sx={{ color: '#ff6b35' }} />
+        Smart Tidsstyring
+      </Typography>
+
+      <Grid container spacing={3}>
+        {/* Work Hours */}
+        <Grid size={{ xs: 12 }} md={6}>
+          <Card sx={theming.getThemedCardSx()}>
+            <CardContent sx={theming.getThemedCardSx()}>
+              <Typography variant="h6" gutterBottom sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
+                <TimeIcon />
+                Arbeidstider
+              </Typography>
+              
+              <Stack spacing={2}>
+                <Box>
+                  <Typography variant="subtitle2" gutterBottom>
+                    Starttid
+                  </Typography>
+                  <TextField
+                    type="time"
+                    value={preferences.workHours.start}
+                    onChange={(e) => setPreferences(prev => ({
+                      ...prev,
+                      workHours: { ...prev.workHours, start: e.target.value }
+                  }))}
+                    fullWidth
+                    size="small"
+                  />
+                </Box>
+                
+                <Box>
+                  <Typography variant="subtitle2" gutterBottom>
+                    Sluttid
+                  </Typography>
+                  <TextField
+                    type="time"
+                    value={preferences.workHours.end}
+                    onChange={(e) => setPreferences(prev => ({
+                      ...prev,
+                      workHours: { ...prev.workHours, end: e.target.value }
+                  }))}
+                    fullWidth
+                    size="small"
+                  />
+                </Box>
+
+                <Box>
+                  <Typography variant="subtitle2" gutterBottom>
+                    Arbeidsdager
+                  </Typography>
+                  <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1 }}>
+                    {['monday','tuesday','wednesday','thursday','friday','saturday','sunday'].map(day => (
+                      <Chip
+                        key={day}
+                        label={getDayLabel(day)}
+                        color={preferences.workHours.days.includes(day) ? 'primary' : 'default'}
+                        onClick={() => {
+                          setPreferences(prev => ({
+                            ...prev,
+                            workHours: {
+                              ...prev.workHours,
+                              days: prev.workHours.days.includes(day)
+                                ? prev.workHours.days.filter(d => d !== day)
+                                : [...prev.workHours.days, day]
+                            }
+                          }));
+                        }}
+                        size="small"
+                      />
+                    ))}
+                  </Stack>
+                </Box>
+              </Stack>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* Breaks */}
+        <Grid size={{ xs: 12, md: 6 }}>
+          <Card sx={theming.getThemedCardSx()}>
+            <CardContent sx={theming.getThemedCardSx()}>
+              <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
+                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
+                  <NotificationsIcon />
+                  Pauser
+                </Typography>
+                <Button
+                  size="small"
+                  startIcon={<AddIcon />}
+                  onClick={() => setEditBreakOpen(true)}
+                >
+                  Legg til
+                </Button>
+              </Stack>
+              
+              <List dense>
+                {preferences.breaks.map((breakItem, index) => (
+                  <ListItem
+                    key={index}
+                    sx={{
+                      border:  1,
+                      borderColor: 'divider',
+                      borderRadius:  1,
+                      mb: 1 }}
+                  >
+                    <ListItemIcon>
+                      <TimeIcon />
+                    </ListItemIcon>
+                    <ListItemText
+                      primary={breakItem.name}
+                      secondary={`${breakItem.start} - ${breakItem.end}`}
+                    />
+                    <IconButton
+                      size="small"
+                      onClick={() => removeBreak(index)}
+                      color="error"
+                    >
+                      <DeleteIcon />
+                    </IconButton>
+                  </ListItem>
+                ))}
+              </List>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* Settings */}
+        <Grid size={{ xs: 12 }} md={6}>
+          <Card sx={theming.getThemedCardSx()}>
+            <CardContent sx={theming.getThemedCardSx()}>
+              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                Innstillinger
+              </Typography>
+              
+              <Stack spacing={2}>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={preferences.autoScheduling}
+                      onChange={(e) => setPreferences(prev => ({
+                        ...prev,
+                        autoScheduling: e.target.checked
+                  }))}
+                    />
+                }
+                  label="Automatisk tidsplanlegging"
+                />
+                
+                <Box>
+                  <Typography variant="subtitle2" gutterBottom>
+                    Buffer tid (minutter)
+                  </Typography>
+                  <Slider
+                    value={preferences.bufferTime}
+                    onChange={(_, value) => setPreferences(prev => ({
+                      ...prev,
+                      bufferTime: value as number
+                }))}
+                    min={0}
+                    max={120}
+                    step={15}
+                    marks={[
+                      { value: 0, label: '0m' },
+                      { value:  30, label: '30m' },
+                      { value:  60, label: '1t' },
+                      { value: 10, label: '2t' }
+                    ]}
+                    valueLabelDisplay="auto"
+                  />
+                </Box>
+
+                <Box>
+                  <Typography variant="subtitle2" gutterBottom>
+                    Maks daglige timer
+                  </Typography>
+                  <Slider
+                    value={preferences.maxDailyHours}
+                    onChange={(_, value) => setPreferences(prev => ({
+                      ...prev,
+                      maxDailyHours: value as number
+                }))}
+                    min={4}
+                    max={12}
+                    step={1}
+                    marks={[
+                      { value:  4, label: '4t' },
+                      { value:  8, label: '8t' },
+                      { value:  12, label: '12t' }
+                    ]}
+                    valueLabelDisplay="auto"
+                  />
+                </Box>
+              </Stack>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* Project Types */}
+        <Grid size={{ xs: 12 }} md={6}>
+          <Card sx={theming.getThemedCardSx()}>
+            <CardContent sx={theming.getThemedCardSx()}>
+              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                Prosjekttyper
+              </Typography>
+              
+              <Stack spacing={2}>
+                {Object.entries(preferences.projectTypes).map(([type, config]) => (
+                  <Paper key={type} sx={{ p:  2 ,  ...theming.getThemedCardSx() }}>
+                    <Typography variant="subtitle2" gutterBottom>
+                      {getProfessionLabel(type)}
+                    </Typography>
+                    
+                    <Grid container spacing={2}>
+                      <Grid size={{ xs: 6 }}>
+                        <TextField
+                          label="Estimert tid (timer)"
+                          type="number"
+                          value={config.estimatedHours}
+                          onChange={(e) => updateProjectType(type, 'estimatedHours', parseInt(e.target.value))}
+                          size="small"
+                          fullWidth
+                        />
+                      </Grid>
+                      <Grid size={{ xs: 6 }}>
+                        <TextField
+                          label="Buffer tid (min)"
+                          type="number"
+                          value={config.bufferTime}
+                          onChange={(e) => updateProjectType(type, 'bufferTime', parseInt(e.target.value))}
+                          size="small"
+                          fullWidth
+                        />
+                      </Grid>
+                    </Grid>
+                  </Paper>
+                ))}
+              </Stack>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* Project Time Estimate */}
+        {selectedProject && (
+          <Grid size={{ xs: 12 }}>
+            <Card sx={{ bgcolor: '#f5f5f5', ...theming.getThemedCardSx() }}>
+              <CardContent sx={theming.getThemedCardSx()}>
+                <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
+                  <InfoIcon sx={{ color: '#ff6b35' }} />
+                  Prosjekt Tidsestimat
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  Basert på dine tidsstyringspreferanser for {selectedProject.title || selectedProject.name}
+                </Typography>
+                <Stack direction="row" spacing={2} alignItems="center">
+                  <Chip
+                    label={`${calculateProjectTimeEstimate(profession).toFixed(1)} timer`}
+                    color="primary"
+                    variant="outlined"
+                  />
+                  <Typography variant="body2">
+                    Estimert tid inkludert buffer
+                  </Typography>
+                </Stack>
+              </CardContent>
+            </Card>
+          </Grid>
+        )}
+
+        {/* Save Button */}
+        <Grid size={{ xs: 12 }}>
+          <Card sx={theming.getThemedCardSx()}>
+            <CardContent sx={theming.getThemedCardSx()}>
+              <Stack direction="row" justifyContent="space-between" alignItems="center">
+                <Box>
+                  <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+                    Lagre Innstillinger
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Dine tidsstyringspreferanser vil bli brukt for automatisk planlegging
+                  </Typography>
+                </Box>
+                <Button variant="contained"
+                  startIcon={<SaveIcon />}
+                  onClick={handleSave}
+                  disabled={savePreferencesMutation.isPending}
+                  sx={{ bgcolor: '#ff6b30', '&:hover': { bgcolor: '#e55a2b' } }}
+                >
+                  {savePreferencesMutation.isPending ? 'Lagrer...' : 'Lagre'}
+                </Button>
+              </Stack>
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
+
+      {/* Add Break Dialog */}
+      <Dialog open={editBreakOpen} onClose={() => setEditBreakOpen(false)}>
+        <DialogTitle>Legg til pause</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt:  1 }}>
+            <TextField
+              label="Navn på pause"
+              value={newBreak.name}
+              onChange={(e) => setNewBreak(prev => ({ ...prev, name: e.target.value }))}
+              fullWidth
+            />
+            <TextField
+              label="Starttid"
+              type="time"
+              value={newBreak.start}
+              onChange={(e) => setNewBreak(prev => ({ ...prev, start: e.target.value }))}
+              fullWidth
+            />
+            <TextField
+              label="Sluttid"
+              type="time"
+              value={newBreak.end}
+              onChange={(e) => setNewBreak(prev => ({ ...prev, end: e.target.value }))}
+              fullWidth
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEditBreakOpen(false)}>Avbryt</Button>
+          <Button onClick={addBreak} variant="contained" sx={theming.getThemedButtonSx()}>
+            Legg til
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
+  );
+};
+
+export default SmartTimingPreferences;

@@ -1,0 +1,55 @@
+{
+  "name": "creatorhub-norge-database",
+  "version": "1.0.0",
+  "description": "Database management scripts for CreatorHub Norge platform",
+  "main": "update_database.js",
+  "scripts": {
+    "update": "node update_database.js",
+    "update:dry": "node update_database.js --dry-run",
+    "update:verbose": "node update_database.js --verbose",
+    "migrate": "psql -U $DB_USER -d $DB_NAME -f migrations/001_creatorhub_phases.sql",
+    "backup": "node backup_database.js",
+    "backup:compress": "node backup_database.js --compress",
+    "backup:verbose": "node backup_database.js --verbose",
+    "restore": "psql -U $DB_USER -d $DB_NAME -f backup_*.sql",
+    "health": "node health_check.js",
+    "health:verbose": "node health_check.js --verbose",
+    "status": "node status_dashboard.js",
+    "status:json": "node status_dashboard.js --json",
+    "status:export": "node status_dashboard.js --export",
+    "stats": "psql -U $DB_USER -d $DB_NAME -c \"SELECT * FROM system_overview;\"",
+    "phases": "psql -U $DB_USER -d $DB_NAME -c \"SELECT * FROM phase_summary;\"",
+    "components": "psql -U $DB_USER -d $DB_NAME -c \"SELECT phase_id, COUNT(*) as component_count FROM components GROUP BY phase_id ORDER BY phase_id;\"",
+    "icons": "psql -U $DB_USER -d $DB_NAME -c \"SELECT icon_type, COUNT(*) as count FROM icons GROUP BY icon_type;\"",
+    "full-check": "npm run health:verbose && npm run status:export",
+    "maintenance": "npm run backup:compress && npm run update:verbose && npm run health:verbose"
+  },
+  "keywords": [
+    "creatorhub",
+    "norge",
+    "database",
+    "postgresql",
+    "migration",
+    "update"
+  ],
+  "author": "CreatorHub Norge Team",
+  "license": "MIT",
+  "dependencies": {
+    "pg": "^8.11.3"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.10.9"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/creatorhub-norge/creatorhub-norge.git",
+    "directory": "client/src/database"
+  },
+  "bugs": {
+    "url": "https://github.com/creatorhub-norge/creatorhub-norge/issues"
+  },
+  "homepage": "https://github.com/creatorhub-norge/creatorhub-norge#readme"
+}

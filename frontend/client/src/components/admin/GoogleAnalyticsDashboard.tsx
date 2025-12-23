@@ -1,0 +1,665 @@
+/**
+ * Google Analytics 4 Dashboard Component
+ * Displays real GA4 data with charts and controls
+ */
+
+import React, { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { apiRequest } from '../../lib/queryClient';
+import { useTheming } from '../../utils/theming-helper';
+import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
+import {
+  Box,
+  Card,
+  CardContent,
+  Typography,
+  Grid,
+  Chip,
+  Button,
+  ButtonGroup,
+  LinearProgress,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Paper,
+  Divider,
+  Alert,
+  ToggleButton,
+  ToggleButtonGroup
+} from '@mui/material';
+import {
+  Analytics,
+  TrendingUp,
+  TrendingDown,
+  People,
+  Visibility,
+  Timeline,
+  AttachMoney,
+  Event,
+  Share,
+  OpenInNew,
+  Refresh,
+  DateRange
+} from '@mui/icons-material';
+import {
+  LineChart,
+  Line,
+  AreaChart,
+  Area,
+  BarChart,
+  Bar,
+  PieChart,
+  Pie,
+  Cell,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer
+} from 'recharts';
+
+interface GoogleAnalyticsDashboardProps {
+  hideHeader?: boolean;
+}
+
+export default function GoogleAnalyticsDashboard({ hideHeader = false }: GoogleAnalyticsDashboardProps) {
+  const theming = useTheming('prototype_tester');
+  const { auth } = useEnhancedMasterIntegration();
+
+  // Date range control
+  const [dateRange, setDateRange] = useState<'7daysAgo' | '30daysAgo' | '90daysAgo'>('30daysAgo');
+
+  // Selected metric for chart
+  const [selectedMetric, setSelectedMetric] = useState<'activeUsers' | 'sessions' | 'pageViews' | 'conversions'>('activeUsers');
+
+  // Enhanced styling to match inspiration
+  const dashboardTheme = {
+    background: '#1a1a1a',
+    cardBackground: '#2d2d2d',
+    primary: '#ff6b35',
+    secondary: '#ffa726',
+    text: '#ffffff',
+    textSecondary: '#ffa726',
+    success: '#4caf50',
+    error: '#f44336',
+    border: '#404040'
+  };
+
+  // Fetch real-time data
+  const { data: realtimeData, refetch: refetchRealtime } = useQuery({
+    queryKey: ['/api/analytics/realtime'],
+    queryFn: async () => {
+      const headers = await auth.getAuthHeader();
+      return apiRequest('/api/analytics/realtime', { headers });
+    },
+    refetchInterval: 30000, // Update every 30 seconds
+    staleTime: 0
+  });
+
+  // Fetch overview data
+  const { data: overviewData, isLoading: overviewLoading } = useQuery({
+    queryKey: ['/api/analytics/overview', dateRange],
+    queryFn: async () => {
+      const headers = await auth.getAuthHeader();
+      return apiRequest(`/api/analytics/overview?startDate=${dateRange}&endDate=today`, { headers });
+    },
+    refetchInterval: 60000, // Update every 60 seconds
+    staleTime: 0
+  });
+
+  // Fetch time series data for chart
+  const { data: timeSeriesData } = useQuery({
+    queryKey: ['/api/analytics/timeseries', selectedMetric, dateRange],
+    queryFn: async () => {
+      const headers = await auth.getAuthHeader();
+      return apiRequest(`/api/analytics/timeseries?metric=${selectedMetric}&startDate=${dateRange}&endDate=today`, { headers });
+    },
+    refetchInterval: 60000,
+    staleTime: 0
+  });
+
+  // Fetch top pages
+  const { data: topPages } = useQuery({
+    queryKey: ['/api/analytics/top-pages', dateRange],
+    queryFn: async () => {
+      const headers = await auth.getAuthHeader();
+      return apiRequest(`/api/analytics/top-pages?startDate=${dateRange}&endDate=today&limit=5`, { headers });
+    },
+    refetchInterval: 60000,
+    staleTime: 0
+  });
+
+  // Fetch traffic sources
+  const { data: trafficSources } = useQuery({
+    queryKey: ['/api/analytics/traffic-sources', dateRange],
+    queryFn: async () => {
+      const headers = await auth.getAuthHeader();
+      return apiRequest(`/api/analytics/traffic-sources?startDate=${dateRange}&endDate=today`, { headers });
+    },
+    refetchInterval: 60000,
+    staleTime: 0
+  });
+
+  // Fetch top events
+  const { data: topEvents } = useQuery({
+    queryKey: ['/api/analytics/top-events', dateRange],
+    queryFn: async () => {
+      const headers = await auth.getAuthHeader();
+      return apiRequest(`/api/analytics/top-events?startDate=${dateRange}&endDate=today&limit=5`, { headers });
+    },
+    refetchInterval: 60000,
+    staleTime: 0
+  });
+
+  const handleRefresh = () => {
+    refetchRealtime();
+  };
+
+  if (overviewLoading) {
+    return (
+      <Card>
+        <CardContent>
+          <LinearProgress />
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 2, textAlign: 'center' }}>
+            Loading Google Analytics data...
+          </Typography>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const metricOptions = [
+    { value: 'activeUsers', label: 'Users', icon: <People /> },
+    { value: 'sessions', label: 'Sessions', icon: <Timeline /> },
+    { value: 'pageViews', label: 'Page Views', icon: <Visibility /> },
+    { value: 'conversions', label: 'Conversions', icon: <AttachMoney /> }
+  ];
+
+  return (
+    <Box>
+      {!hideHeader && (
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Analytics sx={{ fontSize: 32, color: '#e37400' }} />
+            <Box>
+              <Typography variant="h5" sx={{ fontWeight: 600, color: theming.colors.primary }}>
+                Google Analytics 4 Dashboard
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                Property: G-6E5MJT8REW • Real-time platform analytics
+              </Typography>
+            </Box>
+          </Box>
+          <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<Refresh />}
+              onClick={handleRefresh}
+            >
+              Refresh
+            </Button>
+            <Button
+              variant="contained"
+              size="small"
+              endIcon={<OpenInNew />}
+              onClick={() => window.open('https://analytics.google.com/','_blank')}
+              sx={{ bgcolor: '#e37400', '&:hover': { bgcolor: '#c66300' } }}
+            >
+              Open in GA4
+            </Button>
+          </Box>
+        </Box>
+      )}
+
+      {/* Date Range Selector */}
+      <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <ToggleButtonGroup
+          value={dateRange}
+          exclusive
+          onChange={(_, newValue) => newValue && setDateRange(newValue)}
+          size="small"
+        >
+          <ToggleButton value="7daysAgo">
+            Last 7 Days
+          </ToggleButton>
+          <ToggleButton value="30daysAgo">
+            Last 30 Days
+          </ToggleButton>
+          <ToggleButton value="90daysAgo">
+            Last 90 Days
+          </ToggleButton>
+        </ToggleButtonGroup>
+        
+        <Chip 
+          icon={<DateRange />}
+          label={`Showing: ${dateRange === '7daysAgo' ? '7 days' : dateRange === '30daysAgo' ? '30 days' : '90 days'}`}
+          color="primary"
+          variant="outlined"
+        />
+      </Box>
+
+      {/* Real-time Stats */}
+      {realtimeData && (
+        <Alert severity="success" sx={{ mb: 3 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+            <Box>
+              <Typography variant="caption" color="text.secondary">LIVE NOW</Typography>
+              <Typography variant="h6" sx={{ fontWeight: 'bold', color: '#4caf50' }}>
+                {realtimeData.activeUsers} Active Users
+              </Typography>
+            </Box>
+            <Divider orientation="vertical" flexItem />
+            <Typography variant="body2">
+              {realtimeData.eventCount} events • {realtimeData.screenPageViews} page views • {realtimeData.conversions} conversions (last 30 min)
+            </Typography>
+          </Box>
+        </Alert>
+      )}
+
+      {/* Key Metrics Overview */}
+      <Grid container spacing={3} sx={{ mb: 3 }}>
+        <Grid xs={12} md={6} lg={3}>
+          <Card sx={{ height: '100%', border: '1px solid #e0e0e0' }}>
+            <CardContent>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                <People sx={{ color: '#2196f3', fontSize: 20 }} />
+                <Typography variant="caption" color="text.secondary">
+                  Total Users
+                </Typography>
+              </Box>
+              <Typography variant="h4" sx={{ fontWeight: 'bold', color: theming.colors.primary }}>
+                {overviewData?.totalUsers?.toLocaleString() || 0}
+              </Typography>
+              <Typography variant="caption" color="success.main" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.5 }}>
+                <TrendingUp fontSize="small" />
+                {overviewData?.newUsers || 0} new users
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid xs={12} md={6} lg={3}>
+          <Card sx={{ height: '100%', border: '1px solid #e0e0e0' }}>
+            <CardContent>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                <Timeline sx={{ color: '#ff9800', fontSize: 20 }} />
+                <Typography variant="caption" color="text.secondary">
+                  Sessions
+                </Typography>
+              </Box>
+              <Typography variant="h4" sx={{ fontWeight: 'bold', color: theming.colors.primary }}>
+                {overviewData?.sessions?.toLocaleString() || 0}
+              </Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                {overviewData?.averageSessionDuration ? `${Math.floor(overviewData.averageSessionDuration / 60)}m ${Math.floor(overviewData.averageSessionDuration % 60)}s avg` : '0s avg'}
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid xs={12} md={6} lg={3}>
+          <Card sx={{ height: '100%', border: '1px solid #e0e0e0' }}>
+            <CardContent>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                <Visibility sx={{ color: '#9c27b0', fontSize: 20 }} />
+                <Typography variant="caption" color="text.secondary">
+                  Page Views
+                </Typography>
+              </Box>
+              <Typography variant="h4" sx={{ fontWeight: 'bold', color: theming.colors.primary }}>
+                {overviewData?.pageViews?.toLocaleString() || 0}
+              </Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                {overviewData?.bounceRate?.toFixed(1) || 0}% bounce rate
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid xs={12} md={6} lg={3}>
+          <Card sx={{ height: '100%', border: '1px solid #e0e0e0' }}>
+            <CardContent>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                <AttachMoney sx={{ color: '#4caf50', fontSize: 20 }} />
+                <Typography variant="caption" color="text.secondary">
+                  Revenue
+                </Typography>
+              </Box>
+              <Typography variant="h4" sx={{ fontWeight: 'bold', color: theming.colors.primary }}>
+                {overviewData?.revenue?.toLocaleString() || 0} kr
+              </Typography>
+              <Typography variant="caption" color="success.main" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.5 }}>
+                <TrendingUp fontSize="small" />
+                {overviewData?.conversions || 0} conversions
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
+
+      {/* Time Series Chart */}
+      <Card sx={{ mb: 3 }}>
+        <CardContent>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+            <Typography variant="h6" sx={{ fontWeight: 600, color: theming.colors.primary }}>
+              Trend Analysis
+            </Typography>
+            <ButtonGroup size="small" variant="outlined">
+              {metricOptions.map(option => (
+                <Button
+                  key={option.value}
+                  onClick={() => setSelectedMetric(option.value as any)}
+                  variant={selectedMetric === option.value ? 'contained' : 'outlined'}
+                  startIcon={option.icon}
+                  sx={selectedMetric === option.value ? { bgcolor: '#e37400','&:hover': { bgcolor: '#c66300' } } : {}}
+                >
+                  {option.label}
+                </Button>
+              ))}
+            </ButtonGroup>
+          </Box>
+
+          {/* Recharts Line Chart */}
+          <Box sx={{ width: '100%', height: 300 }}>
+            {timeSeriesData && timeSeriesData.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart
+                  data={timeSeriesData}
+                  margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
+                >
+                  <defs>
+                    <linearGradient id="colorMetric" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#e37400" stopOpacity={0.8}/>
+                      <stop offset="95%" stopColor="#e37400" stopOpacity={0.1}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
+                  <XAxis 
+                    dataKey="date" 
+                    tick={{ fontSize: 11 }}
+                    tickFormatter={(value) => {
+                      const date = new Date(value);
+                      return `${date.getMonth() + 1}/${date.getDate()}`;
+                    }}
+                  />
+                  <YAxis tick={{ fontSize: 11 }} />
+                  <Tooltip 
+                    contentStyle={{ 
+                      backgroundColor: 'white', 
+                      border: '1px solid #e0e0e0',
+                      borderRadius: 8,
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+                    }}
+                    labelFormatter={(value) => `Date: ${value}`}
+                    formatter={(value: any) => [value.toLocaleString(), selectedMetric.charAt(0).toUpperCase() + selectedMetric.slice(1)]}
+                  />
+                  <Area 
+                    type="monotone" 
+                    dataKey="value" 
+                    stroke="#e37400" 
+                    strokeWidth={3}
+                    fillOpacity={1} 
+                    fill="url(#colorMetric)" 
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            ) : (
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+                <Typography variant="body2" color="text.secondary">
+                  No data available for selected period
+                </Typography>
+              </Box>
+            )}
+          </Box>
+        </CardContent>
+      </Card>
+
+      <Grid container spacing={3}>
+        {/* Traffic Sources with Pie Chart */}
+        <Grid xs={12} md={6}>
+          <Card sx={{ height: '100%' }}>
+            <CardContent>
+              <Typography variant="h6" sx={{ fontWeight: 600, color: theming.colors.primary, mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Share sx={{ color: '#2196f3' }} />
+                Traffic Sources
+              </Typography>
+              
+              {/* Pie Chart */}
+              <Box sx={{ height: 250, mb: 2 }}>
+                {trafficSources && trafficSources.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={trafficSources.slice(0, 5).map((s: any) => ({
+                          name: s.source,
+                          value: s.sessions
+                        }))}
+                        cx="50%"
+                        cy="50%"
+                        labelLine={false}
+                        label={(entry: any) => `${entry.name}: ${entry.value}`}
+                        outerRadius={80}
+                        fill="#8884d8"
+                        dataKey="value"
+                      >
+                        {trafficSources.slice(0, 5).map((entry: any, index: number) => (
+                          <Cell key={`cell-${index}`} fill={['#e37400','#2196f3','#4caf50','#ff9800','#9c27b0'][index % 5]} />
+                        ))}
+                      </Pie>
+                      <Tooltip formatter={(value: any) => value.toLocaleString()} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+                    <Typography variant="body2" color="text.secondary">
+                      No data available
+                    </Typography>
+                  </Box>
+                )}
+              </Box>
+
+              {/* Traffic Table */}
+              <TableContainer>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Source</TableCell>
+                      <TableCell align="right">Sessions</TableCell>
+                      <TableCell align="right">Revenue</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {trafficSources?.slice(0, 5).map((source: any, index: number) => (
+                      <TableRow key={index} sx={{ '&:hover': { bgcolor: '#f5f5f5' } }}>
+                        <TableCell>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <Box sx={{ 
+                              width: 12, 
+                              height: 12, 
+                              borderRadius: '50%', 
+                              bgcolor: ['#e37400', '#2196f3', '#4caf50', '#ff9800', '#9c27b0'][index % 5] 
+                            }} />
+                            <Box>
+                              <Typography variant="body2" sx={{ fontWeight: 500}}>
+                                {source.source}
+                              </Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                {source.medium}
+                              </Typography>
+                            </Box>
+                          </Box>
+                        </TableCell>
+                        <TableCell align="right">
+                          <Typography variant="body2">
+                            {source.sessions?.toLocaleString()}
+                          </Typography>
+                        </TableCell>
+                        <TableCell align="right">
+                          <Typography variant="body2" sx={{ color: source.revenue > 0 ? '#4caf50' : 'text.secondary', fontWeight: ource.revenue > 0 ? 600 : 400 }}>
+                            {source.revenue?.toLocaleString()} kr
+                          </Typography>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* Top Events with Bar Chart */}
+        <Grid xs={12} md={6}>
+          <Card sx={{ height: '100%' }}>
+            <CardContent>
+              <Typography variant="h6" sx={{ fontWeight: 600, color: theming.colors.primary, mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Event sx={{ color: '#ff9800' }} />
+                Top Events
+              </Typography>
+              
+              {/* Bar Chart */}
+              <Box sx={{ height: 250, mb: 2 }}>
+                {topEvents && topEvents.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart
+                      data={topEvents.slice(0, 5)}
+                      layout="horizontal"
+                      margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
+                      <XAxis type="number" tick={{ fontSize: 11 }} />
+                      <YAxis dataKey="eventName" type="category" tick={{ fontSize: 11 }} width={120} />
+                      <Tooltip 
+                        formatter={(value: any) => value.toLocaleString()}
+                        contentStyle={{ 
+                          backgroundColor: 'white', 
+                          border: '1px solid #e0e0e0',
+                          borderRadius: 8
+                        }}
+                      />
+                      <Bar dataKey="count" fill="#ff9800" radius={[0, 4, 4, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+                    <Typography variant="body2" color="text.secondary">
+                      No data available
+                    </Typography>
+                  </Box>
+                )}
+              </Box>
+
+              {/* Events Table */}
+              <TableContainer>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Event</TableCell>
+                      <TableCell align="right">Count</TableCell>
+                      <TableCell align="right">Revenue</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {topEvents?.slice(0, 5).map((event: any, index: number) => (
+                      <TableRow key={index} sx={{ '&:hover': { bgcolor: '#f5f5f5' } }}>
+                        <TableCell>
+                          <Typography variant="body2" sx={{ fontWeight: 500}}>
+                            {event.eventName}
+                          </Typography>
+                        </TableCell>
+                        <TableCell align="right">
+                          <Chip 
+                            label={event.count?.toLocaleString()} 
+                            size="small" 
+                            sx={{ bgcolor: '#ff980020', color: '#ff9800', fontWeight: 600}}
+                          />
+                        </TableCell>
+                        <TableCell align="right">
+                          <Typography variant="body2" sx={{ color: event.revenue > 0 ? '#4caf50' : 'text.secondary', fontWeight: vent.revenue > 0 ? 600 : 400 }}>
+                            {event.revenue > 0 ? `${event.revenue.toLocaleString()} kr` : '-'}
+                          </Typography>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* Top Pages */}
+        <Grid xs={12}>
+          <Card>
+            <CardContent>
+              <Typography variant="h6" sx={{ fontWeight: 600, color: theming.colors.primary, mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Visibility sx={{ color: '#9c27b0' }} />
+                Top Pages
+              </Typography>
+              
+              <TableContainer>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Page Title</TableCell>
+                      <TableCell>Path</TableCell>
+                      <TableCell align="right">Page Views</TableCell>
+                      <TableCell align="right">Avg Duration</TableCell>
+                      <TableCell align="right">Bounce Rate</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {topPages?.map((page: any, index: number) => (
+                      <TableRow key={index} sx={{ '&:hover': { bgcolor: '#f5f5f5' } }}>
+                        <TableCell>
+                          <Typography variant="body2" sx={{ fontWeight: 500}}>
+                            {page.title || 'Untitled'}
+                          </Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'monospace' }}>
+                            {page.path}
+                          </Typography>
+                        </TableCell>
+                        <TableCell align="right">
+                          <Chip 
+                            label={page.pageViews?.toLocaleString()} 
+                            size="small" 
+                            color="primary"
+                            variant="outlined"
+                          />
+                        </TableCell>
+                        <TableCell align="right">
+                          <Typography variant="body2">
+                            {Math.floor(page.avgDuration / 60)}m {Math.floor(page.avgDuration % 60)}s
+                          </Typography>
+                        </TableCell>
+                        <TableCell align="right">
+                          <Typography variant="body2" sx={{ color: page.bounceRate > 60 ? '#f44336' : '#4caf50' }}>
+                            {page.bounceRate?.toFixed(1)}%
+                          </Typography>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+
+              {topPages && topPages.length === 0 && (
+                <Alert severity="info" sx={{ mt: 2 }}>
+                  No page data available for this period
+                </Alert>
+              )}
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
+    </Box>
+  );
+}
+

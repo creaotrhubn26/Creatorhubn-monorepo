@@ -1,0 +1,411 @@
+/**
+ * Enhanced OpenAI Chat with File Context Support
+ * 
+ * Features:
+ * - @ mentions to reference files (@filename.tsx)
+ * - Automatic file content injection
+ * - Codebase-aware AI responses
+ * - File search autocomplete
+ */
+
+import React, { useState, useRef, useEffect } from 'react';
+import { 
+  Box, 
+  Card, 
+  CardContent, 
+  Typography, 
+  Button, 
+  TextField, 
+  CircularProgress,
+  Paper,
+  Avatar,
+  Chip,
+  List,
+  ListItem,
+  ListItemText,
+  Popper,
+  ClickAwayListener,
+  IconButton,
+  Tooltip,
+} from '@mui/material';
+import { 
+  Send as SendIcon,
+  SmartToy as AIIcon,
+  Person as PersonIcon,
+  AttachFile as FileIcon,
+  Code as CodeIcon,
+  Close as CloseIcon,
+} from '@mui/icons-material';
+import useOpenAIApi from '@/hooks/useOpenAIApi';
+import { apiRequest } from '@/lib/queryClient';
+
+interface Message {
+  role: 'system' | 'user' | 'assistant';
+  content: string;
+  files?: AttachedFile[];
+}
+
+interface AttachedFile {
+  path: string;
+  content: string;
+  lines?: string;
+}
+
+export const OpenAIChatEnhanced: React.FC = () => {
+  const { chat, isChatting } = useOpenAIApi();
+  const [input, setInput] = useState('');
+  const [messages, setMessages] = useState<Message[]>([
+    { 
+      role: 'system', 
+      content: 'You are a helpful AI assistant for CreatorHub Norge. You have access to the codebase and can help with code questions, debugging, and development tasks. When files are attached with @ mentions, analyze them and provide specific, actionable advice.' 
+  }
+  ]);
+  
+  const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
+  const [showFileSuggestions, setShowFileSuggestions] = useState(false);
+  const [fileSuggestions, setFileSuggestions] = useState<string[]>([]);
+  const [cursorPosition, setCursorPosition] = useState(0);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const anchorRef = useRef<HTMLDivElement>(null);
+
+  // Detect @ mentions and show file suggestions
+  useEffect(() => {
+    const lastWord = input.slice(0, cursorPosition).split(/\s/).pop() || '';
+    
+    if (lastWord.startsWith('@')) {
+      const searchTerm = lastWord.slice(1);
+      searchFiles(searchTerm);
+  } else {
+      setShowFileSuggestions(false);
+  }
+}, [input, cursorPosition]);
+
+  // Search for files in the codebase
+  const searchFiles = async (query: string) => {
+    if (!query) {
+      setFileSuggestions([]);
+      setShowFileSuggestions(false);
+      return;
+  }
+
+    try {
+      // Search for files using glob pattern
+      const response = await apiRequest(`/api/admin/files/search?query=${encodeURIComponent(query)}`);
+      const files = response.files || [];
+      setFileSuggestions(files.slice(0, 10)); // Limit to 10 suggestions
+      setShowFileSuggestions(files.length > 0);
+  } catch (error) {
+      console.error('File search error:', error);
+      setShowFileSuggestions(false);
+  }
+};
+
+  // Handle file selection from suggestions
+  const handleFileSelect = async (filePath: string) => {
+    try {
+      // Fetch file content
+      const response = await apiRequest(`/api/admin/files/read?path=${encodeURIComponent(filePath)}`);
+      const fileContent = response.content || '';
+
+      // Add to attached files
+      const newFile: AttachedFile = {
+        path: filePath,
+        content: fileContent,
+    };
+      setAttachedFiles([...attachedFiles, newFile]);
+
+      // Replace @mention in input with file chip
+      const lastAtIndex = input.lastIndexOf('@');
+      const beforeAt = input.slice(0, lastAtIndex);
+      const afterMention = input.slice(cursorPosition);
+      setInput(`${beforeAt}@${filePath.split('/').pop()} ${afterMention}`);
+      
+      setShowFileSuggestions(false);
+  } catch (error) {
+      console.error('Error reading file:', error);
+  }
+};
+
+  // Remove attached file
+  const handleRemoveFile = (index: number) => {
+    setAttachedFiles(attachedFiles.filter((_, i) => i !== index));
+};
+
+  // Build context-aware message
+  const buildMessageWithContext = (): string => {
+    if (attachedFiles.length === 0) {
+      return input;
+  }
+
+    let contextMessage = input + '\n\n---\n\n**Attached Files:**\n\n';
+    
+    attachedFiles.forEach((file, index) => {
+      contextMessage += `### File ${index + 1}: \`${file.path}\`\n\n`;
+      contextMessage += '```\n';
+      contextMessage += file.content;
+      contextMessage += '\n```\n\n';
+  });
+
+    return contextMessage;
+};
+
+  const handleSend = () => {
+    if (!input.trim()) return;
+
+    const messageContent = buildMessageWithContext();
+    const userMessage: Message = { 
+      role: 'user', 
+      content: input,
+      files: attachedFiles.length > 0 ? [...attachedFiles] : undefined
+  };
+    
+    const newMessages = [...messages, userMessage];
+    setMessages(newMessages);
+    setInput('');
+    setAttachedFiles([]);
+
+    // Send to OpenAI with file context
+    const messagesToSend = [
+      ...messages.filter(m => m.role === 'system'),
+      ...newMessages.filter(m => m.role !== 'system').map(m => ({
+        role: m.role,
+        content: m.files && m.files.length > 0 ? buildContextForMessage(m) : m.content
+    }))
+    ];
+
+    chat({ 
+      messages: messagesToSend as any,
+      model: 'gpt-4'
+  }, {
+      onSuccess: (data: any) => {
+        const assistantMessage: Message = {
+          role: 'assistant',
+          content: data.data?.choices?.[0]?.message?.content || 'No response'
+      };
+        setMessages([...newMessages, assistantMessage]);
+    },
+      onError: (error: any) => {
+        console.error('Chat error:', error);
+        const errorMessage: Message = {
+          role: 'assistant',
+          content: `Error: ${error.message || 'Failed to get response'}`
+      };
+        setMessages([...newMessages, errorMessage]);
+    }
+  });
+};
+
+  const buildContextForMessage = (message: Message): string => {
+    if (!message.files || message.files.length === 0) {
+      return message.content;
+  }
+
+    let content = message.content + '\n\n---\n\n**Attached Files:**\n\n';
+    message.files.forEach((file, index) => {
+      content += `### File ${index + 1}: \`${file.path}\`\n\n`;
+      content += '```\n';
+      content += file.content;
+      content += '\n```\n\n';
+  });
+
+    return content;
+};
+
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+  }
+};
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setInput(e.target.value);
+    setCursorPosition(e.target.selectionStart || 0);
+};
+
+  return (
+    <Card sx={{ maxWidth: 900, mx: 'auto', mt: 2 }}>
+      <CardContent>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 3 }}>
+          <AIIcon sx={{ fontSize: 32, color: 'primary.main' }} />
+          <Typography variant="h5" component="h2">
+            OpenAI Chat
+          </Typography>
+          <Chip label="@ File Search" size="small" color="primary" icon={<FileIcon />} />
+          <Chip label="Codebase-Aware" size="small" color="success" sx={{ ml: 'auto' }} />
+        </Box>
+
+        {/* Instructions */}
+        <Paper sx={{ p: 2, mb: 2, bgcolor: 'info.light' }}>
+          <Typography variant="body2" sx={{ color: 'info.contrastText' }}>
+            💡 <strong>Tip:</strong> Type <code>@</code> followed by a filename to attach files to your question!
+            The AI will analyze the code and provide specific help.
+          </Typography>
+        </Paper>
+
+        {/* Chat Messages */}
+        <Paper 
+          sx={{ 
+            p: 2, 
+            mb: 2, 
+            maxHeight: 400, 
+            overflowY: 'auto',
+            bgcolor: 'grey.50'
+        }}
+        >
+          {messages
+            .filter(msg => msg.role !== 'system')
+            .map((msg, i) => (
+              <Box 
+                key={i} 
+                sx={{ 
+                  display: 'flex', 
+                  gap: 1, 
+                  mb: 2,
+                  flexDirection: msg.role === 'user' ? 'row-reverse' : 'row'
+              }}
+              >
+                <Avatar 
+                  sx={{ 
+                    bgcolor: msg.role === 'user' ? 'primary.main' : 'secondary.main',
+                    width: 32,
+                    height: 32
+                }}
+                >
+                  {msg.role === 'user' ? <PersonIcon /> : <AIIcon />}
+                </Avatar>
+                <Box sx={{ maxWidth: '70%' }}>
+                  <Paper 
+                    sx={{ 
+                      p: 1.5,
+                      bgcolor: msg.role === 'user' ? 'primary.light' : 'white'
+                  }}
+                  >
+                    <Typography 
+                      variant="body2"
+                      sx={{ 
+                        color: msg.role === 'user' ? 'primary.contrastText' : 'text.primary',
+                        whiteSpace: 'pre-wrap'
+                    }}
+                    >
+                      {msg.content}
+                    </Typography>
+                  </Paper>
+                  
+                  {/* Show attached files */}
+                  {msg.files && msg.files.length > 0 && (
+                    <Box sx={{ mt: 1, display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                      {msg.files.map((file, idx) => (
+                        <Chip
+                          key={idx}
+                          icon={<CodeIcon />}
+                          label={file.path.split('/').pop()}
+                          size="small"
+                          sx={{ fontSize: '0.7rem' }}
+                        />
+                      ))}
+                    </Box>
+                  )}
+                </Box>
+              </Box>
+            ))}
+
+          {isChatting && (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <CircularProgress size={20} />
+              <Typography variant="caption" color="text.secondary">
+                AI is analyzing your code...
+              </Typography>
+            </Box>
+          )}
+        </Paper>
+
+        {/* Attached Files */}
+        {attachedFiles.length > 0 && (
+          <Box sx={{ mb: 2 }}>
+            <Typography variant="caption" color="text.secondary" gutterBottom>
+              Attached files:
+            </Typography>
+            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mt: 1 }}>
+              {attachedFiles.map((file, index) => (
+                <Chip
+                  key={index}
+                  icon={<CodeIcon />}
+                  label={file.path}
+                  onDelete={() => handleRemoveFile(index)}
+                  color="primary"
+                  variant="outlined"
+                />
+              ))}
+            </Box>
+          </Box>
+        )}
+
+        {/* Input Area */}
+        <Box sx={{ position: 'relative' }} ref={anchorRef}>
+          <Box sx={{ display: 'flex', gap: 1 }}>
+            <TextField
+              fullWidth
+              multiline
+              maxRows={3}
+              value={input}
+              onChange={handleInputChange}
+              onKeyPress={handleKeyPress}
+              placeholder="Type your message... Use @ to reference files"
+              disabled={isChatting}
+              inputRef={inputRef}
+            />
+            <Button
+              variant="contained"
+              onClick={handleSend}
+              disabled={isChatting || !input.trim()}
+              endIcon={isChatting ? <CircularProgress size={20} /> : <SendIcon />}
+            >
+              Send
+            </Button>
+          </Box>
+
+          {/* File Suggestions Dropdown */}
+          {showFileSuggestions && (
+            <Popper 
+              open={showFileSuggestions} 
+              anchorEl={anchorRef.current}
+              placement="top-start"
+              sx={{ zIndex: 1300, width: anchorRef.current?.offsetWidth || 400 }}
+            >
+              <ClickAwayListener onClickAway={() => setShowFileSuggestions(false)}>
+                <Paper elevation={8} sx={{ maxHeight: 200, overflow: 'auto' }}>
+                  <List dense>
+                    {fileSuggestions.map((file, index) => (
+                      <ListItem 
+                        key={index} 
+                        button 
+                        onClick={() => handleFileSelect(file)}
+                      >
+                        <FileIcon sx={{ mr: 1, fontSize: 18, color: 'primary.main' }} />
+                        <ListItemText 
+                          primary={file.split('/').pop()} 
+                          secondary={file}
+                          primaryTypographyProps={{ variant: 'body2' }}
+                          secondaryTypographyProps={{ variant: 'caption' }}
+                        />
+                      </ListItem>
+                    ))}
+                  </List>
+                </Paper>
+              </ClickAwayListener>
+            </Popper>
+          )}
+        </Box>
+
+        {/* Info */}
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+          💡 Examples: "@OpenAIChat.tsx how do I add streaming?" or "@useOpenAIApi.ts explain this hook"
+        </Typography>
+      </CardContent>
+    </Card>
+  );
+};
+
+export default OpenAIChatEnhanced;
+

@@ -1,0 +1,273 @@
+/**
+ * Master Integration Provider
+ * Combines all integration systems into one cohesive provider
+ * Enables "everything interacts with everything" functionality
+ */
+
+import { useTheming } from '../utils/theming-helper';
+import React from 'react';
+import { IntegrationProvider, useIntegration } from './ComponentIntegrationManager';
+import { CommunicationProvider, useCommunication } from './CrossComponentCommunication';
+import { DataFlowProvider, useDataFlow } from './UniversalDataFlow';
+import { ComponentRegistryProvider, useComponentRegistry } from './UniversalComponentRegistry';
+import { UniversalIntegrationSystem } from './UniversalIntegrationSystem';
+
+// Master integration context that combines all systems
+interface MasterIntegrationContextType {
+  // All integration capabilities in one place
+  integration: ReturnType<typeof import('./ComponentIntegrationManager').useIntegration>;
+  communication: ReturnType<typeof import('./CrossComponentCommunication').useCommunication>;
+  dataFlow: ReturnType<typeof import('./UniversalDataFlow').useDataFlow>;
+  componentRegistry: ReturnType<typeof import('./UniversalComponentRegistry').useComponentRegistry>
+}
+
+// Master Integration Provider that wraps all systems
+export const MasterIntegrationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  return (
+    <IntegrationProvider>
+      <CommunicationProvider>
+        <DataFlowProvider>
+          <ComponentRegistryProvider>
+            <UniversalIntegrationSystem>
+              {children}
+            </UniversalIntegrationSystem>
+          </ComponentRegistryProvider>
+        </DataFlowProvider>
+      </CommunicationProvider>
+    </IntegrationProvider>
+  );
+};
+
+// Hook to access all integration systems
+export const useEnhancedMasterIntegration = () => {
+  const integration = useIntegration();
+  
+  // Theming system
+  const theming = useTheming('prototype_tester');
+  const communication = useCommunication();
+  const dataFlow = useDataFlow();
+  const componentRegistry = useComponentRegistry();
+
+  return {
+    integration,
+    communication,
+    dataFlow,
+    componentRegistry
+};
+};
+
+// Enhanced HOC that adds all integration capabilities to any component
+export const withEnhancedMasterIntegration = <P extends object>(
+  Component: React.ComponentType<P>
+) => {
+  return React.forwardRef<any, P & { 
+    componentId?: string; 
+    componentType?: string; 
+    capabilities?: string[];
+    integrationEnabled?: boolean;
+}>((props, ref) => {
+    const { componentId, componentType, capabilities = [], integrationEnabled = true, ...restProps } = props;
+    
+    if (!integrationEnabled) {
+      return <Component {...restProps} ref={ref} />;
+  }
+
+    // This will be enhanced in the actual component
+    return <Component {...restProps} ref={ref} />;
+});
+};
+
+// Pre-defined integration configurations for different component types
+export const INTEGRATION_CONFIGS = {
+  // Admin Dashboard components
+  ADMIN_DASHBOARD: {
+    componentType: 'admin-dashboard',
+    capabilities: [
+      'data:read', 'data: write','event: emit','event: listen','action: execute','ui: update','system: access'
+   , ],
+    dataKeys: [
+      'selectedUser','selectedProject','selectedClient','systemStatus','notifications'
+    ],
+    messageTypes: [
+      'data:update','ui: update','action: execute','system: status'
+    ]
+},
+  
+  // Visual Editor components
+  VISUAL_EDITOR: {
+    componentType: 'visual-editor',
+    capabilities: [
+      'data:read','data: write','event: emit','event: listen','action: execute','ui: update','collaboration: update'
+   , ],
+    dataKeys: [
+      'selectedElement','projectData','designSystem','componentLibrary','templates'
+    ],
+    messageTypes: [
+      'data:update','ui: update','collaboration: update','realtime: sync'
+    ]
+},
+  
+  // Dashboard components
+  DASHBOARD: {
+    componentType: 'dashboard',
+    capabilities: [
+      'data:read','data: write','event: emit','event: listen','ui: update','analytics: track'
+   , ],
+    dataKeys: [
+      'dashboardData','widgets','layout','analytics'
+    ],
+    messageTypes: [
+      'data:update','ui: update','analytics: track'
+    ]
+},
+  
+  // Panel components
+  PANEL: {
+    componentType: 'panel',
+    capabilities: [
+      'data:read','data: write','event: emit','event: listen','ui: update'
+   , ],
+    dataKeys: [
+      'panelData','settings'
+    ],
+    messageTypes: [
+      'data:update','ui: update'
+    ]
+},
+  
+  // Widget components
+  WIDGET: {
+    componentType: 'widget',
+    capabilities: [
+      'data:read', 'event:emit', 'event:listen', 'ui:update'
+    ],
+    dataKeys: [
+      'widgetData'
+    ],
+    messageTypes: [
+      'data:update', 'ui:update'
+    ]
+  }
+};
+
+// Utility functions for common integration patterns
+export const IntegrationUtils = {
+  // Create a data flow between two components
+  createDataFlow: (fromComponent: string, toComponent: string, dataKey: string) => {
+    // This would be implemented in the actual component
+    console.log(`Creating data flow from ${fromComponent} to ${toComponent} for ${dataKey}`);
+},
+  
+  // Broadcast data to all components
+  broadcastData: (dataKey: string, data: any) => {
+    // This would be implemented in the actual component
+    console.log(`Broadcasting ${dataKy}:`, data);
+},
+  
+  // Sync data across all components
+  syncData: (dataKey: string, data: any) => {
+    // This would be implemented in the actual component
+    console.log(`Syncing ${dataKy}:`, data);
+},
+  
+  // Execute action across all components
+  executeGlobalAction: (action: string, data: any) => {
+    // This would be implemented in the actual component
+    console.log(`Executing global action ${action}:`, data);
+}
+};
+
+// Pre-defined integration events that all components can use
+export const GLOBAL_INTEGRATION_EVENTS = {
+  // System events
+  SYSTEM_INIT: 'system:init',
+  SYSTEM_READY: 'system:ready',
+  SYSTEM_ERROR: 'system:error',
+  SYSTEM_WARNING: 'system:warning',
+  
+  // Data events
+  DATA_LOADED: 'data:loaded',
+  DATA_SAVED: 'data:saved',
+  DATA_DELETED: 'data:deleted',
+  DATA_SYNCED: 'data:synced',
+  
+  // UI events
+  UI_READY: 'ui:ready',
+  UI_UPDATED: 'ui:updated',
+  UI_FOCUSED: 'ui:focused',
+  UI_BLURRED: 'ui:blurred',
+  
+  // User events
+  USER_LOGGED_IN: 'user:logged_in',
+  USER_LOGGED_OUT: 'user:logged_out',
+  USER_UPDATED: 'user:updated',
+  
+  // Project events
+  PROJECT_CREATED: 'project:created',
+  PROJECT_UPDATED: 'project:updated',
+  PROJECT_DELETED: 'project:deleted',
+  PROJECT_SELECTED: 'project:selected',
+  
+  // Client events
+  CLIENT_CREATED: 'client:created',
+  CLIENT_UPDATED: 'client:updated',
+  CLIENT_DELETED: 'client:deleted',
+  CLIENT_SELECTED: 'client:selected',
+  
+  // File events
+  FILE_UPLOADED: 'file:uploaded',
+  FILE_DOWNLOADED: 'file:downloaded',
+  FILE_DELETED: 'file:deleted',
+  
+  // Notification events
+  NOTIFICATION_CREATED: 'notification:created',
+  NOTIFICATION_READ: 'notification:read',
+  NOTIFICATION_DELETED: 'notification:deleted',
+  
+  // Settings events
+  SETTINGS_UPDATED: 'settings:updated',
+  THEME_CHANGED: 'theme:changed',
+  LANGUAGE_CHANGED: 'language:changed', 
+};
+
+// Pre-defined data keys that all components can access
+export const GLOBAL_DATA_KEYS = {
+  // User data
+  CURRENT_USER: 'currentUser',
+  USER_PERMISSIONS: 'userPermissions',
+  USER_PREFERENCES: 'userPreferences',
+  
+  // Project data
+  CURRENT_PROJECT: 'currentProject',
+  PROJECT_LIST: 'projectList',
+  PROJECT_TEMPLATES: 'projectTemplates',
+  
+  // Client data
+  CURRENT_CLIENT: 'currentClient',
+  CLIENT_LIST: 'clientList',
+  CLIENT_SEGMENTS: 'clientSegments',
+  
+  // System data
+  SYSTEM_STATUS: 'systemStatus',
+  SYSTEM_CONFIG: 'systemConfig',
+  SYSTEM_METRICS: 'systemMetrics',
+  
+  // UI data
+  CURRENT_THEME: 'currentTheme',
+  UI_STATE: 'uiState',
+  LAYOUT_CONFIG: 'layoutConfig',
+  
+  // Notification data
+  NOTIFICATIONS: 'notifications',
+  UNREAD_COUNT: 'unreadCount',
+  
+  // Analytics data
+  ANALYTICS_DATA: 'analyticsData',
+  PERFORMANCE_METRICS: 'performanceMetrics',
+  
+  // Real-time data
+  LIVE_DATA: 'liveData',
+  REALTIME_UPDATES: ''
+};
+
+export default MasterIntegrationProvider;

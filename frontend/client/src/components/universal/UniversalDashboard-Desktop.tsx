@@ -1,0 +1,1763 @@
+import { useTheming } from '../../utils/theming-helper';
+import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
+import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
+import getProfessionIcon from '@/utils/profession-icons';
+import { useDynamicProfessions } from './hooks/useDynamicProfessions';
+import { isProfessionFeatureAvailable } from '../../../shared/profession-feature-matrix';
+import React, { useState, useMemo, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { useAuth } from '@/hooks/useAuth';
+import { apiRequest } from '@/lib/queryClient';
+import { trackButtonClick, trackTabChange, trackModalOpen } from '@/hooks/useActionTracker';
+import { useDemoMode } from '@/contexts/DemoModeContext';
+import AdminIndicator from '../admin/AdminIndicator';
+import { Card as MuiCard, CardContent as MuiCardContent, CardActions as MuiCardActions } from '@mui/material';
+import {
+  Box,
+  Container,
+  Typography,
+  Grid,
+  Avatar,
+  Button,
+  Tabs as MuiTabs,
+  Tab,
+  Badge,
+  IconButton,
+  Chip,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemIcon,
+  ListItemAvatar,
+  Divider,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Paper,
+  Tooltip,
+  Fab,
+  useTheme,
+  useMediaQuery,
+  Stack,
+  LinearProgress,
+  alpha,
+  Fade,
+  Collapse,
+  Skeleton,
+  Switch,
+  FormControlLabel
+} from '@mui/material';
+import {
+  PhotoCamera,
+  Videocam,
+  LibraryMusic,
+  Store,
+  Group,
+  Build,
+  Add,
+  CalendarToday,
+  Assessment,
+  Settings,
+  AttachMoney,
+  TrendingUp,
+  Event,
+  Key,
+  Visibility,
+  TrendingUp as TimelineIcon,
+  Business,
+  Email,
+  Notifications,
+  CloudDone,
+  Article,
+  FolderOpen,
+  AddCircle,
+  Storage,
+  Star,
+  Chat,
+  Person,
+  Phone,
+  MoreVert,
+  AccessTime,
+  LocationOn,
+  Payment,
+  Keyboard,
+  Schedule,
+  Palette,
+  CheckCircle,
+  HelpCenter,
+  Quiz,
+  PriorityHigh,
+  Delete,
+  Launch,
+  PhotoLibrary,
+  Edit,
+  Circle,
+  AccountCircle,
+  Collections,
+  Brightness1,
+  WbSunny,
+  Favorite as WeddingIcon,
+  WbCloudy,
+  Umbrella,
+  Remove,
+  NotificationsActive,
+  AutoFixHigh,
+  SmartToy,
+  Switch as SwitchIcon,
+  MovieCreation
+} from '@mui/icons-material';
+
+// Import all the same components as the original
+import BRREGIntegration from './profession-specific/BRREGIntegration';
+import AdvancedClientManagement from './profession-specific/AdvancedClientManagement';
+import { useDynamicProfessions } from './hooks/useDynamicProfessions';
+import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
+import EquipmentManagementDB from './profession-specific/EquipmentManagementDB';
+import ProfessionAdapter from './ProfessionAdapter';
+import SmartWorkflowBuilder from './SmartWorkflowBuilder';
+import FloatingActionButtons from './misc/FloatingActionButtons';
+import PriceAdministration from '../PriceAdministration';
+import BusinessBrandingSettings from '../BusinessBrandingSettings';
+import { TutorialFAQIntegration } from '../tutorial/TutorialFAQIntegration';
+import { InteractiveTutorialCreator } from '../tutorial/InteractiveTutorialCreator';
+import { CreatorHubBadgeSystem } from '../gamification/CreatorHubBadgeSystem';
+import { CompactBadgeDisplay } from '../gamification/CompactBadgeDisplay';
+import WeddingTimelineAdmin from '../wedding/WeddingTimelineAdmin';
+import UniversalSettingsPanel from './UniversalSettingsPanel';
+import GoogleDriveManager from '../google-drive/GoogleDriveManager';
+import GoogleDriveProjectSync from '../google-drive/GoogleDriveProjectSync';
+import GoogleWorkspaceStorageInfo from './GoogleWorkspaceStorageInfo';
+import ComprehensiveEquipmentDashboard from '@/components/universal/misc/ComprehensiveEquipmentDashboard';
+import CameraEquipmentManager from '@/components/universal/misc/CameraEquipmentManager';
+import MemoryCardManager from '@/components/universal/misc/MemoryCardManager';
+import { EnhancedGearTab } from '../dashboard/EnhancedGearTab';
+import PersonalizedNewsInterface from '../news/PersonalizedNewsInterface';
+import { QuickMeetingNotesModal } from '../meetings/QuickMeetingNotesModal';
+import SmartEmailCenter from '../email/SmartEmailCenter';
+import IntegratedEmailCenter from '../email/IntegratedEmailCenter';
+import CustomerInquiryCenter from '../email/CustomerInquiryCenter';
+import ProjectCreationWithMemoryCards from '../project/ProjectCreationWithMemoryCards';
+import VendorProductManager from '../vendor/VendorProductManager';
+import GoogleWorkspaceMeetingManager from '../meetings/GoogleWorkspaceMeetingManager';
+import FilesTab from './tabs/FilesTab';
+import SubmissionsOverview from './submissions/SubmissionsOverview';
+import UniversalKeyboardShortcuts from '../keyboard-shortcuts/UniversalKeyboardShortcuts';
+import SmartTimingPreferences from '../smart-timing/SmartTimingPreferences';
+import HelpdeskSystem from './HelpdeskSystem';
+import ProjectTimeline from '../project/ProjectTimeline';
+import ProjectShowcase from '../project/ProjectShowcase';
+import { ChatWidget } from '../communication/ChatWidget';
+import UniversalChatWidget from '../chat/UniversalChatWidget';
+import UniversalPrototypeFeedback from '../prototype-testing/UniversalPrototypeFeedback';
+import CentralizedSalesHub from '../sales/CentralizedSalesHub';
+import TutorialLauncher from '../tutorials/TutorialLauncher';
+import VideoEditor from '../video-editing/VideoEditor';
+import StoryArcGenerator from '../StoryArcGenerator';
+import UniversalCommunication from '../communication/UniversalCommunication';
+import UniversalWorklog from '../worklog/UniversalWorklog';
+import PhotographerEmailCenter from '../email/PhotographerEmailCenter';
+import EmailProjectHistory from '../email/EmailProjectHistory';
+import ContextualPhotographyTipsOverlay from '../photography/ContextualPhotographyTipsOverlay';
+import ShowcaseAdmin from '../showcase/ShowcaseAdmin';
+import WeddingTimelineOverview from '../wedding/WeddingTimelineOverview';
+import WeddingTimelineClientAccess from '../wedding/WeddingTimelineClientAccess';
+import WeddingTimelineClientView from '../wedding/WeddingTimelineClientView';
+import WeddingTimelineChangesOverview from '../wedding/WeddingTimelineChangesOverview';
+import StoryArcStudio from '../StoryArcStudio';
+import UniversalOAuthIntegration from '../oauth/UniversalOAuthIntegration';
+import IntegratedToolsOverview from './IntegratedToolsOverview';
+import EmailDesigner from '../EmailDesigner/EmailDesigner';
+import UniversalCRMDashboard from '../crm/UniversalCRMDashboard';
+import { UniversalContractHub } from './contracts';
+import FotografOrchestrator from './FotografOrchestrator';
+import VideografOrchestrator from './VideografOrchestrator';
+import MusikkProdusentOrchestrator from './MusikkProdusentOrchestrator';
+import VendorOrchestrator from './VendorOrchestrator';
+import PhotoEnhancementSuite from '../enhancement/PhotoEnhancementSuite';
+import AudioEnhancementSuite from '../enhancement/AudioEnhancementSuite';
+
+// Exact same profession configurations as original (names will be overridden by dynamic profession data)
+const localProfessionConfigs = {
+  photographer: {
+    name: 'Fotograf', // Fallback - will be overridden by dynamic profession data
+    color: '#ff8c00',
+    icon: theming.getThemedIcon(''),
+    tabs: [
+      { id: 'overview', label: 'Oversikt', icon: theming.getThemedIcon(',') },
+      { id: 'projects', label: 'Prosjekter', icon: theming.getThemedIcon(',') },
+      { id: 'contracts', label: 'Kontrakter', icon: theming.getThemedIcon(',') },
+      { id: 'wedding-timeline', label: 'Bryllupstidslinje', icon: <Event />,},
+      { id: 'showcase-admin', label: 'Showcase Admin', icon: theming.getThemedIcon(',') },
+      { id: 'ai-enhancement', label: 'AI Forbedring', icon: theming.getThemedIcon(',') },
+      { id: 'email-center', label: 'E-post', icon: theming.getThemedIcon(',') },
+      { id: 'worklog', label: 'Worklog', icon: theming.getThemedIcon(',') },
+      { id: 'clients', label: 'Kunder', icon: theming.getThemedIcon(',') },
+      { id: 'equipment', label: 'Utstyr', icon: theming.getThemedIcon(',') },
+      { id: 'files', label: 'Filer', icon: theming.getThemedIcon(',') },
+      { id: 'support', label: 'Support', icon: theming.getThemedIcon(',') },
+      { id: 'settings', label: 'Innstillinger', icon: theming.getThemedIcon(',') },
+      { id: 'communication', label: 'Kommunikasjon', icon: theming.getThemedIcon(',') }
+    ],
+    projectTypes: ['bryllup','bedrift','portrett','produkt'],
+    stats: [
+      { key: 'projects', label: 'Aktive Prosjekter', icon: theming.getThemedIcon(',') },
+      { key: 'clients', label: 'Nye Kunder', icon: theming.getThemedIcon(',') },
+      { key: 'revenue', label: 'Månedens Inntekt', icon: theming.getThemedIcon(',') },
+      { key: 'rating', label: 'Gjennomsnittsvurdering', icon: theming.getThemedIcon(',') }
+    ]
+},
+  videographer: {
+    name: 'Videograf', // Fallback - will be overridden by dynamic profession data
+    color: '#',
+    icon: theming.getThemedIcon(''),
+    tabs: [
+      { id: 'overview', label: 'Oversikt', icon: theming.getThemedIcon(',') },
+      { id: 'projects', label: 'Videoer', icon: theming.getThemedIcon(',') },
+      { id: 'contracts', label: 'Kontrakter', icon: theming.getThemedIcon(',') },
+      { id: 'wedding-timeline', label: 'Bryllupstidslinje', icon: <Event />,},
+      { id: 'showcase-admin', label: 'Showcase Admin', icon: theming.getThemedIcon(',') },
+      { id: 'ai-enhancement', label: 'Video A', icon: theming.getThemedIcon(',') },
+      { id: 'email-center', label: 'E-post', icon: theming.getThemedIcon(',') },
+      { id: 'worklog', label: 'Worklog', icon: theming.getThemedIcon(',') },
+      { id: 'clients', label: 'Kunder', icon: theming.getThemedIcon(',') },
+      { id: 'equipment', label: 'Utstyr', icon: theming.getThemedIcon(',') },
+      { id: 'files', label: 'Filer', icon: theming.getThemedIcon(',') },
+      { id: 'support', label: 'Support', icon: theming.getThemedIcon(',') },
+      { id: 'settings', label: 'Innstillinger', icon: theming.getThemedIcon(',') },
+      { id: 'communication', label: 'Kommunikasjon', icon: theming.getThemedIcon(',') }
+    ],
+    projectTypes: ['bryllup','reklame','dokumentar','musikkvideo'],
+    stats: [
+      { key: 'projects', label: 'Aktive Prosjekter', icon: theming.getThemedIcon(',') },
+      { key: 'clients', label: 'Nye Kunder', icon: theming.getThemedIcon(',') },
+      { key: 'revenue', label: 'Månedens Inntekt', icon: theming.getThemedIcon(',') },
+      { key: 'hours', label: 'Timer Redigert', icon: theming.getThemedIcon(',') }
+    ]
+},
+  music_producer: {
+    name: 'Musikkprodusent',
+    color: '#',
+    icon: theming.getThemedIcon(''),
+    tabs: [
+      { id: 'overview', label: 'Oversikt', icon: theming.getThemedIcon(',') },
+      { id: 'projects', label: 'Låter', icon: theming.getThemedIcon(',') },
+      { id: 'contracts', label: 'Kontrakter', icon: theming.getThemedIcon(',') },
+      { id: 'ai-enhancement', label: 'Audio A', icon: theming.getThemedIcon(',') },
+      { id: 'email-center', label: 'E-post', icon: theming.getThemedIcon(',') },
+      { id: 'worklog', label: 'Worklog', icon: theming.getThemedIcon(',') },
+      { id: 'clients', label: 'Artister', icon: theming.getThemedIcon(',') },
+      { id: 'equipment', label: 'Studio', icon: theming.getThemedIcon(',') },
+      { id: 'files', label: 'Filer', icon: theming.getThemedIcon(',') },
+      { id: 'support', label: 'Support', icon: theming.getThemedIcon(',') },
+      { id: 'settings', label: 'Innstillinger', icon: theming.getThemedIcon(',') },
+      { id: 'communication', label: 'Kommunikasjon', icon: theming.getThemedIcon(',') }
+    ],
+    projectTypes: ['album','singel','podcast','jingle'],
+    stats: [
+      { key: 'tracks', label: 'Aktive Spor', icon: theming.getThemedIcon(',') },
+      { key: 'artists', label: 'Nye Artister', icon: theming.getThemedIcon(',') },
+      { key: 'revenue', label: 'Månedens Inntekt', icon: theming.getThemedIcon(',') },
+      { key: 'streams', label: 'Totale Streams', icon: theming.getThemedIcon(',') }
+    ]
+},
+  vendor: {
+    name: 'Leverandø',
+    color: '#27ae60',
+    icon: theming.getThemedIcon(''),
+    tabs: [
+      { id: 'overview', label: 'Oversikt', icon: theming.getThemedIcon(',') },
+      { id: 'projects', label: 'Produkter', icon: theming.getThemedIcon(',') },
+      { id: 'clients', label: 'Bestillinger', icon: theming.getThemedIcon(',') },
+      { id: 'equipment', label: 'Lager', icon: theming.getThemedIcon(',') },
+      { id: 'files', label: 'Filer', icon: theming.getThemedIcon(',') },
+      { id: 'support', label: 'Support', icon: theming.getThemedIcon(',') },
+      { id: 'settings', label: 'Innstillinger', icon: theming.getThemedIcon(',') }
+    ],
+    projectTypes: ['utleie','salg', 'service','konsultasjon'],
+    stats: [
+      { key: 'orders', label: 'Aktive Ordrer', icon: theming.getThemedIcon(',') },
+      { key: 'customers', label: 'Nye Kunder', icon: theming.getThemedIcon(',') },
+      { key: 'revenue', label: 'Månedens Inntekt', icon: theming.getThemedIcon(', ') },
+      { key: 'inventory', label: 'Lagerstatus', icon: theming.getThemedIcon(', ') }
+    ]
+}
+};
+
+interface TabPanelProps {
+  children?: React.ReactNode;
+  index: number;
+  value: number
+}
+
+function TabPanel(props: TabPanelProps) {
+  const { children, value, index, ...other } = props;
+  return (
+    <div
+      role="tabpanel"
+      hidden={value !== index}
+      id={`universal-tabpanel-${index}`}
+      aria-labelledby={`universal-tab-${index}`}
+      {...other}
+    >
+      {value === index && <Box sx={{ p:  3 }}>{children}</Box>}
+    </div>
+);
+}
+
+interface UniversalDashboardDesktopProps {
+  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'admin';
+  // Integration props for unified workflow connectivity
+  onMeetingCreate?: (meeting: any) => void;
+  onProjectUpdate?: (project: any) => void;
+  onWorklogCreate?: (worklog: any) => void;
+  onClientSelect?: (client: any) => void;
+  onClientUpdate?: (client: any) => void;
+  onShowcaseCreate?: (showcase: any) => void;
+  onFileUpload?: (file: any) => void;
+  onFileDownload?: (file: any) => void;
+  selectedProject?: any;
+  onProjectSelect?: (project: any) => void;
+  selectedClient?: any;
+  onSettingsUpdate?: (settings: any) => void;
+  onNotificationCreate?: (notification: any) => void
+}
+
+export default function UniversalDashboardDesktop({ 
+  profession = 'photographer',
+  onMeetingCreate,
+  onProjectUpdate,
+  onWorklogCreate,
+  onClientSelect,
+  onClientUpdate,
+  onShowcaseCreate,
+  onFileUpload,
+  onFileDownload,
+  selectedProject,
+  onProjectSelect,
+  selectedClient,
+  onSettingsUpdate,
+  onNotificationCreate
+}: UniversalDashboardDesktopProps) {
+  // All the same state variables as the original
+  const [tabValue, setTabValue] = useState(0);
+  const [settingsTabValue, setSettingsTabValue] = useState(0);
+  const [selectedTimelineTab, setSelectedTimelineTab] = useState(0);
+  const [showProjectModal, setShowProjectModal] = useState(false);
+  const [showQuickNotesModal, setShowQuickNotesModal] = useState(false);
+  const [showProjectCreation, setShowProjectCreation] = useState(false);
+  const [showVendorProductDialog, setShowVendorProductDialog] = useState(false);
+  const [showEmailCenter, setShowEmailCenter] = useState(false);
+  const [showEmailDesigner, setShowEmailDesigner] = useState(false);
+  const [showChat, setShowChat] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [showPrototypeFeedback, setShowPrototypeFeedback] = useState(false);
+  const [showCrmDialog, setShowCrmDialog] = useState(false);
+  const [selectedClient, setSelectedClient] = useState<any>(null);
+  const [emailProjectContext, setEmailProjectContext] = useState<any>(null);
+  const [proEditorMode, setProEditorMode] = useState(false);
+  const [showFAQDialog, setShowFAQDialog] = useState(false);
+  const [availableDashboards, setAvailableDashboards] = useState<string[]>([]);
+  const [selectedProject, setSelectedProject] = useState<any>(null);
+  const [selectedEquipment, setSelectedEquipment] = useState<any>(null);
+  const [showProjectDetailsModal, setShowProjectDetailsModal] = useState(false);
+  const [showEditProjectModal, setShowEditProjectModal] = useState(false);
+  const [showDeleteProjectDialog, setShowDeleteProjectDialog] = useState(false);
+
+  // Theme and Responsive
+  const theme = useTheme();
+  
+  // Theming system - use dynamic profession instead of hardcoded value
+  const theming = useTheming(profession === 'admin' ? 'photographer' : profession);
+  const isSmallScreen = useMediaQuery(theme.breakpoints.down('sm'));
+
+  // Universal Demo Mode Integration
+  const { isDemoMode, isLoading: demoModeLoading } = useDemoMode();
+
+  // Message handler for navigation from child components
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'navigate') {
+        const { tab, subTab } = event.data;
+        
+        if (tab === 'settings') {
+          const config = localProfessionConfigs[profession];
+          const settingsTabIndex = config.tabs.findIndex(t => t.id === 'settings');
+          if (settingsTabIndex !== -1) {
+            setTabValue(settingsTabIndex);
+            
+            if (subTab === 'pricing') {
+              setSettingsTabValue(2);
+        }
+      }
+    }
+  }
+};
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+}, [profession]);
+
+  // All the same functions as the original
+  const handleEditProject = (project: any) => {
+    setSelectedProject(project);
+    setShowEditProjectModal(true);
+};
+
+  const handleDeleteProject = (project: any) => {
+    setSelectedProject(project);
+    setShowDeleteProjectDialog(true);
+};
+
+  const handleViewProjectDetails = (project: any) => {
+    setSelectedProject(project);
+    setShowProjectDetailsModal(true);
+};
+
+  const confirmDeleteProject = async () => {
+    if (!selectedProject) return;
+    
+    try {
+ return apiRequest(`/api/projects/${selectedProject.id}`, {
+   headers: {
+          "Content-Type" : "application/json"
+  },
+        headers: {
+  },
+        
+        method: 'DELET',
+  });
+      
+      window.location.reload();
+} catch (error) {
+      // Error handled
+} finally {
+      setShowDeleteProjectDialog(false);
+      setSelectedProject(null);
+}
+};
+
+  // Get profession configuration with branding override
+  // Get base config from local configs
+  const baseConfig = localProfessionConfigs[profession] || localProfessionConfigs.photographer;
+  
+  // Enhance with dynamic profession branding (auto-scalable)
+  const config = useMemo(() => {
+    const displayName = getProfessionDisplayName(profession);
+    const professionColor = getUserProfessionColor(profession);
+    const professionIcon = getProfessionIcon(profession);
+    
+    return {
+      ...baseConfig,
+      // Override with dynamic data if available (for auto-scalability)
+      name: displayName || baseConfig.name,
+      color: professionColor || baseConfig.color,
+      icon: professionIcon || baseConfig.icon,
+    };
+  }, [profession, baseConfig, getProfessionDisplayName, getUserProfessionColor, getProfessionIcon]);
+
+  // All the same queries as the original
+  const { data: userSession } = useQuery({
+    queryKey: [', '],
+    queryFn: () => apiRequest('/api/auth/public-session', ),
+    retry: false
+});
+
+  const userId = userSession?.userId || 'guest';
+  const userEmail = userSession?.email;
+
+  const { data: adminPermissions } = useQuery({
+    queryKey: ['/api/admin/permissions', userEmail],
+    queryFn: () => apiRequest(`/api/admin/permissions?email=${userEmail}`),
+    enabled: !!userEmail && userEmail === 'current user'
+});
+
+  const isAdmin = userEmail === 'current user' || adminPermissions?.fullAccess;
+
+  const stats = config?.stats || [];
+
+  const { data: onboardingProfile } = useQuery({
+    queryKey: ['/api/onboarding/profile', userId],
+    queryFn: () => apiRequest(`/api/onboarding/profile/${userId}`),
+    enabled: !!userId && userId !== 'guest'
+});
+
+  const { data: brandingData } = useQuery({
+    queryKey: ['/api/branding/business-info', userId],
+    queryFn: () => apiRequest(['/api/branding/business-info', userId], {
+      headers: {
+}
+}),
+    enabled: !!userId && userId !== 'guest'
+});
+
+  // Admin Dashboard Switcher
+  const renderAdminDashboardSwitcher = () => {
+    if (!isAdmin) return null;
+    
+    return (
+      <Box sx={{ mb:  3 }}>
+        <MuiCard sx={{ 
+          background: `linear-gradient(135deg, ${getUserProfessionColor('photographer')} 0%, ${getUserProfessionColor('photographer')} 100%)`,
+          color: 'white',
+          p: 2 }}>
+          <Typography variant="h6" sx={{  mb: 2, fontWeight: 600}}>
+            🔧 Admin Dashboard Tilgang
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap'}}>
+            {Object.entries(localProfessionConfigs).map(([key, baseConfig]) => {
+              // Get dynamic branding for this profession (auto-scalable)
+              const displayName = getProfessionDisplayName(key);
+              const professionColor = getUserProfessionColor(key);
+              const professionIcon = getProfessionIcon(key);
+              
+              // Merge base config with dynamic branding
+              const enhancedConfig = {
+                ...baseConfig,
+                name: displayName || baseConfig.name,
+                color: professionColor || baseConfig.color,
+                icon: professionIcon || baseConfig.icon,
+              };
+              
+              return (
+                <Button
+                  key={key}
+                  variant={profession === key ? "contained" : "outlined"}
+                  startIcon={enhancedConfig.icon}
+                  onClick={() => {
+                    trackButtonClick('profession_change', { 
+                      from_profession: profession, 
+                      to_profession: key,
+                      dashboard: 'universal', 
+                      component: 'profession_selector'
+              });
+                    window.location.href = `/?profession=${key}`;
+              }}
+                  sx={{
+                    bgcolor: profession === key ? 'rgba(25,255,255,0.9)' : 'transparent',
+                    color: profession === key ? enhancedConfig.color : 'white',
+                    borderColor: 'rgba(25,255,255,0.5)', '&:hover': {
+                      bgcolor: 'rgba(25,255,255,0.1)',
+                      borderColor: 'rgba(25,255,255,0.8)'
+                }
+              }}
+                >
+                  {enhancedConfig.name}
+                </Button>
+            );
+        })}
+          </Box>
+          <Typography variant="body2" sx={{ mt: 2, opacity: 0.9}}>
+            Som administrator har du tilgang til alle dashboards med samme mappestruktur og funksjonalitet.
+          </Typography>
+        </MuiCard>
+      </Box>
+  );
+};
+  
+  // Apply custom branding
+  const customBranding = useMemo(() => {
+    const brandingInfo = brandingData?.businessInfo || {};
+    const onboardingInfo = onboardingProfile || {};
+    
+    return {
+      color: brandingInfo.brandingColor || onboardingInfo.brandingColor || config?.color || '#ff8c00',
+      businessName: brandingInfo.businessName || onboardingInfo.businessName || config?.name || 'CreatorHub',
+      tagline: brandingInfo.tagline || onboardingInfo.tagline || null,
+      profilePhoto: onboardingInfo.profilePhoto || null,
+      customLogo: brandingInfo.customLogo || onboardingInfo.customLogo || null
+};
+}, [onboardingProfile, brandingData, config]);
+
+  // Fetch dashboard data based on profession
+  const { data: dashboardData = {} } = useQuery({
+    queryKey: [`/api/dashboard/${profession}`, userId],
+    queryFn: () => apiRequest(`/api/dashboard/${profession}/${userId}`),
+    enabled: !!userId && userId !== 'guest'
+});
+
+  // Fetch real projects from database
+  const { data: projects = [, ],} = useQuery({
+    queryKey: ['/api/projects', { profession, userId }],
+    queryFn: () => apiRequest(`/api/projects?profession=${profession}&userId=${userId}`),
+    enabled: !!userId && userId !== 'guest'
+});
+
+  // Fetch real meeting notes stats
+  const { data: meetingStats } = useQuery({
+    queryKey: ['/api/smart-meeting-notes/stats', profession, userId],
+    queryFn: () => apiRequest(`/api/smart-meeting-notes/stats/${profession}/${userId}`),
+    enabled: !!userId && userId !== 'guest'
+});
+
+  // Fetch recent meeting notes
+  const { data: recentMeetingNotes = [, ],} = useQuery({
+    queryKey: ['/api/smart-meeting-notes/recent', userId],
+    queryFn: () => apiRequest(`/api/smart-meeting-notes/recent/${userId}?limit=3`),
+    enabled: !!userId && userId !== 'guest'
+});
+
+  // Fetch unread email count for email icon
+  const { data: unreadEmailData } = useQuery({
+    queryKey: ['/api/emails/unread-count', userId],
+    queryFn: () => apiRequest(`/api/emails/unread-count/${userId}`),
+    enabled: !!userId && userId !== 'guest'
+});
+
+  // Fetch recent notifications for notification center
+  const { data: recentNotifications = [, ],} = useQuery({
+    queryKey: ['/api/notifications/recent', userId],
+    queryFn: () => apiRequest(`/api/notifications/recent/${userId}?limit=10`),
+    enabled: !!userId && userId !== 'guest'
+});
+
+  const unreadEmailCount = unreadEmailData?.count || 0;
+
+  // Fetch upcoming projects data
+  const { data: upcomingProjects = [], isLoading: upcomingLoading } = useQuery({
+    queryKey: ['/api/dashboard/upcoming-projects', userId],
+    queryFn: () => apiRequest('/api/dashboard/upcoming-projects', ),
+    enabled: !!userId && userId !== 'guest',
+    staleTime: 3000,
+});
+
+  // Dynamic profession system
+  const { professionConfigs, isLoading: professionsLoading, getProfessionDisplayName, getUserProfessionColor, getProfessionIcon } = useDynamicProfessions();
+  const { adaptDashboardTitle, adaptTabLabels } = useProfessionAdapter();
+
+  /**
+   * Check if profession supports specific features
+   * Connected to profession-feature-matrix.ts for centralized feature management
+   */
+  const professionSupports = (feature: string) => {
+    const config = professionConfigs[profession];
+    if (!config) return false;
+    
+    // Check centralized feature matrix first
+    const matrixResult = isProfessionFeatureAvailable(profession, feature);
+    if (matrixResult) {
+      return true;
+    }
+    
+    // Fallback to local feature mapping for features not in matrix
+    const featureMap: Record<string, string[]> = {
+      wedding_timeline: ['photographer'],
+      camera_projects: ['photographer','videographer'], 
+      vendor_products: ['vendor'],
+      music_projects: ['music_producer']
+    };
+    
+    return featureMap[feature]?.includes(profession) || false;
+  };
+
+  // Get dynamic project creation text
+  const getProjectCreationText = (isShort = false) => {
+    const config = professionConfigs[profession];
+    if (!config) return isShort ? 'Nytt' : 'Nytt Prosjekt';
+    
+    if (isShort) return 'Nytt';
+    
+    // Use dynamic profession display names for auto-scalability
+    const photographerName = getProfessionDisplayName('photographer');
+    const videographerName = getProfessionDisplayName('videographer');
+    const musicProducerName = getProfessionDisplayName('music_producer');
+    
+    const projectTypes: Record<string, string> = {
+      photographer: `Nytt ${photographerName}prosjekt`,
+      videographer: `Nytt ${videographerName}prosjekt`, 
+      music_producer: `Nytt ${musicProducerName}prosjekt`,
+      vendor: 'Nytt Produkt'
+};
+    
+    return projectTypes[profession] || 'Nytt Prosjekt';
+};
+
+  const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
+    setTabValue(newValue);
+};
+
+  return (
+    <Box 
+      sx={{ 
+        minHeight: '100vh',
+        background: `
+          linear-gradient(135deg, #fff5e6 0%, #ffedd5 25%, #fed7aa 50%, #fdba74 75%, ${customBranding.color} 100%),
+          radial-gradient(circle at 20% 80%, ${customBranding.color}30 0%, transparent 50%),
+          radial-gradient(circle at 80% 20%, ${customBranding.color}25 0%, transparent 50%),
+          radial-gradient(circle at 40% 40%, ${customBranding.color}20 0%, transparent 50%)
+        `,
+        py: { xs: 2, sm:  3, md:  4 },
+        px: { xs: 1, sm:  2 },
+        // WCAG AA Compliance: Motion and contrast preferences
+        '@media (prefers-reduced-motion: reduce)': {
+          background: '#fff5e6'
+  }, '@media (prefers-contrast: high)': {
+          background: '#ffffff',
+          border: '2px solid #000000'
+  }
+  }}
+      component="div"
+      role="application"
+      aria-label="CreatorHub Norge Dashboard"
+    >
+      <Container 
+        maxWidth="xl"
+        sx={{
+          px: { xs: 1, sm: 2, md:  3 }
+    }}
+        component="main"
+        role="main"
+        aria-label="Dashboard hovedinnhold"
+      >
+        {/* Admin Indicator */}
+        {isAdmin && (
+          <AdminIndicator 
+            userEmail={userEmail}
+            profession={profession}
+            variant="full"
+          />
+        )}
+
+        {/* Admin Dashboard Switcher */}
+        {renderAdminDashboardSwitcher()}
+
+        {/* Header - Desktop Optimized */}
+        <Box 
+          sx={{ mb: { xs: 2, md:  4 } }}
+          component="header"
+          role="banner"
+          aria-label="Dashboard header"
+        >
+          <Box sx={{ textAlign: 'center', mb:  1 }}>
+            <img 
+              src="/creatorhub-logo-amber.svg"
+              alt="CreatorHub Norge Logo"
+              style={{
+                height: '150px',
+                width: 'auto',
+                maxWidth: '100%',
+                objectFit: 'contain'
+        }}
+              role="img"
+              aria-label="CreatorHub Norge hovedlogo"
+            />
+          </Box>
+          
+          {/* Welcome Card with Custom Branding - Desktop Layout */}
+          <MuiCard 
+            sx={{ 
+              mb: { xs: 2, md:  4 },
+              background: 'rgba(25, 255, 255, 0.95)',
+              backdropFilter: 'blur(10px)',
+              border: `2px solid ${customBranding.color}40`, '&:focus-within': {
+                outline: `3px solid ${customBranding.color}`,
+                outlineOffset: '2px'
+        }, '@media (prefers-contrast: high)': {
+                background: '#ffffff',
+                border: `3px solid ${customBranding.color}`
+          }
+        }}
+            component="section"
+            role="region"
+            aria-label="Velkomstsektor med brukerinformasjon"
+          >
+            <MuiCardContent sx={{ p: { xs: 2, sm:  3 } }}>
+              <Box sx={{ 
+                display: 'flex', 
+                flexDirection: { xs: 'column', sm: 'row',},
+                alignItems: { xs: 'center', sm: 'flex-start',},
+                gap: 2, mb: 2 }}>
+                <Avatar 
+                  src={customBranding.profilePhoto}
+                  sx={{ 
+                    bgcolor: customBranding.color, 
+                    width: { xs: 48, sm: 56,},
+                    height: { xs: 48, sm: 56,},
+                    border: `2px solid ${customBranding.color}`
+              }}
+                >
+                  {!customBranding.profilePhoto && config.icon}
+                </Avatar>
+                <Box sx={{ flexGrow: 1, textAlign: { xs: 'center', sm: 'left',} }}>
+                  <Box sx={{ 
+                    display: 'flex', 
+                    flexDirection: { xs: 'column', sm: 'row',},
+                    alignItems: { xs: 'center', sm: 'flex-start',},
+                    gap: { xs: 1, sm:  2 },
+                    mb: 1 }}>
+                    <Typography variant="h3" 
+                      sx={{ 
+                        fontWeight: 600,
+                        color: customBranding.color,
+                        fontSize: { xs: '1.1rem', sm: '1.25rem',}
+                  }}
+                      component="h3"
+                      aria-label={`Velkommen tilbake, ${customBranding.businessName}`}
+                     sx={{ color: theming.colors.primary }}>
+                      Velkommen tilbake, {customBranding.businessName}!
+                    </Typography>
+                    {customBranding.customLogo && (
+                      <img 
+                        src={customBranding.customLogo}
+                        alt="Logo" 
+                        style={{ 
+                          maxWidth:  60, 
+                          maxHeight:  30, 
+                          objectFit: 'contain' 
+                  }}
+                      />
+                    )}
+                  </Box>
+                  <Typography 
+                    variant="body2" 
+                    color="text.secondary"
+                    sx={{ fontSize: { xs: '0.8rem', sm: '0.875rem',} }}
+                  >
+                    {customBranding.tagline || `Du har ${projects?.length || 0} aktive prosjekter og ${recentMeetingNotes?.length || 0} nye notater`}
+                  </Typography>
+                </Box>
+                <Box sx={{ 
+                  display: 'flex', 
+                  flexDirection: { xs: 'row', sm: 'row',},
+                  flexWrap: 'wrap',
+                  gap: 1, alignItems: 'center',
+                  justifyContent: { xs: 'center', sm: 'flex-end',}
+            }}>
+                  {/* Compact Admin Indicator in header */}
+                  {isAdmin && (
+                    <AdminIndicator 
+                      userEmail={userEmail}
+                      profession={profession}
+                      variant="compact"
+                    />
+                  )}
+                  <Button 
+                    variant="outlined" 
+                    size={isSmallScreen ? "small" : "medium"}
+                    startIcon={theming.getThemedIcon('article')}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setShowQuickNotesModal(true);
+                }}
+                    sx={{ 
+                      borderColor: customBranding.color,
+                      color: customBranding.color,
+                      fontSize: { xs: '0.75rem', sm: '0.875rem',},
+                      minHeight: { xs: 36, sm: 44,}, '&:hover': {
+                        bgcolor: customBranding.color + '1',
+                        borderColor: customBranding.color
+                }, '&:focus': {
+                        outline: `2px solid ${customBranding.color}`,
+                        outlineOffset: '2px'
+                }
+                }}
+                    aria-label={isSmallScreen ? 'Åpne notater' : 'Åpne møtenotater'}
+                    tabIndex={0}
+                  >
+                    {isSmallScreen ? 'Notater' : 'Møtenotater'}
+                  </Button>
+                  {professionSupports('camera_projects') ? (
+                    <Button variant="contained" 
+                      size={isSmallScreen ? "small" : "medium"}
+                      startIcon={theming.getThemedIcon('addCircle')}
+                      onClick={(e) = sx={theming.getThemedButtonSx()}> {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        trackButtonClick('ny_prosjekt_hovedkort', { 
+                          profession, 
+                          dashboard: 'universal', 
+                          tab: 'oversikt',
+                          component: 'hovedkort'
+                  });
+                        if (professionSupports('vendor_products')) {
+                          setShowVendorProductDialog(true);
+                    } else {
+                          setShowProjectCreation(true);
+                    }
+                  }}
+                      sx={{ 
+                        bgcolor: customBranding.color,
+                        fontSize: { xs: '0.75rem', sm: '0.875rem',},'&:hover': { bgcolor: customBranding.color + 'dd',}
+                  }}
+                    >
+                      {getProjectCreationText(isSmallScreen)}
+                    </Button>
+                  ) : (
+                    <Button variant="contained" 
+                      size={isSmallScreen ? "small" : "medium"}
+                      startIcon={theming.getThemedIcon('add')}
+                      onClick={(e) = sx={theming.getThemedButtonSx()}> {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setShowProjectModal(true);
+                  }}
+                      sx={{ 
+                        bgcolor: customBranding.color,
+                        fontSize: { xs: '0.75rem', sm: '0.875rem',},'&:hover': { bgcolor: customBranding.color + 'dd',}
+                  }}
+                    >
+                      {getProjectCreationText(isSmallScreen)}
+                    </Button>
+                  )}
+                  <IconButton 
+                    size={isSmallScreen ? "small" : "medium"}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setShowEmailCenter(true);
+                }}
+                    sx={{ 
+                      bgcolor: `${customBranding.color}10`,
+                      minHeight: { xs: 36, sm: 44,}, '&:hover': {
+                        bgcolor: customBranding.color + '20' 
+                }, '&:focus': {
+                        outline: `2px solid ${customBranding.color}`,
+                        outlineOffset: '2px'
+                }
+                }}
+                    aria-label={`E-post senter${unreadEmailCount > 0 ? ` - ${unreadEmailCount} uleste meldinger` : ', '}`}
+                    tabIndex={0}
+                  >
+                    <Badge badgeContent={unreadEmailCount} color="error">
+                      {theming.getThemedIcon('email')}
+                    </Badge>
+                  </IconButton>
+                </Box>
+              </Box>
+
+              {/* Quick Actions - Desktop Layout */}
+              <Box sx={{ 
+                display: 'flex', 
+                gap: { xs: 0, .sm:  1 },
+                flexWrap: 'wrap',
+                justifyContent: { xs: 'center', sm: 'flex-start',}
+          }}>
+                {config.tabs.slice(1, 5).map((tab, index) => {
+                  return (
+                    <Button 
+                      key={tab.id}
+                      size="small" 
+                      startIcon={tab.icon}
+                      variant={tabValue === index + 1 ? "contained" : "outlined"}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleTabChange(null, index + 1);
+                  }}
+                      sx={{ 
+                        fontSize: { xs: '0.7rem', sm: '0.75rem',},
+                        borderColor: tabValue === index + 1 ? customBranding.color : customBranding.color + '6',
+                        color: tabValue === index + 1 ? 'white' : customBranding.color,
+                        backgroundColor: tabValue === index + 1 ? customBranding.color : 'transparent',
+                        minHeight: { xs: 32, sm: 36,}, '&:hover': {
+                          borderColor: customBranding.color,
+                          backgroundColor: tabValue === index + 1 ? customBranding.color + 'dd' : customBranding.color + '10'
+                  }
+                  }}
+                    >
+                      {tab.label}
+                    </Button>
+                );
+            })}
+              </Box>
+            </MuiCardContent>
+          </MuiCard>
+        </Box>
+
+        {/* Desktop Tab Navigation */}
+        <Paper 
+          sx={{ 
+            mb:  3, 
+            background: 'rgba(25, 255, 255, 0.9)',
+            backdropFilter: 'blur(10px)',
+            border: `1px solid ${alpha(customBranding.color, 0.2)}`
+      }}
+         sx={theming.getThemedCardSx()}>
+          <MuiTabs 
+            value={tabValue}
+            onChange={handleTabChange}
+            variant="scrollable"
+            scrollButtons="auto"
+            sx={{
+              '& .MuiTab-root': {
+                fontWeight: 60
+                textTransform: 'none',
+                minHeight:  64,
+                fontSize: '0.9rem','&.Mui-selected': {
+                  color: customBranding.color
+          }
+          }, '& .MuiTabs-indicator': {
+                backgroundColor: customBranding.color,
+                height:  3,
+                borderRadius: 2 }
+        }}
+          >
+            {config.tabs.map((tab, index) => (
+              <Tab 
+                key={tab.id}
+                icon={tab.icon}
+                label={tab.label}
+                iconPosition="start"
+                sx={{
+                  '& .MuiTab-iconWrapper': {
+                    marginRight:  1,
+                    marginBottom: 0 }
+            }}
+              />
+            ))}
+          </MuiTabs>
+        </Paper>
+
+        {/* Tab Content - Desktop Layout */}
+        
+        {/* Overview Tab - Tab 0 */}
+        <TabPanel value={tabValue} index={0}>
+          <Box>
+            {/* Desktop Stats Grid - Multi Column */}
+            <Grid container spacing={3} sx={{ mb:  4 }}>
+              {stats.map((stat, index) => (
+                <Grid size={{ xs: 12 }} sm={6} md={3} key={stat.key}>
+                  <MuiCard
+                    sx={{
+                      background: 'linear-gradient(135deg, rgba(2, 5, 5,255,255,0.9) 0%, rgba(2, 5, 5,255,255,0.95) 100%)',
+                      backdropFilter: 'blur(10px)',
+                      border: `1px solid ${alpha(customBranding.color, 0.2)}`,
+                      borderRadius:  3,
+                      transition: 'all 0.3s ease',
+                      cursor: 'pointer','&:hover': {
+                        transform: 'translateY(-4px)',
+                        boxShadow: `0 20px 40px ${alpha(customBranding.color, 0.15)}`,
+                        border: `1px solid ${alpha(customBranding.color, 0.4)}`
+                  }
+                }}
+                  >
+                    <MuiCardContent sx={{ p:  3, textAlign: 'center'}}>
+                      <Box sx={{ 
+                        mb: 2, color: customBranding.color, '& svg': { fontSize: '2rem',}
+                  }}>
+                        {stat.icon}
+                      </Box>
+                      <Typography variant="h4" 
+                        sx={{  
+                          fontWeight: 7, 
+                          color: '#',
+                          mb: 1  }}>
+                        {dashboardData[stat.key] || '0'}
+                      </Typography>
+                      <Typography 
+                        variant="body1" 
+                        color="text.secondary"
+                        sx={{ fontWeight: 50}}
+                      >
+                        {stat.label}
+                      </Typography>
+                    </MuiCardContent>
+                  </MuiCard>
+                </Grid>
+              ))}
+            </Grid>
+
+            {/* Desktop Projects Grid - 3 Column Layout */}
+            <Grid container spacing={3} sx={{ mb:  4 }}>
+              <Grid size={{ xs: 12 }}>
+                <Box sx={{ mb:  4 }}>
+                  <Typography variant="h5" 
+                    sx={{ 
+                      fontWeight: 7,
+                      fontSize: { xs: '1.25rem', sm: '1.5rem',},
+                      background: `linear-gradient(135deg, ${customBranding.color}, #FF8C00)`,
+                      backgroundClip: 'text',
+                      WebkitBackgroundClip: 'text',
+                      WebkitTextFillColor: 'transparent',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap:  2,
+                      mb: 3 }}
+                   sx={{ color: theming.colors.primary }}>
+                    <PhotoCamera sx={{ color: customBranding.color }} />
+                    Kommende Prosjekter
+                  </Typography>
+
+                  {projects && projects.length > 0 ? (
+                    <Grid container spacing={2}>
+                      {projects.slice(0, 6).map((project: any, index: number) => {
+                        const currentDate = new Date();
+                        const projectDate = project.eventDate ? new Date(project.eventDate) : null;
+                        const daysUntil = projectDate ? Math.ceil((projectDate.getTime() - currentDate.getTime()) / (1000 * 60 * 60 * 24)) : null;
+                        
+                        const isCompleted = project.status === 'Fullført' || project.status === 'Completed';
+                        const isActive = project.status === 'Aktiv' || project.status === 'Active';
+                        const isPending = project.status === 'Planlagt' || project.status === 'Pending';
+                        
+                        let statusColor = customBranding.color;
+                        if (isCompleted) statusColor = '#4CAF50';
+                        else if (isActive) statusColor = '#FF9800';
+                        else if (isPending) statusColor = '#2196F3';
+
+                        return (
+                          <Grid size={{ xs: 12 }} sm={6} lg={4} key={project.id || index}>
+                            <Fade in timeout={800 + index * 200}>
+                              <MuiCard
+                                sx={{
+                                  background: 'linear-gradient(135deg, rgba(2, 5, 5,255,255,0.9) 0%, rgba(2, 5, 5,255,255,0.95) 100%)',
+                                  backdropFilter: 'blur(10px)',
+                                  border: `1px solid ${alpha(statusColor, 0.2)}`,
+                                  borderRadius:  3,
+                                  transition: 'all 0.3s ease',
+                                  cursor: 'pointer',
+                                  position: 'relative',
+                                  overflow: 'visible','&:hover': {
+                                    transform: 'translateY(-6px)',
+                                    boxShadow: `0 25px 50px ${alpha(statusColor, 0.25)}`,
+                                    border: `1px solid ${alpha(statusColor, 0.4)}`'& .project-actions': {
+                                      opacity:  1,
+                                      transform: 'translateY(0)'
+                              }
+                              }, '&::before': {
+                                    content: '","',
+                                    position: 'absolute',
+                                    top:  0,
+                                    left:  0,
+                                    right:  0,
+                                    height: '4px',
+                                    background: `linear-gradient(90deg, ${statusColor}, ${alpha(statusColor, 0.7)})`,
+                                    borderRadius: '12px 12px 0 0'
+                            }
+                            }}
+                                onClick={() => handleViewProjectDetails(project)}
+                              >
+                                <MuiCardContent sx={{ p: 2.5}}>
+                                  {/* Project Header */}
+                                  <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2, mb: 2 }}>
+                                    <Avatar 
+                                      sx={{ 
+                                        width:  40, 
+                                        height:  40,
+                                        backgroundColor: alpha(statusColor, 0.1),
+                                        color: statusColor,
+                                        fontSize: '0.9rem',
+                                        fontWeight: 600}}
+                                    >
+                                      {(project.clientName || project.title || project.name || 'P').charAt(0).toUpperCase()}
+                                    </Avatar>
+                                    
+                                    <Box sx={{ flex: 1, minWidth:  0 }}>
+                                      <Typography variant="h6" 
+                                        sx={{  
+                                          fontSize: '1rem',
+                                          fontWeight: 60
+                                         , color: '#',
+                                          lineHeight: 1.2,
+                                          mb: 0.5,
+                                          overflow: 'hidden',
+                                          textOverflow: 'ellipsis',
+                                          whiteSpace: 'nowrap'
+                                   }}>
+                                        {project.title || project.name}
+                                      </Typography>
+                                      
+                                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5}}>
+                                        <AccountCircle sx={{ fontSize:  14, color: '#666'}} />
+                                        <Typography 
+                                          variant="body2" 
+                                          sx={{ 
+                                            color: '#66',
+                                            fontSize: '0.8rem',
+                                            overflow: 'hidden',
+                                            textOverflow: 'ellipsis',
+                                            whiteSpace: 'nowrap'
+                                    }}
+                                        >
+                                          {project.clientName || 'Klient ikke angitt'}
+                                        </Typography>
+                                      </Box>
+                                    </Box>
+
+                                    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 0.5}}>
+                                      <Chip 
+                                        size="small"
+                                        label={isCompleted ? 'Fullført' : isActive ? 'Aktiv' : isPending ? 'Planlagt' : project.status}
+                                        sx={{
+                                          backgroundColor: alpha(statusColor, 0.1),
+                                          color: statusColor,
+                                          fontWeight: 60
+                                          fontSize: '0.7rem',
+                                          height: 20 }}
+                                      />
+                                      
+                                      {daysUntil >= 0 && daysUntil <= 30 && (
+                                        <Typography 
+                                          variant="caption" 
+                                          sx={{ 
+                                            color: statusColor,
+                                            fontWeight: 60
+                                            fontSize: '0.7rem'
+                                    }}
+                                        >
+                                          {daysUntil === 0 ? 'I dag' : daysUntil === 1 ? 'I morgen' : `${daysUntil} dager`}
+                                        </Typography>
+                                      )}
+                                    </Box>
+                                  </Box>
+
+                                  {/* Project Details */}
+                                  <Stack spacing={1}>
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
+                                      <Event sx={{ fontSize:  16, color: statusColor }} />
+                                      <Typography variant="body2" sx={{ color: '#44', fontWeight: 50}}>
+                                        {project.eventDate || project.date ? 
+                                          new Date(project.eventDate || project.date).toLocaleDateString('no-NO', {
+                                            weekday: 'short',
+                                            day: '2-digit',
+                                            month: 'short',
+                                            year: 'numeric'
+                                    }) : 'Dato ikke satt'
+                                    }
+                                      </Typography>
+                                    </Box>
+                                    
+                                    {project.location && (
+                                      <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
+                                        <LocationOn sx={{ fontSize:  16, color: statusColor }} />
+                                        <Typography variant="body2" sx={{ color: '#44', fontWeight: 50}}>
+                                          {project.location}
+                                        </Typography>
+                                      </Box>
+                                    )}
+
+                                    {/* Progress Bar */}
+                                    {daysUntil >= 0 && daysUntil <= 30 && (
+                                      <Box sx={{ mt:  1 }}>
+                                        <LinearProgress 
+                                          variant="determinate" 
+                                          value={Math.max(0, Math.min(100, ((30 - daysUntil) / 30) * 100))}
+                                          sx={{
+                                            height:  4,
+                                            borderRadius:  2,
+                                            backgroundColor: alpha(statusColor, 0.15)'& .MuiLinearProgress-bar': {
+                                              backgroundColor: statusColor,
+                                              borderRadius: 2 }
+                                      }}
+                                        />
+                                      </Box>
+                                    )}
+                                  </Stack>
+                                </MuiCardContent>
+
+                                <MuiCardActions sx={{ p: 2,pt: 0, justifyContent: 'space-between'}}>
+                                  <Button
+                                    size="small"
+                                    startIcon={theming.getThemedIcon('edit')}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleEditProject(project);
+                                }}
+                                    sx={{
+                                      color: statusColor, '&:hover': {
+                                        backgroundColor: alpha(statusColor, 0.1)
+                                  }
+                                }}
+                                  >
+                                    Rediger
+                                  </Button>
+                                  
+                                  <IconButton
+                                    size="small"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleViewProjectDetails(project);
+                                }}
+                                    sx={{
+                                      color: '#66','&:hover': {
+                                        backgroundColor: alpha(customBranding.color, 0.1),
+                                        color: customBranding.color
+                                }
+                                }}
+                                    title="Se større"
+                                  >
+                                    <Launch sx={{ fontSize: 16}} />
+                                  </IconButton>
+                                  
+                                  <IconButton
+                                    size="small"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleDeleteProject(project);
+                                }}
+                                    sx={{
+                                      color: '#66','&:hover': {
+                                        backgroundColor: alpha('#', 0.1),
+                                        color: '#f44336'
+                                }
+                                }}
+                                    title="Slett prosjekt"
+                                  >
+                                    <Delete sx={{ fontSize: 16}} />
+                                  </IconButton>
+                                </MuiCardActions>
+                              </MuiCard>
+                            </Fade>
+                          </Grid>
+                      );
+                  })}
+                    </Grid>
+                  ) : (
+                    <MuiCard sx={{
+                      background: 'linear-gradient(135deg, rgba(2, 5, 5,255,255,0.9) 0%, rgba(2, 5, 5,255,255,0.95) 100%)',
+                      backdropFilter: 'blur(10px)',
+                      border: `1px solid ${alpha(customBranding.color, 0.2)}`,
+                      borderRadius:  3,
+                      p:  6,
+                      textAlign: 'center'
+              }}>
+                      {customBranding.customLogo ? (
+                        <img 
+                          src={customBranding.customLogo}
+                          alt="Logo" 
+                          style={{ 
+                            width:  48, 
+                            height:  48, 
+                            objectFit: 'contain',
+                            marginBottom:  16,
+                            opacity: 0.5 }}
+                        />
+                      ) : (
+                        <PhotoCamera sx={{ 
+                          fontSize:  48, 
+                          color: alpha(customBranding.color, 0.5),
+                          mb: 2 }} />
+                      )}
+                      <Typography variant="h6" color="text.secondary" gutterBottom sx={{ color: theming.colors.primary }}>
+                        {profession === 'photographer' && `Ingen ${getProfessionDisplayName('photographer').toLowerCase()}prosjekter ennå`}
+                        {profession === 'videographer' && `Ingen ${getProfessionDisplayName('videographer').toLowerCase()}prosjekter ennå`}
+                        {profession === 'music_producer' && `Ingen ${getProfessionDisplayName('music_producer').toLowerCase()}prosjekter ennå`}
+                        {profession === 'vendor' && 'Ingen produkter ennå'}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb:  3 }}>
+                        {professionSupports('camera_projects') && 'Opprett ditt første prosjekt for å komme i gang'}
+                        {profession === 'videographer' && 'Opprett ditt første videoprosjekt for å komme i gang'}
+                        {profession === 'music_producer' && 'Opprett ditt første musikkprosjekt for å komme i gang'}
+                        {profession === 'vendor' && 'Vent på din første bestilling'}
+                      </Typography>
+                      <Button variant="contained"
+                        startIcon={theming.getThemedIcon('addCircle')}
+                        onClick={() => {
+                          trackButtonClick('ny_prosjekt_knapp_dashboard', { 
+                            profession, 
+                            dashboard: 'universal', 
+                            tab: 'dashboard_main',
+                            component: 'project_button_dashboard'
+                    });
+                          if (professionSupports('vendor_products')) {
+                            setShowVendorProductDialog(true);
+                      } else {
+                            setShowProjectCreation(true);
+                      }
+                    }}
+                        sx={{
+                          backgroundColor: customBranding.color, '&:hover': { backgroundColor: alpha(customBranding.color, 0.8) }
+                    }}
+                      >
+                        {profession === 'photographer' && `Opprett ${getProfessionDisplayName('photographer')}prosjekt`}
+                        {profession === 'videographer' && `Opprett ${getProfessionDisplayName('videographer')}prosjekt`}
+                        {profession === 'music_producer' && `Opprett ${getProfessionDisplayName('music_producer')}prosjekt`}
+                        {profession === 'vendor' && 'Opprett Produkt'}
+                      </Button>
+                    </MuiCard>
+                  )}
+                </Box>
+              </Grid>
+
+              {/* Project Timeline Section - Desktop */}
+              <Grid size={{ xs: 12 }}>
+                <Box sx={{ mb:  4 }}>
+                  <Box sx={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'space-between',
+                    mb: 3 }}>
+                    <Typography variant="h6" 
+                      sx={{ 
+                        fontWeight: 7,
+                        fontSize: { xs: '1.1rem', sm: '1.25rem',},
+                        background: `linear-gradient(135deg, ${customBranding.color}, #FF8C00)`,
+                        backgroundClip: 'text',
+                        WebkitBackgroundClip: 'text',
+                        WebkitTextFillColor: 'transparent',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 1 }}
+                     sx={{ color: theming.colors.primary }}>
+                      <TimelineIcon sx={{ color: customBranding.color }} />
+                      Prosjekt Tidslinje
+                    </Typography>
+                  </Box>
+
+                  <MuiCard sx={{
+                    background: 'linear-gradient(135deg, rgba(2, 5, 5,255,255,0.9) 0%, rgba(2, 5, 5,255,255,0.95) 100%)',
+                    backdropFilter: 'blur(10px)',
+                    border: `1px solid ${alpha(customBranding.color, 0.2)}`,
+                    borderRadius:  3,
+                    overflow: 'hidden',
+                    transition: 'all 0.3s ease', '&:hover': {
+                      transform: 'translateY(-2px)',
+                      boxShadow: `0 20px 40px ${alpha(customBranding.color, 0.15)}`,
+                      border: `1px solid ${alpha(customBranding.color, 0.3)}`
+                }
+              }}>
+                    <MuiCardContent sx={{ p:  3 }}>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb:  3, fontWeight: 50}}>
+                        Administrer milepæler, frister, møter og viktige hendelser for dine prosjekter. Alt koblet sammen.
+                      </Typography>
+                    
+                      <MuiTabs 
+                        value={selectedTimelineTab}
+                        onChange={(_, newValue) => setSelectedTimelineTab(newValue)}
+                        sx={{ 
+                          mb: 3'& .MuiTab-root': {
+                            fontWeight: 60
+                            textTransform: 'none',
+                            minHeight: 48'&.Mui-selected': { color: customBranding.color
+                      }
+                      }, '& .MuiTabs-indicator': {
+                            backgroundColor: customBranding.color,
+                            height:  3,
+                            borderRadius: 2 }
+                    }}
+                      >
+                        <Tab label="Timeline" />
+                        <Tab label="Google Møter" />
+                      </MuiTabs>
+
+                      {selectedTimelineTab === 0 && (
+                        <ProjectTimeline 
+                          projectId={userId}
+                        />
+                      )}
+                      
+                      {selectedTimelineTab === 1 && (
+                        <GoogleWorkspaceMeetingManager
+                          profession={profession}
+                          userId={userId}
+                        />
+                      )}
+                    </MuiCardContent>
+                  </MuiCard>
+                </Box>
+              </Grid>
+            </Grid>
+          </Box>
+        </TabPanel>
+
+        {/* Projects Tab - Tab 1 */}
+        <TabPanel value={tabValue} index={1}>
+          <FotografOrchestrator profession={profession} userId={userId} />
+        </TabPanel>
+
+        {/* Universal Contract System - Tab 2 for ALL professions */}
+        <TabPanel value={tabValue} index={2}>
+          <UniversalContractHub 
+            profession={profession as 'photographer' | 'videographer' | 'music_producer'}
+            userId={userId}
+          />
+        </TabPanel>
+
+        {/* Wedding Timeline - Tab 3 (Only for photographers) */}
+        {professionSupports('wedding_timeline') && (
+          <TabPanel value={tabValue} index={3}>
+            <WeddingTimelineAdmin profession={profession} userId={userId} />
+          </TabPanel>
+        )}
+
+        {/* Showcase Admin - Tab 4 */}
+        <TabPanel value={tabValue} index={4}>
+          <ShowcaseAdmin profession={profession} userId={userId} />
+        </TabPanel>
+
+        {/* AI Enhancement - Tab 5 */}
+        <TabPanel value={tabValue} index={5}>
+          {profession === 'photographer' || profession === 'videographer' ? (
+            <PhotoEnhancementSuite profession={profession} userId={userId} />
+          ) : (
+            <AudioEnhancementSuite profession={profession} userId={userId} />
+          )}
+        </TabPanel>
+
+        {/* Email Center - Tab 6 */}
+        <TabPanel value={tabValue} index={6}>
+          <IntegratedEmailCenter profession={profession} userId={userId} />
+        </TabPanel>
+
+        {/* Worklog - Tab 7 */}
+        <TabPanel value={tabValue} index={7}>
+          <UniversalWorklog profession={profession} userId={userId} />
+        </TabPanel>
+
+        {/* Clients - Tab 8 */}
+        <TabPanel value={tabValue} index={8}>
+          <AdvancedClientManagement profession={profession} userId={userId} />
+        </TabPanel>
+
+        {/* Equipment - Tab 9 */}
+        <TabPanel value={tabValue} index={9}>
+          <ComprehensiveEquipmentDashboard profession={profession} userId={userId} />
+        </TabPanel>
+
+        {/* Files - Tab 10 */}
+        <TabPanel value={tabValue} index={10}>
+          <FilesTab profession={profession} userId={userId} />
+        </TabPanel>
+
+        {/* Support - Tab 11 */}
+        <TabPanel value={tabValue} index={11}>
+          <HelpdeskSystem profession={profession} userId={userId} />
+        </TabPanel>
+
+        {/* Settings - Tab 12 */}
+        <TabPanel value={tabValue} index={12}>
+          <UniversalSettingsPanel profession={profession} userId={userId} />
+        </TabPanel>
+
+        {/* Communication - Tab 13 */}
+        <TabPanel value={tabValue} index={13}>
+          <UniversalCommunication profession={profession} userId={userId} />
+        </TabPanel>
+
+        {/* All the same dialogs and modals as the original */}
+        
+        {/* Quick Meeting Notes Modal */}
+        <QuickMeetingNotesModal 
+          open={showQuickNotesModal}
+          onClose={() => setShowQuickNotesModal(false)}
+          profession={profession}
+          userId={userId}
+        />
+
+        {/* Project Creation Modal */}
+        {showProjectCreation && (
+          <Dialog 
+            open={showProjectCreation}
+            onClose={() => setShowProjectCreation(false)}
+            maxWidth="lg"
+            fullWidth
+          >
+            <DialogTitle>Opprett Nytt Prosjekt</DialogTitle>
+            <DialogContent>
+              <ProjectCreationWithMemoryCards 
+                profession={profession}
+                userId={userId}
+                onProjectCreated={() => setShowProjectCreation(false)}
+              />
+            </DialogContent>
+          </Dialog>
+        )}
+
+        {/* Vendor Product Dialog */}
+        {showVendorProductDialog && (
+          <Dialog 
+            open={showVendorProductDialog}
+            onClose={() => setShowVendorProductDialog(false)}
+            maxWidth="md"
+            fullWidth
+          >
+            <DialogTitle>Legg til Produkt</DialogTitle>
+            <DialogContent>
+              <VendorProductManager 
+                userId={userId}
+                onProductCreated={() => setShowVendorProductDialog(false)}
+              />
+            </DialogContent>
+          </Dialog>
+        )}
+
+        {/* Email Center Modal */}
+        {showEmailCenter && (
+          <Dialog 
+            open={showEmailCenter}
+            onClose={() => setShowEmailCenter(false)}
+            maxWidth="xl"
+            fullWidth
+            sx={{ '& .MuiDialog-paper': { height: '90vh',} }}
+          >
+            <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+              <Typography variant="h6" sx={{ color: theming.colors.primary }}>E-post Senter</Typography>
+              <IconButton onClick={() => setShowEmailCenter(false)}>
+                {theming.getThemedIcon('close')}
+              </IconButton>
+            </DialogTitle>
+            <DialogContent sx={{ p:  0 }}>
+              <IntegratedEmailCenter profession={profession} userId={userId} />
+            </DialogContent>
+          </Dialog>
+        )}
+
+        {/* All project management dialogs - same as original */}
+        
+        {/* Project Details Modal */}
+        <Dialog 
+          open={showProjectDetailsModal}
+          onClose={() => setShowProjectDetailsModal(false)}
+          maxWidth="md"
+          fullWidth
+        >
+          <DialogTitle>
+            <Typography variant="h6" sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
+              <PhotoCamera sx={{ color: customBranding.color }} />
+              {selectedProject?.title || selectedProject?.name}
+            </Typography>
+          </DialogTitle>
+          <DialogContent>
+            {selectedProject && (
+              <Box sx={{ p:  2 }}>
+                <Grid container spacing={2}>
+                  <Grid size={{ xs: 12 }} sm={6}>
+                    <Typography variant="subtitle2" color="text.secondary">Klient</Typography>
+                    <Typography variant="body1">{selectedProject.clientName || 'Ikke angitt'}</Typography>
+                  </Grid>
+                  <Grid size={{ xs: 12 }} sm={6}>
+                    <Typography variant="subtitle2" color="text.secondary">Status</Typography>
+                    <Chip 
+                      label={selectedProject.status}
+                      color={selectedProject.status === 'Fullført' ? 'success' : selectedProject.status === 'Aktiv' ? 'primary' : 'default'}
+                      size="small"
+                    />
+                  </Grid>
+                  <Grid size={{ xs: 12 }} sm={6}>
+                    <Typography variant="subtitle2" color="text.secondary">Dato</Typography>
+                    <Typography variant="body1">
+                      {selectedProject.eventDate || selectedProject.date ? 
+                        new Date(selectedProject.eventDate || selectedProject.date).toLocaleDateString('no-NO', {
+                          weekday: 'long',
+                          day: '2-digit',
+                          month: 'long',
+                          year: 'numeric'
+                  }) : 'Ikke satt'
+                  }
+                    </Typography>
+                  </Grid>
+                  <Grid size={{ xs: 12 }} sm={6}>
+                    <Typography variant="subtitle2" color="text.secondary">Lokasjon</Typography>
+                    <Typography variant="body1" sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
+                      <LocationOn sx={{ fontSize:  16, color: 'text.secondary'}} />
+                      {selectedProject.location || 'Ikke angitt'}
+                    </Typography>
+                  </Grid>
+                  {selectedProject.description && (
+                    <Grid size={{ xs: 12 }}>
+                      <Typography variant="subtitle2" color="text.secondary">Beskrivelse</Typography>
+                      <Typography variant="body1">{selectedProject.description}</Typography>
+                    </Grid>
+                  )}
+                </Grid>
+              </Box>
+            )}
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setShowProjectDetailsModal(false)}>
+              Lukk
+            </Button>
+            <Button variant="contained"
+              startIcon={theming.getThemedIcon('edit')}
+              onClick={() => {
+                setShowProjectDetailsModal(false);
+                handleEditProject(selectedProject);
+          }}
+              sx={{ backgroundColor: customBranding.color }}
+            >
+              Rediger Prosjekt
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Edit Project Modal */}
+        <Dialog 
+          open={showEditProjectModal}
+          onClose={() => setShowEditProjectModal(false)}
+          maxWidth="sm"
+          fullWidth
+        >
+          <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
+            <Edit sx={{ color: customBranding.color }} />
+            Rediger Prosjekt
+          </DialogTitle>
+          <DialogContent>
+            <Typography variant="body2" color="text.secondary" sx={{ mb:  2 }}>
+              Prosjektredigering vil bli implementert i neste versjon.
+            </Typography>
+            {selectedProject && (
+              <Typography variant="body1">
+                <strong>Prosjekt: </strong> {selectedProject.title || selectedProject.name}
+              </Typography>
+            )}
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setShowEditProjectModal(false)}>
+              Lukk
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Delete Project Confirmation Dialog */}
+        <Dialog 
+          open={showDeleteProjectDialog}
+          onClose={() => setShowDeleteProjectDialog(false)}
+          maxWidth="sm"
+        >
+          <DialogTitle>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
+              <Delete sx={{ color: '#f44336'}} />
+              <Typography variant="h6" sx={{  color: theming.colors.primary }}>
+                Slett Prosjekt
+              </Typography>
+            </Box>
+          </DialogTitle>
+          <DialogContent>
+            <Typography variant="body1" sx={{ mb:  2 }}>
+              Er du sikker på at du vil slette prosjektet?
+            </Typography>
+            {selectedProject && (
+              <Box sx={{ 
+                p: 2, bgcolor: 'rgba(24, 67, 54, 0.1)', 
+                borderRadius:  2,
+                border: '1px solid rgba(24, 67, 54, 0.3)'
+          }}>
+                <Typography variant="subtitle1" sx={{ fontWeight: 600}>
+                  📸 {selectedProject.title || selectedProject.name}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Klient: {selectedProject.clientName ||'Ikke angitt'}
+                </Typography>
+              </Box>
+            )}
+            <Typography variant="body2" color="error" sx={{ mt: 2, fontWeight: 600}>
+              ⚠️ Dette kan ikke angres!
+            </Typography>
+          </DialogContent>
+          <DialogActions>
+            <Button 
+              onClick={() => setShowDeleteProjectDialog(false)}
+              variant="outlined"
+            >
+              Avbryt
+            </Button>
+            <Button variant="contained"
+              color="error"
+              startIcon={theming.getThemedIcon('delete')}
+              onClick={confirmDeleteProject}
+             sx={theming.getThemedButtonSx()}>
+              Ja, Slett Prosjekt
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* FAQ Dialog */}
+        <TutorialFAQIntegration 
+          open={showFAQDialog}
+          onClose={() => setShowFAQDialog(false)}
+          profession={profession}
+        />
+      </Container>
+    </Box>
+);
+}

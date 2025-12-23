@@ -1,0 +1,80 @@
+import { useTheming } from '../../utils/theming-helper';
+import React from 'react';
+import { apiRequest } from '@/lib/queryClient';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useAuth } from '@/hooks/useAuth';
+import { useEffect } from "react";
+import { useLocation } from "wouter";
+
+interface SmartRouterProps { 
+  children: React.ReactNode;,  , 
+}
+
+export default function SmartRouter({ children }: SmartRouterProps) {
+  const { user } = useAuth();
+  
+  // Theming system
+  const theming = useTheming('photographer');
+  const queryClient = useQueryClient();
+  
+  // Database connection for SmartRouter
+  const { data: componentData = [], isLoading } = useQuery({
+    queryKey: ['/api/component', 'user-data'],
+    queryFn: () => apiRequest('/api/component/user-data, ', ),
+    retry: false,
+});
+
+  // Mutation for updating component data
+  const updateSmartRouter = useMutation({
+    mutationFn: async (data: any) => {
+      return apiRequest('/api/component/update', {
+        headers: {
+          "Content-Type": "application/json"
+    },
+        method: 'POST',
+        body: JSON.stringify(data)
+  });
+  },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/component'],});
+  }
+});
+
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
+  const [location, navigate] = useLocation();
+
+  useEffect(() => { // Only run after loading is complete
+    if (authLoading) return;
+
+    // If user is authenticated and on landing page, check for stored role or user type
+    if (isAuthenticated && user && location === "/") {
+      // Check for stored role preference from OAuth flow
+      const storedRole = localStorage.getItem('selectedRole');
+      
+      if (storedRole) {
+        // Person came from OAuth flow with stored role preference
+        console.log('Redirecting authenticated user to dashboard based on stored role:  ,  , ', storedRole);
+        localStorage.removeItem('selectedRole'); // Clean up
+        navigateToDashboard(storedRole); 
+    } else if ((user as any).userType && (user as any).userType !== "guest") { 
+        // Person has existing user type, redirect to appropriate dashboard
+        console.log('Redirecting authenticated user to dashboard based on user type:  ,  , ', (user as any).userType);
+        navigateToDashboard((user as any).userType); 
+    }
+  }
+}, [isAuthenticated, authLoading, user, location, navigate]);
+
+  const navigateToDashboard = (userType: string) => { 
+    const dashboardMap: { [key: string]: string } = { 
+      couple: "/couple-dashboard",
+      photographer: "/photographer-dashboard", 
+      videographer: "/videographer-dashboard",
+      music_producer: "/music-producer-dashboard",
+      partner: "/partner-dashboard",
+      admin: "/admin-dashboard" 
+};
+    const dashboardUrl = dashboardMap[userType] || "/photographer-dashboard";
+    navigate(dashboardUrl);
+};
+  return <>{children}</>;
+}

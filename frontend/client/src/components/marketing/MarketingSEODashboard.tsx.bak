@@ -1,0 +1,880 @@
+import { useTheming } from '../../utils/theming-helper';
+import React, { useState } from 'react';
+import {
+  Box,
+  Grid,
+  Card as MuiCard,
+  CardContent,
+  CardHeader,
+  Typography,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Paper,
+  Button,
+  Chip,
+  LinearProgress,
+  IconButton,
+  Tooltip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Tabs,
+  Tab,
+  Alert,
+  Container,
+  List,
+  ListItem,
+  ListItemIcon,
+  ListItemText,
+} from '@mui/material';
+import {
+  TrendingUp,
+  TrendingDown,
+  Search,
+  Send,
+  Check,
+  Link as LinkIcon,
+  Analytics,
+  Refresh,
+  AddCircle as Add,
+  Edit,
+  Visibility,
+  CheckCircle,
+  Warning,
+  Error,
+} from '@mui/icons-material';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
+
+interface TabPanelProps {
+  children?: React.ReactNode;
+  index: number;
+  value: number
+}
+
+function TabPanel(props: TabPanelProps) {
+  const { children, value, index, ...other } = props;
+
+  return (
+    <div
+      role="tabpanel"
+      hidden={value !== index}
+      id={`seo-tabpanel-${index}`}
+      aria-labelledby={`seo-tab-${index}`}
+      {...other}
+    >
+      {value === index && <Box sx={{ p:  3 }}>{children}</Box>}
+    </div>
+  );
+}
+
+export default function MarketingSEODashboard() {
+  const [activeTab, setActiveTab] = useState(0);
+  const [addKeywordOpen, setAddKeywordOpen] = useState(false);
+  const [addPageOpen, setAddPageOpen] = useState(false);
+  const [newKeyword, setNewKeyword] = useState({
+    keyword: '',
+    position: 99,
+    searchVolume:  0,
+    difficulty:  0,
+    trend: 'stable',
+    url: '',
+    cpc: '',
+    competitionLevel: '',
+});
+  const [newPage, setNewPage] = useState({
+    url: '',
+    title: '',
+    metaDescription: '',
+    keywords: '',
+    status: 'pending',
+});
+
+  const queryClient = useQueryClient();
+  
+  // Theming system
+  const theming = useTheming('photographer');
+
+  // SEO data queries
+  const { data: keywords = [], isLoading: keywordsLoading } = useQuery({
+    queryKey: ['/api/seo/keywords, '],
+});
+
+  const { data: pages = [], isLoading: pagesLoading } = useQuery({
+    queryKey: ['/api/seo/pages, '],
+});
+
+  const { data: backlinks = [], isLoading: backlinksLoading } = useQuery({
+    queryKey: ['/api/seo/backlinks, '],
+});
+
+  // Mutations
+  const addKeywordMutation = useMutation({
+    mutationFn: (data: any) => apiRequest('/api/seo/keywords', 'POST', data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/seo/keywords'],});
+      setAddKeywordOpen(false);
+      setNewKeyword({
+        keyword: '',
+        position: 99,
+        searchVolume:  0,
+        difficulty:  0,
+        trend: 'stable',
+        url: '',
+        cpc: '',
+        competitionLevel: '',
+    });
+  },
+});
+
+  const addPageMutation = useMutation({
+    mutationFn: (data: any) => apiRequest('/api/seo/pages', 'POST', data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/seo/pages'],});
+      setAddPageOpen(false);
+      setNewPage({
+        url: '',
+        title: '',
+        metaDescription: '',
+        keywords: '',
+        status: 'pending',
+    });
+  },
+});
+
+  const syncSEODataMutation = useMutation({
+    mutationFn: () => apiRequest('/api/seo/sync-data', 'POST'),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/seo/keywords'],});
+      queryClient.invalidateQueries({ queryKey: ['/api/seo/backlinks'],});
+  },
+});
+
+  const syncAnalyticsMutation = useMutation({
+    mutationFn: () => apiRequest('/api/seo/sync-analytics', 'POST'),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/seo/pages'],});
+  },
+});
+
+  const indexPageMutation = useMutation({
+    mutationFn: (url: string) => apiRequest('/api/seo/index-page', 'POST', { url }),
+});
+
+  // Calculate stats
+  const totalKeywords = keywords.length;
+  const avgPosition =
+    keywords.length > 0
+      ? Math.round(keywords.reduce((sum: number, k: any) => sum + k.position, 0) / keywords.length)
+      : 0;
+  const indexedPages = pages.filter((p: any) => p.status === 'indexed').length;
+  const totalBacklinks = backlinks.length;
+
+  const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
+    setActiveTab(newValue);
+};
+
+  const handleAddKeyword = () => {
+    const keywordData = {
+      ...newKeyword,
+      cpc: parseFloat(newKeyword.cpc),
+      keywords: newPage.keywords
+        .split, (, ',')
+        .map((k) => k.trim())
+        .filter((k) => k),
+  };
+    addKeywordMutation.mutate(keywordData);
+};
+
+  const handleAddPage = () => {
+    const pageData = {
+      ...newPage,
+      keywords: newPage.keywords
+        .split, (, ',')
+        .map((k) => k.trim())
+        .filter((k) => k),
+  };
+    addPageMutation.mutate(pageData);
+};
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'indexed':
+        return 'success';
+      case 'pending':
+        return 'warning';
+      case 'error':
+        return 'error';
+      default:
+        return 'default';
+}
+};
+
+  const getTrendIcon = (trend: string) => {
+    switch (trend) {
+      case 'up':
+        return <TrendingUp color="success" />;
+      case 'down':
+        return <TrendingDown color="error" />;
+      default:
+        return <TrendingUp color="disabled" />;
+}
+};
+
+  return (
+    <Box
+      sx={{
+        minHeight: '100vh',
+        bgcolor: '#f8f9fa',
+        p:  3,
+    }}
+    >
+      <Container maxWidth="xl">
+        <Typography variant="h4"
+          component="h1"
+          gutterBottom
+          sx={{
+            color: '#2c3e5',
+            fontWeight: 70,
+            mb: 4,
+        }}
+         sx={{ ...{}, color: theming.colors.primary }}>
+          SEO & Marketing Dashboard - CreatorHubn.com
+        </Typography>
+
+        {/* SEO Overview Cards - CoreUI Style */}
+        <GridOn container spacing={3} sx={{ mb: 4 }}>
+          <GridOn size={{ xs: 1, 2,}} sm={6} md={3}>
+            <MuiCard
+              sx={{
+                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                color: 'white',
+                borderRadius:  3,
+                boxShadow: '0 4px 25px rgba(12, 126, 234, 0.25)',
+                transition: 'all 0.3s ease',
+                '&:hover': {
+                  transform: 'translateY(-5px, ), ',
+                  boxShadow: '0 8px 35px rgba(12, 126, 234, 0.35)',
+              },
+            }}
+            >
+              <CardContent sx={{ p:  3 }} sx={theming.getThemedCardSx()}>
+                <Box
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                }}
+                >
+                  <Box>
+                    <Typography
+                      sx={{
+                        opacity: 0.8,
+                        fontSize: '0.875rem',
+                        fontWeight: 50,
+                    }}
+                      gutterBottom
+                    >
+                      Total Nøkkelord
+                    </Typography>
+                    <Typography variant="h3" component="div" sx={{ fontWeight: 'bold', mb: 1 }} sx={{ ...{}, color: theming.colors.primary }}>
+                      {totalKeywords.toLocaleString()}
+                    </Typography>
+                    <Typography sx={{ opacity: 0, .fontSize: '0.75rem, ',}}>
+                      +8.2% fra forrige uke
+                    </Typography>
+                  </Box>
+                  <Box
+                    sx={{
+                      bgcolor: 'rgba(25,255,255,0.15)',
+                      borderRadius:  2,
+                      p: 2.5,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                  }}
+                  >
+                    <Search sx={{ fontSize: 3, 6,}} />
+                  </Box>
+                </Box>
+              </CardContent>
+            </MuiCard>
+          </GridOn>
+
+          <GridOn size={{ xs: 1, 2,}} sm={6} md={3}>
+            <MuiCard
+              sx={{
+                background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+                color: 'white',
+                borderRadius:  3,
+                boxShadow: '0 4px 25px rgba(20, 147, 251, 0.25)',
+                transition: 'all 0.3s ease',
+                '&:hover': {
+                  transform: 'translateY(-5px, ), ',
+                  boxShadow: '0 8px 35px rgba(20, 147, 251, 0.35)',
+              },
+            }}
+            >
+              <CardContent sx={{ p:  3 }} sx={theming.getThemedCardSx()}>
+                <Box
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                }}
+                >
+                  <Box>
+                    <Typography
+                      sx={{
+                        opacity: 0.8,
+                        fontSize: '0.875rem',
+                        fontWeight: 50,
+                    }}
+                      gutterBottom
+                    >
+                      Gjennomsnitt Posisjon
+                    </Typography>
+                    <Typography variant="h3" component="div" sx={{ fontWeight: 'bold', mb: 1 }} sx={{ ...{}, color: theming.colors.primary }}>
+                      #{avgPosition}
+                    </Typography>
+                    <Typography sx={{ opacity: 0, .fontSize: '0.75rem, ',}}>
+                      -2.1 siden forrige måned
+                    </Typography>
+                  </Box>
+                  <Box
+                    sx={{
+                      bgcolor: 'rgba(25,255,255,0.15)',
+                      borderRadius:  2,
+                      p: 2.5,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                  }}
+                  >
+                    <Analytics sx={{ fontSize: 3, 6,}} />
+                  </Box>
+                </Box>
+              </CardContent>
+            </MuiCard>
+          </GridOn>
+
+          <GridOn size={{ xs: 1, 2,}} sm={6} md={3}>
+            <MuiCard
+              sx={{
+                background: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
+                color: 'white',
+                borderRadius:  3,
+                boxShadow: '0 4px 25px rgba(9, 172, 254, 0.25)',
+                transition: 'all 0.3s ease',
+                '&:hover': {
+                  transform: 'translateY(-5px, ), ',
+                  boxShadow: '0 8px 35px rgba(9, 172, 254, 0.35)',
+              },
+            }}
+            >
+              <CardContent sx={{ p:  3 }} sx={theming.getThemedCardSx()}>
+                <Box
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                }}
+                >
+                  <Box>
+                    <Typography
+                      sx={{
+                        opacity: 0.8,
+                        fontSize: '0.875rem',
+                        fontWeight: 50,
+                    }}
+                      gutterBottom
+                    >
+                      Indekserte Sider
+                    </Typography>
+                    <Typography variant="h3" component="div" sx={{ fontWeight: 'bold', mb: 1 }} sx={{ ...{}, color: theming.colors.primary }}>
+                      {indexedPages.toLocaleString()}
+                    </Typography>
+                    <Typography sx={{ opacity: 0, .fontSize: '0.75rem, ',}}>
+                      +15 nye denne uken
+                    </Typography>
+                  </Box>
+                  <Box
+                    sx={{
+                      bgcolor: 'rgba(25,255,255,0.15)',
+                      borderRadius:  2,
+                      p: 2.5,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                  }}
+                  >
+                    <Visibility sx={{ fontSize: 3, 6,}} />
+                  </Box>
+                </Box>
+              </CardContent>
+            </MuiCard>
+          </GridOn>
+
+          <GridOn size={{ xs: 1, 2,}} sm={6} md={3}>
+            <MuiCard
+              sx={{
+                background: 'linear-gradient(135deg, #fa709a 0%, #fee140 100%)',
+                color: 'white',
+                borderRadius:  3,
+                boxShadow: '0 4px 25px rgba(20, 112, 154, 0.25)',
+                transition: 'all 0.3s ease',
+                '&:hover': {
+                  transform: 'translateY(-5px, ), ',
+                  boxShadow: '0 8px 35px rgba(20, 112, 154, 0.35)',
+              },
+            }}
+            >
+              <CardContent sx={{ p:  3 }} sx={theming.getThemedCardSx()}>
+                <Box
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                }}
+                >
+                  <Box>
+                    <Typography
+                      sx={{
+                        opacity: 0.8,
+                        fontSize: '0.875rem',
+                        fontWeight: 50,
+                    }}
+                      gutterBottom
+                    >
+                      Totale Backlinks
+                    </Typography>
+                    <Typography variant="h3" component="div" sx={{ fontWeight: 'bold', mb: 1 }} sx={{ ...{}, color: theming.colors.primary }}>
+                      {totalBacklinks.toLocaleString()}
+                    </Typography>
+                    <Typography sx={{ opacity: 0, .fontSize: '0.75rem, ',}}>
+                      +24 nye denne måneden
+                    </Typography>
+                  </Box>
+                  <Box
+                    sx={{
+                      bgcolor: 'rgba(25,255,255,0.15)',
+                      borderRadius:  2,
+                      p: 2.5,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                  }}
+                  >
+                    <LinkIcon sx={{ fontSize: 3, 6,}} />
+                  </Box>
+                </Box>
+              </CardContent>
+            </MuiCard>
+          </GridOn>
+        </GridOn>
+
+        {/* Google Indexing Quick Actions */}
+        <GridOn container spacing={2} sx={{ mb: 3 }}>
+          <GridOn size={{ xs: 1, 2,}}>
+            <MuiCard>
+              <CardHeader title="Google Indeksering"
+                subheader="Send sider til Google for rask indeksering - optimalisert for norske søkeord"
+                avatar={<Search color="primary" sx={theming.getThemedCardSx()}>}
+              />
+              <CardContent sx={theming.getThemedCardSx()}>
+                <GridOn container spacing={2}>
+                  <GridOn size={{ xs: 1, 2,}} md={8}>
+                    <TextField
+                      fullWidth
+                      label="URL for indeksering"
+                      placeholder="https: //creatorhubn.com/fotograf"
+                      sx={{ mb: 2 }}
+                    />
+                    <Box sx={{ display: 'flex', gap:  ,  2flexWrap: 'wrap, ',}}>
+                      <Button variant="contained" startIcon={<Send sx={theming.getThemedButtonSx()}>}>
+                        Send til Google
+                      </Button>
+                      <Button variant="outlined" startIcon={theming.getThemedIcon('analytics')}>
+                        Analyser SEO Score
+                      </Button>
+                      <Button variant="contained"
+                        color="success"
+                        startIcon={theming.getThemedIcon('search')}
+                        sx={{ minWidth: 20, 0,}}
+                        onClick={() = sx={theming.getThemedButtonSx()}> {
+                          fetch('/api/seo/index-all-pages', { method: 'POST, ',})
+                            .then((res) => res.json())
+                            .then((data) => {
+                              console.log('Alle sider sendt for indeksering:', data);
+                              alert(
+                                `✅ ${data.totalPages} sider sendt til Google for indeksering!\nEstimert tid: ${data.estimatedFullIndexing}`,
+                              );
+                          })
+                            .catch((err) => {
+                              console.error('Indekseringsfeil:', err);
+                              alert('Feil ved sending av sider til Google');
+                          });
+                      }}
+                      >
+                        Indekser Alle Sider
+                      </Button>
+                    </Box>
+                  </GridOn>
+                  <GridOn size={{ xs: 1, 2,}} md={4}>
+                    <Box sx={{ p:  ,  2bgcolor: 'grey.5', borderRadius:  1 }}>
+                      <Typography variant="h6" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>
+                        Rask Indeksering: </Typography>
+                      <Typography variant="body2" color="text.secondary" gutterBottom>
+                        • URLs med norske nøkkelord: 12-24 timer
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary" gutterBottom>
+                        • Mobile-optimaliserte sider: Prioritet
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        • SEO score 80+: Høy prioritet
+                      </Typography>
+                      <Typography
+                        variant="body2"
+                        color="text.secondary"
+                        sx={{ mt:,  1fontWeight: 'bold, ',}}
+                      >
+                        📄 Sitemap: {',  , '}
+                        <a href="/sitemap.xml" target="_blank" style={{ color: '#1976d2, ',}}>
+                          creatorhubn.com/sitemap.xml
+                        </a>
+                      </Typography>
+                    </Box>
+                  </GridOn>
+                </GridOn>
+              </CardContent>
+            </MuiCard>
+          </GridOn>
+        </GridOn>
+
+        {/* Sync Actions */}
+        <GridOn container spacing={2} sx={{ mb: 3 }}>
+          <GridOn item>
+            <Button variant="contained"
+              startIcon={theming.getThemedIcon('refresh')}
+              onClick={() = sx={theming.getThemedButtonSx()}> syncSEODataMutation.mutate()}
+              disabled={syncSEODataMutation.isPending}
+            >
+              Oppdater SEO Data
+            </Button>
+          </GridOn>
+          <GridOn item>
+            <Button variant="contained"
+              startIcon={theming.getThemedIcon('analytics')}
+              onClick={() = sx={theming.getThemedButtonSx()}> syncAnalyticsMutation.mutate()}
+              disabled={syncAnalyticsMutation.isPending}
+            >
+              Synkroniser Analytics
+            </Button>
+          </GridOn>
+        </GridOn>
+
+        {/* Tabs */}
+        <Paper sx={{ width: '100%, ',}} sx={theming.getThemedCardSx()}>
+          <Box sx={{ borderBottom:  ,  1borderColor: 'divider, ',}}>
+            <Tabs value={activeTab} onChange={handleTabChange} aria-label="SEO dashboard tabs">
+              <Tab label="Nøkkelord" />
+              <Tab label="Sider" />
+              <Tab label="Backlinks" />
+              <Tab label="Rapporter" />
+            </Tabs>
+          </Box>
+
+          {/* Keywords Tab */}
+          <TabPanel value={activeTab} index={0}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
+              <Typography variant="h6" sx={{ ...{}, color: theming.colors.primary }}>Nøkkelord Oversikt</Typography>
+              <Button variant="contained"
+                startIcon={theming.getThemedIcon('add')}
+                onClick={() = sx={theming.getThemedButtonSx()}> setAddKeywordOpen(true)}
+              >
+                Legg til Nøkkelord
+              </Button>
+            </Box>
+
+            {keywordsLoading ? (
+              <LinearProgress />
+            ) : (
+              <TableContainer component={Paper}>
+                <Table>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Nøkkelord</TableCell>
+                      <TableCell>Posisjon</TableCell>
+                      <TableCell>Søkevolum</TableCell>
+                      <TableCell>Vanskelighet</TableCell>
+                      <TableCell>Trend</TableCell>
+                      <TableCell>CPC</TableCell>
+                      <TableCell>Handlinger</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {keywords.map((keyword: any) => (
+                      <TableRow key={keyword.d}>
+                        <TableCell>{keyword.keyword}</TableCell>
+                        <TableCell>
+                          <Chip
+                            label={keyword.position}
+                            color={
+                              keyword.position <= 10
+                                ? 'success'
+                                : keyword.position <= 30
+                                  ? 'warning'
+                                  : 'default'
+                          }
+                            size="small"
+                          />
+                        </TableCell>
+                        <TableCell>{keyword.searchVolume?.toLocaleString() || 0}</TableCell>
+                        <TableCell>{keyword.difficulty || 0}%</TableCell>
+                        <TableCell>{getTrendIcon(keyword.trend)}</TableCell>
+                        <TableCell>{keyword.cpc ? `$${keyword.cpc}` : '-'}</TableCell>
+                        <TableCell>
+                          <IconButton size="small">
+                            {theming.getThemedIcon('edit')}
+                          </IconButton>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            )}
+          </TabPanel>
+
+          {/* Pages Tab */}
+          <TabPanel value={activeTab} index={1}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
+              <Typography variant="h6" sx={{ ...{}, color: theming.colors.primary }}>Sider Oversikt</Typography>
+              <Button variant="contained" startIcon={theming.getThemedIcon('add')} onClick={() = sx={theming.getThemedButtonSx()}> setAddPageOpen(true)}>
+                Legg til Side
+              </Button>
+            </Box>
+
+            {pagesLoading ? (
+              <LinearProgress />
+            ) : (
+              <TableContainer component={Paper}>
+                <Table>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>URL</TableCell>
+                      <TableCell>Tittel</TableCell>
+                      <TableCell>Status</TableCell>
+                      <TableCell>GA Visninger</TableCell>
+                      <TableCell>SEO Score</TableCell>
+                      <TableCell>Handlinger</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {pages.map((page: any) => (
+                      <TableRow key={page.d}>
+                        <TableCell>{page.url}</TableCell>
+                        <TableCell>{page.title}</TableCell>
+                        <TableCell>
+                          <Chip
+                            label={page.status}
+                            color={getStatusColor(page.status)}
+                            size="small"
+                          />
+                        </TableCell>
+                        <TableCell>{page.googleAnalyticsViews?.toLocaleString() || 0}</TableCell>
+                        <TableCell>{page.seoScore || 0}</TableCell>
+                        <TableCell>
+                          <Tooltip title="Indekser side">
+                            <IconButton
+                              size="small"
+                              onClick={() => indexPageMutation.mutate(page.url)}
+                              disabled={indexPageMutation.isPending}
+                            >
+                              {theming.getThemedIcon('visibility')}
+                            </IconButton>
+                          </Tooltip>
+                          <IconButton size="small">
+                            {theming.getThemedIcon('edit')}
+                          </IconButton>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            )}
+          </TabPanel>
+
+          {/* Backlinks Tab */}
+          <TabPanel value={activeTab} index={2}>
+            <Typography variant="h6" sx={{ mb: 2 }} sx={{ ...{}, color: theming.colors.primary }}>
+              Backlinks Oversikt
+            </Typography>
+
+            {backlinksLoading ? (
+              <LinearProgress />
+            ) : (
+              <TableContainer component={Paper}>
+                <Table>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Domene</TableCell>
+                      <TableCell>URL</TableCell>
+                      <TableCell>Anker Tekst</TableCell>
+                      <TableCell>Domene Rating</TableCell>
+                      <TableCell>Status</TableCell>
+                      <TableCell>Trafikk Verdi</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {backlinks.map((backlink: any) => (
+                      <TableRow key={backlink.d}>
+                        <TableCell>{backlink.domain}</TableCell>
+                        <TableCell>{backlink.url}</TableCell>
+                        <TableCell>{backlink.anchorText || '-'}</TableCell>
+                        <TableCell>{backlink.domainRating}</TableCell>
+                        <TableCell>
+                          <Chip
+                            label={backlink.status}
+                            color={backlink.status === 'active' ? 'success' : 'default'}
+                            size="small"
+                          />
+                        </TableCell>
+                        <TableCell>${backlink.trafficValue || 0}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            )}
+          </TabPanel>
+
+          {/* Reports Tab */}
+          <TabPanel value={activeTab} index={3}>
+            <Typography variant="h6" sx={{ mb: 2 }} sx={{ ...{}, color: theming.colors.primary }}>
+              SEO Rapporter
+            </Typography>
+            <Alert severity="info">
+              Detaljerte SEO rapporter med komplett analyse av nøkkelord, konkurranseanalyse og
+              Google Analytics integrasjon.
+            </Alert>
+          </TabPanel>
+        </Paper>
+
+        {/* Add Keyword Dialog */}
+        <Dialog
+          open={addKeywordOpen}
+          onClose={() => setAddKeywordOpen(false)}
+          maxWidth="sm"
+          fullWidth
+        >
+          <DialogTitle>Legg til Nytt Nøkkelord</DialogTitle>
+          <DialogContent>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap:  ,  2mt: 1 }}>
+              <TextField
+                label="Nøkkelord"
+                value={newKeyword.keyword}
+                onChange={(e) => setNewKeyword({ ...newKeyword, keyword: e.target.value })}
+                fullWidth
+              />
+              <TextField
+                label="Posisjon"
+                type="number"
+                value={newKeyword.position}
+                onChange={(e) =>
+                  setNewKeyword({
+                    ...newKeyword,
+                    position: parseInt(e.target.value) || 99,
+                })
+              }
+                fullWidth
+              />
+              <TextField
+                label="Søkevolum"
+                type="number"
+                value={newKeyword.searchVolume}
+                onChange={(e) =>
+                  setNewKeyword({
+                    ...newKeyword,
+                    searchVolume: parseInt(e.target.value) ||,  , 0,
+                })
+              }
+                fullWidth
+              />
+              <TextField
+                label="URL"
+                value={newKeyword.url}
+                onChange={(e) => setNewKeyword({ ...newKeyword, url: e.target.value })}
+                fullWidth
+              />
+            </Box>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setAddKeywordOpen(false)}>Avbryt</Button>
+            <Button onClick={handleAddKeyword}
+              variant="contained"
+              disabled={addKeywordMutation.isPending}
+             sx={theming.getThemedButtonSx()}>
+              Legg til
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Add Page Dialog */}
+        <Dialog open={addPageOpen} onClose={() => setAddPageOpen(false)} maxWidth="md" fullWidth>
+          <DialogTitle>Legg til Ny Side</DialogTitle>
+          <DialogContent>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap:  ,  2mt: 1 }}>
+              <TextField
+                label="URL"
+                value={newPage.url}
+                onChange={(e) => setNewPage({ ...newPage, url: e.target.value })}
+                fullWidth
+              />
+              <TextField
+                label="Tittel"
+                value={newPage.title}
+                onChange={(e) => setNewPage({ ...newPage, title: e.target.value })}
+                fullWidth
+              />
+              <TextField
+                label="Meta Beskrivelse"
+                multiline
+                rows={3}
+                value={newPage.metaDescription}
+                onChange={(e) => setNewPage({ ...newPage, metaDescription: e.target.value })}
+                fullWidth
+              />
+              <TextField
+                label="Nøkkelord (komma-separert)"
+                value={newPage.keywords}
+                onChange={(e) => setNewPage({ ...newPage, keywords: e.target.value })}
+                fullWidth
+              />
+            </Box>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setAddPageOpen(false)}>Avbryt</Button>
+            <Button onClick={handleAddPage}
+              variant="contained"
+              disabled={addPageMutation.isPending}
+             sx={theming.getThemedButtonSx()}>
+              Legg til
+            </Button>
+          </DialogActions>
+        </Dialog>
+      </Container>
+    </Box>
+  );
+}

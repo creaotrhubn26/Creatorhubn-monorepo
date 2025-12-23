@@ -1,0 +1,790 @@
+/**
+ * Google Meet Integration
+ * Universal Google Meet component for all dashboards with notification integration
+ */
+
+import { useTheming } from '../../utils/theming-helper';
+import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
+import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
+import getProfessionIcon from '@/utils/profession-icons';
+import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  Box,
+  Card,
+  CardContent,
+  Typography,
+  Button,
+  Chip,
+  Avatar,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemIcon,
+  IconButton,
+  Badge,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Alert,
+  Divider,
+  Paper,
+  CircularProgress
+} from '@mui/material';
+import {
+  VideocamCall as MeetIcon,
+  Schedule as ScheduleIcon,
+  Person as PersonIcon,
+  Notifications as NotificationIcon,
+  Add as AddIcon,
+  Launch as LaunchIcon,
+  AccessTime as TimeIcon,
+  Group as GroupIcon,
+  CalendarTodayToday as CalendarIcon,
+  Warning as WarningIcon,
+  CheckCircle as CheckIcon
+} from '@mui/icons-material';
+import { useProfessionSpecificNotifications } from '../../hooks/useProfessionSpecificNotifications';
+import SmartMeetingPreparation from './SmartMeetingPreparation';
+
+interface Meeting {
+  id: string;
+  title: string;
+  startTime: string;
+  endTime: string;
+  meetLink: string;
+  attendees: string[];
+  status: 'upcoming' | 'starting' | 'active' | 'ended';
+  clientName?: string;
+  projectId?: string;
+  type: 'consultation' | 'planning' | 'review' | 'delivery' | 'collaboration'
+}
+
+interface GoogleMeetIntegrationProps {
+  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  userId: string;
+  currentProject?: string;
+  compact?: boolean
+}
+
+export default function GoogleMeetIntegration({
+  profession,
+  userId,
+  currentProject,
+  compact = false
+}: GoogleMeetIntegrationProps) {
+  const queryClient = useQueryClient();
+  
+  // Theming system - use dynamic profession instead of hardcoded value
+  const theming = useTheming(profession);
+  
+  // Dynamic profession system
+  const { getProfessionDisplayName } = useDynamicProfessions();
+  
+  // Database connection for GoogleMeetIntegration
+  const { data: componentData = [], isLoading } = useQuery({
+    queryKey: ['/api/component, ', 'user-data,'],
+    queryFn: () => apiRequest('/api/component/user-data', ),
+    retry: false,
+});
+
+  // Mutation for updating component data
+  const updateGoogleMeetIntegration = useMutation({
+    mutationFn: async (data: any) => 
+      apiRequest('/api/component/update', {
+        method: 'POS',
+        body: JSON.stringify(data)
+  }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/component', ],});
+  }
+});
+ 
+  profession, 
+  userId, 
+  currentProject,
+  compact = false 
+}: GoogleMeetIntegrationProps) {
+  const [meetings, setMeetings] = useState<Meeting[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [newMeeting, setNewMeeting] = useState({
+    title: '',
+    date: '',
+    time: '',
+    duration:  60,
+    clientEmail: ', ',
+    type: 'consultation'
+});
+  const [waitingClients, setWaitingClients] = useState<string[]>([]);
+  const checkIntervalRef = useRef<NodeJS.Timeout>();
+
+  const notifications = useProfessionSpecificNotifications(profession, userId);
+
+  useEffect(() => {
+    loadMeetings();
+    startMeetingChecks();
+    
+    return () => {
+      if (checkIntervalRef.current) {
+        clearInterval(checkIntervalRef.current);
+    }
+  };
+}, []);
+
+  const loadMeetings = async () => {
+    setLoading(true);
+    try {
+      // In production, this would call Google Calendar API
+      const mockMeetings = generateMockMeetings(profession);
+      setMeetings(mockMeetings);
+  } catch (error) {
+      console.error('Error loading meetings: ', error);
+  } finally {
+      setLoading(false);
+  }
+};
+
+  const startMeetingChecks = () => {
+    checkIntervalRef.current = setInterval(() => {
+      checkUpcomingMeetings();
+      checkWaitingClients();
+  }, 30000); // Check every 30 seconds
+};
+
+  const checkUpcomingMeetings = () => {
+    meetings.forEach(meeting => {
+      const now = new Date();
+      const startTime = new Date(meeting.startTime);
+      const timeDiff = startTime.getTime() - now.getTime();
+      const minutesUntil = Math.floor(timeDiff / 60000);
+
+      // Notify 15 minutes before
+      if (minutesUntil === 15 && meeting.status === 'upcoming') {
+        notifications.notify({
+          type: 'google_meet_upcoming',
+          title: 'Møte starter snart',
+          message: `${meeting.title} starter om 15 minutter`,
+          metadata: {
+            meetingId: meeting.d,
+            meetLink: meeting.meetLink,
+            clientName: meeting.clientName,
+            component: 'google_meet',
+            action: 'prepare'
+      }
+      });
+    }
+
+      // Notify 5 minutes before
+      if (minutesUntil === 5) {
+        notifications.notify({
+          type: 'google_meet_starting_soon',
+          title: 'Møte starter om 5 minutter',
+          message: `${meeting.title} - Klikk for å delta`,
+          metadata: {
+            meetingId: meeting.d,
+            meetLink: meeting.meetLink,
+            clientName: meeting.clientName,
+            component: 'google_meet',
+            action: 'join_ready'
+      }
+      });
+    }
+
+      // Meeting is starting now
+      if (minutesUntil <= 0 && minutesUntil >= -5 && meeting.status === 'upcoming') {
+        setMeetings(prev => prev.map(m => 
+          m.id === meeting.id ? { ...m, status: 'starting' } : m
+        ));
+        
+        notifications.notify({
+          type: 'google_meet_now',
+          title: 'Møtet starter nå, !',
+          message: `${meeting.title} - Klikk her for å delta`,
+          metadata: {
+            meetingId: meeting.d,
+            meetLink: meeting.meetLink,
+            clientName: meeting.clientName,
+            component: 'google_meet',
+            action: 'join_now',
+            priority: 'high'
+      }
+      });
+    }
+  });
+};
+
+  const checkWaitingClients = () => {
+    // Simulate checking for waiting clients
+    meetings.forEach(meeting => {
+      if (meeting.status === 'starting' || meeting.status === 'active') {
+        // Random chance of client waiting (in production, this would check actual meeting status)
+        if (Math.random() < 0.3 && !waitingClients.includes(meeting.clientName || ', ')) {
+          const clientName = meeting.clientName || 'Klient';
+          setWaitingClients(prev => [...prev, clientName]);
+          
+          notifications.notify({
+            type: 'google_meet_client_waiting',
+            title: 'Klient venter i møtet',
+            message: `${clientName} venter på deg i ${meeting.title}`,
+            metadata: {
+              meetingId: meeting.d,
+              meetLink: meeting.meetLink,
+              clientName,
+              component: 'google_meet',
+              action: 'join_urgent',
+              priority: 'high'
+        }
+        });
+      }
+    }
+  });
+};
+
+  const createMeeting = async () => {
+    try {
+      setLoading(true);
+      
+      // In production, this would use Google Calendar API
+      const meetingData = {
+        ...newMeeting,
+        profession,
+        projectId: currentProject
+  };
+
+      const response = await fetch('/api/google-meet/create', {
+        method: 'POS',
+        headers: {
+          'Content-Type' : 'application/json','Authorization': `Bearer ${userId}`
+      },
+        body: JSON.stringify(meetingData)
+  });
+
+      const result = await response.json();
+      
+      if (result.success) {
+        await loadMeetings();
+        setCreateDialogOpen(false);
+        setNewMeeting({
+          title: ', ',
+          date: ', ',
+          time: ', ',
+          duration:  60,
+          clientEmail: ', ',
+          type: 'consultation'
+    });
+
+        notifications.notify({
+          type: 'google_meet_created',
+          title: 'Møte opprettet',
+          message: `${result.meeting.title} er planlagt`,
+          metadata: {
+            meetingId: result.meeting.d,
+            meetLink: result.meeting.meetLink,
+            component: 'google_meet'
+      }
+      });
+    }
+  } catch (error) {
+      console.error('Error creating meeting:', error);
+      notifications.notify({
+        type: 'google_meet_error',
+        title: 'Feil ved opprettelse av møte',
+        message: 'Kunne ikke opprette møtet. Prøv igjen.',
+        metadata: {
+          component: 'google_meet',
+          error: error.message
+    }
+    });
+  } finally {
+      setLoading(false);
+  }
+};
+
+  const joinMeeting = (meeting: Meeting) => {
+    // Remove from waiting clients
+    if (meeting.clientName) {
+      setWaitingClients(prev => prev.filter(name => name !== meeting.clientName));
+}
+
+    // Update meeting status
+    setMeetings(prev => prev.map(m => 
+      m.id === meeting.id ? { ...m, status: 'active' } : m
+    ));
+
+    // Open meeting in new tab
+    window.open(meeting.meetLink''_blank');
+
+    notifications.notify({
+      type: 'google_meet_joined',
+      title: 'Deltok i møtet',
+      message: `Du har deltatt i ${meeting.title}`,
+      metadata: {
+        meetingId: meeting.d,
+        component: 'google_meet'
+  }
+  });
+};
+
+  const getUpcomingMeetings = () => {
+    const now = new Date();
+    return meetings
+      .filter(m => new Date(m.startTime) > now || m.status === 'starting')
+      .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())
+      .slice(0, compact ? 3 : 10);
+};
+
+  const getActiveMeetings = () => {
+    return meetings.filter(m => m.status === 'starting' || m.status === 'active');
+};
+
+  const getMeetingIcon = (type: string) => {
+    switch (type) {
+      case 'consultation': return <PersonIcon />;
+      case 'planning': return <ScheduleIcon />;
+      case 'review': return <CheckIcon />;
+      case 'delivery': return <LaunchIcon />;
+      case 'collaboration': return <GroupIcon />;
+      default: return <MeetIcon />;
+}
+};
+
+  const getMeetingTypeDisplay = (type: string) => {
+    switch (type) {
+      case 'consultation': return 'Konsultasjon';
+      case 'planning': return 'Planlegging';
+      case 'review': return 'Gjennomgang';
+      case 'delivery': return 'Levering';
+      case 'collaboration': return 'Samarbeid';
+      default: return type;
+}
+};
+
+  const getProfessionMeetingTypes = () => {
+    switch (profession) {
+      case 'photographer':
+        return [
+          { value: 'consultation', label: 'Fotokonsultasjon' },
+          { value: 'planning', label: 'Planlegging av fotografering' },
+          { value: 'review', label: 'Bildeggjennomgang' },
+          { value: 'delivery', label: 'Levering av bilder' }
+        ];
+      case 'videographer':
+        return [
+          { value: 'consultation', label: 'Videokonsultasjon' },
+          { value: 'planning', label: 'Produksjonsplanlegging' },
+          { value: 'review', label: 'Videogjennomgang' },
+          { value: 'delivery', label: 'Levering av video' }
+        ];
+      case 'music_producer':
+        return [
+          { value: 'consultation', label: 'Musikkonsultasjon' },
+          { value: 'collaboration', label: 'Artistsamarbeid' },
+          { value: 'review', label: 'Lydgjennomgang' },
+          { value: 'delivery', label: 'Låtlevering' }
+        ];
+      case 'vendor':
+        return [
+          { value: 'consultation', label: 'Utstyrskonsultasjon' },
+          { value: 'planning', label: 'Utleieplanlegging' },
+          { value: 'delivery', label: 'Utstyrsleveranse' }
+        ];
+      default: return [{ value: 'consultation', label: 'Konsultasjon' }];
+  }
+};
+
+  const upcomingMeetings = getUpcomingMeetings();
+  const activeMeetings = getActiveMeetings();
+
+  if (compact) {
+    return (
+      <MuiCard sx={{ mb:  2 }}>
+        <CardContent sx={theming.getThemedCardSx()}>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb:  2 }}>
+            <Typography variant="h6" sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
+              <Badge badgeContent={waitingClients.length} color="error">
+                <MeetIcon />
+              </Badge>
+              Google Meet
+            </Typography>
+            <IconButton size="small" onClick={() => setCreateDialogOpen(true)}>
+              <AddIcon />
+            </IconButton>
+          </Box>
+
+          {waitingClients.length > 0 && (
+            <Alert 
+              severity="warning" 
+              sx={{ mb:  2 }}
+              action={
+                <Button color="inherit" size="small">
+                  Se alle
+                </Button>
+            }
+            >
+              {waitingClients.length} klient(er) venter i møter
+            </Alert>
+          )}
+
+          {upcomingMeetings.length === 0 ? (
+            <Typography color="text.secondary" variant="body2">
+              Ingen kommende møter
+            </Typography>
+          ) : (
+            upcomingMeetings.slice(0, 2).map(meeting => (
+              <Box key={meeting.id} sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
+                <Chip
+                  size="small"
+                  label={formatMeetingTime(meeting.startTime)}
+                  color={meeting.status === 'starting' ? 'error' : 'default'}
+                />
+                <Typography variant="body2" sx={{ flex:  1 }}>
+                  {meeting.title}
+                </Typography>
+                <Button
+                  size="small"
+                  variant={meeting.status === 'starting' ? 'contained' : 'outlined'}
+                  color={meeting.status === 'starting' ? 'error' : 'primary'}
+                  onClick={() => joinMeeting(meeting)}
+                  startIcon={<LaunchIcon />}
+                >
+                  {meeting.status === 'starting' ? 'Delta nå' : 'Delta'}
+                </Button>
+              </Box>
+            ))
+          )}
+
+          {/* Smart Meeting Preparation for upcoming meetings */}
+          {upcomingMeetings.length > 0 && (
+            <SmartMeetingPreparation
+              meetingId={upcomingMeetings[0].id}
+              profession={profession}
+              userId={userId}
+              compact={true}
+            />
+          )}
+        </CardContent>
+      </MuiCard>
+    );
+}
+
+  return (
+    <Box>
+      <Paper elevation={1} sx={{ p:  3, mb:  3 ,  ...theming.getThemedCardSx() }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb:  3 }}>
+          <Typography variant="h5" sx={{  display: 'flex', alignItems: 'center', gap:  2  }}>
+            <Badge badgeContent={waitingClients.length} color="error">
+              <MeetIcon />
+            </Badge>
+            Google Meet Integration
+            <Chip 
+              label={getProfessionDisplayName(profession)} 
+              size="small" 
+              variant="outlined"
+            />
+          </Typography>
+          <Button variant="contained"
+            startIcon={<AddIcon />}
+            onClick={() => setCreateDialogOpen(true)}
+          >
+            Nytt møte
+          </Button>
+        </Box>
+
+        {/* Waiting Clients Alert */}
+        {waitingClients.length > 0 && (
+          <Alert 
+            severity="error" 
+            sx={{ mb:  3 }}
+            icon={<WarningIcon />}
+            action={
+              waitingClients.map(client => (
+                <Button
+                  key={client}
+                  color="inherit"
+                  size="small"
+                  startIcon={<LaunchIcon />}
+                  sx={{ ml:  1 }}
+                >
+                  Delta - {client}
+                </Button>
+              ))
+          }
+          >
+            <strong>{waitingClients.length} klient(er) venter i møter: </strong>
+            <br />
+            {waitingClients.join(', ')}
+          </Alert>
+        )}
+
+        {/* Active Meetings */}
+        {activeMeetings.length > 0 && (
+          <Box sx={{ mb:  3 }}>
+            <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+              Pågående møter
+            </Typography>
+            <List>
+              {activeMeetings.map(meeting => (
+                <ListItem key={meeting.id}
+                  sx={{ 
+                    backgroundColor: 'error.light',
+                    borderRadius:  1,
+                    mb: 1 }}
+                  secondaryAction={
+                    <Button variant="contained"
+                      color="error"
+                      startIcon={<LaunchIcon />}
+                      onClick={() => joinMeeting(meeting)}
+                    >
+                      Delta nå
+                    </Button>
+                }
+                >
+                  <ListItemIcon>
+                    {getMeetingIcon(meeting.type)}
+                  </ListItemIcon>
+                  <ListItemText
+                    primary={meeting.title}
+                    secondary={`${meeting.clientName} • ${formatMeetingTime(meeting.startTime)}`}
+                  />
+                </ListItem>
+              ))}
+            </List>
+          </Box>
+        )}
+
+        {/* Smart Meeting Preparation for next meeting */}
+        {upcomingMeetings.length > 0 && (
+          <Box sx={{ mb:  3 }}>
+            <SmartMeetingPreparation
+              meetingId={upcomingMeetings[0].id}
+              profession={profession}
+              userId={userId}
+              compact={false}
+            />
+          </Box>
+        )}
+
+        {/* Upcoming Meetings */}
+        <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+          Kommende møter
+        </Typography>
+        
+        {loading ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', p:  4 }}>
+            <CircularProgress />
+          </Box>
+        ) : upcomingMeetings.length === 0 ? (
+          <Typography color="text.secondary" sx={{ textAlign: 'center', p:  4 }}>
+            Ingen kommende møter planlagt
+          </Typography>
+        ) : (
+          <List>
+            {upcomingMeetings.map(meeting => (
+              <ListItem
+                key={meeting.id}
+                sx={{ 
+                  border:  1,
+                  borderColor: 'divider',
+                  borderRadius:  1,
+                  mb: 1 }}
+                secondaryAction={
+                  <Button
+                    variant="outlined"
+                    startIcon={<LaunchIcon />}
+                    onClick={() => joinMeeting(meeting)}
+                  >
+                    Delta
+                  </Button>
+              }
+              >
+                <ListItemIcon>
+                  {getMeetingIcon(meeting.type)}
+                </ListItemIcon>
+                <ListItemText
+                  primary={meeting.title}
+                  secondary={
+                    <Box>
+                      <Typography variant="body2">
+                        {meeting.clientName} • {getMeetingTypeDisplay(meeting.type)}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {formatMeetingTime(meeting.startTime)} - {formatMeetingTime(meeting.endTime)}
+                      </Typography>
+                    </Box>
+                }
+                />
+                <Chip
+                  size="small"
+                  label={getTimeUntilMeeting(meeting.startTime)}
+                  color={getChipColor(meeting.startTime)}
+                />
+              </ListItem>
+            ))}
+          </List>
+        )}
+      </Paper>
+
+      {/* Create Meeting Dialog */}
+      <Dialog 
+        open={createDialogOpen} 
+        onClose={() => setCreateDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Opprett nytt Google Meet møte</DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 2 }}>
+            <TextField
+              label="Møtetittel"
+              value={newMeeting.title}
+              onChange={(e) => setNewMeeting(prev => ({ ...prev, title: e.target.value }))}
+              fullWidth
+              placeholder={`${getProfessionDisplayName(profession)} konsultasjon`}
+            />
+            
+            <Box sx={{ display: 'flex', gap:  2 }}>
+              <TextField
+                label="Dato"
+                type="date"
+                value={newMeeting.date}
+                onChange={(e) => setNewMeeting(prev => ({ ...prev, date: e.target.value }))}
+                InputLabelProps={{ shrink: true }}
+                sx={{ flex:  1 }}
+              />
+              <TextField
+                label="Tid"
+                type="time"
+                value={newMeeting.time}
+                onChange={(e) => setNewMeeting(prev => ({ ...prev, time: e.target.value }))}
+                InputLabelProps={{ shrink: true }}
+                sx={{ flex:  1 }}
+              />
+            </Box>
+
+            <FormControl fullWidth>
+              <InputLabel>Møtetype</InputLabel>
+              <Select
+                value={newMeeting.type}
+                onChange={(e) => setNewMeeting(prev => ({ ...prev, type: e.target.value }))}
+              >
+                {getProfessionMeetingTypes().map(type => (
+                  <MenuItem key={type.value} value={type.value}>
+                    {type.label}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
+            <TextField
+              label="Klient e-post"
+              type="email"
+              value={newMeeting.clientEmail}
+              onChange={(e) => setNewMeeting(prev => ({ ...prev, clientEmail: e.target.value }))}
+              fullWidth
+              placeholder="klient@example.com"
+            />
+
+            <FormControl fullWidth>
+              <InputLabel>Varighet</InputLabel>
+              <Select
+                value={newMeeting.duration}
+                onChange={(e) => setNewMeeting(prev => ({ ...prev, duration: Number(e.target.value, ),}))}
+              >
+                <MenuItem value={30}>30 minutter</MenuItem>
+                <MenuItem value={60}>1 time</MenuItem>
+                <MenuItem value={90}>1.5 timer</MenuItem>
+                <MenuItem value={120}>2 timer</MenuItem>
+              </Select>
+            </FormControl>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setCreateDialogOpen(false)}>
+            Avbryt
+          </Button>
+          <Button onClick={createMeeting}
+            variant="contained"
+            disabled={!newMeeting.title || !newMeeting.date || !newMeeting.time || loading}
+           sx={theming.getThemedButtonSx()}>
+            {loading ? <CircularProgress size={20} /> : 'Opprett møte'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
+  );
+}
+
+// Helper functions
+function generateMockMeetings(profession: string): Meeting[] {
+  const now = new Date();
+  
+  return [
+    {
+      id: 'meet_',
+      title: `${getProfessionDisplayName(profession)} konsultasjon - Kari Hansen`,
+      startTime: new Date(now.getTime() + 10 * 60000).toISOString(), // 10 minutes from now
+      endTime: new Date(now.getTime() + 70 * 60000).toISOString(),
+      meetLink: 'https://meet.google.com/abc-def-ghi',
+      attendees: ['kari.hansen@email.com', ],
+      status: 'upcoming',
+      clientName: 'Kari Hansen',
+      type: 'consultation'
+},
+    {
+      id: 'meet_',
+      title: 'Prosjektgjennomgang - Ole Nordmann',
+      startTime: new Date(now.getTime() + 2 * 60 * 60000).toISOString(), // 2 hours from now
+      endTime: new Date(now.getTime() + 3 * 60 * 60000).toISOString(),
+      meetLink: 'https://meet.google.com/def-ghi-jkl',
+      attendees: ['ole.nordmann@email.com', ],
+      status: 'upcoming',
+      clientName: 'Ole Nordmann',
+      type: 'review'
+}
+  ];
+}
+
+// getProfessionDisplayName is now provided by useDynamicProfessions hook
+
+function formatMeetingTime(timestamp: string): string {
+  return new Date(timestamp).toLocaleString('no-N', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+});
+}
+
+function getTimeUntilMeeting(startTime: string): string {
+  const now = new Date();
+  const start = new Date(startTime);
+  const diffMs = start.getTime() - now.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+
+  if (diffMins < 0) return 'Pågår';
+  if (diffMins < 5) return 'Starter nå';
+  if (diffMins < 60) return `${diffMins}m`;
+  if (diffHours < 24) return `${diffHours}t`;
+  return `${diffDays}d`;
+}
+
+function getChipColor(startTime: string): 'error' | 'warning' | 'default' {
+  const now = new Date();
+  const start = new Date(startTime);
+  const diffMs = start.getTime() - now.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+
+  if (diffMins < 5) return 'error';
+  if (diffMins < 15) return 'warning';
+  return'default'
+}

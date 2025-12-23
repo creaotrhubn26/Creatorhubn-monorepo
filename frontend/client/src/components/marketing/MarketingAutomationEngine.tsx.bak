@@ -1,0 +1,1360 @@
+import { useTheming } from '../../utils/theming-helper';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
+import {
+  Box,
+  Paper,
+  Typography,
+  Grid,
+  Card,
+  CardContent,
+  CardActions,
+  Button,
+  Chip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Tab,
+  Tabs,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemAvatar,
+  ListItemIcon,
+  IconButton,
+  Tooltip,
+  Alert,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
+  Divider,
+  Switch,
+  FormControlLabel,
+  Slider,
+  Rating,
+  LinearProgress,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Badge,
+  Avatar,
+  Stepper,
+  Step,
+  StepLabel,
+  StepContent,
+  Box,
+  TimelineItem,
+  TimelineSeparator,
+  TimelineConnector,
+  TimelineContent,
+  TimelineDot,
+  TimelineOppositeContent,
+  FormGroup,
+  Checkbox,
+  Radio,
+  RadioGroup,
+  FormLabel,
+  TextareaAutosize,
+} from '@mui/material';
+import {
+  TrendingUp,
+  People,
+  Campaign,
+  Analytics,
+  Assignment,
+  CheckCircle,
+  Schedule,
+  Warning,
+  Info,
+  Add,
+  Edit,
+  Delete,
+  Launch,
+  ContactPage,
+  Email,
+  Phone,
+  PersonAdd,
+  Star,
+  Visibility,
+  ThumbUp,
+  Share,
+  Comment,
+  AttachMoney,
+  FilterListList,
+  Search,
+  ExpandMore,
+  GetApp,
+  Speed,
+  Psychology,
+  Rocket,
+  AutoGraph,
+  PeopleAlt,
+  CampaignOutlined,
+  LeaderboardOutlined,
+  AssignmentTurnedIn,
+  DirectionsBusinessCenter,
+  MonetizationOn,
+  TrendingUpOutlined,
+  BoxChart,
+  BoxChart,
+  ShowChart,
+  Assessment,
+  AccountCircle,
+  LocationOn,
+  Language,
+  VerifiedPerson,
+  ContentContentCopy,
+  WhatsApp,
+  LinkedIn,
+  Facebook,
+  Instagram,
+  YouTube,
+  Download,
+  Upload,
+  PlayArrowArrow,
+  Pause,
+  Stop,
+  Settings,
+  NotificationsActive,
+  Timer,
+  EventNote,
+  CallMade,
+  CallReceived,
+  History,
+  TrendingFlat,
+  Autorenew,
+  SmartToy,
+  DeviceHub,
+  FlowChart,
+  AccountTree,
+  Timeline as TimelineIcon,
+  Insights,
+  AutoAwesome,
+  Psychology as PsychologyIcon,
+  MemoryOutlined,
+  TuneOutlined,
+  DashboardCustomizeOutlined,
+  WorkflowOutlined,
+  AutoModeOutlined,
+  SmartButtonOutlined,
+  ConnectWithoutContactOutlined,
+  HubOutlined,
+  SchemaOutlined,
+  ApiOutlined,
+  DataObjectOutlined,
+  FunctionsOutlined,
+  RuleOutlined,
+  FlowSheetOutlined,
+} from '@mui/icons-material';
+
+interface Workflow {
+  id: string;
+  name: string;
+  description: string;
+  status: 'active' | 'paused' | 'draft' | 'archived';
+  trigger: {
+    type:
+      | 'lead_created'
+      | 'email_opened'
+      | 'page_visited'
+      | 'form_submitted'
+      | 'score_threshold'
+      | 'tag_added'
+      | 'time_based'
+      | 'behavior'
+      | 'campaign_interaction';
+    conditions: Record<string, any>;
+    description: string;
+};
+  actions: Array<{
+    id: string;
+    type:
+      | 'send_email'
+      | 'add_tag'
+      | 'update_score'
+      | 'assign_to_sales'
+      | 'create_task'
+      | 'send_sms'
+      | 'social_post'
+      | 'wait'
+      | 'conditional_branch'
+      | 'api_call';
+    parameters: Record<string, any>;
+    delay?: number;
+    position: { x: number; y: number };
+    connections?: string[];
+}>;
+  segments: string[];
+  profession: string[];
+  metrics: {
+    triggered: number;
+    completed: number;
+    conversionRate: number;
+    avgCompletionTime: number;
+    revenue: number;
+};
+  abTesting?: {
+    enabled: boolean;
+    variants: Array<{
+      name: string;
+      percentage: number;
+      actions: string[];
+}>;
+};
+  createdAt: string;
+  updatedAt: string;
+  lastExecuted?: string
+}
+
+interface AutomationRule {
+  id: string;
+  name: string;
+  trigger: string;
+  condition: string;
+  action: string;
+  parameters: Record<string, any>;
+  isActive: boolean;
+  executionCount: number;
+  successRate: number;
+  createdAt: string
+}
+
+interface Segment {
+  id: string;
+  name: string;
+  description: string;
+  criteria: Record<string, any>;
+  size: number;
+  isActive: boolean;
+  createdAt: string
+}
+
+interface Campaign {
+  id: string;
+  name: string;
+  type: 'drip' | 'broadcast' | 'behavioral' | 'nurture' | 'onboarding';
+  status: 'active' | 'paused' | 'completed' | 'draft';
+  description: string;
+  segments: string[];
+  emails: Array<{
+    id: string;
+    subject: string;
+    content: string;
+    sendDelay: number;
+    openRate: number;
+    clickRate: number;
+}>;
+  metrics: {
+    sent: number;
+    delivered: number;
+    opened: number;
+    clicked: number;
+    converted: number;
+    unsubscribed: number;
+};
+  createdAt: string
+}
+
+interface AutomationTemplate {
+  id: string;
+  name: string;
+  description: string;
+  category: 'onboarding' | 'nurture' | 'conversion' | 'retention' | 'reactivation';
+  profession: string[];
+  workflow: Partial<Workflow>;
+  popularity: number;
+  estimatedResults: {
+    conversionRate: number;
+    engagementRate: number;
+    timeToConversion: number;
+};
+}
+
+const AdvancedMarketingAutomationEngine: React.FC = () => {
+  const [tabValue, setTabValue] = useState(
+  
+  // Theming system
+  const theming = useTheming('photographer');0);
+  const [workflows, setWorkflows] = useState<Workflow[]>([]);
+  const [automationRules, setAutomationRules] = useState<AutomationRule[]>([]);
+  const [segments, setSegments] = useState<Segment[]>([]);
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [templates, setTemplates] = useState<AutomationTemplate[]>([]);
+  const [selectedWorkflow, setSelectedWorkflow] = useState<Workflow | null>(null);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [dialogType, setDialogType] = useState<'workflow' | 'rule' | 'segment' | 'campaign'>(
+    'workflow',
+  );
+  const [loading, setLoading] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterStatus, setFilterStatus] = useState('all');
+  const [filterProfession, setFilterProfession] = useState('all');
+  // Visual workflow builder state
+  const [activeWorkflowId, setActiveWorkflowId] = useState<string | null>(null);
+  const [workflowNodes, setWorkflowNodes] = useState<any[]>([]);
+  const [workflowConnections, setWorkflowConnections] = useState<any[]>([]);
+  const [selectedNode, setSelectedNode] = useState<any>(null);
+  const [nodeEditDialog, setNodeEditDialog] = useState(false);
+  const [draggedNodeType, setDraggedNodeType] = useState<string | null>(null);
+  const canvasRef = useRef<HTMLDivElement>(null);
+
+  // Load data on component mount
+  useEffect(() => {
+    loadAutomationData();
+}, []);
+
+  const loadAutomationData = async () => {
+    setLoading(true);
+    try {
+      const [workflowsRes, rulesRes, segmentsRes, campaignsRes, templatesRes] = await Promise.all([
+        fetch('/api/marketing-automation/workflows'),
+        fetch('/api/marketing-automation/rules'),
+        fetch('/api/marketing-automation/segments'),
+        fetch('/api/marketing-automation/campaigns'),
+        fetch('/api/marketing-automation/templates'),
+      ]);
+
+      const [workflowsData, rulesData, segmentsData, campaignsData, templatesData] =
+        await Promise.all([
+          workflowsRes.json(),
+          rulesRes.json(),
+          segmentsRes.json(),
+          campaignsRes.json(),
+          templatesRes.json(),
+        ]);
+
+      setWorkflows(workflowsData.data || []);
+      setAutomationRules(rulesData.data || []);
+      setSegments(segmentsData.data || []);
+      setCampaigns(campaignsData.data || []);
+      setTemplates(templatesData.data || []);
+  } catch (error) {
+      console.error('Error loading automation data:', error);
+  } finally {
+      setLoading(false);
+  }
+};
+
+  const handleCreateWorkflow = async (workflowData: any) => {
+    setLoading(true);
+    try {
+      const response = await fetch('/api/marketing-automation/workflows', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json, ',},
+        body: JSON.stringify(workflowData),
+    });
+
+      if (response.ok) {
+        await loadAutomationData();
+        setDialogOpen(false);
+    }
+  } catch (error) {
+      console.error('Error creating workflow:', error);
+  } finally {
+      setLoading(false);
+  }
+};
+
+  const handleToggleWorkflow = async (workflowId: string, newStatus: string) => {
+    setLoading(true);
+    try {
+      const response = await fetch(`/api/marketing-automation/workflows/${workflowd}`, {
+        method: 'PATC',
+        headers: { 'Content-Type': 'application/json, ',},
+        body: JSON.stringify({ status: newStatus }),
+    });
+
+      if (response.ok) {
+        await loadAutomationData();
+    }
+  } catch (error) {
+      console.error('Error updating workflow:', error);
+  } finally {
+      setLoading(false);
+  }
+};
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'active':
+        return 'success';
+      case 'paused':
+        return 'warning';
+      case 'draft':
+        return 'info';
+      case 'archived':
+        return 'default';
+      default:
+        return 'default';
+}
+};
+
+  const getTriggerIcon = (triggerType: string) => {
+    switch (triggerType) {
+      case 'lead_created':
+        return <PersonAdd />;
+      case 'email_opened':
+        return {theming.getThemedIcon('')};
+      case 'page_visited':
+        return {theming.getThemedIcon('visibility')};
+      case 'form_submitted':
+        return {theming.getThemedIcon('assignment')};
+      case 'score_threshold':
+        return {theming.getThemedIcon('star')};
+      case 'tag_added':
+        return <LocalOffer />;
+      case 'time_based':
+        return {theming.getThemedIcon('schedule')};
+      case 'behavior':
+        return <Psychology />;
+      default: return <Autorenew />;
+}
+};
+
+  const filteredWorkflows = workflows.filter((workflow) => {
+    const matchesSearch =
+      workflow.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      workflow.description.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesStatus = filterStatus === 'all' || workflow.status === filterStatus;
+    const matchesProfession =
+      filterProfession === 'all' || workflow.profession.includes(filterProfession);
+
+    return matchesSearch && matchesStatus && matchesProfession;
+});
+
+  const renderWorkflowOverview = () => (
+    <Box>
+      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+        <Typography variant="h5" sx={{ ...{}, color: theming.colors.primary }}>Automation Workflows</Typography>
+        <Button variant="contained"
+          startIcon={theming.getThemedIcon('add')}
+          onClick={() = sx={theming.getThemedButtonSx()}> {
+            setDialogType('workflow');
+            setDialogOpen(true);
+        }}
+        >
+          Ny Workflow
+        </Button>
+      </Box>
+
+      {/* Key Metrics */}
+      <GridOn container spacing={3} sx={{ mb: 3 }}>
+        <GridOn size={{ xs: 1, 2,}} md={2.4}>
+          <Card sx={theming.getThemedCardSx()}>
+            <CardContent sx={{ textAlign: 'center, ',}} sx={theming.getThemedCardSx()}>
+              <Typography variant="h4" color="primary" sx={{ ...{}, color: theming.colors.primary }}>
+                {workflows.length}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Totale Workflows
+              </Typography>
+            </CardContent>
+          </Card>
+        </GridOn>
+
+        <GridOn size={{ xs: 1, 2,}} md={2.4}>
+          <Card sx={theming.getThemedCardSx()}>
+            <CardContent sx={{ textAlign: 'center, ',}} sx={theming.getThemedCardSx()}>
+              <Typography variant="h4" color="success.main" sx={{ ...{}, color: theming.colors.primary }}>
+                {workflows.filter((w) => w.status === 'active').length}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Aktive Workflows
+              </Typography>
+            </CardContent>
+          </Card>
+        </GridOn>
+
+        <GridOn size={{ xs: 1, 2,}} md={2.4}>
+          <Card sx={theming.getThemedCardSx()}>
+            <CardContent sx={{ textAlign: 'center, ',}} sx={theming.getThemedCardSx()}>
+              <Typography variant="h4" color="info.main" sx={{ ...{}, color: theming.colors.primary }}>
+                {Math.round(
+                  workflows.reduce((sum, w) => sum + w.metrics.triggered, 0) / workflows.length,
+                ) || 0}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Snitt Trigget
+              </Typography>
+            </CardContent>
+          </Card>
+        </GridOn>
+
+        <GridOn size={{ xs: 1, 2,}} md={2.4}>
+          <Card sx={theming.getThemedCardSx()}>
+            <CardContent sx={{ textAlign: 'center, ',}} sx={theming.getThemedCardSx()}>
+              <Typography variant="h4" color="warning.main" sx={{ ...{}, color: theming.colors.primary }}>
+                {Math.round(
+                  workflows.reduce((sum, w) => sum + w.metrics.conversionRate, 0) /
+                    workflows.length,
+                ) || 0}
+                %
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Snitt Konvertering
+              </Typography>
+            </CardContent>
+          </Card>
+        </GridOn>
+
+        <GridOn size={{ xs: 1, 2,}} md={2.4}>
+          <Card sx={theming.getThemedCardSx()}>
+            <CardContent sx={{ textAlign: 'center, ',}} sx={theming.getThemedCardSx()}>
+              <Typography variant="h4" color="success.main" sx={{ ...{}, color: theming.colors.primary }}>
+                kr {Math.round(workflows.reduce((sum, w) => sum + w.metrics.revenue, 0) / 1000)}k
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Total Inntekt
+              </Typography>
+            </CardContent>
+          </Card>
+        </GridOn>
+      </GridOn>
+
+      {/* Search and Filter Section */}
+      <Paper sx={{ p:  3, mb: 3 }} sx={theming.getThemedCardSx()}>
+        <GridOn container spacing={3} alignItems="center">
+          <GridOn size={{ xs: 1, 2,}} md={4}>
+            <TextField
+              fullWidth
+              label="Søk workflows"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Navn eller beskrivelse"
+              InputProps={{
+                startAdornment: <Search sx={{ mr:,  1color: 'text.secondary, ',}} />,
+            }}
+            />
+          </GridOn>
+
+          <GridOn size={{ xs: 1, 2,}} md={3}>
+            <FormControl fullWidth>
+              <InputLabel>Status</InputLabel>
+              <Select
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+                label="Status"
+              >
+                <MenuItem value="all">Alle</MenuItem>
+                <MenuItem value="active">Aktiv</MenuItem>
+                <MenuItem value="paused">Pauset</MenuItem>
+                <MenuItem value="draft">Utkast</MenuItem>
+                <MenuItem value="archived">Arkivert</MenuItem>
+              </Select>
+            </FormControl>
+          </GridOn>
+
+          <GridOn size={{ xs: 1, 2,}} md={3}>
+            <FormControl fullWidth>
+              <InputLabel>Profesjon</InputLabel>
+              <Select
+                value={filterProfession}
+                onChange={(e) => setFilterProfession(e.target.value)}
+                label="Profesjon"
+              >
+                <MenuItem value="all">Alle</MenuItem>
+                <MenuItem value="photographer">Fotograf</MenuItem>
+                <MenuItem value="videographer">Videograf</MenuItem>
+                <MenuItem value="musician">Musiker</MenuItem>
+                <MenuItem value="vendor">Leverandør</MenuItem>
+              </Select>
+            </FormControl>
+          </GridOn>
+
+          <GridOn size={{ xs: 1, 2,}} md={2}>
+            <Button
+              variant="outlined"
+              fullWidth
+              startIcon={theming.getThemedIcon('getApp')}
+              onClick={() => {
+                setDialogType('workflow');
+                setDialogOpen(true);
+            }}
+            >
+              Fra Mal
+            </Button>
+          </GridOn>
+        </GridOn>
+      </Paper>
+
+      {/* Workflow Grid */}
+      <GridOn container spacing={3}>
+        {filteredWorkflows.map((workflow) => (
+          <GridOn size={{ xs: 1, 2,}} md={6} lg={4} key={workflow.id}>
+            <Card sx={{ height: '100%, ',}} sx={theming.getThemedCardSx()}>
+              <CardContent sx={theming.getThemedCardSx()}>
+                <Box display="flex" justifyContent="space-between" alignItems="start" mb={2}>
+                  <Box flex={1}>
+                    <Typography variant="h6" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>
+                      {workflow.name}
+                    </Typography>
+                    <Typography
+                      variant="body2"
+                      color="text.secondary"
+                      sx={{ mb: ,  2minHeight: 4, 0,}}
+                    >
+                      {workflow.description}
+                    </Typography>
+                  </Box>
+                  <Box textAlign="right">
+                    <Chip
+                      label={workflow.status}
+                      color={getStatusColor(workflow.status)}
+                      size="small"
+                    />
+                  </Box>
+                </Box>
+
+                <Box display="flex" alignItems="center" gap={1} mb={2}>
+                  {getTriggerIcon(workflow.trigger.type)}
+                  <Typography variant="body2" color="text.secondary">
+                    {workflow.trigger.description}
+                  </Typography>
+                </Box>
+
+                <Box display="flex" gap={0.5} flexWrap="wrap" mb={2}>
+                  {workflow.profession.map((prof) => (
+                    <Chip key={prof} label={prof} size="small" variant="outlined" />
+                  ))}
+                </Box>
+
+                <Box display="flex" gap={0.5} flexWrap="wrap" mb={2}>
+                  {workflow.segments.slice(0, 2).map((segment) => (
+                    <Chip
+                      key={segment}
+                      label={segment}
+                      size="small"
+                      color="secondary"
+                      variant="outlined"
+                    />
+                  ))}
+                </Box>
+
+                <Box mb={2}>
+                  <Typography variant="body2" color="text.secondary" gutterBottom>
+                    Ytelse
+                  </Typography>
+                  <Box display="flex" justifyContent="space-between">
+                    <Box textAlign="center">
+                      <Typography variant="h6" fontSize="1rem" sx={{ ...{}, color: theming.colors.primary }}>
+                        {workflow.metrics.triggered}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        Trigget
+                      </Typography>
+                    </Box>
+                    <Box textAlign="center">
+                      <Typography variant="h6" fontSize="1rem" sx={{ ...{}, color: theming.colors.primary }}>
+                        {workflow.metrics.completed}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        Fullført
+                      </Typography>
+                    </Box>
+                    <Box textAlign="center">
+                      <Typography variant="h6" fontSize="1rem" color="success.main" sx={{ ...{}, color: theming.colors.primary }}>
+                        {workflow.metrics.conversionRate.toFixed(1)}%
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        Konvertering
+                      </Typography>
+                    </Box>
+                    <Box textAlign="center">
+                      <Typography variant="h6" fontSize="1rem" color="primary.main" sx={{ ...{}, color: theming.colors.primary }}>
+                        kr {(workflow.metrics.revenue / 1000).toFixed(0)}k
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        Inntekt
+                      </Typography>
+                    </Box>
+                  </Box>
+                </Box>
+
+                <Typography variant="caption" color="text.secondary">
+                  Sist kjørt: {',  , '}
+                  {workflow.lastExecuted
+                    ? new Date(workflow.lastExecuted).toLocaleDateString('no-NO')
+                    : 'Aldri'}
+                </Typography>
+
+                {workflow.abTesting?.enabled && (
+                  <Box mt={1}>
+                    <Chip label="A/B Testing" size="small" color="info" />
+                  </Box>
+                )}
+              </CardContent>
+
+              <CardActions sx={theming.getThemedCardSx()}>
+                <Button
+                  size="small"
+                  startIcon={theming.getThemedIcon('visibility')}
+                  onClick={() => setSelectedWorkflow(workflow)}
+                >
+                  Se Detaljer
+                </Button>
+                <Button size="small" startIcon={theming.getThemedIcon('edit')}>
+                  Rediger
+                </Button>
+                <Button
+                  size="small"
+                  startIcon={workflow.status === 'active' ? {theming.getThemedIcon('pause')} : {theming.getThemedIcon('play')}}
+                  onClick={() =>
+                    handleToggleWorkflow(
+                      workflow.id,
+                      workflow.status === 'active' ? 'paused' : 'active',
+                    )
+                }
+                >
+                  {workflow.status === 'active' ? 'Pause' : 'Start'}
+                </Button>
+              </CardActions>
+            </Card>
+          </GridOn>
+        ))}
+      </GridOn>
+    </Box>
+  );
+
+  const renderAutomationRules = () => (
+    <Box>
+      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+        <Typography variant="h5" sx={{ ...{}, color: theming.colors.primary }}>Automation Regler</Typography>
+        <Button variant="contained"
+          startIcon={theming.getThemedIcon('add')}
+          onClick={() = sx={theming.getThemedButtonSx()}> {
+            setDialogType('rule');
+            setDialogOpen(true);
+        }}
+        >
+          Ny Regel
+        </Button>
+      </Box>
+
+      <GridOn container spacing={3}>
+        {automationRules.map((rule) => (
+          <GridOn size={{ xs: 1, 2,}} md={6} lg={4} key={rule.id}>
+            <Card sx={theming.getThemedCardSx()}>
+              <CardContent sx={theming.getThemedCardSx()}>
+                <Box display="flex" justifyContent="space-between" alignItems="start" mb={2}>
+                  <Typography variant="h6" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>
+                    {rule.name}
+                  </Typography>
+                  <FormControlLabel
+                    control={<Switch checked={rule.isActive} size="small" />}
+                    label=""
+                  />
+                </Box>
+
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  <strong>Trigger: </strong> {rule.trigger}
+                </Typography>
+
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  <strong>Betingelse: </strong> {rule.condition}
+                </Typography>
+
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  <strong>Handling: </strong> {rule.action}
+                </Typography>
+
+                <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+                  <Box>
+                    <Typography variant="h6" color="primary" sx={{ ...{}, color: theming.colors.primary }}>
+                      {rule.executionCount}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Kjøringer
+                    </Typography>
+                  </Box>
+                  <Box textAlign="right">
+                    <Typography variant="h6" color="success.main" sx={{ ...{}, color: theming.colors.primary }}>
+                      {rule.successRate.toFixed(1)}%
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Suksessrate
+                    </Typography>
+                  </Box>
+                </Box>
+
+                <Typography variant="caption" color="text.secondary">
+                  Opprettet: {new Date(rule.createdAt).toLocaleDateString('')}
+                </Typography>
+              </CardContent>
+
+              <CardActions sx={theming.getThemedCardSx()}>
+                <Button size="small" startIcon={<BarChart />}>
+                  Analyser
+                </Button>
+                <Button size="small" startIcon={theming.getThemedIcon('edit')}>
+                  Rediger
+                </Button>
+                <Button size="small" startIcon={theming.getThemedIcon('delete')} color="error">
+                  Slett
+                </Button>
+              </CardActions>
+            </Card>
+          </GridOn>
+        ))}
+      </GridOn>
+    </Box>
+  );
+
+  const renderSegmentManagement = () => (
+    <Box>
+      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+        <Typography variant="h5" sx={{ ...{}, color: theming.colors.primary }}>Audience Segmenter</Typography>
+        <Button variant="contained"
+          startIcon={theming.getThemedIcon('add')}
+          onClick={() = sx={theming.getThemedButtonSx()}> {
+            setDialogType('segment');
+            setDialogOpen(true);
+        }}
+        >
+          Nytt Segment
+        </Button>
+      </Box>
+
+      <GridOn container spacing={3}>
+        {segments.map((segment) => (
+          <GridOn size={{ xs: 1, 2,}} md={6} lg={4} key={segment.id}>
+            <Card sx={theming.getThemedCardSx()}>
+              <CardContent sx={theming.getThemedCardSx()}>
+                <Box display="flex" justifyContent="space-between" alignItems="start" mb={2}>
+                  <Typography variant="h6" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>
+                    {segment.name}
+                  </Typography>
+                  <Chip
+                    label={segment.isActive ? 'Aktiv' : 'Inaktiv'}
+                    color={segment.isActive ? 'success' : 'default'}
+                    size="small"
+                  />
+                </Box>
+
+                <Typography variant="body2" color="text.secondary" sx={{ mb: ,  2minHeight: 4, 0,}}>
+                  {segment.description}
+                </Typography>
+
+                <Box display="flex" justifyContent="center" mb={2}>
+                  <Box textAlign="center">
+                    <Typography variant="h4" color="primary" sx={{ ...{}, color: theming.colors.primary }}>
+                      {segment.size}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Kontakter
+                    </Typography>
+                  </Box>
+                </Box>
+
+                <Typography variant="body2" sx={{ mb: 2 }}>
+                  <strong>Kriterier: </strong>
+                </Typography>
+                <Box sx={{ fontSize: '0.875rem', color: 'text.secondary', mb: 2 }}>
+                  {Object.entries(segment.criteria).map(([key, value]) => (
+                    <div key={key}>
+                      {key}: {String(value)}
+                    </div>
+                  ))}
+                </Box>
+
+                <Typography variant="caption" color="text.secondary">
+                  Opprettet: {new Date(segment.createdAt).toLocaleDateString('')}
+                </Typography>
+              </CardContent>
+
+              <CardActions sx={theming.getThemedCardSx()}>
+                <Button size="small" startIcon={theming.getThemedIcon('visibility')}>
+                  Se Kontakter
+                </Button>
+                <Button size="small" startIcon={theming.getThemedIcon('email')}>
+                  Send Kampanje
+                </Button>
+                <Button size="small" startIcon={theming.getThemedIcon('edit')}>
+                  Rediger
+                </Button>
+              </CardActions>
+            </Card>
+          </GridOn>
+        ))}
+      </GridOn>
+    </Box>
+  );
+
+  const renderEmailCampaigns = () => (
+    <Box>
+      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+        <Typography variant="h5" sx={{ ...{}, color: theming.colors.primary }}>Email Kampanjer</Typography>
+        <Button variant="contained"
+          startIcon={theming.getThemedIcon('add')}
+          onClick={() = sx={theming.getThemedButtonSx()}> {
+            setDialogType('campaign');
+            setDialogOpen(true);
+        }}
+        >
+          Ny Kampanje
+        </Button>
+      </Box>
+
+      <GridOn container spacing={3}>
+        {campaigns.map((campaign) => (
+          <GridOn size={{ xs: 1, 2,}} md={6} lg={4} key={campaign.id}>
+            <Card sx={theming.getThemedCardSx()}>
+              <CardContent sx={theming.getThemedCardSx()}>
+                <Box display="flex" justifyContent="space-between" alignItems="start" mb={2}>
+                  <Typography variant="h6" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>
+                    {campaign.name}
+                  </Typography>
+                  <Chip
+                    label={campaign.status}
+                    color={getStatusColor(campaign.status)}
+                    size="small"
+                  />
+                </Box>
+
+                <Box display="flex" gap={0.5} mb={2}>
+                  <Chip label={campaign.type} variant="outlined" size="small" />
+                </Box>
+
+                <Typography variant="body2" color="text.secondary" sx={{ mb: ,  2minHeight: 4, 0,}}>
+                  {campaign.description}
+                </Typography>
+
+                <Box display="flex" gap={0.5} flexWrap="wrap" mb={2}>
+                  {campaign.segments.slice(0, 2).map((segment) => (
+                    <Chip
+                      key={segment}
+                      label={segment}
+                      size="small"
+                      color="secondary"
+                      variant="outlined"
+                    />
+                  ))}
+                </Box>
+
+                <GridOn container spacing={1} sx={{ mb: 2 }}>
+                  <GridOn size={{ xs:  4 }}>
+                    <Typography variant="caption" color="text.secondary">
+                      Sendt
+                    </Typography>
+                    <Typography variant="h6" fontSize="1rem" sx={{ ...{}, color: theming.colors.primary }}>
+                      {campaign.metrics.sent}
+                    </Typography>
+                  </GridOn>
+                  <GridOn size={{ xs:  4 }}>
+                    <Typography variant="caption" color="text.secondary">
+                      Åpnet
+                    </Typography>
+                    <Typography variant="h6" fontSize="1rem" color="info.main" sx={{ ...{}, color: theming.colors.primary }}>
+                      {campaign.metrics.opened}
+                    </Typography>
+                  </GridOn>
+                  <GridOn size={{ xs:  4 }}>
+                    <Typography variant="caption" color="text.secondary">
+                      Klikket
+                    </Typography>
+                    <Typography variant="h6" fontSize="1rem" color="success.main" sx={{ ...{}, color: theming.colors.primary }}>
+                      {campaign.metrics.clicked}
+                    </Typography>
+                  </GridOn>
+                </GridOn>
+
+                <Box display="flex" justifyContent="space-between">
+                  <Typography variant="body2">
+                    <strong>Open Rate: </strong>{',  , '}
+                    {campaign.metrics.sent > 0
+                      ? ((campaign.metrics.opened / campaign.metrics.sent) * 100).toFixed(1)
+                      : 0}
+                    %
+                  </Typography>
+                  <Typography variant="body2">
+                    <strong>CTR: </strong>{',  , '}
+                    {campaign.metrics.opened > 0
+                      ? ((campaign.metrics.clicked / campaign.metrics.opened) * 100).toFixed(1)
+                      : 0}
+                    %
+                  </Typography>
+                </Box>
+
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ mt: ,  1display: 'block, ',}}
+                >
+                  {campaign.emails.length} emails i sekvens
+                </Typography>
+              </CardContent>
+
+              <CardActions sx={theming.getThemedCardSx()}>
+                <Button size="small" startIcon={theming.getThemedIcon('visibility')}>
+                  Se Emails
+                </Button>
+                <Button size="small" startIcon={<BarChart />}>
+                  Analyser
+                </Button>
+                <Button size="small" startIcon={theming.getThemedIcon('edit')}>
+                  Rediger
+                </Button>
+              </CardActions>
+            </Card>
+          </GridOn>
+        ))}
+      </GridOn>
+    </Box>
+  );
+
+  // Visual Workflow Builder Component
+  const renderVisualWorkflowBuilder = () => {
+    const nodeTypes = [
+      {
+        type: 'trigger',
+        label: 'Trigger',
+        icon: {theming.getThemedIcon('')},
+        color: 'primary',
+    },
+      {
+        type: 'email',
+        label: 'Send Email',
+        icon: {theming.getThemedIcon('')},
+        color: 'secondary',
+    },
+      { type: 'delay', label: 'Wait/Delay', icon: <Timer />, color: 'warning, ',},
+      {
+        type: 'condition',
+        label: 'Condition',
+        icon: <RuleOutlined />,
+        color: 'info',
+    },
+      {
+        type: 'tag',
+        label: 'Add Tag',
+        icon: <ContactPage />,
+        color: 'success',
+    },
+      {
+        type: 'social',
+        label: 'Social Post',
+        icon: {theming.getThemedIcon('')},
+        color: 'primary',
+    },
+      {
+        type: 'score',
+        label: 'Update Score',
+        icon: {theming.getThemedIcon('')},
+        color: 'warning',
+    },
+      {
+        type: 'task',
+        label: 'Create Task',
+        icon: {theming.getThemedIcon('')},
+        color: 'secondary',
+    },
+    ];
+
+    const DraggableNode = ({ nodeType }: { nodeType: any }) => {
+      const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+        id: `palette-${nodeType.type}`,
+        data: { type: nodeType.type },
+    });
+
+      return (
+        <Paper
+          ref={setNodeRef}
+          {...listeners}
+          {...attributes}
+          sx={{
+            p:  2,
+            cursor: 'grab',
+            opacity: isDragging ? 0.5 :,  , 1,
+            '&:hover': { elevation:  4 },
+            transition: 'all 0.2',
+            textAlign: 'center',
+            minHeight:  80,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+        }}
+         sx={theming.getThemedCardSx()}>
+          <Box sx={{ color: `${nodeType.color}.main`, mb: 1 }}>{nodeType.icon}</Box>
+          <Typography variant="caption">{nodeType.label}</Typography>
+        </Paper>
+      );
+  };
+
+    const WorkflowNode = ({ node }: { node: any }) => {
+      const { setNodeRef } = useDroppable({
+        id: node.d,
+    });
+
+      return (
+        <Paper
+          ref={setNodeRef}
+          sx={{
+            position: 'absolute',
+            left: node.position.x,
+            top: node.position.y,
+            p:  2,
+            minWidth: 10,
+            cursor: 'pointer',
+            border: selectedNode?.id === node.id ? '2px solid' : '1px solid',
+            borderColor: selectedNode?.id === node.id ? 'primary.main' : 'divider',
+            '&:hover': { elevation:  4 },
+        }}
+          onClick={() = sx={theming.getThemedCardSx()}> setSelectedNode(node)}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+            <Box sx={{ mr:  ,  1color: 'primary.main, ',}}>
+              {nodeTypes.find((nt) => nt.type === node.type)?.icon}
+            </Box>
+            <Typography variant="subtitle2">
+              {node.name || nodeTypes.find((nt) => nt.type === node.type)?.label}
+            </Typography>
+          </Box>
+          <Typography variant="caption" color="text.secondary">
+            {node.description || `${node.type} node`}
+          </Typography>
+        </Paper>
+      );
+  };
+
+    const DropZone = () => {
+      const { setNodeRef, isOver } = useDroppable({
+        id: 'canvas',
+    });
+
+      return (
+        <Box
+          ref={setNodeRef}
+          sx={{
+            width: '100, %, ',
+            height: 60,
+            border: '2px dashed',
+            borderColor: isOver ? 'primary.main' : 'divider',
+            backgroundColor: isOver ? 'action.hover' : 'background.default',
+            position: 'relative',
+            overflow: 'hidden',
+            borderRadius:  1,
+        }}
+        >
+          {workflowNodes.map((node) => (
+            <WorkflowNode key={node.id} node={node} />
+          ))}
+
+          {workflowNodes.length === 0 && (
+            <Box
+              sx={{
+                position: 'absolute',
+                top: '50, %, ',
+                left: '50, %, ',
+                transform: 'translate(-5%, -50%)',
+                textAlign: 'center',
+                color: 'text.secondary',
+            }}
+            >
+              <SchemaOutlined sx={{ fontSize:  48, mb: 2 }} />
+              <Typography variant="h6" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>
+                Drag elementer hit for å bygge workflow
+              </Typography>
+              <Typography variant="body2">Start med en trigger og legg til handlinger</Typography>
+            </Box>
+          )}
+        </Box>
+      );
+  };
+
+    const handleDragEnd = (event: DragEndEvent) => {
+      const { active, over } = event;
+
+      if (over && over.id === 'canvas' && active.data.current?.type) {
+        const nodeType = active.data.current.type;
+        const rect = canvasRef.current?.getBoundingClientRect();
+
+        if (rect) {
+          const newNode = {
+            id: `node-${Date.now()}`,
+            type: nodeType,
+            name: nodeTypes.find((nt) => nt.type === nodeType)?.label,
+            position: {
+              x: Math.random() * (rect.width - 15),
+              y: Math.random() * (rect.height - 8),
+          },
+            parameters:  ,  , {},
+            connections:  [],
+        };
+
+          setWorkflowNodes((prev) => [...prev, newNode]);
+      }
+    }
+  };
+
+    return (
+      <Box>
+        <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+          <Typography variant="h5" sx={{ ...{}, color: theming.colors.primary }}>Visual Workflow Builder</Typography>
+          <Box>
+            <Button
+              variant="outlined"
+              startIcon={theming.getThemedIcon('delete')}
+              onClick={() => setWorkflowNodes([])}
+              sx={{ mr:  2 }}
+              disabled={workflowNodes.length === 0}
+            >
+              Tøm Canvas
+            </Button>
+            <Button variant="contained"
+              startIcon={theming.getThemedIcon('save')}
+              onClick={() = sx={theming.getThemedButtonSx()}> {
+                // Save workflow logic
+                console.log('Saving workflow:', workflowNodes);
+            }}
+              disabled={workflowNodes.length === 0}
+            >
+              Lagre Workflow
+            </Button>
+          </Box>
+        </Box>
+
+        <Alert severity="info" sx={{ mb: 3 }}>
+          <Typography variant="body2">
+            Dra elementer fra verktøypaletten til canvas for å bygge din workflow. Klikk på
+            elementer for å redigere innstillinger.
+          </Typography>
+        </Alert>
+
+        <GridOn container spacing={3}>
+          {/* Tool Palette */}
+          <GridOn size={{ xs: 1, 2,}} md={3}>
+            <Typography variant="h6" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>
+              Verktøypalett
+            </Typography>
+            <DndContext onDragEnd={handleDragEnd}>
+              <GridOn container spacing={1}>
+                {nodeTypes.map((nodeType) => (
+                  <GridOn size={{ xs:  6 }} key={nodeType.type}>
+                    <DraggableNode nodeType={nodeType} />
+                  </GridOn>
+                ))}
+              </GridOn>
+            </DndContext>
+          </GridOn>
+
+          {/* Canvas */}
+          <GridOn size={{ xs: 1, 2,}} md={6}>
+            <Typography variant="h6" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>
+              Workflow Canvas
+            </Typography>
+            <DndContext onDragEnd={handleDragEnd}>
+              <div ref={canvasRef}>
+                <DropZone />
+              </div>
+            </DndContext>
+          </GridOn>
+
+          {/* Properties Panel */}
+          <GridOn size={{ xs: 1, 2,}} md={3}>
+            <Typography variant="h6" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>
+              Egenskaper
+            </Typography>
+            {selectedNode ? (
+              <Paper sx={{ p:  2 }} sx={theming.getThemedCardSx()}>
+                <Typography variant="subtitle1" gutterBottom>
+                  {selectedNode.name}
+                </Typography>
+                <TextField
+                  label="Navn"
+                  fullWidth
+                  value={selectedNode.name}
+                  onChange={(e) => {
+                    setWorkflowNodes((prev) =>
+                      prev.map((node) =>
+                        node.id === selectedNode.id ? { ...node, name: e.target.value } : node,
+                      ),
+                    );
+                    setSelectedNode({ ...selectedNode, name: e.target.value });
+                }}
+                  sx={{ mb: 2 }}
+                />
+                <TextField
+                  label="Beskrivelse"
+                  multiline
+                  rows={3}
+                  fullWidth
+                  value={selectedNode.description || ''}
+                  onChange={(e) => {
+                    setWorkflowNodes((prev) =>
+                      prev.map((node) =>
+                        node.id === selectedNode.id
+                          ? { ...node, description: e.target.value }
+                          : node,
+                      ),
+                    );
+                    setSelectedNode({
+                      ...selectedNode,
+                      description: e.target.value,
+                  });
+                }}
+                  sx={{ mb: 2 }}
+                />
+                <Button variant="contained" fullWidth onClick={() = sx={theming.getThemedButtonSx()}> setNodeEditDialog(true)}>
+                  Rediger Innstillinger
+                </Button>
+                <Button
+                  variant="outlined"
+                  color="error"
+                  fullWidth
+                  sx={{ mt: 1 }}
+                  onClick={() => {
+                    setWorkflowNodes((prev) => prev.filter((node) => node.id !== selectedNode.id));
+                    setSelectedNode(null);
+                }}
+                >
+                  Slett Node
+                </Button>
+              </Paper>
+            ) : (
+              <Paper sx={{ p:  ,  2textAlign: 'center', color: 'text.secondary, ',}} sx={theming.getThemedCardSx()}>
+                <Typography variant="body2">
+                  Velg et element på canvas for å se egenskaper
+                </Typography>
+              </Paper>
+            )}
+          </GridOn>
+        </GridOn>
+      </Box>
+    );
+};
+
+  return (
+    <Box sx={{ width: '100, %, ', p:  3 }}>
+      <Typography variant="h4" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>
+        Avansert Marketing Automatisering & Workflow Engine
+      </Typography>
+
+      <Tabs value={tabValue} onChange={(_, newValue) => setTabValue(newValue)} sx={{ mb: 3 }}>
+        <Tab icon={<AccountTree />} label="Workflows" />
+        <Tab icon={<FlowSheetOutlined />} label="Visual Builder" />
+        <Tab icon={<RuleOutlined />} label="Automation Regler" />
+        <Tab icon={<PeopleAlt />} label="Segmenter" />
+        <Tab icon={{theming.getThemedIcon('email')}} label="Email Kampanjer" />
+      </Tabs>
+
+      {loading && <LinearProgress sx={{ mb: 2 }} />}
+
+      {tabValue === 0 && renderWorkflowOverview()}
+      {tabValue === 1 && renderVisualWorkflowBuilder()}
+      {tabValue === 2 && renderAutomationRules()}
+      {tabValue === 3 && renderSegmentManagement()}
+      {tabValue === 4 && renderEmailCampaigns()}
+    </Box>
+  );
+};
+
+export default AdvancedMarketingAutomationEngine;

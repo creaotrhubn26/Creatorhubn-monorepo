@@ -1,0 +1,680 @@
+import React, { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
+import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { 
+  Mail, 
+  Users, 
+  Target, 
+  TrendingUp,
+  Calendar,
+  Send,
+  Edit,
+  Eye,
+  BarChart3,
+  Settings,
+  Plus,
+  Search,
+  Filter,
+  Smartphone,
+  Menu,
+  X,
+  CheckCircle,
+  AlertTriangle,
+  Clock,
+  DollarSign
+} from 'lucide-react';
+import { apiRequest } from '@/lib/queryClient';
+import { useMobile } from '@/hooks/use-mobile';
+
+interface MarketingCampaign {
+  id: string;
+  name: string;
+  type: 'email' | 'sms' | 'push' | 'social';
+  status: 'draft' | 'scheduled' | 'active' | 'completed' | 'paused';
+  targetFeatures: string[];
+  audienceSize: number;
+  openRate?: number;
+  clickRate?: number;
+  conversionRate?: number;
+  revenue?: number;
+  scheduledDate?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface EmailTemplate {
+  id: string;
+  name: string;
+  subject: string;
+  content: string;
+  type: 'feature_launch' | 'upgrade_offer' | 'engagement' | 'retention';
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+const MarketingAutomation: React.FC = () => {
+  const [activeTab, setActiveTab] = useState('campaigns');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedType, setSelectedType] = useState('all');
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [editingCampaign, setEditingCampaign] = useState<string | null>(null);
+  const [editingTemplate, setEditingTemplate] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const isMobile = useMobile();
+
+  // Fetch marketing campaigns from authentic API
+  const { data: campaigns, isLoading: campaignsLoading } = useQuery({
+    queryKey: ['/api/marketing/campaigns'],
+    retry: 2,
+  });
+
+  // Fetch email templates from authentic API
+  const { data: templates, isLoading: templatesLoading } = useQuery({
+    queryKey: ['/api/marketing/templates'],
+    retry: 2,
+  });
+
+  // Fetch marketing analytics from authentic API
+  const { data: analytics, isLoading: analyticsLoading } = useQuery({
+    queryKey: ['/api/marketing/analytics'],
+    retry: 2,
+  });
+
+  // Create new campaign
+  const createCampaignMutation = useMutation({
+    mutationFn: async (campaignData: Partial<MarketingCampaign>) => {
+      return await apiRequest('/api/marketing/campaigns', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(campaignData)
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/marketing/campaigns'] });
+      console.log('Suksess: Ny markedsføringskampanje opprettet');
+    },
+    onError: () => {
+      console.error('Feil: Kunne ikke opprette markedsføringskampanje');
+    },
+  });
+
+  // Update campaign
+  const updateCampaignMutation = useMutation({
+    mutationFn: async ({ id, updates }: { id: string; updates: Partial<MarketingCampaign> }) => {
+      return await apiRequest(`/api/marketing/campaigns/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates)
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/marketing/campaigns'] });
+      setEditingCampaign(null);
+      console.log('Suksess: Kampanje oppdatert');
+    },
+    onError: () => {
+      console.error('Feil: Kunne ikke oppdatere kampanje');
+    },
+  });
+
+  // Create email template
+  const createTemplateMutation = useMutation({
+    mutationFn: async (templateData: Partial<EmailTemplate>) => {
+      return await apiRequest('/api/marketing/templates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(templateData)
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/marketing/templates'] });
+      console.log('Suksess: Ny e-postmal opprettet');
+    },
+    onError: () => {
+      console.error('Feil: Kunne ikke opprette e-postmal');
+    },
+  });
+
+  // Use authentic data from API only
+  const authenticCampaigns = campaigns as MarketingCampaign[] || [];
+  const authenticTemplates = templates as EmailTemplate[] || [];
+  const authenticAnalytics = analytics || {};
+
+  // Filter campaigns
+  const filteredCampaigns = authenticCampaigns.filter((campaign: MarketingCampaign) => {
+    const matchesSearch = !searchTerm || 
+      campaign.name.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesType = selectedType === 'all' || campaign.type === selectedType;
+    return matchesSearch && matchesType;
+  });
+
+  // Campaign types
+  const campaignTypes = [
+    { id: 'all', name: 'Alle', icon: Target },
+    { id: 'email', name: 'E-post', icon: Mail },
+    { id: 'sms', name: 'SMS', icon: Smartphone },
+    { id: 'push', name: 'Push', icon: Send },
+    { id: 'social', name: 'Sosiale medier', icon: Users }
+  ];
+
+  // Mobile Header Component
+  const MobileHeader = () => (
+    <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 py-3 sticky top-0 z-10">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <TrendingUp className="h-6 w-6 text-green-600" />
+          <div>
+            <h1 className="text-lg font-semibold text-gray-900 dark:text-white">
+              Markedsføring
+            </h1>
+            <p className="text-sm text-gray-600 dark:text-gray-300">
+              {authenticCampaigns.length} kampanjer
+            </p>
+          </div>
+        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+          className="p-2"
+        >
+          {isMobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+        </Button>
+      </div>
+      
+      {/* Mobile Search */}
+      <div className="mt-3">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+          <Input
+            placeholder="Søk kampanjer..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-10"
+          />
+        </div>
+      </div>
+      
+      {/* Mobile Tabs */}
+      {isMobileMenuOpen && (
+        <div className="mt-3 pb-3 border-b border-gray-200 dark:border-gray-700">
+          <div className="grid grid-cols-2 gap-2">
+            {['campaigns', 'templates', 'analytics', 'settings'].map((tab) => (
+              <Button
+                key={tab}
+                variant={activeTab === tab ? "default" : "outline"}
+                size="sm"
+                onClick={() => {
+                  setActiveTab(tab);
+                  setIsMobileMenuOpen(false);
+                }}
+                className="text-xs capitalize"
+              >
+                {tab === 'campaigns' && 'Kampanjer'}
+                {tab === 'templates' && 'Maler'}
+                {tab === 'analytics' && 'Analyse'}
+                {tab === 'settings' && 'Innstillinger'}
+              </Button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  // Marketing Stats Component
+  const MarketingStats = () => {
+    const stats = {
+      totalCampaigns: authenticCampaigns.length,
+      activeCampaigns: authenticCampaigns.filter(c => c.status === 'active').length,
+      totalRevenue: authenticCampaigns.reduce((sum, c) => sum + (c.revenue || 0), 0),
+      avgConversion: authenticCampaigns.length > 0 
+        ? authenticCampaigns.reduce((sum, c) => sum + (c.conversionRate || 0), 0) / authenticCampaigns.length 
+        : 0
+    };
+
+    if (isMobile) {
+      return (
+        <div className="grid grid-cols-2 gap-3 mb-4">
+          <Card>
+            <CardContent className="p-3">
+              <div className="text-center">
+                <p className="text-xs text-gray-600">Kampanjer</p>
+                <p className="text-lg font-bold text-blue-600">{stats.totalCampaigns}</p>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-3">
+              <div className="text-center">
+                <p className="text-xs text-gray-600">Aktive</p>
+                <p className="text-lg font-bold text-green-600">{stats.activeCampaigns}</p>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-3">
+              <div className="text-center">
+                <p className="text-xs text-gray-600">Inntekt</p>
+                <p className="text-lg font-bold text-purple-600">{stats.totalRevenue} NOK</p>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-3">
+              <div className="text-center">
+                <p className="text-xs text-gray-600">Konvertering</p>
+                <p className="text-lg font-bold text-orange-600">{stats.avgConversion.toFixed(1)}%</p>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      );
+    }
+
+    return (
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">Totale Kampanjer</p>
+                <p className="text-2xl font-bold text-gray-900">{stats.totalCampaigns}</p>
+              </div>
+              <Target className="h-8 w-8 text-blue-600" />
+            </div>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">Aktive Kampanjer</p>
+                <p className="text-2xl font-bold text-green-600">{stats.activeCampaigns}</p>
+              </div>
+              <CheckCircle className="h-8 w-8 text-green-600" />
+            </div>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">Total Inntekt</p>
+                <p className="text-2xl font-bold text-purple-600">{stats.totalRevenue} NOK</p>
+              </div>
+              <DollarSign className="h-8 w-8 text-purple-600" />
+            </div>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">Snitt Konvertering</p>
+                <p className="text-2xl font-bold text-orange-600">{stats.avgConversion.toFixed(1)}%</p>
+              </div>
+              <TrendingUp className="h-8 w-8 text-orange-600" />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  };
+
+  const getStatusBadge = (status: string) => {
+    const variants = {
+      draft: 'outline',
+      scheduled: 'secondary',
+      active: 'default',
+      completed: 'success',
+      paused: 'destructive'
+    };
+    return (
+      <Badge variant={variants[status as keyof typeof variants] as any}>
+        {status === 'draft' && 'Utkast'}
+        {status === 'scheduled' && 'Planlagt'}
+        {status === 'active' && 'Aktiv'}
+        {status === 'completed' && 'Fullført'}
+        {status === 'paused' && 'Pauset'}
+      </Badge>
+    );
+  };
+
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'active': return <CheckCircle className="h-4 w-4 text-green-600" />;
+      case 'scheduled': return <Clock className="h-4 w-4 text-blue-600" />;
+      case 'paused': return <AlertTriangle className="h-4 w-4 text-orange-600" />;
+      default: return <Edit className="h-4 w-4 text-gray-600" />;
+    }
+  };
+
+  // Loading state
+  if (campaignsLoading || templatesLoading || analyticsLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gray-50 dark:bg-gray-900">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mx-auto mb-4"></div>
+          <p className="text-gray-600 dark:text-gray-300">Laster markedsføringsdata...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 relative overflow-hidden">
+      {/* Enhanced Glassmorphism Floating Orbs */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-gradient-to-r from-purple-400/30 to-blue-500/20 rounded-full blur-3xl animate-pulse"></div>
+        <div className="absolute bottom-1/3 right-1/4 w-80 h-80 bg-gradient-to-r from-cyan-400/25 to-teal-500/15 rounded-full blur-3xl animate-pulse delay-1000"></div>
+        <div className="absolute top-1/2 right-1/3 w-64 h-64 bg-gradient-to-r from-amber-400/20 to-orange-500/10 rounded-full blur-3xl animate-pulse delay-2000"></div>
+        <div className="absolute bottom-1/4 left-1/3 w-72 h-72 bg-gradient-to-r from-emerald-400/15 to-green-500/10 rounded-full blur-3xl animate-pulse delay-3000"></div>
+        <div className="absolute top-3/4 left-1/2 w-56 h-56 bg-gradient-to-r from-pink-400/25 to-purple-500/15 rounded-full blur-3xl animate-pulse delay-4000"></div>
+      </div>
+
+      <div className="relative z-10">
+      {/* Mobile Header */}
+      {isMobile && <MobileHeader />}
+      
+      <div className={`max-w-7xl mx-auto ${isMobile ? 'p-3' : 'p-4 md:p-6 lg:p-8'}`}>
+        {/* Desktop Header */}
+        {!isMobile && (
+          <div className="mb-8">
+            <div className="flex items-center gap-3 mb-2">
+              <TrendingUp className="h-8 w-8 text-green-600" />
+              <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
+                Markedsføringsautomatisering
+              </h1>
+            </div>
+            <p className="text-lg text-gray-600 dark:text-gray-300">
+              Administrer kampanjer, maler og automatisering for funksjonsmonetisering
+            </p>
+          </div>
+        )}
+
+        {/* Statistics */}
+        <MarketingStats />
+
+        {/* Tabs */}
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          {!isMobile && (
+            <TabsList className="grid w-full grid-cols-4">
+              <TabsTrigger value="campaigns" className="flex items-center gap-2">
+                <Target className="h-4 w-4" />
+                Kampanjer
+              </TabsTrigger>
+              <TabsTrigger value="templates" className="flex items-center gap-2">
+                <Mail className="h-4 w-4" />
+                E-postmaler
+              </TabsTrigger>
+              <TabsTrigger value="analytics" className="flex items-center gap-2">
+                <BarChart3 className="h-4 w-4" />
+                Analyse
+              </TabsTrigger>
+              <TabsTrigger value="settings" className="flex items-center gap-2">
+                <Settings className="h-4 w-4" />
+                Innstillinger
+              </TabsTrigger>
+            </TabsList>
+          )}
+
+          {/* Campaigns Tab */}
+          <TabsContent value="campaigns" className="space-y-6">
+            {/* Desktop Controls */}
+            {!isMobile && (
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="flex items-center gap-2">
+                      <Search className="h-5 w-5" />
+                      Søk og Filter
+                    </CardTitle>
+                    <Button onClick={() => console.log('Ny kampanje')}>
+                      <Plus className="h-4 w-4 mr-2" />
+                      Ny Kampanje
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex flex-col md:flex-row gap-4">
+                    <div className="flex-1">
+                      <Input
+                        placeholder="Søk etter kampanjer..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="w-full"
+                      />
+                    </div>
+                    <div className="grid grid-cols-5 gap-2">
+                      {campaignTypes.map((type) => {
+                        const Icon = type.icon;
+                        return (
+                          <Button
+                            key={type.id}
+                            variant={selectedType === type.id ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => setSelectedType(type.id)}
+                            className="flex items-center gap-1"
+                          >
+                            <Icon className="h-4 w-4" />
+                            <span className="hidden lg:inline">{type.name}</span>
+                          </Button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Mobile New Campaign Button */}
+            {isMobile && (
+              <Button className="w-full mb-4" onClick={() => console.log('Ny kampanje')}>
+                <Plus className="h-4 w-4 mr-2" />
+                Opprett Ny Kampanje
+              </Button>
+            )}
+
+            {/* Campaigns List */}
+            <div className="space-y-4">
+              {filteredCampaigns.length === 0 && (
+                <Card>
+                  <CardContent className="p-8 text-center">
+                    <Target className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                    <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
+                      {authenticCampaigns.length === 0 ? 'Ingen kampanjer ennå' : 'Ingen kampanjer funnet'}
+                    </h3>
+                    <p className="text-gray-600 dark:text-gray-300 mb-4">
+                      {authenticCampaigns.length === 0 
+                        ? 'Opprett din første markedsføringskampanje for å begynne å monetisere funksjoner' 
+                        : 'Prøv å endre søkekriteriene'}
+                    </p>
+                    <Button onClick={() => console.log('Opprett kampanje')}>
+                      <Plus className="h-4 w-4 mr-2" />
+                      Opprett Kampanje
+                    </Button>
+                  </CardContent>
+                </Card>
+              )}
+
+              {filteredCampaigns.map((campaign: MarketingCampaign) => (
+                <Card key={campaign.id} className="hover:shadow-lg transition-shadow">
+                  <CardHeader className={isMobile ? 'p-4' : undefined}>
+                    <div className={`flex ${isMobile ? 'flex-col' : 'items-start justify-between'} gap-3`}>
+                      <div className="flex items-start gap-3 flex-1">
+                        {getStatusIcon(campaign.status)}
+                        <div className="flex-1">
+                          <CardTitle className={isMobile ? 'text-base' : 'text-lg'}>{campaign.name}</CardTitle>
+                          <CardDescription className="mt-1">
+                            {campaign.type === 'email' && 'E-postkampanje'}
+                            {campaign.type === 'sms' && 'SMS-kampanje'}
+                            {campaign.type === 'push' && 'Push-varsel kampanje'}
+                            {campaign.type === 'social' && 'Sosiale medier kampanje'}
+                          </CardDescription>
+                          <div className="flex items-center gap-2 mt-2 flex-wrap">
+                            {getStatusBadge(campaign.status)}
+                            <Badge variant="outline">
+                              <Users className="h-3 w-3 mr-1" />
+                              {campaign.audienceSize} brukere
+                            </Badge>
+                            {campaign.revenue && (
+                              <Badge variant="secondary">
+                                <DollarSign className="h-3 w-3 mr-1" />
+                                {campaign.revenue} NOK
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      <div className={`flex items-center gap-2 ${isMobile ? 'self-end' : ''}`}>
+                        <Button variant="outline" size="sm">
+                          <Eye className="h-4 w-4 mr-1" />
+                          Vis
+                        </Button>
+                        <Button variant="outline" size="sm">
+                          <Edit className="h-4 w-4 mr-1" />
+                          Rediger
+                        </Button>
+                      </div>
+                    </div>
+                  </CardHeader>
+                </Card>
+              ))}
+            </div>
+          </TabsContent>
+
+          {/* Email Templates Tab */}
+          <TabsContent value="templates" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle>E-postmaler for Funksjonsmarkedsføring</CardTitle>
+                  <Button>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Ny Mal
+                  </Button>
+                </div>
+                <CardDescription>
+                  Opprett og administrer maler for markedsføring av betalte funksjoner
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {authenticTemplates.length === 0 ? (
+                    <div className="col-span-full text-center py-8">
+                      <Mail className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                      <p className="text-gray-600">Ingen e-postmaler ennå. Opprett din første mal.</p>
+                    </div>
+                  ) : (
+                    authenticTemplates.map((template: EmailTemplate) => (
+                      <Card key={template.id} className="hover:shadow-md transition-shadow">
+                        <CardHeader className="pb-2">
+                          <CardTitle className="text-sm">{template.name}</CardTitle>
+                          <CardDescription className="text-xs">{template.subject}</CardDescription>
+                        </CardHeader>
+                        <CardContent className="pt-0">
+                          <div className="flex items-center justify-between">
+                            <Badge variant={template.isActive ? "default" : "outline"}>
+                              {template.isActive ? "Aktiv" : "Inaktiv"}
+                            </Badge>
+                            <div className="flex gap-1">
+                              <Button variant="ghost" size="sm">
+                                <Eye className="h-3 w-3" />
+                              </Button>
+                              <Button variant="ghost" size="sm">
+                                <Edit className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Analytics Tab */}
+          <TabsContent value="analytics" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Markedsføringsanalyse</CardTitle>
+                <CardDescription>
+                  Spor ytelse og ROI for funksjonsmonetiseringskampanjer
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="text-center py-8">
+                  <BarChart3 className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                  <p className="text-gray-600">
+                    Analysedata vil være tilgjengelig når kampanjer er aktive
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Settings Tab */}
+          <TabsContent value="settings" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Markedsføringsinnstillinger</CardTitle>
+                <CardDescription>
+                  Konfigurer automatisering og integrasjoner for funksjonsmonetisering
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label className="text-sm font-medium">Automatisk Kampanjeutløsing</Label>
+                      <p className="text-sm text-gray-600">
+                        Start kampanjer automatisk når nye betalte funksjoner lanseres
+                      </p>
+                    </div>
+                    <Switch />
+                  </div>
+                  
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label className="text-sm font-medium">E-postintegrasjon</Label>
+                      <p className="text-sm text-gray-600">
+                        Koble til e-posttjeneste for kampanjeutsendelser
+                      </p>
+                    </div>
+                    <Button variant="outline" size="sm">Konfigurer</Button>
+                  </div>
+                  
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label className="text-sm font-medium">Segmenteringsregler</Label>
+                      <p className="text-sm text-gray-600">
+                        Definer automatiske brukergrupper for målrettet markedsføring
+                      </p>
+                    </div>
+                    <Button variant="outline" size="sm">Administrer</Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
+      </div>
+    </div>
+  );
+};
+
+export default MarketingAutomation;

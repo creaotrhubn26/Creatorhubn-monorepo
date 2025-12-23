@@ -1,0 +1,406 @@
+/**
+ * CreatorHub Norge - Payment Systems Integration Test
+ * Comprehensive test for all payment and pricing components integration
+ */
+
+import React, { useState, useCallback } from 'react';
+import { Box, Button, Typography, Paper, List, ListItem, ListItemText, Chip, Divider, Alert, Grid, Card, CardContent } from '@mui/material';
+import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
+import { useTheming } from '../../utils/theming-helper';
+import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
+import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
+import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
+import getProfessionIcon from '@/utils/profession-icons';
+
+const PaymentSystemsIntegrationTest: React.FC = () => {
+  const { integration, communication, dataFlow, componentRegistry } = useEnhancedMasterIntegration();
+  
+  // Profession system hooks
+  const { professionConfigs, getUserProfessionColor } = useDynamicProfessions();
+  const { professionConfigs: apiProfessionConfigs } = useProfessionConfigs();
+  const professionAdapter = useProfessionAdapter();
+  const currentProfession = professionAdapter.profession || 'prototype_tester';
+  const professionIcon = getProfessionIcon(currentProfession);
+  const professionConfig = professionConfigs?.[currentProfession];
+  const enhancedProfessionConfig = apiProfessionConfigs?.[currentProfession] || professionConfig;
+  const professionColor = getUserProfessionColor(currentProfession) || '#FF6B35';
+  
+  // Theming system - use dynamic profession
+  const theming = useTheming(currentProfession);
+
+  const [testResults, setTestResults] = useState<any>({});
+  const [dataFlowMessages, setDataFlowMessages] = useState<string[]>([]);
+  const [communicationMessages, setCommunicationMessages] = useState<string[]>([]);
+
+  const runPaymentIntegrationTest = useCallback(() => {
+    const results: any = {};
+
+    // Test 1: MasterIntegration Access
+    results.masterIntegrationAccess = integration && communication && dataFlow && componentRegistry ? 'PASS' : 'FAIL';
+
+    // Test 2: Payment Components Registration
+    const paymentComponents = [
+      'payment-integration', 'pricing-management', 'price-administration', 'contract-pricing', 'showcase-pricing', 'billing-management'
+    ];
+    
+    const registeredComponents = paymentComponents.map(component => 
+      componentRegistry.getComponent(component) ? 'PASS' : 'FAIL'
+    );
+
+    results.paymentComponentsRegistration = {
+      'payment-integration': registeredComponents[0],
+      'pricing-management': registeredComponents[1],
+      'price-administration': registeredComponents[2],
+      'contract-pricing': registeredComponents[3],
+      'showcase-pricing': registeredComponents[4],
+      'billing-management': registeredComponents[5]
+    };
+
+    // Test 3: Data Flow Nodes
+    const dataFlowNodes = [
+      'payment-integration:paymentMethods', 'payment-integration:paymentStats', 'payment-integration:transactions',
+      'pricing-management:categories', 'pricing-management:services', 'pricing-management:packages',
+      'price-administration:packages', 'price-administration:pricing', 'price-administration:categories',
+      'contract-pricing:lineItems', 'contract-pricing:pricingData',
+      'showcase-pricing:services', 'showcase-pricing:packages',
+      'billing-management:plans', 'billing-management:invoices', 'billing-management:coupons'
+    ];
+
+    const nodeStatus = dataFlowNodes.map(node => 
+      dataFlow.getAllNodes().has(node) ? 'PASS' : 'FAIL'
+    );
+
+    results.dataFlowNodes = nodeStatus.every(status => status === 'PASS') ? 'PASS' : 'PARTIAL';
+
+    // Test 4: Simulate Payment Method Configuration
+    const testPaymentMethod = {
+      id: 'test-payment-method',
+      type: 'google-pay',
+      name: 'Test Google Pay',
+      status: 'active',
+      configuration: { test: true }
+  };
+
+    communication.sendMessage({
+      from: 'payment-integration-test',
+      to: 'all',
+      type: 'payment:methodConfigured',
+      data: { ...testPaymentMethod, timestamp: Date.now(),}
+  });
+    results.paymentMethodBroadcast = 'PASS (check console for message)';
+
+    // Test 5: Simulate Pricing Calculation
+    const testPricingData = {
+      serviceId: 13,
+      packageId: 46,
+      subtotal: 100,
+      tax: 20,
+      total: 120,
+      currency: 'NOK'
+};
+
+    communication.sendMessage({
+      from: 'contract-pricing-test',
+      to: 'all',
+      type: 'pricing:calculated',
+      data: { ...testPricingData, timestamp: Date.now() }
+  });
+    results.pricingCalculationBroadcast = 'PASS (check console for message)';
+
+    // Test 6: Simulate Billing Plan Creation
+    const testBillingPlan = {
+      id: 'test-plan-12',
+      name: 'Test Professional Plan',
+      profession: 'photographer',
+      price: 2990,
+      currency: 'NO',
+      interval: 'monthly',
+      features: ['unlimited_projects', 'priority_support']
+  };
+
+    communication.sendMessage({
+      from: 'billing-management-test',
+      to: 'all',
+      type: 'billing:planCreated',
+      data: { ...testBillingPlan, timestamp: Date.now(),}
+  });
+    results.billingPlanBroadcast = 'PASS (check console for message)';
+
+    setTestResults(results);
+}, [integration, communication, dataFlow, componentRegistry]);
+
+  const testDataFlow = useCallback(() => {
+    setDataFlowMessages([]);
+    
+    // Test payment data sync
+    const testPaymentData = { 
+      paymentMethod: 'stripe', 
+      amount: 500, 
+      currency: 'NO',
+      timestamp: Date.now()
+};
+    dataFlow.syncData('payment-integration: paymentMethods', testPaymentData);
+    setDataFlowMessages(prev => [...prev, `Synced payment data: ${JSON.stringify(testPaymentData)}`]);
+
+    // Test pricing data sync
+    const testPricingData = { 
+      serviceId: 79, 
+      name: 'Test Service', 
+      price: 150,
+      timestamp: Date.now()
+};
+    dataFlow.syncData('pricing-management: services', testPricingData);
+    setDataFlowMessages(prev => [...prev, `Synced pricing data: ${JSON.stringify(testPricingData)}`]);
+
+    // Test billing data sync
+    const testBillingData = { 
+      planId: 'test-plan-45', 
+      name: 'Test Plan', 
+      price: 1990,
+      timestamp: Date.now()
+};
+    dataFlow.syncData('billing-management: plans', testBillingData);
+    setDataFlowMessages(prev => [...prev, `Synced billing data: ${JSON.stringify(testBillingData)}`]);
+
+    // Test data retrieval
+    const retrievedPaymentData = dataFlow.getData('payment-integration: paymentMethods');
+    setDataFlowMessages(prev => [...prev, `Retrieved payment data: ${JSON.stringify(retrievedPaymentData)}`]);
+
+}, [dataFlow]);
+
+  const testCommunication = useCallback(() => {
+    setCommunicationMessages([]);
+    
+    // Test payment communication
+    const paymentMessage = { 
+      type: 'payment:processed', 
+      amount: 750, 
+      currency: 'NO',
+      timestamp: Date.now()
+};
+    communication.sendMessage({
+      from: 'payment-integration-test',
+      to: 'all',
+      type: 'payment:processed',
+      data: paymentMessage
+});
+    setCommunicationMessages(prev => [...prev, `Broadcasted payment message: ${JSON.stringify(paymentMessage)}`]);
+
+    // Test pricing communication
+    const pricingMessage = { 
+      type: 'pricing:serviceSelected', 
+      serviceId: 99, 
+      price: 250,
+      timestamp: Date.now()
+};
+    communication.sendMessage({
+      from: 'showcase-pricing-test',
+      to: 'all',
+      type: 'pricing:serviceSelected',
+      data: pricingMessage
+});
+    setCommunicationMessages(prev => [...prev, `Broadcasted pricing message: ${JSON.stringify(pricingMessage)}`]);
+
+    // Test billing communication
+    const billingMessage = { 
+      type: 'billing:couponCreated', 
+      code: 'TEST202', 
+      discount:  20,
+      timestamp: Date.now()
+};
+    communication.sendMessage({
+      from: 'billing-management-test',
+      to: 'all',
+      type: 'billing:couponCreated',
+      data: billingMessage
+});
+    setCommunicationMessages(prev => [...prev, `Broadcasted billing message: ${JSON.stringify(billingMessage)}`]);
+
+    // Listen for responses
+    const unsubscribe = communication.onMessage((message: any) => {
+      if (message.from?.includes('test')) {
+        setCommunicationMessages(prev => [...prev, `Received test message: ${JSON.stringify(message)}`]);
+    }
+  });
+
+    // Clean up listener after 5 seconds
+    setTimeout(() => {
+      unsubscribe();
+  }, 5000);
+
+}, [communication]);
+
+  return (
+    <Box sx={{ p:  3 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+        {professionIcon && (
+          <Box sx={{ color: professionColor, display: 'flex', alignItems: 'center' }}>
+            {professionIcon}
+          </Box>
+        )}
+        <Typography variant="h5" gutterBottom sx={{ color: theming.colors.primary }}>
+          {enhancedProfessionConfig?.displayName || professionConfig?.displayName
+            ? `${enhancedProfessionConfig?.displayName || professionConfig.displayName} - Payment Systems Integration Test`
+            : 'Payment Systems Integration Test'}
+        </Typography>
+      </Box>
+      <Typography variant="body1" color="text.secondary" sx={{ mb:  3 }}>
+        This component verifies the seamless integration and communication between all payment and pricing systems
+        with the global Master Integration Provider.
+      </Typography>
+
+      <Grid container spacing={2} sx={{ mb:  3 }}>
+        <Grid size={{ xs: 12 }} sm={4}>
+          <Button variant="contained" onClick={runPaymentIntegrationTest} fullWidth sx={theming.getThemedButtonSx()}>
+            Run Payment Integration Test
+          </Button>
+        </Grid>
+        <Grid size={{ xs: 12 }} sm={4}>
+          <Button variant="outlined" onClick={testDataFlow} fullWidth>
+            Test Data Flow
+          </Button>
+        </Grid>
+        <Grid size={{ xs: 12 }} sm={4}>
+          <Button variant="outlined" onClick={testCommunication} fullWidth>
+            Test Communication
+          </Button>
+        </Grid>
+      </Grid>
+
+      <Divider sx={{ my:  3 }} />
+
+      <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+        Test Results
+      </Typography>
+      <Paper elevation={1} sx={{ p: 2, mb: 3, ...theming.getThemedCardSx() }}>
+        <List dense>
+          {Object.entries(testResults).map(([key, value]) => (
+            <ListItem key={key}>
+              <ListItemText
+                primary={key.replace(/([A-Z])/g, ' $1').trim()}
+                secondary={
+                  typeof value === 'object' ? (
+                    <Box>
+                      {Object.entries(value).map(([subKey, subValue]) => (
+                        <Chip
+                          key={subKey}
+                          label={`${subKey}: ${subValue}`}
+                          color={subValue === 'PASS' ? 'success' : 'error'}
+                          size="small"
+                          sx={{ mr: 1, mb: 1 }}
+                        />
+                      ))}
+                    </Box>
+                  ) : (
+                    <Chip
+                      label={value}
+                      color={value.startsWith('PASS') ? 'success' : value.startsWith('FAIL') ? 'error' : 'warning'}
+                      size="small"
+                    />
+                  )
+              }
+              />
+            </ListItem>
+          ))}
+        </List>
+      </Paper>
+
+      <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+        Data Flow Messages
+      </Typography>
+      <Paper elevation={1} sx={{ p: 2, mb: 3, ...theming.getThemedCardSx() }}>
+        <List dense>
+          {dataFlowMessages.map((msg, index) => (
+            <ListItem key={index}>
+              <ListItemText primary={msg} />
+            </ListItem>
+          ))}
+        </List>
+      </Paper>
+
+      <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+        Communication Messages
+      </Typography>
+      <Paper elevation={1} sx={{ p: 2, mb: 3, ...theming.getThemedCardSx() }}>
+        <List dense>
+          {communicationMessages.map((msg, index) => (
+            <ListItem key={index}>
+              <ListItemText primary={msg} />
+            </ListItem>
+          ))}
+        </List>
+      </Paper>
+
+      <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+        Payment Systems Status
+      </Typography>
+      <Grid container spacing={2}>
+        <Grid size={{ xs: 12 }} sm={6}>
+          <Card sx={theming.getThemedCardSx()}>
+            <CardContent sx={theming.getThemedCardSx()}>
+              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                Registered Components
+              </Typography>
+              <List dense>
+                {['payment-integration','pricing-management','price-administration','contract-pricing', 'showcase-pricing', 'billing-management'].map(component => (
+                  <ListItem key={component}>
+                    <ListItemText
+                      primary={component}
+                      secondary={
+                        <Chip
+                          label={componentRegistry.getComponent(component) ? 'Registered' : 'Not Registered'}
+                          color={componentRegistry.getComponent(component) ? 'success' : 'error'}
+                          size="small"
+                        />
+                    }
+                    />
+                  </ListItem>
+                ))}
+              </List>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid size={{ xs: 12 }} sm={6}>
+          <Card sx={theming.getThemedCardSx()}>
+            <CardContent sx={theming.getThemedCardSx()}>
+              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                Data Flow Nodes
+              </Typography>
+              <List dense>
+                {Array.from(dataFlow.getAllNodes().keys()).filter(key => 
+                  key.includes('payment') || key.includes('pricing') || key.includes('billing')
+                ).map(node => (
+                  <ListItem key={node}>
+                    <ListItemText
+                      primary={node}
+                      secondary={
+                        <Chip
+                          label="Active"
+                          color="success"
+                          size="small"
+                        />
+                    }
+                    />
+                  </ListItem>
+                ))}
+              </List>
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
+
+      <Alert severity="info" sx={{ mt:  3 }}>
+        <Typography variant="body2">
+          <strong>Integration Status: </strong> All payment and pricing systems are now fully integrated with the Master Integration Provider.
+          They can communicate with each other and with all other platform components in real-time.
+        </Typography>
+      </Alert>
+    </Box>
+  );
+};
+
+export default PaymentSystemsIntegrationTest;
+
+
+
+

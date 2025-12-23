@@ -1,0 +1,911 @@
+/**
+ * Responsive Design Manager
+ * Manages responsive design across all screen sizes
+ */
+
+export interface ResponsiveConfig {
+  enableResponsive: boolean;
+  enableBreakpoints: boolean;
+  enableFluidLayout: boolean;
+  enableAdaptiveImages: boolean;
+  enableTouchOptimization: boolean;
+  enableOrientationSupport: boolean;
+  enableViewportManagement: boolean;
+  enablePerformanceOptimization: boolean;
+  enableAccessibility: boolean;
+  enableTesting: boolean;
+  breakpoints: ResponsiveBreakpoints;
+  fluidLayout: FluidLayoutConfig;
+  adaptiveImages: AdaptiveImagesConfig;
+  touchOptimization: TouchOptimizationConfig;
+  orientationSupport: OrientationSupportConfig;
+  viewportManagement: ViewportManagementConfig;
+  performanceOptimization: PerformanceOptimizationConfig;
+  accessibility: AccessibilityConfig;
+  testing: TestingConfig;
+  debug: boolean
+}
+
+export interface ResponsiveBreakpoints {
+  xs: number; // 0px
+  sm: number; // 600px
+  md: number; // 900px
+  lg: number; // 1200px
+  xl: number; // 1536px
+  xxl: number; // 1920px
+  custom: Record<string, number>;
+}
+
+export interface FluidLayoutConfig {
+  enableFluidGrid: boolean;
+  enableFlexibleSpacing: boolean;
+  enableResponsiveTypography: boolean;
+  enableAdaptiveComponents: boolean;
+  enableContainerQueries: boolean;
+  gridColumns: number;
+  gridGap: number;
+  maxWidth: number;
+  minWidth: number;
+  fluidScale: number;
+  typographyScale: number;
+  spacingScale: number
+}
+
+export interface AdaptiveImagesConfig {
+  enableResponsiveImages: boolean;
+  enableLazyLoading: boolean;
+  enableWebP: boolean;
+  enableAVIF: boolean;
+  enableSizes: boolean;
+  enableSrcSet: boolean;
+  enableArtDirection: boolean;
+  enableCompression: boolean;
+  maxWidth: number;
+  quality: number;
+  formats: string[];
+  breakpoints: number[];
+  lazyLoadThreshold: number
+}
+
+export interface TouchOptimizationConfig {
+  enableTouchTargets: boolean;
+  enableSwipeGestures: boolean;
+  enablePinchZoom: boolean;
+  enableTouchFeedback: boolean;
+  enableHapticFeedback: boolean;
+  minTouchTargetSize: number;
+  swipeThreshold: number;
+  pinchThreshold: number;
+  touchDelay: number;
+  hapticIntensity: number
+}
+
+export interface OrientationSupportConfig {
+  enableOrientationDetection: boolean;
+  enableOrientationLock: boolean;
+  enableOrientationChange: boolean;
+  enableLandscapeMode: boolean;
+  enablePortraitMode: boolean;
+  orientationChangeDelay: number;
+  orientationChangeAnimation: boolean;
+  orientationChangeDuration: number
+}
+
+export interface ViewportManagementConfig {
+  enableViewportMeta: boolean;
+  enableViewportUnits: boolean;
+  enableViewportAPI: boolean;
+  enableViewportEvents: boolean;
+  enableViewportTracking: boolean;
+  viewportWidth: number;
+  viewportHeight: number;
+  viewportScale: number;
+  viewportUserScalable: boolean;
+  viewportInitialScale: number;
+  viewportMinimumScale: number;
+  viewportMaximumScale: number
+}
+
+export interface PerformanceOptimizationConfig {
+  enableCriticalCSS: boolean;
+  enableResourceHints: boolean;
+  enablePreloading: boolean;
+  enablePrefetching: boolean;
+  enableCodeSplitting: boolean;
+  enableLazyLoading: boolean;
+  enableImageOptimization: boolean;
+  enableFontOptimization: boolean;
+  enableBundleOptimization: boolean;
+  enableCaching: boolean;
+  criticalCSSThreshold: number;
+  preloadThreshold: number;
+  prefetchThreshold: number;
+  lazyLoadThreshold: number;
+  imageOptimizationThreshold: number;
+  fontOptimizationThreshold: number;
+  bundleOptimizationThreshold: number;
+  cacheThreshold: number
+}
+
+export interface AccessibilityConfig {
+  enableARIALabels: boolean;
+  enableKeyboardNavigation: boolean;
+  enableScreenReaderSupport: boolean;
+  enableFocusManagement: boolean;
+  enableColorContrast: boolean;
+  enableTextScaling: boolean;
+  enableMotionReduction: boolean;
+  enableHighContrast: boolean;
+  enableVoiceOver: boolean;
+  enableTalkBack: boolean;
+  minColorContrast: number;
+  minTextSize: number;
+  maxTextSize: number;
+  focusOutlineWidth: number;
+  focusOutlineColor: string;
+  motionReductionThreshold: number;
+  highContrastThreshold: number
+}
+
+export interface TestingConfig {
+  enableResponsiveTesting: boolean;
+  enableCrossBrowserTesting: boolean;
+  enableDeviceTesting: boolean;
+  enablePerformanceTesting: boolean;
+  enableAccessibilityTesting: boolean;
+  enableVisualRegressionTesting: boolean;
+  enableAutomatedTesting: boolean;
+  enableManualTesting: boolean;
+  testDevices: string[];
+  testBrowsers: string[];
+  testBreakpoints: number[];
+  testScenarios: string[];
+  testThresholds: Record<string, number>;
+  testTimeout: number;
+  testRetries: number
+}
+
+export interface ResponsiveState {
+  isEnabled: boolean;
+  isInitialized: boolean;
+  hasError: boolean;
+  error: string | null;
+  currentBreakpoint: string;
+  currentOrientation: 'portrait' | 'landscape';
+  currentViewport: {
+    width: number;
+    height: number;
+    scale: number;
+};
+  deviceType: 'mobile' | 'tablet' | 'desktop' | 'unknown';
+  touchSupport: boolean;
+  orientationSupport: boolean;
+  viewportSupport: boolean;
+  performanceMetrics: {
+    layoutShift: number;
+    firstContentfulPaint: number;
+    largestContentfulPaint: number;
+    firstInputDelay: number;
+    cumulativeLayoutShift: number;
+};
+  accessibilityMetrics: {
+    colorContrast: number;
+    textSize: number;
+    focusVisibility: boolean;
+    keyboardNavigation: boolean;
+    screenReaderSupport: boolean;
+};
+  lastUpdate: number;
+  totalBreakpointChanges: number;
+  totalOrientationChanges: number;
+  totalViewportChanges: number;
+  totalPerformanceIssues: number;
+  totalAccessibilityIssues: number
+}
+
+class ResponsiveDesignManager {
+  private config: ResponsiveConfig;
+  private state: ResponsiveState;
+  private eventListeners: Map<string, Function[]> = new Map();
+  private isInitialized = false;
+  private resizeObserver: ResizeObserver | null = null;
+  private intersectionObserver: IntersectionObserver | null = null;
+
+  constructor(config: Partial<ResponsiveConfig> =,  , {}) {
+    this.config = {
+      enableResponsive: true,
+      enableBreakpoints: true,
+      enableFluidLayout: true,
+      enableAdaptiveImages: true,
+      enableTouchOptimization: true,
+      enableOrientationSupport: true,
+      enableViewportManagement: true,
+      enablePerformanceOptimization: true,
+      enableAccessibility: true,
+      enableTesting: true,
+      breakpoints: {
+        xs:,  , 0,
+        sm: 60,
+        md: 90,
+        lg: 120,
+        xl: 156,
+        xxl: 190,
+        custom:  ,  , {}
+  },
+      fluidLayout: {
+        enableFluidGrid: true,
+        enableFlexibleSpacing: true,
+        enableResponsiveTypography: true,
+        enableAdaptiveComponents: true,
+        enableContainerQueries: true,
+        gridColumns:  12,
+        gridGap:  16,
+        maxWidth: 120,
+        minWidth: 30,
+        fluidScale: 1.2,
+        typographyScale: 1.5,
+        spacingScale: 1.5
+},
+      adaptiveImages: {
+        enableResponsiveImages: true,
+        enableLazyLoading: true,
+        enableWebP: true,
+        enableAVIF: true,
+        enableSizes: true,
+        enableSrcSet: true,
+        enableArtDirection: true,
+        enableCompression: true,
+        maxWidth: 190,
+        quality:  85,
+        formats: ['webp', 'avif', 'jpeg', 'png'],
+        breakpoints: [30, 640, 768, 1024, 1280, 1920],
+        lazyLoadThreshold: 100
+},
+      touchOptimization: {
+        enableTouchTargets: true,
+        enableSwipeGestures: true,
+        enablePinchZoom: true,
+        enableTouchFeedback: true,
+        enableHapticFeedback: true,
+        minTouchTargetSize:  44,
+        swipeThreshold:  50,
+        pinchThreshold: 0.1,
+        touchDelay: 30,
+        hapticIntensity: 0.5
+},
+      orientationSupport: {
+        enableOrientationDetection: true,
+        enableOrientationLock: false,
+        enableOrientationChange: true,
+        enableLandscapeMode: true,
+        enablePortraitMode: true,
+        orientationChangeDelay: 10,
+        orientationChangeAnimation: true,
+        orientationChangeDuration: 300
+},
+      viewportManagement: {
+        enableViewportMeta: true,
+        enableViewportUnits: true,
+        enableViewportAPI: true,
+        enableViewportEvents: true,
+        enableViewportTracking: true,
+        viewportWidth:  0,
+        viewportHeight:  0,
+        viewportScale:  1,
+        viewportUserScalable: true,
+        viewportInitialScale:  1,
+        viewportMinimumScale: 0.5,
+        viewportMaximumScale: 5
+},
+      performanceOptimization: {
+        enableCriticalCSS: true,
+        enableResourceHints: true,
+        enablePreloading: true,
+        enablePrefetching: true,
+        enableCodeSplitting: true,
+        enableLazyLoading: true,
+        enableImageOptimization: true,
+        enableFontOptimization: true,
+        enableBundleOptimization: true,
+        enableCaching: true,
+        criticalCSSThreshold: 14.4,
+        preloadThreshold: 2.5,
+        prefetchThreshold: 2.5,
+        lazyLoadThreshold: 2.5,
+        imageOptimizationThreshold: 2.5,
+        fontOptimizationThreshold: 2.5,
+        bundleOptimizationThreshold: 2.5,
+        cacheThreshold: 2.5
+},
+      accessibility: {
+        enableARIALabels: true,
+        enableKeyboardNavigation: true,
+        enableScreenReaderSupport: true,
+        enableFocusManagement: true,
+        enableColorContrast: true,
+        enableTextScaling: true,
+        enableMotionReduction: true,
+        enableHighContrast: true,
+        enableVoiceOver: true,
+        enableTalkBack: true,
+        minColorContrast: 4.5,
+        minTextSize:  16,
+        maxTextSize:  24,
+        focusOutlineWidth:  2,
+        focusOutlineColor: '#0066cc',
+        motionReductionThreshold: 0.5,
+        highContrastThreshold: 0.8
+},
+      testing: {
+        enableResponsiveTesting: true,
+        enableCrossBrowserTesting: true,
+        enableDeviceTesting: true,
+        enablePerformanceTesting: true,
+        enableAccessibilityTesting: true,
+        enableVisualRegressionTesting: true,
+        enableAutomatedTesting: true,
+        enableManualTesting: true,
+        testDevices: ['iPhone 1', 'iPad Pro', 'MacBook Pro'],
+        testBrowsers: ['Chrome', 'Firefox', 'Safari', 'Edge'],
+        testBreakpoints: [30, 768, 1024, 1440, 1920],
+        testScenarios: ['mobile', 'tablet', 'desktop'],
+        testThresholds: { performance: 90, accessibility:  95, visual: 9, 8,},
+        testTimeout: 3000,
+        testRetries: 3
+},
+      debug: false,
+      ...config
+};
+
+    this.state = {
+      isEnabled: false,
+      isInitialized: false,
+      hasError: false,
+      error: null,
+      currentBreakpoint: 'xs',
+      currentOrientation: 'portrait',
+      currentViewport: {
+        width:,  , 0,
+        height:  0,
+        scale: 1
+},
+      deviceType: 'unknown',
+      touchSupport: false,
+      orientationSupport: false,
+      viewportSupport: false,
+      performanceMetrics: {
+        layoutShift:,  , 0,
+        firstContentfulPaint:  0,
+        largestContentfulPaint:  0,
+        firstInputDelay:  0,
+        cumulativeLayoutShift: 0
+},
+      accessibilityMetrics: {
+        colorContrast:,  , 0,
+        textSize:  16,
+        focusVisibility: false,
+        keyboardNavigation: false,
+        screenReaderSupport: false
+},
+      lastUpdate:  0,
+      totalBreakpointChanges:  0,
+      totalOrientationChanges:  0,
+      totalViewportChanges:  0,
+      totalPerformanceIssues:  0,
+      totalAccessibilityIssues: 0
+};
+
+    this.initializeResponsiveDesign();
+}
+
+  /**
+   * Initialize responsive design manager
+   */
+  private initializeResponsiveDesign(): void {
+    if (!this.config.enableResponsive) return;
+
+    try {
+      this.setupEventListeners();
+      this.setupObservers();
+      this.updateViewport();
+      this.updateBreakpoint();
+      this.updateOrientation();
+      this.updateDeviceType();
+      this.updateTouchSupport();
+      this.updateAccessibilityMetrics();
+      this.state.isEnabled = true;
+      this.state.isInitialized = true;
+      this.emit('initialized');
+} catch (error) {
+      this.state.hasError = true;
+      this.state.error = error instanceof Error ? error.message : 'Unknown error';
+      this.emit('error', { error: this.state.error });
+}
+}
+
+  /**
+   * Setup event listeners
+   */
+  private setupEventListeners(): void {
+    if (!this.config.enableResponsive) return;
+
+    // Resize events
+    window.addEventListener('resize', this.handleResize.bind(this));
+    window.addEventListener('orientationchange', this.handleOrientationChange.bind(this));
+
+    // Viewport events
+    if (this.config.viewportManagement.enableViewportEvents) {
+      window.addEventListener('scroll', this.handleScroll.bind(this));
+      window.addEventListener('load', this.handleLoad.bind(this));
+}
+
+    // Touch events
+    if (this.config.touchOptimization.enableTouchTargets) {
+      document.addEventListener('touchstart', this.handleTouchStart.bind(this));
+      document.addEventListener('touchend', this.handleTouchEnd.bind(this));
+}
+
+    // Keyboard events
+    if (this.config.accessibility.enableKeyboardNavigation) {
+      document.addEventListener('keydown', this.handleKeyDown.bind(this));
+}
+
+    // Focus events
+    if (this.config.accessibility.enableFocusManagement) {
+      document.addEventListener('focusin', this.handleFocusIn.bind(this));
+      document.addEventListener('focusout', this.handleFocusOut.bind(this));
+}
+
+    // Media query events
+    if (this.config.enableBreakpoints) {
+      this.setupMediaQueryListeners();
+}
+}
+
+  /**
+   * Setup observers
+   */
+  private setupObservers(): void {
+    if (!this.config.enableResponsive) return;
+
+    // ResizeObserver for element size changes
+    if (window.ResizeObserver) {
+      this.resizeObserver = new ResizeObserver(this.handleElementResize.bind(this));
+}
+
+    // IntersectionObserver for lazy loading
+    if (this.config.adaptiveImages.enableLazyLoading && window.IntersectionObserver) {
+      this.intersectionObserver = new IntersectionObserver(
+        this.handleIntersection.bind(this),
+        { threshold: 0., 1,}
+    );
+}
+}
+
+  /**
+   * Setup media query listeners
+   */
+  private setupMediaQueryListeners(): void {
+    const breakpoints = this.config.breakpoints;
+    const mediaQueries = [
+      { name: 'xs', query: `(max-width: ${breakpoints.sm -,  , 1}px)` },
+      { name: 'sm', query: `(min-width: ${breakpoints.m}px) and (max-width: ${breakpoints.md -,  , 1}px)` },
+      { name: 'md', query: `(min-width: ${breakpoints.d}px) and (max-width: ${breakpoints.lg -,  , 1}px)` },
+      { name: 'lg', query: `(min-width: ${breakpoints.g}px) and (max-width: ${breakpoints.xl -,  , 1}px)` },
+      { name: 'xl', query: `(min-width: ${breakpoints.l}px) and (max-width: ${breakpoints.xxl -,  , 1}px)` },
+      { name: 'xxl', query: `(min-width: ${breakpoints.xxl}px)` }
+    ];
+
+    mediaQueries.forEach(({ name, query }) => {
+      const mediaQuery = window.matchMedia(query);
+      mediaQuery.addListener(() => this.updateBreakpoint());
+});
+}
+
+  /**
+   * Update viewport
+   */
+  private updateViewport(): void {
+    if (!this.config.viewportManagement.enableViewportTracking) return;
+
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+    const scale = window.devicePixelRatio || 1;
+
+    this.state.currentViewport = { width, height, scale };
+    this.state.totalViewportChanges++;
+    this.state.lastUpdate = Date.now();
+
+    this.emit('viewport_changed', { viewport: this.state.currentViewport });
+}
+
+  /**
+   * Update breakpoint
+   */
+  private updateBreakpoint(): void {
+    if (!this.config.enableBreakpoints) return;
+
+    const width = window.innerWidth;
+    const breakpoints = this.config.breakpoints;
+    let newBreakpoint = 'xs';
+
+    if (width >= breakpoints.xxl) {
+      newBreakpoint = 'xxl';
+} else if (width >= breakpoints.xl) {
+      newBreakpoint = 'xl';
+} else if (width >= breakpoints.lg) {
+      newBreakpoint = 'lg';
+} else if (width >= breakpoints.md) {
+      newBreakpoint = 'md';
+} else if (width >= breakpoints.sm) {
+      newBreakpoint = 'sm';
+}
+
+    if (newBreakpoint !== this.state.currentBreakpoint) {
+      this.state.currentBreakpoint = newBreakpoint;
+      this.state.totalBreakpointChanges++;
+      this.state.lastUpdate = Date.now();
+
+      this.emit('breakpoint_changed', { breakpoint: newBreakpoint });
+}
+}
+
+  /**
+   * Update orientation
+   */
+  private updateOrientation(): void {
+    if (!this.config.orientationSupport.enableOrientationDetection) return;
+
+    const orientation = window.innerHeight > window.innerWidth ? 'portrait' : 'landscape';
+    
+    if (orientation !== this.state.currentOrientation) {
+      this.state.currentOrientation = orientation;
+      this.state.totalOrientationChanges++;
+      this.state.lastUpdate = Date.now();
+
+      this.emit('orientation_changed', { orientation });
+}
+}
+
+  /**
+   * Update device type
+   */
+  private updateDeviceType(): void {
+    const width = window.innerWidth;
+    const breakpoints = this.config.breakpoints;
+    let deviceType: 'mobile' | 'tablet' | 'desktop' | 'unknown' = 'unknown';
+
+    if (width < breakpoints.sm) {
+      deviceType = 'mobile';
+} else if (width < breakpoints.lg) {
+      deviceType = 'tablet';
+} else {
+      deviceType = 'desktop';
+}
+
+    this.state.deviceType = deviceType;
+    this.emit('device_type_changed', { deviceType });
+}
+
+  /**
+   * Update touch support
+   */
+  private updateTouchSupport(): void {
+    this.state.touchSupport = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+    this.emit('touch_support_changed', { touchSupport: this.state.touchSupport });
+}
+
+  /**
+   * Update accessibility metrics
+   */
+  private updateAccessibilityMetrics(): void {
+    if (!this.config.accessibility.enableColorContrast) return;
+
+    // Check color contrast
+    const elements = document.querySelectorAll('[data-contrast-check]');
+    let totalContrast = 0;
+    let contrastCount = 0;
+
+    elements.forEach(element => {
+      const contrast = this.calculateColorContrast(element);
+      if (contrast > 0) {
+        totalContrast += contrast;
+        contrastCount++;
+  }
+});
+
+    this.state.accessibilityMetrics.colorContrast = contrastCount > 0 ? totalContrast / contrastCount : 0;
+    this.state.accessibilityMetrics.textSize = this.getTextSize();
+    this.state.accessibilityMetrics.focusVisibility = this.getFocusVisibility();
+    this.state.accessibilityMetrics.keyboardNavigation = this.getKeyboardNavigation();
+    this.state.accessibilityMetrics.screenReaderSupport = this.getScreenReaderSupport();
+
+    this.emit('accessibility_metrics_changed', { metrics: this.state.accessibilityMetrics });
+}
+
+  /**
+   * Calculate color contrast
+   */
+  private calculateColorContrast(element: Element): number {
+    const styles = window.getComputedStyle(element);
+    const backgroundColor = styles.backgroundColor;
+    const color = styles.color;
+    
+    // Simplified contrast calculation
+    return Math.random() * 10; // Placeholder
+}
+
+  /**
+   * Get text size
+   */
+  private getTextSize(): number {
+    const body = document.body;
+    const styles = window.getComputedStyle(body);
+    const fontSize = parseFloat(styles.fontSize);
+    return fontSize || 16;
+}
+
+  /**
+   * Get focus visibility
+   */
+  private getFocusVisibility(): boolean {
+    const focusedElement = document.activeElement;
+    if (!focusedElement) return false;
+    
+    const styles = window.getComputedStyle(focusedElement);
+    return styles.outlineWidth !== '0px' || styles.outlineStyle !== 'none';
+}
+
+  /**
+   * Get keyboard navigation
+   */
+  private getKeyboardNavigation(): boolean {
+    return document.querySelectorAll('[tabindex]').length > 0;
+}
+
+  /**
+   * Get screen reader support
+   */
+  private getScreenReaderSupport(): boolean {
+    return document.querySelectorAll('[aria-label], [aria-labelledby]').length > 0;
+}
+
+  /**
+   * Handle resize
+   */
+  private handleResize(): void {
+    this.updateViewport();
+    this.updateBreakpoint();
+    this.updateDeviceType();
+}
+
+  /**
+   * Handle orientation change
+   */
+  private handleOrientationChange(): void {
+    setTimeout(() => {
+      this.updateOrientation();
+      this.updateViewport();
+      this.updateBreakpoint();
+}, this.config.orientationSupport.orientationChangeDelay);
+}
+
+  /**
+   * Handle scroll
+   */
+  private handleScroll(): void {
+    // Handle scroll-based responsive behavior
+}
+
+  /**
+   * Handle load
+   */
+  private handleLoad(): void {
+    this.updateViewport();
+    this.updateBreakpoint();
+    this.updateOrientation();
+    this.updateDeviceType();
+}
+
+  /**
+   * Handle touch start
+   */
+  private handleTouchStart(event: TouchEvent): void {
+    // Handle touch start
+}
+
+  /**
+   * Handle touch end
+   */
+  private handleTouchEnd(event: TouchEvent): void {
+    // Handle touch end
+}
+
+  /**
+   * Handle key down
+   */
+  private handleKeyDown(event: KeyboardEvent): void {
+    // Handle keyboard navigation
+}
+
+  /**
+   * Handle focus in
+   */
+  private handleFocusIn(event: FocusEvent): void {
+    // Handle focus in
+}
+
+  /**
+   * Handle focus out
+   */
+  private handleFocusOut(event: FocusEvent): void {
+    // Handle focus out
+}
+
+  /**
+   * Handle element resize
+   */
+  private handleElementResize(entries: ResizeObserverEntry[]): void {
+    entries.forEach(entry => {
+      this.emit('element_resized', { element: entry.target, size: entry.contentRect });
+});
+}
+
+  /**
+   * Handle intersection
+   */
+  private handleIntersection(entries: IntersectionObserverEntry[]): void {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        this.emit('element_visible', { element: entry.target });
+  }
+});
+}
+
+  /**
+   * Add event listener
+   */
+  on(event: string, callback: Function): void {
+    if (!this.eventListeners.has(event)) {
+      this.eventListeners.set(event, []);
+}
+    this.eventListeners.get(event)!.push(callback);
+}
+
+  /**
+   * Remove event listener
+   */
+  off(event: string, callback: Function): void {
+    const listeners = this.eventListeners.get(event);
+    if (listeners) {
+      const index = listeners.indexOf(callback);
+      if (index > -1) {
+        listeners.splice(index, 1);
+  }
+}
+}
+
+  /**
+   * Emit event
+   */
+  private emit(event: string, data?: any): void {
+    const listeners = this.eventListeners.get(event);
+    if (listeners) {
+      listeners.forEach(callback => {
+        try {
+          callback(data);
+    } catch (error) {
+          console.error('Error in responsive design event listener:', error);
+    }
+  });
+}
+}
+
+  /**
+   * Get state
+   */
+  getState(): ResponsiveState {
+    return { ...this.state };
+}
+
+  /**
+   * Get configuration
+   */
+  getConfig(): ResponsiveConfig {
+    return { ...this.config };
+}
+
+  /**
+   * Update configuration
+   */
+  updateConfig(newConfig: Partial<ResponsiveConfig>): void {
+    this.config = { ...this.config, ...newConfig };
+}
+
+  /**
+   * Get current breakpoint
+   */
+  getCurrentBreakpoint(): string {
+    return this.state.currentBreakpoint;
+}
+
+  /**
+   * Get current orientation
+   */
+  getCurrentOrientation(): 'portrait' | 'landscape' {
+    return this.state.currentOrientation;
+}
+
+  /**
+   * Get current viewport
+   */
+  getCurrentViewport(): { width: number; height: number; scale: number } {
+    return { ...this.state.currentViewport };
+}
+
+  /**
+   * Get device type
+   */
+  getDeviceType(): 'mobile' | 'tablet' | 'desktop' | 'unknown' {
+    return this.state.deviceType;
+}
+
+  /**
+   * Check if touch is supported
+   */
+  isTouchSupported(): boolean {
+    return this.state.touchSupport;
+}
+
+  /**
+   * Check if orientation is supported
+   */
+  isOrientationSupported(): boolean {
+    return this.state.orientationSupport;
+}
+
+  /**
+   * Check if viewport is supported
+   */
+  isViewportSupported(): boolean {
+    return this.state.viewportSupport;
+}
+
+  /**
+   * Get performance metrics
+   */
+  getPerformanceMetrics(): ResponsiveState['performanceMetrics'] {
+    return { ...this.state.performanceMetrics };
+}
+
+  /**
+   * Get accessibility metrics
+   */
+  getAccessibilityMetrics(): ResponsiveState['accessibilityMetrics'] {
+    return { ...this.state.accessibilityMetrics };
+}
+
+  /**
+   * Cleanup
+   */
+  destroy(): void {
+    if (this.resizeObserver) {
+      this.resizeObserver.disconnect();
+}
+    if (this.intersectionObserver) {
+      this.intersectionObserver.disconnect();
+}
+    this.eventListeners.clear();
+    this.state.isEnabled = false;
+}
+}
+
+// Create singleton instance
+export const responsiveDesignManager = new ResponsiveDesignManager();
+
+export default responsiveDesignManager;
+
+
+
+
+

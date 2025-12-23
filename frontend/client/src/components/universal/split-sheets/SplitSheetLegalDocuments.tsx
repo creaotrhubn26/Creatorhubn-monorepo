@@ -1,0 +1,273 @@
+/**
+ * Split Sheet Legal Documents
+ * Generate legal agreements and contracts from split sheets
+ */
+
+import React, { useState } from 'react';
+import { useMutation } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
+import {
+  Box,
+  Typography,
+  Card,
+  CardContent,
+  Button,
+  Stack,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  TextField,
+  Checkbox,
+  FormControlLabel,
+  Alert,
+  Divider,
+  List,
+  ListItem,
+  ListItemIcon,
+  ListItemText
+} from '@mui/material';
+import {
+  Gavel as LegalIcon,
+  Description as DocumentIcon,
+  CheckCircle as CheckIcon,
+  Download as DownloadIcon
+} from '@mui/icons-material';
+import type { SplitSheet } from './types';
+
+interface SplitSheetLegalDocumentsProps {
+  splitSheet: SplitSheet;
+}
+
+type DocumentType = 'split_sheet_agreement' | 'royalty_agreement' | 'collaboration_agreement' | 'custom';
+
+export default function SplitSheetLegalDocuments({
+  splitSheet
+}: SplitSheetLegalDocumentsProps) {
+  const [showDialog, setShowDialog] = useState(false);
+  const [documentType, setDocumentType] = useState<DocumentType>('split_sheet_agreement');
+  const [includeClauses, setIncludeClauses] = useState({
+    dispute_resolution: true,
+    termination: true,
+    assignment: true,
+    governing_law: true
+  });
+  const [governingLaw, setGoverningLaw] = useState('norway');
+  const [customClauses, setCustomClauses] = useState(', ');
+
+  const generateMutation = useMutation({
+    mutationFn: async (data: any) => {
+      // This would generate a legal document
+      // For now, return a placeholder
+      return { success: true, documentUrl: null };
+    },
+    onSuccess: () => {
+      alert('Juridisk dokument generert. Dette vil bli implementert med faktisk dokumentgenerering.');
+      setShowDialog(false);
+    }
+  });
+
+  const handleGenerate = () => {
+    generateMutation.mutate({
+      split_sheet_id: splitSheet.id,
+      document_type: documentType,
+      include_clauses: includeClauses,
+      governing_law: governingLaw,
+      custom_clauses: customClauses
+    });
+  };
+
+  const documentTypes = [
+    { value: 'split_sheet_agreement', label: 'Split Sheet-avtale' },
+    { value: 'royalty_agreement', label: 'Royalty-avtale' },
+    { value: 'collaboration_agreement', label: 'Samarbeidsavtale' },
+    { value: 'custom', label: 'Tilpasset avtale' }
+  ];
+
+  return (
+    <Box>
+      <Card>
+        <CardContent>
+          <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 2 }}>
+            <LegalIcon sx={{ fontSize: 32, color: '#9f7aea' }} />
+            <Box sx={{ flexGrow: 1 }}>
+              <Typography variant="h6" sx={{ fontWeight: 600}}>
+                Juridiske dokumenter
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Generer juridiske avtaler basert på split sheet
+              </Typography>
+            </Box>
+            <Button
+              variant="contained"
+              startIcon={<DocumentIcon />}
+              onClick={() => setShowDialog(true)}
+              sx={{ bgcolor: '#9f7aea' }}
+            >
+              Generer dokument
+            </Button>
+          </Stack>
+
+          <Alert severity="info" sx={{ mt: 2 }}>
+            Juridiske dokumenter genereres basert på split sheet-dataene. 
+            Vær oppmerksom på at disse er maler og bør gjennomgås av en jurist før bruk.
+          </Alert>
+        </CardContent>
+      </Card>
+
+      <Dialog
+        open={showDialog}
+        onClose={() => setShowDialog(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>Generer juridisk dokument</DialogTitle>
+        <DialogContent>
+          <Stack spacing={3} sx={{ mt: 1 }}>
+            <FormControl fullWidth>
+              <InputLabel>Dokumenttype</InputLabel>
+              <Select
+                value={documentType}
+                label="Dokumenttype"
+                onChange={(e) => setDocumentType(e.target.value as DocumentType)}
+              >
+                {documentTypes.map((type) => (
+                  <MenuItem key={type.value} value={type.value}>
+                    {type.label}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
+            <Divider />
+
+            <Typography variant="subtitle2" sx={{ fontWeight: 600}}>
+              Inkluder klausuler
+            </Typography>
+            <Stack>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={includeClauses.dispute_resolution}
+                    onChange={(e) => setIncludeClauses({
+                      ...includeClauses,
+                      dispute_resolution: e.target.checked
+                    })}
+                  />
+                }
+                label="Tvisteløsning"
+              />
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={includeClauses.termination}
+                    onChange={(e) => setIncludeClauses({
+                      ...includeClauses,
+                      termination: e.target.checked
+                    })}
+                  />
+                }
+                label="Oppsigelse"
+              />
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={includeClauses.assignment}
+                    onChange={(e) => setIncludeClauses({
+                      ...includeClauses,
+                      assignment: e.target.checked
+                    })}
+                  />
+                }
+                label="Overføring av rettigheter"
+              />
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={includeClauses.governing_law}
+                    onChange={(e) => setIncludeClauses({
+                      ...includeClauses,
+                      governing_law: e.target.checked
+                    })}
+                  />
+                }
+                label="Gjeldende lov"
+              />
+            </Stack>
+
+            {includeClauses.governing_law && (
+              <FormControl fullWidth>
+                <InputLabel>Gjeldende lov</InputLabel>
+                <Select
+                  value={governingLaw}
+                  label="Gjeldende lov"
+                  onChange={(e) => setGoverningLaw(e.target.value)}
+                >
+                  <MenuItem value="norway">Norsk lov</MenuItem>
+                  <MenuItem value="sweden">Svensk lov</MenuItem>
+                  <MenuItem value="denmark">Dansk lov</MenuItem>
+                  <MenuItem value="uk">UK law</MenuItem>
+                  <MenuItem value="us">US law</MenuItem>
+                </Select>
+              </FormControl>
+            )}
+
+            <TextField
+              label="Tilpassede klausuler (valgfritt)"
+              value={customClauses}
+              onChange={(e) => setCustomClauses(e.target.value)}
+              fullWidth
+              multiline
+              rows={4}
+              placeholder="Legg til egendefinerte klausuler her..."
+            />
+
+            <Alert severity="warning">
+              Viktig: Disse dokumentene er maler. Anbefaler å få dem gjennomgått av en jurist 
+              før signering for å sikre at de passer din spesifikke situasjon.
+            </Alert>
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowDialog(false)}>Avbryt</Button>
+          <Button
+            variant="contained"
+            startIcon={<DocumentIcon />}
+            onClick={handleGenerate}
+            disabled={generateMutation.isPending}
+            sx={{ bgcolor: '#9f7aea' }}
+          >
+            {generateMutation.isPending ? 'Genererer...' : 'Generer dokument'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
+  );
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

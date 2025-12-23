@@ -1,0 +1,38 @@
+# Professional Audio Processing Dependencies
+# Install with: pip install -r requirements-professional-audio.txt
+
+# Phase 1: Loudness Normalization (CRITICAL)
+pyloudnorm>=0.1.0          # ITU-R BS.1770-4 / EBU R128 loudness measurement
+soundfile>=0.12.0          # Audio I/O
+scipy>=1.11.0              # Signal processing, oversampling for true peak limiter
+
+# Phase 2: Adaptive Leveler (CRITICAL)
+pyannote.audio>=3.1.0      # Speaker diarization and segmentation
+torch>=2.0.0               # PyTorch for pyannote.audio
+torchaudio>=2.0.0          # Audio processing with PyTorch
+
+# Phase 3: Advanced Noise Reduction (HIGH PRIORITY)
+noisereduce>=3.0.0         # Stationary and non-stationary noise reduction
+librosa>=0.10.0            # Audio analysis and processing
+demucs>=4.0.0              # Source separation (vocals, drums, bass, other)
+
+# Phase 4: Adaptive Filtering (HIGH PRIORITY)
+essentia>=2.1b6            # Audio analysis and feature extraction
+resampy>=0.4.0             # High-quality audio resampling
+
+# Phase 5: Automatic Cutting (MEDIUM PRIORITY)
+pydub>=0.25.0              # Audio manipulation and silence detection
+openai-whisper>=20230314   # Speech recognition for filler word detection
+webrtcvad>=2.0.0           # Voice activity detection
+
+# Optional: Speech Enhancement
+speechbrain>=0.5.0         # Speech enhancement and bandwidth extension
+
+# Optional: Audio Event Detection
+tensorflow>=2.13.0         # For YAMNet audio event detection
+tensorflow-hub>=0.14.0     # TensorFlow Hub for pre-trained models
+
+# Utilities
+numpy>=1.24.0              # Numerical computing
+audioread>=3.0.0           # Audio file reading
+

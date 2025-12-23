@@ -1,0 +1,383 @@
+import { useTheming } from '../../utils/theming-helper';
+import React, { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { useAuth } from '@/hooks/useAuth';
+import {
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Button,
+  FormControlLabel,
+  Switch,
+  TextField,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  Typography,
+  Box,
+  Chip,
+  IconButton,
+  Alert,
+  Divider
+} from '@mui/material';
+import {
+  Settings as SettingsIcon,
+  Visibility as VisibilityIcon,
+  Download as DownloadIcon,
+  Lock as LockIcon,
+  Public as PublicIcon,
+  Code as CodeIcon,
+  ContentCopy as CopyIcon
+} from '@mui/icons-material';
+import { apiRequest } from '@/lib/queryClient';
+import { useToast } from '@/hooks/use-toast';
+
+interface GallerySettings {
+  id: string;
+  title: string;
+  description?: string;
+  visibility: 'public' | 'client_only' | 'password_protected';
+  downloadEnabled: boolean;
+  watermarkEnabled: boolean;
+  expirationDate?: string;
+  password?: string;
+  allowComments: boolean;
+  showExifData: boolean;
+  customDomain?: string
+}
+
+interface GallerySettingsDialogProps {
+  open: boolean;
+  onClose: () => void;
+  galleryId: string;
+  currentSettings: GallerySettings;
+  onSettingsUpdated: (settings: GallerySettings) => void;
+  generateEmbedCode?: boolean
+}
+
+export default function GallerySettingsDialog({
+  open,
+  onClose,
+  galleryId,
+  currentSettings,
+  onSettingsUpdated,
+  generateEmbedCode = false
+}: GallerySettingsDialogProps) {
+  const [settings, setSettings] = useState<GallerySettings>(currentSettings);
+  const [showPassword, setShowPassword] = useState(false);
+  const [embedCode, setEmbedCode] = useState('');
+  const { toast } = useToast();
+  
+  // Theming system
+  const theming = useTheming('photographer');
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    setSettings(currentSettings);
+}, [currentSettings]);
+
+  useEffect(() => {
+    if (generateEmbedCode && open) {
+      generateEmbedCodeSnippet();
+  }
+}, [generateEmbedCode, open, settings]);
+
+  const updateSettingsMutation = useMutation({
+    mutationFn: async (newSettings: Partial<GallerySettings>) => {
+      return apiRequest(`/api/showcase/${galleryd}/settings`, {
+        headers: {
+          "Content-Type": "application/json"
+    },
+        method: 'PATC',
+        body: JSON.stringify(newSettings)
+  });
+  },
+    onSuccess: (data) => {
+      onSettingsUpdated(data);
+      queryClient.invalidateQueries({ queryKey: ['/api/showcase'],});
+      toast({
+        title: "Galleri-innstillinger oppdatert",
+        description: "Endringene er lagret og aktive.",
+    });
+  },
+    onError: (error) => {
+      toast({
+        title: "Feil ved oppdatering",
+        description: "Kunne ikke lagre galleri-innstillinger.",
+        variant: "destructive",
+    });
+  }
+});
+
+  const generateEmbedCodeSnippet = () => {
+    const baseUrl = `${window.location.origin}/showcase/${galleryId}`;
+    const iframe = `<iframe src="${baseUrl}" width="100%" height="600" frameborder="0" allowfullscreen></iframe>`;
+    const directLink = `<a href="${baseUrl}" target="_blank">Se galleri</a>`;
+    
+    const code = `<!-- Galleri Embed Kode -->
+<!-- Direktelenke: -->
+${directLink}
+
+<!-- Iframe (anbefalt for innbygging): -->
+${iframe}
+
+<!-- Responsive embed: -->
+<div style="position: relative; padding-bottom: 56.25%; height: 0;">
+  <iframe src="${baseUl}" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;" frameborder="0" allowfullscreen></iframe>
+</div>`;
+
+    setEmbedCode(code);
+};
+
+  const handleSaveSettings = () => {
+    updateSettingsMutation.mutate(settings);
+};
+
+  const handleCopyEmbedCode = () => {
+    navigator.clipboard.writeText(embedCode);
+    toast({
+      title: "Kode kopiert",
+      description: "Embed-koden er kopiert til utklippstavlen.",
+  });
+};
+
+  const getVisibilityIcon = (visibility: string) => {
+    switch (visibility) {
+      case 'public': return <PublicIcon />;
+      case 'password_protected': return <LockIcon />;
+      default: return <VisibilityIcon />;
+}
+};
+
+  return (
+    <Dialog 
+      open={open}
+      onClose={onClose}
+      maxWidth="md" 
+      fullWidth
+      PaperProps={{
+        sx: {
+          background: 'linear-gradient(135deg, rgba(255,193,7,0.1) 0%, rgba(33,33,33,0.95) 100%)',
+          backdropFilter: 'blur(10px, ), ',
+          border: '1px solid rgba(25,193,7,0.2)'
+      }
+    }}
+    >
+      <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
+        <SettingsIcon />
+        Galleri-innstillinger
+        <Chip 
+          icon={getVisibilityIcon(settings.visibility)}
+          label={settings.visibility === 'public' ? 'Offentlig' : 
+                 settings.visibility === 'client_only' ? 'Kun klient' : 'Passordbeskyttet'}
+          size="small"
+          color={settings.visibility === 'public' ? 'success' : 'primary'}
+        />
+      </DialogTitle>
+
+      <DialogContent dividers>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap:  3 }}>
+          
+          {/* Grunnleggende innstillinger */}
+          <Box>
+            <Typography variant="h6" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>Grunnleggende innstillinger</Typography>
+            
+            <TextField
+              fullWidth
+              label="Galleri-tittel"
+              value={settings.title}
+              onChange={(e) => setSettings({ ...settings, title: e.target.value })}
+              margin="normal"
+              sx={{ mb: 2 }}
+            />
+
+            <TextField
+              fullWidth
+              label="Beskrivelse (valgfritt)"
+              value={settings.description || ''}
+              onChange={(e) => setSettings({ ...settings, description: e.target.value })}
+              multiline
+              rows={2}
+              margin="normal"
+            />
+          </Box>
+
+          <Divider />
+
+          {/* Tilgangskontroll */}
+          <Box>
+            <Typography variant="h6" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>Tilgangskontroll</Typography>
+            
+            <FormControl fullWidth margin="normal">
+              <InputLabel>Synlighet</InputLabel>
+              <Select
+                value={settings.visibility}
+                onChange={(e) => setSettings({ ...settings, visibility: e.target.value as any })}
+                label="Synlighet"
+              >
+                <MenuItem value="public">
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
+                    <PublicIcon fontSize="small" />
+                    Offentlig - Alle kan se
+                  </Box>
+                </MenuItem>
+                <MenuItem value="client_only">
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
+                    <VisibilityIcon fontSize="small" />
+                    Kun klient - Krever direktelenke
+                  </Box>
+                </MenuItem>
+                <MenuItem value="password_protected">
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
+                    <LockIcon fontSize="small" />
+                    Passordbeskyttet
+                  </Box>
+                </MenuItem>
+              </Select>
+            </FormControl>
+
+            {settings.visibility === 'password_protected' && (
+              <TextField
+                fullWidth
+                label="Passord"
+                type={showPassword ? 'text' : 'password'}
+                value={settings.password || ''}
+                onChange={(e) => setSettings({ ...settings, password: e.target.value })}
+                margin="normal"
+                InputProps={{
+                  endAdornment: (
+                    <Button onClick={() => setShowPassword(!showPassword)}>
+                      {showPassword ? 'Skjul' : 'Vis'}
+                    </Button>
+                  )
+              }}
+              />
+            )}
+
+            <TextField
+              fullWidth
+              label="Utløpsdato (valgfritt)"
+              type="date"
+              value={settings.expirationDate || ''}
+              onChange={(e) => setSettings({ ...settings, expirationDate: e.target.value })}
+              margin="normal"
+              InputLabelProps={{ shrink: true }}
+            />
+          </Box>
+
+          <Divider />
+
+          {/* Funksjonalitet */}
+          <Box>
+            <Typography variant="h6" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>Funksjonalitet</Typography>
+            
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={settings.downloadEnabled}
+                  onChange={(e) => setSettings({ ...settings, downloadEnabled: e.target.checked })}
+                />
+            }
+              label={
+                <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
+                  <DownloadIcon fontSize="small" />
+                  Tillat nedlasting av bilder
+                </Box>
+            }
+            />
+
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={settings.watermarkEnabled}
+                  onChange={(e) => setSettings({ ...settings, watermarkEnabled: e.target.checked })}
+                />
+            }
+              label="Legg til vannmerke på nedlastede bilder"
+            />
+
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={settings.allowComments}
+                  onChange={(e) => setSettings({ ...settings, allowComments: e.target.checked })}
+                />
+            }
+              label="Tillat kommentarer fra klienter"
+            />
+
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={settings.showExifData}
+                  onChange={(e) => setSettings({ ...settings, showExifData: e.target.checked })}
+                />
+            }
+              label="Vis EXIF-data (kamera-innstillinger)"
+            />
+          </Box>
+
+          {generateEmbedCode && (
+            <>
+              <Divider />
+              
+              {/* Embed-kode */}
+              <Box>
+                <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap:  1 }} sx={{ ...{}, color: theming.colors.primary }}>
+                  <CodeIcon />
+                  Embed-kode for nettsider
+                </Typography>
+                
+                <Alert severity="info" sx={{ mb: 2 }}>
+                  Bruk denne koden for å bygge inn galleriet på din egen nettside eller i e-poster.
+                </Alert>
+
+                <TextField
+                  fullWidth
+                  multiline
+                  rows={8}
+                  value={embedCode}
+                  InputProps={{
+                    readOnly: true,
+                    endAdornment: (
+                      <IconButton onClick={handleCopyEmbedCode} size="small">
+                        <CopyIcon />
+                      </IconButton>
+                    )
+                }}
+                  variant="outlined"
+                  sx={{ 
+                    fontFamily: 'monospace',
+                    '& .MuiInputBase-input': {
+                      fontSize: '0.875rem'
+                }
+                }}
+                />
+              </Box>
+            </>
+          )}
+        </Box>
+      </DialogContent>
+
+      <DialogActions sx={{ p:  ,  2gap:  1 }}>
+        <Button onClick={onClose} variant="outlined">
+          Avbryt
+        </Button>
+        <Button onClick={handleSaveSettings}
+          variant="contained"
+          disabled={updateSettingsMutation.isPending}
+          sx={{
+            background: 'linear-gradient(45deg, #FFB300 30%, #FF8F00 90%)',
+            '&:hover': {
+              background: 'linear-gradient(45deg, #FFA000 30%, #FF6F00 90%)',
+          }
+        }}
+         sx={theming.getThemedButtonSx()}>
+          {updateSettingsMutation.isPending ? 'Lagrer...' : 'Lagre innstillinger'}
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}

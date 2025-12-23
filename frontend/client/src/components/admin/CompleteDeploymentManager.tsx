@@ -1,0 +1,3287 @@
+/**
+ * COMPLETE DEPLOYMENT MANAGER
+ * Frontend component for managing complete solution deployment including App.tsx, package.json, and vendor integration
+ */
+
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
+import { useAuth } from '@/hooks/useAuth';
+import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
+import { useTheming } from '../../utils/theming-helper';
+import {
+  Box,
+  Card,
+  CardContent,
+  Typography,
+  Button,
+  Grid,
+  TextField,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Chip,
+  Alert,
+  Stepper,
+  Step,
+  StepLabel,
+  StepContent,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemIcon,
+  CircularProgress,
+  Divider,
+  Tabs,
+  Tab,
+  Badge,
+  Tooltip,
+  IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Paper,
+  Switch,
+  FormControlLabel,
+  Skeleton,
+  LinearProgress,
+} from '@mui/material';
+import {
+  ExpandMore as ExpandMoreIcon,
+  CheckCircle as CheckCircleIcon,
+  Error as ErrorIcon,
+  Warning as WarningIcon,
+  Info as InfoIcon,
+  Code as CodeIcon,
+  Inventory as InventoryIcon,
+  Store as StoreIcon,
+  Dashboard as DashboardIcon,
+  Settings as SettingsIcon,
+  BugReport as BugReportIcon,
+  Lightbulb as LightbulbIcon,
+  ThumbUp as ThumbUpIcon,
+  Psychology as PsychologyIcon,
+  Comment as CommentIcon,
+  AutoFixHigh as AutoFixHighIcon,
+  PlayArrow as PlayArrowIcon,
+  Refresh as RefreshIcon,
+  Visibility as VisibilityIcon,
+  Build as BuildIcon,
+  Science as ScienceIcon,
+  CloudUpload as CloudUploadIcon,
+} from '@mui/icons-material';
+const PackageIcon = InventoryIcon;
+import { apiRequest } from '@/lib/queryClient';
+import { ServerError, NetworkError, handleError, logError, getErrorMessage } from '../../utils/errorHandling';
+import { validateText, validateInput, ValidationRule } from '../../utils/inputValidation';
+import FeatureManagementWithPublish from './FeatureManagementWithPublish';
+import DeploymentStatusWidget from './DeploymentStatusWidget';
+import { CREATOR_HUB_BRANDING } from '../../constants/CreatorHubBranding';
+
+
+interface DeploymentTarget {
+  name: string;
+  description: string;
+  targetPath: string;
+  features: string[];
+  dependencies: string[];
+}
+
+interface DeploymentResult {
+  success: boolean;
+  deployedComponents: string[];
+  updatedFiles: string[];
+  addedDependencies: string[];
+  addedRoutes: string[];
+  errors: string[];
+}
+
+interface FeedbackItem {
+  id: string;
+  title: string;
+  description: string;
+  feedbackType: 'bug' | 'feature' | 'usability' | 'general' | 'ui_ux';
+  priority: 'low' | 'medium' | 'high' | 'critical';
+  status: 'open' | 'in_progress' | 'resolved' | 'closed';
+  createdAt: string;
+  locationContext?: {
+    profession: string;
+    dashboardType: string;
+    currentTab: string;
+    currentSection: string;
+    specificFeature?: string;
+    pageUrl: string;
+};
+  aiAnalysis?: {
+    suggestedFixes: Array<{
+      id: string;
+      type: 'code_fix' | 'ui_improvement' | 'feature_addition' | 'performance_optimization';
+      description: string;
+      confidence: number;
+      estimatedTime: string;
+      deploymentRequired: boolean;
+      filesToModify: string[];
+      dependenciesToAdd: string[];
+      problemSolved?: string;
+      specificIssuesAddressed?: string[];
+      expectedOutcome?: string;
+      testingInstructions?: string[];
+}>;
+    autoFixAvailable: boolean;
+    riskLevel: 'low' | 'medium' | 'high';
+};
+  verification?: {
+    automatedTests: {
+      status: 'pending' | 'running' | 'passed' | 'failed';
+      testResults: Array<{
+        testName: string;
+        status: 'passed' | 'failed' | 'skipped';
+        duration: number;
+        error?: string;
+        coverage?: number;
+}>;
+      coverage: number;
+};
+    regressionTests: {
+      status: 'pending' | 'running' | 'passed' | 'failed';
+      affectedComponents: string[];
+      testResults: Array<{
+        testName: string;
+        status: 'passed' | 'failed' | 'skipped';
+        duration: number;
+        error?: string;
+}>;
+};
+    userValidation: {
+      status: 'pending' | 'sent' | 'validated' | 'failed';
+      validationRequest?: {
+        sentAt: string;
+        expiresAt: string;
+        validationUrl: string;
+};
+      userResponse?: {
+        validatedAt: string;
+        userConfirmed: boolean;
+        userComments: string;
+        userRating: number;
+};
+};
+    systemHealth: {
+      preDeployment: {
+        overall: 'healthy' | 'degraded' | 'unhealthy';
+        totalEndpoints: number;
+        successfulEndpoints: number;
+        failedEndpoints: number;
+        averageResponseTime: number;
+        checks: Array<{
+          endpoint: string;
+          status: number;
+          responseTime: number;
+          success: boolean;
+          error?: string;
+  }>;
+  };
+      postDeployment: {
+        overall: 'healthy' | 'degraded' | 'unhealthy';
+        totalEndpoints: number;
+        successfulEndpoints: number;
+        failedEndpoints: number;
+        averageResponseTime: number;
+        checks: Array<{
+          endpoint: string;
+          status: number;
+          responseTime: number;
+          success: boolean;
+          error?: string;
+  }>;
+  };
+      healthCheckResults: Array<{
+        endpoint: string;
+        statusChange: number;
+        responseTimeChange: number;
+}>;
+};
+};
+}
+
+interface FeedbackDeployment {
+  id: string;
+  feedbackId: string;
+  deploymentType: 'auto_fix' | 'feature_implementation' | 'ui_improvement';
+  status: 'pending' | 'in_progress' | 'completed' | 'failed' | 'rolled_back';
+  createdAt: string;
+  completedAt?: string;
+  deploymentResult?: DeploymentResult;
+  rollbackAvailable: boolean;
+}
+
+interface HealthCheckResult {
+  endpoint: string;
+  status: number;
+  responseTime: number;
+  success: boolean;
+  error?: string;
+  responseSize?: number;
+}
+
+interface SystemHealthStatus {
+  overall: 'healthy' | 'degraded' | 'unhealthy';
+  totalEndpoints: number;
+  successfulEndpoints: number;
+  failedEndpoints: number;
+  averageResponseTime: number;
+  checks: HealthCheckResult[];
+  lastChecked: string;
+}
+
+interface EnvironmentStatus {
+  name: string;
+  status: 'healthy' | 'warning' | 'critical' | 'offline';
+  uptime: number;
+  responseTime: number;
+  lastChecked: string;
+  services: {
+    database: boolean;
+    api: boolean;
+    frontend: boolean;
+};
+}
+
+interface DeploymentStep {
+  id: string;
+  name: string;
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  startTime?: string;
+  endTime?: string;
+  duration?: number;
+  error?: string;
+  details?: string;
+}
+
+interface QualityAnalysisResult {
+  overallScore: number;
+  categories: {
+    typeSafety: { score: number; issues: string[]; suggestions: string[] };
+    security: { score: number; issues: string[]; suggestions: string[] };
+    performance: { score: number; issues: string[]; suggestions: string[] };
+    errorHandling: { score: number; issues: string[]; suggestions: string[] };
+    codeQuality: { score: number; issues: string[]; suggestions: string[] };
+    integration: { score: number; issues: string[]; suggestions: string[] };
+    iconSystem: { score: number; issues: string[]; suggestions: string[] };
+    branding: { score: number; issues: string[]; suggestions: string[] };
+  };
+  criticalIssues: string[];
+  warnings: string[];
+  recommendations: string[];
+  lastAnalyzed: string;
+}
+
+interface ComponentAnalysis {
+  componentName: string;
+  filePath: string;
+  issues: {
+    typeSafety: string[];
+    security: string[];
+    performance: string[];
+    errorHandling: string[];
+    codeQuality: string[];
+};
+  score: number;
+  suggestions: string[];
+}
+
+// Generic type for API response data
+type ApiResponseData = any;
+
+// Integration props for unified workflow connectivity
+interface CompleteDeploymentManagerProps {
+  // Integration props for unified workflow connectivity
+  onMeetingCreate?: (meeting: any) => void;
+  onProjectUpdate?: (project: any) => void;
+  onWorklogCreate?: (worklog: any) => void;
+  onClientSelect?: (client: any) => void;
+  onClientUpdate?: (client: any) => void;
+  onShowcaseCreate?: (showcase: any) => void;
+  onFileUpload?: (file: any) => void;
+  onFileDownload?: (file: any) => void;
+  selectedProject?: any;
+  onProjectSelect?: (project: any) => void;
+  selectedClient?: any;
+  onSettingsUpdate?: (settings: any) => void;
+  onNotificationCreate?: (notification: any) => void;
+}
+
+/**
+ * CompleteDeploymentManager - Advanced deployment management system
+ * 
+ * A comprehensive deployment manager that handles: * - Manual API deployments with App.tsx integration
+ * - Feedback-driven automatic deployments
+ * - System health monitoring and quality analysis
+ * - Multi-environment deployment pipeline
+ * - Feature flag management
+ * - Rollback capabilities
+ * 
+ * @component
+ * @returns {JSX.Element} The complete deployment management interface
+ * 
+ * @example
+ * ```tsx
+ * <CompleteDeploymentManager 
+ *   onProjectUpdate={handleProjectUpdate}
+ *   onNotificationCreate={handleNotificationCreate}
+ *   selectedProject={currentProject}
+ * />
+ * ```
+ */
+const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager({
+  onMeetingCreate,
+  onProjectUpdate,
+  onWorklogCreate,
+  onClientSelect,
+  onClientUpdate,
+  onShowcaseCreate,
+  onFileUpload,
+  onFileDownload,
+  selectedProject,
+  onProjectSelect,
+  selectedClient,
+  onSettingsUpdate,
+  onNotificationCreate
+}: CompleteDeploymentManagerProps = {}) {
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+
+  // Master Integration Provider
+  const { integration, communication, dataFlow, componentRegistry, auth } = useEnhancedMasterIntegration();
+  
+  // Theming system
+  const theming = useTheming('prototype_tester, ');
+  const [apiName, setApiName] = useState('bring,');
+  const [apiNameError, setApiNameError] = useState<string>('');
+  const [selectedTarget, setSelectedTarget] = useState<string>('vendor');
+
+  // Register component with EnhancedMasterIntegrationProvider
+  React.useEffect(() => {
+    componentRegistry.registerComponent({
+      id: 'CompleteDeploymentManager,',
+      name: 'Complete Deployment Manager',
+      type: 'admin',
+      category: 'administration',
+      capabilities: ['deployment-management','feature-flag-management','quality-analysis','health-monitoring','feedback-deployment'],
+      dependencies: [],
+      props: [],
+      events: [],
+      dataKeys: ['deployment-targets','deployment-results','feedback-data','health-status','quality-analysis']
+    });
+
+    // Set up data flow nodes
+    const deploymentTargetsNodeId = dataFlow.registerNode({
+      type: 'source',
+      componentId: 'CompleteDeploymentManager',
+      dataKey: 'deployment-targets'
+});
+
+    const deploymentResultsNodeId = dataFlow.registerNode({
+      type: 'source',
+      componentId: 'CompleteDeploymentManager',
+      dataKey: 'deployment-results'
+});
+
+    const feedbackDataNodeId = dataFlow.registerNode({
+      type: 'source',
+      componentId: 'CompleteDeploymentManager',
+      dataKey: 'feedback-data'
+});
+
+    const healthStatusNodeId = dataFlow.registerNode({
+      type: 'source',
+      componentId: 'CompleteDeploymentManager',
+      dataKey: 'health-status'
+});
+
+    const qualityAnalysisNodeId = dataFlow.registerNode({
+      type: 'source',
+      componentId: 'CompleteDeploymentManager',
+      dataKey: 'quality-analysis'
+});
+
+    // Listen for deployment events
+    const deploymentStartUnsubscribe = communication.onMessageType('deployment: start', (data: any) => {
+      if (data.deploymentData) {
+        handleDeploymentStarted(data.deploymentData);
+}
+});
+
+    const deploymentCompleteUnsubscribe = communication.onMessageType('deployment: complete', (data: any) => {
+      if (data.deploymentData) {
+        handleDeploymentCompleted(data.deploymentData);
+}
+});
+
+    const deploymentFailUnsubscribe = communication.onMessageType('deployment: fail', (data: any) => {
+      if (data.deploymentData) {
+        handleDeploymentFailed(data.deploymentData);
+}
+});
+
+    const healthCheckUnsubscribe = communication.onMessageType('health: check', () => {
+      performQuickHealthCheck();
+});
+
+    const qualityAnalyzeUnsubscribe = communication.onMessageType('quality: analyze', () => {
+      handleRunQualityAnalysis();
+});
+
+    return () => {
+      componentRegistry.unregisterComponent('CompleteDeploymentManager');
+      dataFlow.unregisterNode(deploymentTargetsNodeId);
+      dataFlow.unregisterNode(deploymentResultsNodeId);
+      dataFlow.unregisterNode(feedbackDataNodeId);
+      dataFlow.unregisterNode(healthStatusNodeId);
+      dataFlow.unregisterNode(qualityAnalysisNodeId);
+      if (typeof deploymentStartUnsubscribe === 'function') deploymentStartUnsubscribe();
+      if (typeof deploymentCompleteUnsubscribe === 'function') deploymentCompleteUnsubscribe();
+      if (typeof deploymentFailUnsubscribe === 'function') deploymentFailUnsubscribe();
+      if (typeof healthCheckUnsubscribe === 'function') healthCheckUnsubscribe();
+      if (typeof qualityAnalyzeUnsubscribe === 'function') qualityAnalyzeUnsubscribe();
+};
+}, [componentRegistry, dataFlow, communication]);
+
+  // Integration handlers for unified workflow system
+  const handleDeploymentStarted = (deploymentData: any) => {
+    console.log('🚀 Deployment Started, :', deploymentData);
+    
+    // Broadcast deployment start event
+    communication.sendBroadcast('deployment: started', {
+      type: 'deployment_started',
+      data: deploymentData,
+      component: 'CompleteDeploymentManager'
+});
+    
+    if (onNotificationCreate) {
+      onNotificationCreate({
+        id: `deployment_started_${Date.now()}`,
+        type: 'deployment_started',
+        title: 'Deployment Started',
+        message: `Deployment of "${deploymentData.apiName}," to ${deploymentData.target} has started`,
+        priority: 'high',
+        timestamp: new Date().toISOString(),
+        source: 'deployment_manager'
+});
+}
+    
+    if (onWorklogCreate) {
+      onWorklogCreate({
+        id: `deployment_${Date.now()}`,
+        type: 'deployment',
+        title: `Deployment: ${deploymentData.apiName}`,
+        description: `Started deployment to ${deploymentData.target}`,
+        status: 'in_progress',
+        timestamp: new Date().toISOString(),
+        source: 'deployment_manager'
+});
+}
+};
+
+  const handleDeploymentCompleted = (deploymentData: any) => {
+    console.log('✅ Deployment Completed, :', deploymentData);
+    
+    // Broadcast deployment completed event
+    communication.sendBroadcast('deployment: completed', {
+      type: 'deployment_completed',
+      data: deploymentData,
+      component: 'CompleteDeploymentManager'
+});
+    
+    if (onProjectUpdate && selectedProject) {
+      onProjectUpdate({
+        ...selectedProject,
+        lastDeployment: deploymentData,
+        lastDeploymentUpdate: new Date().toISOString(),
+        deployedComponents: [...(selectedProject.deployedComponents || []), deploymentData.apiName]
+  });
+}
+    
+    if (onNotificationCreate) {
+      onNotificationCreate({
+        id: `deployment_completed_${Date.now()}`,
+        type: 'deployment_completed',
+        title: 'Deployment Completed',
+        message: `Deployment of "${deploymentData.apiName}," completed successfully`,
+        priority: 'high',
+        timestamp: new Date().toISOString(),
+        source: 'deployment_manager'
+});
+}
+    
+    if (onWorklogCreate) {
+      onWorklogCreate({
+        id: `deployment_completed_${Date.now()}`,
+        type: 'deployment_completed',
+        title: `Deployment Completed: ${deploymentData.apiName}`,
+        description: `Successfully deployed to ${deploymentData.target}`,
+        status: 'completed',
+        timestamp: new Date().toISOString(),
+        source: 'deployment_manager'
+});
+}
+};
+
+  const handleDeploymentFailed = (deploymentData: any) => {
+    console.log('❌ Deployment Failed, :', deploymentData);
+    
+    // Broadcast deployment failed event
+    communication.sendBroadcast('deployment: failed', {
+      type: 'deployment_failed',
+      data: deploymentData,
+      component: 'CompleteDeploymentManager'
+});
+    
+    if (onNotificationCreate) {
+      onNotificationCreate({
+        id: `deployment_failed_${Date.now()}`,
+        type: 'deployment_failed',
+        title: 'Deployment Failed',
+        message: `Deployment of "${deploymentData.apiName}," failed: ${deploymentData.error}`,
+        priority: 'critical',
+        timestamp: new Date().toISOString(),
+        source: 'deployment_manager'
+});
+}
+    
+    if (onWorklogCreate) {
+      onWorklogCreate({
+        id: `deployment_failed_${Date.now()}`,
+        type: 'deployment_failed',
+        title: `Deployment Failed: ${deploymentData.apiName}`,
+        description: `Failed to deploy to ${deploymentData.target}: ${deploymentData.error}`,
+        status: 'failed',
+        timestamp: new Date().toISOString(),
+        source: 'deployment_manager'
+});
+}
+};
+
+  const handleHealthCheckCompleted = (healthData: any) => {
+    console.log('🔍 Health Check Completed, :', healthData);
+    
+    if (onSettingsUpdate) {
+      onSettingsUpdate({
+        systemHealth: healthData,
+        lastHealthCheck: new Date().toISOString(),
+        source: 'deployment_manager'
+});
+}
+    
+    if (onNotificationCreate) {
+      onNotificationCreate({
+        id: `health_check_${Date.now()}`,
+        type: 'health_check_completed',
+        title: 'Health Check Completed',
+        message: `System, health: ${healthData.overall} (${healthData.successfulEndpoints}/${healthData.totalEndpoints} endpoints)`,
+        priority: healthData.overall === 'healthy' ? 'low' : 'medium',
+        timestamp: new Date().toISOString(),
+        source: 'deployment_manager'
+});
+}
+};
+
+  const handleQualityAnalysisCompleted = (analysisData: any) => {
+    console.log('🔬 Quality Analysis Completed, :', analysisData);
+    
+    if (onSettingsUpdate) {
+      onSettingsUpdate({
+        qualityAnalysis: analysisData,
+        lastQualityCheck: new Date().toISOString(),
+        source: 'deployment_manager'
+});
+}
+    
+    if (onNotificationCreate) {
+      onNotificationCreate({
+        id: `quality_analysis_${Date.now()}`,
+        type: 'quality_analysis_completed',
+        title: 'Quality Analysis Completed',
+        message: `Overall, score: ${analysisData.overallScore}/10 (${analysisData.criticalIssues.length} critical issues)`,
+        priority: analysisData.overallScore >= 8 ? 'low' : 'medium',
+        timestamp: new Date().toISOString(),
+        source: 'deployment_manager'
+});
+}
+};
+
+  const handleFeedbackDeployment = (feedbackData: any) => {
+    console.log('🐛 Feedback Deployment, :', feedbackData);
+    
+    if (onNotificationCreate) {
+      onNotificationCreate({
+        id: `feedback_deployment_${Date.now()}`,
+        type: 'feedback_deployment',
+        title: 'Feedback Fix Deployed',
+        message: `Deployed fix for, feedback: "${feedbackData.title},"`,
+        priority: 'medium',
+        timestamp: new Date().toISOString(),
+        source: 'deployment_manager'
+});
+}
+    
+    if (onWorklogCreate) {
+      onWorklogCreate({
+        id: `feedback_deployment_${Date.now()}`,
+        type: 'feedback_deployment',
+        title: `Feedback Fix: ${feedbackData.title}`,
+        description: `Deployed fix for ${feedbackData.feedbackType} feedback`,
+        status: 'completed',
+        timestamp: new Date().toISOString(),
+        source: 'deployment_manager'
+});
+}
+};
+  const [deploymentTargets, setDeploymentTargets] = useState<DeploymentTarget[]>([]);
+  const [deploymentResult, setDeploymentResult] = useState<DeploymentResult | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [activeStep, setActiveStep] = useState(0);
+  const [customDependencies, setCustomDependencies] = useState<string[]>([]);
+  const [customRoutes, setCustomRoutes] = useState<Array<{path: string, component: string}>>([]);
+  const [selectedProfession, setSelectedProfession] = useState<string>('photographer');
+  const [professionComponents, setProfessionComponents] = useState<string[]>([]);
+  const [professionTabs, setProfessionTabs] = useState<string[]>(['overview','projects','clients','equipment']);
+  const [professionFeatures, setProfessionFeatures] = useState<string[]>([]);
+
+  // ✅ NY: Feedback integration state
+  const [activeTab, setActiveTab] = useState(0);
+  const [selectedFeedback, setSelectedFeedback] = useState<FeedbackItem | null>(null);
+  const [showFeedbackDialog, setShowFeedbackDialog] = useState(false);
+  const [feedbackDeployments, setFeedbackDeployments] = useState<FeedbackDeployment[]>([]);
+  
+  // ✅ NY: Health check state
+  const [systemHealth, setSystemHealth] = useState<SystemHealthStatus | null>(null);
+  const [healthCheckLoading, setHealthCheckLoading] = useState(false);
+  const [showHealthCheckDialog, setShowHealthCheckDialog] = useState(false);
+  
+  // ✅ NY: Feature flag integration state
+  const [showFeatureManagement, setShowFeatureManagement] = useState(false);
+  const [deploymentWithFeatureFlags, setDeploymentWithFeatureFlags] = useState(false);
+  
+  // ✅ NY: Quality Analysis state
+  const [qualityAnalysis, setQualityAnalysis] = useState<QualityAnalysisResult | null>(null);
+  const [componentAnalyses, setComponentAnalyses] = useState<ComponentAnalysis[]>([]);
+  const [analysisLoading, setAnalysisLoading] = useState(false);
+  const [showAnalysisDialog, setShowAnalysisDialog] = useState(false);
+  const [preDeploymentAnalysis, setPreDeploymentAnalysis] = useState<QualityAnalysisResult | null>(null);
+  
+  // ✅ NY: Environment monitoring state
+  const [environments, setEnvironments] = useState<EnvironmentStatus[]>([
+    { name: 'Development', status: 'healthy', uptime: 99.9, responseTime: 10, lastChecked: new Date().toISOString(), services: { database: true, api: true, frontend: true } },
+    { name: 'Staging', status: 'warning', uptime: 98.5, responseTime: 20, lastChecked: new Date().toISOString(), services: { database: true, api: true, frontend: false } },
+    { name: 'Production', status: 'healthy', uptime: 99.9, responseTime: 10, lastChecked: new Date().toISOString(), services: { database: true, api: true, frontend: true } }
+  ]);
+  const [deploymentSteps, setDeploymentSteps] = useState<DeploymentStep[]>([]);
+  const [showDeploymentDialog, setShowDeploymentDialog] = useState(false);
+  const [selectedEnvironment, setSelectedEnvironment] = useState<string>('production');
+  const [showRollbackDialog, setShowRollbackDialog] = useState(false);
+  const [rollbackTarget, setRollbackTarget] = useState<string>('');
+
+  // Keyboard navigation support
+  React.useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.ctrlKey || event.metaKey) {
+        switch (event.key) {
+          case '1':
+            event.preventDefault();
+            setActiveTab(0);
+            break;
+          case '2':
+            event.preventDefault();
+            setActiveTab(1);
+            break;
+          case '3':
+            event.preventDefault();
+            setActiveTab(2);
+            break;
+          case '4':
+            event.preventDefault();
+            setActiveTab(3);
+            break;
+          case '5':
+            event.preventDefault();
+            setActiveTab(4);
+            break;
+          case '6':
+            event.preventDefault();
+            setActiveTab(5);
+            break;
+          case '7':
+            event.preventDefault();
+            setActiveTab(6);
+            break;
+  }
+  }
+};
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+}, []);
+
+  /**
+   * Skeleton loader component for better loading states
+   * 
+   * @component
+   * @param {Object} props - Component props
+   * @param {number} props.height - Height of the skeleton
+   * @param {number} props.width - Width of the skeleton
+   * @param {string} props.variant - Skeleton variant
+   * @returns {JSX.Element} Skeleton loader component
+   */
+  const SkeletonLoader = ({ height = 20, width = '100%', variant = 'rectangular', sx }: { height?: number; width?: string | number; variant?: 'text' | 'rectangular' | 'circular'; sx?: any }) => (
+    <Skeleton variant={variant} height={height} width={width} animation="wave" sx={sx} />
+);
+
+  /**
+   * Error boundary component for better error handling
+   * 
+   * @component
+   * @param {Object} props - Component props
+   * @param {React.ReactNode} props.children - Child components
+   * @param {string} props.fallback - Fallback message
+   * @returns {JSX.Element} Error boundary component
+   */
+  const ErrorBoundary = ({ children, fallback = "Something went wrong" }: { children: React.ReactNode; fallback?: string }) => {
+    const [hasError, setHasError] = React.useState(false);
+
+    React.useEffect(() => {
+      const handleError = () => setHasError(true);
+      window.addEventListener('error', handleError);
+      return () => window.removeEventListener('error', handleError);
+}, []);
+
+    if (hasError) {
+      return (
+        <Alert severity="error" sx={{ m:  2 }}>
+          <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+            {fallback}
+          </Typography>
+          <Button 
+            variant="outlined" 
+            onClick={() => setHasError(false)}
+            startIcon={<RefreshIcon />}
+          >
+            Retry
+          </Button>
+        </Alert>
+    );
+}
+
+    return <>{children}</>;
+};
+
+  // ✅ NY: Feedback queries
+  const { data: feedbackData, isLoading: feedbackLoading } = useQuery<{
+    feedback: FeedbackItem[];
+    total: number;
+}>({
+    queryKey: ['/api/prototype-testing/feedback', ],
+    queryFn: async () => {
+      const headers = await auth.getAuthHeader();
+      return apiRequest('/api/prototype-testing/feedback', { headers });
+    },
+    staleTime: 3000,
+});
+
+  const { data: feedbackDeploymentsData, isLoading: deploymentsLoading } = useQuery<{
+    deployments: FeedbackDeployment[];
+}>({
+    queryKey: ['/api/deployment/feedback-deployments', ],
+    queryFn: async () => {
+      const headers = await auth.getAuthHeader();
+      return apiRequest('/api/deployment/feedback-deployments', { headers });
+    },
+    staleTime: 3000,
+});
+
+  // ✅ NY: Feedback deployment mutations
+  const analyzeFeedbackMutation = useMutation({
+    mutationFn: async (feedbackId: string) => {
+      const headers = await auth.getAuthHeader();
+      return apiRequest(`/api/prototype-testing/feedback/${feedbackId}/analyze`, {
+        headers: {
+          ...headers,
+          "Content-Type" : "application/json"
+  },
+        method: 'POST',
+  });
+},
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/prototype-testing/feedback', ],});
+},
+});
+
+  const deployFeedbackFixMutation = useMutation({
+    mutationFn: async ({ feedbackId, fixId }: { feedbackId: string; fixId: string }) => {
+      const headers = await auth.getAuthHeader();
+
+      // Step 1: Get pre-deployment health
+      const preDeploymentHealth = await apiRequest('/api/health-check/system', {
+        headers: {
+          ...headers,
+          "Content-Type" : "application/json"
+  },
+        method: 'GET'
+});
+
+      // Step 2: Deploy the fix
+      const deploymentResult = await apiRequest(`/api/deployment/feedback-deploy`, {
+        headers: {
+          ...headers,
+          "Content-Type" : "application/json"
+  },
+        method: 'POST',
+        body: JSON.stringify({ feedbackId, fixId }),
+  });
+
+      // Step 3: Run automated tests
+      const testResults = await apiRequest(`/api/testing/run-automated-tests`, {
+        headers: {
+          ...headers,
+          "Content-Type" : "application/json"
+  },
+        method: 'POST',
+        body: JSON.stringify({
+          feedbackId,
+          fixId,
+          testScope: 'affected-components'
+  }),
+  });
+
+      // Step 4: Run regression tests
+      const regressionResults = await apiRequest(`/api/testing/run-regression-tests`, {
+        headers: {
+          ...headers,
+          "Content-Type" : "application/json"
+  },
+        method: 'POST',
+        body: JSON.stringify({
+          feedbackId,
+          fixId,
+          affectedComponents: deploymentResult.affectedComponents || []
+  }),
+  });
+
+      // Step 5: Request user validation
+      const validationRequest = await apiRequest(`/api/feedback/request-validation`, {
+        headers: {
+          ...headers,
+          "Content-Type" : "application/json"
+  },
+        method: 'POST',
+        body: JSON.stringify({
+          feedbackId,
+          fixId,
+          validationUrl: `${window.location.origin}/validate-fix/${feedbackId}/${fixId}`
+    }),
+  });
+
+      // Step 6: Wait for deployment to stabilize and check post-deployment health
+      await new Promise(resolve => setTimeout(resolve, 5000));
+
+      const postDeploymentHealth = await apiRequest('/api/health-check/system', {
+        headers: {
+          ...headers,
+          "Content-Type" : "application/json"
+  },
+        method: 'GET'
+});
+
+      // Step 7: Update feedback with verification data
+      await apiRequest(`/api/prototype-testing/feedback/${feedbackId}/update-verification`, {
+        headers: {
+          ...headers,
+          "Content-Type" : "application/json"
+  },
+        method: 'PUT',
+        body: JSON.stringify({
+          fixId,
+          verification: {
+            automatedTests: {
+              status: testResults.success ? 'passed' : 'failed',
+              testResults: testResults.tests || [],
+              coverage: testResults.coverage || 0 },
+            regressionTests: {
+              status: regressionResults.success ? 'passed' : 'failed',
+              affectedComponents: deploymentResult.affectedComponents || [],
+              testResults: regressionResults.tests || []
+      },
+            userValidation: {
+              status: 'sent',
+              validationRequest: {
+                sentAt: validationRequest.sentAt,
+                expiresAt: validationRequest.expiresAt,
+                validationUrl: validationRequest.validationUrl
+        }
+        },
+            systemHealth: {
+              preDeployment: preDeploymentHealth,
+              postDeployment: postDeploymentHealth,
+              healthCheckResults: postDeploymentHealth.checks?.map((check: any) => ({
+                endpoint: check.endpoint,
+                statusChange: check.status - (preDeploymentHealth.checks?.find((c: any) => c.endpoint === check.endpoint)?.status || 0),
+                responseTimeChange: check.responseTime - (preDeploymentHealth.checks?.find((c: any) => c.endpoint === check.endpoint)?.responseTime || 0)
+        })) || []
+        }
+      }
+    })
+  });
+
+      return {
+        deploymentResult,
+        testResults,
+        regressionResults,
+        validationRequest,
+        healthComparison: {
+          preDeployment: preDeploymentHealth,
+          postDeployment: postDeploymentHealth
+  }
+  };
+},
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/deployment/feedback-deployments', ],});
+      queryClient.invalidateQueries({ queryKey: ['/api/prototype-testing/feedback', ],});
+      
+      // Show success notification with verification details
+      const { testResults, regressionResults } = data;
+      const allTestsPassed = testResults.success && regressionResults.success;
+      
+      if (allTestsPassed) {
+        console.log('🎉 Fix deployed successfully with all tests passing!, ');
+  } else {
+        console.warn('⚠️ Fix deployed but some tests failed. Check verification status.');
+  }
+},
+    onError: (error) => {
+      console.error('❌ Fix deployment failed, :', error);
+}
+});
+
+
+  // ✅ NY: Health check mutation
+  const healthCheckMutation = useMutation({
+    mutationFn: async () => {
+      const headers = await auth.getAuthHeader();
+      return apiRequest('/api/health-check/system', {
+        headers: {
+          ...headers,
+          "Content-Type" : "application/json"
+  },
+        method: 'POST'
+});
+},
+    onSuccess: (data: ApiResponseData) => {
+      setSystemHealth(data);
+},
+});
+
+  // ✅ NY: Quality Analysis mutations
+  const runQualityAnalysisMutation = useMutation({
+    mutationFn: async (targetPath?: string) => {
+      const headers = await auth.getAuthHeader();
+      return apiRequest('/api/quality-analysis/run', {
+        headers: {
+          ...headers,
+          "Content-Type" : "application/json"
+  },
+        method: 'POST',
+        body: JSON.stringify({ targetPath })
+  });
+},
+    onSuccess: (data: ApiResponseData) => {
+      setQualityAnalysis(data);
+      setComponentAnalyses(data.componentAnalyses || []);
+},
+});
+
+  const runPreDeploymentAnalysisMutation = useMutation({
+    mutationFn: async (deploymentData: any) => {
+      const headers = await auth.getAuthHeader();
+      return apiRequest('/api/quality-analysis/pre-deployment', {
+        headers: {
+          ...headers,
+          "Content-Type" : "application/json"
+  },
+        method: 'POST',
+        body: JSON.stringify(deploymentData)
+});
+},
+    onSuccess: (data: ApiResponseData) => {
+      setPreDeploymentAnalysis(data);
+},
+});
+
+  // ✅ NY: Deployment pipeline mutations
+  const deployToEnvironmentMutation = useMutation({
+    mutationFn: async ({ environment, deploymentData }: { environment: string; deploymentData: any }) => {
+      const headers = await auth.getAuthHeader();
+      return apiRequest(`/api/deployment/deploy/${environment}`, {
+        headers: {
+          ...headers,
+          "Content-Type" : "application/json"
+  },
+        method: 'POST',
+        body: JSON.stringify(deploymentData)
+});
+},
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/deployment/feedback-deployments', ],});
+},
+});
+
+  const rollbackDeploymentMutation = useMutation({
+    mutationFn: async ({ environment, version }: { environment: string; version: string }) => {
+      const headers = await auth.getAuthHeader();
+      return apiRequest(`/api/deployment/rollback/${environment}`, {
+        headers: {
+          ...headers,
+          "Content-Type" : "application/json"
+  },
+        method: 'POST',
+        body: JSON.stringify({ version })
+  });
+},
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/deployment/feedback-deployments', ],});
+},
+});
+
+  // Load deployment targets on component mount
+  React.useEffect(() => {
+    loadDeploymentTargets();
+}, []);
+
+  // Load feedback deployments
+  React.useEffect(() => {
+    if (feedbackDeploymentsData?.deployments) {
+      setFeedbackDeployments(feedbackDeploymentsData.deployments);
+}
+}, [feedbackDeploymentsData]);
+
+  /**
+   * Loads available deployment targets from the API
+   * 
+   * @async
+   * @function loadDeploymentTargets
+   * @returns {Promise<void>} Promise that resolves when targets are loaded
+   * @throws {Error} When API request fails
+   * 
+   * @example
+   * ```tsx
+   * await loadDeploymentTargets();
+   * ```
+   */
+  const loadDeploymentTargets = useCallback(async () => {
+    try {
+      const response = await apiRequest('/api/deployment/targets');
+      if (response.success) {
+        const targets = Object.entries(response.targets).map(([key, value]) => ({
+          name: (value as DeploymentTarget).name,
+          description: (value as DeploymentTarget).description,
+          targetPath: (value as DeploymentTarget).targetPath,
+          features: (value as DeploymentTarget).features,
+          dependencies: (value as DeploymentTarget).dependencies,
+    }));
+        setDeploymentTargets(targets);
+      }
+    } catch (error) {
+      const appError = handleError(error);
+      logError(appError, 'Load deployment targets');
+      console.error('Failed to load deployment targets: ', getErrorMessage(appError));
+    }
+  }, []);
+
+  /**
+   * Handles the complete deployment process with validation and quality checks
+   * 
+   * @async
+   * @function handleDeploy
+   * @returns {Promise<void>} Promise that resolves when deployment completes
+   * @throws {Error} When deployment fails or validation errors occur
+   * 
+   * @example
+   * ```tsx
+   * await handleDeploy();
+   * ```
+   */
+  const handleDeploy = useCallback(async () => {
+    // Validate API name before deployment
+    const apiNameValidation = validateInput(apiName, {
+      required: true,
+      minLength:  2,
+      maxLength:  50,
+      pattern: /^[a-zA-Z0-9_-]+, $, /,
+      sanitize: true
+});
+
+    if (!apiNameValidation.isValid) {
+      setApiNameError(apiNameValidation.errors[0] || 'Invalid API name');
+      return;
+}
+
+    setApiNameError('');
+    setLoading(true);
+    setDeploymentResult(null);
+
+    // Trigger unified workflow events for deployment start
+    handleDeploymentStarted({
+      apiName,
+      target: selectedTarget,
+      timestamp: new Date().toISOString()
+});
+
+    // ✅ NY: Run pre-deployment quality analysis
+    try {
+      await handleRunPreDeploymentAnalysis();
+      
+      // Check if analysis passed quality threshold
+      if (preDeploymentAnalysis && preDeploymentAnalysis.overallScore < 7) {
+        const criticalIssues = preDeploymentAnalysis.criticalIssues.length;
+        if (criticalIssues > 0) {
+          const proceed = window.confirm(
+            `⚠️ Quality Analysis Warning!\n\n` +
+            `Overall Score: ${preDeploymentAnalysis.overallScore}/10\n` +
+            `Critical Issues: ${criticalIssues}\n\n` +
+            `Do you want to proceed with deployment despite quality issues?`
+        );
+          if (!proceed) {
+            setLoading(false);
+            return;
+      }
+    }
+  }
+} catch (error) {
+      console.warn('Pre-deployment analysis failed, proceeding with deployment:', error);
+}
+
+    try {
+      const deploymentData = {
+        targetType: selectedTarget,
+        targetPath: deploymentTargets.find(t => t.name.toLowerCase().includes(selectedTarget))?.targetPath || '/custom',
+        componentName: `${apiName.charAt(0).toUpperCase() + apiName.slice()}Dashboard`,
+        dependencies: [
+          ...(deploymentTargets.find(t => t.name.toLowerCase().includes(selectedTarget))?.dependencies || []),
+          ...customDependencies
+        ],
+        routes: customRoutes.length > 0 ? customRoutes : [
+          {
+            path: selectedTarget === 'profession' 
+              ? `/${selectedProfession}-dashboard/${apiName}`
+              : `/${apiName}`,
+            component: selectedTarget === 'profession'
+              ? `${apiName.charAt(0).toUpperCase() + apiName.slice()}${selectedProfession.charAt(0).toUpperCase() + selectedProfession.slice(1)}Dashboard`
+              : `${apiName.charAt(0).toUpperCase() + apiName.slice(1)}Dashboard`,
+            props: selectedTarget === 'profession' 
+              ? { apiName, profession: selectedProfession }
+              : { apiName }
+      }
+        ],
+        options: {
+          updateAppTsx: true,
+          updatePackageJson: true,
+          createVendorIntegration: selectedTarget === 'vendor',
+          createProfessionIntegration: selectedTarget === 'profession',
+          addToUniversalDashboard: selectedTarget === 'universal',
+          // ✅ NY: Feature flag integration
+          createFeatureFlags: deploymentWithFeatureFlags,
+          featureFlagName: `${apiName}-integration`,
+          featureFlagDescription: `Enable ${apiName} integration features`,
+          // ✅ EnhancedMasterIntegrationProvider integration
+          integrateWithMasterProvider: true,
+          // ✅ Google Impersonation integration - automatically includes getAuthHeader import
+          includeGoogleImpersonation: true,
+          masterIntegrationConfig: {
+            componentType: selectedTarget === 'vendor' ? 'vendor-service' :
+                          selectedTarget === 'profession' ? 'profession-service' : 'universal-service',
+            capabilities: [
+              'data:read','data:write','event:emit','event:listen','action:execute','ui:update'
+            ],
+            dataKeys: [
+              `${apiName}Data`,
+              `${apiName}Settings`,
+              `${apiName}Status`
+            ],
+            messageTypes: [
+              `${apiName}:data:update`,
+              `${apiName}:ui:update`,
+              `${apiName}:action:execute`
+            ]
+    }
+    }
+  };
+
+      const response = await apiRequest(`/api/deployment/complete/${apiName}`, {
+        headers: {
+          "Content-Type" : "application/json"
+  },
+        
+        method: 'POS',
+        body: JSON.stringify(deploymentData),
+  });
+
+      if (response.success) {
+        setDeploymentResult(response.result);
+        setActiveStep(4); // Move to success step
+        
+        // Trigger unified workflow events for successful deployment
+        handleDeploymentCompleted({
+          apiName,
+          target: selectedTarget,
+          result: response.result,
+          timestamp: new Date().toISOString()
+  });
+  } else {
+        const errorResult = {
+          success: false,
+          deployedComponents:  [],
+          updatedFiles:  [],
+          addedDependencies:  [],
+          addedRoutes:  [],
+          errors: [response.error || 'Deployment failed', ],
+    };
+        setDeploymentResult(errorResult);
+        
+        // Trigger unified workflow events for failed deployment
+        handleDeploymentFailed({
+          apiName,
+          target: selectedTarget,
+          error: response.error || 'Deployment failed',
+          timestamp: new Date().toISOString()
+        });
+      }
+    } catch (error) {
+      const appError = handleError(error);
+      logError(appError, 'Deployment');
+      console.error('Deployment failed:', getErrorMessage(appError));
+      const errorResult = {
+        success: false,
+        deployedComponents: [],
+        updatedFiles: [],
+        addedDependencies: [],
+        addedRoutes: [],
+        errors: [getErrorMessage(appError)],
+      };
+      setDeploymentResult(errorResult);
+      
+      // Trigger unified workflow events for failed deployment
+      handleDeploymentFailed({
+        apiName,
+        target: selectedTarget,
+        error: getErrorMessage(appError),
+        timestamp: new Date().toISOString()
+});
+} finally {
+      setLoading(false);
+}
+}, [apiName, selectedTarget, deploymentTargets, customDependencies, customRoutes, selectedProfession, deploymentWithFeatureFlags]);
+
+  // ✅ NY: Feedback deployment handlers
+  const handleAnalyzeFeedback = (feedback: FeedbackItem) => {
+    analyzeFeedbackMutation.mutate(feedback.id);
+  };
+
+  const handleDeployFeedbackFix = (feedback: FeedbackItem, fixId: string) => {
+    if (window.confirm('Deploy this fix? This will modify the codebase.')) {
+      // Trigger unified workflow events for feedback deployment
+      handleFeedbackDeployment({
+        id: feedback.id,
+        title: feedback.title,
+        feedbackType: feedback.feedbackType,
+        fixId: fixId,
+        timestamp: new Date().toISOString()
+      });
+
+      deployFeedbackFixMutation.mutate({ feedbackId: feedback.id, fixId });
+    }
+  };
+
+
+  // ✅ NY: Health check handlers
+  const handleRunHealthCheck = async () => {
+    setHealthCheckLoading(true);
+    setShowHealthCheckDialog(true);
+
+    try {
+      await healthCheckMutation.mutateAsync();
+
+      // Trigger unified workflow events for health check completion
+      if (systemHealth) {
+        handleHealthCheckCompleted(systemHealth);
+      }
+    } catch (error) {
+      const appError = handleError(error);
+      logError(appError, 'Health check');
+      console.error('Health check failed:', getErrorMessage(appError));
+    } finally {
+      setHealthCheckLoading(false);
+    }
+  };
+
+  // ✅ NY: Quality Analysis handlers
+  const handleRunQualityAnalysis = useCallback(async () => {
+    setAnalysisLoading(true);
+    try {
+      await runQualityAnalysisMutation.mutateAsync(undefined);
+
+      // Trigger unified workflow events for quality analysis completion
+      if (qualityAnalysis) {
+        handleQualityAnalysisCompleted(qualityAnalysis);
+      }
+    } catch (error) {
+      const appError = handleError(error);
+      logError(appError, 'Quality analysis');
+      console.error('Quality analysis failed:', getErrorMessage(appError));
+    } finally {
+      setAnalysisLoading(false);
+    }
+  }, [runQualityAnalysisMutation, qualityAnalysis]);
+
+  const handleRunPreDeploymentAnalysis = useCallback(async () => {
+    setAnalysisLoading(true);
+    try {
+      const deploymentData = {
+        targetType: selectedTarget,
+        targetPath: deploymentTargets.find(t => t.name.toLowerCase().includes(selectedTarget))?.targetPath || '/custom',
+        componentName: `${apiName.charAt(0).toUpperCase() + apiName.slice()}Dashboard`,
+        dependencies: [
+          ...(deploymentTargets.find(t => t.name.toLowerCase().includes(selectedTarget))?.dependencies || []),
+          ...customDependencies
+        ],
+        routes: customRoutes.length > 0 ? customRoutes : [
+          {
+            path: selectedTarget === 'profession' 
+              ? `/${selectedProfession}-dashboard/${apiName}`
+              : `/${apiName}`,
+            component: selectedTarget === 'profession'
+              ? `${apiName.charAt(0).toUpperCase() + apiName.slice()}${selectedProfession.charAt(0).toUpperCase() + selectedProfession.slice(1)}Dashboard`
+              : `${apiName.charAt(0).toUpperCase() + apiName.slice(1)}Dashboard`,
+            props: selectedTarget === 'profession' 
+              ? { apiName, profession: selectedProfession }
+              : { apiName }
+      }
+        ]
+      };
+
+      await runPreDeploymentAnalysisMutation.mutateAsync(deploymentData);
+    } catch (error) {
+      const appError = handleError(error);
+      logError(appError, 'Pre-deployment analysis');
+      console.error('Pre-deployment analysis failed:', getErrorMessage(appError));
+    } finally {
+      setAnalysisLoading(false);
+    }
+  }, [selectedTarget, deploymentTargets, apiName, customDependencies, customRoutes, selectedProfession, runPreDeploymentAnalysisMutation]);
+
+  // ✅ NY: Deployment pipeline handlers
+  const handleDeployToEnvironment = async (environment: string) => {
+    const deploymentData = {
+      targetType: selectedTarget,
+      targetPath: deploymentTargets.find(t => t.name.toLowerCase().includes(selectedTarget))?.targetPath || '/custom',
+      componentName: `${apiName.charAt(0).toUpperCase() + apiName.slice()}Dashboard`,
+      dependencies: [
+        ...(deploymentTargets.find(t => t.name.toLowerCase().includes(selectedTarget))?.dependencies || []),
+        ...customDependencies
+      ],
+      routes: customRoutes.length > 0 ? customRoutes : [
+        {
+          path: selectedTarget === 'profession' 
+            ? `/${selectedProfession}-dashboard/${apiName}`
+            : `/${apiName}`,
+          component: selectedTarget === 'profession'
+            ? `${apiName.charAt(0).toUpperCase() + apiName.slice()}${selectedProfession.charAt(0).toUpperCase() + selectedProfession.slice(1)}Dashboard`
+            : `${apiName.charAt(0).toUpperCase() + apiName.slice(1)}Dashboard`,
+          props: selectedTarget === 'profession' 
+            ? { apiName, profession: selectedProfession }
+            : { apiName }
+    }
+      ]
+};
+
+    // Initialize deployment steps
+    const steps: DeploymentStep[] = [
+      { id: 'pre-deploy-tests', name: 'Pre-deploy Tests', status: 'pending',},
+      { id: 'database-migration', name: 'Database Migration', status: 'pending',},
+      { id: 'build-deploy', name: 'Build & Deploy', status: 'pending',},
+      { id: 'health-checks', name: 'Health Checks', status: 'pending',}
+    ];
+    setDeploymentSteps(steps);
+    setShowDeploymentDialog(true);
+
+    try {
+      await deployToEnvironmentMutation.mutateAsync({ environment, deploymentData });
+    } catch (error) {
+      const appError = handleError(error);
+      logError(appError, 'Environment deployment');
+      console.error('Environment deployment failed:', getErrorMessage(appError));
+    }
+  };
+
+  const handleRollbackDeployment = async (environment: string, version: string) => {
+    if (window.confirm(`Rollback ${environment} to version ${version}? This will undo recent changes.`)) {
+      try {
+        await rollbackDeploymentMutation.mutateAsync({ environment, version });
+      } catch (error) {
+        const appError = handleError(error);
+        logError(appError, 'Deployment rollback');
+        console.error('Deployment rollback failed:', getErrorMessage(appError));
+      }
+}
+};
+
+  const performQuickHealthCheck = async () => {
+    const endpoints = [
+      '/api/health','/api/dashboard/photographer/demo-user','/api/dashboard/videographer/demo-user','/api/dashboard/music_producer/demo-user','/api/dashboard/vendor/demo-user','/api/projects','/api/vendor/stats/demo-user','/api/seo-specialist/clients/demo-specialist','/api/prototype-testing/feedback','/api/deployment/feedback-deployments'
+    ];
+
+    const checks: HealthCheckResult[] = [];
+    const maxEndpoints = 50; // Safety limit
+    const safeEndpoints = endpoints.slice(0, maxEndpoints);
+    
+    for (const endpoint of safeEndpoints) {
+      const startTime = Date.now();
+      try {
+        const response = await fetch(`http: //localhost:5050${endpoint}`);
+        const responseTime = Date.now() - startTime;
+        
+        checks.push({
+          endpoint,
+          status: response.status,
+          responseTime,
+          success: response.status === 20,
+          responseSize: parseInt(response.headers.get('content-length') || '0')
+  });
+  } catch (error) {
+        const appError = handleError(error);
+        checks.push({
+          endpoint,
+          status:  0,
+          responseTime: Date.now() - startTime,
+          success: false,
+          error: getErrorMessage(appError)
+  });
+  }
+}
+
+    const successfulEndpoints = checks.filter(c => c.success).length;
+    const totalEndpoints = checks.length;
+    const averageResponseTime = checks.reduce((sum, c) => sum + c.responseTime, 0) / checks.length;
+
+    const healthStatus: SystemHealthStatus = {
+      overall: successfulEndpoints === totalEndpoints ? 'healthy' : 
+               successfulEndpoints > totalEndpoints * 0.7 ? 'degraded' : 'unhealthy',
+      totalEndpoints,
+      successfulEndpoints,
+      failedEndpoints: totalEndpoints - successfulEndpoints,
+      averageResponseTime: Math.round(averageResponseTime),
+      checks,
+      lastChecked: new Date().toISOString()
+};
+
+    setSystemHealth(healthStatus);
+    
+    // Trigger unified workflow events for quick health check completion
+    handleHealthCheckCompleted(healthStatus);
+};
+
+  const getFeedbackTypeIcon = useCallback((type: string) => {
+    switch (type) {
+      case 'bug': return <BugReportIcon />;
+      case 'feature': return <LightbulbIcon />;
+      case 'usability': return <ThumbUpIcon />;
+      case 'ui_ux': return <PsychologyIcon />;
+      default: return <CommentIcon />;
+}
+}, []);
+
+  const getPriorityColor = useCallback((priority: string) => {
+    switch (priority) {
+      case 'critical': return 'error';
+      case 'high': return 'warning';
+      case 'medium': return 'info';
+      case 'low': return 'success';
+      default: return 'default';
+}
+}, []);
+
+  const getDeploymentStatusColor = (status: string) => {
+    switch (status) {
+      case 'completed': return 'success';
+      case 'in_progress': return 'info';
+      case 'failed': return 'error';
+      case 'rolled_back': return 'warning';
+      default: return 'default';
+}
+};
+
+  const getHealthStatusColor = (status: string) => {
+    switch (status) {
+      case 'healthy': return 'success';
+      case 'degraded': return 'warning';
+      case 'unhealthy': return 'error';
+      default: return 'default';
+}
+};
+
+  const getHealthStatusIcon = (status: string) => {
+    switch (status) {
+      case 'healthy': return <CheckCircleIcon color="success" />;
+      case 'degraded': return <WarningIcon color="warning" />;
+      case 'unhealthy': return <ErrorIcon color="error" />;
+      default: return <InfoIcon />;
+}
+};
+
+  const steps = [
+    'Configure API','Select Target','Customize Dependencies','Review & Deploy','Deployment Complete'
+  ];
+
+  const getStepContent = (step: number) => {
+    switch (step) {
+      case 0:
+        return (
+          <Box>
+            <TextField
+              fullWidth
+              label="API Name"
+              value={apiName}
+              onChange={(e) => {
+                setApiName(e.target.value);
+                setApiNameError(''); // Clear error on change
+          }}
+              placeholder="e.g., bring, vegvesen, brreg"
+              helperText={apiNameError || "Enter the name of the API to deploy"}
+              error={!!apiNameError}
+            />
+          </Box>
+      );
+
+      case 1: return (
+          <Box>
+            <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+              Select Deployment Target
+            </Typography>
+            <Grid container spacing={2}>
+              {deploymentTargets.map((target, index) => (
+                <Grid size={{ xs: 12 }} key={index}>
+                  <Card 
+                    sx={{ 
+                      cursor: 'pointer',
+                      border: selectedTarget === target.name.toLowerCase().split(' ')[0] ? 2 : 1,
+                      borderColor: selectedTarget === target.name.toLowerCase().split(' ')[0] ? 'primary.main' : 'divider'}}
+                    onClick={() => setSelectedTarget(target.name.toLowerCase().split(' ')[0])}
+                  >
+                    <CardContent>
+                      <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                        {target.name}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary" gutterBottom>
+                        {target.description}
+                      </Typography>
+                      <Typography variant="body2" sx={{ mb:  1 }}>
+                        <strong>Target Path: </strong> {target.targetPath}
+                      </Typography>
+                      <Box sx={{ mb:  1 }}>
+                        <Typography variant="body2" sx={{ fontWeight: 'bold'}}>
+                          Features: </Typography>
+                        {target.features.map((feature, idx) => (
+                            <Chip
+                              key={idx}
+                              label={feature}
+                              size="small"
+                              sx={{ mr: 0.5, mb: 0.5 }}
+                            />
+                        ))}
+                      </Box>
+                      <Box>
+                        <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                          Dependencies:
+                        </Typography>
+                        {target.dependencies.map((dep, idx) => (
+                            <Chip
+                              key={idx}
+                              label={dep}
+                              size="small"
+                              color="secondary"
+                              sx={{ mr: 0.5, mb: 0.5 }}
+                            />
+                        ))}
+                      </Box>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              ))}
+            </Grid>
+          </Box>
+        );
+
+      case 2: return (
+          <Box>
+            <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+              Customize Dependencies & Routes
+            </Typography>
+            
+            <TextField
+              fullWidth
+              label="Additional Dependencies"
+              placeholder="Enter dependencies separated by commas"
+              helperText="e.g., @mui/icons-material, axios, date-fns"
+              onChange={(e) => setCustomDependencies(e.target.value.split('').map(d => d.trim()).filter(d => d))}
+              sx={{ mb:  2 }}
+            />
+
+            {/* Profession-specific configuration */}
+            {selectedTarget === 'profession' && (
+              <Box sx={{ mb:  2 }}>
+                <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                  Profession Configuration
+                </Typography>
+                
+                <FormControl fullWidth sx={{ mb:  2 }}>
+                  <InputLabel>Select Profession</InputLabel>
+                  <Select
+                    value={selectedProfession}
+                    onChange={(e) => setSelectedProfession(e.target.value)}
+                    label="Select Profession"
+                  >
+                    <MenuItem value="photographer">Photographer</MenuItem>
+                    <MenuItem value="videographer">Videographer</MenuItem>
+                    <MenuItem value="music_producer">Music Producer</MenuItem>
+                    <MenuItem value="seo_specialist">SEO Specialist</MenuItem>
+                    <MenuItem value="vendor">Vendor</MenuItem>
+                  </Select>
+                </FormControl>
+
+                <TextField
+                  fullWidth
+                  label="Profession Components"
+                  placeholder="Enter component names separated by commas"
+                  helperText="e.g., BringProjectManager, BringClientManager, BringEquipmentManager"
+                  onChange={(e) => setProfessionComponents(e.target.value.split('').map(c => c.trim()).filter(c => c))}
+                  sx={{ mb:  2 }}
+                />
+
+                <TextField
+                  fullWidth
+                  label="Profession Tabs"
+                  placeholder="Enter tab names separated by commas"
+                  helperText="e.g., overview, projects, clients, equipment, analytics"
+                  value={professionTabs.join('')}
+                  onChange={(e) => setProfessionTabs(e.target.value.split('').map(t => t.trim()).filter(t => t))}
+                  sx={{ mb:  2 }}
+                />
+
+                <TextField
+                  fullWidth
+                  label="Profession Features"
+                  placeholder="Enter feature names separated by commas"
+                  helperText="e.g., api_integration, data_management, workflow_automation"
+                  onChange={(e) => setProfessionFeatures(e.target.value.split(', ').map(f => f.trim()).filter(f => f))}
+                />
+              </Box>
+            )}
+
+            <TextField
+              fullWidth
+              label="Custom Routes"
+              placeholder="Enter routes in format: path:component,path2:component2"
+              helperText="e.g., /custom:CustomComponent,/admin:AdminComponent"
+              onChange={(e) => {
+                const routes = e.target.value.split(', ').map(route => {
+                  const [path, component] = route.split(':').map(s => s.trim());
+                  return { path, component };
+                }).filter(r => r.path && r.component);
+                setCustomRoutes(routes);
+              }}
+            />
+
+            {/* ✅ NY: Feature Flag Integration */}
+            <Box sx={{ mt: 3, p: 2, border: '1px solid #ccc', borderRadius: 1, bgcolor: '#f8f9fa' }}>
+              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
+                <SettingsIcon color="primary" />
+                Feature Flag Integration
+              </Typography>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={deploymentWithFeatureFlags}
+                    onChange={(e) => setDeploymentWithFeatureFlags(e.target.checked)}
+                  />
+            }
+                label="Create feature flags for this deployment"
+              />
+              {deploymentWithFeatureFlags && (
+                <Box sx={{ mt: 2, p: 2, bgcolor: 'white', borderRadius: 1, border: '1px solid #d0d0d0'}}>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb:  1 }}>
+                    This will create a feature flag named: <strong>{apiName}-integration</strong>
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    The feature can be toggled on/off in the Feature Management tab after deployment.
+                  </Typography>
+                </Box>
+              )}
+            </Box>
+
+            {/* ✅ EnhancedMasterIntegrationProvider Integration */}
+            <Box sx={{ mt: 3, p: 2, border: '1px solid #e3f2fd', borderRadius: 1, bgcolor: '#e3f2fd' }}>
+              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
+                <CheckCircleIcon color="primary" />
+                Enhanced Master Integration Provider
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb:  2 }}>
+                This deployment will automatically integrate with EnhancedMasterIntegrationProvider for "everything interacts with everything" functionality with advanced features.
+              </Typography>
+              <Box sx={{ p: 2, bgcolor: 'white', borderRadius: 1, border: '1px solid #1976d2'}}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#', mb:  1 }}>
+                  Integration Features: </Typography>
+                <List dense>
+                  <ListItem sx={{ py: 0.5}}>
+                    <ListItemIcon>
+                      <CheckCircleIcon color="success" fontSize="small" />
+                    </ListItemIcon>
+                    <ListItemText 
+                      primary="Real-time communication with all platform components"
+                      primaryTypographyProps={{ variant: 'body2'}}
+                    />
+                  </ListItem>
+                  <ListItem sx={{ py: 0.5}}>
+                    <ListItemIcon>
+                      <CheckCircleIcon color="success" fontSize="small" />
+                    </ListItemIcon>
+                    <ListItemText 
+                      primary="Automatic data flow synchronization"
+                      primaryTypographyProps={{ variant: 'body2'}}
+                    />
+                  </ListItem>
+                  <ListItem sx={{ py: 0.5}}>
+                    <ListItemIcon>
+                      <CheckCircleIcon color="success" fontSize="small" />
+                    </ListItemIcon>
+                    <ListItemText 
+                      primary="Event broadcasting and listening capabilities"
+                      primaryTypographyProps={{ variant: 'body2'}}
+                    />
+                  </ListItem>
+                  <ListItem sx={{ py: 0.5}}>
+                    <ListItemIcon>
+                      <CheckCircleIcon color="success" fontSize="small" />
+                    </ListItemIcon>
+                    <ListItemText 
+                      primary="Component registry and capability management"
+                      primaryTypographyProps={{ variant: 'body2'}}
+                    />
+                  </ListItem>
+                  <ListItem sx={{ py: 0.5}}>
+                    <ListItemIcon>
+                      <CheckCircleIcon color="success" fontSize="small" />
+                    </ListItemIcon>
+                    <ListItemText 
+                      primary="Advanced performance monitoring and analytics"
+                      primaryTypographyProps={{ variant: 'body2'}}
+                    />
+                  </ListItem>
+                  <ListItem sx={{ py: 0.5}}>
+                    <ListItemIcon>
+                      <CheckCircleIcon color="success" fontSize="small" />
+                    </ListItemIcon>
+                    <ListItemText 
+                      primary="Health monitoring and system diagnostics"
+                      primaryTypographyProps={{ variant: 'body2'}}
+                    />
+                  </ListItem>
+                  <ListItem sx={{ py: 0.5}}>
+                    <ListItemIcon>
+                      <CheckCircleIcon color="success" fontSize="small" />
+                    </ListItemIcon>
+                    <ListItemText 
+                      primary="Debug logging and error tracking"
+                      primaryTypographyProps={{ variant: 'body2'}}
+                    />
+                  </ListItem>
+                  <ListItem sx={{ py: 0.5}}>
+                    <ListItemIcon>
+                      <CheckCircleIcon color="success" fontSize="small" />
+                    </ListItemIcon>
+                    <ListItemText 
+                      primary="Google Impersonation integration (getAuthHeader import)"
+                      primaryTypographyProps={{ variant: 'body2'}}
+                    />
+                  </ListItem>
+                </List>
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block'}}>
+                  Component Type: <strong>{selectedTarget === 'vendor' ? 'vendor-service' : 
+                  selectedTarget === 'profession' ? 'profession-service' : 'universal-service'}</strong>
+                </Typography>
+              </Box>
+            </Box>
+          </Box>
+      );
+
+      case 3: return (
+          <Box>
+            <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+              Review Deployment Configuration
+            </Typography>
+            
+            <Accordion>
+              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                <Typography variant="subtitle1">
+                  <CodeIcon sx={{ mr: 1, verticalAlign: 'middle'}} />
+                  API Configuration
+                </Typography>
+              </AccordionSummary>
+              <AccordionDetails>
+                <Typography><strong>API Name: </strong> {apiName}</Typography>
+                <Typography><strong>Target Type: </strong> {selectedTarget}</Typography>
+                <Typography><strong>Component Name: </strong> {`${apiName.charAt(0).toUpperCase() + apiName.slice()}Dashboard`}</Typography>
+              </AccordionDetails>
+            </Accordion>
+
+            <Accordion>
+              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                <Typography variant="subtitle1">
+                  <PackageIcon sx={{ mr: 1, verticalAlign: 'middle'}} />
+                  Dependencies
+                </Typography>
+              </AccordionSummary>
+              <AccordionDetails>
+                <List dense>
+                  {[...(deploymentTargets.find(t => t.name.toLowerCase().includes(selectedTarget))?.dependencies || []), ...customDependencies].map((dep, idx) => (
+                    <ListItem key={idx}>
+                      <ListItemIcon>
+                        <PackageIcon />
+                      </ListItemIcon>
+                      <ListItemText primary={dep} />
+                    </ListItem>
+                  ))}
+                </List>
+              </AccordionDetails>
+            </Accordion>
+
+            <Accordion>
+              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                <Typography variant="subtitle1">
+                  <SettingsIcon sx={{ mr: 1, verticalAlign: 'middle'}} />
+                  Deployment Options
+                </Typography>
+              </AccordionSummary>
+              <AccordionDetails>
+                <List dense>
+                  <ListItem>
+                    <ListItemIcon>
+                      <CheckCircleIcon color="success" />
+                    </ListItemIcon>
+                    <ListItemText primary="Update App.tsx with routes" />
+                  </ListItem>
+                  <ListItem>
+                    <ListItemIcon>
+                      <CheckCircleIcon color="success" />
+                    </ListItemIcon>
+                    <ListItemText primary="Update package.json with dependencies" />
+                  </ListItem>
+                  {selectedTarget === 'vendor' && (
+                    <ListItem>
+                      <ListItemIcon>
+                        <StoreIcon color="primary" />
+                      </ListItemIcon>
+                      <ListItemText primary="Create vendor integration" />
+                    </ListItem>
+                  )}
+                  {selectedTarget === 'universal' && (
+                    <ListItem>
+                      <ListItemIcon>
+                        <DashboardIcon color="primary" />
+                      </ListItemIcon>
+                      <ListItemText primary="Add to Universal Dashboard" />
+                    </ListItem>
+                  )}
+                  <ListItem>
+                    <ListItemIcon>
+                      <CheckCircleIcon color="success" />
+                    </ListItemIcon>
+                    <ListItemText primary="Integrate with EnhancedMasterIntegrationProvider" />
+                  </ListItem>
+                  <ListItem>
+                    <ListItemIcon>
+                      <CheckCircleIcon color="success" />
+                    </ListItemIcon>
+                    <ListItemText primary="Include Google Impersonation (getAuthHeader)" />
+                  </ListItem>
+                  {deploymentWithFeatureFlags && (
+                    <ListItem>
+                      <ListItemIcon>
+                        <SettingsIcon color="primary" />
+                      </ListItemIcon>
+                      <ListItemText primary="Create feature flags" />
+                    </ListItem>
+                  )}
+                </List>
+              </AccordionDetails>
+            </Accordion>
+          </Box>
+      );
+
+      case 4: return (
+          <Box>
+            {deploymentResult && (
+              <>
+                  <Alert 
+                   severity={deploymentResult.success ? 'success' : 'error'}
+                  sx={{ mb:  2 }}
+                >
+                  {deploymentResult.success ? 'Deployment completed successfully!' : 'Deployment failed'}
+                </Alert>
+
+                {deploymentResult.success && (
+                  <>
+                    <Accordion>
+                      <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                        <Typography variant="subtitle1">
+                          <CheckCircleIcon color="success" sx={{ mr:  1 }} />
+                          Deployed Components ({deploymentResult.deployedComponents.length})
+                        </Typography>
+                      </AccordionSummary>
+                      <AccordionDetails>
+                        <List dense>
+                          {deploymentResult.deployedComponents.map((component, idx) => (
+                            <ListItem key={idx}>
+                              <ListItemIcon>
+                                <CheckCircleIcon color="success" />
+                              </ListItemIcon>
+                              <ListItemText primary={component} />
+                            </ListItem>
+                          ))}
+                        </List>
+                      </AccordionDetails>
+                    </Accordion>
+
+                    <Accordion>
+                      <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                        <Typography variant="subtitle1">
+                          <CodeIcon color="primary" sx={{ mr:  1 }} />
+                          Updated Files ({deploymentResult.updatedFiles.length})
+                        </Typography>
+                      </AccordionSummary>
+                      <AccordionDetails>
+                        <List dense>
+                          {deploymentResult.updatedFiles.map((file, idx) => (
+                            <ListItem key={idx}>
+                              <ListItemIcon>
+                                <CodeIcon color="primary" />
+                              </ListItemIcon>
+                              <ListItemText primary={file} />
+                            </ListItem>
+                          ))}
+                        </List>
+                      </AccordionDetails>
+                    </Accordion>
+
+                    {deploymentResult.addedDependencies.length > 0 && (
+                      <Accordion>
+                        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                          <Typography variant="subtitle1">
+                            <PackageIcon color="secondary" sx={{ mr:  1 }} />
+                            Added Dependencies ({deploymentResult.addedDependencies.length})
+                          </Typography>
+                        </AccordionSummary>
+                        <AccordionDetails>
+                          <List dense>
+                            {deploymentResult.addedDependencies.map((dep, idx) => (
+                              <ListItem key={idx}>
+                                <ListItemIcon>
+                                  <PackageIcon color="secondary" />
+                                </ListItemIcon>
+                                <ListItemText primary={dep} />
+                              </ListItem>
+                            ))}
+                          </List>
+                        </AccordionDetails>
+                      </Accordion>
+                    )}
+
+                    {deploymentResult.addedRoutes.length > 0 && (
+                      <Accordion>
+                        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                          <Typography variant="subtitle1">
+                            <SettingsIcon color="info" sx={{ mr:  1 }} />
+                            Added Routes ({deploymentResult.addedRoutes.length})
+                          </Typography>
+                        </AccordionSummary>
+                        <AccordionDetails>
+                          <List dense>
+                            {deploymentResult.addedRoutes.map((route, idx) => (
+                              <ListItem key={idx}>
+                                <ListItemIcon>
+                                  <SettingsIcon color="info" />
+                                </ListItemIcon>
+                                <ListItemText primary={route} />
+                              </ListItem>
+                            ))}
+                          </List>
+                        </AccordionDetails>
+                      </Accordion>
+                    )}
+                  </>
+                )}
+
+                {deploymentResult.errors.length > 0 && (
+                  <Accordion>
+                    <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                      <Typography variant="subtitle1">
+                        <ErrorIcon color="error" sx={{ mr:  1 }} />
+                        Errors ({deploymentResult.errors.length})
+                      </Typography>
+                    </AccordionSummary>
+                    <AccordionDetails>
+                      <List dense>
+                        {deploymentResult.errors.map((error, idx) => (
+                          <ListItem key={idx}>
+                            <ListItemIcon>
+                              <ErrorIcon color="error" />
+                            </ListItemIcon>
+                            <ListItemText primary={error} />
+                          </ListItem>
+                        ))}
+                      </List>
+                    </AccordionDetails>
+                  </Accordion>
+                )}
+              </>
+            )}
+          </Box>
+      );
+
+      default: return 'Unknown step';
+}
+};
+
+  return (
+    <ErrorBoundary fallback="Failed to load deployment manager. Please refresh the page.">
+      <Box sx={{ p:  3 }}>
+        <Typography variant="h4" gutterBottom component="h1" role="heading" aria-level={1} sx={{ color: theming.colors.primary }}>
+          Complete Deployment Manager
+        </Typography>
+        <Typography variant="subtitle1" color="text.secondary" gutterBottom role="text" aria-describedby="deployment-description">
+          Deploy complete solutions with App.tsx integration, package.json updates, and vendor integration
+        </Typography>
+
+      {/* ✅ NY: Enhanced Tab Interface , *, /}
+      <Card sx={{ mt:  3 }}>
+        <Tabs
+          value={activeTab}
+          onChange={(_, newValue) => setActiveTab(newValue)}
+          sx={{ borderBottom: 1, borderColor: 'divider'}}
+          aria-label="Deployment management tabs"
+          role="tablist"
+        >
+          <Tooltip title="Manual Deployment (Ctrl+1)" arrow>
+            <Tab
+              icon={<BuildIcon />}
+              label="Manual Deployment"
+              iconPosition="start"
+              sx={{ textTransform: 'none', fontWeight: 50}}
+            />
+          </Tooltip>
+          <Tooltip title="Feedback Fixes (Ctrl+2)" arrow>
+            <Tab
+              icon={<BugReportIcon />}
+              label={
+                <Badge 
+                   badgeContent={feedbackData?.feedback?.filter(f => f.status === 'open').length || 0}
+                  color="error"
+                >
+                  Feedback Fixes
+                </Badge>
+          }
+              iconPosition="start"
+              sx={{ textTransform: 'none', fontWeight: 50}}
+            />
+          </Tooltip>
+          <Tooltip title="Deployment History (Ctrl+3)" arrow>
+            <Tab
+              icon={<ScienceIcon />}
+              label="Deployment History"
+              iconPosition="start"
+              sx={{ textTransform: 'none', fontWeight: 50}}
+            />
+          </Tooltip>
+          <Tooltip title="200 OK Checker (Ctrl+4)" arrow>
+            <Tab
+              icon={<CheckCircleIcon />}
+              label={
+                <Badge 
+                   badgeContent={systemHealth?.failedEndpoints || 0}
+                  color="error"
+                >
+                  200 OK Checker
+                </Badge>
+          }
+              iconPosition="start"
+              sx={{ textTransform: 'none', fontWeight: 50}}
+            />
+          </Tooltip>
+          <Tooltip title="Feature Flags (Ctrl+5)" arrow>
+            <Tab
+              icon={<SettingsIcon />}
+              label="Feature Flags"
+              iconPosition="start"
+              sx={{ textTransform: 'none', fontWeight: 50}}
+            />
+          </Tooltip>
+          <Tooltip title="Quality Analysis (Ctrl+6)" arrow>
+            <Tab
+              icon={<ScienceIcon />}
+              label={
+                <Badge 
+                   badgeContent={qualityAnalysis ? Math.round(qualityAnalysis.overallScore) : 0}
+                  color={qualityAnalysis && qualityAnalysis.overallScore >= 8 ? "success" : "warning"}
+                >
+                  Quality Analysis
+                </Badge>
+          }
+              iconPosition="start"
+              sx={{ textTransform: 'none', fontWeight: 50}}
+            />
+          </Tooltip>
+          <Tooltip title="Deployment Pipeline (Ctrl+7)" arrow>
+            <Tab
+              icon={<CloudUploadIcon />}
+              label="Deployment Pipeline"
+              iconPosition="start"
+              sx={{ textTransform: 'none', fontWeight: 50}}
+            />
+          </Tooltip>
+        </Tabs>
+      </Card>
+
+      {/* Manual Deployment Tab */}
+      {activeTab === 0 && (
+        <Card sx={{ mt:  3 }}>
+          <CardContent>
+            <Stepper activeStep={activeStep} orientation="vertical">
+              {steps.map((label, index) => (
+                <Step key={label}>
+                  <StepLabel>{label}</StepLabel>
+                  <StepContent>
+                    {getStepContent(index)}
+                    <Box sx={{ mb: 2, mt: 2 }}>
+                      <div>
+                        {index < steps.length - 1 && (
+                          <Button
+                            variant="contained"
+                            onClick={() => setActiveStep(index + 1)}
+                            sx={{ ...theming.getThemedButtonSx(), mt: 1, mr: 1 }}
+                            disabled={loading}
+                          >
+                            Continue
+                          </Button>
+                        )}
+                        {index === 3 && (
+                          <Box sx={{ mt: 1, mr: 1 }}>
+                            <Button
+                              variant="contained"
+                              onClick={handleDeploy}
+                              disabled={loading}
+                              startIcon={loading ? <CircularProgress size={20} /> : null}
+                              sx={{ ...theming.getThemedButtonSx(), mb: loading ? 2 : 0 }}
+                            >
+                              {loading ? 'Deploying...' : 'Deploy Complete Solution'}
+                            </Button>
+                            {loading && (
+                              <Box sx={{ width: '100%', mt:  1 }}>
+                                <LinearProgress 
+                                  sx={{ 
+                                    height:  6, 
+                                    borderRadius:  3,
+                                    bgcolor: 'rgba(0,0,0,0.1)','& .MuiLinearProgress-bar': {
+                                      bgcolor: CREATOR_HUB_BRANDING.colors.PHOTOGRAPHY
+                              }
+                               }}
+                                />
+                                <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block'}}>
+                                  Deploying complete solution with quality checks...
+                                </Typography>
+                              </Box>
+                            )}
+                          </Box>
+                        )}
+                        {index > 0 && index < 4 && (
+                          <Button
+                            onClick={() => setActiveStep(index - 1)}
+                            sx={{ mt: 1, mr: 1 }}
+                          >
+                            Back
+                          </Button>
+                        )}
+                        {index === 4 && (
+                          <Button
+                            variant="contained"
+                            onClick={() => {
+                              setActiveStep(0);
+                              setDeploymentResult(null);
+                            }}
+                            sx={{ ...theming.getThemedButtonSx(), mt: 1, mr: 1 }}
+                          >
+                            Deploy Another
+                          </Button>
+                        )}
+                      </div>
+                    </Box>
+                  </StepContent>
+                </Step>
+              ))}
+            </Stepper>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Feedback Fixes Tab */}
+      {activeTab === 1 && (
+        <Box sx={{ mt:  3 }}>
+          <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+            🐛 Feedback-Driven Deployments
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb:  3 }}>
+            Deploy fixes automatically based on prototype tester feedback
+          </Typography>
+
+          {feedbackLoading ? (
+            <Box sx={{ py:  2 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
+                <SkeletonLoader height={32} width={200} />
+                <SkeletonLoader height={24} width={100} />
+              </Box>
+              <Grid container spacing={2}>
+                {[13, 4].map((index) => (
+                  <Grid size={{ xs:  12, md:  6 }} key={index}>
+                    <Card sx={{ height: '100%'}}>
+                      <CardContent>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+                          <SkeletonLoader height={24} width={24} variant="circular" />
+                          <SkeletonLoader height={24} width="60%" />
+                          <SkeletonLoader height={20} width={80} />
+                        </Box>
+                        <SkeletonLoader height={16} width="100%" sx={{ mb:  1 }} />
+                        <SkeletonLoader height={16} width="80%" sx={{ mb:  2 }} />
+                        <SkeletonLoader height={16} width="40%" sx={{ mb:  2 }} />
+                        <SkeletonLoader height={40} width="100%" />
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                ))}
+              </Grid>
+            </Box>
+          ) : (
+            <Grid container spacing={2}>
+              {feedbackData?.feedback?.map((feedback) => (
+                <Grid size={{ xs:  12, md:  6 }} key={feedback.id}>
+                  <Card sx={{ height: '100%'}}>
+                    <CardContent>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+                        {getFeedbackTypeIcon(feedback.feedbackType)}
+                        <Typography variant="h6" sx={{  flex:  1  }}>
+                          {feedback.title}
+                        </Typography>
+                        <Chip
+                          label={feedback.priority.toUpperCase()}
+                          color={getPriorityColor(feedback.priority)}
+                          size="small"
+                        />
+                      </Box>
+
+                      <Typography variant="body2" color="text.secondary" sx={{ mb:  2 }}>
+                        {feedback.description}
+                      </Typography>
+
+                      {feedback.locationContext && (
+                        <Typography variant="caption" color="text.secondary" sx={{ mb: 2, display: 'block'}}>
+                          📍 {feedback.locationContext.profession} - {feedback.locationContext.dashboardType} Dashboard
+                        </Typography>
+                      )}
+
+                      {/* Verification Status */}
+                      {feedback.verification && (
+                        <Box sx={{ mb: 2, p: 2, bgcolor: 'rgba(25, 1400.05)', borderRadius: 1, border: '1px solid rgba(25, 1400.2)' }}>
+                          <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600, color: '#ff8c00'}}>
+                            🔍 Verification Status: </Typography>
+                          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap'}}>
+                            <Chip
+                              label={`Automated: ${feedback.verification.automatedTests.status}`}
+                              size="small"
+                              color={feedback.verification.automatedTests.status === 'passed' ? 'success' : 
+                                     feedback.verification.automatedTests.status === 'failed' ? 'error' : 'default'}
+                            />
+                            <Chip
+                              label={`Regression: ${feedback.verification.regressionTests.status}`}
+                              size="small"
+                              color={feedback.verification.regressionTests.status === 'passed' ? 'success' : 
+                                     feedback.verification.regressionTests.status === 'failed' ? 'error' : 'default'}
+                            />
+                            <Chip
+                              label={`User: ${feedback.verification.userValidation.status}`}
+                              size="small"
+                              color={feedback.verification.userValidation.status === 'validated' ? 'success' : 
+                                     feedback.verification.userValidation.status === 'failed' ? 'error' : 'default'}
+                            />
+                          </Box>
+                          {feedback.verification.automatedTests.coverage > 0 && (
+                            <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block'}}>
+                              Test Coverage: {feedback.verification.automatedTests.coverage}%
+                            </Typography>
+                          )}
+                        </Box>
+                      )}
+
+                      {feedback.aiAnalysis ? (
+                        <Box>
+                          <Typography variant="subtitle2" sx={{ mb: 2, fontWeight: 600, color: CREATOR_HUB_BRANDING.colors.PHOTOGRAPH, Y}}>
+                            🤖 AI Analysis Results: </Typography>
+                          {feedback.aiAnalysis.suggestedFixes.map((fix) => (
+                            <Card key={fix.d} sx={{ mb: 2, p: 2, border: '1px solid #e0e0e0'}}>
+                              {/* Fix Header */}
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+                                <AutoFixHighIcon color="primary" />
+                                <Box sx={{ flex: 1 }}>
+                                  <Typography variant="h6" sx={{ fontWeight: 600, color: theming.colors.primary }}>
+                                    {fix.description}
+                                  </Typography>
+                                  <Typography variant="caption" color="text.secondary">
+                                    Confidence: {fix.confidence}% • Time: {fix.estimatedTime}
+                                  </Typography>
+                                </Box>
+                                <Button size="small"
+                                  variant="contained"
+                                  startIcon={<PlayArrowIcon />}
+                                  onClick={() => handleDeployFeedbackFix(feedback, fix.id)}
+                                  disabled={deployFeedbackFixMutation.isPending}
+                                  sx={{
+                                    bgcolor: CREATOR_HUB_BRANDING.colors.PHOTOGRAPHY, '&:hover': { bgcolor: '#e67e00' }
+                                  }}
+                                >
+                                  {deployFeedbackFixMutation.isPending ? 'Deploying & Verifying...' : 'Deploy & Verify Fix'}
+                                </Button>
+                              </Box>
+
+                              {/* Problem Solved Section */}
+                              {fix.problemSolved && (
+                                <Box sx={{ mb: 2, p: 2, bgcolor: '#f0f9ff', borderRadius: 1, border: '1px solid #0ea5e9' }}>
+                                  <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#0c4a60', mb: 1 }}>
+                                    🎯 What This Fix Will Solve:
+                                  </Typography>
+                                  <Typography variant="body2" color="text.primary">
+                                    {fix.problemSolved}
+                                  </Typography>
+                                </Box>
+                              )}
+
+                              {/* Specific Issues Addressed */}
+                              {fix.specificIssuesAddressed && fix.specificIssuesAddressed.length > 0 && (
+                                <Box sx={{ mb:  2 }}>
+                                  <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#', mb:  1 }}>
+                                    🔧 Specific Issues Addressed: </Typography>
+                                  <Box sx={{ pl: 2 }}>
+                                    {fix.specificIssuesAddressed.map((issue, index) => (
+                                      <Typography key={index} variant="body2" color="text.secondary" sx={{ mb: 0.5}}>
+                                        • {issue}
+                                      </Typography>
+                                    ))}
+                                  </Box>
+                                </Box>
+                              )}
+
+                              {/* Expected Outcome */}
+                              {fix.expectedOutcome && (
+                                <Box sx={{ mb: 2, p: 2, bgcolor: '#', borderRadius: 1, border: '1px solid #22c55e'}}>
+                                  <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#', mb:  1 }}>
+                                    ✅ Expected Outcome: </Typography>
+                                  <Typography variant="body2" color="text.primary">
+                                    {fix.expectedOutcome}
+                                  </Typography>
+                                </Box>
+                              )}
+
+                              {/* Files to Modify */}
+                              {fix.filesToModify && fix.filesToModify.length > 0 && (
+                                <Box sx={{ mb:  2 }}>
+                                  <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#', mb:  1 }}>
+                                    📁 Files to Modify: </Typography>
+                                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5}}>
+                                    {fix.filesToModify.map((file, index) => (
+                                      <Chip
+                                        key={index}
+                                        label={file}
+                                        size="small"
+                                        variant="outlined"
+                                        sx={{ fontSize: '0.75rem'}}
+                                      />
+                                    ))}
+                                  </Box>
+                                </Box>
+                              )}
+
+                              {/* Dependencies to Add */}
+                              {fix.dependenciesToAdd && fix.dependenciesToAdd.length > 0 && (
+                                <Box sx={{ mb:  2 }}>
+                                  <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#', mb:  1 }}>
+                                    📦 Dependencies to Add: </Typography>
+                                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5}}>
+                                    {fix.dependenciesToAdd.map((dep, index) => (
+                                      <Chip
+                                        key={index}
+                                        label={dep}
+                                        size="small"
+                                        color="primary"
+                                        variant="outlined"
+                                        sx={{ fontSize: '0.75rem'}}
+                                      />
+                                    ))}
+                                  </Box>
+                                </Box>
+                              )}
+
+                              {/* Testing Instructions */}
+                              {fix.testingInstructions && fix.testingInstructions.length > 0 && (
+                                <Box sx={{ mb:  2 }}>
+                                  <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#', mb:  1 }}>
+                                    🧪 Testing Instructions: </Typography>
+                                  <Box sx={{ pl: 2 }}>
+                                    {fix.testingInstructions.map((instruction, index) => (
+                                      <Typography key={index} variant="body2" color="text.secondary" sx={{ mb: 0.5}}>
+                                        {index + 1}. {instruction}
+                                      </Typography>
+                                    ))}
+                                  </Box>
+                                </Box>
+                              )}
+                            </Card>
+                          ))}
+                        </Box>
+                      ) : (
+                        <Button
+                          variant="outlined"
+                          startIcon={<ScienceIcon />}
+                          onClick={() => handleAnalyzeFeedback(feedback)}
+                          disabled={analyzeFeedbackMutation.isPending}
+                          fullWidth
+                        >
+                          {analyzeFeedbackMutation.isPending ? 'Analyzing...' : 'Analyze with AI'}
+                        </Button>
+                      )}
+                    </CardContent>
+                  </Card>
+                </Grid>
+              ))}
+            </Grid>
+          )}
+        </Box>
+      )}
+
+      {/* Deployment History Tab */}
+      {activeTab === 2 && (
+        <Box sx={{ mt:  3 }}>
+          <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+            📊 Deployment History
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb:  3 }}>
+            Track all feedback-driven deployments and their status
+          </Typography>
+
+          {deploymentsLoading ? (
+            <Box sx={{ textAlign: 'center', py:  4 }}>
+              <CircularProgress />
+              <Typography sx={{ mt:  2 }}>Loading deployments...</Typography>
+            </Box>
+          ) : (
+            <TableContainer component={Paper}>
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Feedback</TableCell>
+                    <TableCell>Type</TableCell>
+                    <TableCell>Status</TableCell>
+                    <TableCell>Created</TableCell>
+                    <TableCell>Completed</TableCell>
+                    <TableCell>Actions</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {feedbackDeployments.map((deployment) => (
+                    <TableRow key={deployment.id}>
+                      <TableCell>
+                        <Typography variant="body2" sx={{ fontWeight: 50}}>
+                          {feedbackData?.feedback?.find(f => f.id === deployment.feedbackId)?.title || 'Unknown'}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Chip
+                          label={deployment.deploymentType.replace('_',', ').toUpperCase()}
+                          size="small"
+                          color="primary"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Chip
+                          label={deployment.status.replace('_', ', ').toUpperCase()}
+                          size="small"
+                          color={getDeploymentStatusColor(deployment.status)}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        {new Date(deployment.createdAt).toLocaleString()}
+                      </TableCell>
+                      <TableCell>
+                        {deployment.completedAt ? new Date(deployment.completedAt).toLocaleString() : '-'}
+                      </TableCell>
+                      <TableCell>
+                        <Box sx={{ display: 'flex', gap: 1 }}>
+                          <Tooltip title="View Details">
+                            <IconButton size="small">
+                              <VisibilityIcon />
+                            </IconButton>
+                          </Tooltip>
+                          {deployment.rollbackAvailable && (
+                            <Tooltip title="Rollback">
+                              <IconButton
+                                size="small"
+                                color="warning"
+                                onClick={() => handleRollbackDeployment('production', 'v1.0.0')}
+                              >
+                                <RefreshIcon />
+                              </IconButton>
+                            </Tooltip>
+                          )}
+                        </Box>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+        </Box>
+      )}
+
+      {/* 200 OK Checker Tab */}
+      {activeTab === 3 && (
+        <Box sx={{ mt:  3 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb:  3 }}>
+            <Box>
+              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                🔍 System Health Checker
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Verify all deployed components and API endpoints are returning 200 OK
+              </Typography>
+            </Box>
+            <Box sx={{ display: 'flex', gap:  2 }}>
+              <Button
+                variant="outlined"
+                startIcon={<RefreshIcon />}
+                onClick={performQuickHealthCheck}
+                disabled={healthCheckLoading}
+              >
+                Quick Check
+              </Button>
+              <Button variant="contained"
+                startIcon={<CheckCircleIcon />}
+                onClick={handleRunHealthCheck}
+                disabled={healthCheckLoading}
+              >
+                Full Health Check
+              </Button>
+            </Box>
+          </Box>
+
+          {systemHealth && (
+            <Card sx={{ mb:  3 }}>
+              <CardContent>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                  {getHealthStatusIcon(systemHealth.overall)}
+                  <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+                    System Status: {systemHealth.overall.toUpperCase()}
+                  </Typography>
+                  <Chip
+                    label={`${systemHealth.successfulEndpoints}/${systemHealth.totalEndpoints} endpoints healthy`}
+                    color={getHealthStatusColor(systemHealth.overall)}
+                    size="small"
+                  />
+                </Box>
+
+                <Grid container spacing={2} sx={{ mb:  2 }}>
+                  <Grid size={{ xs:  12, sm:  3 }}>
+                    <Box sx={{ textAlign: 'center', p: 2, bgcolor: 'success.light', borderRadius:  1 }}>
+                      <Typography variant="h4" color="success.contrastText" sx={{ color: theming.colors.primary }}>
+                        {systemHealth.successfulEndpoints}
+                      </Typography>
+                      <Typography variant="body2" color="success.contrastText">
+                        Successful
+                      </Typography>
+                    </Box>
+                  </Grid>
+                  <Grid size={{ xs:  12, sm:  3 }}>
+                    <Box sx={{ textAlign: 'center', p: 2, bgcolor: 'error.light', borderRadius:  1 }}>
+                      <Typography variant="h4" color="error.contrastText" sx={{ color: theming.colors.primary }}>
+                        {systemHealth.failedEndpoints}
+                      </Typography>
+                      <Typography variant="body2" color="error.contrastText">
+                        Failed
+                      </Typography>
+                    </Box>
+                  </Grid>
+                  <Grid size={{ xs:  12, sm:  3 }}>
+                    <Box sx={{ textAlign: 'center', p: 2, bgcolor: 'info.light', borderRadius:  1 }}>
+                      <Typography variant="h4" color="info.contrastText" sx={{ color: theming.colors.primary }}>
+                        {systemHealth.averageResponseTime}ms
+                      </Typography>
+                      <Typography variant="body2" color="info.contrastText">
+                        Avg Response Time
+                      </Typography>
+                    </Box>
+                  </Grid>
+                  <Grid size={{ xs:  12, sm:  3 }}>
+                    <Box sx={{ textAlign: 'center', p: 2, bgcolor: 'warning.light', borderRadius:  1 }}>
+                      <Typography variant="h4" color="warning.contrastText" sx={{ color: theming.colors.primary }}>
+                        {Math.round((systemHealth.successfulEndpoints / systemHealth.totalEndpoints) * 100)}%
+                      </Typography>
+                      <Typography variant="body2" color="warning.contrastText">
+                        Success Rate
+                      </Typography>
+                    </Box>
+                  </Grid>
+                </Grid>
+
+                <Typography variant="body2" color="text.secondary">
+                  Last checked: {new Date(systemHealth.lastChecked).toLocaleString()}
+                </Typography>
+              </CardContent>
+            </Card>
+          )}
+
+          {systemHealth && (
+            <Card>
+              <CardContent>
+                <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                  📊 Endpoint Status Details
+                </Typography>
+                <TableContainer>
+                  <Table>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Endpoint</TableCell>
+                        <TableCell>Status</TableCell>
+                        <TableCell>Response Time</TableCell>
+                        <TableCell>Response Size</TableCell>
+                        <TableCell>Error</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {systemHealth.checks.map((check, index) => (
+                        <TableRow key={index}>
+                          <TableCell>
+                            <Typography variant="body2" sx={{ fontFamily: 'monospace'}}>
+                              {check.endpoint}
+                            </Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
+                              {check.success ? (
+                                <CheckCircleIcon color="success" fontSize="small" />
+                              ) : (
+                                <ErrorIcon color="error" fontSize="small" />
+                              )}
+                              <Typography variant="body2">
+                                {check.status === 0 ? 'OFFLINE' : check.status}
+                              </Typography>
+                            </Box>
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="body2">
+                              {check.responseTime}ms
+                            </Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="body2">
+                              {check.responseSize ? `${check.responseSize} bytes` : '-'}
+                            </Typography>
+                          </TableCell>
+                          <TableCell>
+                            {check.error && (
+                              <Typography variant="body2" color="error" sx={{ fontFamily: 'monospace', fontSize: '0.75rem'}}>
+                                {check.error}
+                              </Typography>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </CardContent>
+            </Card>
+          )}
+
+          {!systemHealth && (
+            <Card>
+              <CardContent sx={{ textAlign: 'center', py:  4 }}>
+                <CheckCircleIcon sx={{ fontSize:  64, color: 'text.secondary', mb:  2 }} />
+                <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                  Ready to Check System Health
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb:  3 }}>
+                  Run a health check to verify all deployed components are working correctly
+                </Typography>
+                <Button variant="contained"
+                  startIcon={<CheckCircleIcon />}
+                  onClick={performQuickHealthCheck}
+                  size="large"
+                >
+                  Start Health Check
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+        </Box>
+      )}
+
+      {/* Quality Analysis Tab */}
+      {activeTab === 5 && (
+        <Box sx={{ mt:  3 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb:  3 }}>
+            <Box>
+              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                🔍 Comprehensive Quality Analysis
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Analyze code quality, type safety, security, and performance across all components
+              </Typography>
+            </Box>
+            <Box sx={{ display: 'flex', gap:  2 }}>
+              <Button
+                variant="outlined"
+                startIcon={<RefreshIcon />}
+                onClick={handleRunQualityAnalysis}
+                disabled={analysisLoading}
+              >
+                {analysisLoading ? 'Analyzing...' : 'Run Full Analysis'}
+              </Button>
+              <Button
+                variant="contained"
+                startIcon={<ScienceIcon />}
+                onClick={handleRunPreDeploymentAnalysis}
+                disabled={analysisLoading}
+                sx={{
+                  bgcolor: CREATOR_HUB_BRANDING.colors.PHOTOGRAPHY,
+                  '&:hover': { bgcolor: '#e67e00' }
+                }}
+              >
+                {analysisLoading ? 'Analyzing...' : 'Pre-Deployment Check'}
+              </Button>
+            </Box>
+          </Box>
+
+          {/* Overall Quality Score */}
+          {qualityAnalysis && (
+            <Card sx={{ mb: 3 }}>
+              <CardContent>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                  <Box sx={{
+                    width: 80,
+                    height: 80,
+                    borderRadius: '50, %', 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'center',
+                    bgcolor: qualityAnalysis.overallScore >= 8 ? 'success.light' : 
+                             qualityAnalysis.overallScore >= 6 ? 'warning.light' : 'error.light',
+                    color: qualityAnalysis.overallScore >= 8 ? 'success.contrastText' : 
+                           qualityAnalysis.overallScore >= 6 ? 'warning.contrastText' : 'error.contrastText'
+            }}>
+                    <Typography variant="h4" sx={{  fontWeight: 'bold' }}>
+                      {qualityAnalysis.overallScore.toFixed(1)}
+                    </Typography>
+                  </Box>
+                  <Box>
+                    <Typography variant="h5" sx={{  fontWeight: 600}}>
+                      Overall Quality Score
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Last analyzed: {new Date(qualityAnalysis.lastAnalyzed).toLocaleString()}
+                    </Typography>
+                  </Box>
+                </Box>
+
+                {/* Quality Categories */}
+                <Grid container spacing={2}>
+                  {Object.entries(qualityAnalysis.categories).map(([category, data]) => (
+                    <Grid size={{ xs: 12, sm: 6, md: 4 }} key={category}>
+                      <Card sx={{
+                        border: 1,
+                        borderColor: data.score >= 8 ? 'success.main' :
+                                     data.score >= 6 ? 'warning.main' : 'error.main',
+                        bgcolor: data.score >= 8 ? 'success.light' :
+                                 data.score >= 6 ? 'warning.light' : 'error.light'
+                      }}>
+                        <CardContent sx={{ p: 2 }}>
+                          <Typography variant="h6" sx={{
+                            textTransform: 'capitalize',
+                            fontWeight: 600,
+                            color: data.score >= 8 ? 'success.contrastText' :
+                                   data.score >= 6 ? 'warning.contrastText' : 'error.contrastText'
+                          }}>
+                            {category.replace(/([A-Z])/g, ' $1').trim()}
+                          </Typography>
+                          <Typography variant="h4" sx={{
+                            fontWeight: 'bold',
+                            color: data.score >= 8 ? 'success.contrastText' :
+                                   data.score >= 6 ? 'warning.contrastText' : 'error.contrastText'
+                          }}>
+                            {data.score.toFixed(1)}/10
+                          </Typography>
+                          <Typography variant="body2" sx={{
+                            color: data.score >= 8 ? 'success.contrastText' :
+                                   data.score >= 6 ? 'warning.contrastText' : 'error.contrastText'
+                          }}>
+                            {data.issues.length} issues found
+                          </Typography>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                  ))}
+                </Grid>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Critical Issues */}
+          {qualityAnalysis && qualityAnalysis.criticalIssues.length > 0 && (
+            <Card sx={{ mb:  3, border: 1, borderColor: 'error.main'}}>
+              <CardContent>
+                <Typography variant="h6" color="error" sx={{  mb: 2, display: 'flex', alignItems: 'center', gap:  1  }}>
+                  <ErrorIcon />
+                  Critical Issues ({qualityAnalysis.criticalIssues.length})
+                </Typography>
+                <List dense>
+                  {qualityAnalysis.criticalIssues.map((issue, index) => (
+                    <ListItem key={index}>
+                      <ListItemIcon>
+                        <ErrorIcon color="error" />
+                      </ListItemIcon>
+                      <ListItemText primary={issue} />
+                    </ListItem>
+                  ))}
+                </List>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Component Analysis */}
+          {componentAnalyses.length > 0 && (
+            <Card>
+              <CardContent>
+                <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                  📊 Component Analysis Results
+                </Typography>
+                <TableContainer>
+                  <Table>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Component</TableCell>
+                        <TableCell>Score</TableCell>
+                        <TableCell>Type Safety</TableCell>
+                        <TableCell>Security</TableCell>
+                        <TableCell>Performance</TableCell>
+                        <TableCell>Error Handling</TableCell>
+                        <TableCell>Code Quality</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {componentAnalyses.map((analysis, index) => (
+                        <TableRow key={index}>
+                          <TableCell>
+                            <Typography variant="body2" sx={{ fontWeight: 50}}>
+                              {analysis.componentName}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              {analysis.filePath}
+                            </Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Chip
+                              label={`${analysis.score.toFixed(1)}/10`}
+                              color={analysis.score >= 8 ? 'success' : analysis.score >= 6 ? 'warning' : 'error'}
+                              size="small"
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="body2" color={analysis.issues.typeSafety.length === 0 ? 'success.main' : 'error.main'}>
+                              {analysis.issues.typeSafety.length} issues
+                            </Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="body2" color={analysis.issues.security.length === 0 ? 'success.main' : 'error.main'}>
+                              {analysis.issues.security.length} issues
+                            </Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="body2" color={analysis.issues.performance.length === 0 ? 'success.main' : 'error.main'}>
+                              {analysis.issues.performance.length} issues
+                            </Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="body2" color={analysis.issues.errorHandling.length === 0 ? 'success.main' : 'error.main'}>
+                              {analysis.issues.errorHandling.length} issues
+                            </Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="body2" color={analysis.issues.codeQuality.length === 0 ? 'success.main' : 'error.main'}>
+                              {analysis.issues.codeQuality.length} issues
+                            </Typography>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Recommendations */}
+          {qualityAnalysis && qualityAnalysis.recommendations.length > 0 && (
+            <Card sx={{ mt:  3 }}>
+              <CardContent>
+                <Typography variant="h6" gutterBottom sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
+                  <LightbulbIcon color="primary" />
+                  Recommendations ({qualityAnalysis.recommendations.length})
+                </Typography>
+                <List>
+                  {qualityAnalysis.recommendations.map((recommendation, index) => (
+                    <ListItem key={index}>
+                      <ListItemIcon>
+                        <LightbulbIcon color="primary" />
+                      </ListItemIcon>
+                      <ListItemText primary={recommendation} />
+                    </ListItem>
+                  ))}
+                </List>
+              </CardContent>
+            </Card>
+          )}
+
+          {!qualityAnalysis && (
+            <Card>
+              <CardContent sx={{ textAlign: 'center', py:  4 }}>
+                <ScienceIcon sx={{ fontSize:  64, color: 'text.secondary', mb:  2 }} />
+                <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                  Ready to Analyze Code Quality
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb:  3 }}>
+                  Run a comprehensive analysis to check type safety, security, performance, and code quality
+                </Typography>
+                <Button variant="contained"
+                  startIcon={<ScienceIcon />}
+                  onClick={handleRunQualityAnalysis}
+                  size="large"
+                  sx={{
+                    bgcolor: CREATOR_HUB_BRANDING.colors.PHOTOGRAPHY, '&:hover': { bgcolor: '#e67e00' }
+                  }}
+                >
+                  Start Quality Analysis
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+        </Box>
+      )}
+
+      {/* Deployment Pipeline Tab */}
+      {activeTab === 6 && (
+        <Box sx={{ mt: 3 }}>
+          <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+            🚀 Deployment Pipeline
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb:  3 }}>
+            Deploy to different environments with blue-green deployment and rollback capabilities
+          </Typography>
+
+          {/* Environment Status Cards */}
+          <Grid container spacing={3} sx={{ mb: 3 }}>
+            {environments.map((env) => (
+              <Grid size={{ xs: 12, md: 4 }} key={env.name}>
+                <Card sx={{
+                  border: 1,
+                  borderColor: env.status === 'healthy' ? 'success.main' :
+                             env.status === 'warning' ? 'warning.main' :
+                             env.status === 'critical' ? 'error.main' : 'grey.400'
+                }}>
+                  <CardContent>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+                      {env.status === 'healthy' ? <CheckCircleIcon color="success" /> :
+                       env.status === 'warning' ? <WarningIcon color="warning" /> :
+                       env.status === 'critical' ? <ErrorIcon color="error" /> : <ErrorIcon color="disabled" />}
+                      <Typography variant="h6" sx={{ flex: 1, color: theming.colors.primary }}>
+                        {env.name}
+                      </Typography>
+                      <Chip
+                        label={env.status.toUpperCase()}
+                        color={env.status === 'healthy' ? 'success' : 
+                               env.status === 'warning' ? 'warning' : 
+                               env.status === 'critical' ? 'error' : 'default'}
+                        size="small"
+                      />
+                    </Box>
+
+                    <Box sx={{ mb:  2 }}>
+                      <Typography variant="body2" color="text.secondary">
+                        Uptime: {env.uptime}%
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Response Time: {env.responseTime}ms
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Last Checked: {new Date(env.lastChecked).toLocaleTimeString()}
+                      </Typography>
+                    </Box>
+
+                    <Box sx={{ mb:  2 }}>
+                      <Typography variant="body2" sx={{ fontWeight: 600, mb:  1 }}>
+                        Services: </Typography>
+                      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap'}}>
+                        <Chip 
+                          label="Database" 
+                          size="small" 
+                          color={env.services.database ? 'success' : 'error'}
+                          icon={env.services.database ? <CheckCircleIcon /> : <ErrorIcon />}
+                        />
+                        <Chip 
+                          label="API" 
+                          size="small" 
+                          color={env.services.api ? 'success' : 'error'}
+                          icon={env.services.api ? <CheckCircleIcon /> : <ErrorIcon />}
+                        />
+                        <Chip 
+                          label="Frontend" 
+                          size="small" 
+                          color={env.services.frontend ? 'success' : 'error'}
+                          icon={env.services.frontend ? <CheckCircleIcon /> : <ErrorIcon />}
+                        />
+                      </Box>
+                    </Box>
+
+                    <Box sx={{ display: 'flex', gap: 1 }}>
+                      <Button
+                        variant="contained"
+                        size="small"
+                        onClick={() => handleDeployToEnvironment(env.name.toLowerCase())}
+                        disabled={deployToEnvironmentMutation.isPending}
+                        sx={{ ...theming.getThemedButtonSx(), flex: 1 }}
+                      >
+                        Deploy
+                      </Button>
+                      <Button
+                        variant="outlined"
+                        size="small"
+                        onClick={() => {
+                          setRollbackTarget(env.name.toLowerCase());
+                          setShowRollbackDialog(true);
+                        }}
+                        disabled={rollbackDeploymentMutation.isPending}
+                        sx={{ flex: 1 }}
+                      >
+                        Rollback
+                      </Button>
+                    </Box>
+                  </CardContent>
+                </Card>
+              </Grid>
+            ))}
+          </Grid>
+
+          {/* Deployment Steps */}
+          {deploymentSteps.length > 0 && (
+            <Card sx={{ mb:  3 }}>
+              <CardContent>
+                <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                  📋 Deployment Steps
+                </Typography>
+                <Stepper orientation="vertical">
+                  {deploymentSteps.map((step, index) => (
+                    <Step key={step.id} active={step.status === 'running'} completed={step.status === 'completed'}>
+                      <StepLabel>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
+                          {step.status === 'completed' ? <CheckCircleIcon color="success" /> :
+                           step.status === 'running' ? <CircularProgress size={20} /> :
+                           step.status === 'failed' ? <ErrorIcon color="error" /> : <InfoIcon />}
+                          {step.name}
+                        </Box>
+                      </StepLabel>
+                      <StepContent>
+                        {step.details && (
+                          <Typography variant="body2" color="text.secondary" sx={{ mb:  1 }}>
+                            {step.details}
+                          </Typography>
+                        )}
+                        {step.error && (
+                          <Alert severity="error" sx={{ mt:  1 }}>
+                            {step.error}
+                          </Alert>
+                        )}
+                        {step.duration && (
+                          <Typography variant="caption" color="text.secondary">
+                            Duration: {step.duration}ms
+                          </Typography>
+                        )}
+                      </StepContent>
+                    </Step>
+                  ))}
+                </Stepper>
+              </CardContent>
+            </Card>
+          )}
+        </Box>
+      )}
+
+      {/* Feature Flags Tab */}
+      {activeTab === 4 && (
+        <Box sx={{ mt:  3 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb:  3 }}>
+            <Box>
+              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                🚀 Feature Flag Management
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Manage feature flags for deployed components with publish/revert capabilities
+              </Typography>
+            </Box>
+            <Box sx={{ display: 'flex', gap:  2 }}>
+              <Button
+                variant="outlined"
+                startIcon={<RefreshIcon />}
+                onClick={() => window.location.reload()}
+              >
+                Refresh
+              </Button>
+            </Box>
+          </Box>
+
+          <Grid container spacing={3}>
+            <Grid size={{ xs:  12, md:  8 }}>
+              <FeatureManagementWithPublish />
+            </Grid>
+            <Grid size={{ xs:  12, md:  4 }}>
+              <DeploymentStatusWidget 
+                 onOpenFeatureManagement={() => setActiveTab(4)}
+              />
+            </Grid>
+          </Grid>
+        </Box>
+      )}
+
+      {/* Health Check Dialog */}
+      <Dialog 
+         open={showHealthCheckDialog}
+        onClose={() => setShowHealthCheckDialog(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
+            <CheckCircleIcon />
+            System Health Check
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          {healthCheckLoading ? (
+            <Box sx={{ textAlign: 'center', py:  4 }}>
+              <CircularProgress size={48} />
+              <Typography sx={{ mt:  2 }}>Running comprehensive health check...</Typography>
+            </Box>
+          ) : systemHealth ? (
+            <Box>
+              <Alert 
+                severity={systemHealth.overall === 'healthy' ? 'success' : 
+                         systemHealth.overall === 'degraded' ? 'warning' : 'error'}
+                sx={{ mb:  2 }}
+              >
+                System Status: {systemHealth.overall.toUpperCase()}
+              </Alert>
+              <Typography variant="body2" color="text.secondary">
+                {systemHealth.successfulEndpoints} out of {systemHealth.totalEndpoints} endpoints are healthy
+              </Typography>
+            </Box>
+          ) : null}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowHealthCheckDialog(false)}>
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Rollback Dialog */}
+      <Dialog 
+         open={showRollbackDialog}
+        onClose={() => setShowRollbackDialog(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
+            <RefreshIcon />
+            Rollback Deployment
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body1" sx={{ mb:  2 }}>
+            Rollback {rollbackTarget} to a previous version?
+          </Typography>
+          <TextField
+            fullWidth
+            label="Version to rollback to"
+            placeholder="e.g., v1.2.3"
+            value={rollbackTarget}
+            onChange={(e) => setRollbackTarget(e.target.value)}
+            sx={{ mb:  2 }}
+          />
+          <Alert severity="warning" sx={{ mb:  2 }}>
+            This action will undo recent changes and may cause data loss. Please ensure you have backups.
+          </Alert>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowRollbackDialog(false)}>
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            color="warning"
+            onClick={() => {
+              handleRollbackDeployment(rollbackTarget, 'v1.0.0');
+              setShowRollbackDialog(false);
+            }}
+            sx={theming.getThemedButtonSx()}
+            disabled={rollbackDeploymentMutation.isPending}
+          >
+            {rollbackDeploymentMutation.isPending ? 'Rolling back...': 'Rollback'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+      </Box>
+    </ErrorBoundary>
+  );
+});
+
+export default CompleteDeploymentManager;

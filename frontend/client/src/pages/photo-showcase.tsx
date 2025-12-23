@@ -1,0 +1,20 @@
+import { useTheming } from '../utils/theming-helper';
+import React from 'react';
+import { Box } from '@mui/material';
+import UniversalShowcase from '../components/universal/UniversalShowcase';
+
+export default function PhotoShowcase() {
+  // Theming system
+  const theming = useTheming('photographer');
+  return (
+    <Box sx={{ minHeight: '100vh',}}>
+      <UniversalShowcase
+        profession="photographer"
+        userId="user?.id || user?.email ||'unknown-user'"
+        isOwner={true}
+        compact={false}
+        maxItems={20}
+      />
+    </Box>
+  );
+}

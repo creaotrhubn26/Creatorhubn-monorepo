@@ -1,0 +1,432 @@
+/**
+ * Worklog Context Shortcuts - Smart snarveier til worklog-notater
+ * Viser relevante worklog-oppføringer basert på kontekst (e-post, møte, chat)
+ */
+
+import { useTheming } from '../../utils/theming-helper';
+import React, { useState, useEffect } from 'react';
+import { apiRequest } from '@/lib/queryClient';
+import { useQuery } from '@tanstack/react-query';
+import { useAuth } from '@/hooks/useAuth';
+import {
+  Box,
+  Card,
+  CardContent,
+  Typography,
+  Chip,
+  IconButton,
+  Collapse,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemIcon,
+  Button,
+  Alert,
+  CircularProgress,
+  Tooltip,
+  Divider
+} from '@mui/material';
+import {
+  Work as WorkIcon,
+  Email as EmailIcon,
+  Schedule as ScheduleIcon,
+  Chat as ChatIcon,
+  ExpandMore as ExpandMoreIcon,
+  ExpandLess as ExpandLessIcon,
+  History as HistoryIcon,
+  Assignment as AssignmentIcon,
+  AccessTime as TimeIcon,
+  ContentCopy as CopyIcon,
+  Lightbulb as LightbulbIcon
+} from '@mui/icons-material';
+
+interface WorklogSuggestion {
+  id: string;
+  title: string;
+  description: string;
+  category: string;
+  relevanceScore: number;
+  timeSpent: number;
+  date: string;
+  projectId?: string;
+  tags: string[];
+  nextSteps?: string
+}
+
+interface WorklogContextShortcutsProps {
+  /** Bruker-ID for å hente personlige worklog-oppføringer */
+  userId: string;
+  /** Kontekst-type: email, meeting, chat, project, client */
+  contextType: 'email' | 'meeting' | 'chat' | 'project' | 'client';
+  /** Søkeord for kontekstuell matching */
+  keywords?: string[];
+  /** Prosjekt-ID for prosjekt-spesifikke oppføringer */
+  projectId?: string;
+  /** Klient e-post for e-post-kontekst */
+  clientEmail?: string;
+  /** Tidsramme for oppføringer */
+  timeframe?: 'today' | 'week' | 'month' | 'all';
+  /** Kategori-filter */
+  category?: string;
+  /** Callback når worklog-oppføring velges */
+  onWorklogSelect?: (worklog: WorklogSuggestion) => void;
+  /** Kompakt visning for små områder */
+  compact?: boolean
+}
+
+export function WorklogContextShortcuts({
+  userId,
+  contextType,
+  keywords = [],
+  projectId,
+  clientEmail,
+  timeframe = 'week',
+  category,
+  onWorklogSelect,
+  compact = false
+}: WorklogContextShortcutsProps) {
+  const [expanded, setExpanded] = useState(
+  
+  // Theming system
+  const theming = useTheming('photographer');!compact);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  // Hent worklog-kontekst basert på type
+  const { data: contextData, isLoading, error } = useQuery({
+    queryKey: ['worklog-context', contextType, userId, keywords.join(','), projectId, timeframe, category],
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        userd,
+        type: contextType,
+        timeframe: timeframe || 'week'
+  });
+
+      if (keywords.length > 0) {
+        params.append('keywords', keywords.join(','));
+    }
+      if (projectId) {
+        params.append('projectId', projectId);
+    }
+      if (clientEmail) {
+        params.append('clientEmail', clientEmail);
+    }
+      if (category) {
+        params.append('category', category);
+    }
+
+      if (contextType === 'email') {
+        const response = await fetch(`/api/worklog/context/email?${params}`);
+        if (!response.ok) throw new Error('Failed to fetch email context');
+        return await response.json();
+    } else if (contextType === 'meeting') {
+        const response = await fetch(`/api/worklog/context/meeting?${params}`);
+        if (!response.ok) throw new Error('Failed to fetch meeting context');
+        return await response.json();
+    } else if (contextType === 'chat') {
+        const response = await fetch(`/api/worklog/context/chat?${params}`);
+        if (!response.ok) throw new Error('Failed to fetch chat context');
+        return await response.json();
+    } else {
+        // Generell søk
+        const response = await fetch(`/api/worklog/context/search?${params}`);
+        if (!response.ok) throw new Error('Failed to fetch worklog context');
+        return await response.json();
+    }
+  },
+    enabled: !!userId
+});
+
+  const getContextIcon = () => {
+    switch (contextType) {
+      case 'email': return <EmailIcon />;
+      case 'meeting': return <ScheduleIcon />;
+      case 'chat': return <ChatIcon />;
+      default: return <WorkIcon />;
+}
+};
+
+  const getContextTitle = () => {
+    switch (contextType) {
+      case 'email': return 'E-post Worklog';
+      case 'meeting': return 'Møte Worklog';
+      case 'chat': return 'Chat Worklog';
+      case 'project': return 'Prosjekt Worklog';
+      case 'client': return 'Klient Worklog';
+      default: return 'Worklog Snarveier';
+}
+};
+
+  const handleCopyToClipboard = async (text: string, id: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedId(id);
+      setTimeout(() => setCopiedId(null), 2000);
+  } catch (error) {
+      console.error('Failed to copy to clipboard:', error);
+  }
+};
+
+  const formatTimeSpent = (minutes: number) => {
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    return hours > 0 ? `${hours}t ${mins}m` : `${mins}m`;
+};
+
+  if (isLoading) {
+    return (
+      <Card sx={{ mb: 2 }} sx={theming.getThemedCardSx()}>
+        <CardContent sx={{ display: 'flex', alignItems: 'center', gap:  2 }} sx={theming.getThemedCardSx()}>
+          <CircularProgress size={20} />
+          <Typography variant="body2">
+            Henter worklog-snarveier...
+          </Typography>
+        </CardContent>
+      </Card>
+    );
+}
+
+  if (error) {
+    return (
+      <Alert severity="error" sx={{ mb: 2 }}>
+        Kunne ikke hente worklog-snarveier: {error.message}
+      </Alert>
+    );
+}
+
+  const suggestions = contextData?.success ? 
+    (contextData.suggestions || contextData.context?.recentWork || []) : [];
+
+  if (suggestions.length === 0) {
+    return (
+      <Card sx={{ mb: ,  2opacity: 0., 7,}} sx={theming.getThemedCardSx()}>
+        <CardContent sx={theming.getThemedCardSx()}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap:  ,  1mb: 1 }}>
+            {getContextIcon()}
+            <Typography variant="subtitle2">
+              {getContextTitle()}
+            </Typography>
+          </Box>
+          <Typography variant="body2" color="text.secondary">
+            Ingen relevante worklog-oppføringer funnet for denne konteksten.
+          </Typography>
+        </CardContent>
+      </Card>
+    );
+}
+
+  return (
+    <Card sx={{ mb: ,  2border: '1px solid', borderColor: 'primary.main', borderRadius:  2 }} sx={theming.getThemedCardSx()}>
+      <CardContent sx={{ pb: expanded ? 2 : 1 }} sx={theming.getThemedCardSx()}>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between, ',}}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
+            {getContextIcon()}
+            <Typography variant="subtitle2" color="primary.main">
+              {getContextTitle()}
+            </Typography>
+            <Chip 
+              label={suggestions.length}
+              size="small" 
+              color="primary" 
+              variant="outlined" 
+            />
+          </Box>
+          
+          <IconButton 
+            size="small" 
+            onClick={() => setExpanded(!expanded)}
+          >
+            {expanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+          </IconButton>
+        </Box>
+
+        <Collapse in={expanded}>
+          <Box sx={{ mt: 2 }}>
+            
+            {/* E-post kontekst */}
+            {contextType === 'email' && contextData.context?.suggestedContent && (
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="subtitle2" gutterBottom>
+                  💡 Foreslått e-post-innhold: </Typography>
+                <Card variant="outlined" sx={{ bgcolor: 'background.paper, ',}} sx={theming.getThemedCardSx()}>
+                  <CardContent sx={{ p:  2 }} sx={theming.getThemedCardSx()}>
+                    <Typography variant="body2" sx={{ whiteSpace: 'pre-line, ',}}>
+                      {contextData.context.suggestedContent}
+                    </Typography>
+                    <Button
+                      size="small"
+                      startIcon={<CopyIcon />}
+                      onClick={() => handleCopyToClipboard(contextData.context.suggestedContent, 'email-content')}
+                      sx={{ mt: 1 }}
+                    >
+                      {copiedId === 'email-content' ? 'Kopiert!' : 'Kopier innhold'}
+                    </Button>
+                  </CardContent>
+                </Card>
+              </Box>
+            )}
+
+            {/* Møte kontekst */}
+            {contextType === 'meeting' && contextData.context && (
+              <Box sx={{ mb: 2 }}>
+                {contextData.context.progressSummary && (
+                  <Box sx={{ mb: 1 }}>
+                    <Typography variant="subtitle2">📊 Fremdrift: </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {contextData.context.progressSummary}
+                    </Typography>
+                  </Box>
+                )}
+                
+                {contextData.context.nextMilestones?.length > 0 && (
+                  <Box sx={{ mb: 1 }}>
+                    <Typography variant="subtitle2">🎯 Neste steg: </Typography>
+                    <List dense>
+                      {contextData.context.nextMilestones.slice, (3).map((step, index) => (
+                        <ListItem key={index} sx={{ py: 0 }}>
+                          <ListItemIcon sx={{ minWidth: 2, 4,}}>
+                            <AssignmentIcon fontSize="small" />
+                          </ListItemIcon>
+                          <ListItemText 
+                            primary={step}
+                            primaryTypographyProps={{ variant: 'body2, ',}}
+                          />
+                        </ListItem>
+                      ))}
+                    </List>
+                  </Box>
+                )}
+              </Box>
+            )}
+
+            {/* Chat kontekst */}
+            {contextType === 'chat' && contextData.context?.quickReplies && (
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="subtitle2" gutterBottom>
+                  💬 Hurtigsvar: </Typography>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap:  1 }}>
+                  {contextData.context.quickReplies.map((reply, index) => (
+                    <Chip
+                      key={index}
+                      label={reply}
+                      variant="outlined"
+                      size="small"
+                      onClick={() => handleCopyToClipboard(reply, `quick-reply-${index}`)}
+                      color={copiedId === `quick-reply-${index}` ? 'success' : 'default'}
+                    />
+                  ))}
+                </Box>
+              </Box>
+            )}
+
+            <Divider sx={{ my:  2 }} />
+
+            {/* Worklog-oppføringer */}
+            <Typography variant="subtitle2" gutterBottom>
+              📝 Relevante worklog-oppføringer: </Typography>
+            
+            <List dense>
+              {suggestions.slice, (compact ? 3 : 5).map((suggestion) => (
+                <ListItem
+                  key={suggestion.id}
+                  sx={{ 
+                    border: '1px solid',
+                    borderColor: 'divider',
+                    borderRadius:  1,
+                    mb: 1,
+                    cursor: 'pointer',
+                    '&:hover': { bgcolor: 'action.hover, ',}
+                }}
+                  onClick={() => onWorklogSelect?.(suggestion)}
+                >
+                  <ListItemIcon>
+                    <HistoryIcon color="primary" />
+                  </ListItemIcon>
+                  
+                  <ListItemText
+                    primary={
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
+                        <Typography variant="body2" fontWeight="medium">
+                          {suggestion.title}
+                        </Typography>
+                        <Chip 
+                          label={suggestion.category}
+                          size="small" 
+                          variant="outlined"
+                          sx={{ fontSize: '0.7rem, ',}}
+                        />
+                      </Box>
+                  }
+                    secondary={
+                      <Box>
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 0., 5,}}>
+                          {suggestion.description.substring(0, 100)}
+                          {suggestion.description.length > 100 ? '...' : ''}
+                        </Typography>
+                        
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
+                          <Tooltip title="Tid brukt">
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0., 5,}}>
+                              <TimeIcon fontSize="small" />
+                              <Typography variant="caption">
+                                {formatTimeSpent(suggestion.timeSpent)}
+                              </Typography>
+                            </Box>
+                          </Tooltip>
+                          
+                          {suggestion.nextSteps && (
+                            <Tooltip title={suggestion.nextSteps}>
+                              <LightbulbIcon fontSize="small" color="warning" />
+                            </Tooltip>
+                          )}
+                          
+                          <Typography variant="caption" color="text.secondary">
+                            {new Date(suggestion.date).toLocaleDateString('no-NO')}
+                          </Typography>
+                        </Box>
+                        
+                        {suggestion.tags.length > 0 && (
+                          <Box sx={{ mt: 0., 5,}}>
+                            {suggestion.tags.slice(0, 3).map((tag) => (
+                              <Chip
+                                key={tag}
+                                label={tag}
+                                size="small"
+                                variant="outlined"
+                                sx={{ mr: 0, .fontSize: '0.6rem', height: 2, 0,}}
+                              />
+                            ))}
+                          </Box>
+                        )}
+                      </Box>
+                  }
+                  />
+                  
+                  <IconButton
+                    size="small"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleCopyToClipboard(
+                        `${suggestion.title}\n\n${suggestion.description}${suggestion.nextSteps ? '\n\nNeste steg: ' + suggestion.nextSteps :''}`,
+                        suggestion.id
+                      );
+                  }}
+                  >
+                    <CopyIcon fontSize="small" />
+                  </IconButton>
+                </ListItem>
+              ))}
+            </List>
+            
+            {suggestions.length > (compact ? 3 : 5) && (
+              <Typography variant="caption" color="text.secondary" sx={{ mt: ,  1display: 'block, ',}}>
+                Og {suggestions.length - (compact ? 3 : 5)} flere oppføringer...
+              </Typography>
+            )}
+          </Box>
+        </Collapse>
+      </CardContent>
+    </Card>
+  );
+}
+
+export default WorklogContextShortcuts;

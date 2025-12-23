@@ -1,0 +1,272 @@
+import { useTheming } from '../../utils/theming-helper';
+import React, { useState, useEffect } from 'react';
+import {
+  Box,
+  Typography,
+  Button,
+  Card,
+  CardContent,
+  Grid,
+  LinearProgress,
+  Alert,
+  Chip,
+  List,
+  ListItem,
+  ListItemIcon,
+  ListItemText
+} from '@mui/material';
+import {
+  Storage,
+  CloudUpload,
+  CheckCircle,
+  Warning,
+  SdCard,
+  Folder,
+  Backup
+} from '@mui/icons-material';
+
+interface MemoryCardStatus {
+  id: string;
+  name: string;
+  capacity: string;
+  used: string;
+  health: 'good' | 'warning' | 'critical';
+  filesCount: number;
+  backupStatus: 'none' | 'in-progress' | 'completed' | 'failed';
+  lastBackup?: string
+}
+
+const MOCK_MEMORY_CARDS: MemoryCardStatus[] = [
+  {
+    id: 'sd',
+    name: 'SanDisk Extreme Pro 128G',
+    capacity: '128G',
+    used: '87G',
+    health: 'good',
+    filesCount: 32,
+    backupStatus: 'completed',
+    lastBackup: '2025-01-09T10:30:00'
+},
+  {
+    id: 'sd',
+    name: 'Lexar Professional 64G',
+    capacity: '64G',
+    used: '45G',
+    health: 'warning',
+    filesCount: 18,
+    backupStatus: 'none'
+},
+  {
+    id: 'cf',
+    name: 'SanDisk Extreme CF 256G',
+    capacity: '256G',
+    used: '203G',
+    health: 'good',
+    filesCount: 57,
+    backupStatus: 'in-progress'
+}
+];
+
+const MemoryCardBackupTest: React.FC = () => {
+  const [memoryCards, setMemoryCards] = useState<MemoryCardStatus[]>(MOCK_MEMORY_CARDS);
+  const [isScanning, setIsScanning] = useState(
+  
+  // Theming system
+  const theming = useTheming('photographer');false);
+
+  const handleScanCards = () => {
+    setIsScanning(true);
+    // Simulate scanning process
+    setTimeout(() => {
+      setIsScanning(false);
+  }, 2000);
+};
+
+  const handleBackupCard = (cardId: string) => {
+    setMemoryCards(prev => prev.map(card => 
+      card.id === cardId 
+        ? { ...card, backupStatus: 'in-progress, ',}
+        : card
+    ));
+
+    // Simulate backup process
+    setTimeout(() => {
+      setMemoryCards(prev => prev.map(card => 
+        card.id === cardId 
+          ? { 
+              ...card, 
+              backupStatus: 'completed',
+              lastBackup: new Date().toISOString()
+        }
+          : card
+      ));
+  }, 3000);
+};
+
+  const getHealthColor = (health: string) => {
+    switch (health) {
+      case 'good': return 'success';
+      case 'warning': return 'warning';
+      case 'critical': return 'error';
+      default: return 'default';
+}
+};
+
+  const getBackupStatusColor = (status: string) => {
+    switch (status) {
+      case 'completed': return 'success';
+      case 'in-progress': return 'info';
+      case 'failed': return 'error';
+      default: return 'default';
+}
+};
+
+  const formatBackupTime = (timestamp?: string) => {
+    if (!timestamp) return 'Aldri';
+    return new Date(timestamp).toLocaleString('no-NO', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+});
+};
+
+  return (
+    <Box sx={{ p:  2 }}>
+      <Typography variant="h5" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap:  1 }} sx={{ ...{}, color: theming.colors.primary }}>
+        {theming.getThemedIcon('storage')} Minnekort Backup Test
+      </Typography>
+      
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+        Automatisk backup og gjenoppretting av minnekort for norske fotografer
+      </Typography>
+
+      <Box sx={{ mb: 3, display: 'flex', gap:  2 }}>
+        <Button variant="contained"
+          startIcon={<SdCard sx={theming.getThemedButtonSx()}>}
+          onClick={handleScanCards}
+          disabled={isScanning}
+          sx={{ bgcolor: '#ff6b35, ',}}
+        >
+          {isScanning ? 'Skanner...' : 'Skann Minnekort'}
+        </Button>
+        
+        <Button
+          variant="outlined"
+          startIcon={<Backup />}
+          onClick={() => memoryCards.forEach(card => handleBackupCard(card.id))}
+        >
+          Backup Alle
+        </Button>
+      </Box>
+
+      {isScanning && (
+        <Card sx={{ mb: 3 }} sx={theming.getThemedCardSx()}>
+          <CardContent sx={theming.getThemedCardSx()}>
+            <Typography variant="h6" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>
+              Skanner tilkoblede minnekort...
+            </Typography>
+            <LinearProgress sx={{ mt: 1 }} />
+          </CardContent>
+        </Card>
+      )}
+
+      <Grid container spacing={3}>
+        {memoryCards.map((card) => {
+          const usedPercentage = (parseInt(card.used) / parseInt(card.capacity)) * 100;
+          
+          return (
+            <Grid item xs={12} md={6} lg={4} key={card.id}>
+              <Card sx={theming.getThemedCardSx()}>
+                <CardContent sx={theming.getThemedCardSx()}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
+                    <Typography variant="h6" sx={{ fontSize: '1rem, ',}} sx={{ ...{}, color: theming.colors.primary }}>
+                      {card.name}
+                    </Typography>
+                    <Chip 
+                      label={card.health}
+                      size="small" 
+                      color={getHealthColor(card.health) as any}
+                    />
+                  </Box>
+                  
+                  <Typography variant="body2" color="text.secondary" gutterBottom>
+                    {card.used} av {card.capacity} brukt ({Math.round(usedPercentage)}%)
+                  </Typography>
+                  
+                  <LinearProgress 
+                    variant="determinate" 
+                    value={usedPercentage}
+                    sx={{ mb: ,  2height:  8, borderRadius:  4 }}
+                  />
+
+                  <List dense>
+                    <ListItem>
+                      <ListItemIcon>
+                        <Folder fontSize="small" />
+                      </ListItemIcon>
+                      <ListItemText 
+                        primary={`${card.filesCount} filer`}
+                        secondary="Totalt på kortet"
+                      />
+                    </ListItem>
+                  </List>
+
+                  <Box sx={{ mt: 2 }}>
+                    <Typography variant="subtitle2" gutterBottom>
+                      Backup Status: </Typography>
+                    
+                    <Chip 
+                      label={card.backupStatus === 'none' ? 'Ikke backupet' : 
+                             card.backupStatus === 'in-progress' ? 'Pågår...' :
+                             card.backupStatus === 'completed' ? 'Fullført' : 'Feilet'}
+                      size="small"
+                      color={getBackupStatusColor(card.backupStatus) as any}
+                      sx={{ mb: 1 }}
+                    />
+                    
+                    {card.lastBackup && (
+                      <Typography variant="caption" display="block" color="text.secondary">
+                        Sist: {formatBackupTime(card.lastBackup)}
+                      </Typography>
+                    )}
+                  </Box>
+
+                  {card.backupStatus === 'in-progress' && (
+                    <LinearProgress sx={{ mt: 2 }} />
+                  )}
+
+                  {card.backupStatus !== 'in-progress' && (
+                    <Button variant="contained"
+                      size="small"
+                      fullWidth
+                      startIcon={theming.getThemedIcon('cloudUpload')}
+                      onClick={() = sx={theming.getThemedButtonSx()}> handleBackupCard(card.id)}
+                      sx={{ mt: ,  2bgcolor: '#ff6b35, ',}}
+                    >
+                      Start Backup
+                    </Button>
+                  )}
+                </CardContent>
+              </Card>
+            </Grid>
+          );
+      })}
+      </Grid>
+
+      {memoryCards.some(card => card.health === 'warning' || card.health === 'critical') && (
+        <Alert severity="warning" sx={{ mt: 3 }}>
+          <Typography variant="subtitle2" gutterBottom>
+            Advarsel: Noen minnekort trenger oppmerksomhet
+          </Typography>
+          <Typography variant="body2">
+            Minnekort med advarsler eller kritisk status bør sjekkes og eventuelt erstattes for å unngå tap av data.
+          </Typography>
+        </Alert>
+     ,  , )}
+    </Box>
+  );
+};
+
+export default MemoryCardBackupTest;

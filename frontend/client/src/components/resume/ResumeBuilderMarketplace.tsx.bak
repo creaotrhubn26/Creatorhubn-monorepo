@@ -1,0 +1,336 @@
+/**
+ * CreatorHub Marketplace - Marketplace Component
+ * Displays CreatorHub apps and tools in the marketplace
+ */
+
+import React from 'react';
+import {
+  Box,
+  Card,
+  CardContent,
+  Typography,
+  Button,
+  Chip,
+  Stack,
+  Divider,
+  List,
+  ListItem,
+  ListItemIcon,
+  ListItemText,
+  Grid,
+} from '@mui/material';
+import {
+  Description as DocumentIcon,
+  AutoAwesome as AIIcon,
+  Assessment as AnalyzeIcon,
+  CloudUpload as UploadIcon,
+  History as VersionIcon,
+  DriveFolderUpload as DriveIcon,
+  LinkedIn as LinkedInIcon,
+  CheckCircle as CheckIcon,
+  Star as StarIcon,
+} from '@mui/icons-material';
+
+interface CreatorHubMarketplaceProps {
+  onSelect?: () => void;
+  showPricing?: boolean;
+}
+
+export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
+  onSelect,
+  showPricing = true,
+}) => {
+  const features = [
+    { icon: <DocumentIcon />, text: '7+ profesjonelle CV-maler (norsk-optimalisert)' },
+    { icon: <AIIcon />, text: 'AI-assistert CV-skriving og forbedring' },
+    { icon: <AnalyzeIcon />, text: 'ATS-optimalisering for søknadsportaler' },
+    { icon: <UploadIcon />, text: 'Auto-import av fullførte prosjekter' },
+    { icon: <VersionIcon />, text: 'Versjonskontroll og autosave' },
+    { icon: <DriveIcon />, text: 'Google Drive-integrasjon for portefølje' },
+    { icon: <LinkedInIcon />, text: 'LinkedIn import og synkronisering' },
+  ];
+
+  return (
+    <Card
+      sx={{
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        border: '1px solid #212a3a',
+        borderRadius: 3,
+        overflow: 'hidden',
+        background: '#121722',
+        boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.04)',
+        '&:hover': {
+          boxShadow: '0 8px 24px rgba(255, 140, 0, 0.15)',
+          transform: 'translateY(-4px)',
+          transition: 'all 0.3s ease',
+          borderColor: '#ff8c00',
+        },
+      }}
+    >
+      {/* Header with Brand Kit */}
+      <Box
+        sx={{
+          background: 'linear-gradient(135deg, #ff8c00 0%, #14b8a6 100%)',
+          p: 3,
+          color: '#fff',
+        }}
+      >
+        <Stack direction="row" spacing={2} alignItems="center">
+          {/* App Icon - Storefront Grid Style */}
+          <Box
+            sx={{
+              width: 64,
+              height: 64,
+              borderRadius: 2,
+              background: '#0b0d12',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              border: '1px solid #2a3347',
+              position: 'relative',
+            }}
+          >
+            {/* Grid Icon */}
+            <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 0.5 }}>
+              <Box sx={{ width: 14, height: 14, borderRadius: 1.5, background: 'linear-gradient(135deg, #ff8c00 0%, #14b8a6 100%)' }} />
+              <Box sx={{ width: 14, height: 14, borderRadius: 1.5, background: 'linear-gradient(135deg, #ff8c00 0%, #14b8a6 100%)', opacity: 0.9 }} />
+              <Box sx={{ width: 14, height: 14, borderRadius: 1.5, background: 'linear-gradient(135deg, #ff8c00 0%, #14b8a6 100%)', opacity: 0.82 }} />
+              <Box sx={{ width: 14, height: 14, borderRadius: 1.5, background: 'linear-gradient(135deg, #ff8c00 0%, #14b8a6 100%)', opacity: 0.86 }} />
+              <Box sx={{ width: 14, height: 14, borderRadius: 1.5, background: '#121722' }} />
+              <Box sx={{ width: 14, height: 14, borderRadius: 1.5, background: '#121722' }} />
+              <Box sx={{ width: 14, height: 14, borderRadius: 1.5, background: 'linear-gradient(135deg, #ff8c00 0%, #14b8a6 100%)', opacity: 0.76 }} />
+              <Box sx={{ width: 14, height: 14, borderRadius: 1.5, background: '#121722' }} />
+              <Box sx={{ width: 14, height: 14, borderRadius: 1.5, background: '#121722' }} />
+            </Box>
+          </Box>
+
+          {/* Title & Description */}
+          <Box sx={{ flex: 1 }}>
+            <Typography
+              variant="h5"
+              sx={{
+                fontFamily: 'Poppins, sans-serif',
+                fontWeight: 700,
+                mb: 0.5,
+                fontSize: '1.5rem',
+              }}
+            >
+              ResumeBuilder
+            </Typography>
+            <Typography
+              variant="body2"
+              sx={{
+                opacity: 0.9,
+                fontFamily: 'Inter, sans-serif',
+                fontSize: '0.875rem',
+              }}
+            >
+              Lag profesjonelle CV-er med AI-assistanse, ATS-optimalisering og automatisk prosjekt-import
+            </Typography>
+          </Box>
+
+          {/* Badges */}
+          <Stack spacing={1}>
+            <Chip
+              label="Premium"
+              size="small"
+              sx={{
+                background: '#131a27',
+                border: '1px solid #2a3347',
+                color: '#cbd6ea',
+                fontWeight: 600,
+                fontSize: '0.75rem',
+              }}
+            />
+            <Chip
+              icon={<StarIcon sx={{ color: '#ff8c00 !important' }} />}
+              label="4.9/5"
+              size="small"
+              sx={{
+                background: '#131a27',
+                border: '1px solid #2a3347',
+                color: '#cbd6ea',
+                fontWeight: 600,
+                fontSize: '0.75rem',
+              }}
+            />
+          </Stack>
+        </Stack>
+      </Box>
+
+      {/* Features */}
+      <CardContent sx={{ flex: 1, p: 3, background: '#121722' }}>
+        <Typography
+          variant="h6"
+          gutterBottom
+          sx={{
+            fontFamily: 'Poppins, sans-serif',
+            fontWeight: 600,
+            mb: 2,
+            color: '#e5e7eb',
+            fontSize: '1.125rem',
+          }}
+        >
+          Hovedfunksjoner
+        </Typography>
+
+        <List sx={{ mb: 2 }}>
+          {features.map((feature, index) => (
+            <ListItem key={index} sx={{ px: 0, py: 0.5 }}>
+              <ListItemIcon sx={{ minWidth: 36, color: '#ff8c00' }}>
+                {feature.icon}
+              </ListItemIcon>
+              <ListItemText
+                primary={feature.text}
+                primaryTypographyProps={{
+                  fontFamily: 'Inter, sans-serif',
+                  fontSize: '0.875rem',
+                  color: '#9aa6bf',
+                }}
+              />
+            </ListItem>
+          ))}
+        </List>
+
+        <Divider sx={{ my: 2, borderColor: '#212a3a' }} />
+
+        {/* Key Benefits */}
+        <Box sx={{ mb: 2 }}>
+          <Typography
+            variant="subtitle2"
+            gutterBottom
+            sx={{
+              fontFamily: 'Poppins, sans-serif',
+              fontWeight: 600,
+              color: '#e5e7eb',
+              fontSize: '0.875rem',
+            }}
+          >
+            Hvorfor velge ResumeBuilder?
+          </Typography>
+          <Typography
+            variant="body2"
+            sx={{ fontFamily: 'Inter, sans-serif', lineHeight: 1.7, color: '#9aa6bf', fontSize: '0.8125rem' }}
+          >
+            ✓ <strong style={{ color: '#e5e7eb' }}>Norsk-optimalisert</strong> - Maler og innhold tilpasset norsk arbeidsmarked<br />
+            ✓ <strong style={{ color: '#e5e7eb' }}>AI-assistert</strong> - Smart forslag for å forbedre CV-en din<br />
+            ✓ <strong style={{ color: '#e5e7eb' }}>ATS-kompatibel</strong> - Optimalisert for søknadsportaler som Finn.no og NAV<br />
+            ✓ <strong style={{ color: '#e5e7eb' }}>Automatisk import</strong> - Fullførte prosjekter legges automatisk til CV-en<br />
+            ✓ <strong style={{ color: '#e5e7eb' }}>Versjonskontroll</strong> - Lagre og gjenopprett tidligere versjoner
+          </Typography>
+        </Box>
+
+        {showPricing && (
+          <>
+            <Divider sx={{ my: 2, borderColor: '#212a3a' }} />
+            
+            {/* Pricing */}
+            <Box sx={{ mb: 2 }}>
+              <Typography
+                variant="subtitle2"
+                gutterBottom
+                sx={{
+                  fontFamily: 'Poppins, sans-serif',
+                  fontWeight: 600,
+                  color: '#e5e7eb',
+                  fontSize: '0.875rem',
+                }}
+              >
+                Prismodell
+              </Typography>
+              <Grid container spacing={2}>
+                <Grid item xs={6}>
+                  <Box
+                    sx={{
+                      p: 2,
+                      borderRadius: 2,
+                      border: '1px solid #2a3347',
+                      textAlign: 'center',
+                      background: '#0b1018',
+                    }}
+                  >
+                    <Typography
+                      variant="h6"
+                      sx={{
+                        fontFamily: 'Poppins, sans-serif',
+                        fontWeight: 700,
+                        color: '#e5e7eb',
+                        fontSize: '1rem',
+                      }}
+                    >
+                      Gratis
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: '#9aa6bf', fontSize: '0.75rem' }}>
+                      Grunnleggende funksjoner
+                    </Typography>
+                  </Box>
+                </Grid>
+                <Grid item xs={6}>
+                  <Box
+                    sx={{
+                      p: 2,
+                      borderRadius: 2,
+                      border: '1px solid #ff8c00',
+                      textAlign: 'center',
+                      background: 'rgba(255, 140, 0, 0.05)',
+                    }}
+                  >
+                    <Typography
+                      variant="h6"
+                      sx={{
+                        fontFamily: 'Poppins, sans-serif',
+                        fontWeight: 700,
+                        color: '#ff8c00',
+                        fontSize: '1rem',
+                      }}
+                    >
+                      149 kr/mnd
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: '#9aa6bf', fontSize: '0.75rem' }}>
+                      Pro med AI-verktøy
+                    </Typography>
+                  </Box>
+                </Grid>
+              </Grid>
+            </Box>
+          </>
+        )}
+      </CardContent>
+
+      {/* CTA Button */}
+      <Box sx={{ p: 3, pt: 0, background: '#121722' }}>
+        <Button
+          fullWidth
+          variant="contained"
+          size="large"
+          onClick={onSelect}
+          sx={{
+            background: 'linear-gradient(135deg, #ff8c00 0%, #14b8a6 100%)',
+            color: '#fff',
+            fontFamily: 'Poppins, sans-serif',
+            fontWeight: 600,
+            fontSize: '0.9375rem',
+            py: 1.5,
+            borderRadius: 2,
+            textTransform: 'none',
+            boxShadow: '0 4px 12px rgba(255, 140, 0, 0.2)',
+            '&:hover': {
+              background: 'linear-gradient(135deg, #ff8c00 0%, #14b8a6 100%)',
+              opacity: 0.9,
+              transform: 'translateY(-2px)',
+              boxShadow: '0 6px 16px rgba(255, 140, 0, 0.3)',
+            },
+          }}
+          startIcon={<CheckIcon />}
+        >
+          Start med ResumeBuilder
+        </Button>
+      </Box>
+    </Card>
+  );
+};
+
+export default CreatorHubMarketplace;
+

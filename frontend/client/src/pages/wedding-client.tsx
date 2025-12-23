@@ -1,0 +1,54 @@
+import { useTheming } from '../utils/theming-helper';
+import React, { useState } from 'react';
+import { useParams } from 'wouter';
+import WeddingTimelineClientView from '@/components/wedding-timeline-client-view';
+import WeddingCodeEntry from '@/components/wedding-code-entry';
+import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
+
+export default function WeddingClient() {
+  const { profession } = useProfessionAdapter();
+  // Theming system - use dynamic profession
+  const theming = useTheming(profession || 'photographer');
+  const { projectId } = useParams<{ projectId: string }>();
+  const [accessToken, setAccessToken] = useState<string | null>(null);
+
+  if (!projectId) {
+    return (
+      <div
+        style={{
+          minHeight: '100vh',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          background: 'linear-gradient(135deg, #ff9a9e 0%, #fecfef 50%, #fecfef 100%)',
+          padding: '20px',
+      }}
+      >
+        <div
+          style={{
+            background: 'white',
+            padding: '40px',
+            borderRadius: '12px',
+            textAlign: 'center',
+            maxWidth: '400px',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.1)',
+        }}
+        >
+          <h2 style={{ color: '#d81b60', marginBottom: '16px' }}>Ugyldig lenke</h2>
+          <p style={{ color: '#666', marginBottom: '24px' }}>
+            Lenken er ugyldig eller mangler prosjekt-informasjon. Kontakt fotografen din for en ny
+            lenke.
+          </p>
+        </div>
+      </div>
+    );
+}
+
+  // Show code entry if no valid access token
+  if (!accessToken) {
+    return <WeddingCodeEntry projectId={projectId} onValidCode={setAccessToken} />;
+}
+
+  // Show timeline if valid access token
+  return <WeddingTimelineClientView accessToken={accessToken} projectId={projectId} />;
+}

@@ -1,0 +1,11 @@
+{
+  "recommendations": [
+    // OAuth Scope Validator - Update to latest version
+    // Search for "OAuth Scope Validator" in VS Code Extensions marketplace
+    // Or use: code --install-extension <extension-id>
+  ],
+  "unwantedRecommendations": []
+}
+
+
+

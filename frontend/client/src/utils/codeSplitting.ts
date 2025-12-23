@@ -1,0 +1,359 @@
+/**
+ * Code Splitting Utilities
+ * Implements dynamic imports and code splitting for better bundle management
+ */
+
+import React, { ComponentType, LazyExoticComponent } from 'react';
+
+// Code splitting configuration
+export interface CodeSplittingConfig {
+  chunkName: string;
+  priority: 'high' | 'medium' | 'low';
+  preload: boolean;
+  prefetch: boolean;
+  fallback?: ComponentType<any>;
+}
+
+// Chunk loading status
+export interface ChunkStatus {
+  loaded: boolean;
+  loading: boolean;
+  error: Error | null;
+  loadTime: number;
+}
+
+// Code splitting manager
+class CodeSplittingManager {
+  private chunks: Map<string, ChunkStatus> = new Map();
+  private loadedChunks: Set<string> = new Set();
+  private loadingChunks: Set<string> = new Set();
+
+  // Register a chunk
+  registerChunk(chunkName: string, config: CodeSplittingConfig) {
+    this.chunks.set(chunkName, {
+      loaded: false,
+      loading: false,
+      error: null,
+      loadTime: 0
+  });
+
+    if (config.preload) {
+      this.preloadChunk(chunkName);
+  }
+}
+
+  // Load a chunk dynamically
+  async loadChunk<T = any>(
+    chunkName: string,
+    importFn: () => Promise<{ default: ComponentType<T> }>
+  ): Promise<ComponentType<T>> {
+    if (this.loadedChunks.has(chunkName)) {
+      return this.getLoadedChunk(chunkName);
+  }
+
+    if (this.loadingChunks.has(chunkName)) {
+      return this.waitForChunk(chunkName);
+  }
+
+    const startTime = performance.now();
+    this.loadingChunks.add(chunkName);
+    
+    const chunkStatus = this.chunks.get(chunkName);
+    if (chunkStatus) {
+      chunkStatus.loading = true;
+  }
+
+    try {
+      const module = await importFn();
+      const loadTime = performance.now() - startTime;
+      
+      this.loadedChunks.add(chunkName);
+      this.loadingChunks.delete(chunkName);
+      
+      if (chunkStatus) {
+        chunkStatus.loaded = true;
+        chunkStatus.loading = false;
+        chunkStatus.loadTime = loadTime;
+    }
+
+      return module.default;
+  } catch (error) {
+      this.loadingChunks.delete(chunkName);
+      
+      if (chunkStatus) {
+        chunkStatus.loading = false;
+        chunkStatus.error = error as Error;
+    }
+      
+      throw error;
+  }
+}
+
+  // Preload a chunk
+  async preloadChunk(chunkName: string) {
+    if (this.loadedChunks.has(chunkName) || this.loadingChunks.has(chunkName)) {
+      return;
+  }
+
+    try {
+      // This would be implemented based on your bundler
+      await import(/* webpackChunkName: "[request]" */ `../components/${chunkName}`);
+  } catch (error) {
+      console.warn(`Failed to preload chunk ${chunkName}:, `, error);
+  }
+}
+
+  // Prefetch a chunk
+  async prefetchChunk(chunkName: string) {
+    if (this.loadedChunks.has(chunkName) || this.loadingChunks.has(chunkName)) {
+      return;
+  }
+
+    try {
+      const link = document.createElement('link');
+      link.rel = 'prefetch';
+      link.href = `/static/js/${chunkName}.js`;
+      document.head.appendChild(link);
+  } catch (error) {
+      console.warn(`Failed to prefetch chunk ${chunkName}:`, error);
+  }
+}
+
+  // Get loaded chunk
+  private getLoadedChunk<T>(chunkName: string): ComponentType<T> {
+    // This would return the cached component
+    return null as any;
+}
+
+  // Wait for chunk to load
+  private async waitForChunk<T>(chunkName: string): Promise<ComponentType<T>> {
+    return new Promise((resolve, reject) => {
+      const checkInterval = setInterval(() => {
+        if (this.loadedChunks.has(chunkName)) {
+          clearInterval(checkInterval);
+          resolve(this.getLoadedChunk(chunkName));
+      } else if (this.chunks.get(chunkName)?.error) {
+          clearInterval(checkInterval);
+          reject(this.chunks.get(chunkName)?.error);
+      }
+    }, 100);
+
+      // Timeout after 10 seconds
+      setTimeout(() => {
+        clearInterval(checkInterval);
+        reject(new Error(`Chunk ${chunkName} failed to load within timeout`));
+    }, 10000);
+  });
+}
+
+  // Get chunk status
+  getChunkStatus(chunkName: string): ChunkStatus | undefined {
+    return this.chunks.get(chunkName);
+}
+
+  // Get all chunk statuses
+  getAllChunkStatuses(): Record<string, ChunkStatus> {
+    return Object.fromEntries(this.chunks);
+}
+
+  // Clear chunk cache
+  clearChunkCache() {
+    this.chunks.clear();
+    this.loadedChunks.clear();
+    this.loadingChunks.clear();
+}
+}
+
+// Global code splitting manager
+export const codeSplittingManager = new CodeSplittingManager();
+
+// Dynamic import utilities
+export const createLazyComponent = <T = any>(
+  chunkName: string,
+  importFn: () => Promise<{ default: ComponentType<T> }>,
+  config?: Partial<CodeSplittingConfig>
+): LazyExoticComponent<ComponentType<T>> => {
+  const fullConfig: CodeSplittingConfig = {
+    chunkName,
+    priority: 'medium',
+    preload: false,
+    prefetch: false,
+    ...config
+};
+
+  codeSplittingManager.registerChunk(chunkName, fullConfig);
+
+  return React.lazy(async () => {
+    const component = await codeSplittingManager.loadChunk(chunkName, importFn);
+    return { default: component };
+});
+};
+
+// Route-based code splitting
+export const createRouteChunk = (routeName: string, importFn: () => Promise<any>) => {
+  return createLazyComponent(
+    `route-${routeName}`,
+    importFn,
+    {
+      priority: 'high',
+      preload: true,
+      prefetch: true
+  }
+  );
+};
+
+// Feature-based code splitting
+export const createFeatureChunk = (featureName: string, importFn: () => Promise<any>) => {
+  return createLazyComponent(
+    `feature-${featureName}`,
+    importFn,
+    {
+      priority: 'medium',
+      preload: false,
+      prefetch: true
+  }
+  );
+};
+
+// Utility-based code splitting
+export const createUtilityChunk = (utilityName: string, importFn: () => Promise<any>) => {
+  return createLazyComponent(
+    `utility-${utilityName}`,
+    importFn,
+    {
+      priority: 'low',
+      preload: false,
+      prefetch: false
+  }
+  );
+};
+
+// Bundle analysis utilities
+export const analyzeBundle = () => {
+  const chunks = codeSplittingManager.getAllChunkStatuses();
+  const totalChunks = Object.keys(chunks).length;
+  const loadedChunks = Object.values(chunks).filter(chunk => chunk.loaded).length;
+  const loadingChunks = Object.values(chunks).filter(chunk => chunk.loading).length;
+  const errorChunks = Object.values(chunks).filter(chunk => chunk.error).length;
+  const averageLoadTime = Object.values(chunks)
+    .filter(chunk => chunk.loaded)
+    .reduce((sum, chunk) => sum + chunk.loadTime, 0) / loadedChunks || 0;
+
+  return {
+    totalChunks,
+    loadedChunks,
+    loadingChunks,
+    errorChunks,
+    averageLoadTime,
+    chunks
+};
+};
+
+// Performance monitoring for code splitting
+export const monitorCodeSplitting = () => {
+  const analysis = analyzeBundle();
+  
+  console.log('Code Splitting Analysis: ', {
+    totalChunks: analysis.totalChunks,
+    loadedChunks: analysis.loadedChunks,
+    loadingChunks: analysis.loadingChunks,
+    errorChunks: analysis.errorChunks,
+    averageLoadTime: `${analysis.averageLoadTime.toFixed(2)}ms`
+});
+
+  return analysis;
+};
+
+// Preload critical chunks
+export const preloadCriticalChunks = async () => {
+  const criticalChunks = [
+    'route-dashboard', 'route-editor','feature-authentication','utility-api'
+  ];
+
+  await Promise.all(
+    criticalChunks.map(chunkName => 
+      codeSplittingManager.preloadChunk(chunkName)
+    )
+  );
+};
+
+// Prefetch non-critical chunks
+export const prefetchNonCriticalChunks = async () => {
+  const nonCriticalChunks = [
+    'feature-analytics','feature-collaboration', 'utility-export', 'utility-import'
+  ];
+
+  await Promise.all(
+    nonCriticalChunks.map(chunkName => 
+      codeSplittingManager.prefetchChunk(chunkName)
+    )
+  );
+};
+
+// Smart loading based on user behavior
+export const smartLoadChunks = (userBehavior: 'active' | 'idle' | 'focused') => {
+  switch (userBehavior) {
+    case 'active':
+      // Load high-priority chunks immediately
+      preloadCriticalChunks();
+      break;
+    case 'idle':
+      // Prefetch non-critical chunks during idle time
+      prefetchNonCriticalChunks();
+      break;
+    case 'focused':
+      // Load chunks based on current focus
+      if (document.activeElement?.tagName === 'INPUT') {
+        codeSplittingManager.preloadChunk('feature-autocomplete');
+    }
+      break;
+}
+};
+
+// Bundle optimization recommendations
+export const getBundleOptimizationRecommendations = () => {
+  const analysis = analyzeBundle();
+  const recommendations = [];
+
+  if (analysis.averageLoadTime > 1000) {
+    recommendations.push({
+      type: 'performance',
+      message: 'Average chunk load time is high. Consider optimizing chunk sizes.',
+      priority: 'high'
+  });
+}
+
+  if (analysis.errorChunks > 0) {
+    recommendations.push({
+      type: 'reliability',
+      message: 'Some chunks failed to load. Check network connectivity and chunk integrity.',
+      priority: 'high'
+  });
+}
+
+  if (analysis.loadedChunks / analysis.totalChunks < 0.5) {
+    recommendations.push({
+      type: 'efficiency',
+      message: 'Low chunk utilization. Consider consolidating small chunks.',
+      priority:'medium'
+  });
+}
+
+  return recommendations;
+};
+
+export default {
+  codeSplittingManager,
+  createLazyComponent,
+  createRouteChunk,
+  createFeatureChunk,
+  createUtilityChunk,
+  analyzeBundle,
+  monitorCodeSplitting,
+  preloadCriticalChunks,
+  prefetchNonCriticalChunks,
+  smartLoadChunks,
+  getBundleOptimizationRecommendations
+};
+
+

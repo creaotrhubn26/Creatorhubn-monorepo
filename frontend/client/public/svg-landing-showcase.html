@@ -1,0 +1,976 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SVG Landing Page Utilities - Visual Showcase</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family:
+          -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell',
+          sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: 40px 20px;
+        min-height: 100vh;
+      }
+
+      .container {
+        max-width: 1400px;
+        margin: 0 auto;
+      }
+
+      h1 {
+        text-align: center;
+        color: white;
+        font-size: 3em;
+        margin-bottom: 20px;
+        text-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+      }
+
+      .subtitle {
+        text-align: center;
+        color: rgba(255, 255, 255, 0.9);
+        font-size: 1.2em;
+        margin-bottom: 50px;
+      }
+
+      .section {
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(10px);
+        border-radius: 20px;
+        padding: 40px;
+        margin-bottom: 40px;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      }
+
+      .section-title {
+        font-size: 2em;
+        color: #333;
+        margin-bottom: 30px;
+        padding-bottom: 15px;
+        border-bottom: 3px solid #667eea;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 30px;
+        margin-top: 30px;
+      }
+
+      .card {
+        background: white;
+        border-radius: 15px;
+        padding: 30px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+        transition:
+          transform 0.3s ease,
+          box-shadow 0.3s ease;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 15px 40px rgba(0, 0, 0, 0.2);
+      }
+
+      .card-title {
+        font-size: 1.3em;
+        color: #333;
+        margin-bottom: 15px;
+        font-weight: 600;
+      }
+
+      .card-description {
+        color: #666;
+        margin-bottom: 20px;
+        line-height: 1.6;
+      }
+
+      .demo-area {
+        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        border-radius: 10px;
+        padding: 30px;
+        min-height: 150px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+      }
+
+      .code-block {
+        background: #1e1e1e;
+        color: #d4d4d4;
+        padding: 20px;
+        border-radius: 10px;
+        font-family: 'Courier New', monospace;
+        font-size: 0.9em;
+        overflow-x: auto;
+        margin-top: 20px;
+      }
+
+      .code-block .keyword {
+        color: #569cd6;
+      }
+
+      .code-block .string {
+        color: #ce9178;
+      }
+
+      .code-block .number {
+        color: #b5cea8;
+      }
+
+      .code-block .comment {
+        color: #6a9955;
+      }
+
+      .feature-tag {
+        display: inline-block;
+        background: #667eea;
+        color: white;
+        padding: 5px 15px;
+        border-radius: 20px;
+        font-size: 0.85em;
+        margin-right: 10px;
+        margin-bottom: 10px;
+      }
+
+      .stats-container {
+        display: flex;
+        justify-content: space-around;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 30px;
+      }
+
+      .cta-demo {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+        align-items: center;
+      }
+
+      .cta-button {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 15px 40px;
+        border-radius: 10px;
+        border: none;
+        font-size: 1.1em;
+        font-weight: 600;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        transition: transform 0.3s ease;
+      }
+
+      .cta-button:hover {
+        transform: scale(1.05);
+      }
+
+      .profession-cards {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 20px;
+      }
+
+      .profession-card {
+        background: white;
+        border-radius: 15px;
+        padding: 25px;
+        text-align: center;
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+        position: relative;
+      }
+
+      .rating-demo {
+        text-align: center;
+      }
+
+      .testimonial-card {
+        background: #f8f9fa;
+        border-radius: 15px;
+        padding: 25px;
+        position: relative;
+      }
+
+      .decoration-demo {
+        background: linear-gradient(
+          135deg,
+          rgba(255, 140, 0, 0.1) 0%,
+          rgba(255, 140, 0, 0.05) 100%
+        );
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 140, 0, 0.3);
+        border-radius: 15px;
+        padding: 40px;
+        position: relative;
+        overflow: hidden;
+      }
+
+      @keyframes float {
+        0%,
+        100% {
+          transform: translateY(0px);
+        }
+        50% {
+          transform: translateY(-20px);
+        }
+      }
+
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.7;
+        }
+      }
+
+      .screenshot-note {
+        background: #fff3cd;
+        border: 1px solid #ffc107;
+        border-radius: 10px;
+        padding: 20px;
+        margin-top: 30px;
+        color: #856404;
+      }
+
+      .screenshot-note strong {
+        color: #664d03;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>🎨 SVG Landing Page Utilities</h1>
+      <p class="subtitle">Visual Showcase - All 12 Functions Demonstrated</p>
+
+      <!-- Hero Section -->
+      <div class="section">
+        <h2 class="section-title">🚀 Hero Section Utilities</h2>
+
+        <div class="grid">
+          <!-- New Badge -->
+          <div class="card">
+            <h3 class="card-title">1. createNewBadge()</h3>
+            <p class="card-description">Animated badge for highlighting new features</p>
+            <span class="feature-tag">Animated</span>
+            <span class="feature-tag">Gradient</span>
+
+            <div class="demo-area">
+              <svg width="60" height="24">
+                <defs>
+                  <linearGradient id="newBadgeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" style="stop-color: #ff6b35; stop-opacity: 1" />
+                    <stop offset="100%" style="stop-color: #ff6b35cc; stop-opacity: 1" />
+                  </linearGradient>
+                  <filter id="newBadgeShadow">
+                    <feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.3" />
+                  </filter>
+                </defs>
+                <rect
+                  x="0"
+                  y="0"
+                  width="60"
+                  height="24"
+                  rx="12"
+                  fill="url(#newBadgeGrad)"
+                  filter="url(#newBadgeShadow)"
+                >
+                  <animate
+                    attributeName="opacity"
+                    values="1;0.7;1"
+                    dur="2s"
+                    repeatCount="indefinite"
+                  />
+                </rect>
+                <text
+                  x="30"
+                  y="16"
+                  font-family="Arial, sans-serif"
+                  font-size="12"
+                  font-weight="bold"
+                  fill="white"
+                  text-anchor="middle"
+                >
+                  NY
+                </text>
+              </svg>
+            </div>
+
+            <div class="code-block">
+              <span class="keyword">const</span> badge =
+              <span class="keyword">landingUtils</span>.<span class="keyword">createNewBadge</span
+              >(<span class="number">0</span>, <span class="number">0</span>,
+              <span class="string">'NY'</span>, <span class="string">'#ff6b35'</span>);
+            </div>
+          </div>
+
+          <!-- Feature Highlight -->
+          <div class="card">
+            <h3 class="card-title">2. createFeatureHighlight()</h3>
+            <p class="card-description">Pulsing feature icon with glow effect</p>
+            <span class="feature-tag">3 Icons</span>
+            <span class="feature-tag">Pulsing</span>
+
+            <div class="demo-area">
+              <svg width="48" height="48" viewBox="0 0 24 24">
+                <defs>
+                  <filter id="featureGlow">
+                    <feGaussianBlur stdDeviation="2" result="coloredBlur" />
+                    <feMerge>
+                      <feMergeNode in="coloredBlur" />
+                      <feMergeNode in="SourceGraphic" />
+                    </feMerge>
+                  </filter>
+                </defs>
+                <circle cx="12" cy="12" r="11" fill="#4caf5015" filter="url(#featureGlow)">
+                  <animate attributeName="r" values="11;13;11" dur="2s" repeatCount="indefinite" />
+                </circle>
+                <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" fill="#4caf50" />
+              </svg>
+            </div>
+
+            <div class="code-block">
+              <span class="keyword">const</span> highlight =
+              <span class="keyword">landingUtils</span>.<span class="keyword"
+                >createFeatureHighlight</span
+              >(<span class="number">0</span>, <span class="number">0</span>,
+              <span class="number">48</span>, <span class="string">'check'</span>,
+              <span class="string">'#4caf50'</span>);
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Stats Display -->
+      <div class="section">
+        <h2 class="section-title">📊 Stats Display Utilities</h2>
+
+        <div class="grid">
+          <!-- Stat Counter -->
+          <div class="card">
+            <h3 class="card-title">3. createStatCounter()</h3>
+            <p class="card-description">Animated platform statistics counter</p>
+            <span class="feature-tag">3 Sizes</span>
+            <span class="feature-tag">Animated</span>
+
+            <div class="demo-area">
+              <div class="stats-container">
+                <svg width="150" height="62">
+                  <text
+                    x="75"
+                    y="32"
+                    font-family="Arial, sans-serif"
+                    font-size="32"
+                    font-weight="bold"
+                    fill="#ff8c00"
+                    text-anchor="middle"
+                  >
+                    1.5k+
+                    <animate
+                      attributeName="opacity"
+                      values="0.8;1;0.8"
+                      dur="3s"
+                      repeatCount="indefinite"
+                    />
+                  </text>
+                  <text
+                    x="75"
+                    y="56"
+                    font-family="Arial, sans-serif"
+                    font-size="14"
+                    fill="#6b7280"
+                    text-anchor="middle"
+                  >
+                    Aktive Brukere
+                  </text>
+                </svg>
+              </div>
+            </div>
+
+            <div class="code-block">
+              <span class="keyword">const</span> counter =
+              <span class="keyword">landingUtils</span>.<span class="keyword"
+                >createStatCounter</span
+              >(<span class="number">0</span>, <span class="number">0</span>,
+              <span class="string">'1.5k+'</span>, <span class="string">'Aktive Brukere'</span>,
+              <span class="string">'#ff8c00'</span>, <span class="string">'medium'</span>);
+            </div>
+          </div>
+
+          <!-- Stat Progress -->
+          <div class="card">
+            <h3 class="card-title">4. createStatProgress()</h3>
+            <p class="card-description">Animated progress bar</p>
+            <span class="feature-tag">Animated Fill</span>
+            <span class="feature-tag">Gradient</span>
+
+            <div class="demo-area">
+              <svg width="200" height="8">
+                <defs>
+                  <linearGradient id="statProgressGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" style="stop-color: #4caf50; stop-opacity: 0.5" />
+                    <stop offset="100%" style="stop-color: #4caf50; stop-opacity: 1" />
+                  </linearGradient>
+                </defs>
+                <rect x="0" y="0" width="200" height="8" rx="4" fill="#e0e0e0" />
+                <rect x="0" y="0" width="174" height="8" rx="4" fill="url(#statProgressGrad)">
+                  <animate attributeName="width" from="0" to="174" dur="1.5s" fill="freeze" />
+                </rect>
+              </svg>
+              <p style="margin-top: 10px; color: #666; font-size: 0.9em">87% Kundetilfredshet</p>
+            </div>
+
+            <div class="code-block">
+              <span class="keyword">const</span> progress =
+              <span class="keyword">landingUtils</span>.<span class="keyword"
+                >createStatProgress</span
+              >(<span class="number">0</span>, <span class="number">0</span>,
+              <span class="number">87</span>, <span class="number">200</span>,
+              <span class="number">8</span>, <span class="string">'#4caf50'</span>);
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Feature Cards -->
+      <div class="section">
+        <h2 class="section-title">💼 Feature Cards Utilities</h2>
+
+        <div class="grid">
+          <!-- Role Badge -->
+          <div class="card">
+            <h3 class="card-title">5. createRoleBadge()</h3>
+            <p class="card-description">Professional role icons</p>
+            <span class="feature-tag">4 Professions</span>
+            <span class="feature-tag">Custom Icons</span>
+
+            <div class="demo-area">
+              <div class="profession-cards">
+                <div class="profession-card">
+                  <svg width="64" height="64" viewBox="0 0 64 64">
+                    <defs>
+                      <linearGradient id="photoBadge" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" style="stop-color: #2e7d32dd; stop-opacity: 1" />
+                        <stop offset="100%" style="stop-color: #2e7d3288; stop-opacity: 1" />
+                      </linearGradient>
+                    </defs>
+                    <rect
+                      x="4"
+                      y="4"
+                      width="56"
+                      height="56"
+                      rx="12"
+                      fill="url(#photoBadge)"
+                      opacity="0.2"
+                    />
+                    <circle cx="32" cy="24" r="6" fill="#2e7d32" />
+                    <rect x="20" y="30" width="24" height="16" rx="2" fill="#2e7d32" />
+                    <circle cx="32" cy="38" r="4" fill="white" />
+                  </svg>
+                  <p style="margin-top: 10px; font-weight: 600">Fotograf</p>
+                </div>
+                <div class="profession-card">
+                  <svg width="64" height="64" viewBox="0 0 64 64">
+                    <defs>
+                      <linearGradient id="videoBadge" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" style="stop-color: #1565c0dd; stop-opacity: 1" />
+                        <stop offset="100%" style="stop-color: #1565c088; stop-opacity: 1" />
+                      </linearGradient>
+                    </defs>
+                    <rect
+                      x="4"
+                      y="4"
+                      width="56"
+                      height="56"
+                      rx="12"
+                      fill="url(#videoBadge)"
+                      opacity="0.2"
+                    />
+                    <rect x="16" y="20" width="32" height="24" rx="2" fill="#1565c0" />
+                    <polygon points="48,26 56,22 56,42 48,38" fill="#1565c0" />
+                    <circle cx="32" cy="32" r="4" fill="white" />
+                  </svg>
+                  <p style="margin-top: 10px; font-weight: 600">Videograf</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="code-block">
+              <span class="keyword">const</span> badge =
+              <span class="keyword">landingUtils</span>.<span class="keyword">createRoleBadge</span
+              >(<span class="number">0</span>, <span class="number">0</span>,
+              <span class="number">64</span>, <span class="string">'photographer'</span>,
+              <span class="string">'#2e7d32'</span>);
+            </div>
+          </div>
+
+          <!-- Checkmark Item -->
+          <div class="card">
+            <h3 class="card-title">6. createCheckmarkItem()</h3>
+            <p class="card-description">Animated checkmarks for lists</p>
+            <span class="feature-tag">Pulsing</span>
+            <span class="feature-tag">Clean</span>
+
+            <div class="demo-area">
+              <div style="text-align: left">
+                <div style="display: flex; align-items: center; margin-bottom: 15px">
+                  <svg width="20" height="20" viewBox="0 0 24 24">
+                    <circle cx="12" cy="12" r="10" fill="#4caf5020" />
+                    <circle cx="12" cy="12" r="8" fill="#4caf50">
+                      <animate attributeName="r" values="8;9;8" dur="2s" repeatCount="indefinite" />
+                    </circle>
+                    <path
+                      d="M9 12l2 2 4-4"
+                      stroke="white"
+                      stroke-width="2"
+                      fill="none"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                  </svg>
+                  <span style="margin-left: 10px">Unlimited Projects</span>
+                </div>
+                <div style="display: flex; align-items: center; margin-bottom: 15px">
+                  <svg width="20" height="20" viewBox="0 0 24 24">
+                    <circle cx="12" cy="12" r="10" fill="#4caf5020" />
+                    <circle cx="12" cy="12" r="8" fill="#4caf50">
+                      <animate attributeName="r" values="8;9;8" dur="2s" repeatCount="indefinite" />
+                    </circle>
+                    <path
+                      d="M9 12l2 2 4-4"
+                      stroke="white"
+                      stroke-width="2"
+                      fill="none"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                  </svg>
+                  <span style="margin-left: 10px">24/7 Support</span>
+                </div>
+                <div style="display: flex; align-items: center">
+                  <svg width="20" height="20" viewBox="0 0 24 24">
+                    <circle cx="12" cy="12" r="10" fill="#4caf5020" />
+                    <circle cx="12" cy="12" r="8" fill="#4caf50">
+                      <animate attributeName="r" values="8;9;8" dur="2s" repeatCount="indefinite" />
+                    </circle>
+                    <path
+                      d="M9 12l2 2 4-4"
+                      stroke="white"
+                      stroke-width="2"
+                      fill="none"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                  </svg>
+                  <span style="margin-left: 10px">Cloud Storage</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="code-block">
+              <span class="keyword">const</span> check =
+              <span class="keyword">landingUtils</span>.<span class="keyword"
+                >createCheckmarkItem</span
+              >(<span class="number">0</span>, <span class="number">0</span>,
+              <span class="number">20</span>, <span class="string">'#4caf50'</span>);
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- CTA Elements -->
+      <div class="section">
+        <h2 class="section-title">🎯 CTA Elements Utilities</h2>
+
+        <div class="grid">
+          <!-- CTA Arrow -->
+          <div class="card">
+            <h3 class="card-title">7. createCTAArrow()</h3>
+            <p class="card-description">Animated arrows for buttons</p>
+            <span class="feature-tag">2 Directions</span>
+            <span class="feature-tag">Sliding</span>
+
+            <div class="demo-area">
+              <div class="cta-demo">
+                <button class="cta-button">
+                  Get Started
+                  <svg width="24" height="24" viewBox="0 0 24 24">
+                    <path
+                      d="M8 5l7 7-7 7"
+                      stroke="white"
+                      stroke-width="2"
+                      fill="none"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    >
+                      <animateTransform
+                        attributeName="transform"
+                        type="translate"
+                        values="0,0; 3,0; 0,0"
+                        dur="1.5s"
+                        repeatCount="indefinite"
+                      />
+                    </path>
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <div class="code-block">
+              <span class="keyword">const</span> arrow =
+              <span class="keyword">landingUtils</span>.<span class="keyword">createCTAArrow</span
+              >(<span class="number">0</span>, <span class="number">0</span>,
+              <span class="number">24</span>, <span class="string">'white'</span>,
+              <span class="string">'right'</span>);
+            </div>
+          </div>
+
+          <!-- Pulsing Dot -->
+          <div class="card">
+            <h3 class="card-title">8. createPulsingDot()</h3>
+            <p class="card-description">Live status indicator</p>
+            <span class="feature-tag">Pulsing</span>
+            <span class="feature-tag">Live</span>
+
+            <div class="demo-area">
+              <div style="display: flex; align-items: center; gap: 15px">
+                <svg width="24" height="24">
+                  <circle cx="12" cy="12" r="12" fill="#4caf5030">
+                    <animate
+                      attributeName="r"
+                      values="12;18;12"
+                      dur="2s"
+                      repeatCount="indefinite"
+                    />
+                    <animate
+                      attributeName="opacity"
+                      values="1;0;1"
+                      dur="2s"
+                      repeatCount="indefinite"
+                    />
+                  </circle>
+                  <circle cx="12" cy="12" r="6" fill="#4caf50">
+                    <animate
+                      attributeName="opacity"
+                      values="1;0.6;1"
+                      dur="2s"
+                      repeatCount="indefinite"
+                    />
+                  </circle>
+                </svg>
+                <span style="font-size: 1.1em; font-weight: 600">350+ Users Online</span>
+              </div>
+            </div>
+
+            <div class="code-block">
+              <span class="keyword">const</span> dot =
+              <span class="keyword">landingUtils</span>.<span class="keyword">createPulsingDot</span
+              >(<span class="number">0</span>, <span class="number">0</span>,
+              <span class="number">6</span>, <span class="string">'#4caf50'</span>);
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Social Proof -->
+      <div class="section">
+        <h2 class="section-title">⭐ Social Proof Utilities</h2>
+
+        <div class="grid">
+          <!-- Rating Stars -->
+          <div class="card">
+            <h3 class="card-title">9. createRatingStars()</h3>
+            <p class="card-description">Star ratings with partial support</p>
+            <span class="feature-tag">Partial Stars</span>
+            <span class="feature-tag">Accurate</span>
+
+            <div class="demo-area">
+              <div class="rating-demo">
+                <svg width="124" height="24">
+                  <path
+                    d="M10 2 L12 8.35 L18.95 8.35 L13.36 11.57 L15.58 18.9 L10 14.7 L4.42 18.9 L6.64 11.57 L1.05 8.35 L8 8.35 Z"
+                    fill="#ffc107"
+                  />
+                  <path
+                    d="M34 2 L36 8.35 L42.95 8.35 L37.36 11.57 L39.58 18.9 L34 14.7 L28.42 18.9 L30.64 11.57 L25.05 8.35 L32 8.35 Z"
+                    fill="#ffc107"
+                  />
+                  <path
+                    d="M58 2 L60 8.35 L66.95 8.35 L61.36 11.57 L63.58 18.9 L58 14.7 L52.42 18.9 L54.64 11.57 L49.05 8.35 L56 8.35 Z"
+                    fill="#ffc107"
+                  />
+                  <path
+                    d="M82 2 L84 8.35 L90.95 8.35 L85.36 11.57 L87.58 18.9 L82 14.7 L76.42 18.9 L78.64 11.57 L73.05 8.35 L80 8.35 Z"
+                    fill="#ffc107"
+                  />
+                  <defs>
+                    <linearGradient id="partialStar" x1="0%" y1="0%" x2="100%" y2="0%">
+                      <stop offset="70%" style="stop-color: #ffc107; stop-opacity: 1" />
+                      <stop offset="70%" style="stop-color: #e0e0e0; stop-opacity: 1" />
+                    </linearGradient>
+                  </defs>
+                  <path
+                    d="M106 2 L108 8.35 L114.95 8.35 L109.36 11.57 L111.58 18.9 L106 14.7 L100.42 18.9 L102.64 11.57 L97.05 8.35 L104 8.35 Z"
+                    fill="url(#partialStar)"
+                  />
+                </svg>
+                <p style="margin-top: 15px; font-size: 1.2em; font-weight: 600; color: #333">
+                  4.7 / 5.0
+                </p>
+                <p style="margin-top: 5px; color: #666">Based on 1,250 reviews</p>
+              </div>
+            </div>
+
+            <div class="code-block">
+              <span class="keyword">const</span> stars =
+              <span class="keyword">landingUtils</span>.<span class="keyword"
+                >createRatingStars</span
+              >(<span class="number">0</span>, <span class="number">0</span>,
+              <span class="number">4.7</span>, <span class="number">5</span>,
+              <span class="number">20</span>, <span class="string">'#ffc107'</span>);
+            </div>
+          </div>
+
+          <!-- Testimonial Badge -->
+          <div class="card">
+            <h3 class="card-title">10. createTestimonialBadge()</h3>
+            <p class="card-description">Verified badges</p>
+            <span class="feature-tag">Verified</span>
+            <span class="feature-tag">Pulsing</span>
+
+            <div class="demo-area">
+              <div class="testimonial-card">
+                <svg
+                  width="80"
+                  height="80"
+                  viewBox="0 0 100 100"
+                  style="position: absolute; top: -10px; right: -10px"
+                >
+                  <defs>
+                    <linearGradient id="testimonialBadgeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" style="stop-color: #4caf50; stop-opacity: 1" />
+                      <stop offset="100%" style="stop-color: #2e7d32; stop-opacity: 1" />
+                    </linearGradient>
+                  </defs>
+                  <circle cx="50" cy="50" r="45" fill="url(#testimonialBadgeGrad)">
+                    <animate
+                      attributeName="r"
+                      values="45;47;45"
+                      dur="3s"
+                      repeatCount="indefinite"
+                    />
+                  </circle>
+                  <path
+                    d="M30 50 L42 62 L70 34"
+                    stroke="white"
+                    stroke-width="6"
+                    fill="none"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                  <text
+                    x="50"
+                    y="88"
+                    font-family="Arial, sans-serif"
+                    font-size="12"
+                    font-weight="bold"
+                    fill="#2e7d32"
+                    text-anchor="middle"
+                  >
+                    Verified
+                  </text>
+                </svg>
+                <p style="font-style: italic; color: #666; line-height: 1.6; padding-right: 60px">
+                  "Dette er den beste plattformen jeg har brukt! Veldig profesjonell og lett å
+                  bruke."
+                </p>
+                <p style="margin-top: 15px; font-weight: 600; color: #333">- John Doe, Fotograf</p>
+              </div>
+            </div>
+
+            <div class="code-block">
+              <span class="keyword">const</span> badge =
+              <span class="keyword">landingUtils</span>.<span class="keyword"
+                >createTestimonialBadge</span
+              >(<span class="number">0</span>, <span class="number">0</span>,
+              <span class="string">'Verified'</span>, <span class="number">80</span>);
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Decorations -->
+      <div class="section">
+        <h2 class="section-title">✨ Decoration Utilities</h2>
+
+        <div class="grid">
+          <!-- Corner Accent -->
+          <div class="card">
+            <h3 class="card-title">11. createCornerAccent()</h3>
+            <p class="card-description">Glassmorphism card accents</p>
+            <span class="feature-tag">4 Positions</span>
+            <span class="feature-tag">Subtle</span>
+
+            <div class="demo-area">
+              <div class="decoration-demo">
+                <svg width="60" height="60" style="position: absolute; top: 0; right: 0">
+                  <g transform="translate(30, 30) rotate(90) translate(-30, -30)">
+                    <path d="M0,0 L60,0 Q42,18 0,60 Z" fill="#ff8c00" opacity="0.1" />
+                    <circle cx="48" cy="12" r="3" fill="#ff8c00" opacity="0.3">
+                      <animate
+                        attributeName="opacity"
+                        values="0.3;0.6;0.3"
+                        dur="2s"
+                        repeatCount="indefinite"
+                      />
+                    </circle>
+                  </g>
+                </svg>
+                <p style="font-size: 1.1em; color: #333; text-align: center; padding: 20px">
+                  Beautiful glassmorphism card with corner accent
+                </p>
+              </div>
+            </div>
+
+            <div class="code-block">
+              <span class="keyword">const</span> accent =
+              <span class="keyword">landingUtils</span>.<span class="keyword"
+                >createCornerAccent</span
+              >(<span class="number">0</span>, <span class="number">0</span>,
+              <span class="number">60</span>, <span class="string">'#ff8c00'</span>,
+              <span class="string">'top-right'</span>);
+            </div>
+          </div>
+
+          <!-- Floating Orb -->
+          <div class="card">
+            <h3 class="card-title">12. createFloatingOrb()</h3>
+            <p class="card-description">Background gradient orbs</p>
+            <span class="feature-tag">Floating</span>
+            <span class="feature-tag">Blur</span>
+
+            <div class="demo-area" style="position: relative; overflow: visible">
+              <svg
+                width="200"
+                height="200"
+                style="position: absolute; top: -50px; left: 50%; transform: translateX(-50%)"
+              >
+                <defs>
+                  <radialGradient id="orbGrad" cx="30%" cy="30%">
+                    <stop offset="0%" style="stop-color: #ff8c00; stop-opacity: 0.3" />
+                    <stop offset="100%" style="stop-color: #ff8c00; stop-opacity: 0" />
+                  </radialGradient>
+                  <filter id="orbBlur">
+                    <feGaussianBlur stdDeviation="20" />
+                  </filter>
+                </defs>
+                <circle cx="100" cy="100" r="100" fill="url(#orbGrad)" filter="url(#orbBlur)">
+                  <animate
+                    attributeName="cy"
+                    values="100;70;100"
+                    dur="10s"
+                    repeatCount="indefinite"
+                  />
+                  <animate
+                    attributeName="opacity"
+                    values="0.3;0.5;0.3"
+                    dur="10s"
+                    repeatCount="indefinite"
+                  />
+                </circle>
+              </svg>
+              <p
+                style="
+                  font-size: 1.1em;
+                  color: #333;
+                  text-align: center;
+                  position: relative;
+                  z-index: 1;
+                "
+              >
+                Subtle floating background decoration
+              </p>
+            </div>
+
+            <div class="code-block">
+              <span class="keyword">const</span> orb =
+              <span class="keyword">landingUtils</span>.<span class="keyword"
+                >createFloatingOrb</span
+              >(<span class="number">0</span>, <span class="number">0</span>,
+              <span class="number">200</span>, <span class="string">'#ff8c00'</span>,
+              <span class="number">10</span>);
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Screenshot Note -->
+      <div class="section">
+        <div class="screenshot-note">
+          <h3 style="margin-bottom: 15px">📸 How to Capture Screenshots</h3>
+          <p style="line-height: 1.8">
+            <strong>For macOS:</strong> Press
+            <code style="background: white; padding: 3px 8px; border-radius: 5px"
+              >Cmd + Shift + 4</code
+            >
+            and drag to select each demo area.<br /><br />
+            <strong>For Windows:</strong> Press
+            <code style="background: white; padding: 3px 8px; border-radius: 5px"
+              >Win + Shift + S</code
+            >
+            to open Snipping Tool.<br /><br />
+            <strong>Tip:</strong> Capture each "demo-area" section individually for clean PNG
+            exports. These can be used in documentation, presentations, or the README file!
+          </p>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="section" style="text-align: center">
+        <h2 style="color: #333; margin-bottom: 20px">🎉 All 12 Functions Demonstrated!</h2>
+        <p
+          style="color: #666; font-size: 1.1em; line-height: 1.8; max-width: 800px; margin: 0 auto"
+        >
+          All SVG utilities are <strong>DOMPurify sanitized</strong>,
+          <strong>GPU accelerated</strong>, and <strong>TypeScript safe</strong>. Perfect for modern
+          landing pages with professional animations and consistent design.
+        </p>
+        <div
+          style="
+            margin-top: 30px;
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            flex-wrap: wrap;
+          "
+        >
+          <span class="feature-tag" style="font-size: 1em; padding: 10px 20px"
+            >✅ 12 Functions</span
+          >
+          <span class="feature-tag" style="font-size: 1em; padding: 10px 20px"
+            >🎨 Fully Animated</span
+          >
+          <span class="feature-tag" style="font-size: 1em; padding: 10px 20px"
+            >🔒 DOMPurify Safe</span
+          >
+          <span class="feature-tag" style="font-size: 1em; padding: 10px 20px"
+            >⚡ High Performance</span
+          >
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

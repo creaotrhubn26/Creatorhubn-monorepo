@@ -1,0 +1,929 @@
+/**
+ * Backup and Recovery System
+ * Comprehensive backup and recovery system for data protection
+ */
+
+export interface BackupConfig {
+  enableAutoBackup: boolean;
+  backupInterval: number; // milliseconds
+  maxBackups: number;
+  backupRetentionDays: number;
+  enableCompression: boolean;
+  enableEncryption: boolean;
+  encryptionKey?: string;
+  enableCloudBackup: boolean;
+  cloudProviders: string[];
+  enableLocalBackup: boolean;
+  localBackupPath?: string;
+  enableIncrementalBackup: boolean;
+  enableDifferentialBackup: boolean;
+  enableFullBackup: boolean;
+  fullBackupInterval: number; // milliseconds
+  enableBackupVerification: boolean;
+  enableBackupTesting: boolean;
+  enableBackupMonitoring: boolean;
+  enableBackupAlerts: boolean;
+  enableBackupScheduling: boolean;
+  backupSchedule?: string; // cron expression
+}
+
+export interface BackupMetadata {
+  id: string;
+  name: string;
+  type: 'full' | 'incremental' | 'differential';
+  timestamp: number;
+  size: number;
+  compressedSize?: number;
+  checksum: string;
+  version: string;
+  description?: string;
+  tags: string[];
+  encrypted: boolean;
+  verified: boolean;
+  location: string;
+  provider?: string;
+  dependencies?: string[];
+  metadata: Record<string, any>;
+}
+
+export interface BackupData {
+  id: string;
+  metadata: BackupMetadata;
+  data: any;
+  compressed?: boolean;
+  encrypted?: boolean;
+  chunks?: BackupChunk[]
+}
+
+export interface BackupChunk {
+  id: string;
+  backupId: string;
+  index: number;
+  totalChunks: number;
+  data: string;
+  checksum: string;
+  size: number
+}
+
+export interface RecoveryPoint {
+  id: string;
+  name: string;
+  timestamp: number;
+  type: 'backup' | 'snapshot' | 'checkpoint';
+  size: number;
+  status: 'available' | 'corrupted' | 'incomplete' | 'verifying';
+  location: string;
+  dependencies: string[];
+  metadata: Record<string, any>;
+}
+
+export interface RecoveryConfig {
+  enableAutoRecovery: boolean;
+  enablePointInTimeRecovery: boolean;
+  enableSelectiveRecovery: boolean;
+  enableBulkRecovery: boolean;
+  enableRecoveryTesting: boolean;
+  enableRecoveryValidation: boolean;
+  enableRecoveryRollback: boolean;
+  recoveryTimeout: number; // milliseconds
+  maxRecoveryAttempts: number;
+  enableRecoveryAlerts: boolean;
+  enableRecoveryMonitoring: boolean;
+  enableRecoveryLogging: boolean
+}
+
+export interface BackupStats {
+  totalBackups: number;
+  totalSize: number;
+  compressedSize: number;
+  compressionRatio: number;
+  averageBackupTime: number;
+  lastBackupTime: number;
+  successRate: number;
+  failureRate: number;
+  corruptedBackups: number;
+  verifiedBackups: number;
+  cloudBackups: number;
+  localBackups: number;
+  incrementalBackups: number;
+  differentialBackups: number;
+  fullBackups: number
+}
+
+export interface RecoveryStats {
+  totalRecoveries: number;
+  successfulRecoveries: number;
+  failedRecoveries: number;
+  averageRecoveryTime: number;
+  lastRecoveryTime: number;
+  successRate: number;
+  failureRate: number;
+  pointInTimeRecoveries: number;
+  selectiveRecoveries: number;
+  bulkRecoveries: number;
+  rollbacks: number
+}
+
+export interface BackupAlert {
+  id: string;
+  type: 'success' | 'warning' | 'error' | 'info';
+  message: string;
+  timestamp: number;
+  backupId?: string;
+  recoveryId?: string;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  acknowledged: boolean;
+  metadata: Record<string, any>;
+}
+
+class BackupRecoverySystem {
+  private backupConfig: BackupConfig;
+  private recoveryConfig: RecoveryConfig;
+  private backups: Map<string, BackupData> = new Map();
+  private recoveryPoints: Map<string, RecoveryPoint> = new Map();
+  private alerts: BackupAlert[] = [];
+  private backupStats: BackupStats;
+  private recoveryStats: RecoveryStats;
+  private backupTimer: NodeJS.Timeout | null = null;
+  private verificationTimer: NodeJS.Timeout | null = null;
+  private monitoringTimer: NodeJS.Timeout | null = null;
+
+  constructor(
+    backupConfig: Partial<BackupConfig> =,  , {},
+    recoveryConfig: Partial<RecoveryConfig> =,  , {}
+  ) {
+    this.backupConfig = {
+      enableAutoBackup: true,
+      backupInterval: 60 * 60 * 100, // 1 hour
+      maxBackups: 10,
+      backupRetentionDays:  30,
+      enableCompression: true,
+      enableEncryption: false,
+      enableCloudBackup: false,
+      cloudProviders:  [],
+      enableLocalBackup: true,
+      enableIncrementalBackup: true,
+      enableDifferentialBackup: true,
+      enableFullBackup: true,
+      fullBackupInterval: 24 * 60 * 60 * 100, // 24 hours
+      enableBackupVerification: true,
+      enableBackupTesting: false,
+      enableBackupMonitoring: true,
+      enableBackupAlerts: true,
+      enableBackupScheduling: false,
+      ...backupConfig
+};
+
+    this.recoveryConfig = {
+      enableAutoRecovery: false,
+      enablePointInTimeRecovery: true,
+      enableSelectiveRecovery: true,
+      enableBulkRecovery: true,
+      enableRecoveryTesting: false,
+      enableRecoveryValidation: true,
+      enableRecoveryRollback: true,
+      recoveryTimeout: 30000, // 5 minutes
+      maxRecoveryAttempts:  3,
+      enableRecoveryAlerts: true,
+      enableRecoveryMonitoring: true,
+      enableRecoveryLogging: true,
+      ...recoveryConfig
+};
+
+    this.backupStats = {
+      totalBackups:  0,
+      totalSize:  0,
+      compressedSize:  0,
+      compressionRatio:  0,
+      averageBackupTime:  0,
+      lastBackupTime:  0,
+      successRate:  0,
+      failureRate:  0,
+      corruptedBackups:  0,
+      verifiedBackups:  0,
+      cloudBackups:  0,
+      localBackups:  0,
+      incrementalBackups:  0,
+      differentialBackups:  0,
+      fullBackups: 0
+};
+
+    this.recoveryStats = {
+      totalRecoveries:  0,
+      successfulRecoveries:  0,
+      failedRecoveries:  0,
+      averageRecoveryTime:  0,
+      lastRecoveryTime:  0,
+      successRate:  0,
+      failureRate:  0,
+      pointInTimeRecoveries:  0,
+      selectiveRecoveries:  0,
+      bulkRecoveries:  0,
+      rollbacks: 0
+};
+
+    this.initializeSystem();
+}
+
+  private initializeSystem(): void {
+    if (this.backupConfig.enableAutoBackup) {
+      this.startBackupScheduler();
+}
+
+    if (this.backupConfig.enableBackupVerification) {
+      this.startVerificationScheduler();
+}
+
+    if (this.backupConfig.enableBackupMonitoring) {
+      this.startMonitoringScheduler();
+}
+
+    this.loadExistingBackups();
+}
+
+  private startBackupScheduler(): void {
+    this.backupTimer = setInterval(() => {
+      this.performScheduledBackup();
+}, this.backupConfig.backupInterval);
+}
+
+  private startVerificationScheduler(): void {
+    this.verificationTimer = setInterval(() => {
+      this.verifyBackups();
+}, 24 * 60 * 60 * 1000); // Daily verification
+}
+
+  private startMonitoringScheduler(): void {
+    this.monitoringTimer = setInterval(() => {
+      this.monitorBackups();
+}, 5 * 60 * 1000); // Every 5 minutes
+}
+
+  private loadExistingBackups(): void {
+    if (typeof window === 'undefined') return;
+
+    try {
+      const stored = localStorage.getItem('backup_data');
+      if (stored) {
+        const data = JSON.parse(stored);
+        this.backups = new Map(data.backups || []);
+        this.recoveryPoints = new Map(data.recoveryPoints || []);
+        this.backupStats = data.backupStats || this.backupStats;
+        this.recoveryStats = data.recoveryStats || this.recoveryStats;
+  }
+} catch (error) {
+      console.error('Failed to load existing backups:', error);
+}
+}
+
+  private saveBackups(): void {
+    if (typeof window === 'undefined') return;
+
+    try {
+      const data = {
+        backups: Array.from(this.backups.entries(, ), ),
+        recoveryPoints: Array.from(this.recoveryPoints.entries(, ), ),
+        backupStats: this.backupStats,
+        recoveryStats: this.recoveryStats,
+        timestamp: Date.now()
+};
+      
+      localStorage.setItem('backup_data', JSON.stringify(data));
+} catch (error) {
+      console.error('Failed to save backups:', error);
+}
+}
+
+  private async performScheduledBackup(): Promise<void> {
+    try {
+      const backupType = this.determineBackupType();
+      await this.createBackup(backupType, `Scheduled ${backupType} backup`);
+} catch (error) {
+      console.error('Scheduled backup failed:', error);
+      this.addAlert('error', 'Scheduled backup failed', error);
+}
+}
+
+  private determineBackupType(): 'full' | 'incremental' | 'differential' {
+    const now = Date.now();
+    const lastFullBackup = this.getLastBackupTime('full');
+    
+    if (now - lastFullBackup > this.backupConfig.fullBackupInterval) {
+      return 'full';
+}
+
+    const lastBackup = this.getLastBackupTime();
+    if (now - lastBackup > this.backupConfig.backupInterval) {
+      return this.backupConfig.enableIncrementalBackup ? 'incremental' : 'differential';
+}
+
+    return 'incremental';
+}
+
+  private getLastBackupTime(type?: string): number {
+    const backups = Array.from(this.backups.values());
+    const filteredBackups = type ? backups.filter(b => b.metadata.type === type) : backups;
+    
+    if (filteredBackups.length === 0) return 0;
+    
+    return Math.max(...filteredBackups.map(b => b.metadata.timestamp));
+}
+
+  public async createBackup(
+    type: 'full' | 'incremental' | 'differential' = 'full',
+    description?: string
+  ): Promise<BackupData> {
+    const startTime = Date.now();
+    const backupId = this.generateId();
+    
+    try {
+      // Collect data based on backup type
+      const data = await this.collectBackupData(type);
+      
+      // Compress if enabled
+      let processedData = data;
+      let compressed = false;
+      if (this.backupConfig.enableCompression) {
+        processedData = await this.compressData(data);
+        compressed = true;
+  }
+
+      // Encrypt if enabled
+      let encrypted = false;
+      if (this.backupConfig.enableEncryption && this.backupConfig.encryptionKey) {
+        processedData = await this.encryptData(processedData, this.backupConfig.encryptionKey);
+        encrypted = true;
+  }
+
+      // Calculate checksum
+      const checksum = await this.calculateChecksum(processedData);
+
+      // Create backup metadata
+      const metadata: BackupMetadata = {
+        id: backupd,
+        name: `${type}_backup_${new Date().toISOString()}`,
+        type,
+        timestamp: Date.now(),
+        size: JSON.stringify(data).length,
+        compressedSize: compressed ? JSON.stringify(processedData).length : undefined,
+        checksum,
+        version: '1.0.',
+        description,
+        tags: [type, 'auto'],
+        encrypted,
+        verified: false,
+        location: this.backupConfig.enableLocalBackup ? 'local' : 'cloud',
+        provider: this.backupConfig.cloudProviders[],
+        dependencies: this.getBackupDependencies(type),
+        metadata: {
+          compressionRatio: compressed ? this.calculateCompressionRatio(data, processedData) : 1,
+          processingTime: Date.now() - startTime
+  }
+  };
+
+      // Create backup data
+      const backup: BackupData = {
+        id: backupd,
+        metadata,
+        data: processedData,
+        compressed,
+        encrypted
+  };
+
+      // Store backup
+      this.backups.set(backupId, backup);
+      this.createRecoveryPoint(backup);
+
+      // Update statistics
+      this.updateBackupStats(backup, Date.now() - startTime);
+
+      // Save to storage
+      this.saveBackups();
+
+      // Add success alert
+      this.addAlert('success', `Backup created successfully: ${metadata.name}`);
+
+      return backup;
+
+} catch (error) {
+      console.error('Backup creation failed:', error);
+      this.addAlert('error', 'Backup creation failed', error);
+      throw error;
+}
+}
+
+  private async collectBackupData(type: 'full' | 'incremental' | 'differential'): Promise<any> {
+    const data: any =,  , {};
+
+    // Collect application state
+    if (typeof window !== 'undefined') {
+      data.applicationState = {
+        localStorage: this.collectLocalStorage, (, ),
+        sessionStorage: this.collectSessionStorage, (, ),
+        cookies: this.collectCookies, (, ),
+        url: window.location.href,
+        timestamp: Date.now()
+};
+}
+
+    // Collect user data
+    data.userData = {
+      preferences: this.collectUserPreferences, (, ),
+      settings: this.collectUserSettings, (, ),
+      projects: this.collectProjects, (, ),
+      assets: this.collectAssets()
+};
+
+    // Collect system data
+    data.systemData = {
+      version: '1.0.',
+      platform: navigator.platform,
+      userAgent: navigator.userAgent,
+      language: navigator.language,
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
+};
+
+    // Add type-specific data
+    if (type === 'incremental') {
+      data.changes = this.collectIncrementalChanges();
+} else if (type === 'differential') {
+      data.changes = this.collectDifferentialChanges();
+}
+
+    return data;
+}
+
+  private collectLocalStorage(): Record<string, string> {
+    const data: Record<string, string> = {};
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key) {
+        data[key] = localStorage.getItem(key) || '';
+  }
+}
+    return data;
+}
+
+  private collectSessionStorage(): Record<string, string> {
+    const data: Record<string, string> = {};
+    for (let i = 0; i < sessionStorage.length; i++) {
+      const key = sessionStorage.key(i);
+      if (key) {
+        data[key] = sessionStorage.getItem(key) || '';
+  }
+}
+    return data;
+}
+
+  private collectCookies(): string {
+    return document.cookie;
+}
+
+  private collectUserPreferences(): any {
+    // Collect user preferences from various sources
+    return {
+      theme: localStorage.getItem('theme') || 'light',
+      language: localStorage.getItem('language') || 'en',
+      timezone: localStorage.getItem('timezone') || Intl.DateTimeFormat().resolvedOptions().timeZone
+};
+}
+
+  private collectUserSettings(): any {
+    // Collect user settings
+    return {
+      notifications: localStorage.getItem('notifications') === 'true',
+      autoSave: localStorage.getItem('autoSave') === 'true',
+      backupEnabled: localStorage.getItem('backupEnabled') === 'true'
+};
+}
+
+  private collectProjects(): any[] {
+    // Collect project data
+    const projects = localStorage.getItem('projects');
+    return projects ? JSON.parse(projects) : [];
+}
+
+  private collectAssets(): any[] {
+    // Collect asset data
+    const assets = localStorage.getItem('assets');
+    return assets ? JSON.parse(assets) : [];
+}
+
+  private collectIncrementalChanges(): any {
+    // Collect changes since last backup
+    return {
+      modifiedProjects: this.getModifiedProjects, (, ),
+      newAssets: this.getNewAssets, (, ),
+      deletedItems: this.getDeletedItems()
+};
+}
+
+  private collectDifferentialChanges(): any {
+    // Collect changes since last full backup
+    return {
+      modifiedProjects: this.getModifiedProjects, (, ),
+      newAssets: this.getNewAssets, (, ),
+      deletedItems: this.getDeletedItems()
+};
+}
+
+  private getModifiedProjects(): string[] {
+    // Get list of modified projects
+    return [];
+}
+
+  private getNewAssets(): string[] {
+    // Get list of new assets
+    return [];
+}
+
+  private getDeletedItems(): string[] {
+    // Get list of deleted items
+    return [];
+}
+
+  private getBackupDependencies(type: string): string[] {
+    if (type === 'incremental' || type === 'differential') {
+      const lastFullBackup = this.getLastBackup('full');
+      return lastFullBackup ? [lastFullBackup.id] : [];
+}
+    return [];
+}
+
+  private getLastBackup(type?: string): BackupData | null {
+    const backups = Array.from(this.backups.values());
+    const filteredBackups = type ? backups.filter(b => b.metadata.type === type) : backups;
+    
+    if (filteredBackups.length === 0) return null;
+    
+    return filteredBackups.reduce((latest, backup) => 
+      backup.metadata.timestamp > latest.metadata.timestamp ? backup : latest
+  );
+}
+
+  private async compressData(data: any): Promise<any> {
+    // Simple compression simulation
+    return JSON.stringify(data);
+}
+
+  private async encryptData(data: any, key: string): Promise<any> {
+    // Simple encryption simulation
+    return btoa(JSON.stringify(data));
+}
+
+  private async calculateChecksum(data: any): Promise<string> {
+    // Simple checksum calculation
+    const str = JSON.stringify(data);
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      const char = str.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32-bit integer
+}
+    return hash.toString(16);
+}
+
+  private calculateCompressionRatio(original: any, compressed: any): number {
+    const originalSize = JSON.stringify(original).length;
+    const compressedSize = JSON.stringify(compressed).length;
+    return originalSize / compressedSize;
+}
+
+  private createRecoveryPoint(backup: BackupData): void {
+    const recoveryPoint: RecoveryPoint = {
+      id: this.generateId, (, ),
+      name: `Recovery Point ${new Date().toISOString, (, )}`,
+      timestamp: backup.metadata.timestamp,
+      type: 'backup',
+      size: backup.metadata.size,
+      status: 'available',
+      location: backup.metadata.location,
+      dependencies: backup.metadata.dependencies || [],
+      metadata: {
+        backupId: backup.d,
+        type: backup.metadata.type,
+        verified: backup.metadata.verified
+}
+};
+
+    this.recoveryPoints.set(recoveryPoint.id, recoveryPoint);
+}
+
+  private updateBackupStats(backup: BackupData, processingTime: number): void {
+    this.backupStats.totalBackups++;
+    this.backupStats.totalSize += backup.metadata.size;
+    
+    if (backup.metadata.compressedSize) {
+      this.backupStats.compressedSize += backup.metadata.compressedSize;
+}
+    
+    this.backupStats.averageBackupTime = 
+      (this.backupStats.averageBackupTime * (this.backupStats.totalBackups - 1) + processingTime) / 
+      this.backupStats.totalBackups;
+    
+    this.backupStats.lastBackupTime = backup.metadata.timestamp;
+    this.backupStats.successRate = 1; // Simplified
+    
+    // Update type-specific stats
+    switch (backup.metadata.type) {
+      case 'full':
+        this.backupStats.fullBackups++;
+        break;
+      case 'incremental':
+        this.backupStats.incrementalBackups++;
+        break;
+      case 'differential':
+        this.backupStats.differentialBackups++;
+        break;
+}
+    
+    // Update location stats
+    if (backup.metadata.location === 'local') {
+      this.backupStats.localBackups++;
+} else {
+      this.backupStats.cloudBackups++;
+}
+}
+
+  public async restoreBackup(backupId: string): Promise<void> {
+    const backup = this.backups.get(backupId);
+    if (!backup) {
+      throw new Error(`Backup not found: ${backupd}`);
+}
+
+    const startTime = Date.now();
+    
+    try {
+      // Verify backup integrity
+      if (this.backupConfig.enableBackupVerification) {
+        await this.verifyBackup(backup);
+  }
+
+      // Decrypt if needed
+      let data = backup.data;
+      if (backup.encrypted && this.backupConfig.encryptionKey) {
+        data = await this.decryptData(data, this.backupConfig.encryptionKey);
+  }
+
+      // Decompress if needed
+      if (backup.compressed) {
+        data = await this.decompressData(data);
+  }
+
+      // Restore data
+      await this.restoreData(data);
+
+      // Update recovery statistics
+      this.updateRecoveryStats(Date.now() - startTime, true);
+
+      // Add success alert
+      this.addAlert('success', `Backup restored successfully: ${backup.metadata.name}`);
+
+} catch (error) {
+      console.error('Backup restoration failed:', error);
+      this.updateRecoveryStats(Date.now() - startTime, false);
+      this.addAlert('error', 'Backup restoration failed', error);
+      throw error;
+}
+}
+
+  private async verifyBackup(backup: BackupData): Promise<void> {
+    const calculatedChecksum = await this.calculateChecksum(backup.data);
+    if (calculatedChecksum !== backup.metadata.checksum) {
+      throw new Error('Backup verification failed: checksum mismatch');
+}
+    backup.metadata.verified = true;
+}
+
+  private async decryptData(data: any, key: string): Promise<any> {
+    // Simple decryption simulation
+    return JSON.parse(atob(data));
+}
+
+  private async decompressData(data: any): Promise<any> {
+    // Simple decompression simulation
+    return JSON.parse(data);
+}
+
+  private async restoreData(data: any): Promise<void> {
+    // Restore application state
+    if (data.applicationState) {
+      await this.restoreApplicationState(data.applicationState);
+}
+
+    // Restore user data
+    if (data.userData) {
+      await this.restoreUserData(data.userData);
+}
+}
+
+  private async restoreApplicationState(state: any): Promise<void> {
+    if (state.localStorage) {
+      for (const [key, value] of Object.entries(state.localStorage)) {
+        localStorage.setItem(key, value as string);
+  }
+}
+
+    if (state.sessionStorage) {
+      for (const [key, value] of Object.entries(state.sessionStorage)) {
+        sessionStorage.setItem(key, value as string);
+  }
+}
+
+    if (state.cookies) {
+      document.cookie = state.cookies;
+}
+}
+
+  private async restoreUserData(data: any): Promise<void> {
+    if (data.preferences) {
+      for (const [key, value] of Object.entries(data.preferences)) {
+        localStorage.setItem(key, value as string);
+  }
+}
+
+    if (data.settings) {
+      for (const [key, value] of Object.entries(data.settings)) {
+        localStorage.setItem(key, value as string);
+  }
+}
+
+    if (data.projects) {
+      localStorage.setItem('projects', JSON.stringify(data.projects));
+}
+
+    if (data.assets) {
+      localStorage.setItem('assets', JSON.stringify(data.assets));
+}
+}
+
+  private updateRecoveryStats(processingTime: number, success: boolean): void {
+    this.recoveryStats.totalRecoveries++;
+    
+    if (success) {
+      this.recoveryStats.successfulRecoveries++;
+} else {
+      this.recoveryStats.failedRecoveries++;
+}
+    
+    this.recoveryStats.averageRecoveryTime = 
+      (this.recoveryStats.averageRecoveryTime * (this.recoveryStats.totalRecoveries - 1) + processingTime) / 
+      this.recoveryStats.totalRecoveries;
+    
+    this.recoveryStats.lastRecoveryTime = Date.now();
+    this.recoveryStats.successRate = this.recoveryStats.successfulRecoveries / this.recoveryStats.totalRecoveries;
+    this.recoveryStats.failureRate = this.recoveryStats.failedRecoveries / this.recoveryStats.totalRecoveries;
+}
+
+  private async verifyBackups(): Promise<void> {
+    for (const [id, backup] of this.backups) {
+      try {
+        await this.verifyBackup(backup);
+        this.backupStats.verifiedBackups++;
+  } catch (error) {
+        this.backupStats.corruptedBackups++;
+        this.addAlert('warning', `Backup verification failed: ${backup.metadata.name}`, error);
+  }
+}
+}
+
+  private async monitorBackups(): Promise<void> {
+    // Check for old backups that need cleanup
+    this.cleanupOldBackups();
+    
+    // Check for failed backups
+    this.checkFailedBackups();
+    
+    // Check for storage space
+    this.checkStorageSpace();
+}
+
+  private cleanupOldBackups(): void {
+    const cutoff = Date.now() - (this.backupConfig.backupRetentionDays * 24 * 60 * 60 * 1000);
+    const backupsToDelete: string[] = [];
+    
+    for (const [, idbackup] of this.backups) {
+      if (backup.metadata.timestamp < cutoff) {
+        backupsToDelete.push(id);
+  }
+}
+    
+    // Keep only the most recent backups up to maxBackups
+    if (this.backups.size > this.backupConfig.maxBackups) {
+      const sortedBackups = Array.from(this.backups.entries())
+        .sort((a, b) => b[1].metadata.timestamp - a[1].metadata.timestamp);
+      
+      const excessBackups = sortedBackups.slice(this.backupConfig.maxBackups);
+      excessBackups.forEach(([id]) => backupsToDelete.push(id));
+}
+    
+    backupsToDelete.forEach(id => {
+      this.backups.delete(id);
+});
+    
+    if (backupsToDelete.length > 0) {
+      this.addAlert('info', `Cleaned up ${backupsToDelete.length} old backups`);
+      this.saveBackups();
+}
+}
+
+  private checkFailedBackups(): void {
+    // Check for backups that failed verification
+    const failedBackups = Array.from(this.backups.values())
+      .filter(backup => !backup.metadata.verified);
+    
+    if (failedBackups.length > 0) {
+      this.addAlert('warning', `${failedBackups.length} backups failed verification`);
+}
+}
+
+  private checkStorageSpace(): void {
+    // Check available storage space
+    if (typeof navigator !== 'undefined' && 'storage' in navigator) {
+      navigator.storage.estimate().then(estimate => {
+        const used = estimate.usage || 0;
+        const quota = estimate.quota || 0;
+        const usagePercent = (used / quota) * 100;
+        
+        if (usagePercent > 90) {
+          this.addAlert('warning', 'Storage space is running low');
+    }
+  });
+}
+}
+
+  private addAlert(type: 'success' | 'warning' | 'error' | 'info', message: string, error?: any): void {
+    const alert: BackupAlert = {
+      id: this.generateId, (, ),
+      type,
+      message,
+      timestamp: Date.now(),
+      severity: type === 'error' ? 'high' : type === 'warning' ? 'medium' : 'low',
+      acknowledged: false,
+      metadata: error ? { error: error.message || error } : {}
+};
+    
+    this.alerts.push(alert);
+    
+    // Keep only last 1000 alerts
+    if (this.alerts.length > 1000) {
+      this.alerts = this.alerts.slice(-1000);
+}
+}
+
+  private generateId(): string {
+    return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+}
+
+  public getBackups(): BackupData[] {
+    return Array.from(this.backups.values());
+}
+
+  public getRecoveryPoints(): RecoveryPoint[] {
+    return Array.from(this.recoveryPoints.values());
+}
+
+  public getAlerts(): BackupAlert[] {
+    return [...this.alerts];
+}
+
+  public getBackupStats(): BackupStats {
+    return { ...this.backupStats };
+}
+
+  public getRecoveryStats(): RecoveryStats {
+    return { ...this.recoveryStats };
+}
+
+  public updateBackupConfig(config: Partial<BackupConfig>): void {
+    this.backupConfig = { ...this.backupConfig, ...config };
+}
+
+  public updateRecoveryConfig(config: Partial<RecoveryConfig>): void {
+    this.recoveryConfig = { ...this.recoveryConfig, ...config };
+}
+
+  public destroy(): void {
+    if (this.backupTimer) {
+      clearInterval(this.backupTimer);
+}
+    if (this.verificationTimer) {
+      clearInterval(this.verificationTimer);
+}
+    if (this.monitoringTimer) {
+      clearInterval(this.monitoringTimer);
+}
+}
+}
+
+// Create singleton instance
+export const backupRecoverySystem = new BackupRecoverySystem();
+
+// Export types and class
+export { BackupRecoverySystem };
+export default backupRecoverySystem;
+
+
+
+
+

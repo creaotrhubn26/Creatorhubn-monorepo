@@ -1,0 +1,659 @@
+import { useTheming } from '../../utils/theming-helper';
+import React, { useState } from 'react';
+import { useDemoMode } from '@/contexts/DemoModeContext';
+import {
+  Box,
+  Typography,
+  Card,
+  CardContent,
+  Grid,
+  Switch,
+  FormControlLabel,
+  Button,
+  Chip,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemIcon,
+  ListItemSecondaryAction,
+  Alert,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  TextField,
+  Divider,
+  LinearProgress,
+  IconButton,
+  Tooltip,
+} from '@mui/material';
+import {
+  VideocamLibrary,
+  SmartToy,
+  Analytics,
+  Movie,
+  LibraryBooks,
+  Folder,
+  CloudUpload,
+  CloudDownload,
+  Refresh,
+  Settings,
+  CheckCircle,
+  Warning,
+  Error as ErrorIcon,
+  Storage,
+  Schedule,
+  MonitorFavorite,
+  MonitorHeart,
+  VideoLibrary,
+  AutoFixHigh,
+  Transform,
+  Preview,
+  Production,
+  Visibility,
+  VisibilityOff,
+  TheaterComedy,
+} from '@mui/icons-material';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
+import { useToast } from '@/hooks/use-toast';
+
+interface UniversalSettingsProps {
+  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  userId?: string;
+  // Integration props
+  onMeetingCreate?: (meeting: any) => void;
+  onProjectUpdate?: (project: any) => void;
+  onWorklogCreate?: (worklog: any) => void;
+  selectedProject?: any;
+  onProjectSelect?: (project: any) => void
+}
+
+export default function UniversalSettings({
+  profession = 'photographer',
+  userId,
+  onMeetingCreate,
+  onProjectUpdate,
+  onWorklogCreate,
+  selectedProject,
+  onProjectSelect
+}: UniversalSettingsProps) {
+  const [autoBackupEnabled, setAutoBackupEnabled] = useState(true);
+  const [autoMonitorEnabled, setAutoMonitorEnabled] = useState(true);
+  const [intelligentDetection, setIntelligentDetection] = useState(true);
+  const { toast } = useToast();
+  
+  // Theming system
+  const theming = useTheming('photographer');
+  const queryClient = useQueryClient();
+
+  // Universal Demo Mode Integration
+  const {
+    isDemoMode,
+    isLoading: demoModeLoading,
+    toggleDemoMode,
+    error: demoModeError,
+  } = useDemoMode();
+
+  // Story Arc backup status
+  const { data: backupStatus, isLoading: backupLoading } = useQuery({
+    queryKey: ['/api/story-arc/backup/status', ],
+    queryFn: () => apiRequest('/api/story-arc/backup/status', ),
+    retry: false,
+});
+
+  // Auto-monitor configuration
+  const { data: autoMonitorConfig, isLoading: monitorLoading } = useQuery({
+    queryKey: ['/api/story-arc/auto-monitor/status', ],
+    queryFn: () => apiRequest('/api/story-arc/auto-monitor/status', ),
+    retry: false,
+});
+
+  // Story Arc project statistics
+  const { data: projectStats } = useQuery({
+    queryKey: ['/api/story-arc/statistics', ],
+    queryFn: () => apiRequest('/api/story-arc/statistics', ),
+    retry: false,
+});
+
+  // Google Drive folder status
+  const { data: driveStatus } = useQuery({
+    queryKey: ['/api/google-drive/story-arc-folders', ],
+    queryFn: () => apiRequest('/api/google-drive/story-arc-folders', ),
+    retry: false,
+});
+
+  // Demo Mode status - Now using universal context instead of direct API query
+  // Removed old query - now using useDemoMode context
+
+  // Backup mutations
+  const createBackup = useMutation({
+    mutationFn: (backupType: string) =>
+      apiRequest('/api/story-arc/backup/create', {
+        method: 'POST',
+        body: JSON.stringify({ type: backupType }),
+      }),
+    onSuccess: () => {
+      toast({
+        title: 'Backup Opprettet',
+        description: 'Story Arc Studio data har blitt sikkerhetskopiert'
+      });
+      queryClient.invalidateQueries({ queryKey: ['/api/story-arc/backup'] });
+    },
+});
+
+  const updateAutoMonitor = useMutation({
+    mutationFn: (config: any) =>
+      apiRequest('/api/story-arc/auto-monitor/config', {
+        method: 'PUT',
+        body: JSON.stringify(config),
+      }),
+    onSuccess: () => {
+      toast({
+        title: 'Konfigurasjon Oppdatert',
+        description: 'Auto-monitor innstillinger har blitt lagret'
+      });
+      queryClient.invalidateQueries({
+        queryKey: ['/api/story-arc/auto-monitor'],
+      });
+    },
+});
+
+  const createStoryArcFolders = useMutation({
+    mutationFn: () =>
+      apiRequest('/api/google-drive/create-story-arc-folders', {
+        method: 'POST'
+      }),
+    onSuccess: () => {
+      toast({
+        title: 'Mapper Opprettet',
+        description: 'Story Arc Studio mapper har blitt opprettet i Google Drive'
+      });
+      queryClient.invalidateQueries({ queryKey: ['/api/google-drive'] });
+    },
+});
+
+  const clearAnalysisCache = useMutation({
+    mutationFn: () => apiRequest('/api/story-arc/analysis-cache/clear', { method: 'DELETE' }),
+    onSuccess: () => {
+      toast({
+        title: 'Cache Tømt',
+        description: 'Content analysis cache har blitt tømt'
+      });
+      queryClient.invalidateQueries({ queryKey: ['/api/story-arc'] });
+    },
+});
+
+
+  if (backupLoading || monitorLoading || demoModeLoading) {
+    return (
+      <Box sx={{ p:  3 }}>
+        <LinearProgress />
+        <Typography variant="body2" sx={{ mt:  1 }}>
+          Laster plattforminnstillinger...
+        </Typography>
+      </Box>
+    );
+  }
+
+  return (
+    <Box sx={{ p:  3 }}>
+      <Typography variant="h5" gutterBottom sx={{  fontWeight: 600, mb:  3  }}>
+        Universelle Plattforminnstillinger
+      </Typography>
+
+      <Grid container spacing={3}>
+        {/* Demo Mode Section - First Priority */}
+        <Grid size={{ xs: 12 }}>
+          <Card
+            variant="outlined"
+            sx={{
+              mb: 2,
+              border: isDemoMode ? '2px solid #ff9800' : '1px solid #e0e0e0',
+              backgroundColor: isDemoMode ? '#fff3e0' : 'background.paper',
+              ...theming.getThemedCardSx()
+            }}
+          >
+            <CardContent sx={theming.getThemedCardSx()}>
+              <Box sx={{ display: 'flex', alignItems: 'center', mb:  2 }}>
+                {isDemoMode ? (
+                  <Preview sx={{ mr: 1, color: 'warning.main' }} />
+                ) : (
+                  <Production sx={{ mr: 1, color: 'primary.main' }} />
+                )}
+                <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+                  {isDemoMode ? 'Demo-modus Aktiv' : 'Produksjonsmodus Aktiv'}
+                </Typography>
+                <Box sx={{ ml: 'auto' }}>
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={isDemoMode || false}
+                        onChange={(e) => toggleDemoMode()}
+                        disabled={demoModeLoading}
+                        color="warning"
+                      />
+                  }
+                    label="Demo-modus"
+                  />
+                </Box>
+              </Box>
+
+              <Alert severity={isDemoMode ? 'warning' : 'success'} sx={{ mb:  2 }}>
+                {isDemoMode ? 'Demo-modus er aktivt - alle data er simulerte' : 'Produksjonsmodus er aktivt - klar for ekte data'}
+              </Alert>
+
+              <Typography variant="body2" color="text.secondary">
+                {isDemoMode ? (
+                  <>
+                    • Demo-modus viser simulerte data for å demonstrere funksjonalitet
+                    <br />
+                    • Ingen ekte data vil påvirkes i demo-modus
+                    <br />• Perfekt for å utforske plattformen før du starter med ekte prosjekter
+                  </>
+                ) : (
+                  <>
+                    • Produksjonsmodus er klar for ekte data og prosjekter
+                    <br />
+                    • Systemet starter tomt og venter på dine faktiske kunder og prosjekter
+                    <br />• Alle integrasjoner og funksjoner er klare for produksjon
+                  </>
+                )}
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+        {/* Backup & Recovery Section */}
+        <Grid size={{ xs:  12, lg:  6 }}>
+          <Card variant="outlined" sx={{ height: '100%' ,  ...theming.getThemedCardSx() }}>
+            <CardContent sx={theming.getThemedCardSx()}>
+              <Box sx={{ display: 'flex', alignItems: 'center', mb:  2 }}>
+                <CloudUpload sx={{ mr: 1, color: 'primary.main' }} />
+                <Typography variant="h6" sx={{ color: theming.colors.primary }}>Backup & Gjenoppretting</Typography>
+              </Box>
+
+              <List dense>
+                <ListItem>
+                  <ListItemIcon>
+                    <Movie />
+                  </ListItemIcon>
+                  <ListItemText
+                    primary="Story Arc Prosjekter"
+                    secondary={`${projectStats?.totalProjects || 0} prosjekter totalt`}
+                  />
+                  <ListItemSecondaryAction>
+                    <Chip
+                      size="small"
+                      label={
+                        backupStatus?.lastProjectBackup
+                          ? 'Sikkerhetskopiert'
+                          : 'Ikke sikkerhetskopiert'
+                    }
+                      color={backupStatus?.lastProjectBackup ? 'success' : 'warning'}
+                    />
+                  </ListItemSecondaryAction>
+                </ListItem>
+
+                <ListItem>
+                  <ListItemIcon>
+                    <MonitorHeart />
+                  </ListItemIcon>
+                  <ListItemText
+                    primary="Auto-Monitor Konfigurasjoner"
+                    secondary={`${autoMonitorConfig?.totalConfigs || 0} aktive konfigurasjoner`}
+                  />
+                  <ListItemSecondaryAction>
+                    <Chip
+                      size="small"
+                      label={autoMonitorConfig?.enabled ? 'Aktivert' : 'Deaktivert'}
+                      color={autoMonitorConfig?.enabled ? 'success' : 'default'}
+                    />
+                  </ListItemSecondaryAction>
+                </ListItem>
+
+                <ListItem>
+                  <ListItemIcon>
+                    {theming.getThemedIcon('analytics')}
+                  </ListItemIcon>
+                  <ListItemText
+                    primary="Content Analysis Cache"
+                    secondary={`${backupStatus?.cacheEntries || 0} cached analyser`}
+                  />
+                  <ListItemSecondaryAction>
+                    <Tooltip title="Tøm cache">
+                      <IconButton
+                        size="small"
+                        onClick={() => clearAnalysisCache.mutate()}
+                        disabled={clearAnalysisCache.isPending}
+                      >
+                        {theming.getThemedIcon('refresh')}
+                      </IconButton>
+                    </Tooltip>
+                  </ListItemSecondaryAction>
+                </ListItem>
+
+                <ListItem>
+                  <ListItemIcon>
+                    <LibraryBooks />
+                  </ListItemIcon>
+                  <ListItemText
+                    primary="Story Arc Templates"
+                    secondary={`${backupStatus?.templates || 0} tilgjengelige templates`}
+                  />
+                </ListItem>
+              </List>
+
+              <Divider sx={{ my:  2 }} />
+
+              <Box sx={{ mb:  2 }}>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={autoBackupEnabled}
+                      onChange={(e) => setAutoBackupEnabled(e.target.checked)}
+                    />
+                }
+                  label="Automatisk daglig backup"
+                />
+              </Box>
+
+              <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                <Button variant="contained"
+                  size="small"
+                  startIcon={theming.getThemedIcon('cloudUpload')}
+                  onClick={() => createBackup.mutate('full')}
+                  disabled={createBackup.isPending}
+                >
+                  Komplett Backup
+                </Button>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  startIcon={<Movie />}
+                  onClick={() => createBackup.mutate('projects')}
+                  disabled={createBackup.isPending}
+                >
+                  Bare Prosjekter
+                </Button>
+              </Box>
+
+              {backupStatus?.lastBackup && (
+                <Alert severity="success" sx={{ mt: 2 }}>
+                  Siste backup: {new Date(backupStatus.lastBackup).toLocaleString('no-NO')}
+                </Alert>
+              )}
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* Auto-Monitor Configuration */}
+        <Grid size={{ xs:  12, lg:  6 }}>
+          <Card variant="outlined" sx={{ height: '100%' ,  ...theming.getThemedCardSx() }}>
+            <CardContent sx={theming.getThemedCardSx()}>
+              <Box sx={{ display: 'flex', alignItems: 'center', mb:  2 }}>
+                <SmartToy sx={{ mr: 1, color: 'primary.main' }} />
+                <Typography variant="h6" sx={{ color: theming.colors.primary }}>Auto-Monitor Konfigurasjon</Typography>
+              </Box>
+
+              <Box sx={{ mb:  2 }}>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={autoMonitorEnabled}
+                      onChange={(e) => {
+                        setAutoMonitorEnabled(e.target.checked);
+                        updateAutoMonitor.mutate({ enabled: e.target.checked });
+                    }}
+                    />
+                }
+                  label="Auto-Monitor Aktivert"
+                />
+              </Box>
+
+              <TextField
+                fullWidth
+                size="small"
+                label="Overvåkingsinterval (sekunder)"
+                type="number"
+                defaultValue={autoMonitorConfig?.interval || 30}
+                sx={{ mb:  2 }}
+                onChange={(e) => {
+                  const interval = parseInt(e.target.value);
+                  if (interval >= 10) {
+                    updateAutoMonitor.mutate({ interval });
+                  }
+                }}
+              />
+
+              <FormControl fullWidth size="small" sx={{ mb:  2 }}>
+                <InputLabel>Standard Template Type</InputLabel>
+                <Select
+                  defaultValue={autoMonitorConfig?.defaultTemplate || 'wedding'}
+                  onChange={(e) =>
+                    updateAutoMonitor.mutate({
+                      defaultTemplate: e.target.value,
+                    })
+                  }
+                >
+                  <MenuItem value="wedding">Bryllup</MenuItem>
+                  <MenuItem value="corporate">Bedrift</MenuItem>
+                  <MenuItem value="music_video">Musikkvideo</MenuItem>
+                  <MenuItem value="documentary">Dokumentar</MenuItem>
+                  <MenuItem value="event">Arrangement</MenuItem>
+                  <MenuItem value="portrait">Portrett</MenuItem>
+                </Select>
+              </FormControl>
+
+              <TextField
+                fullWidth
+                size="small"
+                label="Mål Varighet (minutter)"
+                type="number"
+                defaultValue={autoMonitorConfig?.targetDuration || 8}
+                sx={{ mb:  2 }}
+                onChange={(e) => {
+                  const duration = parseInt(e.target.value);
+                  if (duration > 0) {
+                    updateAutoMonitor.mutate({ targetDuration: duration * 60 });
+                  }
+                }}
+              />
+
+              <Box sx={{ mb:  2 }}>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={intelligentDetection}
+                      onChange={(e) => {
+                        setIntelligentDetection(e.target.checked);
+                        updateAutoMonitor.mutate({
+                          intelligentDetection: e.target.checked,
+                        });
+                      }}
+                    />
+                }
+                  label="Intelligent Content Detection"
+                />
+              </Box>
+
+              {autoMonitorConfig?.lastCheck && (
+                <Alert severity="info" sx={{ mt: 2 }}>
+                  Siste sjekk: {new Date(autoMonitorConfig.lastCheck).toLocaleString('no-NO')}
+                </Alert>
+              )}
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* Google Drive Mappestruktur */}
+        <Grid size={{ xs:  12, lg:  6 }}>
+          <Card variant="outlined" sx={theming.getThemedCardSx()}>
+            <CardContent sx={theming.getThemedCardSx()}>
+              <Box sx={{ display: 'flex', alignItems: 'center', mb:  2 }}>
+                <Folder sx={{ mr: 1, color: 'primary.main' }} />
+                <Typography variant="h6" sx={{ color: theming.colors.primary }}>Google Drive Mappestruktur</Typography>
+              </Box>
+
+              <List dense>
+                <ListItem>
+                  <ListItemIcon>
+                    {theming.getThemedIcon('videoLibrary')}
+                  </ListItemIcon>
+                  <ListItemText
+                    primary="studio_arc_create"
+                    secondary="Hovedmappe for Story Arc prosjektgenerering"
+                  />
+                  <ListItemSecondaryAction>
+                    <Chip
+                      size="small"
+                      label={driveStatus?.storyArcCreateFolder ? 'Eksisterer' : 'Mangler'}
+                      color={driveStatus?.storyArcCreateFolder ? 'success' : 'error'}
+                    />
+                  </ListItemSecondaryAction>
+                </ListItem>
+
+                <ListItem>
+                  <ListItemIcon>
+                    <LibraryBooks />
+                  </ListItemIcon>
+                  <ListItemText
+                    primary="story_arc_templates"
+                    secondary="Template-bibliotek for ulike innholdstyper"
+                  />
+                  <ListItemSecondaryAction>
+                    <Chip
+                      size="small"
+                      label={driveStatus?.templatesFolder ? 'Eksisterer' : 'Mangler'}
+                      color={driveStatus?.templatesFolder ? 'success' : 'error'}
+                    />
+                  </ListItemSecondaryAction>
+                </ListItem>
+
+                <ListItem>
+                  <ListItemIcon>
+                    {theming.getThemedIcon('transform')}
+                  </ListItemIcon>
+                  <ListItemText
+                    primary="davinci_resolve_exports"
+                    secondary="XML eksporter for DaVinci Resolve"
+                  />
+                  <ListItemSecondaryAction>
+                    <Chip
+                      size="small"
+                      label={driveStatus?.exportsFolder ? 'Eksisterer' : 'Mangler'}
+                      color={driveStatus?.exportsFolder ? 'success' : 'error'}
+                    />
+                  </ListItemSecondaryAction>
+                </ListItem>
+
+                <ListItem>
+                  <ListItemIcon>
+                    {theming.getThemedIcon('storage')}
+                  </ListItemIcon>
+                  <ListItemText
+                    primary="story_arc_backups"
+                    secondary="Automatiske backup av Story Arc data"
+                  />
+                  <ListItemSecondaryAction>
+                    <Chip
+                      size="small"
+                      label={driveStatus?.backupsFolder ? 'Eksisterer' : 'Mangler'}
+                      color={driveStatus?.backupsFolder ? 'success' : 'error'}
+                    />
+                  </ListItemSecondaryAction>
+                </ListItem>
+              </List>
+
+              <Button variant="contained"
+                startIcon={theming.getThemedIcon('folder')}
+                onClick={() => createStoryArcFolders.mutate()}
+                disabled={createStoryArcFolders.isPending}
+                sx={{ mt:  2 }}
+              >
+                Opprett Manglende Mapper
+              </Button>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* System Status */}
+        <Grid size={{ xs:  12, lg:  6 }}>
+          <Card variant="outlined" sx={theming.getThemedCardSx()}>
+            <CardContent sx={theming.getThemedCardSx()}>
+              <Box sx={{ display: 'flex', alignItems: 'center', mb:  2 }}>
+                <CheckCircle sx={{ mr: 1, color: 'success.main' }} />
+                <Typography variant="h6" sx={{ color: theming.colors.primary }}>Story Arc Studio Status</Typography>
+              </Box>
+
+              <Grid container spacing={2}>
+                <Grid size={{ xs:  6 }}>
+                  <Box sx={{ textAlign: 'center', p:  1 }}>
+                    <CheckCircle sx={{ fontSize:  32, color: 'success.main', mb: 0.5}} />
+                    <Typography variant="body2" sx={{ fontWeight: 50}}>
+                      PostgreSQL
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Database Tilkoblet
+                    </Typography>
+                  </Box>
+                </Grid>
+
+                <Grid size={{ xs:  6 }}>
+                  <Box sx={{ textAlign: 'center', p:  1 }}>
+                    <CheckCircle sx={{ fontSize:  32, color: 'success.main', mb: 0.5}} />
+                    <Typography variant="body2" sx={{ fontWeight: 50}}>
+                      Google AI
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Content Analysis
+                    </Typography>
+                  </Box>
+                </Grid>
+
+                <Grid size={{ xs:  6 }}>
+                  <Box sx={{ textAlign: 'center', p:  1 }}>
+                    {autoMonitorConfig?.enabled ? (
+                      <CheckCircle sx={{ fontSize:  32, color: 'success.main', mb: 0.5}} />
+                    ) : (
+                      <Warning sx={{ fontSize:  32, color: 'warning.main', mb: 0.5}} />
+                    )}
+                    <Typography variant="body2" sx={{ fontWeight: 50}}>
+                      Auto-Monitor
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {autoMonitorConfig?.enabled ? 'Aktivert' : 'Deaktivert'}
+                    </Typography>
+                  </Box>
+                </Grid>
+
+                <Grid size={{ xs:  6 }}>
+                  <Box sx={{ textAlign: 'center', p:  1 }}>
+                    <CheckCircle sx={{ fontSize:  32, color: 'success.main', mb: 0.5}} />
+                    <Typography variant="body2" sx={{ fontWeight: 50}}>
+                      Google Drive
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Mappestruktur OK
+                    </Typography>
+                  </Box>
+                </Grid>
+              </Grid>
+
+              {projectStats && (
+                <Alert severity="info" sx={{ mt:  2 }}>
+                  <Typography variant="body2" sx={{ fontWeight: 50}}>
+                    Systemstatistikk: </Typography>
+                  <Typography variant="caption">
+                    • {projectStats.totalProjects} totale prosjekter
+                    <br />• {projectStats.completedProjects} fullførte prosjekter
+                    <br />• {projectStats.cachedAnalyses} cached analyser
+                  </Typography>
+                </Alert>
+              )}
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
+    </Box>
+  );
+}

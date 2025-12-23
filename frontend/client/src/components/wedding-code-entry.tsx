@@ -1,0 +1,228 @@
+import { useTheming } from '../utils/theming-helper';
+import React, { useState } from 'react';
+import { useQuery, useMutation } from '@tanstack/react-query';
+import { useAuth } from '@/hooks/useAuth';
+import { 
+  Box, 
+  Typography, 
+  Paper,
+  TextField,
+  Button,
+  Alert,
+  CircularProgress,
+  IconButton,
+  Card,
+  CardContent,
+  Divider
+} from '@mui/material';
+import { 
+  Lock,
+  LockOpen,
+  Refresh,
+  Phone,
+  Email,
+  Info
+} from '@mui/icons-material';
+import { apiRequest } from '@/lib/queryClient';
+
+interface WeddingCodeEntryProps {
+  projectId: string;
+  onValidCode: (token: string) => void
+}
+
+export default function WeddingCodeEntry({ projectId, onValidCode }: WeddingCodeEntryProps) {
+  const [accessCode, setAccessCode] = useState('');
+  
+  // Theming system
+  const theming = useTheming('photographer,');
+  const [error, setError] = useState('');
+
+  const validateCodeMutation = useMutation({
+    mutationFn: async (code: string) => {
+      const response = await apiRequest('/api/wedding-timeline/validate-code, ', {
+        headers: {
+          "Content-Type" : "application/json"
+        },
+        method: 'POST',
+        body: JSON.stringify({ projectId, accessCode: code })
+      });
+      return response;
+    },
+    onSuccess: (data) => {
+      if (data.valid) {
+        onValidCode(data.clientAccessToken);
+      }
+    },
+    onError: (error: any) => {
+      setError(error.message || 'Ugyldig tilgangskode');
+    }
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(', ');
+    
+    if (accessCode.length !== 6) {
+      setError('Tilgangskoden må være 6 siffer');
+      return;
+    }
+    
+    validateCodeMutation.mutate(accessCode);
+  };
+
+  const handleCodeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value.replace(/[^0-9]/g, ', ').slice(0, 6);
+    setAccessCode(value);
+    setError(', ');
+  };
+
+  return (
+    <Box sx={{ 
+      minHeight: '100vh', 
+      display: 'flex', 
+      justifyContent: 'center', 
+      alignItems: 'center',
+      background: 'linear-gradient(135deg, #ff9a9e 0%, #fecfef 50%, #fecfef 100%)',
+      p: 2
+    }}>
+      <Paper sx={{ 
+        p: 4, 
+        maxWidth: 400, 
+        width: '100%',
+        borderRadius: 3,
+        background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0.9) 100%)',
+        backdropFilter: 'blur(10px)',
+        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.1)',
+        ...theming.getThemedCardSx()
+      }}>
+        {/* Header */}
+        <Box sx={{ textAlign: 'center', mb: 4 }}>
+          <Box sx={{ 
+            display: 'inline-flex', 
+            p: 2,
+            borderRadius: '50%', 
+            bgcolor: 'rgba(26, 27, 96, 0.1)',
+            mb: 2
+          }}>
+            <Lock sx={{ fontSize: 40, color: '#d81b60' }} />
+          </Box>
+          <Typography variant="h4" sx={{ fontWeight: 70, color: theming.colors.primary, mb: 1 }}>
+            💕 Bryllupstidslinje
+          </Typography>
+          <Typography variant="body1" color="text.secondary">
+            Skriv inn den 6-sifrede koden du fikk av fotografen din
+          </Typography>
+        </Box>
+
+        {/* Code Entry Form */}
+        <form onSubmit={handleSubmit}>
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600}}>
+              Tilgangskode
+            </Typography>
+            <TextField
+              fullWidth
+              value={accessCode}
+              onChange={handleCodeChange}
+              placeholder="000000"
+              inputProps={{
+                maxLength: 6,
+                style: {
+                  textAlign: 'center',
+                  fontSize: '24px',
+                  fontWeight: 'bold',
+                  letterSpacing: '8px',
+                  fontFamily: 'monospace'
+                }
+              }}
+              sx={{
+                '& .MuiOutlinedInput-root': {
+                  borderRadius: 2,
+                  bgcolor: 'rgba(255, 255, 255, 0.8)', '&:hover': {
+                    bgcolor: 'rgba(255, 255, 255, 0.9)',
+                  }, '&.Mui-focused': {
+                    bgcolor: 'white',
+                  }
+                }
+              }}
+              disabled={validateCodeMutation.isPending}
+              error={!!error}
+            />
+            {error && (
+              <Typography variant="caption" color="error" sx={{ mt: 1, display: 'block' }}>
+                {error}
+              </Typography>
+            )}
+          </Box>
+
+          <Button
+            fullWidth
+            type="submit"
+            variant="contained"
+            size="large"
+            disabled={accessCode.length !== 6 || validateCodeMutation.isPending}
+            sx={{
+              py: 1.5,
+              bgcolor: '#d81b60',
+              borderRadius: 2,
+              fontSize: '16px',
+              fontWeight: 600, '&:hover': {
+                bgcolor: '#ad1450',
+              },
+              ...theming.getThemedButtonSx()
+            }}>
+            {validateCodeMutation.isPending ? (
+              <>
+                <CircularProgress size={20} sx={{ mr: 1 }} color="inherit" />
+                Validerer...
+              </>
+            ) : (
+              <>
+                <LockOpen sx={{ mr: 1 }} />
+                Få tilgang
+              </>
+            )}
+          </Button>
+        </form>
+
+        <Divider sx={{ my: 3 }} />
+
+        {/* Help Section */}
+        <Card sx={{ bgcolor: 'rgba(3, 150, 243, 0.05)', border: '1px solid rgba(3, 150, 243, 0.2)', ...theming.getThemedCardSx() }}>
+          <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+            <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
+              <Info sx={{ color: '#2196f0', fontSize: 20, mt: 0.5 }} />
+              <Box>
+                <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
+                  Har du ikke fått koden?
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  Kontakt fotografen din for å få tilgangskoden til bryllupstidslinjen.
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    <Phone sx={{ fontSize: 16, color: 'text.secondary' }} />
+                    <Typography variant="caption" color="text.secondary">
+                      Ring fotografen
+                    </Typography>
+                  </Box>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5}}>
+                    <Email sx={{ fontSize:  16, color: 'text.secondary'}} />
+                    <Typography variant="caption" color="text.secondary">
+                      Send e-post
+                    </Typography>
+                  </Box>
+                </Box>
+              </Box>
+            </Box>
+          </CardContent>
+        </Card>
+
+        {/* Footer */}
+        <Typography variant="caption" color="text.secondary" sx={{ mt:  3, display: 'block', textAlign: 'center'}}>
+          Sikret av CreatorHub Norge • Koden utløper etter 30 dager
+        </Typography>
+      </Paper>
+    </Box>
+  );
+}

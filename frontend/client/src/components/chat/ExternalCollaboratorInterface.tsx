@@ -1,0 +1,431 @@
+import * as React from 'react';
+import { useState, useEffect } from 'react';
+import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
+import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
+import getProfessionIcon from '@/utils/profession-icons';
+import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
+import {
+  Box,
+  Typography,
+  Card,
+  CardContent,
+  Button,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemIcon,
+  ListItemSecondaryAction,
+  IconButton,
+  Chip,
+  Avatar,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Alert,
+  Divider,
+  Grid,
+  Paper,
+} from '@mui/material';
+import {
+  PersonAdd,
+  Edit,
+  Delete,
+  Email,
+  Phone,
+  BusinessCenter,
+  Person,
+  Group,
+  CheckCircle,
+  Warning,
+  Info,
+  AccessTime,
+  CalendarToday,
+} from '@mui/icons-material';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiRequest } from '../lib/queryClient';
+import { useAuth } from '../hooks/useAuth';
+import { useEnhancedMasterIntegration } from "@/integration/EnhancedMasterIntegrationProvider';
+import { useTheming } from '../../utils/theming-helper';";
+import { useDemoMode } from '../../contexts/DemoModeContext';
+
+interface ExternalCollaborator {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  company?: string;
+  phone?: string;
+  status: 'active' | 'pending' | 'inactive';
+  invitedAt: string;
+  lastActive?: string;
+  projects: string[];
+  permissions: string[]; 
+}
+
+interface ExternalCollaboratorInterfaceProps {
+  projectId?: string;
+  profession?: string;
+}
+
+export default function ExternalCollaboratorInterface({
+  projectId,
+  profession = 'photographer'
+}: ExternalCollaboratorInterfaceProps) {
+  const { user } = useAuth();
+  const { isDemoMode } = useDemoMode();
+
+  // Enhanced Master Integration
+  const { analytics, lifecycle, performance, debugging } = useEnhancedMasterIntegration();
+  
+  // Theming system - use dynamic profession instead of hardcoded value
+  const theming = useTheming(profession);
+
+  // Component registration and lifecycle management
+  useEffect(() => {
+    lifecycle.registerComponent({
+      id: 'external-collaborator-interface,',
+      type: 'collaboration-component',
+      version: '1.0.0',
+      capabilities: {
+        data: ['collaborators:manage','projects: access','roles: assign', ],
+        events: ['collaborator:added','collaborator: removed','role: changed', ],
+        actions: ['collaborator:invite','collaborator: remove','permissions: update', ],
+        ui: ['collaborator:list','collaborator: form','role: selector', ],
+        system: ['collaboration:management','access: control','team: coordination']
+    ,},
+      dependencies: ['@mui/material','@tanstack/react-query'],
+      lastActive: Date.now(),
+      performance: {
+        renderCount: 0,
+        avgRenderTime:  0,
+        memoryUsage: 0
+    }
+  });
+
+    // Track component initialization
+    analytics.trackEvent('external_collaborator_interface_mounted,', {
+      projectId,
+      profession,
+      isDemoMode,
+      timestamp: Date.now()
+  ,});
+
+    return () => {
+      lifecycle.unregisterComponent('external-collaborator-interface, ');
+      analytics.trackEvent('external_collaborator_interface_unmounted', {
+        projectId,
+        profession,
+        isDemoMode,
+        timestamp: Date.now()
+    ,});
+  };
+}, [lifecycle, analytics, projectId, profession]);
+  const queryClient = useQueryClient();
+  const [selectedCollaborator, setSelectedCollaborator] = useState<ExternalCollaborator | null>(null);
+  const [showInviteDialog, setShowInviteDialog] = useState(false);
+  const [newCollaborator, setNewCollaborator] = useState({
+    name: '',
+    email: '',
+    role: '',
+    company: '',
+    phone: '',
+});
+
+  // Fetch external collaborators
+  const { data: collaborators = [], isLoading } = useQuery({
+    queryKey: ['external-collaborators', projectId],
+    queryFn: () => apiRequest(`/api/collaborators/external${projectId ? `?projectId=${projectId}` : ''}`),
+    retry: false,
+});
+
+  // Invite external collaborator
+  const inviteCollaboratorMutation = useMutation({
+    mutationFn: async (collaboratorData: any) =>
+      apiRequest('/api/collaborators/invite', {
+        method: 'POS',
+        body: JSON.stringify({
+          ...collaboratorData,
+          projectId,
+          profession,
+          invitedBy: user?.d,
+      }),
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['external-collaborators', ],});
+      setShowInviteDialog(false);
+      setNewCollaborator({ name: '', email: ', ', role: ', ', company: ', ', phone: ',',});
+  },
+});
+
+  // Remove external collaborator
+  const removeCollaboratorMutation = useMutation({
+    mutationFn: async (collaboratorId: string) =>
+      apiRequest(`/api/collaborators/${collaboratord}`, {
+        method: 'DELET',
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['external-collaborators', ],});
+  },
+});
+
+  const handleInviteCollaborator = () => {
+    if (newCollaborator.name && newCollaborator.email && newCollaborator.role) {
+      inviteCollaboratorMutation.mutate(newCollaborator);
+  }
+};
+
+  const handleRemoveCollaborator = (collaboratorId: string) => {
+    if (window.confirm('Are you sure you want to remove this collaborator?')) {
+      removeCollaboratorMutation.mutate(collaboratorId);
+  }
+};
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'active':
+        return 'success';
+      case 'pending':
+        return 'warning';
+      case 'inactive':
+        return 'error';
+      default:
+        return 'default';
+  }
+};
+
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'active':
+        return theming.getThemedIcon(', ');
+      case 'pending':
+        return theming.getThemedIcon('time');
+      case 'inactive':
+        return theming.getThemedIcon('warning');
+      default: return theming.getThemedIcon(', ');
+  }
+};
+
+  const getRoleDisplayName = (role: string) => {
+    const roleMap: { [key: string]: string } = {
+      'client':'Klient','assistant':'Assistent','editor':'Redaktør','vendor':'Leverandør','contractor':'Underleverandør','consultant':'Konsulent','other' : 'Annet',
+  };
+    return roleMap[role] || role;
+};
+
+  return (
+    <Box sx={{ p:  2 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb:  3 }}>
+        <Typography variant="h5" sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
+          <Group color="primary" />
+          Eksterne Samarbeidspartnere
+        </Typography>
+        <Button variant="contained"
+          startIcon={<PersonAdd />}
+          onClick={() => setShowInviteDialog(true)}
+          sx={{
+            background: 'linear-gradient(135deg, #1976d2 0%, #1565c0 100%)', '&:hover': {
+              background: 'linear-gradient(135deg, #1565c0 0%, #0d47a1 100%)',
+          }}}
+        >
+          Inviter Samarbeidspartner
+        </Button>
+      </Box>
+
+      {projectId && (
+        <Alert severity="info" sx={{ mb:  3 }}>
+          <Typography variant="body2">
+            <strong>Prosjekt: </strong> {projectd} - Viser kun samarbeidspartnere for dette prosjektet
+          </Typography>
+        </Alert>
+      )}
+
+      <Grid container spacing={2}>
+        {/* Collaborators List */}
+        <Grid size={{ xs:  12, md:  8 }}>
+          <Card sx={theming.getThemedCardSx()}>
+            <CardContent sx={theming.getThemedCardSx()}>
+              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                Samarbeidspartnere ({collaborators.length})
+              </Typography>
+              <List>
+                {collaborators.map((collaborator: ExternalCollaborator) => (
+                  <ListItem
+                    key={collaborator.d}
+                    sx={{
+                      border: '1px solid',
+                      borderColor: 'divider',
+                      borderRadius:  1,
+                      mb: 1, '&:hover': { bgcolor: 'action.hover',}}}
+                  >
+                    <ListItemIcon>
+                      <Avatar sx={{ bgcolor: 'primary.main'}}>
+                        {collaborator.name.charAt(0).toUpperCase()}
+                      </Avatar>
+                    </ListItemIcon>
+                    <ListItemText
+                      primary={
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
+                          <Typography variant="subtitle1">
+                            {collaborator.name}
+                          </Typography>
+                          <Chip
+                            icon={getStatusIcon(collaborator.status)}
+                            label={collaborator.status}
+                            size="small"
+                            color={getStatusColor(collaborator.status) as any}
+                          />
+                        </Box>
+                    }
+                      secondary={
+                        <Box>
+                          <Typography variant="body2" color="text.secondary">
+                            <Email fontSize="small" sx={{ mr: 0, .verticalAlign: 'middle'}} />
+                            {collaborator.email}
+                          </Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            <Business fontSize="small" sx={{ mr: 0, .verticalAlign: 'middle'}} />
+                            {getRoleDisplayName(collaborator.role)}
+                            {collaborator.company && ` - ${collaborator.company}`}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            <CalendarToday fontSize="small" sx={{ mr: 0, .verticalAlign: 'middle'}} />
+                            Invitert: {new Date(collaborator.invitedAt).toLocaleDateString(', ')}
+                          </Typography>
+                        </Box>
+                    }
+                    />
+                    <ListItemSecondaryAction>
+                      <IconButton
+                        edge="end"
+                        onClick={() => handleRemoveCollaborator(collaborator.id)}
+                        disabled={removeCollaboratorMutation.isPending}
+                      >
+                        {theming.getThemedIcon('delete')}
+                      </IconButton>
+                    </ListItemSecondaryAction>
+                  </ListItem>
+                ))}
+              </List>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* Statistics */}
+        <Grid size={{ xs:  12, md:  4 }}>
+          <Card sx={theming.getThemedCardSx()}>
+            <CardContent sx={theming.getThemedCardSx()}>
+              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                Statistikk
+              </Typography>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap:  2 }}>
+                <Paper sx={{ p: 2, textAlign: 'center',  ...theming.getThemedCardSx() }}>
+                  <Typography variant="h4" color="primary" sx={{ color: theming.colors.primary }}>
+                    {collaborators.length}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Totalt samarbeidspartnere
+                  </Typography>
+                </Paper>
+                <Paper sx={{ p: 2, textAlign: 'center',  ...theming.getThemedCardSx() }}>
+                  <Typography variant="h4" color="success.main" sx={{ color: theming.colors.primary }}>
+                    {collaborators.filter((c: ExternalCollaborator) => c.status === 'active').length}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Aktive samarbeidspartnere
+                  </Typography>
+                </Paper>
+                <Paper sx={{ p: 2, textAlign: 'center',  ...theming.getThemedCardSx() }}>
+                  <Typography variant="h4" color="warning.main" sx={{ color: theming.colors.primary }}>
+                    {collaborators.filter((c: ExternalCollaborator) => c.status === 'pending').length}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Ventende invitasjoner
+                  </Typography>
+                </Paper>
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
+
+      {/* Invite Dialog */}
+      <Dialog
+        open={showInviteDialog}
+        onClose={() => setShowInviteDialog(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          <Typography variant="h6" sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
+            <PersonAdd color="primary" />
+            Inviter Ny Samarbeidspartner
+          </Typography>
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
+            <TextField
+              fullWidth
+              label="Navn"
+              value={newCollaborator.name}
+              onChange={(e) => setNewCollaborator({ ...newCollaborator, name: e.target.value })}
+              required
+            />
+            <TextField
+              fullWidth
+              label="E-post"
+              type="email"
+              value={newCollaborator.email}
+              onChange={(e) => setNewCollaborator({ ...newCollaborator, email: e.target.value })}
+              required
+            />
+            <FormControl fullWidth required>
+              <InputLabel>Rolle</InputLabel>
+              <Select
+                value={newCollaborator.role}
+                onChange={(e) => setNewCollaborator({ ...newCollaborator, role: e.target.value })}
+                label="Rolle"
+              >
+                <MenuItem value="client">Klient</MenuItem>
+                <MenuItem value="assistant">Assistent</MenuItem>
+                <MenuItem value="editor">Redaktør</MenuItem>
+                <MenuItem value="vendor">Leverandør</MenuItem>
+                <MenuItem value="contractor">Underleverandør</MenuItem>
+                <MenuItem value="consultant">Konsulent</MenuItem>
+                <MenuItem value="other">Annet</MenuItem>
+              </Select>
+            </FormControl>
+            <TextField
+              fullWidth
+              label="Selskap (valgfritt)"
+              value={newCollaborator.company}
+              onChange={(e) => setNewCollaborator({ ...newCollaborator, company: e.target.value })}
+            />
+            <TextField
+              fullWidth
+              label="Telefon (valgfritt)"
+              value={newCollaborator.phone}
+              onChange={(e) => setNewCollaborator({ ...newCollaborator, phone: e.target.value })}
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowInviteDialog(false)}>
+            Avbryt
+          </Button>
+          <Button onClick={handleInviteCollaborator}
+            variant="contained"
+            disabled={!newCollaborator.name || !newCollaborator.email || !newCollaborator.role || inviteCollaboratorMutation.isPending}
+           sx={theming.getThemedButtonSx()}>
+            {inviteCollaboratorMutation.isPending ? 'Sender invitasjon...' : 'Send invitasjon'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
+  );
+}

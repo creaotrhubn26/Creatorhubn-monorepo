@@ -1,0 +1,343 @@
+// @ts-nocheck
+// This file is in the unused directory and may have outdated imports
+import { useTheming } from '../../utils/theming-helper';
+import React, { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { useAuth } from '@/hooks/useAuth';
+import {
+  Box,
+  Card,
+  CardContent,
+  Typography,
+  Tabs,
+  Tab,
+  Button,
+  Grid,
+  Chip,
+  Alert,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemIcon,
+  Divider,
+  Paper
+} from '@mui/material';
+import {
+  Gavel as GavelIcon,
+  AddCircle as AddIcon,
+  List as ListIcon,
+  Settings as SettingsIcon,
+  Description as DescriptionIcon,
+  Security as SecurityIcon,
+  CheckCircle as CheckCircleIcon,
+  Assignment as AssignmentIcon
+} from '@mui/icons-material';
+import { apiRequest } from '@/lib/queryClient';
+import UniversalContractDesigner from './PhotographerContractDesigner';
+
+interface UniversalContractHubProps {
+  profession: 'photographer' | 'videographer' | 'music_producer';
+  userId?: string;
+  // Integration props for unified workflow connectivity
+  onMeetingCreate?: (meeting: any) => void;
+  onProjectUpdate?: (project: any) => void;
+  onWorklogCreate?: (worklog: any) => void;
+  onClientSelect?: (client: any) => void;
+  onClientUpdate?: (client: any) => void;
+  onShowcaseCreate?: (showcase: any) => void;
+  onFileUpload?: (file: any) => void;
+  onFileDownload?: (file: any) => void;
+  selectedProject?: any;
+  onProjectSelect?: (project: any) => void;
+  selectedClient?: any
+}
+
+export default function UniversalContractHub({ 
+  profession,
+  userId = 'admin-daniel-creatorhubn',
+  onMeetingCreate,
+  onProjectUpdate,
+  onWorklogCreate,
+  onClientSelect,
+  onClientUpdate,
+  onShowcaseCreate,
+  onFileUpload,
+  onFileDownload,
+  selectedProject,
+  onProjectSelect,
+  selectedClient
+}: UniversalContractHubProps) {
+  const [activeTab, setActiveTab] = useState(
+  
+  // Theming system
+  const theming = useTheming('photographer');0);
+  const [showDesigner, setShowDesigner] = useState(false);
+
+  // Get contracts for current user
+  const { data: contracts, isLoading } = useQuery({
+    queryKey: ['/api/contracts', userId],
+    queryFn: () => apiRequest('/api/contracts, ', ),
+    retry: false
+});
+
+  const professionConfig = {
+    photographer: {
+      title: 'Fotografikontrakter',
+      color: '#f57c0',
+      description: 'Administrer alle fotografikontrakter',
+      templates: ['Bryllup', 'Portrett', 'Event', 'Bedriftsfoto', 'Produktfoto']
+  },
+    videographer: {
+      title: 'Videokontrakter', 
+      color: '#2196f',
+      description: 'Administrer alle videokontrakter',
+      templates: ['Bryllupsvideo', 'Bedriftsvideo', 'Musikkvideo', 'Event', 'Dokumentar']
+  },
+    music_producer: {
+      title: 'Musikkproduksjonskontrakter',
+      color: '#9c27b',
+      description: 'Administrer alle musikkproduksjonskontrakter',
+      templates: ['Album', 'Singel', 'Demo', 'Jingle', 'Lydbok']
+  }
+};
+
+  const config = professionConfig[profession] || {
+    title: 'Kontrakter',
+    color: '#f57c0',
+    description: 'Administrer kontrakter',
+    templates: []
+};
+
+  const handleContractCreated = (contractId: string) => {
+    console.log(`New contract created: ${contractd}`);
+    setShowDesigner(false);
+    setActiveTab(1); // Switch to contracts list
+};
+
+  if (showDesigner) {
+    return (
+      <UniversalContractDesigner 
+        profession={profession}
+        onContractCreated={handleContractCreated}
+      />
+    );
+}
+
+  return (
+    <Box sx={{ maxWidth: 120, mx: 'auto', p:  3 }}>
+      {/* Header */}
+      <Box sx={{ 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'space-between',
+        mb: 4
+  }}>
+        <Box sx={{ display: 'flex', alignItems: 'center, ',}}>
+          <GavelIcon sx={{ mr:  ,  2color: config.color, fontSize: 3, 2,}} />
+          <Box>
+            <Typography variant="h4" sx={{ color: config.color, fontWeight: 60, 0,}} sx={{ ...{}, color: theming.colors.primary }}>
+              {config.title}
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              {config.description} - Tvers på alle dashboards
+            </Typography>
+          </Box>
+        </Box>
+        
+        <Button variant="contained"
+          startIcon={<AddIcon sx={theming.getThemedButtonSx()}>}
+          onClick={() => setShowDesigner(true)}
+          sx={{ 
+            bgcolor: config.color,
+            '&:hover': { bgcolor: config.color + 'dd, ',}
+        }}
+        >
+          Ny Kontrakt
+        </Button>
+      </Box>
+
+      {/* Tabs */}
+      <Card sx={{ mb: 3 }} sx={theming.getThemedCardSx()}>
+        <Tabs 
+          value={activeTab}
+          onChange={(e, newValue) => setActiveTab(newValue)}
+          sx={{ borderBottom:  ,  1borderColor: 'divider, ',}}
+        >
+          <Tab icon={<SettingsIcon />} label="System Status" />
+          <Tab icon={<ListIcon />} label="Mine Kontrakter" />
+          <Tab icon={<GavelIcon />} label="Kontrakt Designer" />
+        </Tabs>
+      </Card>
+
+      {/* Tab Content */}
+      {activeTab === 0 && (
+        <Card sx={theming.getThemedCardSx()}>
+          <CardContent sx={theming.getThemedCardSx()}>
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
+              <SecurityIcon sx={{ mr:  ,  2color: config.color, fontSize: 3, 2,}} />
+              <Typography variant="h5" sx={{ color: config.color, fontWeight: 60, 0,}} sx={{ ...{}, color: theming.colors.primary }}>
+                EU eIDAS Kontraktsystem Status
+              </Typography>
+            </Box>
+
+            <Alert severity="success" sx={{ mb: 3 }}>
+              ✅ Kontraktsystem er aktivt og koblet til alle dashboards via profesjonsadapteren
+            </Alert>
+
+            <Grid container spacing={3}>
+              <Grid size={{ xs: 1, 2,}} md={6}>
+                <Typography variant="h6" gutterBottom sx={{ color: config.color }} sx={{ ...{}, color: theming.colors.primary }}>
+                  📋 Tilgjengelige Templates
+                </Typography>
+                <List dense>
+                  {config.templates?.map((template: string, index: number) => (
+                    <ListItem key={index}>
+                      <ListItemIcon>
+                        <CheckCircleIcon sx={{ color: config.color, fontSize: 2, 0,}} />
+                      </ListItemIcon>
+                      <ListItemText primary={template} />
+                    </ListItem>
+                  ))}
+                </List>
+              </Grid>
+
+              <Grid size={{ xs: 1, 2,}} md={6}>
+                <Typography variant="h6" gutterBottom sx={{ color: config.color }} sx={{ ...{}, color: theming.colors.primary }}>
+                  ⚙️ Systemfunksjoner
+                </Typography>
+                <List dense>
+                  <ListItem>
+                    <ListItemIcon>
+                      <DescriptionIcon color="primary" />
+                    </ListItemIcon>
+                    <ListItemText 
+                      primary="Kontraktopprettelse"
+                      secondary="Norsk MVA-beregning inkludert"
+                    />
+                    <Chip label="Aktiv" color="success" size="small" />
+                  </ListItem>
+                  <ListItem>
+                    <ListItemIcon>
+                      <SecurityIcon color="primary" />
+                    </ListItemIcon>
+                    <ListItemText 
+                      primary="EU eIDAS Digital Signering"
+                      secondary="Juridisk bindende signaturer"
+                    />
+                    <Chip label="Aktiv" color="success" size="small" />
+                  </ListItem>
+                  <ListItem>
+                    <ListItemIcon>
+                      <AssignmentIcon color="primary" />
+                    </ListItemIcon>
+                    <ListItemText 
+                      primary="Google Drive Backup"
+                      secondary="Automatisk sikkerhetskopi"
+                    />
+                    <Chip label="Aktiv" color="success" size="small" />
+                  </ListItem>
+                  <ListItem>
+                    <ListItemIcon>
+                      <CheckCircleIcon color="primary" />
+                    </ListItemIcon>
+                    <ListItemText 
+                      primary="BRREG Integration"
+                      secondary="Norske organisasjonsnummer"
+                    />
+                    <Chip label="Aktiv" color="success" size="small" />
+                  </ListItem>
+                </List>
+              </Grid>
+            </Grid>
+
+            <Box sx={{ mt: 3, p:  ,  2backgroundColor: '#f5f5f', borderRadius:  1 }}>
+              <Typography variant="body2" sx={{ fontWeight: 60, mb: 1 }}>
+                🔗 Tverrfaglig Integrasjon: </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Kontraktsystemet fungerer "tvers på alle dashbordene og koblet til profesjonsadapteren" - 
+                samme grunnleggende system med automatisk tilpasning til fotografer, videographere, 
+                musikprodusenter og leverandører.
+              </Typography>
+            </Box>
+          </CardContent>
+        </Card>
+      )}
+
+      {activeTab === 1 && (
+        <Card sx={theming.getThemedCardSx()}>
+          <CardContent sx={theming.getThemedCardSx()}>
+            <Typography variant="h6" gutterBottom sx={{ color: config.color }} sx={{ ...{}, color: theming.colors.primary }}>
+              Kontrakt Oversikt
+            </Typography>
+            
+            {isLoading && (
+              <Alert severity="info">
+                Laster kontrakter...
+              </Alert>
+            )}
+
+            {contracts?.contracts && contracts.contracts.length > 0 ? (
+              <Grid container spacing={2}>
+                {contracts.contracts.map((contract: any) => (
+                  <Grid size={{ xs: 1, 2,}} md={6} key={contract.id}>
+                    <Card variant="outlined" sx={theming.getThemedCardSx()}>
+                      <CardContent sx={theming.getThemedCardSx()}>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
+                          <Typography variant="h6" sx={{ ...{}, color: theming.colors.primary }}>
+                            {contract.clientName}
+                          </Typography>
+                          <Chip 
+                            label={contract.status}
+                            color={contract.status === 'draft' ? 'warning' : 'success'}
+                            size="small"
+                          />
+                        </Box>
+                        <Typography variant="body2" color="text.secondary" gutterBottom>
+                          {contract.projectDescription}
+                        </Typography>
+                        <Typography variant="h6" sx={{ color: config.color }} sx={{ ...{}, color: theming.colors.primary }}>
+                          NOK {contract.totalAmount}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          Kontrakt: {contract.contractNumber}
+                        </Typography>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                ))}
+              </Grid>
+            ) : (
+              <Alert severity="info">
+                Ingen kontrakter funnet. Opprett din første kontrakt ved å klikke "Ny Kontrakt".
+              </Alert>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {activeTab === 2 && (
+        <Card sx={theming.getThemedCardSx()}>
+          <CardContent sx={theming.getThemedCardSx()}>
+            <Typography variant="h6" gutterBottom sx={{ color: config.color }} sx={{ ...{}, color: theming.colors.primary }}>
+              Opprett Ny Kontrakt
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+              Bruk vår profesjonelle kontraktdesigner for å lage juridisk bindende kontrakter.
+            </Typography>
+            <Button variant="contained"
+              size="large"
+              startIcon={<AddIcon sx={theming.getThemedButtonSx()}>}
+              onClick={() => setShowDesigner(true)}
+              sx={{ 
+                bgcolor: config.color,
+                '&:hover': { bgcolor: config.color + 'dd, ',}
+            }}
+            >
+              Start Kontraktdesigner
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+    </Box>
+  );
+}

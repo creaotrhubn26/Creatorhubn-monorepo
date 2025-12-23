@@ -1,0 +1,217 @@
+/**
+ * Signature Status Card Component
+ * Reusable component for displaying signature status across all document types
+ */
+
+import React from 'react';
+import {
+  Card,
+  CardContent,
+  Typography,
+  Chip,
+  Box,
+  Button,
+  LinearProgress,
+  Stack,
+  Tooltip,
+} from '@mui/material';
+import {
+  CheckCircle,
+  Pending,
+  Cancel,
+  Description,
+  Launch,
+} from '@mui/icons-material';
+import { useQuery } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
+
+interface SignatureStatusCardProps {
+  documentType: 'split_sheet' | 'quote' | 'wedding_timeline' | 'invoice' | 'photo_enhancement';
+  documentId: string;
+  documentTitle: string;
+  signers?: Array<{
+    name: string;
+    email: string;
+    role?: string;
+    signed?: boolean;
+    signedAt?: string;
+  }>;
+  signatureStatus?: 'pending' | 'signed' | 'rejected' | 'partial';
+  googleDocUrl?: string;
+  onViewDocument?: () => void;
+  onCreateSignature?: () => void;
+}
+
+export default function SignatureStatusCard({
+  documentType,
+  documentId,
+  documentTitle,
+  signers = [],
+  signatureStatus = 'pending',
+  googleDocUrl,
+  onViewDocument,
+  onCreateSignature,
+}: SignatureStatusCardProps) {
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'signed':
+        return 'success';
+      case 'pending':
+        return 'warning';
+      case 'rejected':
+        return 'error';
+      case 'partial':
+        return 'info';
+      default:
+        return 'default';
+    }
+  };
+
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'signed':
+        return <CheckCircle />;
+      case 'pending':
+        return <Pending />;
+      case 'rejected':
+        return <Cancel />;
+      default:
+        return <Description />;
+    }
+  };
+
+  const getStatusText = (status: string) => {
+    switch (status) {
+      case 'signed':
+        return 'Signert';
+      case 'pending':
+        return 'Venter på signatur';
+      case 'rejected':
+        return 'Avvist';
+      case 'partial':
+        return 'Delvis signert';
+      default:
+        return 'Ukjent status';
+    }
+  };
+
+  const signedCount = signers.filter((s) => s.signed).length;
+  const totalSigners = signers.length || 1;
+  const progress = totalSigners > 0 ? (signedCount / totalSigners) * 100 : 0;
+
+  return (
+    <Card sx={{ mb: 2 }}>
+      <CardContent>
+        <Stack spacing={2}>
+          {/* Header */}
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <Box>
+              <Typography variant="h6" gutterBottom>
+                {documentTitle}
+              </Typography>
+              <Chip
+                icon={getStatusIcon(signatureStatus)}
+                label={getStatusText(signatureStatus)}
+                color={getStatusColor(signatureStatus) as any}
+                size="small"
+                sx={{ mt: 0.5 }}
+              />
+            </Box>
+            {googleDocUrl && (
+              <Tooltip title="Åpne i Google Docs">
+                <Button
+                  size="small"
+                  startIcon={<Launch />}
+                  href={googleDocUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Åpne
+                </Button>
+              </Tooltip>
+            )}
+          </Box>
+
+          {/* Progress */}
+          {totalSigners > 1 && (
+            <Box>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+                <Typography variant="caption" color="text.secondary">
+                  Signaturer: {signedCount} av {totalSigners}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {Math.round(progress)}%
+                </Typography>
+              </Box>
+              <LinearProgress
+                variant="determinate"
+                value={progress}
+                color={signatureStatus === 'signed' ? 'success' : 'primary'}
+              />
+            </Box>
+          )}
+
+          {/* Signers List */}
+          {signers.length > 0 && (
+            <Box>
+              <Typography variant="caption" color="text.secondary" gutterBottom>
+                Signatarer:
+              </Typography>
+              <Stack spacing={0.5} sx={{ mt: 0.5 }}>
+                {signers.map((signer, index) => (
+                  <Box
+                    key={index}
+                    sx={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      py: 0.5}}
+                  >
+                    <Typography variant="body2">
+                      {signer.name} {signer.role && `(${signer.role})`}
+                    </Typography>
+                    <Chip
+                      icon={signer.signed ? <CheckCircle /> : <Pending />}
+                      label={signer.signed ? 'Signert' : 'Venter'}
+                      size="small"
+                      color={signer.signed ? 'success' : 'default'}
+                      variant="outlined"
+                    />
+                  </Box>
+                ))}
+              </Stack>
+            </Box>
+          )}
+
+          {/* Actions */}
+          <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
+            {!googleDocUrl && onCreateSignature && (
+              <Button
+                variant="outlined"
+                size="small"
+                onClick={onCreateSignature}
+                startIcon={<Description />}
+              >
+                Opprett signaturdokument
+              </Button>
+            )}
+            {onViewDocument && (
+              <Button
+                variant="outlined"
+                size="small"
+                onClick={onViewDocument}
+                startIcon={<Launch />}
+              >
+                Se dokument
+              </Button>
+            )}
+          </Box>
+        </Stack>
+      </CardContent>
+    </Card>
+  );
+}
+
+
+
+

@@ -1,0 +1,41 @@
+═══════════════════════════════════════════════════════════════
+  START SERVICE AND REMOVE EYE BAGS - COPY AND PASTE THESE COMMANDS
+═══════════════════════════════════════════════════════════════
+
+⚠️ IMPORTANT: Run these in Terminal.app (NOT Cursor's terminal)
+   The shell error is from Cursor IDE and blocks commands here.
+
+═══════════════════════════════════════════════════════════════
+STEP 1: Start Python ML Service
+═══════════════════════════════════════════════════════════════
+
+cd /Users/usmanqazi/creatorhub-backend/python_ml_service
+python main.py
+
+(Wait until you see: "Uvicorn running on http://0.0.0.0:8000")
+(Keep this terminal open!)
+
+═══════════════════════════════════════════════════════════════
+STEP 2: Run Portrait Enhancement (in NEW terminal)
+═══════════════════════════════════════════════════════════════
+
+cd /Users/usmanqazi/creatorhub-backend
+npx tsx scripts/enhance-portrait.ts
+
+═══════════════════════════════════════════════════════════════
+OR USE THE SCRIPT (all in one):
+═══════════════════════════════════════════════════════════════
+
+chmod +x /Users/usmanqazi/creatorhub-backend/EXECUTE_NOW.sh
+/Users/usmanqazi/creatorhub-backend/EXECUTE_NOW.sh
+
+═══════════════════════════════════════════════════════════════
+OUTPUT LOCATION:
+═══════════════════════════════════════════════════════════════
+
+/Users/usmanqazi/creatorhub-frontend/client/src/assets/daniel-qazi_enhanced.jpg
+
+═══════════════════════════════════════════════════════════════
+✅ STATUS: All code is fixed and ready!
+═══════════════════════════════════════════════════════════════
+

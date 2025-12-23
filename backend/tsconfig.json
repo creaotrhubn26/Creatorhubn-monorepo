@@ -1,0 +1,35 @@
+{
+  "include": ["client/src/**/*", "shared/**/*", "server/**/*"],
+  "exclude": [
+    "node_modules",
+    "build",
+    "dist",
+    "**/*.test.ts",
+    "unused",
+    "client/src/components/unused/**/*",
+    "client/src/components/unused/**/*"
+  ],
+  "compilerOptions": {
+    "incremental": true,
+    "tsBuildInfoFile": "./node_modules/typescript/tsbuildinfo",
+    "noEmit": true,
+    "maxNodeModuleJsDepth": 2,
+    "module": "ESNext",
+    "target": "ES2015",
+    "downlevelIteration": true,
+    "strict": true,
+    "lib": ["esnext", "dom", "dom.iterable"],
+    "jsx": "preserve",
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "skipDefaultLibCheck": true,
+    "allowImportingTsExtensions": true,
+    "moduleResolution": "bundler",
+    "baseUrl": ".",
+    "types": ["node", "vite/client"],
+    "paths": {
+      "@/*": ["client/src/components/creatorhubvirtualstudio/src/*", "client/src/*"],
+      "@shared/*": ["shared/*"]
+    }
+  }
+}

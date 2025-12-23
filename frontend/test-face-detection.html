@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Face Detection Test - Martin4k.mp4</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+      background: #1a1a1a;
+      color: #e0e0e0;
+    }
+    h1 {
+      color: #4CAF50;
+    }
+    .container {
+      background: #2a2a2a;
+      padding: 20px;
+      border-radius: 8px;
+      margin: 20px 0;
+    }
+    button {
+      background: #4CAF50;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 16px;
+      margin: 10px 5px;
+    }
+    button:hover {
+      background: #45a049;
+    }
+    button:disabled {
+      background: #666;
+      cursor: not-allowed;
+    }
+    #video {
+      width: 100%;
+      max-width: 800px;
+      margin: 20px 0;
+      border-radius: 8px;
+    }
+    #log {
+      background: #1a1a1a;
+      padding: 15px;
+      border-radius: 6px;
+      font-family: 'Courier New', monospace;
+      font-size: 14px;
+      max-height: 400px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      border: 1px solid #444;
+    }
+    .log-entry {
+      margin: 5px 0;
+      padding: 5px;
+      border-left: 3px solid #4CAF50;
+      padding-left: 10px;
+    }
+    .log-error {
+      border-left-color: #f44336;
+      color: #ff6b6b;
+    }
+    .log-success {
+      border-left-color: #4CAF50;
+      color: #81c784;
+    }
+    .log-info {
+      border-left-color: #2196F3;
+      color: #64b5f6;
+    }
+    .progress {
+      width: 100%;
+      height: 20px;
+      background: #333;
+      border-radius: 10px;
+      overflow: hidden;
+      margin: 10px 0;
+    }
+    .progress-bar {
+      height: 100%;
+      background: linear-gradient(90deg, #4CAF50, #81c784);
+      transition: width 0.3s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-size: 12px;
+    }
+    #results {
+      margin-top: 20px;
+    }
+    .result-item {
+      background: #333;
+      padding: 15px;
+      margin: 10px 0;
+      border-radius: 6px;
+      border-left: 4px solid #4CAF50;
+    }
+    .result-item.no-face {
+      border-left-color: #666;
+    }
+  </style>
+</head>
+<body>
+  <h1>🎭 Face Detection Test - Martin4k.mp4</h1>
+  
+  <div class="container">
+    <h2>Video Player</h2>
+    <video id="video" controls>
+      <source id="videoSource" type="video/mp4">
+      Your browser does not support the video tag.
+    </video>
+    <div>
+      <button id="loadVideo">Load Video File</button>
+      <button id="testDetection" disabled>Test Face Detection</button>
+      <button id="testDirect" disabled>Test Direct Analysis</button>
+    </div>
+  </div>
+  
+  <div class="container">
+    <h2>Progress</h2>
+    <div class="progress">
+      <div class="progress-bar" id="progressBar" style="width: 0%">0%</div>
+    </div>
+  </div>
+  
+  <div class="container">
+    <h2>Log</h2>
+    <div id="log"></div>
+  </div>
+  
+  <div class="container" id="results" style="display: none;">
+    <h2>Results</h2>
+    <div id="resultsContent"></div>
+  </div>
+  
+  <script type="module">
+    // Note: This is a simplified test page
+    // In a real scenario, you'd import the actual modules
+    
+    const videoInput = document.createElement('input');
+    videoInput.type = 'file';
+    videoInput.accept = 'video/*';
+    videoInput.style.display = 'none';
+    document.body.appendChild(videoInput);
+    
+    const video = document.getElementById('video');
+    const videoSource = document.getElementById('videoSource');
+    const loadBtn = document.getElementById('loadVideo');
+    const testBtn = document.getElementById('testDetection');
+    const testDirectBtn = document.getElementById('testDirect');
+    const logDiv = document.getElementById('log');
+    const progressBar = document.getElementById('progressBar');
+    const resultsDiv = document.getElementById('results');
+    const resultsContent = document.getElementById('resultsContent');
+    
+    let currentVideoFile = null;
+    
+    function log(message, type = 'info') {
+      const entry = document.createElement('div');
+      entry.className = `log-entry log-${type}`;
+      entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+      logDiv.appendChild(entry);
+      logDiv.scrollTop = logDiv.scrollHeight;
+      console.log(message);
+    }
+    
+    function updateProgress(percent) {
+      progressBar.style.width = `${percent}%`;
+      progressBar.textContent = `${Math.round(percent)}%`;
+    }
+    
+    loadBtn.addEventListener('click', () => {
+      videoInput.click();
+    });
+    
+    videoInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      
+      currentVideoFile = file;
+      const url = URL.createObjectURL(file);
+      videoSource.src = url;
+      video.load();
+      
+      log(`✅ Video loaded: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`, 'success');
+      testBtn.disabled = false;
+      testDirectBtn.disabled = false;
+    });
+    
+    // For testing with the specific file path
+    // In a real app, you'd need to serve the file or use a file:// URL
+    const testVideoPath = '/Users/usmanqazi/creatorhub-backend/python_ml_service/training/test_outputs/facexformer/Martin4k.mp4';
+    
+    log('📝 Test page loaded. Click "Load Video File" to select a video, or use the file path directly.', 'info');
+    log(`💡 Target file: ${testVideoPath}`, 'info');
+    log('⚠️  Note: Due to browser security, you may need to serve this file via HTTP or use file input.', 'info');
+    
+    testBtn.addEventListener('click', async () => {
+      if (!currentVideoFile) {
+        log('❌ Please load a video file first', 'error');
+        return;
+      }
+      
+      log('🎬 Starting face detection test...', 'info');
+      testBtn.disabled = true;
+      updateProgress(0);
+      
+      try {
+        // This would call the actual face detection worker
+        // For now, we'll simulate it
+        log('📹 Extracting frames from video...', 'info');
+        updateProgress(20);
+        
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        log('🔍 Analyzing frames with FaceXFormer...', 'info');
+        updateProgress(50);
+        
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        log('✅ Face detection complete!', 'success');
+        updateProgress(100);
+        
+        // Simulated result
+        const result = {
+          hasFace: true,
+          faceCount: 1,
+          confidence: 0.95,
+          timestamp: 2.5
+        };
+        
+        resultsDiv.style.display = 'block';
+        resultsContent.innerHTML = `
+          <div class="result-item">
+            <h3>✅ Face Detected</h3>
+            <p><strong>Confidence:</strong> ${(result.confidence * 100).toFixed(1)}%</p>
+            <p><strong>Face Count:</strong> ${result.faceCount}</p>
+            <p><strong>Analyzed at:</strong> ${result.timestamp.toFixed(2)}s</p>
+          </div>
+        `;
+        
+        log(`✅ Result: Face detected with ${(result.confidence * 100).toFixed(1)}% confidence`, 'success');
+        
+      } catch (error) {
+        log(`❌ Error: ${error.message}`, 'error');
+        updateProgress(0);
+      } finally {
+        testBtn.disabled = false;
+      }
+    });
+    
+    testDirectBtn.addEventListener('click', async () => {
+      if (!currentVideoFile) {
+        log('❌ Please load a video file first', 'error');
+        return;
+      }
+      
+      log('🎬 Testing direct FaceXFormer analysis...', 'info');
+      testDirectBtn.disabled = true;
+      
+      try {
+        // Extract frame at current video time
+        const timestamp = video.currentTime || 0;
+        log(`📸 Extracting frame at ${timestamp.toFixed(2)}s...`, 'info');
+        
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(video, 0, 0);
+        
+        canvas.toBlob(async (blob) => {
+          const formData = new FormData();
+          formData.append('image', blob, 'frame.jpg');
+          formData.append('task', 'all');
+          
+          log('🔍 Sending to FaceXFormer API...', 'info');
+          
+          try {
+            const response = await fetch('/api/face-analysis/analyze', {
+              method: 'POST',
+              credentials: 'include',
+              body: formData,
+            });
+            
+            if (!response.ok) {
+              throw new Error(`API error: ${response.statusText}`);
+            }
+            
+            const result = await response.json();
+            
+            log('✅ Analysis complete!', 'success');
+            log(`   Success: ${result.success}`, 'success');
+            
+            if (result.results.landmarks) {
+              log(`   ✅ Landmarks: ${result.results.landmarks.length} points`, 'success');
+            }
+            
+            if (result.results.headpose) {
+              const { pitch, yaw, roll } = result.results.headpose;
+              log(`   ✅ Head pose: pitch=${pitch.toFixed(1)}°, yaw=${yaw.toFixed(1)}°, roll=${roll.toFixed(1)}°`, 'success');
+            }
+            
+            resultsDiv.style.display = 'block';
+            resultsContent.innerHTML = `
+              <div class="result-item">
+                <h3>📊 FaceXFormer Analysis Results</h3>
+                <pre>${JSON.stringify(result, null, 2)}</pre>
+              </div>
+            `;
+            
+          } catch (error) {
+            log(`❌ API Error: ${error.message}`, 'error');
+          } finally {
+            testDirectBtn.disabled = false;
+          }
+        }, 'image/jpeg', 0.9);
+        
+      } catch (error) {
+        log(`❌ Error: ${error.message}`, 'error');
+        testDirectBtn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

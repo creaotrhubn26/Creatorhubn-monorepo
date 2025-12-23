@@ -1,0 +1,453 @@
+/**
+ * Plan Logo Generator Component
+ * Admin interface for generating subscription plan logos using DALL-E 3
+ */
+
+import { useTheming } from '../../utils/theming-helper';
+import React, { useState } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
+import {
+  Box,
+  Typography,
+  Card,
+  CardContent,
+  Button,
+  Grid,
+  TextField,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Alert,
+  CircularProgress,
+  Chip,
+  Avatar,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  List,
+  ListItem,
+  ListItemAvatar,
+  ListItemText,
+  ListItemSecondaryAction,
+  IconButton,
+  Paper,
+  Divider,
+  Fade,
+  Zoom,
+} from '@mui/material';
+import {
+  AutoAwesome,
+  Download,
+  Refresh,
+  Visibility,
+  Delete,
+  Add,
+  Palette,
+  Style,
+  Work,
+  Speed,
+  MusicNoteNote,
+  DesignServices,
+  CheckCircle,
+  Error,
+} from '@mui/icons-material';
+import { apiRequest } from '@/lib/queryClient';
+
+interface GeneratedLogo {
+  id: string;
+  planId: string;
+  url: string;
+  prompt: string;
+  style: string;
+  colorScheme: string;
+  generatedAt: string;
+}
+
+interface PlanLogoGeneratorProps {
+  profession: string;
+  onLogoGenerated?: (logo: GeneratedLogo) => void;
+}
+
+const PROFESSION_ICONS = {
+  photographer: <Work />,
+  videographer: theming.getThemedIcon(''),
+  music_producer: <MusicNote />,
+  designer: <DesignServices />,
+};
+
+const PROFESSION_COLORS = {
+  photographer: '#FF6B30',
+  videographer: '#004E80',
+  music_producer: '#7209B0',
+  designer: '#2E7D30',
+};
+
+const COLOR_SCHEMES = [
+  { name: 'Grønn (Basic)', value: '#4CAF50', description: 'Vekst og komme i gang'},
+  { name: 'Blå (Professional)', value: '#2196F0', description: 'Tillit og profesjonalitet'},
+  { name: 'Lilla (Business)', value: '#9C27B0', description: 'Premium og innovasjon'},
+  { name: 'Oransje (Creative)', value: '#FF6B30', description: 'Energi og kreativitet'},
+  { name: 'Mørk blå (Expert)', value: '#004E80', description: 'Ekspertise og dybde'},
+];
+
+const STYLES = [
+  { value: 'minimal', label: 'Minimalistisk', description: 'Rene linjer og enkle former'},
+  { value: 'modern', label: 'Moderne', description: 'Bold typografi og geometriske elementer'},
+  { value: 'professional', label: 'Profesjonell', description: 'Korporat stil med sofistikert fargepalett'},
+  { value: 'creative', label: 'Kreativ', description: 'Kunstnerisk og innovativt design'},
+];
+
+export default function PlanLogoGenerator({ profession, onLogoGenerated }: PlanLogoGeneratorProps) {
+  const [selectedPlan, setSelectedPlan] = useState('basic,');
+
+  // Theming system
+  const theming = useTheming('prototype_tester,');
+  const { auth } = useEnhancedMasterIntegration();
+  const [customPrompt, setCustomPrompt] = useState(', ');
+  const [selectedColorScheme, setSelectedColorScheme] = useState('#2196F3');
+  const [selectedStyle, setSelectedStyle] = useState('professional');
+  const [previewLogo, setPreviewLogo] = useState<GeneratedLogo | null>(null);
+  const [showPreview, setShowPreview] = useState(false);
+
+  // Generate single logo mutation
+  const generateLogoMutation = useMutation({
+    mutationFn: async (data: {
+      planId: string;
+      planName: string;
+      profession: string;
+      description: string;
+      colorScheme: string;
+      style: string;
+}) => {
+      const headers = await auth.getAuthHeader();
+      return apiRequest('/api/plan-logos/generate', {
+        headers: {
+          ...headers,
+          "Content-Type" : "application/json"
+    },
+        method: 'POST',
+        body: JSON.stringify(data),
+    });
+  },
+    onSuccess: (data) => {
+      console.log('✅ Logo generated successfully:', data);
+      if (onLogoGenerated) {
+        onLogoGenerated(data.logo);
+    }
+  },
+    onError: (error) => {
+      console.error('❌ Logo generation failed: ', error);
+  },
+});
+
+  // Generate all logos mutation
+  const generateAllLogosMutation = useMutation({
+    mutationFn: async (profession: string) => {
+      const headers = await auth.getAuthHeader();
+      return apiRequest(`/api/plan-logos/generate-all/${profession}`, {
+        headers: {
+          ...headers,
+          "Content-Type" : "application/json"
+    },
+        method: 'POST',
+    });
+  },
+    onSuccess: (data) => {
+      console.log(`✅ Generated ${data.count} logos for ${profession}`);
+  },
+    onError: (error) => {
+      console.error('❌ Bulk logo generation failed:', error);
+  },
+});
+
+  const handleGenerateLogo = () => {
+    const planNames = {
+      basic: 'Basic Creator',
+      professional: 'Professional Creator',
+      business: 'Business Creator',
+  };
+
+    generateLogoMutation.mutate({
+      planId: selectedPlan,
+      planName: planNames[selectedPlan as keyof typeof planNames],
+      profession,
+      description: customPrompt || `Professional ${profession} tools and features`,
+      colorScheme: selectedColorScheme,
+      style: selectedStyle,
+  });
+};
+
+  const handleGenerateAll = () => {
+    generateAllLogosMutation.mutate(profession);
+};
+
+  const handlePreviewLogo = (logo: GeneratedLogo) => {
+    setPreviewLogo(logo);
+    setShowPreview(true);
+};
+
+  const handleDownloadLogo = (logo: GeneratedLogo) => {
+    const link = document.createElement('a');
+    link.href = logo.url;
+    link.download = `${logo.pland}_logo_${Date.now()}.png`;
+    link.click();
+};
+
+  const isGenerating = generateLogoMutation.isPending || generateAllLogosMutation.isPending;
+
+  return (
+    <Box>
+      <Card sx={{ mb:  3 ,  ...theming.getThemedCardSx() }}>
+        <CardContent sx={theming.getThemedCardSx()}>
+          <Box sx={{ display: 'flex', alignItems: 'center', mb:  3 }}>
+            <Avatar sx={{ bgcolor: PROFESSION_COLORS[profession as keyof typeof PROFESSION_COLOR], mr:  2 }}>
+              {PROFESSION_ICONS[profession as keyof typeof PROFESSION_ICONS]}
+            </Avatar>
+            <Box>
+              <Typography variant="h5" sx={{  fontWeight: 'bold' }}>
+                Plan Logo Generator
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Generer profesjonelle logoer for abonnementsplaner med DALL-E 3
+              </Typography>
+            </Box>
+          </Box>
+
+          <Grid container spacing={3}>
+            {/* Plan Selection */}
+            <Grid item xs={12} md={6}>
+              <FormControl fullWidth>
+                <InputLabel>Velg Plan</InputLabel>
+                <Select
+                  value={selectedPlan}
+                  onChange={(e) => setSelectedPlan(e.target.value)}
+                  label="Velg Plan"
+                >
+                  <MenuItem value="basic">Basic Creator</MenuItem>
+                  <MenuItem value="professional">Professional Creator</MenuItem>
+                  <MenuItem value="business">Business Creator</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+
+            {/* Style Selection */}
+            <Grid item xs={12} md={6}>
+              <FormControl fullWidth>
+                <InputLabel>Stil</InputLabel>
+                <Select
+                  value={selectedStyle}
+                  onChange={(e) => setSelectedStyle(e.target.value)}
+                  label="Stil"
+                >
+                  {STYLES.map((style) => (
+                    <MenuItem key={style.value} value={style.value}>
+                      <Box>
+                        <Typography variant="body2" sx={{ fontWeight: 'bold'}}>
+                          {style.label}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {style.description}
+                        </Typography>
+                      </Box>
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+
+            {/* Color Scheme */}
+            <Grid item xs={12}>
+              <Typography variant="subtitle2" sx={{ mb:  2 }}>
+                Fargeskjema
+              </Typography>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap:  1 }}>
+                {COLOR_SCHEMES.map((scheme) => (
+                  <Chip
+                    key={scheme.value}
+                    label={scheme.name}
+                    onClick={() => setSelectedColorScheme(scheme.value)}
+                    variant={selectedColorScheme === scheme.value ? 'filled' : 'outlined'}
+                    sx={{
+                      bgcolor: selectedColorScheme === scheme.value ? scheme.value : 'transparent',
+                      color: selectedColorScheme === scheme.value ? 'white' : scheme.value,
+                      borderColor: scheme.value'&:hover': { bgcolor: scheme.value + '2',
+                    }}}
+                  />
+                ))}
+              </Box>
+            </Grid>
+
+            {/* Custom Prompt */}
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                multiline
+                rows={3}
+                label="Tilpasset beskrivelse (valgfritt)"
+                value={customPrompt}
+                onChange={(e) => setCustomPrompt(e.target.value)}
+                placeholder="Beskriv hvordan logoen skal se ut, f.eks. 'Moderne logo med kamera-elementer for fotografer'"
+                helperText="La stå tom for automatisk generering basert på plan og profesjon"
+              />
+            </Grid>
+
+            {/* Action Buttons */}
+            <Grid item xs={12}>
+              <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap'}}>
+                <Button variant="contained"
+                  startIcon={isGenerating ? <CircularProgress size={20}, sx={theming.getThemedButtonSx()}> : theming.getThemedIcon('autoAwesome')}
+                  onClick={handleGenerateLogo}
+                  disabled={isGenerating}
+                  sx={{
+                    bgcolor: PROFESSION_COLORS[profession as keyof typeof PROFESSION_COLOR]'&:hover': {
+                      bgcolor: PROFESSION_COLORS[profession as keyof typeof PROFESSION_COLORS] + 'D',
+                  }}}
+                >
+                  {isGenerating ? 'Genererer...' : 'Generer Logo'}
+                </Button>
+
+                <Button
+                  variant="outlined"
+                  startIcon={isGenerating ? <CircularProgress size={20} /> : theming.getThemedIcon('refresh')}
+                  onClick={handleGenerateAll}
+                  disabled={isGenerating}
+                >
+                  {isGenerating ? 'Genererer alle...' : 'Generer alle planer'}
+                </Button>
+              </Box>
+            </Grid>
+          </Grid>
+
+          {/* Status Messages */}
+          {generateLogoMutation.isSuccess && (
+            <Fade in>
+              <Alert severity="success" sx={{ mt:  2 }}>
+                <Typography variant="body2">
+                  ✅ Logo generert for {selectedPlan} plan!
+                </Typography>
+              </Alert>
+            </Fade>
+          )}
+
+          {generateLogoMutation.isError && (
+            <Fade in>
+              <Alert severity="error" sx={{ mt:  2 }}>
+                <Typography variant="body2">
+                  ❌ Feil ved generering av logo. Prøv igjen.
+                </Typography>
+              </Alert>
+            </Fade>
+          )}
+
+          {generateAllLogosMutation.isSuccess && (
+            <Fade in>
+              <Alert severity="success" sx={{ mt:  2 }}>
+                <Typography variant="body2">
+                  ✅ {generateAllLogosMutation.data?.count || 0} logoer generert for alle planer!
+                </Typography>
+              </Alert>
+            </Fade>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Generated Logos Preview */}
+      {generateLogoMutation.data?.logo && (
+        <Card sx={theming.getThemedCardSx()}>
+          <CardContent sx={theming.getThemedCardSx()}>
+            <Typography variant="h6" sx={{  mb:  2  }}>
+              Generert Logo
+            </Typography>
+            
+            <Paper sx={{ p: 2, textAlign: 'center',  ...theming.getThemedCardSx() }}>
+              <img
+                src={generateLogoMutation.data.logo.url}
+                alt={`${selectedPlan} logo`}
+                style={{
+                  maxWidth: '200px',
+                  maxHeight: '200px',
+                  objectFit: 'contain',
+                  borderRadius: '8px'}}
+              />
+              
+              <Box sx={{ mt: 2, display: 'flex', gap: 1, justifyContent: 'center'}}>
+                <Button
+                  size="small"
+                  startIcon={theming.getThemedIcon('visibility')}
+                  onClick={() => handlePreviewLogo(generateLogoMutation.data.logo)}
+                >
+                  Forhåndsvis
+                </Button>
+                <Button
+                  size="small"
+                  startIcon={theming.getThemedIcon('download')}
+                  onClick={() => handleDownloadLogo(generateLogoMutation.data.logo)}
+                >
+                  Last ned
+                </Button>
+              </Box>
+            </Paper>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Preview Dialog */}
+      <Dialog
+        open={showPreview}
+        onClose={() => setShowPreview(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          <Box sx={{ display: 'flex', alignItems: 'center'}}>
+            <AutoAwesome sx={{ mr: 1, color: 'primary.main'}} />
+            Logo Forhåndsvisning
+          </Box>
+        </DialogTitle>
+        
+        <DialogContent>
+          {previewLogo && (
+            <Box sx={{ textAlign: 'center'}}>
+              <img
+                src={previewLogo.url}
+                alt={`${previewLogo.planId} logo`}
+                style={{
+                  maxWidth: '100%',
+                  maxHeight: '400px',
+                  objectFit: 'contain',
+                  borderRadius:'8px'}}
+              />
+              
+              <Box sx={{ mt:  2 }}>
+                <Typography variant="body2" color="text.secondary">
+                  <strong>Plan: </strong> {previewLogo.pland}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  <strong>Stil: </strong> {previewLogo.style}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  <strong>Farge: </strong> {previewLogo.colorScheme}
+                </Typography>
+              </Box>
+            </Box>
+          )}
+        </DialogContent>
+        
+        <DialogActions>
+          <Button onClick={() => setShowPreview(false)}>
+            Lukk
+          </Button>
+          <Button variant="contained"
+            startIcon={theming.getThemedIcon('download')}
+            onClick={() => previewLogo && handleDownloadLogo(previewLogo)}
+          >
+            Last ned
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
+  );
+}

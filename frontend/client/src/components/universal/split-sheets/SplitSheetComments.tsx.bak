@@ -1,0 +1,394 @@
+/**
+ * Split Sheet Comments
+ * Threaded comments and discussions on split sheets
+ */
+
+import React, { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
+import { useAuth } from '@/hooks/useAuth';
+import {
+  Box,
+  Typography,
+  TextField,
+  Button,
+  Card,
+  CardContent,
+  Stack,
+  Avatar,
+  IconButton,
+  Chip,
+  Divider,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions
+} from '@mui/material';
+import {
+  Send as SendIcon,
+  Edit as EditIcon,
+  Delete as DeleteIcon,
+  Reply as ReplyIcon,
+  CheckCircle as ResolvedIcon
+} from '@mui/icons-material';
+
+interface Comment {
+  id?: string;
+  split_sheet_id: string;
+  parent_comment_id?: string | null;
+  user_id: string;
+  user_name: string;
+  user_email?: string | null;
+  content: string;
+  mentions?: string[];
+  is_resolved?: boolean;
+  created_at?: string;
+  updated_at?: string;
+  replies?: Comment[];
+}
+
+interface SplitSheetCommentsProps {
+  splitSheetId: string;
+}
+
+export default function SplitSheetComments({
+  splitSheetId
+}: SplitSheetCommentsProps) {
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const [newComment, setNewComment] = useState('');
+  const [replyingTo, setReplyingTo] = useState<Comment | null>(null);
+  const [editingComment, setEditingComment] = useState<Comment | null>(null);
+  const [editContent, setEditContent] = useState('');
+
+  // Fetch comments
+  const { data: commentsData } = useQuery({
+    queryKey: ['split-sheet-comments', splitSheetId],
+    queryFn: async () => {
+      const response = await apiRequest(`/api/split-sheets/${splitSheetId}/comments`);
+      return response;
+    }
+  });
+
+  const allComments: Comment[] = commentsData?.data || [];
+
+  // Organize comments into threads
+  const topLevelComments = allComments.filter(c => !c.parent_comment_id);
+  const replies = allComments.filter(c => c.parent_comment_id);
+
+  const getReplies = (commentId: string): Comment[] => {
+    return replies.filter(r => r.parent_comment_id === commentId);
+  };
+
+  // Create comment mutation
+  const createMutation = useMutation({
+    mutationFn: async (data: { content: string; parent_comment_id?: string }) => {
+      const response = await apiRequest(`/api/split-sheets/${splitSheetId}/comments`, {
+        method: 'POST',
+        body: JSON.stringify(data)
+      });
+      return response;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['split-sheet-comments', splitSheetId] });
+      setNewComment('');
+      setReplyingTo(null);
+    }
+  });
+
+  // Update comment mutation
+  const updateMutation = useMutation({
+    mutationFn: async ({ commentId, content }: { commentId: string; content: string }) => {
+      const response = await apiRequest(`/api/split-sheets/comments/${commentId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ content })
+      });
+      return response;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['split-sheet-comments', splitSheetId] });
+      setEditingComment(null);
+      setEditContent('');
+    }
+  });
+
+  // Delete mutation
+  const deleteMutation = useMutation({
+    mutationFn: async (commentId: string) => {
+      await apiRequest(`/api/split-sheets/comments/${commentId}`, { method: 'DELETE' });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['split-sheet-comments', splitSheetId] });
+    }
+  });
+
+  // Resolve mutation
+  const resolveMutation = useMutation({
+    mutationFn: async ({ commentId, is_resolved }: { commentId: string; is_resolved: boolean }) => {
+      const response = await apiRequest(`/api/split-sheets/comments/${commentId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ is_resolved })
+      });
+      return response;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['split-sheet-comments', splitSheetId] });
+    }
+  });
+
+  const handleSubmit = () => {
+    if (newComment.trim()) {
+      createMutation.mutate({
+        content: newComment,
+        parent_comment_id: replyingTo?.id
+      });
+    }
+  };
+
+  const handleEdit = (comment: Comment) => {
+    setEditingComment(comment);
+    setEditContent(comment.content);
+  };
+
+  const handleSaveEdit = () => {
+    if (editingComment?.id && editContent.trim()) {
+      updateMutation.mutate({
+        commentId: editingComment.id,
+        content: editContent
+      });
+    }
+  };
+
+  const handleDelete = (comment: Comment) => {
+    if (window.confirm('Er du sikker på at du vil slette denne kommentaren?')) {
+      if (comment.id) {
+        deleteMutation.mutate(comment.id);
+      }
+    }
+  };
+
+  const handleResolve = (comment: Comment) => {
+    if (comment.id) {
+      resolveMutation.mutate({
+        commentId: comment.id,
+        is_resolved: !comment.is_resolved
+      });
+    }
+  };
+
+  const renderComment = (comment: Comment, level: number = 0) => {
+    const commentReplies = getReplies(comment.id || ', ');
+    const isOwner = comment.user_id === user?.id;
+
+    return (
+      <Box key={comment.id} sx={{ ml: level * 4, mb: 2 }}>
+        <Card variant={level > 0 ? 'outlined' : 'elevation'} sx={{ bgcolor: level > 0 ? 'background.default' : 'background.paper' }}>
+          <CardContent>
+            <Stack direction="row" spacing={1} alignItems="flex-start">
+              <Avatar sx={{ bgcolor: '#9f7aea', width: 32, height: 32 }}>
+                {comment.user_name.charAt(0).toUpperCase()}
+              </Avatar>
+              <Box sx={{ flexGrow: 1 }}>
+                <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 600}}>
+                    {comment.user_name}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    {comment.created_at 
+                      ? new Date(comment.created_at).toLocaleDateString('no-NO', {
+                          year: 'numeric',
+                          month: 'short',
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })
+                      : ', '}
+                  </Typography>
+                  {comment.is_resolved && (
+                    <Chip
+                      icon={<ResolvedIcon />}
+                      label="Løst"
+                      size="small"
+                      color="success"
+                      variant="outlined"
+                    />
+                  )}
+                </Stack>
+                {editingComment?.id === comment.id ? (
+                  <Box>
+                    <TextField
+                      value={editContent}
+                      onChange={(e) => setEditContent(e.target.value)}
+                      fullWidth
+                      multiline
+                      rows={2}
+                      sx={{ mb: 1 }}
+                    />
+                    <Stack direction="row" spacing={1}>
+                      <Button size="small" onClick={handleSaveEdit}>
+                        Lagre
+                      </Button>
+                      <Button size="small" onClick={() => {
+                        setEditingComment(null);
+                        setEditContent(', ');
+                      }}>
+                        Avbryt
+                      </Button>
+                    </Stack>
+                  </Box>
+                ) : (
+                  <Typography variant="body2" sx={{ mb: 1, whiteSpace: 'pre-wrap' }}>
+                    {comment.content}
+                  </Typography>
+                )}
+                {!editingComment && (
+                  <Stack direction="row" spacing={1}>
+                    <Button
+                      size="small"
+                      startIcon={<ReplyIcon />}
+                      onClick={() => setReplyingTo(comment)}
+                    >
+                      Svar
+                    </Button>
+                    {isOwner && (
+                      <>
+                        <Button
+                          size="small"
+                          startIcon={<EditIcon />}
+                          onClick={() => handleEdit(comment)}
+                        >
+                          Rediger
+                        </Button>
+                        <Button
+                          size="small"
+                          startIcon={<DeleteIcon />}
+                          onClick={() => handleDelete(comment)}
+                          color="error"
+                        >
+                          Slett
+                        </Button>
+                      </>
+                    )}
+                    <Button
+                      size="small"
+                      startIcon={<ResolvedIcon />}
+                      onClick={() => handleResolve(comment)}
+                      color={comment.is_resolved ? 'success' : 'default'}
+                    >
+                      {comment.is_resolved ? 'Marker som uløst' : 'Marker som løst'}
+                    </Button>
+                  </Stack>
+                )}
+              </Box>
+            </Stack>
+          </CardContent>
+        </Card>
+
+        {/* Replies */}
+        {commentReplies.length > 0 && (
+          <Box sx={{ mt: 1, ml: 2 }}>
+            {commentReplies.map(reply => renderComment(reply, level + 1))}
+          </Box>
+        )}
+
+        {/* Reply form */}
+        {replyingTo?.id === comment.id && (
+          <Box sx={{ mt: 1, ml: 2 }}>
+            <Card variant="outlined">
+              <CardContent>
+                <TextField
+                  placeholder="Skriv et svar..."
+                  value={newComment}
+                  onChange={(e) => setNewComment(e.target.value)}
+                  fullWidth
+                  multiline
+                  rows={2}
+                  sx={{ mb: 1 }}
+                />
+                <Stack direction="row" spacing={1} justifyContent="flex-end">
+                  <Button size="small" onClick={() => {
+                    setReplyingTo(null);
+                    setNewComment('');
+                  }}>
+                    Avbryt
+                  </Button>
+                  <Button
+                    size="small"
+                    variant="contained"
+                    startIcon={<SendIcon />}
+                    onClick={handleSubmit}
+                    disabled={!newComment.trim() || createMutation.isPending}
+                    sx={{ bgcolor: '#9f7aea' }}
+                  >
+                    Send
+                  </Button>
+                </Stack>
+              </CardContent>
+            </Card>
+          </Box>
+        )}
+      </Box>
+    );
+  };
+
+  return (
+    <Box>
+      <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
+        Kommentarer og diskusjoner
+      </Typography>
+
+      {/* New comment form */}
+      <Card sx={{ mb: 3 }}>
+        <CardContent>
+          <TextField
+            placeholder="Skriv en kommentar..."
+            value={newComment}
+            onChange={(e) => setNewComment(e.target.value)}
+            fullWidth
+            multiline
+            rows={3}
+            sx={{ mb: 1 }}
+          />
+          <Stack direction="row" spacing={1} justifyContent="flex-end">
+            {replyingTo && (
+              <Button size="small" onClick={() => {
+                setReplyingTo(null);
+                setNewComment(', ');
+              }}>
+                Avbryt svar
+              </Button>
+            )}
+            <Button
+              variant="contained"
+              startIcon={<SendIcon />}
+              onClick={handleSubmit}
+              disabled={!newComment.trim() || createMutation.isPending}
+              sx={{ bgcolor: '#9f7aea' }}
+            >
+              {createMutation.isPending ? 'Sender...' : 'Send kommentar'}
+            </Button>
+          </Stack>
+        </CardContent>
+      </Card>
+
+      {/* Comments list */}
+      {topLevelComments.length === 0 ? (
+        <Card>
+          <CardContent sx={{ textAlign: 'center', py: 4 }}>
+            <Typography variant="body2" color="text.secondary">
+              Ingen kommentarer ennå. Vær den første til å kommentere!
+            </Typography>
+          </CardContent>
+        </Card>
+      ) : (
+        <Stack spacing={2}>
+          {topLevelComments.map(comment => renderComment(comment))}
+        </Stack>
+      )}
+    </Box>
+  );
+}
+
+
+
+

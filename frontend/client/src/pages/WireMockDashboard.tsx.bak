@@ -1,0 +1,21 @@
+import { useTheming } from '../../utils/theming-helper';
+import React from 'react';
+import { Box, Typography, Paper } from '@mui/material';
+import { WireMockController } from '@/components/wiremock/WireMockController';
+
+export default function
+  // Theming system
+  const theming = useTheming('photographer'); WireMockDashboard() {
+  return (
+    <Box sx={{ p:  3 }}>
+      <Typography variant="h4" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>
+        🎭 WireMock Testing Dashboard
+      </Typography>
+      <Typography variant="body1" sx={{ mb: 3 }}>
+        Administrer mock-tjenester for testing av alle platform-integrasjoner
+      </Typography>
+
+      <WireMockController />
+    </Box>
+  );
+}

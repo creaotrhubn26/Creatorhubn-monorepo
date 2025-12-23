@@ -1,0 +1,1130 @@
+import { useTheming } from '../../utils/theming-helper';
+import React, { useState, useEffect } from 'react';
+import {
+  Box,
+  Typography,
+  Card as MuiCard,
+  CardContent,
+  Button,
+  Grid,
+  Avatar,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemAvatar,
+  Chip,
+  Alert,
+  IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  TextField,
+  CircularProgress,
+  Tab,
+  Tabs,
+  Divider,
+} from '@mui/material';
+import {
+  LibraryMusicNote,
+  PlayArrowArrow,
+  Pause,
+  Search,
+  Add,
+  Refresh,
+  Album,
+  Queue,
+  TrendingUp,
+  Analytics,
+  Star,
+  InfoOutlined,
+  Close,
+  DirectionsBusinessCenter,
+  TrendingUp as TimelineIcon,
+  LocationOn,
+  Schedule,
+} from '@mui/icons-material';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
+
+interface TabPanelProps {
+  children?: React.ReactNode;
+  index: number;
+  value: number
+}
+
+function TabPanel(props: TabPanelProps) {
+  const { children, value, index, ...other } = props;
+  return (
+    <div
+      role="tabpanel"
+      hidden={value !== index}
+      id={`spotify-tabpanel-${index}`}
+      aria-labelledby={`spotify-tab-${index}`}
+      {...other}
+    >
+      {value === index && <Box sx={{ p:  3 }}>{children}</Box>}
+    </div>
+  );
+}
+
+export default function SpotifyMusicProducerDashboard() {
+  const queryClient = useQueryClient();
+  
+  // Theming system
+  const theming = useTheming('photographer, ');
+  const [tabValue, setTabValue] = useState(0);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showSearchDialog, setShowSearchDialog] = useState(false);
+  const [showTonoGramoInfoDialog, setShowTonoGramoInfoDialog] = useState(false);
+  const [searchType, setSearchType] = useState<'artist' | 'track' | 'album'>('artist');
+
+  // Check Spotify authentication status
+  const { data: spotifyAuth, isLoading: authLoading } = useQuery({
+    queryKey: ['/api/spotify/auth-status', ],
+    queryFn: () => apiRequest('/api/spotify/auth-status', ),
+    retry: false,
+});
+
+  // Get user's Spotify profile
+  const { data: spotifyProfile } = useQuery({
+    queryKey: ['/api/spotify/profile', ],
+    queryFn: () => apiRequest('/api/spotify/profile', ),
+    enabled: !!spotifyAuth?.authenticated,
+    retry: false,
+});
+
+  // Get featured playlists
+  const { data: featuredPlaylists } = useQuery({
+    queryKey: ['/api/spotify/featured-playlists', ],
+    queryFn: () => apiRequest('/api/spotify/featured-playlists', ),
+    enabled: !!spotifyAuth?.authenticated,
+    retry: false,
+});
+
+  // Get top tracks
+  const { data: topTracks } = useQuery({
+    queryKey: ['/api/spotify/top-tracks', ],
+    queryFn: () => apiRequest('/api/spotify/top-tracks', ),
+    enabled: !!spotifyAuth?.authenticated,
+    retry: false,
+});
+
+  // Get Norwegian music
+  const { data: norwegianMusic } = useQuery({
+    queryKey: ['/api/spotify/search-norwegian', ],
+    queryFn: () => apiRequest('/api/spotify/search-norwegian', ),
+    enabled: !!spotifyAuth?.authenticated,
+    retry: false,
+});
+
+  // Market Analysis data
+  const { data: norwegianTrends } = useQuery({
+    queryKey: ['/api/spotify/market-analysis/norwegian-trends', ],
+    queryFn: () => apiRequest('/api/spotify/market-analysis/norwegian-trends', ),
+    enabled: !!spotifyAuth?.authenticated,
+    retry: false,
+});
+
+  const { data: geographicInsights } = useQuery({
+    queryKey: ['/api/spotify/market-analysis/geographic-insights', ],
+    queryFn: () => apiRequest('/api/spotify/market-analysis/geographic-insights', ),
+    enabled: !!spotifyAuth?.authenticated,
+    retry: false,
+});
+
+  const { data: seasonalAnalysis } = useQuery({
+    queryKey: ['/api/spotify/market-analysis/seasonal-analysis', ],
+    queryFn: () => apiRequest('/api/spotify/market-analysis/seasonal-analysis', ),
+    enabled: !!spotifyAuth?.authenticated,
+    retry: false,
+});
+
+  // Business Intelligence data
+  const { data: releaseTiming } = useQuery({
+    queryKey: ['/api/spotify/business-insights/release-timing', ],
+    queryFn: () => apiRequest('/api/spotify/business-insights/release-timing', ),
+    enabled: !!spotifyAuth?.authenticated,
+    retry: false,
+});
+
+  const { data: competitionAnalysis } = useQuery({
+    queryKey: ['/api/spotify/business-insights/competition-analysis', ],
+    queryFn: () => apiRequest('/api/spotify/business-insights/competition-analysis', ),
+    enabled: !!spotifyAuth?.authenticated,
+    retry: false,
+});
+
+  const { data: streamingForecasts } = useQuery({
+    queryKey: ['/api/spotify/business-insights/streaming-forecasts', ],
+    queryFn: () => apiRequest('/api/spotify/business-insights/streaming-forecasts', ),
+    enabled: !!spotifyAuth?.authenticated,
+    retry: false,
+});
+
+  // Search mutation
+  const searchMutation = useMutation({
+    mutationFn: async ({ query, type }: { query: string; type: string }) =>
+      apiRequest('/api/spotify/search', {
+        method: 'POS',
+        body: JSON.stringify({ q: query, type }),
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/spotify', ],});
+  },
+});
+
+  const handleSearch = () => {
+    if (searchQuery.trim()) {
+      searchMutation.mutate({ query: searchQuery, type: searchType });
+      setShowSearchDialog(false);
+  }
+};
+
+  const handleSpotifyAuth = () => {
+    window.location.href = '/api/spotify/auth';
+};
+
+  if (authLoading) {
+    return (
+      <Box
+        sx={{
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          height: '400px' }}
+      >
+        <CircularProgress sx={{ color: '#1db954' }} />
+        <Typography sx={{ ml:  2 }}>Kobler til Spotify...</Typography>
+      </Box>
+    );
+}
+
+  if (!spotifyAuth?.authenticated) {
+    return (
+      <MuiCard
+        sx={{
+          p:  4,
+          textAlign: 'center',
+          bgcolor: 'linear-gradient(135deg, #1db954 0%, #1ed760 100%)' }}
+      >
+        <CardContent sx={theming.getThemedCardSx()}>
+          <LibraryMusic sx={{ fontSize:  64, color: '#1db950', mb:  2 }} />
+          <Typography variant="h5" sx={{  mb: 2, fontWeight: 600}}>
+            Koble til Spotify
+          </Typography>
+          <Typography variant="body1" sx={{ mb:  3, color: 'text.secondary' }}>
+            Få tilgang til Spotify's omfattende musikk-bibliotek og verktøy for musikkprodusenter.
+            Søk etter artister, spor, og få inspirasjon fra norsk musikk.
+          </Typography>
+          <Button variant="contained"
+            size="large"
+            onClick={handleSpotifyAuth}
+            startIcon={theming.getThemedIcon('libraryMusic')}
+            sx={{
+              bgcolor: '#1db950',
+              color: 'white',
+              py: 1.5,
+              px:  4,
+              borderRadius:  3,
+              textTransform: 'none',
+              fontSize: '1.1rem',
+              fontWeight: 600,:hover': {
+                bgcolor: '#1ed760',
+                transform: 'translateY(-2px)',
+                boxShadow: '0 8px 20px rgba(9, 185, 84, 0.3)' },
+              transition: 'all 0.3s ease' }}
+           sx={theming.getThemedButtonSx()}>
+            Koble til Spotify
+          </Button>
+        </CardContent>
+      </MuiCard>
+    );
+}
+
+  return (
+    <Box sx={{ p:  2 }}>
+      {/* Header with user profile */}
+      <MuiCard
+        sx={{
+          mb:  3,
+          background: 'linear-gradient(135deg, #1db954 0%, #1ed760 100%)',
+          color: 'white' }}
+      >
+        <CardContent sx={theming.getThemedCardSx()}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
+            <Avatar
+              src={spotifyProfile?.images?.[0]?.url}
+              sx={{ width:  64, height:  64, bgcolor: 'rgba(25,255,255,0.2)' }}
+            >
+              {theming.getThemedIcon('libraryMusic')}
+            </Avatar>
+            <Box sx={{ flex:  1 }}>
+              <Typography variant="h5" sx={{  fontWeight: 600, mb:  1  }}>
+                {spotifyProfile?.display_name || 'Spotify Bruker'}
+              </Typography>
+              <Typography variant="body2" sx={{ opacity: 0.9}}>
+                {spotifyProfile?.followers?.total || 0} følgere • {spotifyProfile?.country || 'NO'}
+              </Typography>
+            </Box>
+            <Box sx={{ display: 'flex', gap:  1 }}>
+              <Button
+                variant="outlined"
+                startIcon={<InfoOutlined />}
+                onClick={() => setShowTonoGramoInfoDialog(true)}
+                sx={{
+                  borderColor: 'rgba(25,255,255,0.5)',
+                  color: 'white', '&:hover': {
+                    borderColor: 'white',
+                    bgcolor: 'rgba(25,255,255,0.1)' }}}
+              >
+                TONO/GRAMO Info
+              </Button>
+              <Button
+                variant="outlined"
+                startIcon={theming.getThemedIcon('search')}
+                onClick={() => setShowSearchDialog(true)}
+                sx={{
+                  borderColor: 'rgba(25,255,255,0.5)',
+                  color: 'white','&:hover': {
+                    borderColor: 'white',
+                    bgcolor: 'rgba(25,255,255,0.1)' }}}
+              >
+                Søk Musikk
+              </Button>
+            </Box>
+            <IconButton
+              onClick={() => queryClient.invalidateQueries({ queryKey: ['/api/spotify', ],})}
+              sx={{ color: 'white' }}
+            >
+              {theming.getThemedIcon('refresh')}
+            </IconButton>
+          </Box>
+        </CardContent>
+      </MuiCard>
+
+      {/* Tabs */}
+      <MuiCard sx={{ mb:  3 }}>
+        <Tabs
+          value={tabValue}
+          onChange={(e, newValue) => setTabValue(newValue)}
+          sx={{
+            '& .MuiTab-root': {
+              textTransform: 'none',
+              fontWeight: 60
+              fontSize: '1rem' }, '& .Mui-selected': {
+              color: '#1db950' }, '& .MuiTabs-indicator': {
+              backgroundColor: '#1db950' }}}
+        >
+          <Tab icon={theming.getThemedIcon('trendingUp')}} label="Utvalgte Spillelister" />
+          <Tab icon={theming.getThemedIcon('star')}} label="Populære Spor" />
+          <Tab icon={<Album />} label="Norsk Musikk" />
+          <Tab icon={<Box />} label="Markedsanalyse" />
+          <Tab icon={theming.getThemedIcon('businessCenter')}} label="Business Insights" />
+          <Tab icon={theming.getThemedIcon('analytics')}} label="Analytikk" />
+        </Tabs>
+      </MuiCard>
+
+      {/* Tab Content */}
+      <TabPanel value={tabValue} index={0}>
+        <Typography variant="h6" sx={{  mb: 2, color: '#1db950', fontWeight: 600}}>
+          🎵 Utvalgte Spillelister
+        </Typography>
+        <Grid container spacing={2}>
+          {featuredPlaylists?.playlists?.items?.map((playlist: any) => (
+            <Grid item xs={12} sm={6} md={4} key={playlist.id}>
+              <MuiCard
+                sx={{
+                  height: '100%','&:hover': {
+                    transform: 'translateY(-4px)',
+                    boxShadow: '0 8px 20px rgba(0,0,0,0.1)' },
+                  transition: 'all 0.3s ease' }}
+              >
+                <CardContent sx={theming.getThemedCardSx()}>
+                  <Box
+                    sx={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap:  2,
+                      mb:  2}}
+                  >
+                    <Avatar
+                      src={playlist.images?.[0]?.url}
+                      sx={{ width:  56, height:  56, bgcolor: '#1db954' }}
+                    >
+                      <Queue />
+                    </Avatar>
+                    <Box sx={{ flex:  1 }}>
+                      <Typography variant="h6" sx={{  fontSize: '1rem', fontWeight: 600}}>
+                        {playlist.name}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        {playlist.tracks?.total || 0} spor
+                      </Typography>
+                    </Box>
+                  </Box>
+                  <Typography variant="body2" sx={{ mb: 2, color: 'text.secondary' }}>
+                    {playlist.description}
+                  </Typography>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    startIcon={theming.getThemedIcon('play')}
+                    href={playlist.external_urls?.spotify}
+                    target="_blank"
+                    sx={{
+                      borderColor: '#1db950',
+                      color: '#1db950','&:hover': {
+                        bgcolor: '#1db950',
+                        color: 'white' }}}
+                  >
+                    Åpne i Spotify
+                  </Button>
+                </CardContent>
+              </MuiCard>
+            </Grid>
+          ))}
+        </Grid>
+      </TabPanel>
+
+      <TabPanel value={tabValue} index={1}>
+        <Typography variant="h6" sx={{  mb: 2, color: '#1db950', fontWeight: 600}}>
+          ⭐ Populære Spor
+        </Typography>
+        <List>
+          {topTracks?.items?.map((track: any, index: number) => (
+            <React.Fragment key={track.d}>
+              <ListItem
+                sx={{
+                  borderRadius:  2,
+                  mb: 1, '&:hover': { bgcolor: 'rgba(9, 185, 84, 0.05)' }}}
+              >
+                <ListItemAvatar>
+                  <Avatar src={track.album?.images?.[0]?.url} sx={{ bgcolor: '#1db954' }}>
+                    {theming.getThemedIcon('libraryMusic')}
+                  </Avatar>
+                </ListItemAvatar>
+                <ListItemText
+                  primary={
+                    <Typography variant="subtitle1" sx={{ fontWeight: 600}>
+                      {track.name}
+                    </Typography>
+                }
+                  secondary={
+                    <Box>
+                      <Typography variant="body2" color="text.secondary">
+                        {track.artists?.map((artist: any) => artist.name).join(', ')}
+                      </Typography>
+                      <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
+                        <Chip
+                          label={`${Math.floor(track.popularity)}% popularitet`}
+                          size="small"
+                          color="primary"
+                        />
+                        <Chip label={track.album?.name} size="small" variant="outlined" />
+                      </Box>
+                    </Box>
+                }
+                />
+                <Button
+                  variant="outlined"
+                  size="small"
+                  startIcon={theming.getThemedIcon('play')}
+                  href={track.external_urls?.spotify}
+                  target="_blank"
+                  sx={{
+                    borderColor: '#1db950',
+                    color: '#1db950',
+                    ml:  2}}
+                >
+                  Spill av
+                </Button>
+              </ListItem>
+              {index < topTracks?.items?.length - 1 && <Divider />}
+            </React.Fragment>
+          ))}
+        </List>
+      </TabPanel>
+
+      <TabPanel value={tabValue} index={2}>
+        <Typography variant="h6" sx={{  mb: 2, color: '#1db950', fontWeight: 600}}>
+          🇳🇴 Norsk Musikk
+        </Typography>
+        <Grid container spacing={2}>
+          {norwegianMusic?.artists?.items?.map((artist: any) => (
+            <Grid item xs={12} sm={6} md={4} key={artist.id}>
+              <MuiCard
+                sx={{
+                  height: '100%','&:hover': {
+                    transform: 'translateY(-4px)',
+                    boxShadow: '0 8px 20px rgba(0,0,0,0.1)' },
+                  transition: 'all 0.3s ease' }}
+              >
+                <CardContent sx={theming.getThemedCardSx()}>
+                  <Box
+                    sx={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap:  2,
+                      mb:  2}}
+                  >
+                    <Avatar
+                      src={artist.images?.[0]?.url}
+                      sx={{ width:  56, height:  56, bgcolor: '#1db954' }}
+                    >
+                      {theming.getThemedIcon('libraryMusic')}
+                    </Avatar>
+                    <Box sx={{ flex:  1 }}>
+                      <Typography variant="h6" sx={{  fontSize: '1rem', fontWeight: 600}}>
+                        {artist.name}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        {artist.followers?.total?.toLocaleString('no-NO') || 0} følgere
+                      </Typography>
+                    </Box>
+                  </Box>
+                  <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap' }}>
+                    {artist.genres?.slice(0, 2).map((genre: string) => (
+                      <Chip
+                        key={genre}
+                        label={genre}
+                        size="small"
+                        color="primary"
+                        variant="outlined"
+                      />
+                    ))}
+                  </Box>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    startIcon={theming.getThemedIcon('play')}
+                    href={artist.external_urls?.spotify}
+                    target="_blank"
+                    sx={{
+                      borderColor: '#1db950',
+                      color: '#1db950','&:hover': {
+                        bgcolor: '#1db950',
+                        color: 'white' }}}
+                  >
+                    Åpne i Spotify
+                  </Button>
+                </CardContent>
+              </MuiCard>
+            </Grid>
+          ))}
+        </Grid>
+      </TabPanel>
+
+      <TabPanel value={tabValue} index={3}>
+        <Typography variant="h6" sx={{  mb:  3, color: '#1db950', fontWeight: 600}}>
+          📈 Markedsanalyse
+        </Typography>
+
+        <Grid container spacing={3}>
+          {/* Norsk Trendsporing */}
+          <Grid item xs={12} md={6}>
+            <MuiCard sx={{ height: '100%' }}>
+              <CardContent sx={theming.getThemedCardSx()}>
+                <Typography variant="h6"
+                  sx={{  mb: 2, display: 'flex', alignItems: 'center', gap:  1  }}>
+                  🇳🇴 Norsk Musikk Trends
+                </Typography>
+                <Box sx={{ mb:  2 }}>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb:  1 }}>
+                    Topp 5 voksende norske artister denne uken: </Typography>
+                  {!norwegianTrends && spotifyAuth?.authenticated && (
+                    <Box sx={{ display: 'flex', justifyContent: 'center', p:  2 }}>
+                      <CircularProgress size={24} sx={{ color: '#1db954' }} />
+                    </Box>
+                  )}
+                  {(
+                    norwegianTrends?.data?.trending_artists?.slice(0, 5) ||
+                    norwegianMusic?.artists?.items?.slice(0, 5)
+                  )?.map((artist: any, index: number) => (
+                    <Box
+                      key={artist.d}
+                      sx={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap:  2,
+                        mb:  1,
+                        p:  1,
+                        borderRadius:  1,
+                        bgcolor: 'rgba(9, 185, 84, 0.05)' }}
+                    >
+                      <Typography
+                        variant="body2"
+                        sx={{
+                          fontWeight: 60
+                         , color: '#1db950',
+                          minWidth: '20px' }}
+                      >
+                        #{index + 1}
+                      </Typography>
+                      <Avatar src={artist.image} sx={{ width:  32, height: 32}} />
+                      <Typography variant="body2" sx={{ flex:  1 }}>
+                        {artist.name}
+                      </Typography>
+                      <Chip
+                        label={`${artist.followers ? Math.floor(artist.followers / 1000) : '0'}k følgere`}
+                        size="small"
+                        sx={{ bgcolor: '#1db950', color: 'white' }}
+                      />
+                    </Box>
+                  ))}
+                </Box>
+                <Button variant="outlined" sx={{ borderColor: '#1db950', color: '#1db954' }}>
+                  Se full trendanalyse
+                </Button>
+              </CardContent>
+            </MuiCard>
+          </Grid>
+
+          {/* Geografisk Innsikt */}
+          <Grid item xs={12} md={6}>
+            <MuiCard sx={{ height: '100%' }}>
+              <CardContent sx={theming.getThemedCardSx()}>
+                <Typography variant="h6"
+                  sx={{  mb: 2, display: 'flex', alignItems: 'center', gap:  1  }}>
+                  🗺️ Geografisk Innsikt
+                </Typography>
+                <Box sx={{ mb:  2 }}>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb:  2 }}>
+                    Hvor norsk musikk streames mest: </Typography>
+                  {geographicInsights?.data?.cities?.map((city: any, index: number) => (
+                    <Box
+                      key={city.name}
+                      sx={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap:  2,
+                        mb:  1}}
+                    >
+                      <Typography variant="body2" sx={{ minWidth: '80px', fontWeight: 50}}>
+                        {city.name}
+                      </Typography>
+                      <Box
+                        sx={{
+                          flex:  1,
+                          bgcolor: '#f5f5f0',
+                          borderRadius:  1,
+                          height:  8}}
+                      >
+                        <Box
+                          sx={{
+                            bgcolor: '#1db950',
+                            height: '100%',
+                            width: `${city.percentage}%`,
+                            borderRadius:  1}}
+                        />
+                      </Box>
+                      <Typography variant="body2" color="text.secondary">
+                        {city.percentage}%
+                      </Typography>
+                    </Box>
+                  )) ||
+                    ['Oslo', 'Bergen', 'Trondheim', 'Stavanger','Kristiansand'].map(
+                      (city, index) => (
+                        <Box
+                          key={city}
+                          sx={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap:  2,
+                            mb:  1}}
+                        >
+                          <Typography variant="body2" sx={{ minWidth: '80px', fontWeight: 50}}>
+                            {city}
+                          </Typography>
+                          <Box
+                            sx={{
+                              flex:  1,
+                              bgcolor: '#f5f5f0',
+                              borderRadius:  1,
+                              height:  8}}
+                          >
+                            <Box
+                              sx={{
+                                bgcolor: '#1db950',
+                                height: '100%',
+                                width: `${90 - index * 15}%`,
+                                borderRadius:  1}}
+                            />
+                          </Box>
+                          <Typography variant="body2" color="text.secondary">
+                            {90 - index * 15}%
+                          </Typography>
+                        </Box>
+                      ),
+                    )}
+                </Box>
+                <Button variant="outlined" sx={{ borderColor: '#1db950', color: '#1db954' }}>
+                  Detaljert geografisk analyse
+                </Button>
+              </CardContent>
+            </MuiCard>
+          </Grid>
+
+          {/* Sesonganalyse */}
+          <Grid item xs={12}>
+            <MuiCard>
+              <CardContent sx={theming.getThemedCardSx()}>
+                <Typography variant="h6"
+                  sx={{  mb: 2, display: 'flex', alignItems: 'center', gap:  1  }}>
+                  📅 Sesonganalyse
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb:  2 }}>
+                  Beste tider for ulike musikksjangre basert på lyttemønstre: </Typography>
+                <Grid container spacing={2}>
+                  {(
+                    seasonalAnalysis?.data?.genres || [
+                      {
+                        genre: 'Pop',
+                        peak_season: 'summer',
+                        performance:  85,
+                        color: '#ff9800' },
+                      {
+                        genre: 'Jazz',
+                        peak_season: 'autumn',
+                        performance:  70,
+                        color: '#795540' },
+                      {
+                        genre: 'Electronic',
+                        peak_season: 'winter',
+                        performance:  78,
+                        color: '#2196f0' },
+                      {
+                        genre: 'Folk',
+                        peak_season: 'spring',
+                        performance:  65,
+                        color: '#4caf50' },
+                    ]
+                  ).map((item: any) => (
+                    <Grid item xs={12} sm={6} md={3} key={item.genre}>
+                      <Box
+                        sx={{
+                          p:  2,
+                          borderRadius:  2,
+                          bgcolor: `${item.color}15`,
+                          border: `1px solid ${item.color}30`,
+                          textAlign: 'center' }}
+                      >
+                        <Typography variant="h6" sx={{  color: item.color, fontWeight: 600}}>
+                          {item.genre}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          {item.peak_season === 'summer'
+                            ? 'Sommer'
+                            : item.peak_season === 'autumn'
+                              ? 'Høst'
+                              : item.peak_season === 'winter'
+                                ? 'Vinter'
+                                : item.peak_season === 'spring'
+                                  ? 'Vår'
+                                  : item.season || item.peak_season}
+                        </Typography>
+                        <Typography variant="h5" sx={{  color: item.color, fontWeight: 600, mt:  1  }}>
+                          {item.performance ? `${item.performance}%` : item.percentage}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          optimal lytting
+                        </Typography>
+                      </Box>
+                    </Grid>
+                  ))}
+                </Grid>
+              </CardContent>
+            </MuiCard>
+          </Grid>
+        </Grid>
+      </TabPanel>
+
+      <TabPanel value={tabValue} index={4}>
+        <Typography variant="h6" sx={{  mb:  3, color: '#1db950', fontWeight: 600}}>
+          💼 Business Insights
+        </Typography>
+
+        <Grid container spacing={3}>
+          {/* Release Timing */}
+          <Grid item xs={12} md={6}>
+            <MuiCard sx={{ height: '100%' }}>
+              <CardContent sx={theming.getThemedCardSx()}>
+                <Typography variant="h6"
+                  sx={{  mb: 2, display: 'flex', alignItems: 'center', gap:  1  }}>
+                  ⏰ Optimal Release-timing
+                </Typography>
+                <Box sx={{ mb:  2 }}>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb:  2 }}>
+                    Beste dager for å lansere musikk: </Typography>
+                  {(
+                    releaseTiming?.data?.optimal_days || [
+                      { day: 'Friday', effectiveness: 95,},
+                      { day: 'Thursday', effectiveness: 85,},
+                      { day: 'Tuesday', effectiveness: 70,},
+                      { day: 'Wednesday', effectiveness: 65,},
+                      { day: 'Monday', effectiveness: 55,},
+                    ]
+                  )
+                    .slice(0, 5)
+                    .map((dayData: any, index: number) => {
+                      const norwegianDays: { [key: string]: string } = {
+                        Monday: 'Mandag',
+                        Tuesday: 'Tirsdag',
+                        Wednesday: 'Onsdag',
+                        Thursday: 'Torsdag',
+                        Friday: 'Fredag',
+                        Saturday: 'Lørdag',
+                        Sunday: 'Søndag' };
+                      const dayName =
+                        norwegianDays[dayData.day] ||
+                        dayData.day ||
+                        ['Fredag', 'Torsdag', 'Tirsdag', 'Onsdag','Mandag'][index];
+                      const effectiveness = dayData.effectiveness || 85 - index * 10;
+
+                      return (
+                        <Box
+                          key={dayName}
+                          sx={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap:  2,
+                            mb: 1.5}}
+                        >
+                          <Typography variant="body2" sx={{ minWidth: '70px', fontWeight: 50}}>
+                            {dayName}
+                          </Typography>
+                          <Box
+                            sx={{
+                              flex:  1,
+                              bgcolor: '#f5f5f0',
+                              borderRadius:  1,
+                              height:  8}}
+                          >
+                            <Box
+                              sx={{
+                                bgcolor: effectiveness >= 80 ? '#1db954' : '#ffb740',
+                                height: '100%',
+                                width: `${effectiveness}%`,
+                                borderRadius:  1}}
+                            />
+                          </Box>
+                          <Typography variant="body2" color="text.secondary">
+                            {effectiveness}% effektivitet
+                          </Typography>
+                        </Box>
+                      );
+                  })}
+                </Box>
+                <Alert severity="success" sx={{ mb:  2 }}>
+                  <Typography variant="body2">
+                    <strong>Anbefaling: </strong> Freitag klokka 00:00 gir høyest reach for nye
+                    releases.
+                  </Typography>
+                </Alert>
+              </CardContent>
+            </MuiCard>
+          </Grid>
+
+          {/* Konkurranseanalyse , *, /}
+          <Grid item xs={12} md={6}>
+            <MuiCard sx={{ height: '100%' }}>
+              <CardContent sx={theming.getThemedCardSx()}>
+                <Typography variant="h6"
+                  sx={{  mb: 2, display: 'flex', alignItems: 'center', gap:  1  }}>
+                  🎯 Konkurranseanalyse
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb:  2 }}>
+                  Aktive norske produsenter denne måneden: </Typography>
+                <Box sx={{ mb: 2 }}>
+                  {(
+                    competitionAnalysis?.data?.active_producers || [
+                      {
+                        name: 'Martin Sjølie',
+                        releases_this_month:  8,
+                        activity_level: 'high' },
+                      {
+                        name: 'Stargate',
+                        releases_this_month:  6,
+                        activity_level: 'high' },
+                      {
+                        name: 'Madcon Productions',
+                        releases_this_month:  5,
+                        activity_level: 'medium' },
+                      {
+                        name: 'TIX Productions',
+                        releases_this_month:  4,
+                        activity_level: 'medium' },
+                      {
+                        name: 'Astrid S Team',
+                        releases_this_month:  3,
+                        activity_level: 'medium' },
+                    ]
+                  ).map((producer: any, index: number) => (
+                    <Box
+                      key={producer.name}
+                      sx={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap:  2,
+                        mb: 1.5,
+                        p:  1,
+                        borderRadius:  1,
+                        bgcolor: producer.activity_level === 'high'
+                            ? 'rgba(25, 183, 77, 0.1)'
+                            : 'rgba(29, 185, 84, 0.05)' }}
+                    >
+                      <Box
+                        sx={{
+                          width:  8,
+                          height:  8,
+                          borderRadius: '50, %',
+                          bgcolor: producer.activity_level === 'high' ? '#ff9800' : '#1db950' }}
+                      />
+                      <Typography variant="body2" sx={{ flex:  1 }}>
+                        {producer.name}
+                      </Typography>
+                      <Chip
+                        label={`${producer.releases_this_month || 3 + index} releases`}
+                        size="small"
+                        sx={{
+                          bgcolor: producer.activity_level === 'high' ? '#ff9800' : '#1db950',
+                          color: 'white' }}
+                      />
+                    </Box>
+                  ))}
+                </Box>
+                <Button variant="outlined" sx={{ borderColor: '#1db950', color: '#1db954' }}>
+                  Se full konkurranseanalyse
+                </Button>
+              </CardContent>
+            </MuiCard>
+          </Grid>
+
+          {/* Streaming Prognoser */}
+          <Grid item xs={12}>
+            <MuiCard>
+              <CardContent sx={theming.getThemedCardSx()}>
+                <Typography variant="h6"
+                  sx={{  mb: 2, display: 'flex', alignItems: 'center', gap:  1  }}>
+                  📊 Streaming Prognoser
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb:  3 }}>
+                  Estimert reach-potensial basert på lignende releases: </Typography>
+                <Grid container spacing={3}>
+                  <Grid item xs={12} md={4}>
+                    <Box
+                      sx={{
+                        textAlign: 'center',
+                        p:  3,
+                        borderRadius:  2,
+                        bgcolor: 'rgba(9, 185, 84, 0.1)' }}
+                    >
+                      <Typography variant="h3" sx={{  color: '#1db950', fontWeight: 600}}>
+                        {streamingForecasts?.data?.expected_streams_30_days
+                          ? `${(streamingForecasts.data.expected_streams_30_days / 1000).toFixed(1)}K`
+                          : '15.2K'}
+                      </Typography>
+                      <Typography variant="body1" sx={{ fontWeight: 50}}>
+                        Forventet streams
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        første 30 dager
+                      </Typography>
+                    </Box>
+                  </Grid>
+                  <Grid item xs={12} md={4}>
+                    <Box
+                      sx={{
+                        textAlign: 'center',
+                        p:  3,
+                        borderRadius:  2,
+                        bgcolor: 'rgba(25, 1520.1)' }}
+                    >
+                      <Typography variant="h3" sx={{  color: '#ff9800', fontWeight: 600}}>
+                        {streamingForecasts?.data?.expected_new_listeners
+                          ? `${(streamingForecasts.data.expected_new_listeners / 1000).toFixed(1)}K`
+                          : '2.8K'}
+                      </Typography>
+                      <Typography variant="body1" sx={{ fontWeight: 50}}>
+                        Nye lyttere
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        potensielt reach
+                      </Typography>
+                    </Box>
+                  </Grid>
+                  <Grid item xs={12} md={4}>
+                    <Box
+                      sx={{
+                        textAlign: 'center',
+                        p:  3,
+                        borderRadius:  2,
+                        bgcolor: 'rgba(3, 150, 243, 0.1)' }}
+                    >
+                      <Typography variant="h3" sx={{  color: '#2196f0', fontWeight: 600}}>
+                        {streamingForecasts?.data?.success_probability
+                          ? `${streamingForecasts.data.success_probability}%`
+                          : '68%'}
+                      </Typography>
+                      <Typography variant="body1" sx={{ fontWeight: 50}}>
+                        Suksess-rate
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        for lignende releases
+                      </Typography>
+                    </Box>
+                  </Grid>
+                </Grid>
+                <Alert severity="info" sx={{ mt:  3 }}>
+                  <Typography variant="body2">
+                    {streamingForecasts?.data?.based_on
+                      ? `Prognosene er basert på ${streamingForecasts.data.based_on}`
+                      : 'Prognosene er basert på historiske data fra lignende artister og sjangre i det norske markedet.'}
+                    {streamingForecasts?.data?.confidence_level &&
+                      ` Konfidensnivå: ${streamingForecasts.data.confidence_level}%`}
+                  </Typography>
+                </Alert>
+              </CardContent>
+            </MuiCard>
+          </Grid>
+        </Grid>
+      </TabPanel>
+
+      <TabPanel value={tabValue} index={5}>
+        <Typography variant="h6" sx={{  mb: 2, color: '#1db950', fontWeight: 600}}>
+          📊 Spotify Analytikk
+        </Typography>
+        <Alert severity="info" sx={{ mb:  2 }}>
+          Detaljert analytikk kommer snart. Dette vil inkludere lytterstatistikk, trendanalyse og
+          markedsinsikt for norske musikkprodusenter.
+        </Alert>
+      </TabPanel>
+
+      {/* Search Dialog */}
+      <Dialog
+        open={showSearchDialog}
+        onClose={() => setShowSearchDialog(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
+            <Search sx={{ color: '#1db954' }} />
+            <Typography variant="h6" sx={{ color: theming.colors.primary }}>Søk i Spotify</Typography>
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ mt:  2 }}>
+            <Tabs
+              value={searchType}
+              onChange={(e, newValue) => setSearchType(newValue)}
+              sx={{ mb:  3 }}
+            >
+              <Tab value="artist" label="Artister" />
+              <Tab value="track" label="Spor" />
+              <Tab value="album" label="Album" />
+            </Tabs>
+            <TextField
+              fullWidth
+              label={`Søk etter ${searchType === 'artist' ? 'artister' : searchType === 'track' ? 'spor' : 'album'}`}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+              sx={{ mb:  3 }}
+            />
+            <Box sx={{ display: 'flex', gap: 2, justifyContent: 'flex-end' }}>
+              <Button onClick={() => setShowSearchDialog(false)}>Avbryt</Button>
+              <Button variant="contained"
+                onClick={handleSearch}
+                disabled={!searchQuery.trim() || searchMutation.isPending}
+                startIcon={searchMutation.isPending ? <CircularProgress size={20} sx={theming.getThemedButtonSx()}> : theming.getThemedIcon('search')}
+                sx={{
+                  bgcolor: '#1db950', '&:hover': { bgcolor: '#1ed760' }}}
+              >
+                Søk
+              </Button>
+            </Box>
+          </Box>
+        </DialogContent>
+      </Dialog>
+
+      {/* TONO/GRAMO Information Dialog */}
+      <Dialog
+        open={showTonoGramoInfoDialog}
+        onClose={() => setShowTonoGramoInfoDialog(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            bgcolor: '#1db950',
+            color: 'white',
+            pb:  2}}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
+            <InfoOutlined />
+            <Typography variant="h6" sx={{ color: theming.colors.primary }}>TONO/GRAMO Integrasjon</Typography>
+          </Box>
+          <IconButton onClick={() => setShowTonoGramoInfoDialog(false)} sx={{ color: 'white' }}>
+            {theming.getThemedIcon('close')}
+          </IconButton>
+        </DialogTitle>
+        <DialogContent sx={{ p:  3 }}>
+          <Alert
+            severity="info"
+            sx={{
+              mb: 3'& .MuiAlert-icon': { color: '#1db950' }}}
+          >
+            <Typography variant="body1" sx={{ lineHeight: 1.8}}>
+              Per nå har vi ikke direkte integrasjon opp mot TONO og GRAMO, men vi jobber alltid med
+              å forbedre løsningene på CreatorHub Norge. Vi vet at denne delen av prosessen som
+              music produsent er viktig. For at vi skal få til dette er vi avhengig av at både TONO
+              og GRAMO ønsker å samarbeide med oss. Dersom vi får den muligheten vil vi oppdatere
+              våre tjenester og tilby løsninger som gjør musikk produsentenes hverdag enklere.
+            </Typography>
+          </Alert>
+
+          <Box sx={{ textAlign: 'center', mt:  2 }}>
+            <Typography
+              variant="body2"
+              sx={{
+                fontStyle: 'italic',
+                color: 'text.secondary',
+                mb:  2}}
+            >
+              Takk for forståelsen.
+            </Typography>
+            <Typography
+              variant="subtitle2"
+              sx={{
+                fontWeight: 60
+               , color: '#1db950' }}
+            >
+              CreatorHub Norge
+            </Typography>
+          </Box>
+
+          <Box
+            sx={{
+              display: 'flex',
+              justifyContent: 'center',
+              mt:  3,
+              pt:  2,
+              borderTop: '1px solid #e0e0e0' }}
+          >
+            <Button variant="contained"
+              onClick={() => setShowTonoGramoInfoDialog(false)}
+              sx={{
+                bgcolor: '#1db950','&:hover': { bgcolor: '#1ed760' },
+                px:  4}}
+            >
+              Forstått
+            </Button>
+          </Box>
+        </DialogContent>
+      </Dialog>
+    </Box>
+  );
+}

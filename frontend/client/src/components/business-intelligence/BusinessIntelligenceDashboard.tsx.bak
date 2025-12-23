@@ -1,0 +1,508 @@
+/**
+ * CreatorHub Norge - Business Intelligence Dashboard
+ * Comprehensive market analysis, SWOT analysis, and marketing strategy interface
+ */
+
+import { useTheming } from '../../utils/theming-helper';
+import React, { useState, useEffect } from 'react';
+import {
+  Box,
+  Grid,
+  Paper,
+  Typography,
+  Tab,
+  Tabs,
+  Card,
+  CardContent,
+  CircularProgress,
+  Alert,
+  Chip,
+  LinearProgress,
+  List,
+  ListItem,
+  ListItemIcon,
+  ListItemText,
+  Divider,
+} from '@mui/material';
+import {
+  TrendingUp as TrendingUpIcon,
+  Analytics as AnalyticsIcon,
+  LocationOn as LocationIcon,
+  AttachMoney as MoneyIcon,
+  People as PeopleIcon,
+  Star as StarIcon,
+  Assignment as AssignmentIcon,
+  Campaign as CampaignIcon,
+  Email as EmailIcon,
+  Insights as InsightsIcon,
+} from '@mui/icons-material';
+import { useQuery } from '@tanstack/react-query';
+
+// Import dynamic profession system
+import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
+
+interface BusinessIntelligenceDashboardProps {
+  userId: string;
+  profession: string
+}
+
+interface TabPanelProps {
+  children?: React.ReactNode;
+  index: number;
+  value: number
+}
+
+function TabPanel(props: TabPanelProps) {
+  const { children, value, index, ...other } = props;
+  return (
+    <div role="tabpanel" hidden={value !== index} {...other}>
+      {value === index && <Box sx={{ py: 3 }}>{children}</Box>}
+    </div>
+  );
+}
+
+export default function BusinessIntelligenceDashboard({
+  userId,
+  profession,
+}: BusinessIntelligenceDashboardProps) {
+  const [tabValue, setTabValue] = useState(0);
+
+  // Use dynamic profession system
+  const { professionConfigs, isLoading: professionsLoading } = useDynamicProfessions();
+  
+  // Theming system
+  const theming = useTheming('photographer');
+  const professionConfig = professionConfigs?.[profession];
+
+  // Fetch dashboard data
+  const { data: dashboardData, isLoading } = useQuery({
+    queryKey: [`/api/business/dashboard/${userd}/${profession}`],
+    staleTime: 5 * 60 * 100, // 5 minutes
+});
+
+  // Fetch price recommendation
+  const { data: priceData } = useQuery({
+    queryKey: [`/api/business/price-recommendation/${profession}/bryllup`],
+    staleTime: 30 * 60 * 100, // 30 minutes
+});
+
+  // Fetch seasonal trends
+  const { data: seasonalData } = useQuery({
+    queryKey: [`/api/business/seasonal-trends/${profession}/bryllup`],
+    staleTime: 60 * 60 * 100, // 1 hour
+});
+
+  if (isLoading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+        <CircularProgress sx={{ color: '#ff6b35, ',}} />
+      </Box>
+    );
+}
+
+  const marketInsights = (dashboardData as any)?.data?.marketInsights;
+  const quickStats = (dashboardData as any)?.data?.quickStats;
+  const recommendations = (dashboardData as any)?.data?.recommendations || [];
+
+  return (
+    <Box>
+      {/* Header */}
+      <Box sx={{ mb: 3 }}>
+        <Typography variant="h5" sx={{ color: '#ff6b3', mb: 1 }} sx={{ ...{}, color: theming.colors.primary }}>
+          {professionConfig
+            ? `${professionConfig.displayName} - Business Intelligence`
+            : 'Business Intelligence'}
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          {professionConfig
+            ? `Markedsanalyse og konkurranseovervåking for ${professionConfig.displayName.toLowerCase()}`
+            : 'Markedsanalyse, strategisk planlegging og konkurranseovervåking'}
+        </Typography>
+      </Box>
+
+      {/* Quick Stats Cards */}
+      <Grid container spacing={3} sx={{ mb: 4 }}>
+        <Grid size={{ xs:  12, sm:  6, md:  3 }}>
+          <Card
+            sx={{
+              background: 'linear-gradient(135deg, #ff6b35 0%, #f57c00 100%)',
+              color: 'white',
+          }}
+           sx={theming.getThemedCardSx()}>
+            <CardContent sx={theming.getThemedCardSx()}>
+              <Box
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+              }}
+              >
+                <Box>
+                  <Typography variant="h4" sx={{ fontWeight: 'bold, ',}} sx={{ ...{}, color: theming.colors.primary }}>
+                    {quickStats?.averageMarketPrice?.toLocaleString('no-NO') || '0'} kr
+                  </Typography>
+                  <Typography variant="body2" sx={{ opacity: 0., 9,}}>
+                    Markedsgjennomsnitt
+                  </Typography>
+                </Box>
+                <MoneyIcon sx={{ fontSize:  40, opacity: 0., 8,}} />
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid size={{ xs:  12, sm:  6, md:  3 }}>
+          <Card
+            sx={{
+              background: 'linear-gradient(135deg, #2196f3 0%, #1976d2 100%)',
+              color: 'white',
+          }}
+           sx={theming.getThemedCardSx()}>
+            <CardContent sx={theming.getThemedCardSx()}>
+              <Box
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+              }}
+              >
+                <Box>
+                  <Typography variant="h4" sx={{ fontWeight: 'bold, ',}} sx={{ ...{}, color: theming.colors.primary }}>
+                    {quickStats?.competitorCount || 0}
+                  </Typography>
+                  <Typography variant="body2" sx={{ opacity: 0., 9,}}>
+                    Konkurrenter
+                  </Typography>
+                </Box>
+                <PeopleIcon sx={{ fontSize:  40, opacity: 0., 8,}} />
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid size={{ xs:  12, sm:  6, md:  3 }}>
+          <Card
+            sx={{
+              background: 'linear-gradient(135deg, #4caf50 0%, #388e3c 100%)',
+              color: 'white',
+          }}
+           sx={theming.getThemedCardSx()}>
+            <CardContent sx={theming.getThemedCardSx()}>
+              <Box
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+              }}
+              >
+                <Box>
+                  <Typography variant="h4" sx={{ fontWeight: 'bold', textTransform: 'capitalize, ',}} sx={{ ...{}, color: theming.colors.primary }}>
+                    {quickStats?.seasonalDemand || 'Medium'}
+                  </Typography>
+                  <Typography variant="body2" sx={{ opacity: 0., 9,}}>
+                    Etterspørsel
+                  </Typography>
+                </Box>
+                <TrendingUpIcon sx={{ fontSize:  40, opacity: 0., 8,}} />
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid size={{ xs:  12, sm:  6, md:  3 }}>
+          <Card
+            sx={{
+              background: 'linear-gradient(135deg, #9c27b0 0%, #7b1fa2 100%)',
+              color: 'white',
+          }}
+           sx={theming.getThemedCardSx()}>
+            <CardContent sx={theming.getThemedCardSx()}>
+              <Box
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+              }}
+              >
+                <Box>
+                  <Typography variant="h4" sx={{ fontWeight: 'bold, ',}} sx={{ ...{}, color: theming.colors.primary }}>
+                    {quickStats?.bestRegions?.length || 0}
+                  </Typography>
+                  <Typography variant="body2" sx={{ opacity: 0., 9,}}>
+                    Toppregioner
+                  </Typography>
+                </Box>
+                <LocationIcon sx={{ fontSize:  40, opacity: 0., 8,}} />
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
+
+      {/* Tabs Navigation */}
+      <Paper
+        sx={{
+          background: 'rgba(25, 255, 255, 0.95)',
+          backdropFilter: 'blur(20px, ), ',
+          border: '1px solid rgba(25, 107, 53, 0.2)',
+      }}
+       sx={theming.getThemedCardSx()}>
+        <Box sx={{ borderBottom:  ,  1borderColor: 'divider, ',}}>
+          <Tabs
+            value={tabValue}
+            onChange={(_, newValue) => setTabValue(newValue)}
+            sx={{
+              '& .MuiTab-root': {
+                color: '#66',
+                '&.Mui-selected': {
+                  color: '#ff6b3',
+              },
+            },
+              '& .MuiTabs-indicator': {
+                backgroundColor: '#ff6b3',
+            },
+          }}
+          >
+            <Tab icon={<AnalyticsIcon />} label="Markedsanalyse" iconPosition="start" />
+            <Tab icon={<AssignmentIcon />} label="SWOT Analyse" iconPosition="start" />
+            <Tab icon={<CampaignIcon />} label="Markedsføringsstrategi" iconPosition="start" />
+            <Tab icon={<EmailIcon />} label="Nyhetsbrev" iconPosition="start" />
+          </Tabs>
+        </Box>
+
+        {/* Market Analysis Tab */}
+        <TabPanel value={tabValue} index={0}>
+          <Grid container spacing={3}>
+            <Grid size={{ xs:  12, md:  8 }}>
+              <Card sx={theming.getThemedCardSx()}>
+                <CardContent sx={theming.getThemedCardSx()}>
+                  <Typography variant="h6" sx={{ mb: ,  2color: '#ff6b35, ',}} sx={{ ...{}, color: theming.colors.primary }}>
+                    Prisanbefaling
+                  </Typography>
+                  {(priceData as any)?.data ? (
+                    <Box>
+                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                        <Typography variant="h4" sx={{ color: '#ff6b3', mr:  2 }} sx={{ ...{}, color: theming.colors.primary }}>
+                          {(priceData as any).data.suggestedPrice?.toLocaleString('no-NO')} kr
+                        </Typography>
+                        <Chip
+                          label={`${Math.round((priceData as any).data.confidence * 100)}% sikkerhet`}
+                          color="success"
+                          size="small"
+                        />
+                      </Box>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                        {(priceData as any).data.reasoning}
+                      </Typography>
+                      <Box sx={{ mb: 2 }}>
+                        <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                          Konkurransefortrinn: </Typography>
+                        {(priceData as any).data.competitiveAdvantage?.map(
+                          (advantage: string, index: number) => (
+                            <Chip
+                              key={index}
+                              label={advantage}
+                              variant="outlined"
+                              size="small"
+                              sx={{ mr:  ,  1mb: 1 }}
+                            />
+                          ),
+                        )}
+                      </Box>
+                    </Box>
+                  ) : (
+                    <Alert severity="info">Henter prisanbefaling...</Alert>
+                  )}
+                </CardContent>
+              </Card>
+            </Grid>
+
+            <Grid size={{ xs:  12, md:  4 }}>
+              <Card sx={theming.getThemedCardSx()}>
+                <CardContent sx={theming.getThemedCardSx()}>
+                  <Typography variant="h6" sx={{ mb: ,  2color: '#ff6b35, ',}} sx={{ ...{}, color: theming.colors.primary }}>
+                    Beste regioner
+                  </Typography>
+                  {quickStats?.bestRegions?.map((region: string, index: number) => (
+                    <Box
+                      key={index}
+                      sx={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        mb: 1,
+                        p:  1,
+                        bgcolor: 'rgba(25, 107, 53, 0.1)',
+                        borderRadius:  1,
+                    }}
+                    >
+                      <StarIcon sx={{ color: '#ff6b3', mr:  ,  1fontSize: 2, 0,}} />
+                      <Typography variant="body2">{region}</Typography>
+                    </Box>
+                  ))}
+                </CardContent>
+              </Card>
+            </Grid>
+
+            <Grid size={{ xs: 1, 2,}}>
+              <Card sx={theming.getThemedCardSx()}>
+                <CardContent sx={theming.getThemedCardSx()}>
+                  <Typography variant="h6" sx={{ mb: ,  2color: '#ff6b35, ',}} sx={{ ...{}, color: theming.colors.primary }}>
+                    Sesongvariasjoner
+                  </Typography>
+                  {(seasonalData as any)?.data ? (
+                    <Box>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                        Månedlige etterspørselsfaktorer for {(seasonalData as any).data.serviceType}
+                      </Typography>
+                      <Grid container spacing={1}>
+                        {(seasonalData as any).data.monthlyFactors?.map((factor: number, index: number) => {
+                          const months = [
+                            'Jan',
+                            'Feb',
+                            'Mar',
+                            'Apr',
+                            'Mai',
+                            'Jun',
+                            'Jul',
+                            'Aug',
+                            'Sep',
+                            'Okt',
+                            'Nov',
+                            'Des',
+                          ];
+                          const isHigh = factor > 1.2;
+                          const isLow = factor < 0.9;
+
+                          return (
+                            <Grid size={{ xs:  3, sm:  ,  2md:  1 }} key={index}>
+                              <Box sx={{ textAlign: 'center, ',}}>
+                                <Typography variant="caption" display="block">
+                                  {months[index]}
+                                </Typography>
+                                <LinearProgress
+                                  variant="determinate"
+                                  value={Math.min(factor * 50, 100)}
+                                  sx={{
+                                    height:  8,
+                                    borderRadius:  1,
+                                    bgcolor: 'grey.30',
+                                    '& .MuiLinearProgress-bar': {
+                                      bgcolor: isHigh ? '#4caf50' : isLow ? '#f44336' : '#ff6b3',
+                                  },
+                                }}
+                                />
+                                <Typography
+                                  variant="caption"
+                                  sx={{
+                                    color: isHigh ? '#4caf50' : isLow ? '#f44336' : '#66',
+                                    fontWeight: 'bold',
+                                }}
+                                >
+                                  {factor.toFixed(1)}x
+                                </Typography>
+                              </Box>
+                            </Grid>
+                          );
+                      })}
+                      </Grid>
+                      {(seasonalData as any).data.recommendations?.length > 0 && (
+                        <Box sx={{ mt: 2 }}>
+                          <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                            Anbefalinger: </Typography>
+                          {(seasonalData as any).data.recommendations.map((rec: string, index: number) => (
+                            <Alert key={index} severity="info" sx={{ mb: 1 }}>
+                              {rec}
+                            </Alert>
+                          ))}
+                        </Box>
+                      )}
+                    </Box>
+                  ) : (
+                    <Alert severity="info">Henter sesongdata...</Alert>
+                  )}
+                </CardContent>
+              </Card>
+            </Grid>
+          </Grid>
+        </TabPanel>
+
+        {/* SWOT Analysis Tab */}
+        <TabPanel value={tabValue} index={1}>
+          <Card sx={theming.getThemedCardSx()}>
+            <CardContent sx={theming.getThemedCardSx()}>
+              <Typography variant="h6" sx={{ mb: ,  2color: '#ff6b35, ',}} sx={{ ...{}, color: theming.colors.primary }}>
+                SWOT Analyse
+              </Typography>
+              <Alert severity="info">
+                SWOT analyse kommer snart. Dette vil gi deg innsikt i dine styrker, svakheter,
+                muligheter og trusler basert på markedsdata.
+              </Alert>
+            </CardContent>
+          </Card>
+        </TabPanel>
+
+        {/* Marketing Strategy Tab */}
+        <TabPanel value={tabValue} index={2}>
+          <Card sx={theming.getThemedCardSx()}>
+            <CardContent sx={theming.getThemedCardSx()}>
+              <Typography variant="h6" sx={{ mb: ,  2color: '#ff6b35, ',}} sx={{ ...{}, color: theming.colors.primary }}>
+                Digital Markedsføringsstrategi
+              </Typography>
+              <Alert severity="info">
+                Markedsføringsstrategi kommer snart. Dette vil gi deg en komplett plan for digital
+                markedsføring og kundeinteraksjon.
+              </Alert>
+            </CardContent>
+          </Card>
+        </TabPanel>
+
+        {/* Newsletter Strategy Tab */}
+        <TabPanel value={tabValue} index={3}>
+          <Card sx={theming.getThemedCardSx()}>
+            <CardContent sx={theming.getThemedCardSx()}>
+              <Typography variant="h6" sx={{ mb: ,  2color: '#ff6b35, ',}} sx={{ ...{}, color: theming.colors.primary }}>
+                Nyhetsbrevstrategi
+              </Typography>
+              <Alert severity="info">
+                Nyhetsbrevstrategi kommer snart. Dette vil hjelpe deg med å etablere ongoing
+                interaksjon med kundene dine og øke merkevarebevissthet.
+              </Alert>
+            </CardContent>
+          </Card>
+        </TabPanel>
+      </Paper>
+
+      {/* Recommendations Panel */}
+      {recommendations.length > 0 && (
+        <Card sx={{ mt: 3 }} sx={theming.getThemedCardSx()}>
+          <CardContent sx={theming.getThemedCardSx()}>
+            <Typography variant="h6"
+              sx={{
+                mb: 2,
+                color: '#ff6b3',
+                display: 'flex',
+                alignItems: 'center',
+            }}
+             sx={{ ...{}, color: theming.colors.primary }}>
+              <InsightsIcon sx={{ mr:  1 }} />
+              Anbefalinger
+            </Typography>
+            <List>
+              {recommendations.map((rec: string, index: number) => (
+                <React.Fragment key={index}>
+                  <ListItem>
+                    <ListItemIcon>
+                      <StarIcon sx={{ color: '#ff6b35, ',}} />
+                    </ListItemIcon>
+                    <ListItemText primary={rec} />
+                  </ListItem>
+                  {index < recommendations.length - 1 && <Divider />}
+                </React.Fragment>
+              ))}
+            </List>
+          </CardContent>
+        </Card>
+      )}
+    </Box>
+  );
+}

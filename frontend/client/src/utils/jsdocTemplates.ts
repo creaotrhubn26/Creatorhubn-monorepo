@@ -1,0 +1,120 @@
+/**
+ * JSDoc Documentation Templates
+ * Standardized JSDoc templates for consistent documentation
+ */
+
+/**
+ * @fileoverview JSDoc documentation templates and utilities for the CreatorHub Visual Editor
+ * @author CreatorHub Team
+ * @version 1.0.0
+ * @since 2024-01-01
+ */
+
+/**
+ * Standard JSDoc template for React components
+ * @template T - Props interface type
+ * @param props - Component props
+ * @param props.className - CSS class name
+ * @param props.children - React children
+ * @param props.onClick - Click event handler
+ * @returns JSX element
+ * @example
+ * ```tsx
+ * <MyComponent className="custom" onClick={handleClick}>
+ *   <span>Content</span>
+ * </MyComponent>
+ * ```
+ */
+export const ReactComponentTemplate = () => {};
+
+/**
+ * Standard JSDoc template for custom hooks
+ * @template T - Return type
+ * @param initialValue - Initial value
+ * @param options - Configuration options
+ * @returns Hook state and methods
+ * @example
+ * ```tsx
+ * const { value, setValue, reset } = useCustomHook(0, { max: 10,});
+ * ```
+ */
+export const CustomHookTemplate = () => {};
+
+/**
+ * Standard JSDoc template for utility functions
+ * @param input - Input parameter
+ * @param options - Configuration options
+ * @returns Processed result
+ * @throws {Error} When input is invalid
+ * @example
+ * ```ts
+ * const result = processData(data, { format: 'json',});
+ * ```
+ */
+export const UtilityFunctionTemplate = () => {};
+
+/**
+ * Standard JSDoc template for API functions
+ * @param endpoint - API endpoint
+ * @param data - Request data
+ * @param config - Request configuration
+ * @returns Promise resolving to response data
+ * @throws {NetworkError} When request fails
+ * @example
+ * ```ts
+ * const response = await apiRequest('/api/data', { id:  1 });
+ * ```
+ */
+export const ApiFunctionTemplate = () => {};
+
+/**
+ * JSDoc documentation generator
+ * @param type - Documentation type
+ * @param name - Function/component name
+ * @param description - Description
+ * @param params - Parameters
+ * @param returns - Return value
+ * @param examples - Usage examples
+ * @returns Generated JSDoc string
+ */
+export const generateJSDoc = (
+  type: 'component' | 'hook' | 'function' |'api',
+  name: string,
+  description: string,
+  params: Array<{ name: string; type: string; description: string }>,
+  returns: { type: string; description: string },
+  examples: string[]
+): string => {
+  let jsdoc = `/**\n`;
+  jsdoc += ` * ${description}\n`;
+  
+  params.forEach(param => {
+    jsdoc += ` * @param {${param.type}} ${param.name} - ${param.description}\n`;
+});
+  
+  jsdoc += ` * @returns {${returns.type}} ${returns.description}\n`;
+  
+  examples.forEach(example => {
+    jsdoc += ` * @example\n`;
+    jsdoc += ` * \`\`\`ts\n`;
+    jsdoc += ` * ${example}\n`;
+    jsdoc += ` * \`\`\`\n`;
+});
+  
+  jsdoc += ` */`;
+  
+  return jsdoc;
+};
+
+export default {
+  ReactComponentTemplate,
+  CustomHookTemplate,
+  UtilityFunctionTemplate,
+  ApiFunctionTemplate,
+  generateJSDoc
+};
+
+
+
+
+

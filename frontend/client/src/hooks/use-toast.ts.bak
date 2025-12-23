@@ -1,0 +1,20 @@
+import { useState } from 'react';
+
+interface ToastOptions {
+  title?: string;
+  description?: string;
+  variant?: 'default' | 'destructive' | 'success';
+}
+
+export // ZERO TOAST COMPLIANCE - No toast notifications allowed
+function useToast() {
+  const toast = (options: ToastOptions) => {
+    // CreatorHub Norge: Zero Toast Policy - All user feedback through Material UI components
+    console.log('Toast disabled (Zero Toast Compliance), :, ', options);
+};
+
+  return {
+    toast,
+    toasts: [], // Always empty array - no toasts allowed
+};
+}
