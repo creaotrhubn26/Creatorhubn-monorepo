@@ -91,12 +91,8 @@ export default defineConfig({
   plugins: [
     customPathResolver(), // Custom path resolver for @/* with fallback
     react({
-      // Enable React Fast Refresh
-      fastRefresh: true,
-      // Optimize for production
       babel: {
         plugins: [
-          // Remove console logs in production
           ...(process.env.NODE_ENV === 'production'
             ? [['transform-remove-console', { exclude: ['error', 'warn'] }]]
             : []),
