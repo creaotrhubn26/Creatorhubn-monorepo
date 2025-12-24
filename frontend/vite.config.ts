@@ -193,16 +193,17 @@ export default defineConfig({
   },
   server: {
     host: '0.0.0.0',
-    port: 3000,
+    port: 5000,
+    allowedHosts: true,
     proxy: {
       '/api': {
-        target: 'http://localhost:5050',
+        target: 'http://localhost:3001',
         changeOrigin: true,
         secure: false,
       },
-      '/auth': { target: 'http://localhost:5050', changeOrigin: true },
+      '/auth': { target: 'http://localhost:3001', changeOrigin: true },
       '/socket': {
-        target: 'http://localhost:5050',
+        target: 'http://localhost:3001',
         ws: true,
         changeOrigin: true,
       },
@@ -226,6 +227,6 @@ export default defineConfig({
   },
   preview: {
     host: '0.0.0.0',
-    port: 3000,
+    port: 5000,
   },
 });
