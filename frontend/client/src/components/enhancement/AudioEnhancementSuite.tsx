@@ -63,8 +63,17 @@ import {
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import WaveformView from '../universal/showcase/WaveformView';
-import { parseBlob as parseMetadata } from 'music-metadata-browser';
 import { audioEngine } from '@/services/audio-processing-service';
+
+// Lazy-load music-metadata-browser to avoid Buffer polyfill issues
+let parseMetadata: ((blob: Blob) => Promise<any>) | null = null;
+const getParseMetadata = async () => {
+  if (!parseMetadata) {
+    const module = await import('music-metadata-browser');
+    parseMetadata = module.parseBlob;
+  }
+  return parseMetadata;
+};
 import AIAudioAnalysisPanel from '../audio/AIAudioAnalysisPanel';
 import AIAudioAssistantDialog from '../audio/AIAudioAssistantDialog';
 import AudioMixerPanel from '../audio/AudioMixerPanel';
@@ -529,8 +538,9 @@ const AudioEnhancementSuite: React.FC<AudioEnhancementSuiteProps> = ({
     // Load first audio file into engine for real-time playback
     if (files.length > 0 && files[0].type.startsWith('audio/')) {
       try {
-        // Extract metadata
-        const metadata = await parseMetadata(files[0]);
+        // Extract metadata (lazy-load music-metadata-browser)
+        const parseMetadataFn = await getParseMetadata();
+        const metadata = await parseMetadataFn(files[0]);
         console.log('🎵 Audio Metadata:', metadata.format);
         
         // Load into audio engine

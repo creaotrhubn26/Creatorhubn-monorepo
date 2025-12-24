@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync, statSync } from 'fs';
+import { Buffer } from 'buffer';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -87,6 +88,8 @@ export default defineConfig({
     // Fix for third-party modules that use process.env
     'process.env': {},
     'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || 'development'),
+    // Polyfill global for browser
+    global: 'globalThis',
   },
   plugins: [
     customPathResolver(), // Custom path resolver for @/* with fallback
@@ -109,6 +112,8 @@ export default defineConfig({
       '@server': path.resolve(__dirname, 'shared'),
       'react-quill$': path.resolve(__dirname, 'client/src/components/QuillWrapper.tsx'),
       'react-quill': path.resolve(__dirname, 'client/src/components/QuillWrapper.tsx'),
+      // Buffer polyfill for browser
+      buffer: 'buffer',
     },
   },
   build: {
@@ -154,6 +159,7 @@ export default defineConfig({
     devSourcemap: process.env.NODE_ENV === 'development',
   },
   optimizeDeps: {
+    include: ['buffer'],
     exclude: [
       'rgthree/common/rgthree_api.js',
       'rgthree/common/components/base_custom_element',
