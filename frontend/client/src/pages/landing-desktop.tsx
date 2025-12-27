@@ -565,6 +565,7 @@ if (
 }
 
 const LandingDesktop: React.FC = () => {
+  console.log('[LandingDesktop] Component rendering...');
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
   const { profession } = useProfessionAdapter();
@@ -885,6 +886,7 @@ const LandingDesktop: React.FC = () => {
     resetAllModals();
   };
 
+  console.log('[LandingDesktop] About to render JSX');
   return (
     <Box
       className="critical-load-priority fade-in-animation"

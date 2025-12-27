@@ -63,6 +63,7 @@ import RequestAccess from '@/pages/RequestAccess';
 import InviteRequestStatus from '@/pages/InviteRequestStatus';
 import LandingMobile from '@/pages/landing-mobile';
 import LandingDesktop from '@/pages/landing-desktop';
+import ErrorBoundary from '@/components/common/ErrorBoundary';
 import LandingMobileBackupSep19 from '@/pages/landing-mobile-backup-sep19';
 import LandingResponsive from '@/pages/LandingResponsive';
 import About from '@/pages/about';
@@ -320,7 +321,14 @@ function App() {
                       return <div>Error: {error instanceof Error ? error.message : String(error)}</div>;
                     }
                   }} />
-                  <Route path="/landing-desktop" component={LandingDesktop as React.ComponentType<any>} />
+                  <Route path="/landing-desktop" component={() => {
+                    console.log('[App.tsx] Landing Desktop route matched!');
+                    return (
+                      <ErrorBoundary componentName="LandingDesktop" showDetails={true}>
+                        <LandingDesktop />
+                      </ErrorBoundary>
+                    );
+                  }} />
                   <Route path="/about" component={About as React.ComponentType<any>} />
                   <Route path="/pricing" component={PricingPage as React.ComponentType<any>} />
                   <Route path="/about-us" component={About as React.ComponentType<any>} />

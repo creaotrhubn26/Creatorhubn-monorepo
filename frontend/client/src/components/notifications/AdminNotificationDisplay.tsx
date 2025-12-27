@@ -83,55 +83,60 @@ export default function AdminNotificationDisplay() {
 
   // Initialize WebSocket connection for real-time notifications
   useEffect(() => {
-    // For Replit environment, use specific WebSocket URL
-    const protocol = window.location.protocol === 'https: ' ? 'wss:' : 'ws:';
-    const host = window.location.host || 'localhost:5000';
-    const wsUrl = `${protocol}//${host}/ws`;
-    
-    console.log('🔗 Attempting WebSocket connection to:', wsUrl);
-    const ws = new WebSocket(wsUrl);
-    
-    ws.onopen = () => {
-      console.log('🔔 Connected to notification server');
-      setWsConnection(ws);
-  };
+    try {
+      // Use the correct protocol based on the current page protocol
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const host = window.location.host || 'localhost:5000';
+      const wsUrl = `${protocol}//${host}/ws`;
+      
+      console.log('🔗 Attempting WebSocket connection to:', wsUrl);
+      const ws = new WebSocket(wsUrl);
+      
+      ws.onopen = () => {
+        console.log('🔔 Connected to notification server');
+        setWsConnection(ws);
+      };
 
-    ws.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        
-        if (data.type === 'ADMIN_NOTIFICATION') {
-          const newNotification = data.data;
-          setRealtimeNotifications(prev => [newNotification, ...prev]);
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
           
-          // Automatically show high priority notifications
-          if (newNotification.priority === 'high' || newNotification.priority === 'urgent') {
-            setOpenDialogs(prev => new Set([...prev, newNotification.id]));
+          if (data.type === 'ADMIN_NOTIFICATION') {
+            const newNotification = data.data;
+            setRealtimeNotifications(prev => [newNotification, ...prev]);
+            
+            // Automatically show high priority notifications
+            if (newNotification.priority === 'high' || newNotification.priority === 'urgent') {
+              setOpenDialogs(prev => new Set([...prev, newNotification.id]));
+            }
+            
+            // Refetch all notifications to update the list
+            refetch();
+          }
+        } catch (error) {
+          console.error('Error parsing WebSocket message:', error);
         }
-          
-          // Refetch all notifications to update the list
-          refetch();
-      }
+      };
+
+      ws.onclose = () => {
+        console.log('🔔 Disconnected from notification server');
+        setWsConnection(null);
+      };
+
+      ws.onerror = (error) => {
+        console.error('WebSocket error:', error);
+      };
+
+      return () => {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.close();
+        }
+      };
     } catch (error) {
-        console.error('Error parsing WebSocket message:', error);
+      console.error('Failed to initialize WebSocket connection:', error);
+      // Don't crash the app if WebSocket fails
     }
-  };
-
-    ws.onclose = () => {
-      console.log('🔔 Disconnected from notification server');
-      setWsConnection(null);
-  };
-
-    ws.onerror = (error) => {
-      console.error('WebSocket error:', error);
-  };
-
-    return () => {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.close();
-    }
-  };
-}, [refetch]);
+  }, [refetch]);
 
   const allNotifications = [
     ...realtimeNotifications,
