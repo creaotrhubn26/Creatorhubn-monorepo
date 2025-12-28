@@ -160,8 +160,11 @@ export function useDynamicProfessions() {
 
   const getProfessionDisplayName = (profession?: string): string => {
     const targetProfession = profession || getCurrentUserProfession();
-    return professionConfigs[targetProfession]?.displayName || 'Fotograf';
-};
+    // First try professionConfigs, then fallback to DEFAULT_PROFESSIONS, then use profession name
+    return professionConfigs[targetProfession]?.displayName 
+      || DEFAULT_PROFESSIONS[targetProfession]?.displayName 
+      || targetProfession;
+  };
 
   const getProfessionIcon = (profession?: string) => {
     const targetProfession = profession || getCurrentUserProfession();

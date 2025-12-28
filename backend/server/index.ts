@@ -106,6 +106,114 @@ app.post('/api/analytics', (req, res) => {
   res.json({ success: true });
 });
 
+// Community API endpoints - stub implementations
+app.get('/api/community/user/:userId/groups', (req, res) => {
+  res.json([]);
+});
+
+app.get('/api/community/user/:userId/channels', (req, res) => {
+  res.json([]);
+});
+
+app.get('/api/community/user/:userId/badges', (req, res) => {
+  res.json({ badges: [] });
+});
+
+app.get('/api/community/user/:userId/roles', (req, res) => {
+  res.json({ roles: [] });
+});
+
+app.get('/api/community/user/:userId/stats', (req, res) => {
+  res.json({ stats: { messages: 0, reactions: 0, solutions: 0 } });
+});
+
+app.get('/api/community/channels/:channelId/messages', (req, res) => {
+  res.json([]);
+});
+
+app.get('/api/community/messages/:messageId/thread', (req, res) => {
+  res.json({ messages: [] });
+});
+
+app.get('/api/community/onboarding/:profession', (req, res) => {
+  res.json({ 
+    success: true, 
+    config: {
+      welcomeText: 'Velkommen til community!',
+      completionText: 'Takk for at du fullførte onboarding!',
+      steps: []
+    }
+  });
+});
+
+app.get('/api/community/mentors', (req, res) => {
+  res.json([]);
+});
+
+app.get('/api/community/mentors/check-eligibility', (req, res) => {
+  res.json({ eligible: false });
+});
+
+app.get('/api/community/notifications/:userId/unread-count', (req, res) => {
+  res.json({ count: 0 });
+});
+
+app.get('/api/community/notifications/:userId/preferences', (req, res) => {
+  res.json({ 
+    notificationsEnabled: true,
+    soundEnabled: true,
+    emailNotifications: false
+  });
+});
+
+app.post('/api/community/notifications/:userId/preferences', (req, res) => {
+  res.json({ success: true });
+});
+
+app.get('/api/community/unanswered', (req, res) => {
+  res.json([]);
+});
+
+app.get('/api/community/bookmarks', (req, res) => {
+  res.json([]);
+});
+
+app.post('/api/community/bookmarks/:messageId', (req, res) => {
+  res.json({ success: true });
+});
+
+app.delete('/api/community/bookmarks/:messageId', (req, res) => {
+  res.json({ success: true });
+});
+
+app.get('/api/users/:userId', (req, res) => {
+  res.json({ 
+    id: req.params.userId,
+    name: 'User',
+    email: 'user@example.com'
+  });
+});
+
+app.get('/api/user-kv/:userId/:key', (req, res) => {
+  res.json({ value: null });
+});
+
+app.post('/api/user-kv/:userId/:key', (req, res) => {
+  res.json({ success: true });
+});
+
+app.get('/api/user/preferences/tutorial/:id', (req, res) => {
+  res.json({ dismissed: false, progress: {} });
+});
+
+app.post('/api/user/preferences/tutorial-dismissal', (req, res) => {
+  res.json({ success: true });
+});
+
+app.patch('/api/user/preferences/tutorial/:id/progress', (req, res) => {
+  res.json({ success: true });
+});
+
 // Catch-all for unhandled API routes
 app.all('/api/*', (req, res) => {
   res.json({ message: 'Endpoint not implemented', path: req.path });

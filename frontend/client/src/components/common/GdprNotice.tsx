@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Box,
   Paper,
@@ -27,6 +28,7 @@ interface GdprNoticeProps {
 export function GdprNotice({ position = 'bottom' }: GdprNoticeProps) {
   const [isVisible, setIsVisible] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const [cookieSettings, setCookieSettings] = useState({
     necessary: true, // Always required
     analytics: false,
@@ -37,6 +39,10 @@ export function GdprNotice({ position = 'bottom' }: GdprNoticeProps) {
   const [communityPrivacyText, setCommunityPrivacyText] = useState(
     'Når du bruker CreatorHub Community lagres meldinger, vedlegg og profildata. Filer lagres sikkert i Google Drive med kryptering. Du kan når som helst slette dine meldinger eller be om full sletting av dine data.'
   );
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     // Load GDPR settings from backend
@@ -174,42 +180,52 @@ export function GdprNotice({ position = 'bottom' }: GdprNoticeProps) {
     setIsExpanded(!isExpanded);
 };
 
-  if (!isVisible) return null;
+  if (!isVisible || !mounted) return null;
 
-  return (
-    <Paper
-      elevation={8}
+  const bannerContent = (
+    <Box
       sx={{
         position: 'fixed',
-        [position]: 24,
+        [position]: { xs: 299, sm: 374, md: 449, lg: 524 },
         left: '50%',
         transform: 'translateX(-50%)',
         zIndex: 9999,
         width: 'calc(100% - 48px)',
-        maxWidth: '580px',
-        borderRadius: '20px',
-        background: 'rgba(26, 26, 46, 0.95)',
-        backdropFilter: 'blur(24px)',
-        border: '1px solid rgba(245, 158, 11, 0.3)',
-        boxShadow: '0 25px 80px rgba(0, 0, 0, 0.5), 0 0 40px rgba(245, 158, 11, 0.1)',
-        overflow: 'hidden',
+        maxWidth: { xs: '100%', sm: '600px', md: '700px', lg: '800px' },
+        pointerEvents: 'none',
       }}
     >
-      <Box sx={{ p: 3 }}>
+      <Paper
+        elevation={8}
+        sx={{
+          width: '100%',
+          maxWidth: { xs: '100%', sm: '600px', md: '700px', lg: '800px' },
+          borderRadius: { xs: '16px', sm: '18px', md: '20px', lg: '24px' },
+          background: 'rgba(26, 26, 46, 0.95)',
+          backdropFilter: 'blur(24px)',
+          border: '1px solid rgba(245, 158, 11, 0.3)',
+          boxShadow: '0 25px 80px rgba(0, 0, 0, 0.5), 0 0 40px rgba(245, 158, 11, 0.1)',
+          overflow: 'hidden',
+          pointerEvents: 'auto',
+        }}
+      >
+      <Box sx={{ 
+        p: { xs: 2, sm: 3, md: 4, lg: 5 },
+      }}>
         {/* Header */}
         <Box
           sx={{
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            mb: 2}}
+            mb: { xs: 2, sm: 2.5, md: 3, lg: 3.5 } }}
         >
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
             <Box
               sx={{
-                width: 44,
-                height: 44,
-                borderRadius: '12px',
+                width: { xs: 44, sm: 48, md: 56, lg: 64 },
+                height: { xs: 44, sm: 48, md: 56, lg: 64 },
+                borderRadius: { xs: '12px', sm: '14px', md: '16px' },
                 background: 'linear-gradient(135deg, #f59e0b 0%, #ea580c 100%)',
                 display: 'flex',
                 alignItems: 'center',
@@ -218,13 +234,20 @@ export function GdprNotice({ position = 'bottom' }: GdprNoticeProps) {
                 boxShadow: '0 4px 15px rgba(245, 158, 11, 0.3)',
               }}
             >
-              <Cookie />
+              <Cookie sx={{ fontSize: { xs: 24, sm: 26, md: 30, lg: 40 } }} />
             </Box>
             <Box>
-              <Typography variant="h6" sx={{ fontWeight: 700, color: '#fff', fontSize: '1.1rem' }}>
+              <Typography variant="h6" sx={{ 
+                fontWeight: 700, 
+                color: '#fff', 
+                fontSize: { xs: '1.1rem', sm: '1.2rem', md: '1.6rem', lg: '2.2rem' } 
+              }}>
                 Personvern og Cookies
               </Typography>
-              <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.5)' }}>
+              <Typography variant="body2" sx={{ 
+                color: 'rgba(255, 255, 255, 0.5)',
+                fontSize: { xs: '0.75rem', sm: '0.8rem', md: '1rem', lg: '1.4rem' }
+              }}>
                 CreatorHub Norge
               </Typography>
             </Box>
@@ -236,7 +259,12 @@ export function GdprNotice({ position = 'bottom' }: GdprNoticeProps) {
         </Box>
 
         {/* Main Content - Forbrukertilsynet compliant */}
-        <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.8)', mb: 2, lineHeight: 1.7 }}>
+        <Typography variant="body2" sx={{ 
+          color: 'rgba(255, 255, 255, 0.8)', 
+          mb: { xs: 2, sm: 2.5, md: 3 },
+          lineHeight: 1.7,
+          fontSize: { xs: '0.875rem', sm: '0.9rem', md: '1.15rem', lg: '1.5rem' }
+        }}>
           <strong style={{ color: '#fff' }}>Vi respekterer ditt personvern.</strong> CreatorHub Norge bruker cookies og
           lignende teknologier. Du har full kontroll over hvilke cookies du vil akseptere.
           Nødvendige cookies kreves for at nettstedet skal fungere.
@@ -261,14 +289,20 @@ export function GdprNotice({ position = 'bottom' }: GdprNoticeProps) {
               alignItems: 'center',
               gap: 0.5,
               mb: 0.5,
+              fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.9rem', lg: '1.2rem' },
             }}
           >
-            <Info sx={{ fontSize: 14 }} />
+            <Info sx={{ fontSize: { xs: 14, sm: 15, md: 17, lg: 22 } }} />
             Community Datalagring
           </Typography>
           <Typography
             variant="caption"
-            sx={{ color: 'rgba(255, 255, 255, 0.7)', display: 'block', lineHeight: 1.5 }}
+            sx={{ 
+              color: 'rgba(255, 255, 255, 0.7)', 
+              display: 'block', 
+              lineHeight: 1.5,
+              fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.9rem', lg: '1.15rem' }
+            }}
           >
             {communityPrivacyText}
           </Typography>
@@ -293,14 +327,20 @@ export function GdprNotice({ position = 'bottom' }: GdprNoticeProps) {
               alignItems: 'center',
               gap: 0.5,
               mb: 0.5,
+              fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.9rem', lg: '1.2rem' },
             }}
           >
-            <Info sx={{ fontSize: 14 }} />
+            <Info sx={{ fontSize: { xs: 14, sm: 15, md: 17, lg: 22 } }} />
             Rettslig grunnlag
           </Typography>
           <Typography
             variant="caption"
-            sx={{ color: 'rgba(255, 255, 255, 0.7)', display: 'block', lineHeight: 1.5 }}
+            sx={{ 
+              color: 'rgba(255, 255, 255, 0.7)', 
+              display: 'block', 
+              lineHeight: 1.5,
+              fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.9rem', lg: '1.15rem' }
+            }}
           >
             Behandling av personopplysninger baseres på samtykke (GDPR art. 6.1.a) og berettiget
             interesse (GDPR art. 6.1.f). Du kan når som helst trekke tilbake samtykket ditt.
@@ -308,7 +348,11 @@ export function GdprNotice({ position = 'bottom' }: GdprNoticeProps) {
         </Box>
 
         {/* Cookie Categories */}
-        <Stack direction="row" spacing={1} sx={{ mb: 3, flexWrap: 'wrap', gap: 1 }}>
+        <Stack direction="row" spacing={1} sx={{ 
+          mb: { xs: 3, sm: 3.5, md: 4, lg: 4.5 }, 
+          flexWrap: 'wrap', 
+          gap: { xs: 1, sm: 1.5, md: 2 } 
+        }}>
           <Chip
             label="Nødvendige"
             size="small"
@@ -318,6 +362,8 @@ export function GdprNotice({ position = 'bottom' }: GdprNoticeProps) {
               color: '#10b981',
               fontWeight: 'bold',
               border: '1px solid rgba(16, 185, 129, 0.3)',
+              fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.95rem', lg: '1.2rem' },
+              height: { xs: '24px', sm: '26px', md: '32px', lg: '40px' },
             }}
           />
           <Chip
@@ -327,6 +373,8 @@ export function GdprNotice({ position = 'bottom' }: GdprNoticeProps) {
             sx={{
               borderColor: 'rgba(59, 130, 246, 0.5)',
               color: '#3b82f6',
+              fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.95rem', lg: '1.2rem' },
+              height: { xs: '24px', sm: '26px', md: '32px', lg: '40px' },
             }}
           />
           <Chip
@@ -336,6 +384,8 @@ export function GdprNotice({ position = 'bottom' }: GdprNoticeProps) {
             sx={{
               borderColor: 'rgba(245, 158, 11, 0.5)',
               color: '#f59e0b',
+              fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.95rem', lg: '1.2rem' },
+              height: { xs: '24px', sm: '26px', md: '32px', lg: '40px' },
             }}
           />
           <Chip
@@ -345,6 +395,8 @@ export function GdprNotice({ position = 'bottom' }: GdprNoticeProps) {
             sx={{
               borderColor: 'rgba(168, 85, 247, 0.5)',
               color: '#a855f7',
+              fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.95rem', lg: '1.2rem' },
+              height: { xs: '24px', sm: '26px', md: '32px', lg: '40px' },
             }}
           />
         </Stack>
@@ -369,9 +421,10 @@ export function GdprNotice({ position = 'bottom' }: GdprNoticeProps) {
                 display: 'flex',
                 alignItems: 'center',
                 gap: 1,
+                fontSize: { xs: '0.875rem', sm: '0.95rem', md: '1.1rem', lg: '1.5rem' },
               }}
             >
-              <Cookie sx={{ color: '#f59e0b' }} />
+              <Cookie sx={{ fontSize: { xs: 18, sm: 20, md: 22, lg: 28 }, color: '#f59e0b' }} />
               Tilpass cookie-innstillinger
             </Typography>
 
@@ -393,7 +446,11 @@ export function GdprNotice({ position = 'bottom' }: GdprNoticeProps) {
                     mb: 1,
                   }}
                 >
-                  <Typography variant="body2" sx={{ fontWeight: 700, color: '#10b981' }}>
+                  <Typography variant="body2" sx={{ 
+                    fontWeight: 700, 
+                    color: '#10b981',
+                    fontSize: { xs: '0.875rem', sm: '0.9rem', md: '1rem', lg: '1.3rem' }
+                  }}>
                     Nødvendige cookies
                   </Typography>
                   <Switch 
@@ -405,11 +462,20 @@ export function GdprNotice({ position = 'bottom' }: GdprNoticeProps) {
                     }}
                   />
                 </Box>
-                <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.7)', display: 'block', mb: 0.5, lineHeight: 1.5 }}>
+                <Typography variant="caption" sx={{ 
+                  color: 'rgba(255, 255, 255, 0.7)', 
+                  display: 'block', 
+                  mb: 0.5, 
+                  lineHeight: 1.5,
+                  fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.9rem', lg: '1.15rem' }
+                }}>
                   Tekniske cookies som er nødvendige for at nettstedet skal fungere. Inkluderer
                   autentisering, sikkerhet og grunnleggende funksjonalitet. Kan ikke deaktiveres.
                 </Typography>
-                <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.4)', fontSize: '10px' }}>
+                <Typography variant="caption" sx={{ 
+                  color: 'rgba(255, 255, 255, 0.4)', 
+                  fontSize: { xs: '10px', sm: '11px', md: '12px', lg: '14px' }
+                }}>
                   Lagring: Sesjon og lokal lagring • Formål: Sikkerhet og funksjonalitet
                 </Typography>
               </Box>
@@ -431,7 +497,11 @@ export function GdprNotice({ position = 'bottom' }: GdprNoticeProps) {
                     mb: 1,
                   }}
                 >
-                  <Typography variant="body2" sx={{ fontWeight: 700, color: '#3b82f6' }}>
+                  <Typography variant="body2" sx={{ 
+                    fontWeight: 700, 
+                    color: '#3b82f6',
+                    fontSize: { xs: '0.875rem', sm: '0.9rem', md: '1rem', lg: '1.3rem' }
+                  }}>
                     Analysecookies
                   </Typography>
                   <Switch
@@ -448,11 +518,20 @@ export function GdprNotice({ position = 'bottom' }: GdprNoticeProps) {
                     }}
                   />
                 </Box>
-                <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.7)', display: 'block', mb: 0.5, lineHeight: 1.5 }}>
+                <Typography variant="caption" sx={{ 
+                  color: 'rgba(255, 255, 255, 0.7)', 
+                  display: 'block', 
+                  mb: 0.5, 
+                  lineHeight: 1.5,
+                  fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.9rem', lg: '1.15rem' }
+                }}>
                   Google Analytics (GA4) for å forstå hvordan besøkende bruker nettstedet. Data
                   anonymiseres og deles ikke med tredjeparter til markedsføringsformål.
                 </Typography>
-                <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.4)', fontSize: '10px' }}>
+                <Typography variant="caption" sx={{ 
+                  color: 'rgba(255, 255, 255, 0.4)', 
+                  fontSize: { xs: '10px', sm: '11px', md: '12px', lg: '14px' }
+                }}>
                   Tjeneste: Google Analytics • Lagring: 2 år • Overføring: EU/EØS og USA
                 </Typography>
               </Box>
@@ -474,7 +553,11 @@ export function GdprNotice({ position = 'bottom' }: GdprNoticeProps) {
                     mb: 1,
                   }}
                 >
-                  <Typography variant="body2" sx={{ fontWeight: 700, color: '#f59e0b' }}>
+                  <Typography variant="body2" sx={{ 
+                    fontWeight: 700, 
+                    color: '#f59e0b',
+                    fontSize: { xs: '0.875rem', sm: '0.9rem', md: '1rem', lg: '1.3rem' }
+                  }}>
                     Markedsføringscookies
                   </Typography>
                   <Switch
@@ -491,11 +574,20 @@ export function GdprNotice({ position = 'bottom' }: GdprNoticeProps) {
                     }}
                   />
                 </Box>
-                <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.7)', display: 'block', mb: 0.5, lineHeight: 1.5 }}>
+                <Typography variant="caption" sx={{ 
+                  color: 'rgba(255, 255, 255, 0.7)', 
+                  display: 'block', 
+                  mb: 0.5, 
+                  lineHeight: 1.5,
+                  fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.9rem', lg: '1.15rem' }
+                }}>
                   For å vise relevante annonser og måle effektiviteten av markedsføringskampanjer.
                   Brukes til å bygge en profil av dine interesser.
                 </Typography>
-                <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.4)', fontSize: '10px' }}>
+                <Typography variant="caption" sx={{ 
+                  color: 'rgba(255, 255, 255, 0.4)', 
+                  fontSize: { xs: '10px', sm: '11px', md: '12px', lg: '14px' }
+                }}>
                   Tjenester: Google Ads, Facebook • Lagring: 1-2 år • Rettslig grunnlag: Samtykke
                 </Typography>
               </Box>
@@ -517,7 +609,11 @@ export function GdprNotice({ position = 'bottom' }: GdprNoticeProps) {
                     mb: 1,
                   }}
                 >
-                  <Typography variant="body2" sx={{ fontWeight: 700, color: '#a855f7' }}>
+                  <Typography variant="body2" sx={{ 
+                    fontWeight: 700, 
+                    color: '#a855f7',
+                    fontSize: { xs: '0.875rem', sm: '0.9rem', md: '1rem', lg: '1.3rem' }
+                  }}>
                     Preferansecookies
                   </Typography>
                   <Switch
@@ -534,11 +630,20 @@ export function GdprNotice({ position = 'bottom' }: GdprNoticeProps) {
                     }}
                   />
                 </Box>
-                <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.7)', display: 'block', mb: 0.5, lineHeight: 1.5 }}>
+                <Typography variant="caption" sx={{ 
+                  color: 'rgba(255, 255, 255, 0.7)', 
+                  display: 'block', 
+                  mb: 0.5, 
+                  lineHeight: 1.5,
+                  fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.9rem', lg: '1.15rem' }
+                }}>
                   Husker dine innstillinger og preferanser for å tilpasse opplevelsen din, som
                   språkvalg og brukergrensesnitt-innstillinger.
                 </Typography>
-                <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.4)', fontSize: '10px' }}>
+                <Typography variant="caption" sx={{ 
+                  color: 'rgba(255, 255, 255, 0.4)', 
+                  fontSize: { xs: '10px', sm: '11px', md: '12px', lg: '14px' }
+                }}>
                   Lagring: 1 år • Formål: Brukeropplevelse • Rettslig grunnlag: Berettiget interesse
                 </Typography>
               </Box>
@@ -556,11 +661,13 @@ export function GdprNotice({ position = 'bottom' }: GdprNoticeProps) {
                   flex: 1,
                   background: 'linear-gradient(135deg, #f59e0b 0%, #ea580c 100%)',
                   color: 'white',
-                  py: 1.3,
-                  borderRadius: '12px',
+                  py: { xs: 1.3, sm: 1.5, md: 1.8, lg: 2 },
+                  px: { xs: 2, sm: 3, md: 4 },
+                  borderRadius: { xs: '12px', sm: '14px', md: '16px' },
                   textTransform: 'none',
                   fontWeight: 700,
-                  fontSize: '14px',
+                  fontSize: { xs: '14px', sm: '15px', md: '18px', lg: '22px' },
+                  minHeight: { xs: '44px', sm: '48px', md: '52px', lg: '60px' },
                   boxShadow: '0 4px 15px rgba(245, 158, 11, 0.3)',
                   '&:hover': {
                     background: 'linear-gradient(135deg, #d97706 0%, #c2410c 100%)',
@@ -578,10 +685,13 @@ export function GdprNotice({ position = 'bottom' }: GdprNoticeProps) {
                   flex: 1,
                   borderColor: 'rgba(255, 255, 255, 0.3)',
                   color: 'rgba(255, 255, 255, 0.8)',
-                  py: 1.3,
-                  borderRadius: '12px',
+                  py: { xs: 1.3, sm: 1.5, md: 1.8, lg: 2 },
+                  px: { xs: 2, sm: 3, md: 4 },
+                  borderRadius: { xs: '12px', sm: '14px', md: '16px' },
                   textTransform: 'none',
-                  fontSize: '14px',
+                  fontSize: { xs: '14px', sm: '15px', md: '18px', lg: '22px' },
+                  minHeight: { xs: '44px', sm: '48px', md: '52px', lg: '60px' },
+                  borderWidth: { xs: '1px', sm: '1.5px', md: '2px' },
                   '&:hover': {
                     borderColor: 'rgba(255, 255, 255, 0.5)',
                     backgroundColor: 'rgba(255, 255, 255, 0.05)',
@@ -597,11 +707,13 @@ export function GdprNotice({ position = 'bottom' }: GdprNoticeProps) {
               sx={{
                 background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
                 color: 'white',
-                py: 1.3,
-                borderRadius: '12px',
+                py: { xs: 1.3, sm: 1.5, md: 1.8, lg: 2 },
+                px: { xs: 2, sm: 3, md: 4 },
+                borderRadius: { xs: '12px', sm: '14px', md: '16px' },
                 textTransform: 'none',
                 fontWeight: 700,
-                fontSize: '14px',
+                fontSize: { xs: '14px', sm: '15px', md: '18px', lg: '22px' },
+                minHeight: { xs: '44px', sm: '48px', md: '52px', lg: '60px' },
                 '&:hover': {
                   background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
                 },
@@ -613,13 +725,14 @@ export function GdprNotice({ position = 'bottom' }: GdprNoticeProps) {
 
           <Button
             variant="text"
-            startIcon={isExpanded ? <ExpandLess /> : <ExpandMore />}
+            startIcon={isExpanded ? <ExpandLess sx={{ fontSize: { xs: 18, sm: 20, md: 22, lg: 26 } }} /> : <ExpandMore sx={{ fontSize: { xs: 18, sm: 20, md: 22, lg: 26 } }} />}
             onClick={handleCustomize}
             sx={{
               color: 'rgba(255, 255, 255, 0.5)',
               textTransform: 'none',
-              py: 0.5,
-              fontSize: '13px',
+              py: { xs: 0.5, sm: 0.75, md: 1 },
+              fontSize: { xs: '13px', sm: '14px', md: '15px', lg: '18px' },
+              minHeight: { xs: '36px', sm: '40px', md: '44px', lg: '52px' },
               '&:hover': { color: '#f59e0b' },
             }}
           >
@@ -636,8 +749,12 @@ export function GdprNotice({ position = 'bottom' }: GdprNoticeProps) {
           }}
         >
           <Stack spacing={1}>
-            <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.4)', textAlign: 'center' }}>
-              <Policy sx={{ fontSize: 12, mr: 0.5, verticalAlign: 'middle' }} />
+            <Typography variant="caption" sx={{ 
+              color: 'rgba(255, 255, 255, 0.4)', 
+              textAlign: 'center',
+              fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.85rem', lg: '1.1rem' }
+            }}>
+              <Policy sx={{ fontSize: { xs: 12, sm: 13, md: 15, lg: 20 }, mr: 0.5, verticalAlign: 'middle' }} />
               Dine rettigheter etter GDPR: Innsyn, retting, sletting, begrensning, dataportabilitet
               og innsigelse.
             </Typography>
@@ -655,7 +772,7 @@ export function GdprNotice({ position = 'bottom' }: GdprNoticeProps) {
                 sx={{
                   color: '#f59e0b',
                   textDecoration: 'none',
-                  fontSize: '12px',
+                  fontSize: { xs: '12px', sm: '13px', md: '14px', lg: '17px' },
                   fontWeight: 500,
                   '&:hover': { textDecoration: 'underline' },
                 }}
@@ -667,7 +784,7 @@ export function GdprNotice({ position = 'bottom' }: GdprNoticeProps) {
                 sx={{
                   color: '#f59e0b',
                   textDecoration: 'none',
-                  fontSize: '12px',
+                  fontSize: { xs: '12px', sm: '13px', md: '14px', lg: '17px' },
                   fontWeight: 500,
                   '&:hover': { textDecoration: 'underline' },
                 }}
@@ -679,7 +796,7 @@ export function GdprNotice({ position = 'bottom' }: GdprNoticeProps) {
                 sx={{
                   color: '#f59e0b',
                   textDecoration: 'none',
-                  fontSize: '12px',
+                  fontSize: { xs: '12px', sm: '13px', md: '14px', lg: '17px' },
                   fontWeight: 500,
                   '&:hover': { textDecoration: 'underline' },
                 }}
@@ -691,7 +808,7 @@ export function GdprNotice({ position = 'bottom' }: GdprNoticeProps) {
                 sx={{
                   color: '#f59e0b',
                   textDecoration: 'none',
-                  fontSize: '12px',
+                  fontSize: { xs: '12px', sm: '13px', md: '14px', lg: '17px' },
                   fontWeight: 500,
                   '&:hover': { textDecoration: 'underline' },
                 }}
@@ -702,7 +819,11 @@ export function GdprNotice({ position = 'bottom' }: GdprNoticeProps) {
 
             <Typography
               variant="caption"
-              sx={{ color: 'rgba(255, 255, 255, 0.3)', textAlign: 'center', fontSize: '10px' }}
+              sx={{ 
+                color: 'rgba(255, 255, 255, 0.3)', 
+                textAlign: 'center', 
+                fontSize: { xs: '10px', sm: '11px', md: '12px', lg: '15px' }
+              }}
             >
               Behandlingsansvarlig: QAZI FOTOREEL • Org.nr: 833038222 • Personvernombud:{' '}
               {personvernombudEmail}
@@ -711,7 +832,11 @@ export function GdprNotice({ position = 'bottom' }: GdprNoticeProps) {
         </Box>
       </Box>
     </Paper>
+    </Box>
   );
+
+  // Render directly to body using portal to avoid overflow issues
+  return createPortal(bannerContent, document.body);
 }
 
 export default GdprNotice;

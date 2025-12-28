@@ -12,6 +12,9 @@ import {
   Alert,
   CircularProgress,
   Button,
+  Paper,
+  useTheme,
+  useMediaQuery,
 } from '@mui/material';
 import { Notifications, NotificationsOff } from '@mui/icons-material';
 import { usePushNotifications } from '../../hooks/usePushNotifications';
@@ -30,72 +33,261 @@ export function PushNotificationSettings({
 }: PushNotificationSettingsProps) {
   const { pushEnabled, isSupported, isLoading, toggle } = usePushNotifications(userId, contextId);
   const theming = useTheming();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
   if (!isSupported) {
     return (
-      <Alert severity="info" sx={{ mb: 2 }}>
-        Push-varsler er ikke støttet i denne nettleseren.
-      </Alert>
+      <Paper
+        sx={{
+          p: { xs: 2, sm: 2.5 },
+          background: 'rgba(26, 26, 46, 0.8)',
+          backdropFilter: 'blur(20px)',
+          border: '1px solid rgba(59, 130, 246, 0.3)',
+          borderRadius: '12px',
+          mb: 2,
+        }}
+      >
+        <Alert
+          severity="info"
+          sx={{
+            bgcolor: 'rgba(59, 130, 246, 0.1)',
+            color: '#3b82f6',
+            border: '1px solid rgba(59, 130, 246, 0.2)',
+            '& .MuiAlert-icon': {
+              color: '#3b82f6',
+            },
+          }}
+        >
+          <Typography
+            sx={{
+              color: 'rgba(255, 255, 255, 0.9)',
+              fontSize: { xs: '0.875rem', sm: '0.9rem', md: '0.95rem' },
+            }}
+          >
+            Push-varsler er ikke støttet i denne nettleseren.
+          </Typography>
+        </Alert>
+      </Paper>
     );
   }
 
   if (!userId || userId === 'guest') {
     return (
-      <Alert severity="info" sx={{ mb: 2 }}>
-        Logg inn for å aktivere push-varsler.
-      </Alert>
+      <Paper
+        sx={{
+          p: { xs: 2, sm: 2.5 },
+          background: 'rgba(26, 26, 46, 0.8)',
+          backdropFilter: 'blur(20px)',
+          border: '1px solid rgba(59, 130, 246, 0.3)',
+          borderRadius: '12px',
+          mb: 2,
+        }}
+      >
+        <Alert
+          severity="info"
+          sx={{
+            bgcolor: 'rgba(59, 130, 246, 0.1)',
+            color: '#3b82f6',
+            border: '1px solid rgba(59, 130, 246, 0.2)',
+            '& .MuiAlert-icon': {
+              color: '#3b82f6',
+            },
+          }}
+        >
+          <Typography
+            sx={{
+              color: 'rgba(255, 255, 255, 0.9)',
+              fontSize: { xs: '0.875rem', sm: '0.9rem', md: '0.95rem' },
+            }}
+          >
+            Logg inn for å aktivere push-varsler.
+          </Typography>
+        </Alert>
+      </Paper>
     );
   }
 
   return (
-    <Box sx={{ p: 2, bgcolor: 'background.paper', borderRadius: 2, border: 1, borderColor: 'divider' }}>
+    <Paper
+      sx={{
+        p: { xs: 2, sm: 2.5, md: 3 },
+        background: 'rgba(26, 26, 46, 0.6)',
+        backdropFilter: 'blur(20px)',
+        border: '1px solid rgba(245, 158, 11, 0.2)',
+        borderRadius: '12px',
+        boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)',
+      }}
+    >
       {showDescription && (
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        <Typography
+          variant="body2"
+          sx={{
+            color: 'rgba(255, 255, 255, 0.8)',
+            mb: 2.5,
+            fontSize: { xs: '0.875rem', sm: '0.9rem', md: '0.95rem' },
+            lineHeight: 1.6,
+          }}
+        >
           Motta varsler selv når appen er lukket. Du vil få beskjed om nye innleveringer, tidslinjeendringer og viktige oppdateringer.
         </Typography>
       )}
 
-      <FormControlLabel
-        control={
-          <Switch
-            checked={pushEnabled}
-            onChange={toggle}
-            disabled={isLoading}
-            color="primary"
-          />
-        }
-        label={
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            {isLoading ? (
-              <CircularProgress size={16} />
-            ) : pushEnabled ? (
-              <Notifications color="primary" />
-            ) : (
-              <NotificationsOff />
-            )}
-            <Typography variant="body1">
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          p: { xs: 1.5, sm: 2 },
+          background: 'rgba(26, 26, 46, 0.4)',
+          borderRadius: '10px',
+          border: '1px solid rgba(245, 158, 11, 0.1)',
+        }}
+      >
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 1.5, sm: 2 }, flex: 1 }}>
+          {isLoading ? (
+            <CircularProgress
+              size={isMobile ? 20 : 24}
+              sx={{
+                color: '#f59e0b',
+              }}
+            />
+          ) : pushEnabled ? (
+            <Notifications
+              sx={{
+                color: '#f59e0b',
+                fontSize: { xs: 24, sm: 28, md: 32 },
+              }}
+            />
+          ) : (
+            <NotificationsOff
+              sx={{
+                color: 'rgba(255, 255, 255, 0.5)',
+                fontSize: { xs: 24, sm: 28, md: 32 },
+              }}
+            />
+          )}
+          <Box>
+            <Typography
+              variant="body1"
+              sx={{
+                color: '#fff',
+                fontWeight: 600,
+                fontSize: { xs: '0.9rem', sm: '0.95rem', md: '1rem' },
+                mb: 0.25,
+              }}
+            >
               {pushEnabled ? 'Push-varsler aktivert' : 'Push-varsler deaktivert'}
             </Typography>
+            <Typography
+              variant="caption"
+              sx={{
+                color: 'rgba(255, 255, 255, 0.6)',
+                fontSize: { xs: '0.75rem', sm: '0.8rem', md: '0.85rem' },
+              }}
+            >
+              {pushEnabled
+                ? 'Du vil motta varsler selv når appen er lukket'
+                : 'Aktiver for å motta varsler'}
+            </Typography>
           </Box>
-        }
-        sx={{
-         '& .MuiFormControlLabel-label': {
-            color: theming.colors.text,
-          }}}
-      />
+        </Box>
+        <Switch
+          checked={pushEnabled}
+          onChange={toggle}
+          disabled={isLoading}
+          sx={{
+            '& .MuiSwitch-switchBase': {
+              '&.Mui-checked': {
+                color: '#f59e0b',
+                '& + .MuiSwitch-track': {
+                  backgroundColor: '#f59e0b',
+                },
+              },
+            },
+            '& .MuiSwitch-track': {
+              backgroundColor: 'rgba(255, 255, 255, 0.2)',
+            },
+          }}
+        />
+      </Box>
 
       {pushEnabled && (
-        <Alert severity="success" sx={{ mt: 2 }}>
-          Du vil nå motta push-varsler for viktige oppdateringer.
-        </Alert>
+        <Paper
+          sx={{
+            mt: 2,
+            p: { xs: 1.5, sm: 2 },
+            background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(5, 150, 105, 0.08) 100%)',
+            border: '1px solid rgba(16, 185, 129, 0.3)',
+            borderRadius: '10px',
+          }}
+        >
+          <Alert
+            severity="success"
+            icon={false}
+            sx={{
+              bgcolor: 'transparent',
+              color: '#10b981',
+              p: 0,
+              '& .MuiAlert-message': {
+                color: 'rgba(255, 255, 255, 0.9)',
+                fontSize: { xs: '0.875rem', sm: '0.9rem', md: '0.95rem' },
+              },
+            }}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Box component="span" sx={{ fontSize: '1.2rem' }}>✅</Box>
+              <Typography
+                sx={{
+                  color: 'rgba(255, 255, 255, 0.9)',
+                  fontSize: { xs: '0.875rem', sm: '0.9rem', md: '0.95rem' },
+                }}
+              >
+                Du vil nå motta push-varsler for viktige oppdateringer.
+              </Typography>
+            </Box>
+          </Alert>
+        </Paper>
       )}
 
       {!pushEnabled && !isLoading && (
-        <Alert severity="info" sx={{ mt: 2 }}>
-          Aktiver push-varsler for å få beskjed selv når appen er lukket.
-        </Alert>
+        <Paper
+          sx={{
+            mt: 2,
+            p: { xs: 1.5, sm: 2 },
+            background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(37, 99, 235, 0.08) 100%)',
+            border: '1px solid rgba(59, 130, 246, 0.3)',
+            borderRadius: '10px',
+          }}
+        >
+          <Alert
+            severity="info"
+            icon={false}
+            sx={{
+              bgcolor: 'transparent',
+              color: '#3b82f6',
+              p: 0,
+              '& .MuiAlert-message': {
+                color: 'rgba(255, 255, 255, 0.9)',
+                fontSize: { xs: '0.875rem', sm: '0.9rem', md: '0.95rem' },
+              },
+            }}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Box component="span" sx={{ fontSize: '1.2rem' }}>💡</Box>
+              <Typography
+                sx={{
+                  color: 'rgba(255, 255, 255, 0.9)',
+                  fontSize: { xs: '0.875rem', sm: '0.9rem', md: '0.95rem' },
+                }}
+              >
+                Aktiver push-varsler for å få beskjed selv når appen er lukket.
+              </Typography>
+            </Box>
+          </Alert>
+        </Paper>
       )}
-    </Box>
+    </Paper>
   );
 }
 

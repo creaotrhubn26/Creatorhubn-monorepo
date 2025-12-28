@@ -7,60 +7,6 @@ import React, { useEffect, useRef, useState, useCallback } from "react";
 import { useLocation } from "wouter";
 import { GdprNotice } from "@/components/common/GdprNotice";
 import { withVisualEditor } from '@/components/admin/visual-editor/withVisualEditor';
-import {
-  Box,
-  Container,
-  Typography,
-  Button,
-  Card as MuiCard,
-  CardContent,
-  Stack,
-  Paper,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  Grid,
-  IconButton,
-  Chip,
-  Alert,
-  Divider,
-  List,
-  ListItem,
-  ListItemButton,
-  ListItemIcon,
-  ListItemText,
-} from "@mui/material";
-import {
-  VideoLibrary,
-  LibraryMusic,
-  Business,
-  CheckCircle,
-  Group,
-  PhotoCamera,
-  Science,
-  Email,
-  Phone,
-  LocationOn,
-  Close,
-  Dashboard,
-  Settings,
-  Info,
-  Assessment,
-  Security,
-  RocketLaunch,
-  Adjust,
-  Login,
-  ArrowForward,
-  School,
-  People,
-  AccountCircle,
-  Work,
-} from "@mui/icons-material";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
-import FAQSection from "@/components/landing/FAQSection";
 
 // Custom hook for scroll-triggered reveal animations
 const useScrollReveal = (options?: IntersectionObserverInit) => {
@@ -185,6 +131,69 @@ interface User {
   userType?: string;
   isAdmin?: boolean;
 }
+import {
+  Box,
+  Container,
+  Typography,
+  Button,
+  Card as MuiCard,
+  CardContent,
+  Stack,
+  Paper,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  Grid,
+  Drawer,
+  List,
+  ListItem,
+  ListItemButton,
+  ListItemIcon,
+  ListItemText,
+  Divider,
+  IconButton,
+  Slider,
+  Chip,
+  Alert,
+} from "@mui/material";
+import {
+  Home,
+  VideoLibrary,
+  LibraryMusic,
+  Business,
+  CheckCircle,
+  Group,
+  Inventory,
+  PhotoCamera,
+  AutoAwesome,
+  Person,
+  Science,
+  MenuBook,
+  Email,
+  Phone,
+  LocationOn,
+  Menu,
+  Close,
+  Dashboard,
+  Settings,
+  Help,
+  Info,
+  CameraAlt,
+  Schedule,
+  Assessment,
+  Security,
+  RocketLaunch,
+  Adjust,
+  Login,
+  ArrowForward,
+  School,
+  People,
+  AccountCircle,
+} from "@mui/icons-material";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 
 // Lazy load non-critical components for performance
 const LoginModal = React.lazy(() => import("@/components/auth/LoginModal"));
@@ -233,9 +242,7 @@ const DynamicPlatformStats: React.FC = () => {
 } = useQuery({
     queryKey: ["/api/platform/stats"],
     queryFn: () => apiRequest("/api/platform/stats"),
-    staleTime: 10 * 60 * 1000, // Cache for 10 minutes (stats don't change frequently)
-    gcTime: 20 * 60 * 1000, // Keep in cache for 20 minutes
-    refetchOnWindowFocus: false, // Don't refetch on window focus
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
 });
 
   // Don't render anything while loading or if no data
@@ -575,14 +582,12 @@ const LandingDesktop: React.FC = () => {
   const enhancedProfessionConfig = apiProfessionConfigs?.[currentProfession] || professionConfig;
   const professionColor = getUserProfessionColor(currentProfession) || '#FF6B35';
   
-  // Fetch dynamic professions from wizard - aggressive caching for static data
+  // Fetch dynamic professions from wizard
   const { data: dynamicProfessions, isLoading: professionsLoading } = useQuery({
     queryKey: ['/api/professions/all'],
     queryFn: () => apiRequest('/api/professions/all'),
-    staleTime: 15 * 60 * 1000, // Cache for 15 minutes (professions rarely change)
-    gcTime: 30 * 60 * 1000, // Keep in cache for 30 minutes
-    retry: 1,
-    refetchOnWindowFocus: false, // Don't refetch on window focus
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+    retry: 1
   });
   
   // Merge dynamic professions with static fallback
@@ -673,6 +678,7 @@ const LandingDesktop: React.FC = () => {
 
   // Modal state management
   const [modalState, setModalState] = React.useState({
+    showSidebar: false,
     showRoleSelector: false,
     showSubscriptionSelection: false,
     showLoginModal: false,
@@ -689,6 +695,7 @@ const LandingDesktop: React.FC = () => {
   // Comprehensive modal cleanup function
   const resetAllModals = React.useCallback(() => {
     setModalState({
+      showSidebar: false,
       showRoleSelector: false,
       showSubscriptionSelection: false,
       showLoginModal: false,
@@ -717,6 +724,8 @@ const LandingDesktop: React.FC = () => {
         }));
       } else if (modalState.showLoginModal) {
           setModalState((prev) => ({ ...prev, showLoginModal: false }));
+      } else if (modalState.showSidebar) {
+          setModalState((prev) => ({ ...prev, showSidebar: false }));
       }
     }
   };
@@ -738,12 +747,11 @@ const LandingDesktop: React.FC = () => {
   // ✅ FIX #2: Use correct endpoint /api/auth/status
   const { data: authData, isLoading: userLoading } = useQuery({
     queryKey: ["/api/auth/status"],
-    queryFn: () => apiRequest("/api/auth/status"),
     retry: false,
     refetchOnWindowFocus: false,
-    staleTime: 5 * 60 * 1000, // Fixed: was 5 * 60 * 100 (5 minutes)
-    gcTime: 10 * 60 * 1000, // Fixed: was 10 * 60 * 100 (10 minutes)
-  });
+    staleTime: 5 * 60 * 100,
+    gcTime: 10 * 60 * 100,
+});
 
   const isAuthenticated = authData?.authenticated || false;
   const currentUser = authData?.user;
@@ -970,8 +978,6 @@ const LandingDesktop: React.FC = () => {
                   component="img"
                   src="/creatorhub-logo-amber.svg"
                   alt="CreatorHub Norge - Profesjonell kreativ plattform for norske fotografer, videografer og musikkprodusenter"
-                  loading="eager"
-                  fetchPriority="high"
                   sx={{
                     width: "280px",
                     height: "150px",
@@ -1185,40 +1191,16 @@ const LandingDesktop: React.FC = () => {
               <Typography variant="h6"
                 sx={{
                   color: "#374151",
-                  mb:  3,
+                  mb:  4,
                   lineHeight: 1.6,
-                  fontSize: { xs: "16px", sm: "18px", md: "20px", lg: "22px" },
+                  fontSize: "18px",
                   maxWidth: "500px",
-                }}
+              }}
     >
                 Alt-i-ett plattform for kreative i Norge. StoryArc Studio,
                 Academy, Community, og sømløse integrasjoner.
                 Alt du trenger for å vokse.
               </Typography>
-
-              {/* Key Benefits - Educational Enhancement */}
-              <Box sx={{ mb: 4, maxWidth: "500px" }}>
-                <Stack spacing={1.5}>
-                  <Box sx={{ display: "flex", alignItems: "flex-start", gap: 1.5 }}>
-                    <CheckCircle sx={{ color: "#ff8c00", fontSize: { xs: 18, sm: 20, md: 22, lg: 24 }, mt: 0.5, flexShrink: 0 }} />
-                    <Typography variant="body1" sx={{ color: "#374151", fontSize: { xs: "15px", sm: "16px", md: "18px", lg: "20px" } }}>
-                      <strong>Prosjektadministrasjon:</strong> Hold oversikt over alle prosjekter, klienter og leveranser på ett sted
-                    </Typography>
-                  </Box>
-                  <Box sx={{ display: "flex", alignItems: "flex-start", gap: 1.5 }}>
-                    <CheckCircle sx={{ color: "#ff8c00", fontSize: { xs: 18, sm: 20, md: 22, lg: 24 }, mt: 0.5, flexShrink: 0 }} />
-                    <Typography variant="body1" sx={{ color: "#374151", fontSize: { xs: "15px", sm: "16px", md: "18px", lg: "20px" } }}>
-                      <strong>StoryArc Studio:</strong> Automatisk videoredigering med eksport til DaVinci Resolve, Final Cut Pro og Premiere
-                    </Typography>
-                  </Box>
-                  <Box sx={{ display: "flex", alignItems: "flex-start", gap: 1.5 }}>
-                    <CheckCircle sx={{ color: "#ff8c00", fontSize: { xs: 18, sm: 20, md: 22, lg: 24 }, mt: 0.5, flexShrink: 0 }} />
-                    <Typography variant="body1" sx={{ color: "#374151", fontSize: { xs: "15px", sm: "16px", md: "18px", lg: "20px" } }}>
-                      <strong>Academy & Community:</strong> Lær nye ferdigheter og koble deg til andre norske kreative
-                    </Typography>
-                  </Box>
-                </Stack>
-              </Box>
 
               {/* Hero Action Buttons */}
               <Stack direction="row" spacing={3} sx={{ mb:  4 }}>
@@ -1232,7 +1214,7 @@ const LandingDesktop: React.FC = () => {
                     px:  5,
                     minHeight: "56px",
                     borderRadius: "16px",
-                    fontSize: { xs: "16px", sm: "18px", md: "20px", lg: "22px" },
+                    fontSize: "18px",
                     fontWeight: "bold",
                     textTransform: "none",
                     boxShadow: "0 8px 24px rgba(255,140,0,0.35), 0 2px 8px rgba(0,0,0,0.1)",
@@ -1267,7 +1249,7 @@ const LandingDesktop: React.FC = () => {
                     px:  4,
                     minHeight: "56px",
                     borderRadius: "16px",
-                    fontSize: { xs: "16px", sm: "18px", md: "20px", lg: "22px" },
+                    fontSize: "18px",
                     fontWeight: "bold",
                     textTransform: "none",
                     borderWidth: "2px",
@@ -1457,158 +1439,23 @@ const LandingDesktop: React.FC = () => {
               </MuiCard>
             </Box>
           </Grid>
-        </Grid>
 
-        {/* How It Works Section - Educational Enhancement */}
-        <Box sx={{ mt: { xs: 8, md: 12 }, mb: { xs: 8, md: 12 } }}>
-          <Box sx={{ textAlign: "center", mb: 6 }}>
-            <Typography
-              variant="h3"
-              sx={{
-                fontWeight: 800,
-                color: "#1f2937",
-                mb: 2,
-                fontSize: { xs: "2rem", md: "2.5rem" },
-              }}
-            >
-              Hvordan fungerer det?
-            </Typography>
-            <Typography
-              variant="h6"
-              sx={{
-                color: "#6b7280",
-                maxWidth: "600px",
-                mx: "auto",
-                lineHeight: 1.8,
-                fontWeight: 400,
-              }}
-            >
-              Tre enkle steg til å komme i gang med CreatorHub Norge
-            </Typography>
-          </Box>
-
-          <Grid container spacing={4} sx={{ mt: 2 }}>
-            {[
-              {
-                step: "1",
-                title: "Velg din rolle",
-                description: "Velg om du er fotograf, videograf, musikkprodusent eller leverandør. Vi tilpasser plattformen til dine behov.",
-                icon: <AccountCircle sx={{ fontSize: 40, color: "white" }} />,
-                color: "#ff8c00",
-              },
-              {
-                step: "2",
-                title: "Opprett din konto",
-                description: "Registrer deg gratis og gjennomfør en rask onboarding. Du kan begynne å bruke plattformen umiddelbart.",
-                icon: <RocketLaunch sx={{ fontSize: 40, color: "white" }} />,
-                color: "#f59e0b",
-              },
-              {
-                step: "3",
-                title: "Start å jobbe",
-                description: "Last opp prosjekter, inviter klienter, bruk StoryArc Studio, og utforsk Academy og Community.",
-                icon: <Settings sx={{ fontSize: 40, color: "white" }} />,
-                color: "#d97706",
-              },
-            ].map((item, index) => (
-              <Grid item xs={12} md={4} key={index}>
-                <MuiCard
-                  sx={{
-                    height: "100%",
-                    borderRadius: "20px",
-                    background: `linear-gradient(135deg, rgba(255,255,255,0.98) 0%, rgba(255,247,237,0.95) 100%)`,
-                    border: `1px solid ${item.color}20`,
-                    boxShadow: "0 4px 16px rgba(0,0,0,0.08)",
-                    transition: "all 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
-                    "&:hover": {
-                      transform: "translateY(-6px)",
-                      boxShadow: `0 16px 40px ${item.color}30`,
-                    },
-                  }}
-                >
-                  <CardContent sx={{ p: 4, textAlign: "center" }}>
-                    <Box
-                      sx={{
-                        width: 80,
-                        height: 80,
-                        borderRadius: "20px",
-                        background: `linear-gradient(135deg, ${item.color} 0%, ${item.color}dd 100%)`,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        mx: "auto",
-                        mb: 3,
-                        boxShadow: `0 12px 32px ${item.color}40`,
-                      }}
-                    >
-                      {item.icon}
-                    </Box>
-                    <Chip
-                      label={`Steg ${item.step}`}
-                      sx={{
-                        bgcolor: `${item.color}15`,
-                        color: item.color,
-                        fontWeight: 700,
-                        mb: 2,
-                        fontSize: "0.875rem",
-                      }}
-                    />
-                    <Typography
-                      variant="h5"
-                      sx={{
-                        fontWeight: 700,
-                        color: "#1f2937",
-                        mb: 2,
-                        fontSize: { xs: "1.25rem", sm: "1.5rem", md: "1.75rem", lg: "2rem" },
-                      }}
-                    >
-                      {item.title}
-                    </Typography>
-                    <Typography
-                      variant="body1"
-                      sx={{
-                        color: "#4b5563",
-                        lineHeight: 1.8,
-                        fontSize: { xs: "0.9rem", sm: "1rem", md: "1.125rem", lg: "1.25rem" },
-                      }}
-                    >
-                      {item.description}
-                    </Typography>
-                  </CardContent>
-                </MuiCard>
-              </Grid>
-            ))}
-          </Grid>
-        </Box>
-
-        <Grid container spacing={4}>
-          {/* Professional Cards - Horizontal Layout */}
-          <Grid item xs={12} sx={{ mt: { xs: 3, sm: 4, md: 5, lg: 6 } }}>
-            <Grid 
-              container 
-              spacing={{ xs: 3, sm: 3, md: 4, lg: 5 }} 
-              className="staggered-animation"
-              sx={{
-                justifyContent: { xs: 'center', sm: 'flex-start' }
-              }}
-            >
+          {/* Professional Cards - Right Column */}
+          <Grid item xs={12} md={6} sx={{ mt: { xs: 3, md: 6, lg: 1.5 } }}>
+            <Stack spacing={4} className="staggered-animation">
               {/* Fotograf Card */}
-              <Grid item xs={12} sm={6} md={4} lg={4}>
               <MuiCard
                 className="card-shine"
                 sx={{
-                  borderRadius: { xs: "16px", sm: "18px", md: "20px" },
+                  borderRadius: "20px",
                   background: `linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(240,253,244,0.9) 100%)`,
                   backdropFilter: GLASSMORPHISM_CONSTANTS.BLUR_MEDIUM,
                   border: "1px solid rgba(46,125,50,0.15)",
                   boxShadow: "0 4px 16px rgba(46,125,50,0.08), 0 1px 4px rgba(0,0,0,0.04)",
                   transition: "all 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
                   overflow: "hidden",
-                  height: "100%",
-                  display: "flex",
-                  flexDirection: "column",
                   "&:hover": {
-                    transform: { xs: "translateY(-4px) scale(1.005)", sm: "translateY(-6px) scale(1.01)" },
+                    transform: "translateY(-6px) scale(1.01)",
                     boxShadow: "0 16px 40px rgba(46,125,50,0.15), 0 4px 12px rgba(0,0,0,0.08)",
                     "& .profession-icon": {
                       transform: "scale(1.1)",
@@ -1616,44 +1463,34 @@ const LandingDesktop: React.FC = () => {
                 },
               }}
               >
-                <CardContent sx={{ 
-                  p: { xs: 2.5, sm: 3, md: 3.5, lg: 4 },
-                  flexGrow: 1,
-                  display: "flex",
-                  flexDirection: "column"
-                }}>
-                  <Box sx={{ display: "flex", alignItems: "center", mb: { xs: 1.5, sm: 2, md: 2.5 } }}>
+                <CardContent sx={{ p: 3 }}>
+                  <Box sx={{ display: "flex", alignItems: "center", mb: 2 }}>
                     <Box
                       className="profession-icon"
                       sx={{
-                        width: { xs: 48, sm: 52, md: 56, lg: 60 },
-                        height: { xs: 48, sm: 52, md: 56, lg: 60 },
-                        borderRadius: { xs: "12px", sm: "14px", md: "16px" },
+                        width: 52,
+                        height: 52,
+                        borderRadius: "14px",
                         background: "linear-gradient(135deg, #22c55e 0%, #16a34a 100%)",
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
-                        mr: { xs: 1.5, sm: 2, md: 2.5 },
+                        mr: 2,
                         boxShadow: "0 4px 12px rgba(34,197,94,0.3)",
                         transition: "transform 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
                     }}
                     >
-                      <PhotoCamera sx={{ color: "white", fontSize: { xs: 24, sm: 26, md: 28, lg: 30 } }} />
+                      <PhotoCamera sx={{ color: "white", fontSize: 26 }} />
                     </Box>
-                    <Typography 
-                      variant="h5"
-                      sx={{ 
-                        fontWeight: "bold", 
-                        color: "#1f2937",
-                        fontSize: { xs: "1.1rem", sm: "1.25rem", md: "1.75rem", lg: "2rem" }
-                      }}
-                    >
+                    <Typography variant="h5"
+                      sx={{ fontWeight: "bold", color: "#1f2937" }}
+          >
                       {getProfessionDisplayName('photographer')}
                     </Typography>
                   </Box>
 
-                  <Grid container spacing={{ xs: 1.5, sm: 2, md: 2.5 }} sx={{ flexGrow: 1 }}>
-                    <Grid item xs={12} sm={12} md={6}>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} md={6}>
                       <Stack spacing={1}>
                         {["Showcase Galleri","Klienthåndtering"].map(
                           (item, index) => (
@@ -1662,14 +1499,11 @@ const LandingDesktop: React.FC = () => {
                               sx={{ display: "flex", alignItems: "center" }}
                             >
                               <CheckCircle
-                                sx={{ color: "#2e7d32", fontSize: { xs: 16, sm: 18, md: 20 }, mr: { xs: 1, sm: 1.5 } }}
+                                sx={{ color: "#2e7d32", fontSize:  18, mr: 1.5}}
                               />
                               <Typography
                                 variant="body2"
-                                sx={{ 
-                                  color: "#374151",
-                                  fontSize: { xs: "0.8rem", sm: "0.875rem", md: "1rem", lg: "1.1rem" }
-                                }}
+                                sx={{ color: "#374151" }}
                               >
                                 {item}
                               </Typography>
@@ -1678,7 +1512,7 @@ const LandingDesktop: React.FC = () => {
                         )}
                       </Stack>
                     </Grid>
-                    <Grid item xs={12} sm={12} md={6}>
+                    <Grid item xs={12} md={6}>
                       <Stack spacing={1}>
                         {["Academy","Community"].map(
                           (item, index) => (
@@ -1687,14 +1521,11 @@ const LandingDesktop: React.FC = () => {
                               sx={{ display: "flex", alignItems: "center" }}
                             >
                               <CheckCircle
-                                sx={{ color: "#2e7d32", fontSize: { xs: 16, sm: 18, md: 20, lg: 22 }, mr: { xs: 1, sm: 1.5 } }}
+                                sx={{ color: "#2e7d32", fontSize:  18, mr: 1.5}}
                               />
                               <Typography
                                 variant="body2"
-                                sx={{ 
-                                  color: "#374151",
-                                  fontSize: { xs: "0.8rem", sm: "0.875rem", md: "1rem", lg: "1.1rem" }
-                                }}
+                                sx={{ color: "#374151" }}
                               >
                                 {item}
                               </Typography>
@@ -1706,25 +1537,20 @@ const LandingDesktop: React.FC = () => {
                   </Grid>
                 </CardContent>
               </MuiCard>
-              </Grid>
 
               {/* Videografi Card */}
-              <Grid item xs={12} sm={6} md={4} lg={4}>
               <MuiCard
                 className="card-shine"
                 sx={{
-                  borderRadius: { xs: "16px", sm: "18px", md: "20px" },
+                  borderRadius: "20px",
                   background: `linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(239,246,255,0.9) 100%)`,
                   backdropFilter: GLASSMORPHISM_CONSTANTS.BLUR_MEDIUM,
                   border: "1px solid rgba(37,99,235,0.15)",
                   boxShadow: "0 4px 16px rgba(37,99,235,0.08), 0 1px 4px rgba(0,0,0,0.04)",
                   transition: "all 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
                   overflow: "hidden",
-                  height: "100%",
-                  display: "flex",
-                  flexDirection: "column",
                   "&:hover": {
-                    transform: { xs: "translateY(-4px) scale(1.005)", sm: "translateY(-6px) scale(1.01)" },
+                    transform: "translateY(-6px) scale(1.01)",
                     boxShadow: "0 16px 40px rgba(37,99,235,0.15), 0 4px 12px rgba(0,0,0,0.08)",
                     "& .profession-icon": {
                       transform: "scale(1.1)",
@@ -1732,44 +1558,34 @@ const LandingDesktop: React.FC = () => {
                 },
               }}
               >
-                <CardContent sx={{ 
-                  p: { xs: 2.5, sm: 3, md: 3.5, lg: 4 },
-                  flexGrow: 1,
-                  display: "flex",
-                  flexDirection: "column"
-                }}>
-                  <Box sx={{ display: "flex", alignItems: "center", mb: { xs: 1.5, sm: 2, md: 2.5 } }}>
+                <CardContent sx={{ p: 3 }}>
+                  <Box sx={{ display: "flex", alignItems: "center", mb: 2 }}>
                     <Box
                       className="profession-icon"
                       sx={{
-                        width: { xs: 48, sm: 52, md: 56, lg: 60 },
-                        height: { xs: 48, sm: 52, md: 56, lg: 60 },
-                        borderRadius: { xs: "12px", sm: "14px", md: "16px" },
+                        width: 52,
+                        height: 52,
+                        borderRadius: "14px",
                         background: "linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)",
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
-                        mr: { xs: 1.5, sm: 2, md: 2.5 },
+                        mr: 2,
                         boxShadow: "0 4px 12px rgba(59,130,246,0.3)",
                         transition: "transform 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
                     }}
                     >
-                      <VideoLibrary sx={{ color: "white", fontSize: { xs: 24, sm: 26, md: 28, lg: 30 } }} />
+                      <VideoLibrary sx={{ color: "white", fontSize: 26 }} />
                     </Box>
-                    <Typography 
-                      variant="h5"
-                      sx={{ 
-                        fontWeight: "bold", 
-                        color: "#1f2937",
-                        fontSize: { xs: "1.1rem", sm: "1.25rem", md: "1.75rem", lg: "2rem" }
-                      }}
-                    >
+                    <Typography variant="h5"
+                      sx={{ fontWeight: "bold", color: "#1f2937" }}
+          >
                       {getProfessionDisplayName('videographer')}
                     </Typography>
                   </Box>
 
-                  <Grid container spacing={{ xs: 1.5, sm: 2, md: 2.5 }} sx={{ flexGrow: 1 }}>
-                    <Grid item xs={12} sm={12} md={6}>
+                  <Grid container spacing={5}>
+                    <Grid item xs={12} md={6}>
                       <Stack spacing={1}>
                         {["StoryArc Studio","Smart Redigering"].map(
                           (item, index) => (
@@ -1778,14 +1594,11 @@ const LandingDesktop: React.FC = () => {
                               sx={{ display: "flex", alignItems: "center" }}
                             >
                               <CheckCircle
-                                sx={{ color: "#1565c0", fontSize: { xs: 16, sm: 18, md: 20, lg: 22 }, mr: { xs: 1, sm: 1.5 } }}
+                                sx={{ color: "#1565c0", fontSize:  18, mr: 1.5}}
                               />
                               <Typography
                                 variant="body2"
-                                sx={{ 
-                                  color: "#374151",
-                                  fontSize: { xs: "0.8rem", sm: "0.875rem", md: "1rem", lg: "1.1rem" }
-                                }}
+                                sx={{ color: "#374151" }}
                               >
                                 {item}
                               </Typography>
@@ -1794,7 +1607,7 @@ const LandingDesktop: React.FC = () => {
                         )}
                       </Stack>
                     </Grid>
-                    <Grid item xs={12} sm={12} md={6}>
+                    <Grid item xs={12} md={6}>
                       <Stack spacing={1}>
                         {["NLE-eksport","Academy"].map(
                           (item, index) => (
@@ -1803,14 +1616,11 @@ const LandingDesktop: React.FC = () => {
                               sx={{ display: "flex", alignItems: "center" }}
                             >
                               <CheckCircle
-                                sx={{ color: "#1565c0", fontSize: { xs: 16, sm: 18, md: 20, lg: 22 }, mr: { xs: 1, sm: 1.5 } }}
+                                sx={{ color: "#1565c0", fontSize:  18, mr: 1.5}}
                               />
                               <Typography
                                 variant="body2"
-                                sx={{ 
-                                  color: "#374151",
-                                  fontSize: { xs: "0.8rem", sm: "0.875rem", md: "1rem", lg: "1.1rem" }
-                                }}
+                                sx={{ color: "#374151" }}
                               >
                                 {item}
                               </Typography>
@@ -1822,25 +1632,20 @@ const LandingDesktop: React.FC = () => {
                   </Grid>
                 </CardContent>
               </MuiCard>
-              </Grid>
 
               {/* Musikk Produksjon Card */}
-              <Grid item xs={12} sm={6} md={4} lg={4}>
               <MuiCard
                 className="card-shine"
                 sx={{
-                  borderRadius: { xs: "16px", sm: "18px", md: "20px" },
+                  borderRadius: "20px",
                   background: `linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(250,245,255,0.9) 100%)`,
                   backdropFilter: GLASSMORPHISM_CONSTANTS.BLUR_MEDIUM,
                   border: "1px solid rgba(147,51,234,0.15)",
                   boxShadow: "0 4px 16px rgba(147,51,234,0.08), 0 1px 4px rgba(0,0,0,0.04)",
                   transition: "all 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
                   overflow: "hidden",
-                  height: "100%",
-                  display: "flex",
-                  flexDirection: "column",
                   "&:hover": {
-                    transform: { xs: "translateY(-4px) scale(1.005)", sm: "translateY(-6px) scale(1.01)" },
+                    transform: "translateY(-6px) scale(1.01)",
                     boxShadow: "0 16px 40px rgba(147,51,234,0.15), 0 4px 12px rgba(0,0,0,0.08)",
                     "& .profession-icon": {
                       transform: "scale(1.1)",
@@ -1848,44 +1653,34 @@ const LandingDesktop: React.FC = () => {
                 },
               }}
               >
-                <CardContent sx={{ 
-                  p: { xs: 2.5, sm: 3, md: 3.5, lg: 4 },
-                  flexGrow: 1,
-                  display: "flex",
-                  flexDirection: "column"
-                }}>
-                  <Box sx={{ display: "flex", alignItems: "center", mb: { xs: 1.5, sm: 2, md: 2.5 } }}>
+                <CardContent sx={{ p: 3 }}>
+                  <Box sx={{ display: "flex", alignItems: "center", mb: 2 }}>
                     <Box
                       className="profession-icon"
                       sx={{
-                        width: { xs: 48, sm: 52, md: 56, lg: 60 },
-                        height: { xs: 48, sm: 52, md: 56, lg: 60 },
-                        borderRadius: { xs: "12px", sm: "14px", md: "16px" },
+                        width: 52,
+                        height: 52,
+                        borderRadius: "14px",
                         background: "linear-gradient(135deg, #a855f7 0%, #9333ea 100%)",
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
-                        mr: { xs: 1.5, sm: 2, md: 2.5 },
+                        mr: 2,
                         boxShadow: "0 4px 12px rgba(168,85,247,0.3)",
                         transition: "transform 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
                     }}
                     >
-                      <LibraryMusic sx={{ color: "white", fontSize: { xs: 24, sm: 26, md: 28, lg: 30 } }} />
+                      <LibraryMusic sx={{ color: "white", fontSize: 26 }} />
                     </Box>
-                    <Typography 
-                      variant="h5"
-                      sx={{ 
-                        fontWeight: "bold", 
-                        color: "#1f2937",
-                        fontSize: { xs: "1.1rem", sm: "1.25rem", md: "1.75rem", lg: "2rem" }
-                      }}
-                    >
+                    <Typography variant="h5"
+                      sx={{ fontWeight: "bold", color: "#1f2937" }}
+          >
                       Musikk Produksjon
                     </Typography>
                   </Box>
 
-                  <Grid container spacing={{ xs: 1.5, sm: 2, md: 2.5 }} sx={{ flexGrow: 1 }}>
-                    <Grid item xs={12} sm={12} md={6}>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} md={6}>
                       <Stack spacing={1}>
                         {["Studioadministrasjon","Klientportal"].map(
                           (item, index) => (
@@ -1894,14 +1689,11 @@ const LandingDesktop: React.FC = () => {
                               sx={{ display: "flex", alignItems: "center" }}
                             >
                               <CheckCircle
-                                sx={{ color: "#7b1fa2", fontSize: { xs: 16, sm: 18, md: 20, lg: 22 }, mr: { xs: 1, sm: 1.5 } }}
+                                sx={{ color: "#7b1fa2", fontSize:  18, mr: 1.5}}
                               />
                               <Typography
                                 variant="body2"
-                                sx={{ 
-                                  color: "#374151",
-                                  fontSize: { xs: "0.8rem", sm: "0.875rem", md: "1rem", lg: "1.1rem" }
-                                }}
+                                sx={{ color: "#374151" }}
                               >
                                 {item}
                               </Typography>
@@ -1910,7 +1702,7 @@ const LandingDesktop: React.FC = () => {
                         )}
                       </Stack>
                     </Grid>
-                    <Grid item xs={12} sm={12} md={6}>
+                    <Grid item xs={12} md={6}>
                       <Stack spacing={1}>
                         {["Academy","Community"].map(
                           (item, index) => (
@@ -1919,14 +1711,11 @@ const LandingDesktop: React.FC = () => {
                               sx={{ display: "flex", alignItems: "center" }}
                             >
                               <CheckCircle
-                                sx={{ color: "#7b1fa2", fontSize: { xs: 16, sm: 18, md: 20, lg: 22 }, mr: { xs: 1, sm: 1.5 } }}
+                                sx={{ color: "#7b1fa2", fontSize:  18, mr: 1.5}}
                               />
                               <Typography
                                 variant="body2"
-                                sx={{ 
-                                  color: "#374151",
-                                  fontSize: { xs: "0.8rem", sm: "0.875rem", md: "1rem", lg: "1.1rem" }
-                                }}
+                                sx={{ color: "#374151" }}
                               >
                                 {item}
                               </Typography>
@@ -1938,8 +1727,7 @@ const LandingDesktop: React.FC = () => {
                   </Grid>
                 </CardContent>
               </MuiCard>
-              </Grid>
-            </Grid>
+            </Stack>
           </Grid>
         </Grid>
 
@@ -1993,7 +1781,7 @@ const LandingDesktop: React.FC = () => {
                 fontWeight: 800, 
                 color: "#1f2937", 
                 mb: 2,
-                fontSize: { xs: "2rem", sm: "2.5rem", md: "3rem", lg: "3.5rem" },
+                fontSize: { xs: "2rem", md: "2.75rem" },
                 lineHeight: 1.2,
               }}
             >
@@ -2021,7 +1809,7 @@ const LandingDesktop: React.FC = () => {
                 mx: "auto", 
                 lineHeight: 1.8, 
                 fontWeight: 400,
-                fontSize: { xs: "1rem", sm: "1.125rem", md: "1.25rem", lg: "1.375rem" },
+                fontSize: { xs: "1rem", md: "1.125rem" },
               }}
             >
               Alt du trenger for å drive en profesjonell kreativ virksomhet i Norge
@@ -2093,10 +1881,10 @@ const LandingDesktop: React.FC = () => {
                     <Assessment sx={{ fontSize: 40, color: "white" }} />
                   </Box>
                   <Box>
-                    <Typography component="h3" variant="h4" sx={{ fontWeight: "bold", color: "#1f2937", mb: 1.5, fontSize: { xs: "1.5rem", sm: "1.75rem", md: "2rem", lg: "2.25rem" } }}>
+                    <Typography component="h3" variant="h4" sx={{ fontWeight: "bold", color: "#1f2937", mb: 1.5 }}>
                       Prosjektadministrasjon
                     </Typography>
-                    <Typography variant="body1" sx={{ color: "#4b5563", lineHeight: 1.8, maxWidth: "500px", fontSize: { xs: "0.9rem", sm: "1rem", md: "1.125rem", lg: "1.25rem" } }}>
+                    <Typography variant="body1" sx={{ color: "#4b5563", lineHeight: 1.8, maxWidth: "500px" }}>
                       Effektiv prosjektstyring med intelligente løsninger for planlegging, produksjon og post-produksjon. Hold oversikt over alle prosjekter på ett sted.
                     </Typography>
                   </Box>
@@ -2164,10 +1952,10 @@ const LandingDesktop: React.FC = () => {
                     <polygon points="95,115 135,135 95,155" fill="#ff8c00"/>
                   </svg>
                 </Box>
-                <Typography component="h3" variant="h4" sx={{ fontWeight: "bold", color: "white", mb: 2, fontSize: { xs: "1.5rem", sm: "1.75rem", md: "2rem", lg: "2.25rem" } }}>
+                <Typography component="h3" variant="h4" sx={{ fontWeight: "bold", color: "white", mb: 2 }}>
                   StoryArc Studio
                 </Typography>
-                <Typography variant="body1" sx={{ color: "rgba(255,255,255,0.95)", lineHeight: 1.8, mb: 3, flex: 1, fontSize: { xs: "0.9rem", sm: "1rem", md: "1.125rem", lg: "1.25rem" } }}>
+                <Typography variant="body1" sx={{ color: "rgba(255,255,255,0.95)", lineHeight: 1.8, mb: 3, flex: 1 }}>
                   Profesjonell videoredigering som analyserer innholdet ditt og genererer story arcs automatisk. Eksporter til DaVinci Resolve, Final Cut Pro og Premiere.
                 </Typography>
                 <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ gap: 1 }}>
@@ -2204,10 +1992,10 @@ const LandingDesktop: React.FC = () => {
                 }}>
                   <Settings sx={{ fontSize: 32, color: "white" }} />
                 </Box>
-                <Typography component="h3" variant="h5" sx={{ fontWeight: "bold", color: "#1f2937", mb: 1.5, fontSize: { xs: "1.25rem", sm: "1.5rem", md: "1.75rem", lg: "2rem" } }}>
+                <Typography component="h3" variant="h5" sx={{ fontWeight: "bold", color: "#1f2937", mb: 1.5 }}>
                   Integrasjoner
                 </Typography>
-                <Typography variant="body1" sx={{ color: "#4b5563", lineHeight: 1.7, fontSize: { xs: "0.9rem", sm: "1rem", md: "1.125rem", lg: "1.25rem" } }}>
+                <Typography variant="body1" sx={{ color: "#4b5563", lineHeight: 1.7 }}>
                   Sømløs integrasjon med verktøyene du bruker. Google Workspace, DaVinci Resolve, Final Cut Pro, Premiere Pro. Fiken kommer snart.
                 </Typography>
               </CardContent>
@@ -2612,9 +2400,6 @@ const LandingDesktop: React.FC = () => {
         </Box>
       </Container>
 
-      {/* FAQ Section */}
-      <FAQSection />
-
       {/* Enhanced Role Selector Modal */}
       <Dialog
         open={modalState.showRoleSelector}
@@ -2664,7 +2449,6 @@ const LandingDesktop: React.FC = () => {
             component="img"
             src="/creatorhub-logo-amber.svg"
             alt="CreatorHub"
-            loading="lazy"
             sx={{
               width: 500,
               height: 'auto',
@@ -2852,7 +2636,6 @@ const LandingDesktop: React.FC = () => {
                 component="img"
                 src="/creatorhub-logo-amber.svg"
                 alt="CreatorHub"
-                loading="lazy"
                 sx={{
                   width: 500,
                   height: 'auto',
@@ -3001,6 +2784,9 @@ const LandingDesktop: React.FC = () => {
         </React.Suspense>
       )}
 
+      {/* GDPR Cookie Consent Banner */}
+      <GdprNotice position="bottom" />
+
       {/* Footer */}
       <Box
         component="footer"
@@ -3022,7 +2808,6 @@ const LandingDesktop: React.FC = () => {
                   component="img"
                   src="/creatorhub-logo-amber.svg"
                   alt="CreatorHub Norge"
-                  loading="lazy"
                   sx={{
                     width: "250px",
                     height: "200px",
@@ -3117,7 +2902,7 @@ const LandingDesktop: React.FC = () => {
               </Stack>
             </Grid>
 
-            {/* Contact */}
+            {/* Contact & Legal */}
             <Grid item xs={12} md={3}>
               <Typography variant="h6" sx={{ fontWeight: "bold", mb: 2, color: "#ff8c00" }}>
                 Kontakt
@@ -3135,6 +2920,24 @@ const LandingDesktop: React.FC = () => {
                   <LocationOn fontSize="small" sx={{ mr: 1, color: "#ff8c00" }} />
                   <Typography variant="body2">Norge</Typography>
                 </Box>
+                <Divider sx={{ my: 1, backgroundColor: "rgba(255,255,255,0.1)" }} />
+                <Button
+                  variant="text"
+                  onClick={() => handleNavigation("/privacy-policy")}
+                  sx={{
+                    color: "rgba(255,255,255,0.7)",
+                    textTransform: "none",
+                    justifyContent: "flex-start",
+                    fontSize: "14px",
+                    px: 0,
+                    "&:hover": {
+                      color: "#ff8c00",
+                      backgroundColor: "transparent",
+                    },
+                  }}
+                >
+                  Personvern & GDPR
+                </Button>
               </Stack>
             </Grid>
           </Grid>
@@ -3153,7 +2956,7 @@ const LandingDesktop: React.FC = () => {
             <Typography variant="body2" sx={{ color: "rgba(255,255,255,0.5)", textAlign: "center" }}>
               © {new Date().getFullYear()} CreatorHub Norge. Alle rettigheter reservert.
             </Typography>
-            <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap" justifyContent="center">
+            <Stack direction="row" spacing={2}>
               <Button
                 variant="text"
                 size="small"
@@ -3161,8 +2964,7 @@ const LandingDesktop: React.FC = () => {
                 sx={{
                   color: "rgba(255,255,255,0.5)",
                   textTransform: "none",
-                  fontSize: { xs: "11px", sm: "12px", md: "13px" },
-                  "&:hover": {
+                  fontSize: "12px","&:hover": {
                     color: "#ff8c00",
                   },
                 }}
@@ -3179,39 +2981,17 @@ const LandingDesktop: React.FC = () => {
                 sx={{
                   color: "rgba(255,255,255,0.5)",
                   textTransform: "none",
-                  fontSize: { xs: "11px", sm: "12px", md: "13px" },
-                  "&:hover": {
+                  fontSize: "12px","&:hover": {
                     color: "#ff8c00",
                   },
                 }}
               >
                 Vilkår & Betingelser
               </Button>
-              <Typography variant="body2" sx={{ color: "rgba(255,255,255,0.3)" }}>
-                •
-              </Typography>
-              <Button
-                variant="text"
-                size="small"
-                onClick={() => handleNavigation("/cookies")}
-                sx={{
-                  color: "rgba(255,255,255,0.5)",
-                  textTransform: "none",
-                  fontSize: { xs: "11px", sm: "12px", md: "13px" },
-                  "&:hover": {
-                    color: "#ff8c00",
-                  },
-                }}
-              >
-                Cookies
-              </Button>
             </Stack>
           </Box>
         </Container>
       </Box>
-
-      {/* GDPR Cookie Consent Banner - Sticky at bottom, midtstilt overlay */}
-      <GdprNotice position="bottom" />
 
       {/* Google Workspace Information Dialog */}
       <Dialog
