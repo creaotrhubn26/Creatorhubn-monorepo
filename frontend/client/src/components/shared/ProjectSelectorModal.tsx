@@ -191,7 +191,7 @@ export function ProjectSelectorModal({
             <Box sx={{ display: 'flex', justifyContent: 'center' }}>
               <Button
                 variant="contained"
-                startIcon={config.icon}
+                startIcon={<config.icon />}
                 onClick={() => {
                   onOpenChange(false);
                   window.location.href = `/${profession}-dashboard-material`;
@@ -222,7 +222,7 @@ export function ProjectSelectorModal({
                 label="Velg prosjekt"
               >
                 {projects.map((project: Project) => (
-                  <MenuItem key={project.d} value={project.id}>
+                  <MenuItem key={project.id} value={project.id}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, width: '100%'}}>
                       <Box sx={{ flexGrow:  1 }}>
                         <Typography variant="body1" sx={{ fontWeight: 50}}>

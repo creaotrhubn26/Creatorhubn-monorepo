@@ -2,6 +2,17 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { useAuth } from '@/hooks/useAuth';
+import type { 
+  ShowcaseCategory, 
+  ShowcaseSet, 
+  ShowcaseCollection, 
+  SearchQuery, 
+  ItemAnnotation, 
+  ShowcaseItem, 
+  ClientSession, 
+  UniversalShowcaseProps,
+  ProfessionType 
+} from '@/types/showcase';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { useTheming } from '../../utils/theming-helper';
 import { useClientServicePricing } from '../../services/ClientServicePricingService';
@@ -252,180 +263,103 @@ const VideographerVideoSuite = React.lazy(() => import('../videographer/Videogra
 // @ts-ignore - PhotographerPhotoSuite has implicit return type
 const PhotographerPhotoSuite = React.lazy(() => import('../photographer/PhotographerPhotoSuite'));
 const VideoShowcaseEnhanced = React.lazy(() => import('./VideoShowcaseEnhanced'));
+import ShowcaseCard, { formatFileSize } from './ShowcaseCard';
 
-// Enhanced hierarchical data models
-interface ShowcaseCategory {
-  id: string;
-  name: string;
-  slug: string;
-  description?: string;
-  parentId?: string;
-  icon?: string;
-  color?: string;
-  sortOrder: number;
-  createdAt: Date;
-  updatedAt: Date;
-  createdBy: string;
-}
 
-interface ShowcaseSet {
-  id: string;
-  name: string;
-  description?: string;
-  categoryId: string;
-  items: string[]; // Item IDs
-  coverImageId?: string;
-  sortOrder: number;
-  metadata?: Record<string, any>;
-  createdAt: Date;
-  updatedAt: Date;
-  createdBy: string;
-}
-
-interface ShowcaseCollection {
-  id: string;
-  name: string;
-  description?: string;
-  items: string[]; // Item IDs from various categories/sets
-  visibility: 'private' | 'team' | 'public';
-  dynamic: boolean; // If true, auto-updates based on savedQuery
-  savedQuery?: SearchQuery;
-  tags?: string[];
-  coverImageId?: string;
-  collaborators?: string[];
-  createdAt: Date;
-  updatedAt: Date;
-  createdBy: string;
-  version: number;
-}
-
-interface SearchQuery {
-  text?: string;
-  categories?: string[];
-  tags?: string[];
-  dateRange?: { start: Date; end: Date };
-  camera?: string;
-  lens?: string;
-  location?: string;
-  person?: string[];
-  minRating?: number;
-  fileType?: string[];
-  customFilters?: Record<string, any>;
-}
-
-interface ItemAnnotation {
-  id: string;
-  itemId: string;
-  x: number; // Position percentage
-  y: number;
-  width?: number;
-  height?: number;
-  text: string;
-  type: 'note' | 'marker' | 'region';
-  color?: string;
-  createdAt: Date;
-  createdBy: string;
-  version: number;
-}
-
-interface ShowcaseItem {
-  id: string;
-  title: string;
-  description?: string;
-  thumbnailUrl?: string;
-  fileUrl?: string;
-  fileType: 'video' | 'photo' | 'audio' | 'document' | 'design';
-  tags?: string[];
-  clientName?: string;
-  projectType?: string;
-  category?: string;
-  createdAt?: string;
-  featured?: boolean;
-  isFeatured?: boolean;
-  type?: string;
-  stats?: {
-    views?: number;
-    likes?: number;
-    downloads?: number;
-};
-  brandLogoUrl?: string;
-  // New enhanced fields
-  lqipDataUrl?: string; // Low Quality Image Placeholder
-  dominantColor?: string; // For placeholder background
-  checksum?: string; // For deduplication
-  googlePhotosData?: any; // Google Photos specific data
-  categoryId?: string;
-  setId?: string;
-  collectionIds?: string[];
-  annotations?: ItemAnnotation[];
-  exif?: {
-    camera?: string;
-    lens?: string;
-    focalLength?: string;
-    aperture?: string;
-    shutterSpeed?: string;
-    iso?: string;
-    dateTime?: Date;
-    gps?: { lat: number; lng: number };
-    orientation?: number;
-    colorSpace?: string;
-    iccProfile?: string;
-};
-  focalPoint?: { x: number; y: number }; // For smart cropping
-  similarityHash?: string; // For duplicate detection
-  aiTags?: string[]; // Auto-generated tags
-  exportPresets?: Record<string, any>;
-  projectId?: string; // Optional - links to project if created from project
-  duration?: number; // For audio/video items
-  cropData?: { x: number; y: number; width: number; height: number };
-  downloadPassword?: string;
-  fileSize?: number;
-  size?: number; // Alias for fileSize
-}
-
-// Helper function to format file size
-const formatFileSize = (bytes: number): string => {
-  if (bytes === 0) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+// Helper functions for timecode conversion (kept here as they are used by UniversalShowcase)
+const secondsToTimecode_unused = (seconds: number, fps: number = 30): string => {
+  const totalFrames = Math.floor(seconds * fps);
+  const hours = Math.floor(totalFrames / (fps * 3600));
+  const minutes = Math.floor((totalFrames % (fps * 3600)) / (fps * 60));
+  const secs = Math.floor((totalFrames % (fps * 60)) / fps);
+  const frames = totalFrames % fps;
+  return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2,'0')}:${secs.toString().padStart(2,'0')}:${frames.toString().padStart(2,'0')}`;
 };
 
-// Memoized ShowcaseCard component for performance optimization
-const ShowcaseCard = React.memo(({
-  item,
+const timecodeToSeconds_unused = (timecode: string): number => {
+  const parts = timecode.split(':');
+  if (parts.length !== 4) return 0;
+  const [hours, minutes, seconds, frames] = parts.map(Number);
+  const fps = 30;
+  return hours * 3600 + minutes * 60 + seconds + frames / fps;
+};
+
+const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
   profession,
-  accentColor,
-  clientMode,
-  clientSelections,
-  handleClientSelection,
-  favorites,
-  toggleFavorite,
-  showComments,
-  setShowComments,
-  setSelectedItem,
-  handleDownload,
-  showcaseSettings,
-  analytics,
-  effectiveUserId,
-  addNotification,
-  features,
-  setSelectedItemForPublish,
-  setShowPublishToAcademyDialog,
-  setSelectedItemForCommunityShare,
-  setShowShareToCommunityDialog,
-  adminMode,
-  onOpenProject,
-  projectState,
-  clientSession,
-  getProfessionDisplayName,
-  setSelectedItemForStateUpdate,
-  setNewProjectState,
-  setProjectStateUpdateOpen,
-  setShowProToolsDialog
-}: {
-  item: ShowcaseItem;
+  userId,
+  compact = false,
+  maxItems = 12,
+  isOwner = false,
+  adminMode = false,
+  clientMode = false,
+  sessionIdd,
+  clientEmail,
+  isPublic = false,
+  // Google Drive Integration
+  enableGoogleDriveSync = false,
+  onGoogleDriveSync,
+  googleDriveFolderId,
+  // Enhanced Master Integration
+  integrationContext,
+  onItemSelect,
+  onItemUpdate,
+  onItemDelete,
+  // Real-time collaboration
+  enableRealTimeSync = false,
+  collaborationSessionId,
+  // AI Features
+  enableAIAnalysis = false,
+  enableAutoTagging = false,
+  enableSmartCollections = false
+}) => {
+  const { user } = useAuth();
+
+  // Use provided userId or fallback to authenticated user - MUST be defined early as it's used by hooks below
+  const effectiveUserId = userId || user?.id || user?.email || 'unknown-user';
+
+  // Theming system - use dynamic profession instead of hardcoded value
+  const theming = useTheming(profession);
+  const theme = useTheme();
+  
+  // Client service pricing service integration
+  const {
+    formatCurrency
+  } = useClientServicePricing();
+
+  // Toast Notifications - Implemented with MUI Snackbar
+  const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' | 'warning' | 'info' } | null>(null);
+  const [notificationOpen, setNotificationOpen] = useState(false);
+
+  const addNotification = useCallback((notification: { message: string; type?: 'success' | 'error' | 'warning' | 'info' }) => {
+    setNotification({
+      message: notification.message,
+      type: notification.type || 'info',
+    });
+    setNotificationOpen(true);
+  }, []);
+
+  const handleCloseNotification = useCallback(() => {
+    setNotificationOpen(false);
+  }, []);
+
+  // File Management Status
+  const { status: fileManagementStatus } = useFileManagementStatus();
+
+  // Utility function to format file size
+  const formatFileSizeLocal = useCallback((bytes: number): string => {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B','KB','MB','GB','TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
+  }, []);
+
+  // Demo mode hooks for data generation
+  const { isDemoMode } = useDemoMode();
+  const { demoItems, demoCategories, demoCollections } = useDemoModeData({ profession, limit: maxItems });
+
+  // Dynamic professions hook for CMS-driven profession names
+  const { getProfessionDisplayName: getDynamicProfessionName } = useDynamicProfessions();
   profession: string;
   accentColor: string;
   clientMode?: boolean;
@@ -1348,53 +1282,6 @@ const ShowcaseCard = React.memo(({
   );
 });
 
-interface UniversalShowcaseProps {
-  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
-  userId?: string;
-  compact?: boolean;
-  maxItems?: number;
-  isOwner?: boolean;
-  adminMode?: boolean;
-  // Client proofing mode - FASE 1 Implementation
-  clientMode?: boolean;
-  sessionIdd?: string;
-  clientEmail?: string;
-  isPublic?: boolean;
-  // New proofing session props
-  proofingToken?: string;
-  maxSelections?: number;
-  deadline?: Date;
-  round?: number;
-  // Google Drive Integration
-  enableGoogleDriveSync?: boolean;
-  onGoogleDriveSync?: (items: any[]) => void;
-  googleDriveFolderId?: string;
-  // Enhanced Master Integration
-  integrationContext?: any;
-  onItemSelect?: (item: any) => void;
-  onItemUpdate?: (item: any) => void;
-  onItemDelete?: (item: any) => void;
-  // Real-time collaboration
-  enableRealTimeSync?: boolean;
-  collaborationSessionId?: string;
-  // AI Features
-  enableAIAnalysis?: boolean;
-  enableAutoTagging?: boolean;
-  enableSmartCollections?: boolean
-}
-
-interface ClientSession {
-  id: string;
-  sessionName: string;
-  clientName: string;
-  maxSelections: number;
-  minSelections: number;
-  selectionDeadline: string;
-  status: 'setup' | 'active' | 'selections_made' | 'approved' | 'delivered' | 'expired';
-  proofingRound: number;
-  selectedCount: number;
-  description?: string
-}
 
 // Helper functions for timecode conversion
 const secondsToTimecode = (seconds: number, fps: number = 30): string => {
@@ -5248,13 +5135,21 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                   <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
                     Link this showcase to a project to enable project state management and timeline tracking.
                   </Typography>
+                  <Button 
+                    variant="outlined" 
+                    size="small" 
+                    startIcon={<Add />}
+                    onClick={() => setProjectSelectorOpen(true)}
+                  >
+                    Link to Project
+                  </Button>
                   <ProjectSelectorModal
                     open={projectSelectorOpen}
                     onOpenChange={setProjectSelectorOpen}
                     onProjectSelected={async (project: any) => {
                       setShareForm(prev => ({ ...prev, projectId: project.id }));
                     }}
-                    profession={profession as 'photographer' | 'videographer' | 'music_producer' | 'vendor'}
+                    profession={profession}
                   />
                 </Paper>
               </Box>
@@ -10786,7 +10681,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                   <ProjectTimeline
                     projectId={selectedProjectForTimeline.id}
                     selectedProject={selectedProjectForTimeline}
-                    profession={profession as 'photographer' | 'videographer' | 'music_producer' | 'vendor'}
+                    profession={profession as ProfessionType}
                   />
                 </Box>
               )}
