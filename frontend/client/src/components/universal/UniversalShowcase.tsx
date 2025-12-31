@@ -345,15 +345,6 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
   // File Management Status
   const { status: fileManagementStatus } = useFileManagementStatus();
 
-  // Utility function to format file size
-  const formatFileSize = useCallback((bytes: number): string => {
-    if (bytes === 0) return '0 B';
-    const k = 1024;
-    const sizes = ['B','KB','MB','GB','TB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ', ' + sizes[i];
-  }, []);
-
   // Profession-specific watermark defaults
   const getProfessionWatermarkDefaults = (profession: string) => {
     switch (profession) {
