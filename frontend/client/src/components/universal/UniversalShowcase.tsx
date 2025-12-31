@@ -5249,14 +5249,12 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                     Link this showcase to a project to enable project state management and timeline tracking.
                   </Typography>
                   <ProjectSelectorModal
-                    onSelectProject={(project) => {
+                    open={projectSelectorOpen}
+                    onOpenChange={setProjectSelectorOpen}
+                    onProjectSelected={async (project: any) => {
                       setShareForm(prev => ({ ...prev, projectId: project.id }));
                     }}
-                    trigger={
-                      <Button variant="outlined" size="small" startIcon={<Add />}>
-                        Link to Project
-                      </Button>
-                    }
+                    profession={profession}
                   />
                 </Paper>
               </Box>
@@ -7790,6 +7788,10 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                   setSelectedItemForCommunityShare={setSelectedItemForCommunityShare}
                   setShowShareToCommunityDialog={setShowShareToCommunityDialog}
                   projectState={projectState}
+                  getProfessionDisplayName={getProfessionDisplayName}
+                  setSelectedItemForStateUpdate={setSelectedItemForStateUpdate}
+                  setNewProjectState={setNewProjectState}
+                  setProjectStateUpdateOpen={setProjectStateUpdateOpen}
                 />
               ))}
             </Box>
