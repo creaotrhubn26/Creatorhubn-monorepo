@@ -376,7 +376,21 @@ interface ShowcaseItem {
   aiTags?: string[]; // Auto-generated tags
   exportPresets?: Record<string, any>;
   projectId?: string; // Optional - links to project if created from project
+  duration?: number; // For audio/video items
+  cropData?: { x: number; y: number; width: number; height: number };
+  downloadPassword?: string;
+  fileSize?: number;
+  size?: number; // Alias for fileSize
 }
+
+// Helper function to format file size
+const formatFileSize = (bytes: number): string => {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+};
 
 // Memoized ShowcaseCard component for performance optimization
 const ShowcaseCard = React.memo(({
@@ -400,7 +414,16 @@ const ShowcaseCard = React.memo(({
   setSelectedItemForPublish,
   setShowPublishToAcademyDialog,
   setSelectedItemForCommunityShare,
-  setShowShareToCommunityDialog
+  setShowShareToCommunityDialog,
+  adminMode,
+  onOpenProject,
+  projectState,
+  clientSession,
+  getProfessionDisplayName,
+  setSelectedItemForStateUpdate,
+  setNewProjectState,
+  setProjectStateUpdateOpen,
+  setShowProToolsDialog
 }: {
   item: ShowcaseItem;
   profession: string;
@@ -426,6 +449,12 @@ const ShowcaseCard = React.memo(({
   adminMode?: boolean;
   onOpenProject?: (item: ShowcaseItem) => void;
   projectState?: 'delivered' | 'in_review';
+  clientSession?: { id: string } | null;
+  getProfessionDisplayName: (profession?: string) => string;
+  setSelectedItemForStateUpdate: (item: ShowcaseItem | null) => void;
+  setNewProjectState: (state: 'delivered' | 'in_review') => void;
+  setProjectStateUpdateOpen: (open: boolean) => void;
+  setShowProToolsDialog?: (show: boolean) => void;
 }) => {
   const [contextMenu, setContextMenu] = React.useState<{
     mouseX: number;
@@ -454,9 +483,7 @@ const ShowcaseCard = React.memo(({
     // Show toast notification
     addNotification({
       message: `Redigerer ${item.title || item.fileType}...`,
-      type: 'info',
-      duration: 3000,
-      title: 'Redigering'
+      type: 'info'
     });
     
     // You can add specific edit logic here based on item type
@@ -918,7 +945,7 @@ const ShowcaseCard = React.memo(({
                   onClick={(e) => {
                     e.stopPropagation();
                     setSelectedItemForStateUpdate(item);
-                    setNewProjectState(projectState);
+                    setNewProjectState(projectState || 'in_review');
                     setProjectStateUpdateOpen(true);
                   }}
                 >
@@ -1192,8 +1219,7 @@ const ShowcaseCard = React.memo(({
             <MenuItem onClick={() => {
               addNotification({
                 message: 'Analyserer audio med AI...',
-                type: 'info',
-                duration: 2000 });
+                type: 'info' });
               handleClose();
             }}>
               <ListItemIcon>
@@ -1205,8 +1231,7 @@ const ShowcaseCard = React.memo(({
             <MenuItem onClick={() => {
               addNotification({
                 message: 'Legger til i sample pack...',
-                type: 'info',
-                duration: 2000 });
+                type: 'info' });
               handleClose();
             }}>
               <ListItemIcon>
@@ -1216,7 +1241,7 @@ const ShowcaseCard = React.memo(({
             </MenuItem>
             
             <MenuItem onClick={() => {
-              setShowProToolsDialog(true);
+              setShowProToolsDialog?.(true);
               handleClose();
             }}>
               <ListItemIcon>
@@ -1944,30 +1969,19 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
 }, []);
 
   // Toast Helper Functions
-  const showToast = useCallback((message: string, type: 'success' | 'error' | 'warning' | 'info', title?: string) => {
-    const template = toastTemplate || {};
-    
+  const showToast = useCallback((message: string, type: 'success' | 'error' | 'warning' | 'info', _title?: string) => {
     addNotification({
       type,
-      title: title || type.charAt(0).toUpperCase() + type.slice(),
-      message,
-      read: false,
-      action: template.actions?.enabled && template.actions.buttons?.length > 0 ? {
-        label: template.actions.buttons[0].label,
-        callback: () => {
-          // Handle template action
-          console.log(`Template action: ${template.actions.buttons[0].action}`);
-        }
-      } : undefined
+      message
     });
-}, [addNotification, toastTemplate]);
+}, [addNotification]);
 
   const showSuccessToast = useCallback((message: string, title = 'Success') => {
-    showToast(message, 'success,', title);
+    showToast(message, 'success', title);
 }, [showToast]);
 
   const showErrorToast = useCallback((message: string, title = 'Error') => {
-    showToast(message, 'error, ', title);
+    showToast(message, 'error', title);
 }, [showToast]);
 
   const showWarningToast = useCallback((message: string, title = 'Warning') => {
@@ -1978,27 +1992,12 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
     showToast(message, 'info', title);
 }, [showToast]);
 
-  const showToastWithActions = useCallback((message: string, type: 'success' | 'error' | 'warning' | 'info', actions: Array<{label: string, action: () => void}>, title?: string) => {
-    const template = toastTemplate || {};
-    
-    // Use template actions if available, otherwise use provided actions
-    const templateActions = template.actions?.enabled && template.actions.buttons?.length > 0;
-    const finalActions = templateActions ? template.actions.buttons : actions;
-    
+  const showToastWithActions = useCallback((message: string, type: 'success' | 'error' | 'warning' | 'info', _actions: Array<{label: string, action: () => void}>, _title?: string) => {
     addNotification({
       type,
-      title: title || type.charAt(0).toUpperCase() + type.slice(),
-      message,
-      read: false,
-      action: finalActions.length > 0 ? {
-        label: finalActions[0].label,
-        callback: templateActions ? () => {
-          // Handle template action
-          console.log(`Template action: ${finalActions[0].action}`);
-        } : finalActions[0].action
-      } : undefined
+      message
     });
-}, [addNotification, toastTemplate]);
+}, [addNotification]);
 
   // Template-specific toast functions
   const showTemplateToast = useCallback((templateId: string, customMessage?: string, customActions?: Array<{label: string, action: () => void}>) => {
@@ -2022,21 +2021,13 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
       if (template) {
         addNotification({
           type: template.type || 'info',
-          title: template.title || 'Notification',
-          message: customMessage || template.message || 'Template notification',
-          read: false,
-          action: template.actions?.enabled && template.actions.buttons?.length > 0 ? {
-            label: template.actions.buttons[0].label,
-            callback: () => {
-              console.log(`Template action: ${template.actions.buttons[0].action}`);
-            }
-          } : undefined
+          message: customMessage || template.message || 'Template notification'
         });
         return;
       }
 
       // Fallback
-      showToast(customMessage || 'Template notification, ','info','Notification');
+      showToast(customMessage || 'Template notification', 'info', 'Notification');
     })();
   }, [addNotification, showToast]);
 
