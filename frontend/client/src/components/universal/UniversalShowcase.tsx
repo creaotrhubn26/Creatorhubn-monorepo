@@ -1714,29 +1714,29 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
 
   // Profession Config Functions - Properly implemented
   const terminology = useMemo(() => {
-    if (!professionConfig) return {};
-    return professionConfig.terminology || {};
-  }, [professionConfig]);
+    if (!baseConfig) return {};
+    return (baseConfig as any).terminology || {};
+  }, [baseConfig]);
 
   const professionSettings = useMemo(() => {
-    if (!professionConfig) return {};
-    return professionConfig.settings || {};
-  }, [professionConfig]);
+    if (!baseConfig) return {};
+    return (baseConfig as any).settings || {};
+  }, [baseConfig]);
 
   const workflows = useMemo(() => {
-    if (!professionConfig) return {};
-    return professionConfig.workflows || {};
-  }, [professionConfig]);
+    if (!baseConfig) return {};
+    return (baseConfig as any).workflows || {};
+  }, [baseConfig]);
 
   const ui = useMemo(() => {
-    if (!professionConfig) return {};
-    return professionConfig.ui || {};
-  }, [professionConfig]);
+    if (!baseConfig) return {};
+    return (baseConfig as any).ui || {};
+  }, [baseConfig]);
 
   const integrations = useMemo(() => {
-    if (!professionConfig) return {};
-    return professionConfig.integrations || {};
-  }, [professionConfig]);
+    if (!baseConfig) return {};
+    return (baseConfig as any).integrations || {};
+  }, [baseConfig]);
 
   const getTerm = useCallback((key: string) => {
     return terminology[key] || key;
@@ -3893,7 +3893,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
           if (isConnected) {
             emitEvent('item_selected', {
               itemId,
-              userId: user?.d,
+              userId: (user as any)?.id,
               userName: (user as any)?.firstName || 'User',
               action: 'deselected'
       });
@@ -3925,7 +3925,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
           if (isConnected) {
             emitEvent('item_selected', {
               itemId,
-              userId: user?.d,
+              userId: (user as any)?.id,
               userName: (user as any)?.firstName || 'User',
               action: 'selected'
       });
@@ -10492,11 +10492,10 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
         profession={profession}
         accentColor={accentColor}
         onClose={() => setComparisonViewOpen(false)}
-        onPrefer={(itemId) => {
+        onPrefer={(_itemId) => {
           addNotification({
             message: 'Item marked as preferred!',
-            type: 'success',
-            duration: 2000 });
+            type: 'success' });
         }}
         onDownload={handleDownload}
         favorites={favorites}
@@ -10572,11 +10571,10 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
         items={selectedItemsForCommunityShare}
         userId={effectiveUserId}
         profession={profession}
-        onShareSuccess={(messageId, channelId) => {
+        onShareSuccess={(_messageId, _channelId) => {
           addNotification({
             type: 'success',
-            title: 'Delt til Community',
-            message: 'Innholdet ditt er nå delt med community!',
+            message: 'Innholdet ditt er nå delt med community!'
           });
         }}
       />
