@@ -5254,7 +5254,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                     onProjectSelected={async (project: any) => {
                       setShareForm(prev => ({ ...prev, projectId: project.id }));
                     }}
-                    profession={profession}
+                    profession={profession as 'photographer' | 'videographer' | 'music_producer' | 'vendor'}
                   />
                 </Paper>
               </Box>
