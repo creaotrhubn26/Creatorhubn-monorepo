@@ -132,7 +132,7 @@ export default function BecomeMentorDialog({
             <EmojiEvents color="warning" />
           </ListItemIcon>
           <ListItemText
-            primary="Mentor-badge i community"
+            primary="🎓 Mentor-badge i community"
             secondary="Synlig ekspertise og økt troverdighet"
           />
         </ListItem>

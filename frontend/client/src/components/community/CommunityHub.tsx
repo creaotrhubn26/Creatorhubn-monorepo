@@ -43,35 +43,61 @@ export default function CommunityHub({ userId, userEmail, profession }: Communit
 
       if (response.success) {
         if (!response.hasAccess) {
-          // User not yet onboarded to community
+          // User not yet onboarded to community - show onboarding
           setShowLanding(true);
           setHasCompletedOnboarding(false);
         } else if (!response.completed) {
-          // User has access but hasn't completed onboarding
+          // User has access but hasn't completed onboarding - show onboarding
           setShowLanding(true);
           setHasCompletedOnboarding(false);
         } else {
-          // User has completed onboarding
+          // User has completed onboarding - show community page
           setShowLanding(false);
           setHasCompletedOnboarding(true);
         }
+      } else {
+        // API returned success: false - show onboarding to be safe
+        console.warn('Onboarding status check returned success: false');
+        setShowLanding(true);
+        setHasCompletedOnboarding(false);
       }
     } catch (error) {
       console.error('Error checking onboarding status: ', error);
-      // Default to showing community page on error
-      setShowLanding(false);
-      setHasCompletedOnboarding(true);
+      // On error, show onboarding to be safe (better than blocking access)
+      // This ensures users can still complete onboarding even if status check fails
+      setShowLanding(true);
+      setHasCompletedOnboarding(false);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleOnboardingComplete = () => {
-    setHasCompletedOnboarding(true);
-    setShowLanding(false);
+  const handleOnboardingComplete = async () => {
+    // Re-check status to ensure it's properly saved
+    try {
+      await checkOnboardingStatus();
+    } catch (error) {
+      console.error('Error re-checking onboarding status after completion: ', error);
+      // Still update local state even if re-check fails
+      setHasCompletedOnboarding(true);
+      setShowLanding(false);
+    }
   };
 
-  const handleSkipOnboarding = () => {
+  const handleSkipOnboarding = async () => {
+    // When skipping, we should still mark as complete in backend if possible
+    try {
+      await apiRequest('/api/community/onboarding/complete', {
+        method: 'POST',
+        body: JSON.stringify({
+          userId,
+          profession,
+        }),
+      });
+    } catch (error) {
+      console.error('Error marking onboarding as skipped: ', error);
+      // Continue anyway
+    }
     setShowLanding(false);
     setHasCompletedOnboarding(true);
   };

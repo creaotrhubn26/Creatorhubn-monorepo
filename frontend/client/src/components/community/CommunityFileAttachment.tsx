@@ -89,32 +89,13 @@ export const CommunityFileAttachment: React.FC<CommunityFileAttachmentProps> = (
       )}
 
       {/* Attach File Button */}
-      <Tooltip title="Legg til vedlegg">
+      <Tooltip title="Legg ved fil (Google Drive)">
         <IconButton
           size="small"
           onClick={() => setUploadDialogOpen(true)}
           disabled={disabled || attachedFiles.length >= 5}
-          sx={{
-            color: 'rgba(255, 255, 255, 0.7)',
-            minWidth: { xs: '44px', sm: '48px', md: '52px', lg: '56px' },
-            minHeight: { xs: '44px', sm: '48px', md: '52px', lg: '56px' },
-            background: 'rgba(245, 158, 11, 0.1)',
-            border: '1px solid rgba(245, 158, 11, 0.2)',
-            borderRadius: '10px',
-            '&:hover': {
-              color: '#f59e0b',
-              background: 'rgba(245, 158, 11, 0.2)',
-              borderColor: 'rgba(245, 158, 11, 0.4)',
-              transform: 'scale(1.05)',
-            },
-            '&:focus': {
-              outline: '3px solid #f59e0b',
-              outlineOffset: '2px',
-            },
-            transition: 'all 0.2s ease',
-          }}
         >
-          <AttachFile sx={{ fontSize: { xs: 20, sm: 22, md: 24, lg: 26, xl: 28 } }} />
+          <AttachFile fontSize="small" />
         </IconButton>
       </Tooltip>
 

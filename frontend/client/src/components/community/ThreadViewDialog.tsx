@@ -99,7 +99,7 @@ export default function ThreadViewDialog({
         }),
       });
 
-      setReplyContent('');
+      setReplyContent(', ');
       await fetchThread(); // Refresh thread
 
       // Scroll to bottom to show new reply
@@ -121,95 +121,31 @@ export default function ThreadViewDialog({
     <Paper
       key={message.id}
       sx={{
-        p: { xs: 2, sm: 2.5, md: 3 },
-        mb: { xs: 1.5, sm: 2, md: 2.5 },
-        background: isParent 
-          ? 'linear-gradient(135deg, rgba(245, 158, 11, 0.15) 0%, rgba(234, 88, 12, 0.08) 100%)'
-          : 'rgba(26, 26, 46, 0.6)',
-        border: isParent 
-          ? '2px solid rgba(245, 158, 11, 0.4)' 
-          : '1px solid rgba(245, 158, 11, 0.2)',
-        borderRadius: '16px',
-        backdropFilter: 'blur(10px)',
-        boxShadow: isParent 
-          ? '0 4px 16px rgba(245, 158, 11, 0.2)' 
-          : '0 2px 8px rgba(0, 0, 0, 0.2)',
-        transition: 'all 0.2s ease',
-        '&:hover': {
-          borderColor: 'rgba(245, 158, 11, 0.5)',
-          boxShadow: isParent 
-            ? '0 6px 20px rgba(245, 158, 11, 0.3)' 
-            : '0 4px 12px rgba(0, 0, 0, 0.3)',
-        },
-      }}
+        p: 2,
+        mb: 2,
+        bgcolor: isParent ? 'primary.light' : 'background.paper',
+        border: isParent ? 2 : 1,
+        borderColor: isParent ? 'primary.main' : 'divider'}}
     >
-      <Box sx={{ display: 'flex', gap: { xs: 1.5, sm: 2, md: 2.5 } }}>
-        <Avatar 
-          src={message.user_avatar} 
-          sx={{ 
-            width: { xs: 44, sm: 48, md: 52 },
-            height: { xs: 44, sm: 48, md: 52 },
-            border: '2px solid rgba(245, 158, 11, 0.4)',
-            boxShadow: '0 4px 12px rgba(245, 158, 11, 0.3)',
-            background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.3) 0%, rgba(234, 88, 12, 0.2) 100%)',
-          }}
-        >
+      <Box sx={{ display: 'flex', gap: 2 }}>
+        <Avatar src={message.user_avatar} sx={{ width: 40, height: 40 }}>
           {message.user_name?.charAt(0).toUpperCase()}
         </Avatar>
-        <Box sx={{ flex: 1, minWidth: 0 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 1, sm: 1.5 }, mb: { xs: 0.75, sm: 1 }, flexWrap: 'wrap' }}>
-            <Typography 
-              variant="subtitle2" 
-              fontWeight={700}
-              sx={{
-                color: isParent ? '#f59e0b' : '#fff',
-                fontSize: { xs: '0.95rem', sm: '1rem', md: '1.1rem' },
-              }}
-            >
+        <Box sx={{ flex: 1 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+            <Typography variant="subtitle2" fontWeight={600}>
               {message.user_name}
             </Typography>
             {isParent && (
-              <Box
-                sx={{
-                  px: { xs: 1, sm: 1.5 },
-                  py: 0.5,
-                  borderRadius: '8px',
-                  background: 'rgba(245, 158, 11, 0.2)',
-                  border: '1px solid rgba(245, 158, 11, 0.4)',
-                }}
-              >
-                <Typography 
-                  variant="caption" 
-                  sx={{ 
-                    color: '#f59e0b', 
-                    fontWeight: 600,
-                    fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.8rem' },
-                  }}
-                >
-                  Original melding
-                </Typography>
-              </Box>
+              <Typography variant="caption" sx={{ color: 'primary.main', fontWeight: 600}}>
+                Original melding
+              </Typography>
             )}
-            <Typography 
-              variant="caption" 
-              sx={{ 
-                color: 'rgba(255, 255, 255, 0.6)',
-                fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.8rem' },
-              }}
-            >
+            <Typography variant="caption" color="text.secondary">
               {formatDistanceToNow(new Date(message.created_at), { addSuffix: true, locale: nb })}
             </Typography>
           </Box>
-          <Typography 
-            variant="body1" 
-            sx={{ 
-              whiteSpace: 'pre-wrap',
-              color: 'rgba(255, 255, 255, 0.9)',
-              lineHeight: 1.7,
-              fontSize: { xs: '0.9rem', sm: '0.95rem', md: '1rem' },
-              wordBreak: 'break-word',
-            }}
-          >
+          <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
             {message.content}
           </Typography>
         </Box>
@@ -218,174 +154,49 @@ export default function ThreadViewDialog({
   );
 
   return (
-    <Dialog 
-      open={open} 
-      onClose={onClose} 
-      maxWidth="md" 
-      fullWidth
-      PaperProps={{
-        sx: {
-          bgcolor: '#1a1a2e',
-          backgroundImage: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)',
-          border: '1px solid rgba(245, 158, 11, 0.3)',
-          borderRadius: 3,
-          boxShadow: '0 20px 60px rgba(0, 0, 0, 0.5), 0 0 40px rgba(245, 158, 11, 0.1)',
-          color: '#fff',
-          overflow: 'hidden',
-        },
-      }}
-    >
-      <DialogTitle
-        sx={{
-          background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.15) 0%, rgba(234, 88, 12, 0.08) 100%)',
-          borderBottom: '1px solid rgba(245, 158, 11, 0.2)',
-          p: { xs: 2, sm: 2.5, md: 3 },
-        }}
-      >
+    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+      <DialogTitle>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 1, sm: 1.5, md: 2 } }}>
-            <Box
-              sx={{
-                width: { xs: 40, sm: 44, md: 48 },
-                height: { xs: 40, sm: 44, md: 48 },
-                borderRadius: '10px',
-                background: 'linear-gradient(135deg, #f59e0b 0%, #ea580c 100%)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                boxShadow: '0 4px 12px rgba(245, 158, 11, 0.4)',
-              }}
-            >
-              <ReplyIcon sx={{ color: '#fff', fontSize: { xs: 20, sm: 22, md: 24 } }} />
-            </Box>
-            <Typography 
-              variant="h6" 
-              sx={{ 
-                color: '#fff', 
-                fontWeight: 700,
-                fontSize: { xs: '1.1rem', sm: '1.25rem', md: '1.5rem' },
-              }}
-            >
-              Tråd
-            </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <ReplyIcon />
+            <Typography variant="h6">Tråd</Typography>
           </Box>
-          <IconButton 
-            onClick={onClose} 
-            size="small"
-            sx={{
-              color: 'rgba(255, 255, 255, 0.7)',
-              '&:hover': {
-                color: '#f59e0b',
-                background: 'rgba(245, 158, 11, 0.1)',
-              },
-            }}
-          >
+          <IconButton onClick={onClose} size="small">
             <Close />
           </IconButton>
         </Box>
       </DialogTitle>
 
-      <DialogContent 
-        dividers
-        sx={{
-          bgcolor: 'rgba(18, 18, 31, 0.5)',
-          borderColor: 'rgba(245, 158, 11, 0.2)',
-          p: { xs: 2, sm: 2.5, md: 3 },
-          '&::-webkit-scrollbar': {
-            width: '10px',
-          },
-          '&::-webkit-scrollbar-track': {
-            background: 'rgba(26, 26, 46, 0.3)',
-            borderRadius: '10px',
-          },
-          '&::-webkit-scrollbar-thumb': {
-            background: 'rgba(245, 158, 11, 0.3)',
-            borderRadius: '10px',
-            '&:hover': {
-              background: 'rgba(245, 158, 11, 0.5)',
-            },
-          },
-        }}
-      >
+      <DialogContent dividers>
         {loading ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-            <CircularProgress sx={{ color: '#f59e0b' }} />
+            <CircularProgress />
           </Box>
         ) : (
           <>
             {/* Parent Message */}
             {parentMessage && renderMessage(parentMessage, true)}
 
-            <Divider 
-              sx={{ 
-                my: { xs: 2, sm: 2.5, md: 3 },
-                borderColor: 'rgba(245, 158, 11, 0.2)',
-              }}
-            >
-              <Box
-                sx={{
-                  px: { xs: 1.5, sm: 2 },
-                  py: 0.5,
-                  borderRadius: '8px',
-                  background: 'rgba(245, 158, 11, 0.1)',
-                  border: '1px solid rgba(245, 158, 11, 0.2)',
-                }}
-              >
-                <Typography 
-                  variant="caption" 
-                  sx={{ 
-                    color: '#f59e0b',
-                    fontWeight: 600,
-                    fontSize: { xs: '0.75rem', sm: '0.8rem', md: '0.875rem' },
-                  }}
-                >
-                  {replies.length} {replies.length === 1 ? 'svar' : 'svar'}
-                </Typography>
-              </Box>
+            <Divider sx={{ my: 2 }}>
+              <Typography variant="caption" color="text.secondary">
+                {replies.length} {replies.length === 1 ? 'svar' : 'svar'}
+              </Typography>
             </Divider>
 
             {/* Replies - Virtualized for performance */}
             {replies.length === 0 ? (
-              <Box 
-                sx={{ 
-                  textAlign: 'center', 
-                  py: { xs: 6, sm: 8, md: 10 },
-                  px: 2,
-                }}
-              >
-                <Box
-                  sx={{
-                    width: { xs: 64, sm: 80, md: 96 },
-                    height: { xs: 64, sm: 80, md: 96 },
-                    borderRadius: '50%',
-                    background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.2) 0%, rgba(234, 88, 12, 0.1) 100%)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    mx: 'auto',
-                    mb: { xs: 2, sm: 3 },
-                    boxShadow: '0 8px 32px rgba(245, 158, 11, 0.2)',
-                  }}
-                >
-                  <ReplyIcon sx={{ fontSize: { xs: 32, sm: 40, md: 48 }, color: '#f59e0b' }} />
-                </Box>
-                <Typography 
-                  variant="body1" 
-                  sx={{ 
-                    color: 'rgba(255, 255, 255, 0.7)',
-                    fontSize: { xs: '0.95rem', sm: '1rem', md: '1.125rem' },
-                  }}
-                >
+              <Box sx={{ textAlign: 'center', py: 4 }}>
+                <Typography variant="body2" color="text.secondary">
                   Ingen svar ennå. Vær den første til å svare!
                 </Typography>
               </Box>
             ) : (
-              <Box sx={{ height: { xs: 300, sm: 400, md: 500 }, minHeight: { xs: 300, sm: 400, md: 500 } }}>
+              <Box sx={{ height: 400, minHeight: 400 }}>
                 <Virtuoso
                   ref={virtuosoRef}
                   data={replies}
                   itemContent={(index, reply) => (
-                    <Box key={reply.id} sx={{ mb: { xs: 1.5, sm: 2 } }}>
+                    <Box key={reply.id} sx={{ mb: 1 }}>
                       {renderMessage(reply, false)}
                     </Box>
                   )}
@@ -399,13 +210,7 @@ export default function ThreadViewDialog({
         )}
       </DialogContent>
 
-      <DialogActions 
-        sx={{ 
-          p: { xs: 2, sm: 2.5, md: 3 },
-          background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.08) 0%, transparent 100%)',
-          borderTop: '1px solid rgba(245, 158, 11, 0.2)',
-        }}
-      >
+      <DialogActions sx={{ p: 2 }}>
         <TextField
           fullWidth
           multiline
@@ -420,59 +225,15 @@ export default function ThreadViewDialog({
             }
           }}
           disabled={sending}
-          sx={{
-            '& .MuiOutlinedInput-root': {
-              background: 'rgba(26, 26, 46, 0.6)',
-              border: '1px solid rgba(245, 158, 11, 0.3)',
-              borderRadius: '12px',
-              color: '#fff',
-              '& fieldset': {
-                borderColor: 'rgba(245, 158, 11, 0.3)',
-              },
-              '&:hover fieldset': {
-                borderColor: 'rgba(245, 158, 11, 0.5)',
-              },
-              '&.Mui-focused fieldset': {
-                borderColor: '#f59e0b',
-                borderWidth: '2px',
-              },
-            },
-            '& .MuiInputBase-input': {
-              color: '#fff',
-              fontSize: { xs: '14px', sm: '15px', md: '16px' },
-              '&::placeholder': {
-                color: 'rgba(255, 255, 255, 0.4)',
-                opacity: 1,
-              },
-            },
-          }}
           InputProps={{
             endAdornment: (
               <InputAdornment position="end">
                 <IconButton
                   onClick={handleSendReply}
                   disabled={!replyContent.trim() || sending}
-                  sx={{
-                    color: replyContent.trim() && !sending ? '#f59e0b' : 'rgba(255, 255, 255, 0.4)',
-                    background: replyContent.trim() && !sending 
-                      ? 'rgba(245, 158, 11, 0.1)' 
-                      : 'transparent',
-                    '&:hover': {
-                      background: replyContent.trim() && !sending 
-                        ? 'rgba(245, 158, 11, 0.2)' 
-                        : 'rgba(255, 255, 255, 0.05)',
-                      color: replyContent.trim() && !sending ? '#f59e0b' : 'rgba(255, 255, 255, 0.6)',
-                    },
-                    '&.Mui-disabled': {
-                      color: 'rgba(255, 255, 255, 0.2)',
-                    },
-                  }}
+                  color="primary"
                 >
-                  {sending ? (
-                    <CircularProgress size={24} sx={{ color: '#f59e0b' }} />
-                  ) : (
-                    <Send />
-                  )}
+                  {sending ? <CircularProgress size={24} /> : <Send />}
                 </IconButton>
               </InputAdornment>
             )}}

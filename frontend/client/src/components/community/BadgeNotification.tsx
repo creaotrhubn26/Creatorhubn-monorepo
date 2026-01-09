@@ -6,7 +6,7 @@
 
 import React, { forwardRef } from 'react';
 import { Box, Typography, Chip, IconButton, Paper } from '@mui/material';
-import { EmojiEvents, Close, Celebration } from '@mui/icons-material';
+import { EmojiEvents, Close } from '@mui/icons-material';
 import { useSnackbar, SnackbarKey, SnackbarContent } from 'notistack';
 
 interface BadgeData {
@@ -42,14 +42,8 @@ const BadgeNotificationContent = forwardRef<HTMLDivElement, BadgeNotificationCon
           <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
             <EmojiEvents sx={{ color: '#FFD700', fontSize: 32 }} />
             <Box sx={{ flex: 1 }}>
-              <Typography
-                variant="subtitle1"
-                fontWeight={600}
-                gutterBottom
-                sx={{ display: 'flex', alignItems: 'center', gap: 1 }}
-              >
-                <Celebration sx={{ color: '#f59e0b', fontSize: 20 }} />
-                Ny Badge Opptjent!
+              <Typography variant="subtitle1" fontWeight={600} gutterBottom>
+                🎉 Ny Badge Opptjent!
               </Typography>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
                 <Chip

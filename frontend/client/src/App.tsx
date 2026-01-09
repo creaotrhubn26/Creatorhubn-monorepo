@@ -22,7 +22,7 @@ type ValidProfession = 'photographer' | 'videographer' | 'music_producer' | 'ven
 // Valid profession types for file manager (subset of ValidProfession)
 type FileManagerProfession = 'photographer' | 'videographer' | 'music_producer' | 'designer';
 import { ThemeProvider } from '@mui/material/styles';
-import { CssBaseline, Box } from '@mui/material';
+import { CssBaseline, Box, Typography } from '@mui/material';
 import { creatorHubTheme } from './theme/creatorHubTheme';
 import { LanguageProvider } from '@/components/language-provider';
 import { DemoModeProvider } from './contexts/DemoModeContext';
@@ -139,6 +139,29 @@ import IntegrationTest from './integration/IntegrationTest';
 // Wrapper components for route compatibility
 const AdminDashboardWrapper = (props: any) => <AdminDashboard {...props} />;
 const CompleteDeploymentManagerWrapper = (props: any) => <CompleteDeploymentManager {...props} />;
+
+// Community Landing Page Wrapper - gets userId and profession from hooks
+const CommunityLandingPageWrapper = () => {
+  try {
+    const { user } = useAuth();
+    const { getUserProfession } = useDynamicProfessions();
+    const userId = user?.id || 'guest';
+    const profession = getUserProfession() || 'photographer';
+    return <CommunityLandingPage userId={userId} profession={profession} />;
+  } catch (error) {
+    console.error('Error in CommunityLandingPageWrapper:', error);
+    return (
+      <Box sx={{ p: 4, textAlign: 'center' }}>
+        <Typography variant="h6" color="error">
+          Feil ved lasting av community-siden
+        </Typography>
+        <Typography variant="body2" sx={{ mt: 2 }}>
+          {error instanceof Error ? error.message : 'Ukjent feil'}
+        </Typography>
+      </Box>
+    );
+  }
+};
 
 // Smart Dynamic Dashboard Route Component
 const SmartDashboardRoute = ({ profession }: { profession?: ValidProfession }) => {
@@ -301,7 +324,7 @@ function App() {
                     component={() => <SmartDashboardRoute profession="photographer" />}
                   />
                   <Route path="/academy" component={AcademyLandingPage as React.ComponentType<any>} />
-                  <Route path="/community" component={CommunityLandingPage as React.ComponentType<any>} />
+                  <Route path="/community" component={CommunityLandingPageWrapper} />
                   <Route path="/help" component={() => <SmartDashboardRoute />} />
                   <Route
                     path="/vendor-dashboard"
