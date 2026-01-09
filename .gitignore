@@ -62,3 +62,6 @@ Frameworks/
 *.egg-info/
 .venv/
 venv/
+*.env.bak
+**/.env.bak
+frontend/scripts/setup-sentry.cjs
