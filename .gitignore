@@ -64,4 +64,6 @@ Frameworks/
 venv/
 *.env.bak
 **/.env.bak
+*.env.backup
+**/.env.backup
 frontend/scripts/setup-sentry.cjs
