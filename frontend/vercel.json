@@ -5,7 +5,17 @@
   "framework": "vite",
   "installCommand": "npm install --legacy-peer-deps",
   "devCommand": "npm run dev",
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://wedflow-api.onrender.com/api/:path*"
+    }
+  ],
   "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "https://wedflow-api.onrender.com/api/$1"
+    },
     {
       "src": "/assets/(.*)",
       "dest": "/assets/$1"
@@ -24,12 +34,12 @@
     }
   ],
   "env": {
-    "VITE_API_URL": "https://backend-djm5.onrender.com",
+    "VITE_API_URL": "https://wedflow-api.onrender.com",
     "VITE_VAPID_PUBLIC_KEY": "BN_3cOcqCG21vOe5QCvuMeJtdtS43Fc4ZnHbs8GXjY_FOjqWVuPy4gBBqht1cBoTuCenp22ETqDZN8hOY01DnzE"
   },
   "build": {
     "env": {
-      "VITE_API_URL": "https://backend-djm5.onrender.com",
+      "VITE_API_URL": "https://wedflow-api.onrender.com",
       "VITE_VAPID_PUBLIC_KEY": "BN_3cOcqCG21vOe5QCvuMeJtdtS43Fc4ZnHbs8GXjY_FOjqWVuPy4gBBqht1cBoTuCenp22ETqDZN8hOY01DnzE"
     }
   }
