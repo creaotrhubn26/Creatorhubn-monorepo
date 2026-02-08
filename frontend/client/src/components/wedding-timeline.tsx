@@ -32,6 +32,8 @@ import {
   Switch,
   FormControlLabel,
   IconButton,
+  Tooltip,
+  SvgIcon,
   Card as MuiCard, // eslint-disable-line @typescript-eslint/no-unused-vars -- Used throughout for consistent wedding timeline card styling
 } from '@mui/material';
 import {
@@ -51,7 +53,45 @@ import {
   Lightbulb,
   Close,
   Palette as DesignIcon,
+  Edit,
+  Delete,
+  FileCopy,
+  Search,
+  GetApp,
+  Print,
+  DragIndicator,
+  AccessTime,
+  Event as EventIcon,
+  CalendarToday,
+  PhotoCamera,
+  Videocam,
+  Favorite,
 } from '@mui/icons-material';
+// Feather Icons for modern, clean UI
+import {
+  Clock as FeatherClock,
+  Camera as FeatherCamera,
+  Video as FeatherVideo,
+  MapPin as FeatherMapPin,
+  Heart as FeatherHeart,
+  Users as FeatherUsers,
+  Bell as FeatherBell,
+  MessageCircle as FeatherMessageCircle,
+  Share2 as FeatherShare,
+  RefreshCw as FeatherSync,
+  AlertTriangle as FeatherWarning,
+  CheckCircle as FeatherCheckCircle,
+  Plus as FeatherPlus,
+  Edit2 as FeatherEdit,
+  Trash2 as FeatherTrash,
+  Copy as FeatherCopy,
+  Search as FeatherSearch,
+  Download as FeatherDownload,
+  Printer as FeatherPrinter,
+  Calendar as FeatherCalendar,
+  Star as FeatherStar,
+  Award as FeatherAward,
+} from 'react-feather';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import EmailDesigner from '@/components/EmailDesigner/EmailDesigner';
@@ -145,6 +185,45 @@ interface WeddingTimelineProps {
 };
 }
 
+// Custom Bride & Groom SVG Icon - Stylized
+const BrideGroomIcon = (props: any) => (
+  <SvgIcon {...props} viewBox="0 0 64 64">
+    {/* Groom */}
+    <circle cx="20" cy="14" r="5" fill="currentColor" />
+    <path d="M15 20c0-2.5 2.5-4 5-4s5 1.5 5 4v12c0 1-0.5 2-1.5 2h-7c-1 0-1.5-1-1.5-2V20z" 
+          fill="currentColor" />
+    <rect x="17" y="9" width="6" height="3" rx="1.5" fill="currentColor" /> {/* Top hat */}
+    <rect x="15" y="11" width="10" height="1.5" rx="0.5" fill="currentColor" /> {/* Hat brim */}
+    <path d="M18.5 18h3v2h-3z" fill="white" opacity="0.3" /> {/* Bow tie */}
+    
+    {/* Bride */}
+    <circle cx="44" cy="14" r="5" fill="currentColor" />
+    <path d="M39 20c0-2.5 2.5-4 5-4s5 1.5 5 4v12c0 1-0.5 2-1.5 2h-7c-1 0-1.5-1-1.5-2V20z" 
+          fill="currentColor" />
+    {/* Elegant flowing veil */}
+    <path d="M36 12 Q44 6 52 12 L50 16 Q44 10 38 16 Z" 
+          fill="currentColor" opacity="0.5" />
+    <ellipse cx="44" cy="9" rx="4" ry="2" fill="currentColor" opacity="0.6" /> {/* Hair bun */}
+    {/* Dress flare */}
+    <path d="M37 32 L39 34 Q44 36 49 34 L51 32 Q44 34 37 32 Z" 
+          fill="currentColor" opacity="0.7" />
+    
+    {/* Decorative heart */}
+    <path d="M32 24c-0.8-1.5-2.2-2.5-4-2.5-2.5 0-4 2-4 4 0 3.5 4 6.5 8 10 4-3.5 8-6.5 8-10 0-2-1.5-4-4-4-1.8 0-3.2 1-4 2.5z" 
+          fill="currentColor" opacity="0.85" 
+          transform="translate(0, -2) scale(0.5)" 
+          transform-origin="32 24" />
+    
+    {/* Rings */}
+    <g transform="translate(28, 38)">
+      <circle cx="0" cy="0" r="3" fill="none" stroke="currentColor" strokeWidth="1.2" opacity="0.9" />
+      <circle cx="6" cy="0" r="3" fill="none" stroke="currentColor" strokeWidth="1.2" opacity="0.9" />
+      <circle cx="0" cy="0" r="1" fill="currentColor" opacity="0.9" /> {/* Diamond */}
+      <circle cx="6" cy="0" r="1" fill="currentColor" opacity="0.9" /> {/* Diamond */}
+    </g>
+  </SvgIcon>
+);
+
 export default function WeddingTimeline({
   weddingId,
   culturalType = 'norsk',
@@ -169,6 +248,10 @@ export default function WeddingTimeline({
   };
   const professionLabel = professionLabels[profession] || 'fotografen';
   // Toast functionality removed for Material UI compliance
+  
+  // Delete event dialog state
+  const [deleteEventDialogOpen, setDeleteEventDialogOpen] = useState(false);
+  const [deleteEventId, setDeleteEventId] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
   // Glassmorphism effect for professional design
@@ -185,6 +268,22 @@ export default function WeddingTimeline({
   const [openAddPersonDialog, setOpenAddPersonDialog] = useState(false);
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const [clientUrl, setClientUrl] = useState('');
+  
+  // New feature states
+  const [searchQuery, setSearchQuery] = useState('');
+  const [eventDialogOpen, setEventDialogOpen] = useState(false);
+  const [selectedEvent, setSelectedEvent] = useState<TimelineEvent | null>(null);
+  const [newEvent, setNewEvent] = useState<Partial<TimelineEvent>>({
+    eventId: '',
+    time: '',
+    activity: '',
+    location: '',
+    creatorType: profession || 'Fotograf',
+    hasPhoto: true,
+    hasVideo: false,
+    sortOrder: 1,
+    persons_involved: [],
+  });
 
   // Generate client access URL for sharing with wedding couple
   const generateClientAccess = useMutation({
@@ -302,6 +401,7 @@ export default function WeddingTimeline({
   };
 
   // Kulturspesifikke bryllupskjøreplaner - Use culturalType from props
+  // Keys synced with wedflow TraditionsScreen via traditions bridge
   const getCulturalTimelineData = (): TimelineEvent[] => {
     switch (culturalType) {
       case 'sikh':
@@ -309,18 +409,48 @@ export default function WeddingTimeline({
       case 'indisk':
         return getIndianWeddingTimeline();
       case 'pakistansk':
-        return getPakistaniWeddingTimeline();
+      case 'arabisk':
+      case 'muslimsk':
+      case 'somalisk':
+      case 'libanesisk':
+        return getPakistaniWeddingTimeline(); // Islamic traditions share similar structure
+      case 'tyrkisk':
+      case 'iransk':
+        return getPakistaniWeddingTimeline(); // Similar multi-day structure
+      case 'etiopisk':
+      case 'nigeriansk':
+      case 'filipino':
+        return getNorwegianWeddingTimeline(); // Adaptable single-day base
+      case 'kinesisk':
+      case 'koreansk':
+      case 'thai':
+        return getIndianWeddingTimeline(); // Asian traditions share ceremony structure
+      case 'norsk':
+      case 'annet':
       default:
         return getNorwegianWeddingTimeline();
     }
   };
   
-  // Cultural timeline display label
+  // Cultural timeline display label — synced with wedflow traditions keys
   const culturalLabels: Record<string, string> = {
     norsk: '',
     sikh: ' (Sikh-tradisjon)',
-    indisk: ' (Indisk-tradisjon)',
+    indisk: ' (Indisk/Hindu-tradisjon)',
     pakistansk: ' (Pakistansk-tradisjon)',
+    tyrkisk: ' (Tyrkisk-tradisjon)',
+    arabisk: ' (Arabisk-tradisjon)',
+    somalisk: ' (Somalisk-tradisjon)',
+    etiopisk: ' (Etiopisk-tradisjon)',
+    nigeriansk: ' (Nigeriansk-tradisjon)',
+    muslimsk: ' (Muslimsk-tradisjon)',
+    libanesisk: ' (Libanesisk-tradisjon)',
+    filipino: ' (Filipino-tradisjon)',
+    kinesisk: ' (Kinesisk-tradisjon)',
+    koreansk: ' (Koreansk-tradisjon)',
+    thai: ' (Thai-tradisjon)',
+    iransk: ' (Iransk/Persisk-tradisjon)',
+    annet: ' (Tilpasset)',
   };
   const culturalLabel = culturalLabels[culturalType] || '';
 
@@ -1187,16 +1317,177 @@ export default function WeddingTimeline({
     },
 });
 
+  // Event CRUD mutations
+  const addEventMutation = useMutation({
+    mutationFn: async (eventData: Partial<TimelineEvent>) =>
+      apiRequest(`/api/wedding-timeline/${weddingId}/events`, {
+        method: 'POST',
+        body: JSON.stringify(eventData),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/wedding-timeline'],});
+      setEventDialogOpen(false);
+      resetEventForm();
+      enqueueSnackbar('Event lagt til!', { variant: 'success' });
+    },
+    onError: () => {
+      enqueueSnackbar('Kunne ikke legge til event', { variant: 'error' });
+    },
+  });
+
+  const updateEventMutation = useMutation({
+    mutationFn: async (eventData: TimelineEvent) =>
+      apiRequest(`/api/wedding-timeline/${weddingId}/events/${eventData.id}`, {
+        method: 'PUT',
+        body: JSON.stringify(eventData),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/wedding-timeline'],});
+      setEventDialogOpen(false);
+      setSelectedEvent(null);
+      enqueueSnackbar('Event oppdatert!', { variant: 'success' });
+    },
+    onError: () => {
+      enqueueSnackbar('Kunne ikke oppdatere event', { variant: 'error' });
+    },
+  });
+
+  const deleteEventMutation = useMutation({
+    mutationFn: async (eventId: string) =>
+      apiRequest(`/api/wedding-timeline/${weddingId}/events/${eventId}`, {
+        method: 'DELETE',
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/wedding-timeline'],});
+      enqueueSnackbar('Event slettet!', { variant: 'success' });
+    },
+    onError: () => {
+      enqueueSnackbar('Kunne ikke slette event', { variant: 'error' });
+    },
+  });
+
+  const duplicateEventMutation = useMutation({
+    mutationFn: async (event: TimelineEvent) => {
+      const duplicate = {
+        ...event,
+        id: undefined,
+        eventId: `${event.eventId}-copy-${Date.now()}`,
+        activity: `${event.activity} (Kopi)`,
+        sortOrder: events.length + 1,
+      };
+      return apiRequest(`/api/wedding-timeline/${weddingId}/events`, {
+        method: 'POST',
+        body: JSON.stringify(duplicate),
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/wedding-timeline'],});
+      enqueueSnackbar('Event duplisert!', { variant: 'success' });
+    },
+  });
+
+  // Helper functions
+  const resetEventForm = () => {
+    setNewEvent({
+      eventId: '',
+      time: '',
+      activity: '',
+      location: '',
+      creatorType: profession || 'Fotograf',
+      hasPhoto: true,
+      hasVideo: false,
+      sortOrder: events.length + 1,
+      persons_involved: [],
+    });
+  };
+
+  const handleAddEvent = () => {
+    if (selectedEvent?.id) {
+      updateEventMutation.mutate({ ...newEvent, id: selectedEvent.id } as TimelineEvent);
+    } else {
+      addEventMutation.mutate(newEvent);
+    }
+  };
+
+  const handleEditEvent = (event: TimelineEvent) => {
+    setSelectedEvent(event);
+    setNewEvent(event);
+    setEventDialogOpen(true);
+  };
+
+  const handleDeleteEvent = (eventId: string) => {
+    setDeleteEventId(eventId);
+    setDeleteEventDialogOpen(true);
+  };
+
+  const confirmDeleteEvent = () => {
+    if (deleteEventId) {
+      deleteEventMutation.mutate(deleteEventId);
+    }
+    setDeleteEventDialogOpen(false);
+    setDeleteEventId(null);
+  };
+
+  const handleDuplicateEvent = (event: TimelineEvent) => {
+    duplicateEventMutation.mutate(event);
+  };
+
+  const handleExportPDF = () => {
+    enqueueSnackbar('PDF-eksport kommer snart!', { variant: 'info' });
+  };
+
+  const handlePrint = () => {
+    window.print();
+  };
+
+  const handleExportCalendar = () => {
+    const icsContent = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'PRODID:-//Creatorhubn//Wedding Timeline//NO',
+      ...events.map(event => {
+        const eventDate = timeline?.weddingDate || new Date().toISOString().split('T')[0];
+        const [hours, minutes] = event.time.split(':');
+        const startDateTime = `${eventDate.replace(/-/g, '')}T${hours}${minutes}00`;
+        return [
+          'BEGIN:VEVENT',
+          `DTSTART:${startDateTime}`,
+          `SUMMARY:${event.activity}`,
+          `LOCATION:${event.location || ''}`,
+          `UID:${event.id || event.eventId}@creatorhubn.com`,
+          'END:VEVENT'
+        ].join('\\r\\n');
+      }),
+      'END:VCALENDAR'
+    ].join('\\r\\n');
+    const blob = new Blob([icsContent], { type: 'text/calendar' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'bryllupstidslinje.ics';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    enqueueSnackbar('Kalender eksportert!', { variant: 'success' });
+  };
+
+  const filteredEvents = searchQuery
+    ? events.filter((event) =>
+        event.activity.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        event.location?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        event.time.includes(searchQuery)
+      )
+    : events;
+
   const Card = Paper;
 
+  // Modern card wrapper - no longer using old theming
   const MuiCard = ({ children, sx, ...props }: any) => (
     <Card
-      elevation={6}
+      elevation={0}
       sx={{
-        background: glassEffect,
-        backdropFilter: 'blur(20px)',
-        border: '1px solid rgba(25, 255, 255, 0.1)',
-        ...theming.getThemedCardSx(),
+        borderRadius: 3,
         ...sx
       }}
       {...props}>
@@ -1237,19 +1528,60 @@ export default function WeddingTimeline({
 }
   // Render functions for the 4 tabs
   const renderPersonsAndRoles = () => (
-    <MuiCard sx={{ mb: 3, background: glassEffect, backdropFilter: 'blur(20px)'}}>
-      <CardContent sx={theming.getThemedCardSx()}>
-        <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-          <People sx={{ color, mr: 2, fontSize: 2 }} />
-          <Typography variant="h5" sx={{ fontWeight: 700, color: theming.colors.primary }}>
+    <MuiCard
+      sx={{
+        mb: 3,
+        borderRadius: 3,
+        overflow: 'hidden',
+        boxShadow: '0 8px 32px rgba(102, 126, 234, 0.15)'
+      }}
+    >
+      <Box
+        sx={{
+          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+          p: 3,
+          color: 'white',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between'
+        }}
+      >
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Box
+            sx={{
+              width: 48,
+              height: 48,
+              borderRadius: 2,
+              bgcolor: 'rgba(255, 255, 255, 0.2)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              backdropFilter: 'blur(10px)'
+            }}
+          >
+            <People sx={{ fontSize: 28 }} />
+          </Box>
+          <Typography variant="h5" sx={{ fontWeight: 700 }}>
             Personer & Roller{timeline?.coupleName ? ` - ${timeline.coupleName}` : ''}
           </Typography>
-          <Box sx={{ ml: 'auto'}}>
-            <Button variant="contained" startIcon={<Add />} sx={{ bgcolor: color, ...theming.getThemedButtonSx() }}>
-              Legg til person
-            </Button>
-          </Box>
         </Box>
+        <Button
+          variant="contained"
+          startIcon={<Add />}
+          sx={{
+            bgcolor: 'rgba(255, 255, 255, 0.25)',
+            color: 'white',
+            backdropFilter: 'blur(10px)',
+            border: '1px solid rgba(255, 255, 255, 0.3)',
+            '&:hover': {
+              bgcolor: 'rgba(255, 255, 255, 0.35)'
+            }
+          }}
+        >
+          Legg til person
+        </Button>
+      </Box>
+      <CardContent sx={{ p: 3 }}>
         <Alert severity="info" sx={{ mb: 3 }}>
           <Typography variant="body2">
             <strong>VIP-prioritering: </strong> Når personer legges til i timeline opprettes
@@ -1257,41 +1589,116 @@ export default function WeddingTimeline({
             email.
           </Typography>
         </Alert>
-        {events.length === 0 ? (
+        
+        {/* Search Bar */}
+        <Box sx={{ mb: 3 }}>
+          <TextField
+            fullWidth
+            placeholder="Søk i tidslinje (aktivitet, lokasjon, tidspunkt)..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            InputProps={{
+              startAdornment: (
+                <Box sx={{ display: 'flex', alignItems: 'center', mr: 1 }}>
+                  <Search sx={{ color: 'action.active' }} />
+                </Box>
+              ),
+              endAdornment: searchQuery && (
+                <IconButton size="small" onClick={() => setSearchQuery('')}>
+                  <Close />
+                </IconButton>
+              )
+            }}
+            sx={{
+              '& .MuiOutlinedInput-root': {
+                borderRadius: 2,
+                bgcolor: 'rgba(102, 126, 234, 0.04)'
+              }
+            }}
+          />
+        </Box>
+
+        {filteredEvents.length === 0 ? (
           <Box sx={{ textAlign: 'center', py: 4 }}>
-            <Typography variant="h6" color="text.secondary" sx={{ ...{}, color: theming.colors.primary }}>
-              Ingen personer registrert ennå
+            <Typography variant="h6" color="text.secondary">
+              {searchQuery ? 'Ingen resultater funnet' : 'Ingen personer registrert ennå'}
             </Typography>
+            {searchQuery && (
+              <Button onClick={() => setSearchQuery('')} sx={{ mt: 2 }}>
+                Tøm søk
+              </Button>
+            )}
           </Box>
         ) : (
-          events
+          filteredEvents
             .sort((a: TimelineEvent, b: TimelineEvent) => a.sortOrder - b.sortOrder)
-            .map((event: TimelineEvent) => (
-              <MuiCard key={event.id || event.eventId} sx={{ mb: 2, bgcolor: '#fafafa' }}>
-                <CardContent sx={theming.getThemedCardSx()}>
+            .map((event: TimelineEvent, index: number) => (
+              <MuiCard
+                key={event.id || event.eventId || `event-${index}`}
+                sx={{
+                  mb: 2,
+                  bgcolor: '#fafafa',
+                  borderRadius: 2,
+                  boxShadow: '0 2px 8px rgba(0, 0, 0, 0.06)'
+                }}
+              >
+                <CardContent sx={{ p: 2 }}>
                   <Box
                     sx={{
                       display: 'flex',
                       justifyContent: 'space-between',
                       alignItems: 'center',
-                      mb: 2}}
+                      mb: 2
+                    }}
                   >
                     <Box>
-                      <Typography variant="h6" sx={{ fontWeight: 600, color: theming.colors.primary }}>
+                      <Typography variant="h6" sx={{ fontWeight: 600, color: '#667eea' }}>
                         {event.time} - {event.activity}
                       </Typography>
                       <Typography variant="body2" color="text.secondary">
-                        {event.location && `📍 ${event.location}`}
-                        <Chip label={event.creatorType} size="small" sx={{ ml: 1, height: 2 }} />
+                        {event.location && (
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                            <LocationOn sx={{ fontSize: 16 }} />
+                            {event.location}
+                          </Box>
+                        )}
+                        <Chip key="creator" label={event.creatorType} size="small" sx={{ ml: 1, height: 2 }} />
                         {event.hasPhoto && (
-                          <Chip label="📸 Foto" size="small" sx={{ ml: 0.5, height: 2 }} />
+                          <Chip key="photo" icon={<FeatherCamera size={14} />} label="Foto" size="small" sx={{ ml: 0.5, height: 20 }} />
                         )}
                         {event.hasVideo && (
-                          <Chip label="🎥 Video" size="small" sx={{ ml: 0.5, height: 2 }} />
+                          <Chip key="video" icon={<FeatherVideo size={14} />} label="Video" size="small" sx={{ ml: 0.5, height: 20 }} />
                         )}
                       </Typography>
                     </Box>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                      <Tooltip title="Rediger event">
+                        <IconButton
+                          size="small"
+                          onClick={() => handleEditEvent(event)}
+                          sx={{ color: '#667eea' }}
+                        >
+                          <Edit fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Dupliser event">
+                        <IconButton
+                          size="small"
+                          onClick={() => handleDuplicateEvent(event)}
+                          sx={{ color: '#667eea' }}
+                        >
+                          <FileCopy fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Slett event">
+                        <IconButton
+                          size="small"
+                          onClick={() => handleDeleteEvent(event.id || event.eventId)}
+                          sx={{ color: 'error.main' }}
+                        >
+                          <Delete fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
                       {event.notifications_sent ? (
                         <Chip label="Varslet" color="success" size="small" icon={<CheckCircle />} />
                       ) : (
@@ -1353,12 +1760,14 @@ export default function WeddingTimeline({
                                       {person.name}
                                     </Typography>
                                     <Chip
+                                      key={`role-${idx}`}
                                       label={person.role}
                                       size="small"
                                       variant="outlined"
                                       sx={{ height:  20, fontSize: '0.7rem'}}
                                     />
                                     <Chip
+                                      key={`priority-${idx}`}
                                       label={person.priority.toUpperCase()}
                                       size="small"
                                       color={
@@ -1372,6 +1781,7 @@ export default function WeddingTimeline({
                                     />
                                     {person.is_vip && (
                                       <Chip
+                                        key={`vip-${idx}`}
                                         label="VIP"
                                         size="small"
                                         color="secondary"
@@ -1422,230 +1832,423 @@ export default function WeddingTimeline({
   );
 
   const renderTimelineActivities = () => (
-    <MuiCard sx={{ mb: 3 }}>
-      <CardContent sx={theming.getThemedCardSx()}>
-        <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-          <Schedule sx={{ color, mr: 2, fontSize: 2 }} />
-          <Typography variant="h5" sx={{ fontWeight: 700, color: theming.colors.primary }}>
+    <MuiCard
+      sx={{
+        mb: 3,
+        borderRadius: 3,
+        overflow: 'hidden',
+        boxShadow: '0 8px 32px rgba(102, 126, 234, 0.15)'
+      }}
+    >
+      <Box
+        sx={{
+          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+          p: 3,
+          color: 'white'
+        }}
+      >
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+          <Box
+            sx={{
+              width: 48,
+              height: 48,
+              borderRadius: 2,
+              bgcolor: 'rgba(255, 255, 255, 0.2)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              backdropFilter: 'blur(10px)'
+            }}
+          >
+            <Schedule sx={{ fontSize: 28 }} />
+          </Box>
+          <Typography variant="h5" sx={{ fontWeight: 700 }}>
             Tidsplan & Aktiviteter
           </Typography>
         </Box>
-        <Alert severity="info" sx={{ mb: 3 }}>
-          <Typography variant="body2">
-            Komplett kjøreplan{timeline?.coupleName ? ` for ${timeline.coupleName} sitt bryllup` : ''}. 
-            Alle tider er fastsatt og koordinert med venue og leverandører{culturalLabel}.
-          </Typography>
-        </Alert>
-        {events
-          .sort((a: TimelineEvent, b: TimelineEvent) => a.sortOrder - b.sortOrder)
-          .map((event: TimelineEvent) => (
-            <MuiCard key={event.id || event.eventId} sx={{ mb: 2, bgcolor: '#f5f5f5' }}>
-              <CardContent sx={theming.getThemedCardSx()}>
-                <Box
-                  sx={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'flex-start'}}
-                >
-                  <Box sx={{ flex:  1 }}>
-                    <Typography variant="h6" sx={{ fontWeight: 600, color: theming.colors.primary }}>
-                      {event.time}
-                    </Typography>
-                    <Typography variant="body1" sx={{ fontWeight: 5, mb: 1 }}>
-                      {event.activity}
-                    </Typography>
-                    {event.location && (
-                      <Typography
-                        variant="body2"
-                        color="text.secondary"
-                        sx={{ display: 'flex', alignItems: 'center', mb: 1 }}
-                      >
-                        <LocationOn sx={{ fontSize: 16, mr: 0.5 }} />
-                        {event.location}
+        <Typography variant="body2" sx={{ opacity: 0.9 }}>
+          Komplett kjøreplan{timeline?.coupleName ? ` for ${timeline.coupleName} sitt bryllup` : ''}. 
+          Alle tider er fastsatt og koordinert med venue og leverandører{culturalLabel}.
+        </Typography>
+      </Box>
+      <CardContent sx={{ p: 3 }}>
+        {filteredEvents.length === 0 ? (
+          <Box sx={{ textAlign: 'center', py: 4 }}>
+            <Typography variant="body1" color="text.secondary">
+              {searchQuery ? 'Ingen resultater funnet' : 'Ingen aktiviteter planlagt ennå'}
+            </Typography>
+          </Box>
+        ) : (
+          filteredEvents
+            .sort((a: TimelineEvent, b: TimelineEvent) => a.sortOrder - b.sortOrder)
+            .map((event: TimelineEvent, index: number) => (
+              <MuiCard
+                key={event.id || event.eventId || `timeline-${index}`}
+                sx={{
+                  mb: 2,
+                  bgcolor: '#fafafa',
+                  borderRadius: 2,
+                  boxShadow: '0 2px 8px rgba(0, 0, 0, 0.06)',
+                  transition: 'all 0.3s ease',
+                  '&:hover': {
+                    boxShadow: '0 4px 16px rgba(102, 126, 234, 0.2)',
+                    transform: 'translateY(-2px)'
+                  }
+                }}
+              >
+                <CardContent sx={{ p: 2 }}>
+                  <Box
+                    sx={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'flex-start'
+                    }}
+                  >
+                    <Box sx={{ flex: 1 }}>
+                      <Typography variant="h6" sx={{ fontWeight: 600, color: '#667eea' }}>
+                        {event.time}
                       </Typography>
-                    )}
-                     <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                      <Chip
-                        label={`#${event.sortOrder}`}
-                        size="small"
-                        variant="outlined"
-                        sx={{ height: 2}}
-                      />
-                      <Chip
-                        label={event.creatorType}
-                        size="small"
-                        sx={{ height:  20, bgcolor: color, color: 'white'}}
-                      />
-                      {event.hasPhoto && (
-                        <Chip label="📸 Foto" size="small" color="primary" sx={{ height: 2}} />
+                      <Typography variant="body1" sx={{ fontWeight: 500, mb: 1 }}>
+                        {event.activity}
+                      </Typography>
+                      {event.location && (
+                        <Typography
+                          variant="body2"
+                          color="text.secondary"
+                          sx={{ display: 'flex', alignItems: 'center', mb: 1 }}
+                        >
+                          <LocationOn sx={{ fontSize: 16, mr: 0.5 }} />
+                          {event.location}
+                        </Typography>
                       )}
-                      {event.hasVideo && (
-                        <Chip label="🎥 Video" size="small" color="secondary" sx={{ height: 2}} />
-                      )}
+                      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                        <Chip
+                          key="sortOrder"
+                          label={`#${event.sortOrder}`}
+                          size="small"
+                          variant="outlined"
+                          sx={{ height: 20 }}
+                        />
+                        <Chip
+                          key="creatorType"
+                          label={event.creatorType}
+                          size="small"
+                          sx={{ height: 20, bgcolor: '#667eea', color: 'white' }}
+                        />
+                        {event.hasPhoto && (
+                          <Chip key="photo" icon={<FeatherCamera size={14} />} label="Foto" size="small" color="primary" sx={{ height: 20 }} />
+                        )}
+                        {event.hasVideo && (
+                          <Chip key="video" icon={<FeatherVideo size={14} />} label="Video" size="small" color="secondary" sx={{ height: 20 }} />
+                        )}
+                      </Box>
+                    </Box>
+                    <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'flex-start' }}>
+                      <Tooltip title="Rediger">
+                        <IconButton
+                          size="small"
+                          onClick={() => handleEditEvent(event)}
+                          sx={{ color: '#667eea' }}
+                        >
+                          <FeatherEdit size={16} />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Dupliser">
+                        <IconButton
+                          size="small"
+                          onClick={() => handleDuplicateEvent(event)}
+                          sx={{ color: '#667eea' }}
+                        >
+                          <FeatherCopy size={16} />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Slett">
+                        <IconButton
+                          size="small"
+                          onClick={() => handleDeleteEvent(event.id || event.eventId)}
+                          sx={{ color: 'error.main' }}
+                        >
+                          <FeatherTrash size={16} />
+                        </IconButton>
+                      </Tooltip>
+                      <Box sx={{ ml: 1 }}>
+                        {event.notifications_sent ? (
+                          <CheckCircle sx={{ color: 'green', fontSize: 20 }} />
+                        ) : (
+                          <Warning sx={{ color: 'orange', fontSize: 20 }} />
+                        )}
+                      </Box>
                     </Box>
                   </Box>
-                  <Box>
-                    {event.notifications_sent ? (
-                      <CheckCircle sx={{ color: 'green', fontSize: 2}} />
-                    ) : (
-                      <Warning sx={{ color: 'orange', fontSize: 2}} />
-                    )}
-                  </Box>
-                </Box>
-              </CardContent>
-            </MuiCard>
-          ))}
+                </CardContent>
+              </MuiCard>
+            ))
+        )}
       </CardContent>
     </MuiCard>
   );
 
   const renderCommunication = () => (
-    <MuiCard sx={{ mb: 3 }}>
-      <CardContent sx={theming.getThemedCardSx()}>
-        <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-          <Chat sx={{ color, mr: 2, fontSize: 2 }} />
-          <Typography variant="h5" sx={{ fontWeight: 700, color: theming.colors.primary }}>
-            Kommunikasjon & Varsling
-          </Typography>
-          <Box sx={{ ml: 'auto'}}>
-            <Button variant="contained"
-              startIcon={<VolumeUp />}
-              sx={{ bgcolor: color, ...theming.getThemedButtonSx() }}
-              onClick={() => console.log('Send massevarsling - TODO: Implement')}
-            >
-              Send massevarsling
-            </Button>
+    <MuiCard
+      sx={{
+        mb: 3,
+        borderRadius: 3,
+        overflow: 'hidden',
+        boxShadow: '0 8px 32px rgba(102, 126, 234, 0.15)'
+      }}
+    >
+      <Box
+        sx={{
+          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+          p: 3,
+          color: 'white',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between'
+        }}
+      >
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Box
+            sx={{
+              width: 48,
+              height: 48,
+              borderRadius: 2,
+              bgcolor: 'rgba(255, 255, 255, 0.2)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              backdropFilter: 'blur(10px)'
+            }}
+          >
+            <Chat sx={{ fontSize: 28 }} />
+          </Box>
+          <Box>
+            <Typography variant="h5" sx={{ fontWeight: 700, mb: 0.5 }}>
+              Kommunikasjon & Varsling
+            </Typography>
+            <Typography variant="body2" sx={{ opacity: 0.9 }}>
+              VIP-prioritering aktiv - Kritiske kontakter varsles først
+            </Typography>
           </Box>
         </Box>
-        <Alert severity="success" sx={{ mb: 3 }}>
-          <Typography variant="body2">
-            <strong>VIP-prioritering aktiv: </strong> Kritiske kontakter og VIP-personer varsles
-            først. Automatisk eskalering til telefon hvis email ikke leses innen 30 minutter.
-          </Typography>
-        </Alert>
-
-        <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, color: theming.colors.primary }}>
-          Varslingsstatus per aktivitet: </Typography>
-
-        {events
+        <Button
+          variant="contained"
+          startIcon={<VolumeUp />}
+          sx={{
+            bgcolor: 'rgba(255, 255, 255, 0.25)',
+            color: 'white',
+            backdropFilter: 'blur(10px)',
+            border: '1px solid rgba(255, 255, 255, 0.3)',
+            '&:hover': {
+              bgcolor: 'rgba(255, 255, 255, 0.35)'
+            }
+          }}
+          onClick={() => console.log('Send massevarsling - TODO: Implement')}
+        >
+          Send massevarsling
+        </Button>
+      </Box>
+      <CardContent sx={{ p: 3 }}>
+        {filteredEvents
           .filter((event: TimelineEvent) => event.persons_involved && event.persons_involved.length > 0)
-          .sort((a: TimelineEvent, b: TimelineEvent) => a.sortOrder - b.sortOrder)
-          .map((event: TimelineEvent) => (
-            <MuiCard key={event.id || event.eventId} sx={{ mb: 2, bgcolor: '#f8f9fa' }}>
-              <CardContent sx={theming.getThemedCardSx()}>
-                <Box
-                  sx={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    mb: 2}}
-                >
-                  <Typography variant="subtitle1" fontWeight={600}>
-                    {event.time} - {event.activity}
-                  </Typography>
-                  <Box>
-                    {event.notifications_sent ? (
-                      <Chip
-                        label="✅ Varslet"
-                        color="success"
-                        size="small"
-                        icon={<CheckCircle />}
-                      />
-                    ) : (
-                      <Button size="small"
-                        variant="contained"
-                        startIcon={<VolumeUp />}
-                        sx={{ bgcolor: color, ...theming.getThemedButtonSx() }}
-                        onClick={() => {
-                          sendNotificationMutation.mutate({
-                            eventId: event.id || event.eventId,
-                            message: `Viktig oppdatering for ${event.activity} kl. ${event.time}`,
-                        });
-                      }}
-                        disabled={sendNotificationMutation.isPending}
-                      >
-                        Send varsling
-                      </Button>
-                    )}
-                  </Box>
-                </Box>
-
-                {event.persons_involved && event.persons_involved.length > 0 && (
-                  <Box>
-                    <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                      Involverte personer ({event.persons_involved.length}):
+          .length === 0 ? (
+          <Box sx={{ textAlign: 'center', py: 4 }}>
+            <Typography variant="body1" color="text.secondary">
+              {searchQuery ? 'Ingen resultater funnet' : 'Ingen aktiviteter med personer ennå'}
+            </Typography>
+          </Box>
+        ) : (
+          filteredEvents
+            .filter((event: TimelineEvent) => event.persons_involved && event.persons_involved.length > 0)
+            .sort((a: TimelineEvent, b: TimelineEvent) => a.sortOrder - b.sortOrder)
+            .map((event: TimelineEvent, index: number) => (
+              <MuiCard
+                key={event.id || event.eventId || `communication-${index}`}
+                sx={{
+                  mb: 2,
+                  bgcolor: '#fafafa',
+                  borderRadius: 2,
+                  boxShadow: '0 2px 8px rgba(0, 0, 0, 0.06)',
+                  transition: 'all 0.3s ease',
+                  '&:hover': {
+                    boxShadow: '0 4px 16px rgba(102, 126, 234, 0.2)',
+                    transform: 'translateY(-2px)'
+                  }
+                }}
+              >
+                <CardContent sx={{ p: 2 }}>
+                  <Box
+                    sx={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      mb: 2
+                    }}
+                  >
+                    <Typography variant="subtitle1" fontWeight={600}>
+                      {event.time} - {event.activity}
                     </Typography>
-                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap:  1 }}>
-                      {event.persons_involved
-                        .sort((a, b) => {
-                          if (a.priority === 'critical' && b.priority !== 'critical') return -1;
-                          if (a.priority !== 'critical' && b.priority === 'critical') return 1;
-                          if (a.notify_first && !b.notify_first) return -1;
-                          if (!a.notify_first && b.notify_first) return 1;
-                          return 0;
-                      })
-                        .map((person, idx) => (
-                          <Chip
-                            key={idx}
-                            avatar={
-                              <Avatar sx={{ bgcolor: color, fontSize: '0.8rem'}}>
-                                {person.name.charAt(0)}
-                              </Avatar>
-                          }
-                            label={`${person.name} (${person.role})`}
-                            size="small"
-                            color={
-                              person.priority === 'critical'
-                                ? 'error'
-                                : person.priority === 'high'
-                                  ? 'warning'
-                                  : 'default'
-                          }
-                            icon={person.notify_first ? <PriorityHigh /> : undefined}
-                            sx={{
-                              mb: 0.5,
-                              border: person.is_vip ? '2px solid gold' : undefined
-                            }}
-                          />
-                        ))}
+                    <Box>
+                      {event.notifications_sent ? (
+                        <Chip
+                          label="Varslet"
+                          color="success"
+                          size="small"
+                          icon={<CheckCircle />}
+                        />
+                      ) : (
+                        <Button
+                          size="small"
+                          variant="contained"
+                          startIcon={<VolumeUp />}
+                          sx={{
+                            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                            color: 'white',
+                            '&:hover': {
+                              background: 'linear-gradient(135deg, #5568d3 0%, #6a3f8f 100%)'
+                            }
+                          }}
+                          onClick={() => {
+                            sendNotificationMutation.mutate({
+                              eventId: event.id || event.eventId,
+                              message: `Viktig oppdatering for ${event.activity} kl. ${event.time}`,
+                            });
+                          }}
+                          disabled={sendNotificationMutation.isPending}
+                        >
+                          Send varsling
+                        </Button>
+                      )}
                     </Box>
                   </Box>
-                )}
-              </CardContent>
-            </MuiCard>
-          ))}
+
+                  {event.persons_involved && event.persons_involved.length > 0 && (
+                    <Box>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                        Involverte personer ({event.persons_involved.length}):
+                      </Typography>
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                        {event.persons_involved
+                          .sort((a, b) => {
+                            if (a.priority === 'critical' && b.priority !== 'critical') return -1;
+                            if (a.priority !== 'critical' && b.priority === 'critical') return 1;
+                            if (a.notify_first && !b.notify_first) return -1;
+                            if (!a.notify_first && b.notify_first) return 1;
+                            return 0;
+                          })
+                          .map((person, idx) => (
+                            <Chip
+                              key={idx}
+                              avatar={
+                                <Avatar sx={{ bgcolor: '#667eea', fontSize: '0.8rem' }}>
+                                  {person.name.charAt(0)}
+                                </Avatar>
+                              }
+                              label={`${person.name} (${person.role})`}
+                              size="small"
+                              color={
+                                person.priority === 'critical'
+                                  ? 'error'
+                                  : person.priority === 'high'
+                                    ? 'warning'
+                                    : 'default'
+                              }
+                              icon={person.notify_first ? <PriorityHigh /> : undefined}
+                              sx={{
+                                mb: 0.5,
+                                border: person.is_vip ? '2px solid gold' : undefined
+                              }}
+                            />
+                          ))}
+                      </Box>
+                    </Box>
+                  )}
+                </CardContent>
+              </MuiCard>
+            ))
+        )}
       </CardContent>
     </MuiCard>
   );
 
   const renderPositioning = () => (
-    <MuiCard sx={{ mb: 3 }}>
-      <CardContent sx={theming.getThemedCardSx()}>
-        <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-          <Lightbulb sx={{ color, mr: 2, fontSize: 2 }} />
-          <Typography variant="h5" sx={{ fontWeight: 700, color: theming.colors.primary }}>
+    <MuiCard
+      sx={{
+        mb: 3,
+        borderRadius: 3,
+        overflow: 'hidden',
+        boxShadow: '0 8px 32px rgba(102, 126, 234, 0.15)'
+      }}
+    >
+      <Box
+        sx={{
+          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+          p: 3,
+          color: 'white'
+        }}
+      >
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+          <Box
+            sx={{
+              width: 48,
+              height: 48,
+              borderRadius: 2,
+              bgcolor: 'rgba(255, 255, 255, 0.2)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              backdropFilter: 'blur(10px)'
+            }}
+          >
+            <Lightbulb sx={{ fontSize: 28 }} />
+          </Box>
+          <Typography variant="h5" sx={{ fontWeight: 700 }}>
             Posisjonering & Utstyr
           </Typography>
         </Box>
-        <Alert severity="info" sx={{ mb: 3 }}>
-          <Typography variant="body2">
-            Strategisk posisjonering for optimal foto/video-dekning. Koordinert med venue og andre
-            leverandører.
-          </Typography>
-        </Alert>
-
-        {events
+        <Typography variant="body2" sx={{ opacity: 0.9 }}>
+          Strategisk posisjonering for optimal foto/video-dekning. Koordinert med venue og andre
+          leverandører.
+        </Typography>
+      </Box>
+      <CardContent sx={{ p: 3 }}>
+        {filteredEvents
           .filter((event: TimelineEvent) => event.hasPhoto || event.hasVideo)
-          .sort((a: TimelineEvent, b: TimelineEvent) => a.sortOrder - b.sortOrder)
-          .map((event: TimelineEvent) => (
-            <MuiCard key={event.id || event.eventId} sx={{ mb: 2, bgcolor: '#f0f8ff' }}>
-              <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h6" sx={{ fontWeight: 600, mb: 1, color: theming.colors.primary }}>
-                  {event.time} - {event.activity}
+          .length === 0 ? (
+          <Box sx={{ textAlign: 'center', py: 4 }}>
+            <Typography variant="body1" color="text.secondary">
+              {searchQuery ? 'Ingen resultater funnet' : 'Ingen foto/video-aktiviteter ennå'}
+            </Typography>
+          </Box>
+        ) : (
+          filteredEvents
+            .filter((event: TimelineEvent) => event.hasPhoto || event.hasVideo)
+            .sort((a: TimelineEvent, b: TimelineEvent) => a.sortOrder - b.sortOrder)
+            .map((event: TimelineEvent, index: number) => (
+              <MuiCard
+                key={event.id || event.eventId || `positioning-${index}`}
+                sx={{
+                  mb: 2,
+                  bgcolor: '#fafafa',
+                  borderRadius: 2,
+                  boxShadow: '0 2px 8px rgba(0, 0, 0, 0.06)',
+                  transition: 'all 0.3s ease',
+                  '&:hover': {
+                    boxShadow: '0 4px 16px rgba(102, 126, 234, 0.2)',
+                    transform: 'translateY(-2px)'
+                  }
+                }}
+              >
+                <CardContent sx={{ p: 2 }}>
+                  <Typography variant="h6" sx={{ fontWeight: 600, mb: 1, color: '#667eea' }}>
+                    {event.time} - {event.activity}
                 </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                  📍 {event.location}
-                </Typography>
+<Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 2 }}>
+                    <LocationOn sx={{ fontSize: 16, color: 'text.secondary' }} />
+                    <Typography variant="body2" color="text.secondary">
+                      {event.location}
+                    </Typography>
+                  </Box>
 
                 <Box sx={{ display: 'flex', gap:  2 }}>
                   {event.hasPhoto && (
@@ -1657,12 +2260,15 @@ export default function WeddingTimeline({
                         borderRadius:  2,
                         border: '1px solid rgba(3, 150, 243, 0.3)'}}
                     >
-                      <Typography
-                        variant="subtitle2"
-                        sx={{ fontWeight: 600, color: '#1976d', mb: 1 }}
-                      >
-                        📸 Fotografi
-                      </Typography>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 1 }}>
+                        <PhotoCamera sx={{ fontSize: 18, color: '#1976d2' }} />
+                        <Typography
+                          variant="subtitle2"
+                          sx={{ fontWeight: 600, color: '#1976d2' }}
+                        >
+                          Fotografi
+                        </Typography>
+                      </Box>
                       <Typography variant="body2" sx={{ mb: 1 }}>
                         <strong>Posisjon: </strong> Strategisk plassering for beste vinkel
                       </Typography>
@@ -1684,12 +2290,15 @@ export default function WeddingTimeline({
                         borderRadius:  2,
                         border: '1px solid rgba(16, 39, 176, 0.3)'}}
                     >
-                      <Typography
-                        variant="subtitle2"
-                        sx={{ fontWeight: 600, color: '#9c27b', mb: 1 }}
-                      >
-                        🎥 Videografi
-                      </Typography>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 1 }}>
+                        <Videocam sx={{ fontSize: 18, color: '#9c27b0' }} />
+                        <Typography
+                          variant="subtitle2"
+                          sx={{ fontWeight: 600, color: '#9c27b0' }}
+                        >
+                          Videografi
+                        </Typography>
+                      </Box>
                       <Typography variant="body2" sx={{ mb: 1 }}>
                         <strong>Posisjon: </strong> Diskret bakgrunnsposisjon
                       </Typography>
@@ -1704,7 +2313,8 @@ export default function WeddingTimeline({
                 </Box>
               </CardContent>
             </MuiCard>
-          ))}
+            ))
+        )}
       </CardContent>
     </MuiCard>
   );
@@ -1778,7 +2388,13 @@ export default function WeddingTimeline({
           });
         }}
           variant="contained"
-          sx={{ bgcolor: color }}
+          sx={{
+            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            color: 'white',
+            '&:hover': {
+              background: 'linear-gradient(135deg, #5568d3 0%, #6a3f8f 100%)'
+            }
+          }}
           disabled={!newPerson.name || !newPerson.role || addPersonMutation.isPending}
         >
           Legg til
@@ -1791,10 +2407,11 @@ export default function WeddingTimeline({
     <Box
       sx={{
         minHeight: '100vh',
-        background: `linear-gradient(135deg, ${color}22 0%, #000 100%)`,
-        py: 2}}
+        background: 'linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%)',
+        py: 4
+      }}
     >
-      <Box sx={{ maxWidth: 120, mx: 'auto', px: 2 }}>
+      <Box sx={{ maxWidth: 1200, mx: 'auto', px: 2 }}>
         {/* Project Integration Alert */}
         {projectIntegration?.weddingTimelineIntegrated && (
           <Alert
@@ -1804,7 +2421,7 @@ export default function WeddingTimeline({
               bgcolor: 'rgba(6, 175, 80, 0.1)',
               border: '1px solid rgba(6, 175, 80, 0.3)'}}
           >
-            ✅ Bryllupstidslinje er nå koblet til ditt prosjekt! Kulturell type: {', '}
+            Bryllupstidslinje er nå koblet til ditt prosjekt! Kulturell type: {', '}
             {projectIntegration.culturalType || culturalType}
           </Alert>
         )}
@@ -1813,43 +2430,60 @@ export default function WeddingTimeline({
         <MuiCard
           sx={{
             mb: 3,
-            background: 'linear-gradient(145deg, #e3f2fd 0%, #bbdefb 100%)',
-            border: '2px solid #2196f',
-            borderRadius:  3,
-            backdropFilter: 'blur(10px)'}}
+            borderRadius: 3,
+            overflow: 'hidden',
+            boxShadow: '0 8px 32px rgba(33, 150, 243, 0.15)'
+          }}
         >
-          <CardContent sx={{ p:  3 ,  ...theming.getThemedCardSx() }}>
-            <Typography variant="h5"
-              sx={{
-                mb: 2,
-                fontWeight: 600,
-                color: theming.colors.primary,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 1
-              }}>
-              <CameraAlt sx={{ mr: 1 }} />
-              Viktig informasjon fra {professionLabel}
-            </Typography>
-            <Typography variant="body1" sx={{ mb: 2, lineHeight: 1.8, color: '#1565c0' }}>
+          <Box
+            sx={{
+              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              p: 3,
+              color: 'white'
+            }}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+              <Box
+                sx={{
+                  width: 48,
+                  height: 48,
+                  borderRadius: 2,
+                  bgcolor: 'rgba(255, 255, 255, 0.2)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backdropFilter: 'blur(10px)'
+                }}
+              >
+                <CameraAlt sx={{ fontSize: 28 }} />
+              </Box>
+              <Typography variant="h5" sx={{ fontWeight: 700 }}>
+                Viktig informasjon fra {professionLabel}
+              </Typography>
+            </Box>
+            <Typography variant="body1" sx={{ mb: 1, opacity: 0.95 }}>
               Kære {timeline?.coupleName || 'brudeparet'},
             </Typography>
-            <Typography variant="body1" sx={{ mb: 3, lineHeight: 1.8, color: '#1976d2' }}>
+            <Typography variant="body2" sx={{ opacity: 0.9 }}>
               Her er viktig informasjon for bryllupsdagen. Vi vil oppdatere dere fortløpende hvis
               det skjer endringer i tidsplanen.
             </Typography>
+          </Box>
+          <CardContent sx={{ p: 3 }}>
 
             {/* Aktuelle meldinger fra {professionLabel} - Real-time updates */}
             <Box
               sx={{
-                bgcolor: 'rgba(25,255,255,0.9)',
-                p:  2,
-                borderRadius:  2,
-                border: '1px solid #e3f2fd',
-                mb: 2}}
+                bgcolor: 'rgba(33, 150, 243, 0.08)',
+                p: 2,
+                borderRadius: 2,
+                border: '1px solid rgba(33, 150, 243, 0.2)',
+                mb: 2
+              }}
             >
               <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1, color: '#1976d2' }}>
-                📢 Siste oppdatering: </Typography>
+                📢 Siste oppdatering:
+              </Typography>
               <Typography variant="body2" sx={{ mb: 1, color: '#1565c0' }}>
                 • Fotografering starter presis kl. 14: 00 - vær klare 15 minutter før
               </Typography>
@@ -1864,13 +2498,15 @@ export default function WeddingTimeline({
             {/* Værvarsel og praktisk info */}
             <Box
               sx={{
-                bgcolor: 'rgba(25,245,158,0.3)',
-                p:  2,
-                borderRadius:  2,
-                border: '1px solid #ffc10'}}
+                bgcolor: 'rgba(255, 193, 7, 0.08)',
+                p: 2,
+                borderRadius: 2,
+                border: '1px solid rgba(255, 193, 7, 0.3)'
+              }}
             >
               <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1, color: '#f57c00' }}>
-                🌤️ Værvarsel og praktisk info: </Typography>
+                🌤️ Værvarsel og praktisk info:
+              </Typography>
               <Typography variant="body2" sx={{ mb: 1, color: '#ef6c00' }}>
                 • Delvis skyet, 18°C - perfekt for utendørs bilder
               </Typography>
@@ -1882,54 +2518,208 @@ export default function WeddingTimeline({
         </MuiCard>
 
         {/* Client View Header */}
-        <MuiCard sx={{ mb: 3, textAlign: 'center'}}>
-          <CardContent sx={{ py: 4 ,  ...theming.getThemedCardSx() }}>
-            <Typography variant="h4" sx={{ fontWeight: 700, mb: 2, color: theming.colors.primary }}>
-              🤵👰 {timeline?.coupleName || 'Bryllup'} {new Date(timeline?.weddingDate || Date.now()).getFullYear()}{culturalLabel}
-            </Typography>
-            <Typography variant="h6" sx={{ mb: 3, color: theming.colors.primary }}>
+        <MuiCard
+          sx={{
+            mb: 3,
+            borderRadius: 3,
+            overflow: 'hidden',
+            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.1)'
+          }}
+        >
+          <Box
+            sx={{
+              background: '#ffffff',
+              p: 4,
+              textAlign: 'center',
+              color: '#333'
+            }}
+          >
+            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, mb: 2 }}>
+              <Box
+                component="img"
+                src="/Brideandgroom.png"
+                alt="Bride & Groom"
+                sx={{ width: 120, height: 120 }}
+              />
+              <Typography variant="h4" sx={{ fontWeight: 700, color: '#667eea' }}>
+                {timeline?.coupleName || 'Bryllup'} {new Date(timeline?.weddingDate || Date.now()).getFullYear()}{culturalLabel}
+              </Typography>
+            </Box>
+            <Typography variant="h6" sx={{ mb: 3, color: '#666' }}>
               {timeline?.venue || 'Bryllupslokasjon'}
             </Typography>
             <Box
               sx={{
                 display: 'flex',
                 justifyContent: 'center',
-                gap:  2,
-                flexWrap: 'wrap'}}
+                gap: 2,
+                flexWrap: 'wrap'
+              }}
             >
               <Chip
+                key="activities"
                 label={`${events.length} aktiviteter`}
-                icon={<Schedule />}
-                sx={{ bgcolor: color, color: 'white'}}
+                icon={<FeatherClock size={16} color="white" />}
+                sx={{
+                  bgcolor: '#667eea',
+                  color: 'white',
+                  fontWeight: 600,
+                  '& .MuiChip-icon': { color: 'white' }
+                }}
               />
-              <Chip label="VIP-system aktivt" icon={<PriorityHigh />} color="warning" />
-              <Chip label="Profesjonell fotografi" icon={<Lightbulb />} color="primary" />
+              <Chip
+                key="vip"
+                label="VIP-system aktivt"
+                icon={<FeatherStar size={16} color="#333" />}
+                sx={{
+                  bgcolor: '#ffc107',
+                  color: '#333',
+                  fontWeight: 600,
+                  '& .MuiChip-icon': { color: '#333' }
+                }}
+              />
+              <Chip
+                key="professional"
+                label="Profesjonell fotografi"
+                icon={<FeatherCamera size={16} color="white" />}
+                sx={{
+                  bgcolor: '#764ba2',
+                  color: 'white',
+                  fontWeight: 600,
+                  '& .MuiChip-icon': { color: 'white' }
+                }}
+              />
               {projectIntegration?.weddingTimelineIntegrated && (
-                <Chip label="Integrert med prosjekt" icon={<Sync />} color="success" />
+                <Chip
+                  key="integrated"
+                  label="Integrert med prosjekt"
+                  icon={<FeatherSync size={16} color="white" />}
+                  sx={{
+                    bgcolor: '#4caf50',
+                    color: 'white',
+                    fontWeight: 600,
+                    '& .MuiChip-icon': { color: 'white' }
+                  }}
+                />
               )}
+            </Box>
+          </Box>
+        </MuiCard>
+
+        {/* Action Toolbar */}
+        <MuiCard
+          sx={{
+            mb: 3,
+            borderRadius: 3,
+            boxShadow: '0 4px 16px rgba(0, 0, 0, 0.08)'
+          }}
+        >
+          <CardContent sx={{ p: 2 }}>
+            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
+              <Button
+                variant="contained"
+                startIcon={<FeatherPlus size={18} />}
+                onClick={() => {
+                  setSelectedEvent(null);
+                  resetEventForm();
+                  setEventDialogOpen(true);
+                }}
+                sx={{
+                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                  '&:hover': {
+                    background: 'linear-gradient(135deg, #5568d3 0%, #6a3f8f 100%)'
+                  }
+                }}
+              >
+                Nytt Event
+              </Button>
+              <Divider orientation="vertical" flexItem sx={{ mx: 1 }} />
+              <Button
+                variant="outlined"
+                startIcon={<FeatherDownload size={18} />}
+                onClick={handleExportPDF}
+                sx={{
+                  borderColor: '#667eea',
+                  color: '#667eea',
+                  '&:hover': {
+                    borderColor: '#5568d3',
+                    bgcolor: 'rgba(102, 126, 234, 0.04)'
+                  }
+                }}
+              >
+                Eksporter PDF
+              </Button>
+              <Button
+                variant="outlined"
+                startIcon={<FeatherCalendar size={18} />}
+                onClick={handleExportCalendar}
+                sx={{
+                  borderColor: '#667eea',
+                  color: '#667eea',
+                  '&:hover': {
+                    borderColor: '#5568d3',
+                    bgcolor: 'rgba(102, 126, 234, 0.04)'
+                  }
+                }}
+              >
+                Kalender (.ics)
+              </Button>
+              <Button
+                variant="outlined"
+                startIcon={<FeatherPrinter size={18} />}
+                onClick={handlePrint}
+                sx={{
+                  borderColor: '#667eea',
+                  color: '#667eea',
+                  '&:hover': {
+                    borderColor: '#5568d3',
+                    bgcolor: 'rgba(102, 126, 234, 0.04)'
+                  }
+                }}
+              >
+                Skriv ut
+              </Button>
+              <Box sx={{ flexGrow: 1 }} />
+              <Chip
+                icon={<EventIcon />}
+                label={`${filteredEvents.length} ${searchQuery ? 'av ' + events.length : ''} events`}
+                sx={{
+                  bgcolor: 'rgba(102, 126, 234, 0.1)',
+                  color: '#667eea',
+                  fontWeight: 600
+                }}
+              />
             </Box>
           </CardContent>
         </MuiCard>
 
         {/* Navigation Tabs */}
-        <MuiCard sx={{ mb: 3 }}>
-          <CardContent sx={{ py: 2 ,  ...theming.getThemedCardSx() }}>
+        <MuiCard
+          sx={{
+            mb: 3,
+            borderRadius: 3,
+            boxShadow: '0 4px 16px rgba(0, 0, 0, 0.08)'
+          }}
+        >
+          <CardContent sx={{ py: 0 }}>
             <Tabs
               value={activeTab}
               onChange={(e, newValue) => setActiveTab(newValue)}
               variant="fullWidth"
               sx={{
                 '& .MuiTab-root': {
-                  color: 'rgba(25,255,255,0.7)',
-                  fontWeight: 600
-              }, 
-              '& .Mui-selected': {
-                  color: color,
-              },
-              '& .MuiTabs-indicator': {
-                  backgroundColor: color,
-              }
-            }}
+                  color: 'rgba(0, 0, 0, 0.6)',
+                  fontWeight: 600,
+                  py: 2
+                },
+                '& .Mui-selected': {
+                  color: '#667eea'
+                },
+                '& .MuiTabs-indicator': {
+                  backgroundColor: '#667eea',
+                  height: 3
+                }
+              }}
             >
               {tabLabels.map((label, index) => (
                 <Tab key={index} label={label} />
@@ -1950,11 +2740,15 @@ export default function WeddingTimeline({
             position: 'fixed',
             bottom: 20,
             right: 20,
-            bgcolor: color,
+            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            color: 'white',
+            boxShadow: '0 8px 24px rgba(102, 126, 234, 0.4)',
             '&:hover': {
-              bgcolor: color,
+              background: 'linear-gradient(135deg, #5568d3 0%, #6a3f8f 100%)',
               transform: 'scale(1.1)',
-            }
+              boxShadow: '0 12px 32px rgba(102, 126, 234, 0.5)'
+            },
+            transition: 'all 0.3s ease'
           }}
           onClick={handleShare}
           disabled={generateClientAccess.isPending}
@@ -1970,12 +2764,18 @@ export default function WeddingTimeline({
         <Fab
           sx={{
             position: 'fixed',
-            bottom:  90,
-            right:  20,
-            bgcolor: 'rgba(25, 1520.9)', '&:hover': {
-              bgcolor: 'rgba(25, 1521)',
-              transform: 'scale(1.1, )',
-          }}}
+            bottom: 90,
+            right: 20,
+            background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+            color: 'white',
+            boxShadow: '0 8px 24px rgba(245, 87, 108, 0.4)',
+            '&:hover': {
+              background: 'linear-gradient(135deg, #e082ea 0%, #e4465b 100%)',
+              transform: 'scale(1.1)',
+              boxShadow: '0 12px 32px rgba(245, 87, 108, 0.5)'
+            },
+            transition: 'all 0.3s ease'
+          }}
           onClick={handleOpenEmailDialog}
           disabled={sendingEmail}
         >
@@ -1984,6 +2784,115 @@ export default function WeddingTimeline({
 
         {/* Add Person Dialog */}
         <AddPersonDialog />
+
+        {/* Add/Edit Event Dialog */}
+        <Dialog
+          open={eventDialogOpen}
+          onClose={() => {
+            setEventDialogOpen(false);
+            setSelectedEvent(null);
+          }}
+          maxWidth="md"
+          fullWidth
+        >
+          <DialogTitle
+            sx={{
+              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              color: 'white'
+            }}
+          >
+            {selectedEvent ? 'Rediger Event' : 'Legg til Nytt Event'}
+          </DialogTitle>
+          <DialogContent sx={{ mt: 2 }}>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <TextField
+                fullWidth
+                label="Aktivitet *"
+                value={newEvent.activity}
+                onChange={(e) => setNewEvent({ ...newEvent, activity: e.target.value })}
+                placeholder="F.eks. Vielse, Brudefotografering, Middag"
+              />
+              <Box sx={{ display: 'flex', gap: 2 }}>
+                <TextField
+                  label="Tidspunkt *"
+                  type="time"
+                  value={newEvent.time}
+                  onChange={(e) => setNewEvent({ ...newEvent, time: e.target.value })}
+                  InputLabelProps={{ shrink: true }}
+                  sx={{ flex: 1 }}
+                />
+                <TextField
+                  label="Sorteringsrekkefølge"
+                  type="number"
+                  value={newEvent.sortOrder}
+                  onChange={(e) => setNewEvent({ ...newEvent, sortOrder: parseInt(e.target.value) })}
+                  sx={{ width: 150 }}
+                />
+              </Box>
+              <TextField
+                fullWidth
+                label="Lokasjon"
+                value={newEvent.location}
+                onChange={(e) => setNewEvent({ ...newEvent, location: e.target.value })}
+                placeholder="Adresse eller stedsnavn"
+              />
+              <FormControl fullWidth>
+                <InputLabel>Type</InputLabel>
+                <Select
+                  value={newEvent.creatorType}
+                  label="Type"
+                  onChange={(e) => setNewEvent({ ...newEvent, creatorType: e.target.value })}
+                >
+                  <MenuItem value="Fotograf">Fotograf</MenuItem>
+                  <MenuItem value="Videograf">Videograf</MenuItem>
+                  <MenuItem value="Begge">Fotograf & Videograf</MenuItem>
+                  <MenuItem value="Annet">Annet</MenuItem>
+                </Select>
+              </FormControl>
+              <Box sx={{ display: 'flex', gap: 2 }}>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={newEvent.hasPhoto}
+                      onChange={(e) => setNewEvent({ ...newEvent, hasPhoto: e.target.checked })}
+                    />
+                  }
+                  label="Fotografering"
+                />
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={newEvent.hasVideo}
+                      onChange={(e) => setNewEvent({ ...newEvent, hasVideo: e.target.checked })}
+                    />
+                  }
+                  label="Filming"
+                />
+              </Box>
+            </Box>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => {
+              setEventDialogOpen(false);
+              setSelectedEvent(null);
+            }}>
+              Avbryt
+            </Button>
+            <Button
+              variant="contained"
+              onClick={handleAddEvent}
+              disabled={!newEvent.activity || !newEvent.time}
+              sx={{
+                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                '&:hover': {
+                  background: 'linear-gradient(135deg, #5568d3 0%, #6a3f8f 100%)'
+                }
+              }}
+            >
+              {selectedEvent ? 'Oppdater' : 'Legg til'}
+            </Button>
+          </DialogActions>
+        </Dialog>
 
         {/* Share Dialog with Access Code System */}
         <Dialog
@@ -2081,7 +2990,13 @@ export default function WeddingTimeline({
             <Button onClick={() => setShareDialogOpen(false)}>Lukk</Button>
             <Button 
               variant="contained"
-              sx={{ bgcolor: color, ...theming.getThemedButtonSx() }}
+              sx={{
+                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                color: 'white',
+                '&:hover': {
+                  background: 'linear-gradient(135deg, #5568d3 0%, #6a3f8f 100%)'
+                }
+              }}
               onClick={() => {
                 const message = `🎉 Din bryllupstidslinje er klar!\n\nTilgangskode: ${generateClientAccess.data?.accessCode}\nLenke: ${clientUrl}\n\nSkriv inn koden når du åpner lenken på bryllupsdagen!`;
 
@@ -2109,11 +3024,12 @@ export default function WeddingTimeline({
         >
           <DialogTitle
             sx={{
-              bgcolor: color,
+              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
               color: 'white',
               display: 'flex',
               alignItems: 'center',
-              gap:  1}}
+              gap: 1
+            }}
           >
             <Email />
             Send bryllupstidslinje til klient
@@ -2165,7 +3081,14 @@ daniel@creatorhubn.com"
                 variant="outlined"
                 onClick={handleOpenEmailDesigner}
                 startIcon={<DesignIcon />}
-                sx={{ borderColor: color, color: color }}
+                sx={{
+                  borderColor: '#667eea',
+                  color: '#667eea',
+                  '&:hover': {
+                    borderColor: '#5568d3',
+                    bgcolor: 'rgba(102, 126, 234, 0.04)'
+                  }
+                }}
               >
                 Tilpass e-post design
               </Button>
@@ -2183,11 +3106,18 @@ daniel@creatorhubn.com"
           </DialogContent>
           <DialogActions>
             <Button onClick={() => setEmailDialogOpen(false)}>Avbryt</Button>
-            <Button onClick={handleSendWeddingTimeline}
+            <Button
+              onClick={handleSendWeddingTimeline}
               variant="contained"
               disabled={!clientEmail || sendingEmail}
-              sx={{ bgcolor: color }}
-              startIcon={sendingEmail ? <CircularProgress size={16} sx={theming.getThemedButtonSx()} /> : <Email />}
+              sx={{
+                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                color: 'white',
+                '&:hover': {
+                  background: 'linear-gradient(135deg, #5568d3 0%, #6a3f8f 100%)'
+                }
+              }}
+              startIcon={sendingEmail ? <CircularProgress size={16} sx={{ color: 'white' }} /> : <Email />}
             >
               {sendingEmail ? 'Sender...' : 'Send bryllupstidslinje'}
             </Button>
@@ -2222,6 +3152,26 @@ daniel@creatorhubn.com"
               onSave={handleSaveEmailTemplate}
             />
           </DialogContent>
+        </Dialog>
+
+        {/* Delete Event Confirmation Dialog */}
+        <Dialog open={deleteEventDialogOpen} onClose={() => setDeleteEventDialogOpen(false)}>
+          <DialogTitle>Bekreft sletting</DialogTitle>
+          <DialogContent>
+            <Typography>
+              Er du sikker på at du vil slette dette eventet? Denne handlingen kan ikke angres.
+            </Typography>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setDeleteEventDialogOpen(false)}>Avbryt</Button>
+            <Button
+              onClick={confirmDeleteEvent}
+              color="error"
+              variant="contained"
+            >
+              Slett
+            </Button>
+          </DialogActions>
         </Dialog>
 
       </Box>

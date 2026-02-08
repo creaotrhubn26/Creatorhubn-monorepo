@@ -131,6 +131,9 @@ import {
   Warning,
   Info,
   MovieCreation,
+  Close as CloseIcon,
+  VideoLibrary,
+  LibraryMusic,
 } from '@mui/icons-material';
 import MemoryCardIcon from '../ui/MemoryCardIcon';
 import MemoryCardSelector from '../memory-card/MemoryCardSelector';
@@ -173,16 +176,16 @@ const generatePinFromProjectName = (projectName: string): string => {
   return pin;
 };
 
-// Project types with Material UI icons
+// Project types with Material UI icons and colors (matching landing page)
 const PROJECT_TYPES = {
-  wedding: { name: 'Bryllup', icon: Favorite },
-  portrait: { name: 'Portrett', icon: Portrait },
-  event: { name: 'Event', icon: Event },
-  commercial: { name: 'Kommersiell', icon: Business },
-  video: { name: 'Video', icon: Movie },
-  music: { name: 'Musikk', icon: MusicNote },
-  family: { name: 'Familie', icon: Group },
-  product: { name: 'Produkt', icon: ShoppingBag }
+  wedding: { name: 'Bryllup', icon: Favorite, color: '#e91e63' },
+  portrait: { name: 'Portrett', icon: PhotoCamera, color: '#2e7d32' },
+  event: { name: 'Event', icon: Event, color: '#ff8c00' },
+  commercial: { name: 'Kommersiell', icon: Business, color: '#ff8c00' },
+  video: { name: 'Video', icon: VideoLibrary, color: '#1565c0' },
+  music: { name: 'Musikk', icon: LibraryMusic, color: '#7b1fa2' },
+  family: { name: 'Familie', icon: Group, color: '#00897b' },
+  product: { name: 'Produkt', icon: ShoppingBag, color: '#ff8f00' }
 };
 
 // Project type categories for all project types - expandable and customizable
@@ -1004,6 +1007,7 @@ interface ProjectCreationWithMemoryCardsProps {
   userId?: string;
   onProjectCreated?: (projectData: any) => void;
   initialData?: any; // Pre-filled data from submission or other source
+  wedflowCoupleId?: string; // Optional: auto-fetch cultural type from wedflow couple traditions
   // Integration props for universal workflow connectivity
   onMeetingCreate?: (meeting: any) => void;
   onProjectUpdate?: (project: any) => void;
@@ -1047,6 +1051,7 @@ export default function ProjectCreationWithMemoryCards({
   profession,
   userId,
   initialData, // Pre-filled data from submission
+  wedflowCoupleId, // Optional wedflow couple ID for traditions bridge
   onProjectCreated,
   onMeetingCreate,
   onProjectUpdate,
@@ -1238,6 +1243,75 @@ export default function ProjectCreationWithMemoryCards({
   const [locationLoading, setLocationLoading] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   
+  // Initialize projectData state early so it can be used in useEffects below
+  const [projectData, setProjectData] = useState({
+    projectName: initialData?.projectName || '',
+    clientName: initialData?.clientName || '',
+    clientEmail: initialData?.clientEmail || '',
+    clientPhone: initialData?.clientPhone || '',
+    eventDate: initialData?.eventDate || '',
+    eventDates: (initialData?.eventDates as any) || ({} as Record<number, string>), // For multi-day events
+    location: initialData?.location || '',
+    projectType: initialData?.projectType || getDefaultProjectType(userProfession),
+    weddingCulture: 'norsk',
+    totalDays: 1,
+    activeDays: [1],
+    memoryCardConfigs: [] as MemoryCardConfig[],
+    selectedMemoryCards: [] as SelectedMemoryCard[],
+    selectedCameras: [] as any[],
+    enhancedMemoryCardSelection: null as any, // Enhanced memory card selection
+    memoryCardBudget: 'mid' as 'budget' | 'mid' | 'premium' | 'professional',
+    editingSoftware: '',
+    driveIntegration: true,
+    meetingOption: 'none',
+    meetingTime: '10:00',
+    meetingDuration: 60,
+    saveAsDefault: false,
+    description: initialData?.description || '',
+    venue: initialData?.venue || '',
+    guestCount: initialData?.guestCount || '',
+    primaryCamera: '',
+    backupCamera: '',
+    estimatedPhotos: '',
+    fileFormat: 'raw+jpeg',
+    equipmentNotes: '',
+    backupStrategy: 'automatic',
+    backupFrequency: 'realtime'
+  });
+
+  // ======= WEDFLOW TRADITIONS BRIDGE =======
+  // Auto-fetch couple's cultural type from wedflow when wedflowCoupleId is provided
+  const [wedflowTraditionsBridge, setWedflowTraditionsBridge] = useState<any>(null);
+  
+  useEffect(() => {
+    if (!wedflowCoupleId) return;
+    
+    const fetchTraditions = async () => {
+      try {
+        const data = await apiRequest(`/api/wedflow/traditions-bridge?coupleId=${encodeURIComponent(wedflowCoupleId)}`);
+        if (data?.primaryCulturalType) {
+          setWedflowTraditionsBridge(data);
+          // Auto-set weddingCulture from couple's traditions
+          setProjectData(prev => ({
+            ...prev,
+            weddingCulture: data.primaryCulturalType,
+            totalDays: WEDDING_CULTURES[data.primaryCulturalType]?.typical_days || prev.totalDays,
+            activeDays: Array.from(
+              { length: WEDDING_CULTURES[data.primaryCulturalType]?.typical_days || prev.totalDays },
+              (_, i) => i + 1
+            ),
+          }));
+          console.log(`🌍 Traditions bridge: Couple ${wedflowCoupleId} → culturalType: ${data.primaryCulturalType}`, data);
+        }
+      } catch (error) {
+        console.warn('Wedflow traditions bridge fetch failed (non-critical):', error);
+      }
+    };
+    
+    fetchTraditions();
+  }, [wedflowCoupleId]);
+  // ======= END TRADITIONS BRIDGE =======
+  
 // Load meeting preferences from server (replaces localStorage)
 useEffect(() => {
   if (!user) return;
@@ -1287,8 +1361,7 @@ useEffect(() => {
   };
   save();
   return () => controller.abort();
-// @ts-ignore - projectData exists in component scope
-}, [user, profession, (projectData as any)?.meetingOption, (projectData as any)?.meetingTime, (projectData as any)?.meetingDuration]);
+}, [user, profession, projectData]);
 
   // Check user authentication status
   useEffect(() => {
@@ -1379,128 +1452,7 @@ useEffect(() => {
     };
 }, [isConnected, onEvent, offEvent, currentProject]);
   
-  const [projectData, setProjectData] = useState({
-    projectName: initialData?.projectName || '',
-    clientName: initialData?.clientName || '',
-    clientEmail: initialData?.clientEmail || '',
-    clientPhone: initialData?.clientPhone || '',
-    eventDate: initialData?.eventDate || '',
-    eventDates: (initialData?.eventDates as any) || ({} as Record<number, string>), // For multi-day events
-    location: initialData?.location || '',
-    projectType: initialData?.projectType || getDefaultProjectType(userProfession),
-    weddingCulture: 'norsk',
-    totalDays: 1,
-    activeDays: [1],
-    memoryCardConfigs: [] as MemoryCardConfig[],
-    selectedMemoryCards: [] as SelectedMemoryCard[],
-    selectedCameras: [] as any[],
-    enhancedMemoryCardSelection: null as any, // Enhanced memory card selection
-    memoryCardBudget: 'mid' as 'budget' | 'mid' | 'premium' | 'professional',
-    editingSoftware: '',
-    driveIntegration: true,
-    profession: profession,
-    createShowcaseGallery: false,
-    meetingOption: 'none', // 'none','now','later'
-    meetingDate: '',
-    meetingTime: '10:00',
-    meetingDuration: 60,
-    shotList: [] as any[], // Shot list data
-    shotListTemplate: '', // Selected template
-    shotListCulture: '', // Culture-specific suggestions
-    saveAsDefault: false, // Save this meeting routine as default for future projects
-    // clientEmail and clientPhone moved to top (already initialized from initialData)
-    budget: initialData?.budget || '',
-    specialRequests: '',
-    estimatedDuration: '',
-    dailyHours: {} as Record<number, number>, // Hours per day for multi-day events
-    customDayNames: null as string[] | null, // Manuel dag-navngiving for tilpassede arrangementer
-    customCategories: [] as string[], // Manuel kategorier for alle prosjekttyper (event, commercial, etc.)
-    memoryCardLabeling: 'ABCD' as LabelingKey, // Default labeling scheme
-    perImagePrice: 500, // Default price per image
-    contractedImages: 50,
-    // Pricing Administration Integration
-    selectedPackage: null as any,
-    customPricing: {
-      basePrice: 0,
-      hourlyRate: 0,
-      travelCosts: 0,
-      additionalCosts: [] as any[],
-      discounts: [] as any[],
-      totalEstimate: 0
-    },
-    automaticPricing: true, // Use pricing from administration settings
-    // FASE 2: Showcase Gallery Security Settings
-    showcaseGallerySecurity: {
-      pinRequired: false,
-      pin: '',
-      passwordRequired: false,
-      password: '',
-      accessLevel: 'public' as 'public' | 'restricted' | 'private',
-      enableIpRestrictions: false,
-      allowedIpRanges: [] as string[],
-      enableDownloadProtection: false,
-      downloadProtectionLevel: 'none' as 'none' | 'watermark' | 'disabled',
-      sessionTimeoutMinutes: 60,
-      maxLoginAttempts: 3,
-      lockoutDurationMinutes: 15
-    },
-
-    // Wedding Timeline Integration - aktiveres kun for bryllup + showcase
-    createWeddingTimeline: false,
-    weddingTimelineShared: false,
-    weddingTimelineUrl: '',
-    weddingTimelineSecurity: {
-      useShowcasePassword: true, // Default: bruk samme passord som showcase
-      customPassword: false,
-      pin: '',
-      password: '',
-      accessLevel: 'restricted' as 'public' | 'restricted' | 'private'
-    },
-
-    // Project collaborators and invitations
-    collaborators: [] as any[],
-    // Split sheet creation for music producers
-    enableSplitSheet: false,
-    splitSheetData: null as any,
-    // Add missing properties
-    description: initialData?.description || '',
-    venue: '',
-    guestCount: initialData?.guestCount || '',
-    primaryCamera: '',
-    backupCamera: '',
-    estimatedPhotos: '',
-    fileFormat: 'raw+jpeg',
-    equipmentNotes: '',
-    backupStrategy: 'automatic',
-    backupFrequency: 'realtime',
-    // Additional missing properties
-    downloadProtection: 'none' as 'none' | 'password' | 'timelimit',
-    watermark: 'none' as 'none' | 'text' | 'logo' | 'both',
-    clientAccess: 'full' as 'full' | 'limited' | 'readonly',
-    meetingPreferences: {} as any,
-
-    // Project Timeline Phase Management
-    currentPhase: 'pre-planning' as 'pre-planning' | 'pre-production' | 'production' | 'post-production',
-    phaseHistory: [] as Array<{
-      phase: string;
-      timestamp: string;
-      notes?: string;
-    }>,
-    davinciIntegrationEnabled: false, // Enable when post-production phase is selected
-    scriptParameters: {
-      projectName: '',
-      resolution: '3840x2160',
-      frameRate: 25,
-      colorSpace: 'Rec.709',
-      timelineStructure: 'standard',
-      audioChannels: 2,
-      customSettings: {} as Record<string, any>
-    } as any,
-    // Camera and LOG format detection for ScriptManager
-    cameraBrand: '',
-    logFormat: '',
-    detectedLogFormats: [] as string[]
-  });
+  // Load meeting preferences from server (replaces localStorage)
   
   const [memoryCardLabeling, setMemoryCardLabeling] = useState<LabelingKey>('ABCD');
   const [showScriptManager, setShowScriptManager] = useState<boolean>(false);
@@ -1680,12 +1632,21 @@ useEffect(() => {
     // TODO: Implement tab navigation to Universal Dashboard
 };
 
-  const handleHealthCheckPassed = () => {
+  const handleHealthCheckPassed = async () => {
     setHealthCheckPassed(true);
     setShowHealthCheck(false);
     showSuccessToast('Health check passed! Ready to create project.', 3000);
     // Proceed with project creation
-    createProjectContext(projectData as any);
+    try {
+      const newProject = await createProjectContext(projectData as any);
+      // Call callback to notify parent component
+      if (onProjectCreated && newProject) {
+        onProjectCreated(newProject);
+      }
+    } catch (error) {
+      console.error('Failed to create project:', error);
+      showErrorToast('Failed to create project. Please try again.');
+    }
 };
 
   // Generate session ID for autosave
@@ -1727,8 +1688,20 @@ useEffect(() => {
   const [showLeadImport, setShowLeadImport] = useState(false);
   const [showVersionHistory, setShowVersionHistory] = useState(false);
   
-  // Navigation
-  const navigate = useNavigate();
+  // Navigation - safe hook that works inside and outside Router context
+  let navigate: any = null;
+  try {
+    navigate = useNavigate();
+  } catch (e) {
+    // Hook called outside Router context - this is OK for dialog rendering
+    navigate = (path: string, options?: any) => {
+      console.warn('Navigation attempted outside Router context:', path);
+      // Fallback: use window.location if needed
+      if (typeof window !== 'undefined') {
+        window.location.href = path;
+      }
+    };
+  }
 
   // Lead import functionality
   const { availableLeads, isLoadingLeads, importFromLead, isImporting } = {
@@ -2069,52 +2042,101 @@ useEffect(() => {
   };
 
   return (
-    <Box sx={{ p: 3 }}>
+    <Box sx={{ p: { xs: 2, sm: 3, md: 4 }, maxWidth: '1200px', mx: 'auto' }}>
       {initialData && (
-        <Alert severity="info" sx={{ mb: 2 }}>
-          <Typography variant="body2" fontWeight={600}>
-            📨 Creating project from submission: {initialData.clientName}
+        <Alert severity="info" sx={{ 
+          mb: 3, 
+          borderRadius: 2,
+          borderLeft: `4px solid ${theming.colors.primary}`,
+          backgroundColor: `${theming.colors.primary}08`
+        }}>
+          <Typography variant="body2" fontWeight={700} sx={{ color: theming.colors.primary }}>
+            📨 {initialData.clientName} fra innsending
           </Typography>
-          <Typography variant="caption" display="block">
-            Client info has been pre-filled. Complete the remaining fields to create the project.
+          <Typography variant="caption" display="block" sx={{ mt: 0.5, color: 'text.secondary' }}>
+            Kundeinfo er forhåndsutfylt. Fullfør de gjenværende feltene.
           </Typography>
         </Alert>
       )}
       
-      <Typography variant="h4" gutterBottom>
-        {initialData ? 'Create Project from Submission' : 'Project Creation with Memory Cards'}
-      </Typography>
-
       {/* Existing client (Google Contacts) picker */}
-      <Card sx={{ mt: 2, mb: 2 }}>
-        <CardContent>
-          <Typography variant="subtitle2" gutterBottom>
-            Velg eksisterende kontakt (Google Kontakter)
+      <Card sx={{ 
+        mt: 0, 
+        mb: 3,
+        borderRadius: 3,
+        border: '1px solid #e0e0e0',
+        boxShadow: '0 2px 12px rgba(0, 0, 0, 0.06)',
+        background: '#fafbfc',
+        transition: 'box-shadow 0.2s ease-in-out',
+        '&:hover': {
+          boxShadow: '0 4px 20px rgba(0, 0, 0, 0.08)'
+        }
+      }}>
+        <CardContent sx={{ pb: 2.5 }}>
+          <Typography 
+            variant="h6" 
+            gutterBottom 
+            sx={{ 
+              fontWeight: 700, 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: 1,
+              color: theming.colors.primary,
+              mb: 2
+            }}
+          >
+            <People sx={{ fontSize: 28 }} /> Velg kontakt
           </Typography>
-          <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems="center">
-            <Box sx={{ flex: { xs: '1 1 100%', md: '1 1 50%' }, width: '100%' }}>
+          <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems={{ xs: 'stretch', md: 'flex-end' }}>
+            <Box sx={{ flex: { xs: '1 1 100%', md: '1 1 50%' } }}>
               <Autocomplete
                 options={contactOptions}
-                getOptionLabel={(o: any) => o?.displayName || o?.email || ', '}
+                getOptionLabel={(o: any) => o?.displayName || o?.email || ''}
                 onInputChange={(_, val) => setContactQuery(val)}
                 onChange={(_, val) => setSelectedContact(val)}
                 renderInput={(params) => (
-                  <TextField {...params} label="Søk navn eller e-post" placeholder="Søk i Google Kontakter" />
+                  <TextField 
+                    {...params} 
+                    label="Søk navn eller e-post" 
+                    placeholder="Skriv for å søke..." 
+                    size="small"
+                    sx={{
+                      '& .MuiInputLabel-root': { color: '#1a1a1a', fontWeight: 600 },
+                      '& .MuiOutlinedInput-root': {
+                        '& fieldset': { borderColor: '#1565c0', borderWidth: 1.5 },
+                        '&:hover fieldset': { borderColor: '#0d47a1' },
+                        '&.Mui-focused fieldset': { borderColor: '#1565c0', borderWidth: 2 }
+                      },
+                      '& .MuiInputBase-input': { color: '#1a1a1a', fontWeight: 500 },
+                      '& .MuiInputBase-input::placeholder': { color: '#666', opacity: 1 }
+                    }}
+                  />
                 )}
               />
             </Box>
-            <Box sx={{ flex: { xs: '1 1 100%', md: '1 1 25%' }, width: '100%' }}>
+            <Box sx={{ flex: { xs: '1 1 100%', md: '1 1 25%' } }}>
               <TextField
-                label="Valgt e-post"
+                label="E-post"
                 value={projectData.clientEmail}
                 fullWidth
+                size="small"
                 slotProps={{ input: { readOnly: true } }}
+                sx={{
+                  '& .MuiInputLabel-root': { color: '#1a1a1a', fontWeight: 600 },
+                  '& .MuiOutlinedInput-root': {
+                    '& fieldset': { borderColor: '#1565c0', borderWidth: 1.5 },
+                    '&:hover fieldset': { borderColor: '#0d47a1' },
+                    '&.Mui-focused fieldset': { borderColor: '#1565c0', borderWidth: 2 }
+                  },
+                  '& .MuiInputBase-input': { color: '#1a1a1a', fontWeight: 500 }
+                }}
               />
             </Box>
-            <Box sx={{ flex: { xs: '1 1 100%', md: '1 1 25%' }, width: '100%' }}>
+            <Box sx={{ flex: { xs: '1 1 100%', md: '1 1 25%' } }}>
               <Button
                 variant="outlined"
                 fullWidth
+                size="small"
                 onClick={async () => {
                   try {
                     const name = projectData.clientName || projectData.clientEmail;
@@ -2166,10 +2188,32 @@ useEffect(() => {
 
       {/* Wedding Timeline Status */}
       {projectData.projectType === 'wedding' && (
-        <Card sx={{ mt: 1, mb: 2 }}>
+        <Card sx={{ 
+          mt: 0, 
+          mb: 3,
+          borderRadius: 3,
+          border: '1px solid #e0e0e0',
+          boxShadow: '0 2px 12px rgba(0, 0, 0, 0.06)',
+          background: '#fafbfc',
+          transition: 'box-shadow 0.2s ease-in-out',
+          '&:hover': {
+            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.08)'
+          }
+        }}>
           <CardContent>
-            <Typography variant="subtitle2" gutterBottom>
-              Bryllupstidslinje
+            <Typography 
+              variant="h6" 
+              gutterBottom 
+              sx={{ 
+                fontWeight: 700, 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: 1,
+                color: theming.colors.primary,
+                mb: 2
+              }}
+            >
+              <Favorite sx={{ fontSize: 28, color: '#e91e63' }} /> Bryllupstidslinje
             </Typography>
             {projectData.createWeddingTimeline ? (
               projectData.weddingTimelineShared ? (
@@ -2201,7 +2245,7 @@ useEffect(() => {
               )
             ) : (
               <Box>
-                <Typography variant="body2" sx={{ mb: 1 }}>
+                <Typography variant="body2" sx={{ mb: 1, color: '#1a1a1a', fontWeight: 500 }}>
                   Ingen bryllupstidslinje. Opprett i Wedding Timeline Administration.
                 </Typography>
                 <Stack direction="row" spacing={1}>
@@ -2247,13 +2291,35 @@ useEffect(() => {
 
       {/* Event Timeline (for non-wedding events) */}
       {projectData.projectType === 'event' && (
-        <Card sx={{ mt: 1, mb: 2 }}>
+        <Card sx={{ 
+          mt: 3, 
+          mb: 3,
+          borderRadius: 3,
+          border: '1px solid #e0e0e0',
+          boxShadow: '0 2px 12px rgba(0, 0, 0, 0.06)',
+          background: '#fafbfc',
+          transition: 'box-shadow 0.2s ease-in-out',
+          '&:hover': {
+            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.08)'
+          }
+        }}>
           <CardContent>
-            <Typography variant="subtitle2" gutterBottom>
-              Event Timeline
+            <Typography 
+              variant="h6" 
+              gutterBottom 
+              sx={{ 
+                fontWeight: 700, 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: 1,
+                color: theming.colors.primary,
+                mb: 2
+              }}
+            >
+              <Event sx={{ fontSize: 28 }} /> Event-tidslinje
             </Typography>
             <Typography variant="body2" sx={{ mb: 1 }}>
-              Rediger og planlegg timeline for arrangementet.
+              Rediger og planlegg tidslinjen for arrangementet.
             </Typography>
             <Stack direction="row" spacing={1}>
               <Button
@@ -2280,7 +2346,7 @@ useEffect(() => {
                   showInfoToast('Åpner Event Timeline (via dashboard)');
                 }}
               >
-                Åpne Timeline Editing
+                Åpne tidslinje-redigering
               </Button>
             </Stack>
           </CardContent>
@@ -2288,56 +2354,67 @@ useEffect(() => {
       )}
       
       {/* Contact & Project Info Summary */}
-      <Card sx={{ mt: 2, mb: 2 }}>
+        <Card sx={{ 
+          mt: 3, 
+          mb: 3,
+          borderRadius: 3,
+          border: '1px solid #e0e0e0',
+          boxShadow: '0 2px 12px rgba(0, 0, 0, 0.06)',
+          background: '#fafbfc',
+          transition: 'box-shadow 0.2s ease-in-out',
+          '&:hover': {
+            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.08)'
+          }
+        }}>
         <CardContent>
-          <Typography variant="subtitle2" gutterBottom>
+          <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 700, color: '#1565c0', fontSize: '1rem' }}>
             Kontakt & Prosjekt-info
           </Typography>
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
             <Box sx={{ flex: 1 }}>
-              <Typography variant="body2" fontWeight={600}>Prosjekt</Typography>
-              <Typography variant="caption" display="block">
+              <Typography variant="body2" fontWeight={700} sx={{ color: '#1a1a1a', mb: 0.5 }}>Prosjekt</Typography>
+              <Typography variant="body2" display="block" sx={{ color: '#1a1a1a', fontWeight: 500, lineHeight: 1.8 }}>
                 Project ID: {currentProject?.id || 'Ikke opprettet enda'}
               </Typography>
               {!currentProject?.id && (
-                <Typography variant="caption" color="text.secondary" display="block">
+                <Typography variant="body2" display="block" sx={{ color: '#333', fontWeight: 500, lineHeight: 1.8 }}>
                   Draft ID: {sessionId}
                 </Typography>
               )}
-              <Typography variant="caption" display="block">
+              <Typography variant="body2" display="block" sx={{ color: '#1a1a1a', fontWeight: 500, lineHeight: 1.8 }}>
                 Gjester: {projectData.guestCount || '-'}
               </Typography>
-              <Typography variant="caption" display="block">
+              <Typography variant="body2" display="block" sx={{ color: '#1a1a1a', fontWeight: 500, lineHeight: 1.8 }}>
                 Dato: {projectData.eventDate || '-'}
               </Typography>
               {projectData.eventDates && Object.keys(projectData.eventDates).length > 0 && (
-                <Typography variant="caption" display="block">
+                <Typography variant="body2" display="block" sx={{ color: '#1a1a1a', fontWeight: 500, lineHeight: 1.8 }}>
                   Datoer: {Object.keys(projectData.eventDates)
                     .sort((a, b) => Number(a) - Number(b))
                     .map((k) => projectData.eventDates[Number(k)])
                     .join(', ')}
                 </Typography>
               )}
-              <Typography variant="caption" display="block">
+              <Typography variant="body2" display="block" sx={{ color: '#1a1a1a', fontWeight: 500, lineHeight: 1.8 }}>
                 Lokasjon: {projectData.location || '-'}
               </Typography>
-              <Typography variant="caption" display="block">
+              <Typography variant="body2" display="block" sx={{ color: '#1a1a1a', fontWeight: 500, lineHeight: 1.8 }}>
                 Prosjekttype: {projectData.projectType || '-'}
               </Typography>
             </Box>
             <Box sx={{ flex: 1 }}>
-              <Typography variant="body2" fontWeight={600}>Kontakt</Typography>
-              <Typography variant="caption" display="block">
+              <Typography variant="body2" fontWeight={700} sx={{ color: '#1a1a1a', mb: 0.5 }}>Kontakt</Typography>
+              <Typography variant="body2" display="block" sx={{ color: '#1a1a1a', fontWeight: 500, lineHeight: 1.8 }}>
                 Navn: {selectedContact?.displayName || projectData.clientName || '-'}
               </Typography>
-              <Typography variant="caption" display="block">
+              <Typography variant="body2" display="block" sx={{ color: '#1a1a1a', fontWeight: 500, lineHeight: 1.8 }}>
                 E-post: {selectedContact?.email || projectData.clientEmail || '-'}
               </Typography>
-              <Typography variant="caption" display="block">
+              <Typography variant="body2" display="block" sx={{ color: '#1a1a1a', fontWeight: 500, lineHeight: 1.8 }}>
                 Telefon: {selectedContact?.phone || projectData.clientPhone || '-'}
               </Typography>
               {(selectedContact?.companyName) && (
-                <Typography variant="caption" display="block">
+                <Typography variant="body2" display="block" sx={{ color: '#1a1a1a', fontWeight: 500, lineHeight: 1.8 }}>
                   Firma: {selectedContact.companyName}
                 </Typography>
               )}
@@ -2348,9 +2425,16 @@ useEffect(() => {
 
       {/* Pre-filled Data Preview */}
       {initialData && (
-        <Box sx={{ mt: 2, p: 2, bgcolor: 'rgba(2, 5, 5,152,0,0.1)', borderRadius: 2, border: '1px solid rgba(2, 5, 5,152,0,0.3)' }}>
-          <Typography variant="subtitle2" gutterBottom fontWeight={600}>
-            Pre-filled from Submission:
+        <Box sx={{ 
+          mt: 2, 
+          p: 2, 
+          bgcolor: 'rgba(21, 101, 192, 0.08)',
+          borderRadius: 3, 
+          border: '1px solid rgba(21, 101, 192, 0.2)',
+          background: 'linear-gradient(135deg, rgba(21, 101, 192, 0.08) 0%, rgba(21, 101, 192, 0.04) 100%)'
+        }}>
+          <Typography variant="subtitle2" gutterBottom fontWeight={700} sx={{ color: '#1565c0' }}>
+            Forhåndsutfylt fra innsending:
           </Typography>
           <Stack spacing={1}>
             {initialData.clientName && (
@@ -2378,16 +2462,57 @@ useEffect(() => {
       )}
 
       {/* Connect to Event Management prompt */}
-      <Dialog open={connectDialogOpen} onClose={() => { setConnectDialogOpen(false); setAskedConnectEvent(true); }}>
-        <DialogTitle>Koble til Event Management?</DialogTitle>
-        <DialogContent>
+      <Dialog 
+        open={connectDialogOpen} 
+        onClose={() => { setConnectDialogOpen(false); setAskedConnectEvent(true); }}
+        PaperProps={{
+          sx: {
+            borderRadius: 3,
+            background: '#fafbfc',
+            boxShadow: '0 12px 30px rgba(0, 0, 0, 0.18)'
+          }
+        }}
+      >
+        <DialogTitle sx={{ 
+          background: '#1565c0', 
+          color: 'white', 
+          fontWeight: 700,
+          fontSize: '1.25rem',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          pt: 3,
+          pb: 2
+        }}>
+          Koble til Event Management?
+          <IconButton
+            onClick={() => { setConnectDialogOpen(false); setAskedConnectEvent(true); }}
+            sx={{ color: 'white', '&:hover': { bgcolor: 'rgba(255,255,255,0.2)' } }}
+            size="small"
+          >
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent sx={{ pt: 2.5 }}>
           <Typography variant="body2">
             Du har valgt prosjekttypen «event». Vil du koble dette prosjektet til Event Management for planlegging og analyser?
           </Typography>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => { setConnectDialogOpen(false); setAskedConnectEvent(true); setConnectToEvent(false); }}>Nei</Button>
-          <Button variant="contained" onClick={() => { setConnectDialogOpen(false); setAskedConnectEvent(true); setConnectToEvent(true); }}>Ja, koble</Button>
+        <DialogActions sx={{ px: 3, pb: 3 }}>
+          <Button 
+            variant="outlined"
+            onClick={() => { setConnectDialogOpen(false); setAskedConnectEvent(true); setConnectToEvent(false); }}
+            sx={{ borderColor: '#1565c0', color: '#1565c0' }}
+          >
+            Nei
+          </Button>
+          <Button 
+            variant="contained" 
+            onClick={() => { setConnectDialogOpen(false); setAskedConnectEvent(true); setConnectToEvent(true); }}
+            sx={{ bgcolor: '#1565c0', '&:hover': { bgcolor: '#0d47a1' } }}
+          >
+            Ja, koble
+          </Button>
         </DialogActions>
       </Dialog>
 
@@ -2591,15 +2716,37 @@ useEffect(() => {
       )}
 
       {/* Project Type Selection with Dynamic Types */}
-      <Card sx={{ mt: 2, mb: 2 }}>
+        <Card sx={{ 
+          mt: 3, 
+          mb: 3,
+          borderRadius: 3,
+          border: '1px solid #e0e0e0',
+          boxShadow: '0 2px 12px rgba(0, 0, 0, 0.06)',
+          background: '#fafbfc',
+          transition: 'box-shadow 0.2s ease-in-out',
+          '&:hover': {
+            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.08)'
+          }
+        }}>
         <CardContent>
-          <Typography variant="subtitle2" gutterBottom>
-            Prosjekttype
+          <Typography 
+            variant="h6" 
+            gutterBottom 
+            sx={{ 
+              fontWeight: 700, 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: 1,
+              color: theming.colors.primary,
+              mb: 2
+            }}
+          >
+            <Assignment sx={{ fontSize: 28 }} /> Prosjekttype
           </Typography>
           <FormControl fullWidth sx={{ mb: 2 }}>
-            <InputLabel>Velg prosjekttype</InputLabel>
+            <InputLabel sx={{ color: '#1a1a1a', fontWeight: 600, '&.Mui-focused': { color: '#1565c0' } }}>Velg prosjekttype</InputLabel>
             <Select
-              value={projectData.projectType || ', '}
+              value={projectData.projectType || ''}
               onChange={(e) => {
                 const selectedTypeId = e.target.value;
                 setProjectData((prev) => ({
@@ -2615,6 +2762,24 @@ useEffect(() => {
                 }
               }}
               label="Velg prosjekttype"
+              sx={{
+                '& .MuiOutlinedInput-notchedOutline': { borderColor: '#1565c0', borderWidth: 1.5 },
+                '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#0d47a1' },
+                '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#1565c0', borderWidth: 2 },
+                '& .MuiSelect-select': { color: '#1a1a1a', fontWeight: 500 }
+              }}
+              MenuProps={{
+                PaperProps: {
+                  sx: {
+                    bgcolor: '#2c2c2c',
+                    '& .MuiMenuItem-root': {
+                      color: 'white',
+                      '&:hover': { bgcolor: '#1565c0' },
+                      '&.Mui-selected': { bgcolor: '#1565c0', '&:hover': { bgcolor: '#0d47a1' } }
+                    }
+                  }
+                }
+              }}
             >
               {/* Default types from PROJECT_TYPES */}
               {Object.entries(PROJECT_TYPES).map(([key, type]) => {
@@ -2622,7 +2787,7 @@ useEffect(() => {
                 return (
                   <MenuItem key={key} value={key}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <IconComponent sx={{ fontSize: 20, color: 'primary.main' }} />
+                      <IconComponent sx={{ fontSize: 20, color: type.color }} />
                       {type.name}
                     </Box>
                   </MenuItem>
@@ -2640,10 +2805,10 @@ useEffect(() => {
                 .map((type) => (
                   <MenuItem key={type.id} value={type.name.toLowerCase()}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Folder sx={{ fontSize: 20, color: 'secondary.main' }} />
+                      <Folder sx={{ fontSize: 20, color: 'white' }} />
                       {type.name}
                       {type.usageCount > 0 && (
-                        <Chip label={`${type.usageCount}x`} size="small" sx={{ ml: 'auto', height: 18 }} />
+                        <Chip label={`${type.usageCount}x`} size="small" sx={{ ml: 'auto', height: 18, bgcolor: 'rgba(255,255,255,0.2)', color: 'white' }} />
                       )}
                     </Box>
                   </MenuItem>
@@ -2656,8 +2821,18 @@ useEffect(() => {
             startIcon={<AddIcon />}
             onClick={() => setAddProjectTypeDialogOpen(true)}
             fullWidth
+            sx={{ 
+              py: 1.5, 
+              fontWeight: 600,
+              borderColor: theming.colors.primary,
+              color: theming.colors.primary,
+              '&:hover': {
+                backgroundColor: `${theming.colors.primary}08`,
+                borderColor: theming.colors.primary
+              }
+            }}
           >
-            Add Custom Project Type
+            Legg til egendefinert prosjekttype
           </Button>
         </CardContent>
       </Card>
@@ -2674,27 +2849,57 @@ useEffect(() => {
 
       {/* Footer actions */}
       {projectData?.projectType === 'event' && (
-        <Box sx={{ mt: 3, display: 'flex', gap: 2, alignItems: 'center' }}>
+        <Box sx={{ 
+          mt: 4, 
+          p: 2.5, 
+          background: '#fafbfc',
+          borderRadius: 3, 
+          border: '1px solid #e0e0e0',
+          boxShadow: '0 2px 12px rgba(0, 0, 0, 0.06)'
+        }}>
           <FormControlLabel
             control={<Switch checked={connectToEvent} onChange={(_, v) => setConnectToEvent(v)} />}
-            label="Koble til Event Management"
+            label={<Typography variant="body2" fontWeight={600}>Koble til Event Management</Typography>}
           />
           <Button
             variant="contained"
             disabled={!connectToEvent}
             onClick={handleOpenEventManagementClick}
+            sx={{ mt: 1, bgcolor: '#1565c0', '&:hover': { bgcolor: '#0d47a1' } }}
           >
-            Open Event Management
+            Åpne Event Management
           </Button>
         </Box>
       )}
 
       {/* Split Sheet Setup for Music Producers */}
       {profession === 'music_producer' && projectData.collaborators && projectData.collaborators.length > 0 && (
-        <Card sx={{ mt: 3 }}>
+        <Card sx={{ 
+          mt: 3, 
+          mb: 3,
+          borderRadius: 3,
+          border: '1px solid #e0e0e0',
+          boxShadow: '0 2px 12px rgba(0, 0, 0, 0.06)',
+          background: '#fafbfc',
+          transition: 'box-shadow 0.2s ease-in-out',
+          '&:hover': {
+            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.08)'
+          }
+        }}>
           <CardContent>
-            <Typography variant="h6" gutterBottom sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
-              <AccountBalance sx={{ color:'#9f7aea' }} />
+            <Typography 
+              variant="h6" 
+              gutterBottom 
+              sx={{ 
+                fontWeight: 700, 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: 1,
+                color: theming.colors.primary,
+                mb: 2
+              }}
+            >
+              <AccountBalance sx={{ color: theming.colors.primary }} />
               Split Sheet Setup
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -2723,6 +2928,64 @@ useEffect(() => {
           </CardContent>
         </Card>
       )}
+
+      {/* Create Project Button */}
+      <Card sx={{ mt: 3, background: `linear-gradient(135deg, ${theming.colors.primary}15 0%, ${theming.colors.primary}05 100%)` }}>
+        <CardContent>
+          <Stack direction="row" spacing={2} justifyContent="flex-end" alignItems="center">
+            <Typography variant="body2" color="text.secondary" sx={{ flex: 1 }}>
+              {projectData.projectName ? `Prosjekt: ${projectData.projectName}` : 'Fyll ut prosjektdetaljer for å opprette'}
+            </Typography>
+            <Button
+              variant="contained"
+              size="large"
+              startIcon={<Folder />}
+              disabled={!projectData.projectName || !projectData.projectType}
+              onClick={async () => {
+                try {
+                  trackButtonClick('opprett_prosjekt', { 
+                    profession: userProfession,
+                    projectType: projectData.projectType,
+                    hasClient: !!projectData.clientName
+                  });
+                  showInfoToast('Oppretter prosjekt...', 2000);
+                  const newProject = await createProjectContext(projectData as any);
+                  showSuccessToast(`Prosjekt "${projectData.projectName}" opprettet!`, 4000);
+                  if (onProjectCreated && newProject) {
+                    onProjectCreated(newProject);
+                  }
+                } catch (error) {
+                  console.error('Failed to create project:', error);
+                  showErrorToast('Kunne ikke opprette prosjekt. Prøv igjen.');
+                }
+              }}
+              sx={{
+                bgcolor: theming.colors.primary,
+                color: 'white',
+                px: 4,
+                py: 2,
+                fontWeight: 700,
+                fontSize: '1.05rem',
+                textTransform: 'none',
+                borderRadius: 1.5,
+                boxShadow: `0 4px 12px ${theming.colors.primary}40`,
+                '&:hover': {
+                  bgcolor: theming.colors.primary,
+                  opacity: 0.9,
+                  transform: 'translateY(-2px)',
+                  boxShadow: `0 6px 16px ${theming.colors.primary}50`
+                },
+                '&:disabled': {
+                  bgcolor: 'action.disabledBackground',
+                  color: 'action.disabled'
+                }
+              }}
+            >
+              Opprett Prosjekt
+            </Button>
+          </Stack>
+        </CardContent>
+      </Card>
     </Box>
   );
 };

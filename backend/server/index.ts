@@ -4486,6 +4486,101 @@ app.get('/api/wedflow/couple-profile', async (req: any, res: any) => {
   }
 });
 
+// ==============================================================
+// TRADITIONS BRIDGE — Syncs wedflow couple traditions → CreatorHub culturalType
+// ==============================================================
+
+// Map wedflow tradition keys → CreatorHub culturalType (now synced 1:1 after key update)
+// Legacy keys still supported for backward compatibility
+const WEDFLOW_TO_CREATORHUB_CULTURE: Record<string, string> = {
+  // New synced keys (1:1 mapping)
+  norsk: 'norsk',
+  sikh: 'sikh',
+  indisk: 'indisk',
+  pakistansk: 'pakistansk',
+  tyrkisk: 'tyrkisk',
+  arabisk: 'arabisk',
+  somalisk: 'somalisk',
+  etiopisk: 'etiopisk',
+  nigeriansk: 'nigeriansk',
+  muslimsk: 'muslimsk',
+  libanesisk: 'libanesisk',
+  filipino: 'filipino',
+  kinesisk: 'kinesisk',
+  koreansk: 'koreansk',
+  thai: 'thai',
+  iransk: 'iransk',
+  annet: 'annet',
+  // Legacy wedflow keys (backward compatibility)
+  norway: 'norsk',
+  hindu: 'indisk',
+  muslim: 'muslimsk',
+  jewish: 'norsk',   // no jødisk in CreatorHub, fallback
+  chinese: 'kinesisk',
+  sweden: 'norsk',
+  denmark: 'norsk',
+};
+
+// GET /api/wedflow/traditions-bridge?coupleId=xxx — get couple's traditions mapped to CreatorHub culturalType
+app.get('/api/wedflow/traditions-bridge', async (req: any, res: any) => {
+  try {
+    const vendor = await getVendorFromSession(req, res);
+    if (!vendor) return;
+
+    const coupleId = req.query.coupleId as string;
+    if (!coupleId) {
+      return res.status(400).json({ error: 'coupleId er påkrevd' });
+    }
+
+    // Verify vendor has access to this couple via conversation
+    const convCheck = await pool.query(
+      'SELECT id FROM conversations WHERE vendor_id = $1 AND couple_id = $2 LIMIT 1',
+      [vendor.id, coupleId]
+    );
+    if (!convCheck.rows.length) {
+      return res.status(403).json({ error: 'Ingen tilgang til dette paret' });
+    }
+
+    // Get couple's selected traditions from DB
+    const result = await pool.query(`
+      SELECT id, display_name, wedding_date, selected_traditions
+      FROM couple_profiles
+      WHERE id = $1
+    `, [coupleId]);
+
+    if (!result.rows.length) {
+      return res.status(404).json({ error: 'Parprofil ikke funnet' });
+    }
+
+    const profile = result.rows[0];
+    const selectedTraditions: string[] = profile.selected_traditions || [];
+
+    // Map all selected traditions to CreatorHub culturalType keys
+    const mappedCultures = selectedTraditions.map((t: string) => ({
+      wedflowKey: t,
+      creatorhubKey: WEDFLOW_TO_CREATORHUB_CULTURE[t] || 'annet',
+    }));
+
+    // Primary culture = first selected tradition (what drives timeline)
+    const primaryCulture = mappedCultures.length > 0
+      ? mappedCultures[0].creatorhubKey
+      : 'norsk'; // default
+
+    res.json({
+      coupleId: profile.id,
+      displayName: profile.display_name,
+      weddingDate: profile.wedding_date,
+      selectedTraditions,
+      mappedCultures,
+      primaryCulturalType: primaryCulture,
+      allCulturalTypes: [...new Set(mappedCultures.map((m: any) => m.creatorhubKey))],
+    });
+  } catch (error) {
+    console.error('Wedflow traditions bridge error:', error);
+    res.status(500).json({ error: 'Kunne ikke hente tradisjoner' });
+  }
+});
+
 // Generic Wedflow API proxy — forwards /api/wedflow/* → Wedflow API /api/*
 // MUST be AFTER all specific /api/wedflow/planning/* routes to avoid shadowing
 app.all('/api/wedflow/*', async (req, res) => {

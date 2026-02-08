@@ -73,6 +73,7 @@ import { PushNotificationSettings } from '../shared/PushNotificationSettings';
 interface WeddingTimelineAdminProps {
   projectId?: string; // Optional - hvis null/undefined = generell bryllupstidslinje-administrasjon
   weddingId?: string; // Spesifikk bryllup-ID hvis det finnes
+  wedflowCoupleId?: string; // Optional: auto-fetch cultural type from wedflow couple traditions bridge
   projectIntegration?: {
     projectId?: string;
     weddingTimelineIntegrated?: boolean;
@@ -228,6 +229,7 @@ const DEMO_TIMELINE: WeddingTimeline = {
 export default function WeddingTimelineAdmin({ 
   projectId, 
   weddingId, 
+  wedflowCoupleId,
   projectIntegration,
   onMeetingCreate,
   onProjectUpdate,
@@ -323,8 +325,28 @@ export default function WeddingTimelineAdmin({
     enabled: !!selectedProjectId
 });
 
-  // Automatisk kulturtilpasning basert på valgt prosjekt
-  const culturalType = currentProject?.culturalType || projectIntegration?.culturalType || 'norsk';
+  // ======= WEDFLOW TRADITIONS BRIDGE =======
+  const [wedflowCulturalType, setWedflowCulturalType] = React.useState<string | null>(null);
+  
+  React.useEffect(() => {
+    if (!wedflowCoupleId) return;
+    const fetchTraditions = async () => {
+      try {
+        const data = await apiRequest(`/api/wedflow/traditions-bridge?coupleId=${encodeURIComponent(wedflowCoupleId)}`);
+        if (data?.primaryCulturalType) {
+          setWedflowCulturalType(data.primaryCulturalType);
+          console.log(`🌍 WeddingTimeline traditions bridge: ${wedflowCoupleId} → ${data.primaryCulturalType}`);
+        }
+      } catch (error) {
+        console.warn('Wedflow traditions bridge fetch failed (non-critical):', error);
+      }
+    };
+    fetchTraditions();
+  }, [wedflowCoupleId]);
+  // ======= END TRADITIONS BRIDGE =======
+
+  // Automatisk kulturtilpasning basert på valgt prosjekt (wedflow bridge → project → integration → default)
+  const culturalType = wedflowCulturalType || currentProject?.culturalType || projectIntegration?.culturalType || 'norsk';
   
   // Client access settings state
   const [clientSettings, setClientSettings] = useState({
