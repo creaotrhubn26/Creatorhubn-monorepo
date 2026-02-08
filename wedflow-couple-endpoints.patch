@@ -1,0 +1,192 @@
+diff --git a/server/routes.ts b/server/routes.ts
+index d6fb95e..769bdc1 100644
+--- a/server/routes.ts
++++ b/server/routes.ts
+@@ -2334,7 +2334,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
+ 
+       COUPLE_SESSIONS.set(token, { coupleId: couple.id, expiresAt });
+ 
+-      res.json({ couple, sessionToken: token });
++      // Remove password hash from response
++      const { password: _pw, ...coupleWithoutPassword } = couple;
++      res.json({ couple: coupleWithoutPassword, sessionToken: token });
+     } catch (error) {
+       console.error("[CoupleLogin] Error:", error);
+       if (error instanceof Error) {
+@@ -2364,7 +2366,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
+       if (!couple) {
+         return res.status(404).json({ error: "Profil ikke funnet" });
+       }
+-      res.json(couple);
++      // Remove password hash from response
++      const { password: _pw, ...coupleWithoutPassword } = couple;
++      res.json(coupleWithoutPassword);
+     } catch (error) {
+       console.error("Error fetching couple profile:", error);
+       res.status(500).json({ error: "Kunne ikke hente profil" });
+@@ -2396,6 +2400,165 @@ export async function registerRoutes(app: Express): Promise<Server> {
+     }
+   });
+ 
++  // ============ COUPLE PROJECTS (from legacy.projects) ============
++
++  // Get projects where couple is the client
++  app.get("/api/couples/projects", async (req: Request, res: Response) => {
++    const coupleId = await checkCoupleAuth(req, res);
++    if (!coupleId) return;
++
++    try {
++      // Get the couple's email
++      const [couple] = await db.select().from(coupleProfiles).where(eq(coupleProfiles.id, coupleId));
++      if (!couple) {
++        return res.status(404).json({ error: "Profil ikke funnet" });
++      }
++
++      // Query legacy.projects where this couple is the client
++      const projects = await db.execute(sql`
++        SELECT 
++          p.id, p.name, p.description, p.status, p.event_date,
++          p.event_type, p.location, p.client_name, p.client_email,
++          p.budget, p.created_at, p.updated_at,
++          u.email as vendor_email,
++          v.business_name as vendor_name, v.category as vendor_category,
++          v.phone as vendor_phone, v.city as vendor_city
++        FROM legacy.projects p
++        LEFT JOIN users u ON u.id = p.user_id
++        LEFT JOIN vendors v ON v.email = u.email
++        WHERE p.client_email = ${couple.email}
++        ORDER BY p.event_date DESC
++      `);
++
++      res.json({ projects: projects.rows || [] });
++    } catch (error) {
++      console.error("Error fetching couple projects:", error);
++      res.status(500).json({ error: "Kunne ikke hente prosjekter" });
++    }
++  });
++
++  // Get single project details
++  app.get("/api/couples/projects/:projectId", async (req: Request, res: Response) => {
++    const coupleId = await checkCoupleAuth(req, res);
++    if (!coupleId) return;
++
++    try {
++      const [couple] = await db.select().from(coupleProfiles).where(eq(coupleProfiles.id, coupleId));
++      if (!couple) {
++        return res.status(404).json({ error: "Profil ikke funnet" });
++      }
++
++      const result = await db.execute(sql`
++        SELECT 
++          p.id, p.name, p.description, p.status, p.event_date,
++          p.event_type, p.location, p.client_name, p.client_email,
++          p.budget, p.created_at, p.updated_at,
++          u.email as vendor_email,
++          v.business_name as vendor_name, v.category as vendor_category,
++          v.phone as vendor_phone, v.city as vendor_city,
++          v.id as vendor_id
++        FROM legacy.projects p
++        LEFT JOIN users u ON u.id = p.user_id
++        LEFT JOIN vendors v ON v.email = u.email
++        WHERE p.id = ${req.params.projectId}
++          AND p.client_email = ${couple.email}
++      `);
++
++      if (!result.rows || result.rows.length === 0) {
++        return res.status(404).json({ error: "Prosjekt ikke funnet" });
++      }
++
++      res.json({ project: result.rows[0] });
++    } catch (error) {
++      console.error("Error fetching project:", error);
++      res.status(500).json({ error: "Kunne ikke hente prosjekt" });
++    }
++  });
++
++  // Get couple dashboard (profile + projects + vendors + bookings)
++  app.get("/api/couples/dashboard", async (req: Request, res: Response) => {
++    const coupleId = await checkCoupleAuth(req, res);
++    if (!coupleId) return;
++
++    try {
++      const [couple] = await db.select().from(coupleProfiles).where(eq(coupleProfiles.id, coupleId));
++      if (!couple) {
++        return res.status(404).json({ error: "Profil ikke funnet" });
++      }
++      const { password: _pw, ...coupleData } = couple;
++
++      // Get projects
++      const projects = await db.execute(sql`
++        SELECT p.id, p.name, p.status, p.event_date, p.location, p.client_name,
++               v.business_name as vendor_name, v.category as vendor_category
++        FROM legacy.projects p
++        LEFT JOIN users u ON u.id = p.user_id
++        LEFT JOIN vendors v ON v.email = u.email
++        WHERE p.client_email = ${couple.email}
++        ORDER BY p.event_date DESC
++      `);
++
++      // Get bookings
++      const bookings = await db.execute(sql`
++        SELECT id, client_name, event_date, event_type, location, status, created_at
++        FROM bookings
++        WHERE client_email = ${couple.email}
++        ORDER BY event_date DESC
++      `);
++
++      // Get vendors from projects
++      const vendorList = await db.execute(sql`
++        SELECT DISTINCT v.id, v.business_name, v.category, v.email, v.phone, v.city
++        FROM legacy.projects p
++        JOIN users u ON u.id = p.user_id
++        JOIN vendors v ON v.email = u.email
++        WHERE p.client_email = ${couple.email}
++      `);
++
++      res.json({
++        couple: coupleData,
++        projects: projects.rows || [],
++        bookings: bookings.rows || [],
++        vendors: vendorList.rows || [],
++        stats: {
++          totalProjects: (projects.rows || []).length,
++          totalVendors: (vendorList.rows || []).length,
++          totalBookings: (bookings.rows || []).length,
++        }
++      });
++    } catch (error) {
++      console.error("Error fetching couple dashboard:", error);
++      res.status(500).json({ error: "Kunne ikke hente dashboard" });
++    }
++  });
++
++  // Get vendors assigned to couple's projects
++  app.get("/api/couples/vendors", async (req: Request, res: Response) => {
++    const coupleId = await checkCoupleAuth(req, res);
++    if (!coupleId) return;
++
++    try {
++      const [couple] = await db.select().from(coupleProfiles).where(eq(coupleProfiles.id, coupleId));
++      if (!couple) {
++        return res.status(404).json({ error: "Profil ikke funnet" });
++      }
++
++      const vendorList = await db.execute(sql`
++        SELECT DISTINCT v.id, v.business_name, v.category, v.email, v.phone, v.city,
++               p.name as project_name, p.event_date
++        FROM legacy.projects p
++        JOIN users u ON u.id = p.user_id
++        JOIN vendors v ON v.email = u.email
++        WHERE p.client_email = ${couple.email}
++      `);
++
++      res.json({ vendors: vendorList.rows || [] });
++    } catch (error) {
++      console.error("Error fetching couple vendors:", error);
++      res.status(500).json({ error: "Kunne ikke hente leverandører" });
++    }
++  });
++
+   // ============ CONVERSATIONS & MESSAGES ============
+ 
+   // Get couple's conversations
