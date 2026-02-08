@@ -4240,6 +4240,252 @@ app.get('/api/wedflow/products', async (req, res) => {
   }
 });
 
+// ============================================================================
+// WEDFLOW IMPORTANT PEOPLE & WEDDING TIMELINE BRIDGE
+// Vendor can view important people for couples they're connected to
+// ============================================================================
+
+// GET /api/wedflow/important-people?coupleId=xxx — list important people for a couple
+// Vendor must have an active conversation with the couple
+app.get('/api/wedflow/important-people', async (req: any, res: any) => {
+  try {
+    const vendor = await getVendorFromSession(req, res);
+    if (!vendor) return;
+
+    const coupleId = req.query.coupleId as string;
+    if (!coupleId) {
+      return res.status(400).json({ error: 'coupleId er påkrevd' });
+    }
+
+    // Verify vendor has a conversation with this couple
+    const convCheck = await pool.query(
+      'SELECT id FROM conversations WHERE vendor_id = $1 AND couple_id = $2 LIMIT 1',
+      [vendor.id, coupleId]
+    );
+    if (!convCheck.rows.length) {
+      return res.status(403).json({ error: 'Ingen tilgang til dette parets data' });
+    }
+
+    const result = await pool.query(`
+      SELECT id, couple_id, name, role, phone, email, notes, sort_order, created_at, updated_at
+      FROM couple_important_people
+      WHERE couple_id = $1
+      ORDER BY sort_order, created_at
+    `, [coupleId]);
+
+    res.json({ people: result.rows });
+  } catch (error) {
+    console.error('Wedflow important people error:', error);
+    res.status(500).json({ error: 'Kunne ikke hente viktige personer' });
+  }
+});
+
+// POST /api/wedflow/important-people — vendor can add important person for a couple
+app.post('/api/wedflow/important-people', async (req: any, res: any) => {
+  try {
+    const vendor = await getVendorFromSession(req, res);
+    if (!vendor) return;
+
+    const { coupleId, name, role, phone, email, notes, sortOrder } = req.body;
+    if (!coupleId || !name || !role) {
+      return res.status(400).json({ error: 'coupleId, name og role er påkrevd' });
+    }
+
+    // Verify vendor has a conversation with this couple
+    const convCheck = await pool.query(
+      'SELECT id FROM conversations WHERE vendor_id = $1 AND couple_id = $2 LIMIT 1',
+      [vendor.id, coupleId]
+    );
+    if (!convCheck.rows.length) {
+      return res.status(403).json({ error: 'Ingen tilgang til dette parets data' });
+    }
+
+    const result = await pool.query(`
+      INSERT INTO couple_important_people (id, couple_id, name, role, phone, email, notes, sort_order, created_at, updated_at)
+      VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
+      RETURNING *
+    `, [coupleId, name, role, phone || null, email || null, notes || null, sortOrder || 0]);
+
+    res.json({ person: result.rows[0] });
+  } catch (error) {
+    console.error('Wedflow create important person error:', error);
+    res.status(500).json({ error: 'Kunne ikke legge til person' });
+  }
+});
+
+// PATCH /api/wedflow/important-people/:id — update an important person
+app.patch('/api/wedflow/important-people/:id', async (req: any, res: any) => {
+  try {
+    const vendor = await getVendorFromSession(req, res);
+    if (!vendor) return;
+
+    const { id } = req.params;
+    const { name, role, phone, email, notes, sortOrder } = req.body;
+
+    // Verify this person belongs to a couple the vendor is connected to
+    const personCheck = await pool.query(`
+      SELECT cip.couple_id FROM couple_important_people cip
+      JOIN conversations c ON c.couple_id = cip.couple_id AND c.vendor_id = $1
+      WHERE cip.id = $2
+      LIMIT 1
+    `, [vendor.id, id]);
+    if (!personCheck.rows.length) {
+      return res.status(403).json({ error: 'Ingen tilgang' });
+    }
+
+    const setClauses: string[] = ['updated_at = NOW()'];
+    const values: any[] = [];
+    let paramIndex = 1;
+
+    if (name !== undefined) { setClauses.push(`name = $${paramIndex++}`); values.push(name); }
+    if (role !== undefined) { setClauses.push(`role = $${paramIndex++}`); values.push(role); }
+    if (phone !== undefined) { setClauses.push(`phone = $${paramIndex++}`); values.push(phone); }
+    if (email !== undefined) { setClauses.push(`email = $${paramIndex++}`); values.push(email); }
+    if (notes !== undefined) { setClauses.push(`notes = $${paramIndex++}`); values.push(notes); }
+    if (sortOrder !== undefined) { setClauses.push(`sort_order = $${paramIndex++}`); values.push(sortOrder); }
+
+    values.push(id);
+    const result = await pool.query(`
+      UPDATE couple_important_people SET ${setClauses.join(', ')} WHERE id = $${paramIndex} RETURNING *
+    `, values);
+
+    res.json({ person: result.rows[0] });
+  } catch (error) {
+    console.error('Wedflow update important person error:', error);
+    res.status(500).json({ error: 'Kunne ikke oppdatere person' });
+  }
+});
+
+// DELETE /api/wedflow/important-people/:id — delete an important person
+app.delete('/api/wedflow/important-people/:id', async (req: any, res: any) => {
+  try {
+    const vendor = await getVendorFromSession(req, res);
+    if (!vendor) return;
+
+    const { id } = req.params;
+
+    // Verify this person belongs to a couple the vendor is connected to
+    const personCheck = await pool.query(`
+      SELECT cip.couple_id FROM couple_important_people cip
+      JOIN conversations c ON c.couple_id = cip.couple_id AND c.vendor_id = $1
+      WHERE cip.id = $2
+      LIMIT 1
+    `, [vendor.id, id]);
+    if (!personCheck.rows.length) {
+      return res.status(403).json({ error: 'Ingen tilgang' });
+    }
+
+    await pool.query('DELETE FROM couple_important_people WHERE id = $1', [id]);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Wedflow delete important person error:', error);
+    res.status(500).json({ error: 'Kunne ikke slette person' });
+  }
+});
+
+// GET /api/wedflow/photo-shots?coupleId=xxx — list photo shots for a couple
+app.get('/api/wedflow/photo-shots', async (req: any, res: any) => {
+  try {
+    const vendor = await getVendorFromSession(req, res);
+    if (!vendor) return;
+
+    const coupleId = req.query.coupleId as string;
+    if (!coupleId) {
+      return res.status(400).json({ error: 'coupleId er påkrevd' });
+    }
+
+    const convCheck = await pool.query(
+      'SELECT id FROM conversations WHERE vendor_id = $1 AND couple_id = $2 LIMIT 1',
+      [vendor.id, coupleId]
+    );
+    if (!convCheck.rows.length) {
+      return res.status(403).json({ error: 'Ingen tilgang til dette parets data' });
+    }
+
+    // Check if couple_photo_shots table exists and has data
+    const result = await pool.query(`
+      SELECT id, couple_id, title, description, category, completed, sort_order, created_at
+      FROM couple_photo_shots
+      WHERE couple_id = $1
+      ORDER BY sort_order, created_at
+    `, [coupleId]);
+
+    res.json({ shots: result.rows });
+  } catch (error) {
+    console.error('Wedflow photo shots error:', error);
+    res.status(500).json({ error: 'Kunne ikke hente fotoliste' });
+  }
+});
+
+// GET /api/wedflow/schedule-events?coupleId=xxx — list schedule events from couple
+app.get('/api/wedflow/schedule-events', async (req: any, res: any) => {
+  try {
+    const vendor = await getVendorFromSession(req, res);
+    if (!vendor) return;
+
+    const coupleId = req.query.coupleId as string;
+    if (!coupleId) {
+      return res.status(400).json({ error: 'coupleId er påkrevd' });
+    }
+
+    const convCheck = await pool.query(
+      'SELECT id FROM conversations WHERE vendor_id = $1 AND couple_id = $2 LIMIT 1',
+      [vendor.id, coupleId]
+    );
+    if (!convCheck.rows.length) {
+      return res.status(403).json({ error: 'Ingen tilgang' });
+    }
+
+    const result = await pool.query(`
+      SELECT id, couple_id, title, time, icon, notes, sort_order, created_at
+      FROM schedule_events
+      WHERE couple_id = $1
+      ORDER BY time, sort_order
+    `, [coupleId]);
+
+    res.json({ events: result.rows });
+  } catch (error) {
+    console.error('Wedflow schedule events error:', error);
+    res.status(500).json({ error: 'Kunne ikke hente dagsplan' });
+  }
+});
+
+// GET /api/wedflow/couple-profile?coupleId=xxx — get couple profile details
+app.get('/api/wedflow/couple-profile', async (req: any, res: any) => {
+  try {
+    const vendor = await getVendorFromSession(req, res);
+    if (!vendor) return;
+
+    const coupleId = req.query.coupleId as string;
+    if (!coupleId) {
+      return res.status(400).json({ error: 'coupleId er påkrevd' });
+    }
+
+    const convCheck = await pool.query(
+      'SELECT id FROM conversations WHERE vendor_id = $1 AND couple_id = $2 LIMIT 1',
+      [vendor.id, coupleId]
+    );
+    if (!convCheck.rows.length) {
+      return res.status(403).json({ error: 'Ingen tilgang' });
+    }
+
+    const result = await pool.query(`
+      SELECT id, email, display_name, wedding_date, created_at
+      FROM couple_profiles
+      WHERE id = $1
+    `, [coupleId]);
+
+    if (!result.rows.length) {
+      return res.status(404).json({ error: 'Parprofil ikke funnet' });
+    }
+
+    res.json({ profile: result.rows[0] });
+  } catch (error) {
+    console.error('Wedflow couple profile error:', error);
+    res.status(500).json({ error: 'Kunne ikke hente parprofil' });
+  }
+});
+
 // Generic Wedflow API proxy — forwards /api/wedflow/* → Wedflow API /api/*
 // MUST be AFTER all specific /api/wedflow/planning/* routes to avoid shadowing
 app.all('/api/wedflow/*', async (req, res) => {

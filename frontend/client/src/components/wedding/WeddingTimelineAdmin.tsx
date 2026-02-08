@@ -66,6 +66,7 @@ import ClientAccessSettings from '@/components/shared/ClientAccessSettings';
 import WeddingTimeline from '../wedding-timeline';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import WeddingTimelineHelp from './WeddingTimelineHelp';
+import WedflowImportantPeople from '../wedflow/WedflowImportantPeople';
 import { usePushNotifications } from '../../hooks/usePushNotifications';
 import { PushNotificationSettings } from '../shared/PushNotificationSettings';
 
@@ -245,6 +246,7 @@ export default function WeddingTimelineAdmin({
   const [prefill, setPrefill] = useState<any | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<TimelineEvent | null>(null);
   const [timelineViewOpen, setTimelineViewOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
   const [selectedProjectId, setSelectedProjectId] = useState<string | undefined>(projectId);
   const queryClient = useQueryClient();
   
@@ -277,11 +279,9 @@ export default function WeddingTimelineAdmin({
   // Integration system
   const { communication, dataFlow } = useEnhancedMasterIntegration();
   
-  // Push notifications
+  // Push notifications - timelineId will be set after timeline is fetched
   const { user: currentUser } = useAuth();
   const userId = currentUser?.id || currentUser?.sub;
-  const timelineId = timeline?.id || selectedProjectId || projectId || weddingId;
-  const { pushEnabled, isSupported } = usePushNotifications(userId, timelineId);
 
   // Listen for prefill over bus
   React.useEffect(() => {
@@ -311,6 +311,10 @@ export default function WeddingTimelineAdmin({
     queryKey: ['/api/projects', { type: 'wedding',}],
     queryFn: () => apiRequest('/api/projects?type=wedding')
 });
+
+  const weddingProjectsList = Array.isArray(weddingProjects)
+    ? weddingProjects
+    : (weddingProjects as any)?.projects || (weddingProjects as any)?.data || [];
 
   // Hent valgt prosjekt med kulturdata
   const { data: currentProject } = useQuery({
@@ -423,6 +427,10 @@ export default function WeddingTimelineAdmin({
 
   // Use demo data if in demo mode or if the API failed
   const timeline = isDemoMode || timelineError ? DEMO_TIMELINE : fetchedTimeline;
+
+  // Push notifications - now that timeline is defined
+  const timelineId = timeline?.id || selectedProjectId || projectId || weddingId;
+  const { pushEnabled, isSupported } = usePushNotifications(userId, timelineId);
 
   // Fetch user profile for context
   const { data: userProfile } = useQuery({
@@ -568,7 +576,7 @@ export default function WeddingTimelineAdmin({
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <Event sx={{ color: theming.colors.primary }} />
-          <Typography variant="h4" sx={{ fontWeight: 70, color: theming.colors.primary }}>
+          <Typography variant="h4" sx={{ fontWeight: 700, color: theming.colors.primary }}>
             Bryllupstidslinje Administrasjon
           </Typography>
         </Box>
@@ -641,7 +649,7 @@ export default function WeddingTimelineAdmin({
                   <MenuItem value="">
                     <em>Generell tidslinje (ingen prosjekt)</em>
                   </MenuItem>
-                  {weddingProjects.map((project: any) => (
+                  {weddingProjectsList.map((project: any) => (
                     <MenuItem key={project.d} value={project.id}>
                       {project.projectName} - {project.clientName} ({project.culturalType || 'norsk'})
                     </MenuItem>
@@ -778,7 +786,7 @@ export default function WeddingTimelineAdmin({
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                     <Key sx={{ fontSize: '2rem', color: theming.colors.primary }} />
                     <Box>
-                      <Typography variant="h5" sx={{ fontWeight: 70, color: theming.colors.primary }}>
+                      <Typography variant="h5" sx={{ fontWeight: 700, color: theming.colors.primary }}>
                         Klienttilgang
                       </Typography>
                       <Chip
@@ -990,6 +998,13 @@ export default function WeddingTimelineAdmin({
         </Box>
       )}
 
+      {/* Deltakere & Leverandører Tab — Wedflow Important People Bridge */}
+      {activeTab === 2 && (
+        <Box>
+          <WedflowImportantPeople />
+        </Box>
+      )}
+
       {/* Client Access Tab */}
       {activeTab === 3 && (
         <Box>
@@ -1039,24 +1054,55 @@ export default function WeddingTimelineAdmin({
          )}
 
           {/* Live Wedding Timeline Component */}
-          <Card sx={{ mb:  3 ,  ...theming.getThemedCardSx() }}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-                <CalendarToday sx={{ color: theming.colors.primary }} />
-                <Typography variant="h6" sx={{ color: theming.colors.primary }}>
-                  Live Bryllupstidslinje
-                </Typography>
+          <Card 
+            sx={{ 
+              mb: 3,
+              borderRadius: 3,
+              overflow: 'hidden',
+              boxShadow: '0 8px 32px rgba(102, 126, 234, 0.15)'
+            }}
+          >
+            {/* Modern Gradient Header */}
+            <Box
+              sx={{
+                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                p: 3,
+                color: 'white'
+              }}
+            >
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                <Box
+                  sx={{
+                    width: 48,
+                    height: 48,
+                    borderRadius: 2,
+                    bgcolor: 'rgba(255, 255, 255, 0.2)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backdropFilter: 'blur(10px)'
+                  }}
+                >
+                  <CalendarToday sx={{ fontSize: 28 }} />
+                </Box>
+                <Box sx={{ flex: 1 }}>
+                  <Typography variant="h5" sx={{ fontWeight: 700, mb: 0.5 }}>
+                    Live Bryllupstidslinje
+                  </Typography>
+                  <Typography variant="body2" sx={{ opacity: 0.95 }}>
+                    Klienten kan følge tidslinjen live på bryllupsdagen med kulturtilpassede aktiviteter
+                  </Typography>
+                </Box>
               </Box>
-              <Typography variant="body2" color="text.secondary" sx={{ mb:  3 }}>
-                Klienten kan følge tidslinjen live på bryllupsdagen med kulturtilpassede aktiviteter.
-              </Typography>
-              
+            </Box>
+
+            <CardContent sx={{ p: 3 }}>
               {currentProject && (
                 <WeddingTimeline 
                   mode="embedded"
                   culturalType={culturalType}
                   projectIntegration={{
-                    projectId: selectedProjectd,
+                    projectId: selectedProject,
                     weddingTimelineIntegrated: true,
                     culturalType: culturalType
               }}
@@ -1616,7 +1662,7 @@ export default function WeddingTimelineAdmin({
 
                             <Typography variant="h6" sx={{
                               color: theming.colors.primary,
-                              fontWeight: 70,
+                              fontWeight: 700,
                               mb: 1,
                               fontSize: '1.25rem'
                             }}>
@@ -1693,10 +1739,10 @@ export default function WeddingTimelineAdmin({
                           }}>
                                 <Typography variant="subtitle2" sx={{ 
                                   color: '#9c27b0',
-                                  fontWeight: 7,
+                                  fontWeight: 700,
                                   display: 'flex',
                                   alignItems: 'center',
-                                  gap:  1,
+                                  gap: 1,
                                   mb: 1 }}>
                                   <Mic sx={{ fontSize: '18px'}} />
                                   TALE / PRESENTASJON
