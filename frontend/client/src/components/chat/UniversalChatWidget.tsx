@@ -89,6 +89,7 @@ import {
   Flag,
   Badge as BadgeIcon,
   Speed,
+  Reply,
 } from '@mui/icons-material';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { useMutation } from '@tanstack/react-query';
@@ -420,7 +421,9 @@ export default function UniversalChatWidget({
 }, [communication]);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  // queryClient is now imported from lib/queryClient  // Tab states for enhanced functionality const [activeTab, setActiveTab] = useState(0); // 0 = Internal Chat, 1 = Google Chat, 2 = Feedback Management
+  // queryClient is now imported from lib/queryClient
+  // Tab states for enhanced functionality
+  const [activeTab, setActiveTab] = useState(0); // 0 = Internal Chat, 1 = Google Chat, 2 = Feedback Management, 3 = Wedflow
   const [emailIntegrationEnabled, setEmailIntegrationEnabled] = useState(true);
   const [autoResponseEnabled, setAutoResponseEnabled] = useState(false);
   const [googleChatMenuAnchor, setGoogleChatMenuAnchor] = useState<null | HTMLElement>(null);
@@ -450,6 +453,14 @@ export default function UniversalChatWidget({
   const [feedbackDetailDialogOpen, setFeedbackDetailDialogOpen] = useState(false);
   const [newFeedbackStatus, setNewFeedbackStatus] = useState('');
   const [adminNotes, setAdminNotes] = useState('');
+  
+  // Wedflow Chat Bridge State
+  const [wedflowConversations, setWedflowConversations] = useState<any[]>([]);
+  const [selectedWedflowConv, setSelectedWedflowConv] = useState<string | null>(null);
+  const [wedflowMessages, setWedflowMessages] = useState<any[]>([]);
+  const [wedflowReplyInput, setWedflowReplyInput] = useState('');
+  const [wedflowLoading, setWedflowLoading] = useState(false);
+  const [wedflowVendorName, setWedflowVendorName] = useState('');
   
   // ⚠️ CHAT & COMMUNICATION PROTOKOLL: Real-time WebSocket state
   const [wsConnection, setWsConnection] = useState<WebSocketConnection>({
@@ -719,9 +730,62 @@ export default function UniversalChatWidget({
 	    const response = await apiRequest('/api/prototype-testing/feedback');
       return response.feedback || [];
     },
-    refetchInterval: 3000, // Real-time updates every 3 seconds
+    enabled: false, // Disabled - endpoint not implemented
+    refetchInterval: 30000, // Reduced from 3s to 30s to reduce spam
     staleTime: 0 // Always fetch fresh data
   });
+
+  // Fetch Wedflow conversations for vendor users
+  useEffect(() => {
+    if (activeTab === 3) {
+      fetchWedflowConversations();
+    }
+  }, [activeTab]);
+
+  const fetchWedflowConversations = async () => {
+    try {
+      setWedflowLoading(true);
+      const data = await apiRequest('/api/wedflow/conversations');
+      setWedflowConversations(data.conversations || []);
+      setWedflowVendorName(data.vendorName || '');
+    } catch (err) {
+      console.warn('Wedflow conversations not available:', err);
+      setWedflowConversations([]);
+    } finally {
+      setWedflowLoading(false);
+    }
+  };
+
+  const fetchWedflowMessages = async (conversationId: string) => {
+    try {
+      setWedflowLoading(true);
+      const data = await apiRequest(`/api/wedflow/conversations/${conversationId}/messages`);
+      setWedflowMessages(data.messages || []);
+      setSelectedWedflowConv(conversationId);
+    } catch (err) {
+      console.error('Failed to fetch wedflow messages:', err);
+    } finally {
+      setWedflowLoading(false);
+    }
+  };
+
+  const sendWedflowMessage = async () => {
+    if (!wedflowReplyInput.trim() || !selectedWedflowConv) return;
+    try {
+      await apiRequest(`/api/wedflow/conversations/${selectedWedflowConv}/messages`, {
+        method: 'POST',
+        body: JSON.stringify({ body: wedflowReplyInput.trim() }),
+        headers: { 'Content-Type': 'application/json' }
+      });
+      setWedflowReplyInput('');
+      // Refresh messages
+      fetchWedflowMessages(selectedWedflowConv);
+      // Refresh conversation list to update last message
+      fetchWedflowConversations();
+    } catch (err) {
+      console.error('Failed to send wedflow message:', err);
+    }
+  };
 
   // Transform conversations to chat previews format
   const conversations = conversationsResponse?.conversations || [];
@@ -1380,13 +1444,19 @@ export default function UniversalChatWidget({
                     : 'Google Chat Integration v2.1'}
                 </Typography>
                 <Chip
-                  label={activeTab === 0 ? "INTERN CHAT" : activeTab === 1 ? "GOOGLE CHAT" : "FEEDBACK"}
+                  icon={
+                    activeTab === 0 ? <img src="/creatorhub-logo-amber.svg" alt="" style={{ width: 16, height: 16 }} /> :
+                    activeTab === 3 ? <img src="/wedflow-logo.png" alt="" style={{ width: 16, height: 16, borderRadius: '50%' }} /> :
+                    undefined
+                  }
+                  label={activeTab === 0 ? "CREATORHUB" : activeTab === 1 ? "GOOGLE CHAT" : activeTab === 2 ? "FEEDBACK" : "WEDFLOW"}
                   size="small"
                   sx={{
-                    bgcolor: activeTab === 0 ? '#FF5722' : activeTab === 1 ? '#4285F4' : '#9C27B0',
+                    bgcolor: activeTab === 0 ? '#FF5722' : activeTab === 1 ? '#4285F4' : activeTab === 2 ? '#9C27B0' : '#E91E63',
                     color: 'white',
                     fontSize: '0.75rem',
-                    fontWeight: 'bold'
+                    fontWeight: 'bold',
+                    '& .MuiChip-icon': { ml: 0.5 }
                   }}
                 />
                 {totalUnreadCount > 0 && (
@@ -1547,8 +1617,8 @@ export default function UniversalChatWidget({
                 }}
               >
                 <Tab
-                  icon={<Chat sx={{ fontSize: 24 }} />}
-                  label="INTERN CHAT"
+                  icon={<img src="/creatorhub-logo-amber.svg" alt="CreatorHub" style={{ width: 24, height: 24 }} />}
+                  label="CREATORHUB"
                   iconPosition="start"
                   sx={{ textTransform: 'none' }}
                 />
@@ -1561,6 +1631,12 @@ export default function UniversalChatWidget({
                 <Tab
                   icon={<BugReport sx={{ fontSize: 24 }} />}
                   label="FEEDBACK"
+                  iconPosition="start"
+                  sx={{ textTransform: 'none' }}
+                />
+                <Tab
+                  icon={<img src="/wedflow-logo.png" alt="Wedflow" style={{ width: 24, height: 24, borderRadius: '50%' }} />}
+                  label="WEDFLOW"
                   iconPosition="start"
                   sx={{ textTransform: 'none' }}
                 />
@@ -1652,7 +1728,7 @@ export default function UniversalChatWidget({
                 </List>
                 ) : (
                   <Box sx={{ p:  3, textAlign: 'center'}}>
-                    <Chat sx={{ fontSize:  48, color: 'grey.40', mb: 1 }} />
+                    <img src="/creatorhub-logo-amber.svg" alt="CreatorHub" style={{ width: 48, height: 48, opacity: 0.5, marginBottom: 8 }} />
                     <Typography variant="body2" color="text.secondary">
                       Ingen nye meldinger
                     </Typography>
@@ -1722,7 +1798,7 @@ export default function UniversalChatWidget({
                     )}
                   </Box>
                 </Box>
-              ) : (
+              ) : activeTab === 2 ? (
                 // Feedback Management Tab
                 <Box sx={{ p: 2 }}>
                   {feedbackLoading ? (
@@ -1858,6 +1934,173 @@ export default function UniversalChatWidget({
                           <BugReport sx={{ fontSize:  48, color: 'grey.40', mb: 1 }} />
                           <Typography variant="body2" color="text.secondary">
                             Ingen feedback ennå
+                          </Typography>
+                        </Box>
+                      )}
+                    </>
+                  )}
+                </Box>
+              ) : (
+                // Wedflow Chat Bridge Tab
+                <Box sx={{ p: 2, height: '100%' }}>
+                  {wedflowLoading && !wedflowConversations.length ? (
+                    <Box sx={{ p: 3, textAlign: 'center' }}>
+                      <Typography variant="body2" color="text.secondary">
+                        Laster Wedflow-samtaler...
+                      </Typography>
+                    </Box>
+                  ) : selectedWedflowConv ? (
+                    // Message view for selected conversation
+                    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+                      {/* Back button + conversation header */}
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, pb: 1, borderBottom: '1px solid', borderColor: 'divider' }}>
+                        <IconButton size="small" onClick={() => { setSelectedWedflowConv(null); setWedflowMessages([]); }}>
+                          <Reply sx={{ transform: 'scaleX(-1)' }} />
+                        </IconButton>
+                        <img src="/wedflow-logo.png" alt="Wedflow" style={{ width: 22, height: 22, borderRadius: '50%' }} />
+                        <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                          {wedflowConversations.find(c => c.id === selectedWedflowConv)?.couple_name || 'Samtale'}
+                        </Typography>
+                      </Box>
+
+                      {/* Messages list */}
+                      <Box sx={{ flex: 1, overflow: 'auto', mb: 2 }}>
+                        {wedflowMessages.map((msg: any) => (
+                          <Box
+                            key={msg.id}
+                            sx={{
+                              display: 'flex',
+                              justifyContent: msg.sender_type === 'vendor' ? 'flex-end' : 'flex-start',
+                              mb: 1
+                            }}
+                          >
+                            <Paper
+                              elevation={0}
+                              sx={{
+                                p: 1.5,
+                                maxWidth: '75%',
+                                borderRadius: 2,
+                                bgcolor: msg.sender_type === 'vendor' ? '#E91E63' : '#f5f5f5',
+                                color: msg.sender_type === 'vendor' ? 'white' : 'text.primary'
+                              }}
+                            >
+                              <Typography variant="body2">{msg.body}</Typography>
+                              <Typography
+                                variant="caption"
+                                sx={{
+                                  display: 'block',
+                                  mt: 0.5,
+                                  opacity: 0.7,
+                                  textAlign: 'right'
+                                }}
+                              >
+                                {new Date(msg.created_at).toLocaleString('nb-NO', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' })}
+                              </Typography>
+                            </Paper>
+                          </Box>
+                        ))}
+                      </Box>
+
+                      {/* Reply input */}
+                      <Box sx={{ display: 'flex', gap: 1 }}>
+                        <TextField
+                          fullWidth
+                          size="small"
+                          placeholder="Skriv svar til paret..."
+                          value={wedflowReplyInput}
+                          onChange={(e) => setWedflowReplyInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && !e.shiftKey) {
+                              e.preventDefault();
+                              sendWedflowMessage();
+                            }
+                          }}
+                        />
+                        <IconButton
+                          onClick={sendWedflowMessage}
+                          disabled={!wedflowReplyInput.trim()}
+                          sx={{ bgcolor: '#E91E63', color: 'white', '&:hover': { bgcolor: '#C2185B' }, '&:disabled': { bgcolor: 'grey.300' } }}
+                        >
+                          <Send sx={{ fontSize: 18 }} />
+                        </IconButton>
+                      </Box>
+                    </Box>
+                  ) : (
+                    // Conversation list
+                    <>
+                      <Box sx={{ mb: 2, p: 1.5, bgcolor: '#fce4ec', borderRadius: 2, border: '1px solid #E91E6330' }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                          <img src="/wedflow-logo.png" alt="Wedflow" style={{ width: 22, height: 22, borderRadius: '50%' }} />
+                          <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#880E4F' }}>
+                            Wedflow Meldinger
+                          </Typography>
+                        </Box>
+                        <Typography variant="caption" color="text.secondary">
+                          Meldinger fra par på wedflow.no {wedflowVendorName && `• ${wedflowVendorName}`}
+                        </Typography>
+                      </Box>
+
+                      {wedflowConversations.length > 0 ? (
+                        <List sx={{ p: 0 }}>
+                          {wedflowConversations.map((conv: any) => (
+                            <ListItem
+                              key={conv.id}
+                              component="div"
+                              onClick={() => fetchWedflowMessages(conv.id)}
+                              sx={{
+                                cursor: 'pointer',
+                                borderRadius: 1,
+                                mb: 0.5,
+                                '&:hover': { bgcolor: '#fce4ec' },
+                                borderLeft: conv.vendor_unread_count > 0 ? '3px solid #E91E63' : 'none'
+                              }}
+                            >
+                              <ListItemAvatar>
+                                <Avatar sx={{ bgcolor: '#fce4ec', width: 36, height: 36 }}>
+                                  <img src="/wedflow-logo.png" alt="Wedflow" style={{ width: 24, height: 24, borderRadius: '50%' }} />
+                                </Avatar>
+                              </ListItemAvatar>
+                              <ListItemText
+                                primary={
+                                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                                      {conv.couple_name || 'Par'}
+                                    </Typography>
+                                    <Typography variant="caption" color="text.secondary">
+                                      {conv.last_message_at ? new Date(conv.last_message_at).toLocaleString('nb-NO', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' }) : ''}
+                                    </Typography>
+                                  </Box>
+                                }
+                                secondary={
+                                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <Typography
+                                      variant="caption"
+                                      color="text.secondary"
+                                      sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 180 }}
+                                    >
+                                      {conv.last_message_sender === 'vendor' ? 'Du: ' : ''}{conv.last_message || 'Ingen meldinger'}
+                                    </Typography>
+                                    {conv.vendor_unread_count > 0 && (
+                                      <Chip
+                                        label={conv.vendor_unread_count}
+                                        size="small"
+                                        sx={{ bgcolor: '#E91E63', color: 'white', height: 18, fontSize: '0.7rem' }}
+                                      />
+                                    )}
+                                  </Box>
+                                }
+                              />
+                            </ListItem>
+                          ))}
+                        </List>
+                      ) : (
+                        <Box sx={{ p: 3, textAlign: 'center' }}>
+                          <img src="/wedflow-logo.png" alt="Wedflow" style={{ width: 48, height: 48, borderRadius: '50%', opacity: 0.5, marginBottom: 8 }} />
+                          <Typography variant="body2" color="text.secondary">
+                            Ingen Wedflow-samtaler ennå
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            Par som kontakter deg via wedflow.no vil vises her
                           </Typography>
                         </Box>
                       )}
