@@ -84,6 +84,8 @@ export interface ShowcaseCardProps {
   setNewProjectState: (state: 'delivered' | 'in_review') => void;
   setProjectStateUpdateOpen: (open: boolean) => void;
   setShowProToolsDialog?: (show: boolean) => void;
+  setSelectedItemForWedflow?: (item: ShowcaseItem | null) => void;
+  setShowPublishToWedflowDialog?: (show: boolean) => void;
 }
 
 const ShowcaseCard = React.memo(({
@@ -116,7 +118,9 @@ const ShowcaseCard = React.memo(({
   setSelectedItemForStateUpdate,
   setNewProjectState,
   setProjectStateUpdateOpen,
-  setShowProToolsDialog
+  setShowProToolsDialog,
+  setSelectedItemForWedflow,
+  setShowPublishToWedflowDialog
 }: ShowcaseCardProps) => {
   const [contextMenu, setContextMenu] = React.useState<{
     mouseX: number;
@@ -964,6 +968,27 @@ const ShowcaseCard = React.memo(({
           </ListItemIcon>
           <ListItemText>Del til Community</ListItemText>
         </MenuItem>
+
+        {setSelectedItemForWedflow && setShowPublishToWedflowDialog && (
+          <>
+            <Divider sx={{ my: 1 }} />
+            <MenuItem onClick={() => {
+              setSelectedItemForWedflow(item);
+              setShowPublishToWedflowDialog(true);
+              handleClose();
+            }}>
+              <ListItemIcon>
+                <OpenInNew fontSize="small" sx={{ color: '#E91E63' }} />
+              </ListItemIcon>
+              <ListItemText>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  Publiser til Wedflow
+                  <Chip label="DELIVERY" size="small" sx={{ height: 16, fontSize: '0.6rem', bgcolor: '#E91E63', color: 'white' }} />
+                </Box>
+              </ListItemText>
+            </MenuItem>
+          </>
+        )}
       </Menu>
     )}
     </Box>

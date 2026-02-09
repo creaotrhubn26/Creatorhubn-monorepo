@@ -928,6 +928,13 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
   
   // Share to Community Dialog States
   const [showShareToCommunityDialog, setShowShareToCommunityDialog] = useState(false);
+
+  // Publish to Wedflow Dialog States
+  const [showPublishToWedflowDialog, setShowPublishToWedflowDialog] = useState(false);
+  const [selectedItemForWedflow, setSelectedItemForWedflow] = useState<ShowcaseItem | null>(null);
+  const [wedflowDeliveryForm, setWedflowDeliveryForm] = useState({ coupleName: '', coupleEmail: '', weddingDate: '', title: '', description: '' });
+  const [wedflowPublishing, setWedflowPublishing] = useState(false);
+  const [wedflowResult, setWedflowResult] = useState<{ accessCode: string; deliveryId: string; itemCount: number } | null>(null);
   const [showProToolsDialog, setShowProToolsDialog] = useState(false);
   const [proToolsSessionId, setProToolsSessionId] = useState<string | undefined>();
   const [selectedItemForCommunityShare, setSelectedItemForCommunityShare] = useState<ShowcaseItem | null>(null);
@@ -7888,6 +7895,8 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                   setSelectedItemForStateUpdate={setSelectedItemForStateUpdate}
                   setNewProjectState={setNewProjectState}
                   setProjectStateUpdateOpen={setProjectStateUpdateOpen}
+                  setSelectedItemForWedflow={setSelectedItemForWedflow}
+                  setShowPublishToWedflowDialog={setShowPublishToWedflowDialog}
                 />
               ))}
             </Box>
@@ -10910,6 +10919,176 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
           });
         }}
       />
+
+      {/* Publish to Wedflow Dialog */}
+      <Dialog
+        open={showPublishToWedflowDialog}
+        onClose={() => {
+          setShowPublishToWedflowDialog(false);
+          setSelectedItemForWedflow(null);
+          setWedflowResult(null);
+          setWedflowDeliveryForm({ coupleName: '', coupleEmail: '', weddingDate: '', title: '', description: '' });
+        }}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            background: 'linear-gradient(135deg, rgba(15, 20, 25, 0.98) 0%, rgba(25, 15, 30, 0.98) 100%)',
+            backdropFilter: 'blur(20px)',
+            border: '1px solid rgba(233, 30, 99, 0.3)',
+            borderRadius: 3,
+          }
+        }}
+      >
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, color: '#E91E63' }}>
+          <Box component="span" sx={{ fontSize: '1.5rem' }}>📦</Box>
+          Publiser til Wedflow
+          <Chip label="DELIVERY" size="small" sx={{ ml: 'auto', bgcolor: '#E91E63', color: 'white', fontSize: '0.65rem', height: 20 }} />
+        </DialogTitle>
+        <DialogContent>
+          {wedflowResult ? (
+            <Box sx={{ textAlign: 'center', py: 3 }}>
+              <Typography variant="h6" sx={{ color: '#4CAF50', mb: 2 }}>✅ Leveranse opprettet!</Typography>
+              <Box sx={{ bgcolor: 'rgba(233, 30, 99, 0.1)', borderRadius: 2, p: 3, mb: 2, border: '1px solid rgba(233, 30, 99, 0.3)' }}>
+                <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.6)', mb: 1 }}>Tilgangskode</Typography>
+                <Typography variant="h4" sx={{ color: '#E91E63', fontFamily: 'monospace', letterSpacing: 4, fontWeight: 700 }}>
+                  {wedflowResult.accessCode}
+                </Typography>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', mt: 1, display: 'block' }}>
+                  Del denne koden med brudeparet for å gi tilgang
+                </Typography>
+              </Box>
+              <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)' }}>
+                {wedflowResult.itemCount} elementer publisert til leveransen
+              </Typography>
+              <Button
+                variant="outlined"
+                sx={{ mt: 2, color: '#E91E63', borderColor: '#E91E63' }}
+                onClick={() => {
+                  navigator.clipboard.writeText(wedflowResult.accessCode);
+                  addNotification({ type: 'success', message: 'Tilgangskode kopiert!' });
+                }}
+              >
+                Kopier tilgangskode
+              </Button>
+            </Box>
+          ) : (
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
+              <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)', mb: 1 }}>
+                Opprett en Wedflow-leveranse fra showcase-elementet <strong>{selectedItemForWedflow?.title}</strong>.
+                Brudeparet kan hente denne med en tilgangskode i Wedflow-appen.
+              </Typography>
+
+              <TextField
+                label="Leveransetittel"
+                value={wedflowDeliveryForm.title}
+                onChange={(e) => setWedflowDeliveryForm(p => ({ ...p, title: e.target.value }))}
+                fullWidth
+                size="small"
+                placeholder={`Leveranse fra ${selectedItemForWedflow?.title || 'showcase'}`}
+                sx={{ '& .MuiOutlinedInput-root': { color: 'white' }, '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.5)' }, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' } }}
+              />
+              <TextField
+                label="Brudepar (navn)"
+                value={wedflowDeliveryForm.coupleName}
+                onChange={(e) => setWedflowDeliveryForm(p => ({ ...p, coupleName: e.target.value }))}
+                fullWidth
+                size="small"
+                placeholder="F.eks. Daniel & Maria"
+                sx={{ '& .MuiOutlinedInput-root': { color: 'white' }, '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.5)' }, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' } }}
+              />
+              <TextField
+                label="E-post til brudeparet"
+                value={wedflowDeliveryForm.coupleEmail}
+                onChange={(e) => setWedflowDeliveryForm(p => ({ ...p, coupleEmail: e.target.value }))}
+                fullWidth
+                size="small"
+                type="email"
+                placeholder="par@eksempel.no"
+                sx={{ '& .MuiOutlinedInput-root': { color: 'white' }, '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.5)' }, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' } }}
+              />
+              <TextField
+                label="Bryllupsdato"
+                value={wedflowDeliveryForm.weddingDate}
+                onChange={(e) => setWedflowDeliveryForm(p => ({ ...p, weddingDate: e.target.value }))}
+                fullWidth
+                size="small"
+                type="date"
+                InputLabelProps={{ shrink: true }}
+                sx={{ '& .MuiOutlinedInput-root': { color: 'white' }, '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.5)' }, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' } }}
+              />
+              <TextField
+                label="Beskrivelse"
+                value={wedflowDeliveryForm.description}
+                onChange={(e) => setWedflowDeliveryForm(p => ({ ...p, description: e.target.value }))}
+                fullWidth
+                size="small"
+                multiline
+                rows={2}
+                placeholder="Valgfri beskrivelse..."
+                sx={{ '& .MuiOutlinedInput-root': { color: 'white' }, '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.5)' }, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' } }}
+              />
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button
+            onClick={() => {
+              setShowPublishToWedflowDialog(false);
+              setSelectedItemForWedflow(null);
+              setWedflowResult(null);
+              setWedflowDeliveryForm({ coupleName: '', coupleEmail: '', weddingDate: '', title: '', description: '' });
+            }}
+            sx={{ color: 'rgba(255,255,255,0.5)' }}
+          >
+            {wedflowResult ? 'Lukk' : 'Avbryt'}
+          </Button>
+          {!wedflowResult && (
+            <Button
+              variant="contained"
+              disabled={wedflowPublishing || !wedflowDeliveryForm.coupleName.trim()}
+              onClick={async () => {
+                if (!selectedItemForWedflow) return;
+                setWedflowPublishing(true);
+                try {
+                  const token = localStorage.getItem('auth_token') || '';
+                  const response = await fetch('/api/wedflow/showcase-create-delivery', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({
+                      showcaseItemIds: [selectedItemForWedflow.id],
+                      coupleName: wedflowDeliveryForm.coupleName,
+                      coupleEmail: wedflowDeliveryForm.coupleEmail || undefined,
+                      weddingDate: wedflowDeliveryForm.weddingDate || undefined,
+                      title: wedflowDeliveryForm.title || undefined,
+                      description: wedflowDeliveryForm.description || undefined,
+                      projectId: (selectedItemForWedflow as any).projectId || undefined,
+                    }),
+                  });
+                  const data = await response.json();
+                  if (data.success) {
+                    setWedflowResult({
+                      accessCode: data.delivery.accessCode,
+                      deliveryId: data.delivery.id,
+                      itemCount: data.delivery.itemCount,
+                    });
+                    addNotification({ type: 'success', message: data.message });
+                  } else {
+                    addNotification({ type: 'error', message: data.error || 'Kunne ikke opprette leveranse' });
+                  }
+                } catch (err) {
+                  addNotification({ type: 'error', message: 'Nettverksfeil. Prøv igjen.' });
+                } finally {
+                  setWedflowPublishing(false);
+                }
+              }}
+              sx={{ bgcolor: '#E91E63', '&:hover': { bgcolor: '#C2185B' } }}
+            >
+              {wedflowPublishing ? 'Oppretter...' : '📦 Publiser til Wedflow'}
+            </Button>
+          )}
+        </DialogActions>
+      </Dialog>
 
       {/* Bulk Folder Upload Dialog */}
       <BulkFolderUpload

@@ -5320,6 +5320,193 @@ app.get('/api/wedflow/project-showcase-bridge/:projectId', async (req: any, res:
 });
 
 // ==============================================================
+// SHOWCASE → WEDFLOW DELIVERY BRIDGE
+// ==============================================================
+
+// POST /api/wedflow/showcase-create-delivery — Create a wedflow delivery from showcase item(s)
+// Vendor selects showcase items → creates a new delivery pre-filled with those items
+app.post('/api/wedflow/showcase-create-delivery', async (req: any, res: any) => {
+  try {
+    const vendor = await getVendorFromSession(req, res);
+    if (!vendor) return;
+
+    const { showcaseItemIds, coupleId, projectId, timelineId, coupleName, coupleEmail, weddingDate, title, description } = req.body;
+    if (!showcaseItemIds?.length) return res.status(400).json({ error: 'Velg minst ett showcase-element' });
+
+    // Resolve vendor → user ID
+    const tokenSCD = req.headers.authorization?.replace('Bearer ', '');
+    const sessionSCD = tokenSCD ? activeSessions.get(tokenSCD) : null;
+    const vendorEmailSCD = sessionSCD?.email || '';
+
+    // Get the showcase items
+    const userResSCD = await pool.query('SELECT id FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1', [vendorEmailSCD]);
+    const userId = userResSCD.rows[0]?.id;
+    if (!userId) return res.status(400).json({ error: 'Fant ikke bruker for denne vendor-kontoen' });
+
+    const placeholders = showcaseItemIds.map((_: string, i: number) => `$${i + 1}`).join(', ');
+    const showcaseRes = await pool.query(
+      `SELECT id, title, description, image_url, thumbnail_url, category, profession
+       FROM showcase_items WHERE id IN (${placeholders}) AND user_id = $${showcaseItemIds.length + 1} AND is_active = true`,
+      [...showcaseItemIds, userId]
+    );
+
+    if (!showcaseRes.rows.length) return res.status(404).json({ error: 'Ingen showcase-elementer funnet' });
+
+    // Create delivery in wedflow via deliveries table
+    const deliveryId = crypto.randomUUID();
+    const accessCode = crypto.randomBytes(8).toString('hex').toUpperCase().slice(0, 16);
+    const now = new Date().toISOString();
+
+    await pool.query(
+      `INSERT INTO deliveries (id, vendor_id, title, description, couple_name, couple_email, wedding_date,
+       access_code, status, project_id, timeline_id, couple_id, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7::date, $8, 'active', $9, $10, $11, $12::timestamp, $13::timestamp)`,
+      [
+        deliveryId, vendor.id,
+        title || `Leveranse fra ${vendor.business_name}`,
+        description || `Opprettet fra showcase med ${showcaseRes.rows.length} elementer`,
+        coupleName || 'Ukjent par',
+        coupleEmail || null,
+        weddingDate || null,
+        accessCode,
+        projectId || null, timelineId || null, coupleId || null,
+        now, now
+      ]
+    );
+
+    // Create delivery items from showcase items
+    const deliveryItems: any[] = [];
+    for (let i = 0; i < showcaseRes.rows.length; i++) {
+      const si = showcaseRes.rows[i];
+      const itemId = crypto.randomUUID();
+      const itemType = si.profession === 'videographer' ? 'video' : 'gallery';
+
+      await pool.query(
+        `INSERT INTO delivery_items (id, delivery_id, type, label, url, description, sort_order, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8::timestamp)`,
+        [itemId, deliveryId, itemType, si.title, si.image_url, si.description, i + 1, now]
+      );
+
+      deliveryItems.push({ id: itemId, type: itemType, label: si.title, url: si.image_url });
+    }
+
+    // If timelineId provided, add a timeline event
+    if (timelineId) {
+      const eventId = crypto.randomUUID();
+      await pool.query(
+        `INSERT INTO timeline_events (id, timeline_id, title, description, start_time, event_type, status, is_active, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5::timestamp, $6, $7, true, $8::timestamp, $9::timestamp)`,
+        [eventId, timelineId, '📦 Leveranse opprettet fra showcase',
+         `Leveranse "${title || 'Showcase-leveranse'}" med ${deliveryItems.length} elementer`,
+         now, 'delivery', 'confirmed', now, now]
+      ).catch(() => {}); // Non-critical
+    }
+
+    console.log(`📦 Leveranse ${deliveryId} opprettet fra ${showcaseRes.rows.length} showcase-elementer av ${vendor.id}`);
+
+    res.json({
+      success: true,
+      delivery: {
+        id: deliveryId,
+        accessCode,
+        title: title || `Leveranse fra ${vendor.business_name}`,
+        itemCount: deliveryItems.length,
+        items: deliveryItems,
+      },
+      message: `Leveranse opprettet med ${deliveryItems.length} elementer. Tilgangskode: ${accessCode}`,
+    });
+  } catch (error) {
+    console.error('Showcase create delivery error:', error);
+    res.status(500).json({ error: 'Kunne ikke opprette leveranse fra showcase' });
+  }
+});
+
+// GET /api/wedflow/showcase-delivery-status/:showcaseItemId — Check if a showcase item has linked deliveries
+app.get('/api/wedflow/showcase-delivery-status/:showcaseItemId', async (req: any, res: any) => {
+  try {
+    const vendor = await getVendorFromSession(req, res);
+    if (!vendor) return;
+
+    const { showcaseItemId } = req.params;
+
+    // Check if this showcase item has been published as a delivery
+    const deliveriesRes = await pool.query(
+      `SELECT d.id, d.title, d.couple_name, d.access_code, d.status, d.created_at
+       FROM deliveries d
+       JOIN delivery_items di ON di.delivery_id = d.id
+       JOIN showcase_items si ON si.delivery_id = d.id
+       WHERE si.id = $1 AND d.vendor_id = $2
+       ORDER BY d.created_at DESC`,
+      [showcaseItemId, vendor.id]
+    );
+
+    // Also check direct delivery_id link on showcase_items
+    const directRes = await pool.query(
+      `SELECT d.id, d.title, d.couple_name, d.access_code, d.status, d.created_at
+       FROM showcase_items si
+       JOIN deliveries d ON d.id = si.delivery_id
+       WHERE si.id = $1 AND d.vendor_id = $2`,
+      [showcaseItemId, vendor.id]
+    );
+
+    const allDeliveries = [...deliveriesRes.rows, ...directRes.rows];
+    const unique = allDeliveries.filter((d, i, arr) => arr.findIndex(x => x.id === d.id) === i);
+
+    res.json({
+      hasDeliveries: unique.length > 0,
+      deliveries: unique,
+    });
+  } catch (error) {
+    console.error('Showcase delivery status error:', error);
+    res.status(500).json({ error: 'Kunne ikke sjekke leveransestatus' });
+  }
+});
+
+// GET /api/wedflow/delivery-access-by-id/:deliveryId — Get delivery by ID (for showcase → delivery access bridge)
+// This allows couples to access delivery directly from showcase without needing an access code
+app.get('/api/wedflow/delivery-access-by-id/:deliveryId', async (req: any, res: any) => {
+  try {
+    const { deliveryId } = req.params;
+
+    const delRes = await pool.query(
+      `SELECT d.*, v.business_name, v.category_id
+       FROM deliveries d
+       JOIN vendors v ON v.id = d.vendor_id
+       WHERE d.id = $1 AND d.status = 'active'`,
+      [deliveryId]
+    );
+
+    if (!delRes.rows.length) return res.status(404).json({ error: 'Leveranse ikke funnet' });
+    const delivery = delRes.rows[0];
+
+    const itemsRes = await pool.query(
+      `SELECT id, type, label, url, description FROM delivery_items
+       WHERE delivery_id = $1 ORDER BY sort_order ASC`,
+      [deliveryId]
+    );
+
+    res.json({
+      delivery: {
+        id: delivery.id,
+        coupleName: delivery.couple_name,
+        title: delivery.title,
+        description: delivery.description,
+        weddingDate: delivery.wedding_date,
+        accessCode: delivery.access_code,
+        items: itemsRes.rows,
+      },
+      vendor: {
+        businessName: delivery.business_name,
+        categoryId: delivery.category_id,
+      },
+    });
+  } catch (error) {
+    console.error('Delivery access by ID error:', error);
+    res.status(500).json({ error: 'Kunne ikke hente leveranse' });
+  }
+});
+
+// ==============================================================
 // VENDOR — View important people for a couple (via CreatorHub)
 // ==============================================================
 app.get('/api/wedflow/couple/:coupleId/important-people', async (req: any, res: any) => {
