@@ -5402,7 +5402,76 @@ app.post('/api/wedflow/showcase-create-delivery', async (req: any, res: any) => 
       ).catch(() => {}); // Non-critical
     }
 
-    console.log(`📦 Leveranse ${deliveryId} opprettet fra ${showcaseRes.rows.length} showcase-elementer av ${vendor.id}`);
+    // Sync access code back to the showcase items
+    for (const siId of showcaseItemIds) {
+      await pool.query(
+        'UPDATE showcase_items SET access_code = $1, delivery_id = $2 WHERE id = $3',
+        [accessCode, deliveryId, siId]
+      ).catch(() => {});
+    }
+
+    // Sync to project if linked
+    if (projectId) {
+      await pool.query(
+        'UPDATE project_creation_with_memory_cards SET delivery_access_code = $1 WHERE project_id = $2',
+        [accessCode, projectId]
+      ).catch(() => {});
+    }
+
+    // Auto-send chat notification to couple
+    let chatNotified = false;
+    let chatConversationId: string | null = null;
+    const resolvedCoupleId = coupleId || null;
+
+    if (resolvedCoupleId || coupleEmail) {
+      try {
+        let targetCoupleId = resolvedCoupleId;
+        if (!targetCoupleId && coupleEmail) {
+          const cpRes = await pool.query('SELECT id FROM couple_profiles WHERE LOWER(email) = LOWER($1) LIMIT 1', [coupleEmail]);
+          if (cpRes.rows.length) targetCoupleId = cpRes.rows[0].id;
+        }
+        if (targetCoupleId) {
+          // Find or create conversation
+          const existsConv = await pool.query(
+            'SELECT id FROM conversations WHERE vendor_id = $1 AND couple_id = $2 LIMIT 1',
+            [vendor.id, targetCoupleId]
+          );
+          if (existsConv.rows.length) {
+            chatConversationId = existsConv.rows[0].id;
+          } else {
+            chatConversationId = crypto.randomUUID();
+            await pool.query(
+              `INSERT INTO conversations (id, vendor_id, couple_id, status, last_message_at, couple_unread_count, vendor_unread_count, created_at)
+               VALUES ($1, $2, $3, 'active', NOW(), 1, 0, NOW())`,
+              [chatConversationId, vendor.id, targetCoupleId]
+            );
+          }
+          // Send message
+          const chatBody =
+            `📦 Leveransen din er klar!\n\n` +
+            `"${title || 'Showcase-leveranse'}"\n` +
+            `${deliveryItems.length} ${deliveryItems.length === 1 ? 'element' : 'elementer'} venter på deg.\n\n` +
+            `🔑 Tilgangskode: ${accessCode}\n\n` +
+            `Åpne Wedflow-appen → "Hent leveranse" → Skriv inn koden. 💕`;
+          const chatMsgId = crypto.randomUUID();
+          await pool.query(
+            `INSERT INTO messages (id, conversation_id, sender_type, sender_id, body, created_at)
+             VALUES ($1, $2, 'vendor', $3, $4, NOW())`,
+            [chatMsgId, chatConversationId, vendor.id, chatBody]
+          );
+          await pool.query(
+            `UPDATE conversations SET last_message_at = NOW(), couple_unread_count = COALESCE(couple_unread_count, 0) + 1
+             WHERE id = $1`, [chatConversationId]
+          );
+          await pool.query('UPDATE deliveries SET chat_notified = true WHERE id = $1', [deliveryId]);
+          chatNotified = true;
+        }
+      } catch (chatErr) {
+        console.warn('Auto-chat notification failed (non-critical):', chatErr);
+      }
+    }
+
+    console.log(`📦 Leveranse ${deliveryId} opprettet fra ${showcaseRes.rows.length} showcase-elementer av ${vendor.id} (chat=${chatNotified})`);
 
     res.json({
       success: true,
@@ -5413,7 +5482,11 @@ app.post('/api/wedflow/showcase-create-delivery', async (req: any, res: any) => 
         itemCount: deliveryItems.length,
         items: deliveryItems,
       },
-      message: `Leveranse opprettet med ${deliveryItems.length} elementer. Tilgangskode: ${accessCode}`,
+      chatNotified,
+      chatConversationId,
+      message: chatNotified
+        ? `Leveranse opprettet med ${deliveryItems.length} elementer. Brudeparet er varslet i chatten. Tilgangskode: ${accessCode}`
+        : `Leveranse opprettet med ${deliveryItems.length} elementer. Tilgangskode: ${accessCode}`,
     });
   } catch (error) {
     console.error('Showcase create delivery error:', error);
@@ -5502,6 +5575,353 @@ app.get('/api/wedflow/delivery-access-by-id/:deliveryId', async (req: any, res: 
     });
   } catch (error) {
     console.error('Delivery access by ID error:', error);
+    res.status(500).json({ error: 'Kunne ikke hente leveranse' });
+  }
+});
+
+// ==============================================================
+// DELIVERY TRACKING & CONFIRMATION SYSTEM
+// ==============================================================
+
+// POST /api/wedflow/delivery-track — Track open/download/favorite actions on delivery items
+// Called by both showcase (CreatorHub) and wedflow (DeliveryAccessScreen) when couple interacts
+app.post('/api/wedflow/delivery-track', async (req: any, res: any) => {
+  try {
+    const { deliveryId, deliveryItemId, action, coupleId, accessCode } = req.body;
+    if (!deliveryId || !action) return res.status(400).json({ error: 'deliveryId og action er påkrevd' });
+
+    // Valid actions: 'opened', 'downloaded', 'favorited', 'unfavorited', 'shared', 'viewed_item'
+    const validActions = ['opened', 'downloaded', 'favorited', 'unfavorited', 'shared', 'viewed_item'];
+    if (!validActions.includes(action)) return res.status(400).json({ error: 'Ugyldig action' });
+
+    // Verify delivery exists
+    const delRes = await pool.query('SELECT id, vendor_id, couple_id, access_code FROM deliveries WHERE id = $1', [deliveryId]);
+    if (!delRes.rows.length) return res.status(404).json({ error: 'Leveranse ikke funnet' });
+    const delivery = delRes.rows[0];
+
+    // Verify access — must have valid access code or be the linked couple
+    if (accessCode && accessCode !== delivery.access_code) {
+      return res.status(403).json({ error: 'Ugyldig tilgangskode' });
+    }
+
+    const ipAddress = req.headers['x-forwarded-for'] || req.ip || '';
+    const userAgent = req.headers['user-agent'] || '';
+
+    // Insert tracking record
+    await pool.query(
+      `INSERT INTO delivery_tracking (delivery_id, delivery_item_id, couple_id, vendor_id, action, action_detail, ip_address, user_agent)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [deliveryId, deliveryItemId || null, coupleId || delivery.couple_id || null,
+       delivery.vendor_id, action,
+       JSON.stringify({ accessCode: accessCode || null, source: req.body.source || 'unknown' }),
+       ipAddress, userAgent]
+    );
+
+    // Update delivery-level counters
+    if (action === 'opened') {
+      await pool.query(
+        `UPDATE deliveries SET open_count = COALESCE(open_count, 0) + 1,
+         opened_at = COALESCE(opened_at, NOW())
+         WHERE id = $1`, [deliveryId]);
+    } else if (action === 'downloaded') {
+      await pool.query(
+        'UPDATE deliveries SET download_count = COALESCE(download_count, 0) + 1 WHERE id = $1', [deliveryId]);
+      if (deliveryItemId) {
+        await pool.query(
+          'UPDATE delivery_items SET download_count = COALESCE(download_count, 0) + 1 WHERE id = $1', [deliveryItemId]);
+      }
+    } else if (action === 'favorited') {
+      await pool.query(
+        'UPDATE deliveries SET favorite_count = COALESCE(favorite_count, 0) + 1 WHERE id = $1', [deliveryId]);
+      if (deliveryItemId) {
+        await pool.query(
+          'UPDATE delivery_items SET favorite_count = COALESCE(favorite_count, 0) + 1, favorited_at = NOW() WHERE id = $1', [deliveryItemId]);
+      }
+    } else if (action === 'unfavorited') {
+      await pool.query(
+        'UPDATE deliveries SET favorite_count = GREATEST(COALESCE(favorite_count, 0) - 1, 0) WHERE id = $1', [deliveryId]);
+      if (deliveryItemId) {
+        await pool.query(
+          'UPDATE delivery_items SET favorite_count = GREATEST(COALESCE(favorite_count, 0) - 1, 0), favorited_at = NULL WHERE id = $1', [deliveryItemId]);
+      }
+    }
+
+    console.log(`📊 Delivery tracking: ${action} on ${deliveryId}${deliveryItemId ? '/' + deliveryItemId : ''}`);
+    res.json({ success: true, action });
+  } catch (error) {
+    console.error('Delivery track error:', error);
+    res.status(500).json({ error: 'Kunne ikke registrere handling' });
+  }
+});
+
+// GET /api/wedflow/delivery-tracking/:deliveryId — Vendor views tracking/confirmation data
+app.get('/api/wedflow/delivery-tracking/:deliveryId', async (req: any, res: any) => {
+  try {
+    const vendor = await getVendorFromSession(req, res);
+    if (!vendor) return;
+
+    const { deliveryId } = req.params;
+
+    // Verify delivery belongs to vendor
+    const delRes = await pool.query(
+      `SELECT id, title, couple_name, access_code, status, open_count, download_count, favorite_count, opened_at, chat_notified
+       FROM deliveries WHERE id = $1 AND vendor_id = $2`,
+      [deliveryId, vendor.id]
+    );
+    if (!delRes.rows.length) return res.status(404).json({ error: 'Leveranse ikke funnet' });
+    const delivery = delRes.rows[0];
+
+    // Get item-level tracking
+    const itemsRes = await pool.query(
+      `SELECT id, type, label, url, download_count, favorite_count, favorited_at
+       FROM delivery_items WHERE delivery_id = $1 ORDER BY sort_order ASC`,
+      [deliveryId]
+    );
+
+    // Get tracking history (last 50 events)
+    const historyRes = await pool.query(
+      `SELECT action, delivery_item_id, couple_id, action_detail, created_at
+       FROM delivery_tracking WHERE delivery_id = $1
+       ORDER BY created_at DESC LIMIT 50`,
+      [deliveryId]
+    );
+
+    res.json({
+      delivery: {
+        id: delivery.id,
+        title: delivery.title,
+        coupleName: delivery.couple_name,
+        accessCode: delivery.access_code,
+        status: delivery.status,
+        openCount: delivery.open_count || 0,
+        downloadCount: delivery.download_count || 0,
+        favoriteCount: delivery.favorite_count || 0,
+        openedAt: delivery.opened_at,
+        chatNotified: delivery.chat_notified,
+      },
+      items: itemsRes.rows.map((item: any) => ({
+        id: item.id,
+        type: item.type,
+        label: item.label,
+        downloadCount: item.download_count || 0,
+        favoriteCount: item.favorite_count || 0,
+        favoritedAt: item.favorited_at,
+      })),
+      history: historyRes.rows,
+    });
+  } catch (error) {
+    console.error('Delivery tracking fetch error:', error);
+    res.status(500).json({ error: 'Kunne ikke hente sporingsdata' });
+  }
+});
+
+// POST /api/wedflow/delivery-notify-chat — Send chat message to couple that delivery is ready
+// Also syncs the access code across showcase/project if linked
+app.post('/api/wedflow/delivery-notify-chat', async (req: any, res: any) => {
+  try {
+    const vendor = await getVendorFromSession(req, res);
+    if (!vendor) return;
+
+    const { deliveryId, customMessage } = req.body;
+    if (!deliveryId) return res.status(400).json({ error: 'deliveryId er påkrevd' });
+
+    // Get delivery
+    const delRes = await pool.query(
+      `SELECT id, title, couple_name, couple_id, couple_email, access_code, project_id, chat_notified, vendor_id
+       FROM deliveries WHERE id = $1 AND vendor_id = $2`,
+      [deliveryId, vendor.id]
+    );
+    if (!delRes.rows.length) return res.status(404).json({ error: 'Leveranse ikke funnet' });
+    const delivery = delRes.rows[0];
+
+    // Get item count
+    const itemCountRes = await pool.query('SELECT COUNT(*) as cnt FROM delivery_items WHERE delivery_id = $1', [deliveryId]);
+    const itemCount = parseInt(itemCountRes.rows[0].cnt);
+
+    // Find or create conversation between vendor and couple
+    let conversationId: string | null = null;
+
+    if (delivery.couple_id) {
+      // Try to find existing conversation
+      const convRes = await pool.query(
+        'SELECT id FROM conversations WHERE vendor_id = $1 AND couple_id = $2 LIMIT 1',
+        [vendor.id, delivery.couple_id]
+      );
+
+      if (convRes.rows.length) {
+        conversationId = convRes.rows[0].id;
+      } else {
+        // Create new conversation
+        const newConvId = crypto.randomUUID();
+        await pool.query(
+          `INSERT INTO conversations (id, vendor_id, couple_id, status, last_message_at, couple_unread_count, vendor_unread_count, created_at)
+           VALUES ($1, $2, $3, 'active', NOW(), 1, 0, NOW())`,
+          [newConvId, vendor.id, delivery.couple_id]
+        );
+        conversationId = newConvId;
+      }
+    } else if (delivery.couple_email) {
+      // Try to find couple by email → couple_profiles → conversations
+      const coupleRes = await pool.query(
+        'SELECT id FROM couple_profiles WHERE LOWER(email) = LOWER($1) LIMIT 1',
+        [delivery.couple_email]
+      );
+      if (coupleRes.rows.length) {
+        const coupleId = coupleRes.rows[0].id;
+        const convRes = await pool.query(
+          'SELECT id FROM conversations WHERE vendor_id = $1 AND couple_id = $2 LIMIT 1',
+          [vendor.id, coupleId]
+        );
+        if (convRes.rows.length) {
+          conversationId = convRes.rows[0].id;
+        } else {
+          const newConvId = crypto.randomUUID();
+          await pool.query(
+            `INSERT INTO conversations (id, vendor_id, couple_id, status, last_message_at, couple_unread_count, vendor_unread_count, created_at)
+             VALUES ($1, $2, $3, 'active', NOW(), 1, 0, NOW())`,
+            [newConvId, vendor.id, coupleId]
+          );
+          conversationId = newConvId;
+        }
+        // Also link couple_id on delivery if not set
+        await pool.query('UPDATE deliveries SET couple_id = $1 WHERE id = $2 AND couple_id IS NULL', [coupleId, deliveryId]);
+      }
+    }
+
+    // Compose delivery ready message
+    const deliveryMessage = customMessage ||
+      `📦 Leveransen din er klar!\n\n` +
+      `"${delivery.title}"\n` +
+      `${itemCount} ${itemCount === 1 ? 'element' : 'elementer'} venter på deg.\n\n` +
+      `🔑 Tilgangskode: ${delivery.access_code}\n\n` +
+      `Åpne Wedflow-appen → "Hent leveranse" → Skriv inn koden for å se og laste ned filene dine. 💕`;
+
+    let messageSent = false;
+
+    if (conversationId) {
+      // Send the message
+      const msgId = crypto.randomUUID();
+      await pool.query(
+        `INSERT INTO messages (id, conversation_id, sender_type, sender_id, body, created_at)
+         VALUES ($1, $2, 'vendor', $3, $4, NOW())`,
+        [msgId, conversationId, vendor.id, deliveryMessage]
+      );
+
+      // Update conversation unread count
+      await pool.query(
+        `UPDATE conversations SET last_message_at = NOW(), couple_unread_count = COALESCE(couple_unread_count, 0) + 1
+         WHERE id = $1`, [conversationId]
+      );
+
+      messageSent = true;
+    }
+
+    // Mark delivery as notified
+    await pool.query('UPDATE deliveries SET chat_notified = true WHERE id = $1', [deliveryId]);
+
+    // Sync access code to showcase items linked to this delivery
+    await pool.query(
+      'UPDATE showcase_items SET access_code = $1 WHERE delivery_id = $2',
+      [delivery.access_code, deliveryId]
+    );
+
+    // Sync to project_creation_with_memory_cards if project linked
+    if (delivery.project_id) {
+      await pool.query(
+        'UPDATE project_creation_with_memory_cards SET delivery_access_code = $1 WHERE project_id = $2',
+        [delivery.access_code, delivery.project_id]
+      ).catch(() => {}); // Non-critical
+    }
+
+    console.log(`💬 Delivery notification sent for ${deliveryId}: chat=${messageSent}, accessCode=${delivery.access_code}`);
+
+    res.json({
+      success: true,
+      messageSent,
+      conversationId,
+      accessCode: delivery.access_code,
+      message: messageSent
+        ? `Melding sendt til ${delivery.couple_name} i chatten`
+        : 'Leveransen er merket som varslet, men ingen chat-samtale ble funnet med brudeparet',
+    });
+  } catch (error) {
+    console.error('Delivery notify chat error:', error);
+    res.status(500).json({ error: 'Kunne ikke sende varsel' });
+  }
+});
+
+// GET /api/wedflow/unified-access-code/:accessCode — Look up delivery by access code from any source
+// Works for showcase, wedflow, or project-memory-cards — unified entry point
+app.get('/api/wedflow/unified-access-code/:accessCode', async (req: any, res: any) => {
+  try {
+    const { accessCode } = req.params;
+    const normalizedCode = accessCode.replace(/[\s-]/g, '').toUpperCase();
+
+    // Look up delivery by access code
+    const delRes = await pool.query(
+      `SELECT d.id, d.title, d.couple_name, d.couple_email, d.wedding_date, d.description,
+              d.access_code, d.status, d.vendor_id, d.project_id, d.timeline_id, d.couple_id,
+              d.open_count, d.download_count, d.favorite_count,
+              v.business_name, v.category_id
+       FROM deliveries d
+       JOIN vendors v ON v.id = d.vendor_id
+       WHERE d.access_code = $1 AND d.status = 'active'`,
+      [normalizedCode]
+    );
+
+    if (!delRes.rows.length) return res.status(404).json({ error: 'Ingen leveranse funnet med denne koden' });
+    const delivery = delRes.rows[0];
+
+    // Get items
+    const itemsRes = await pool.query(
+      `SELECT id, type, label, url, description, download_count, favorite_count, favorited_at
+       FROM delivery_items WHERE delivery_id = $1 ORDER BY sort_order ASC`,
+      [delivery.id]
+    );
+
+    // Get linked showcase items
+    const showcaseRes = await pool.query(
+      `SELECT id, title, image_url, category, source_type
+       FROM showcase_items WHERE delivery_id = $1 AND is_active = true`,
+      [delivery.id]
+    );
+
+    // Track "opened" event
+    await pool.query(
+      `INSERT INTO delivery_tracking (delivery_id, couple_id, vendor_id, action, action_detail)
+       VALUES ($1, $2, $3, 'opened', $4)`,
+      [delivery.id, delivery.couple_id || null, delivery.vendor_id,
+       JSON.stringify({ source: 'unified-access-code', accessCode: normalizedCode })]
+    );
+    await pool.query(
+      `UPDATE deliveries SET open_count = COALESCE(open_count, 0) + 1, opened_at = COALESCE(opened_at, NOW())
+       WHERE id = $1`, [delivery.id]
+    );
+
+    res.json({
+      delivery: {
+        id: delivery.id,
+        title: delivery.title,
+        coupleName: delivery.couple_name,
+        coupleEmail: delivery.couple_email,
+        weddingDate: delivery.wedding_date,
+        description: delivery.description,
+        accessCode: delivery.access_code,
+        projectId: delivery.project_id,
+        timelineId: delivery.timeline_id,
+        openCount: (delivery.open_count || 0) + 1,
+        downloadCount: delivery.download_count || 0,
+        favoriteCount: delivery.favorite_count || 0,
+        items: itemsRes.rows,
+      },
+      vendor: {
+        businessName: delivery.business_name,
+        categoryId: delivery.category_id,
+      },
+      showcaseItems: showcaseRes.rows,
+    });
+  } catch (error) {
+    console.error('Unified access code error:', error);
     res.status(500).json({ error: 'Kunne ikke hente leveranse' });
   }
 });

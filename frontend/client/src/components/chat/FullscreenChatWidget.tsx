@@ -162,6 +162,43 @@ export default function FullscreenChatWidget({
   const [searchQuery, setSearchQuery] = useState('');
   const [showContactInfo, setShowContactInfo] = useState(false);
   const [activeTab, setActiveTab] = useState(initialChatType === 'support,' ? 2 : 0); // Default to support tab if support ticket
+
+  // Wedflow Chat Bridge State
+  const [wedflowConvs, setWedflowConvs] = useState<any[]>([]);
+  const [selWedflowConv, setSelWedflowConv] = useState<string | null>(null);
+  const [wedflowMsgs, setWedflowMsgs] = useState<any[]>([]);
+  const [wedflowInput, setWedflowInput] = useState('');
+  const [wedflowBusy, setWedflowBusy] = useState(false);
+
+  const fetchWedflowConvsFull = async () => {
+    try {
+      setWedflowBusy(true);
+      const data = await apiRequest('/api/wedflow/conversations');
+      setWedflowConvs(data.conversations || []);
+    } catch { setWedflowConvs([]); }
+    finally { setWedflowBusy(false); }
+  };
+  const fetchWedflowMsgsFull = async (cid: string) => {
+    try {
+      setWedflowBusy(true);
+      const data = await apiRequest(`/api/wedflow/conversations/${cid}/messages`);
+      setWedflowMsgs(data.messages || []);
+      setSelWedflowConv(cid);
+    } catch {}
+    finally { setWedflowBusy(false); }
+  };
+  const sendWedflowMsgFull = async () => {
+    if (!wedflowInput.trim() || !selWedflowConv) return;
+    try {
+      await apiRequest(`/api/wedflow/conversations/${selWedflowConv}/messages`, {
+        method: 'POST', body: JSON.stringify({ body: wedflowInput.trim() }),
+        headers: { 'Content-Type': 'application/json' }
+      });
+      setWedflowInput('');
+      fetchWedflowMsgsFull(selWedflowConv);
+      fetchWedflowConvsFull();
+    } catch {}
+  };
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
@@ -1173,13 +1210,13 @@ export default function FullscreenChatWidget({
                   <Box sx={{
                     position: 'absolute',
                     top:  4,
-                    left: activeTab === 0 ? 4 : '50%',
-                    width: 'calc(50% - 4px)',
+                    left: activeTab === 0 ? 4 : activeTab === 1 ? '33.3%' : '66.6%',
+                    width: 'calc(33.3% - 4px)',
                     height: 'calc(100% - 8px)',
                     bgcolor: 'white',
                     borderRadius: '12px',
                     boxShadow: '0 2px 12px rgba(0,0,0,0.08)',
-                    border: `2px solid ${getProfessionColor()}20`,
+                    border: `2px solid ${activeTab === 2 ? '#E91E63' : getProfessionColor()}20`,
                     transition: 'all 0.3s cubic-bezier(0, 0.0, 0.2, 1)',
                     zIndex: 0}} />
                   
@@ -1282,6 +1319,32 @@ export default function FullscreenChatWidget({
                         opacity: 0.6 }} />
                     )}
                   </Box>
+
+                  {/* Wedflow Tab */}
+                  <Box
+                    onClick={() => { setActiveTab(2); if (!wedflowConvs.length) fetchWedflowConvsFull(); }}
+                    sx={{
+                      flex: 1,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 1,
+                      py: 1.5,
+                      px: 2,
+                      cursor: 'pointer',
+                      zIndex: 1,
+                      borderRadius: '12px',
+                      transition: 'all 0.2s ease',
+                      color: activeTab === 2 ? '#E91E63' : 'text.secondary',
+                      fontWeight: activeTab === 2 ? 600 : 400,
+                      '&:hover': { color: '#E91E63', transform: activeTab !== 2 ? 'scale(1.02)' : 'none' }
+                    }}
+                  >
+                    <img src="/wedflow-logo.png" alt="" style={{ width: 20, height: 20, borderRadius: '50%', opacity: activeTab === 2 ? 1 : 0.6 }} />
+                    <Typography variant="body2" sx={{ fontWeight: 'inherit', fontSize: '0.95rem' }}>
+                      Wedflow
+                    </Typography>
+                  </Box>
                 </Box>
 
                 {/* Tab Description */}
@@ -1297,7 +1360,9 @@ export default function FullscreenChatWidget({
                 >
                   {activeTab === 0 
                     ? 'Sanntids chat med øyeblikkelig levering'
-                    : 'Profesjonell e-postkorrespondanse'
+                    : activeTab === 1
+                    ? 'Profesjonell e-postkorrespondanse'
+                    : 'Meldinger fra par på wedflow.no'
               }
                 </Typography>
               </Box>
@@ -1500,6 +1565,104 @@ export default function FullscreenChatWidget({
                 <div ref={messagesEndRef} />
               </Box>
 
+              {/* Wedflow Chat Bridge - Tab 2 */}
+              {activeTab === 2 && (
+                <Box sx={{ flex: 1, overflow: 'auto', p: 2 }}>
+                  {wedflowBusy && !wedflowConvs.length ? (
+                    <Box sx={{ p: 4, textAlign: 'center' }}>
+                      <Typography variant="body2" color="text.secondary">Laster Wedflow-samtaler...</Typography>
+                    </Box>
+                  ) : selWedflowConv ? (
+                    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, pb: 1, borderBottom: '1px solid', borderColor: 'divider' }}>
+                        <IconButton size="small" onClick={() => { setSelWedflowConv(null); setWedflowMsgs([]); }}>
+                          <Close fontSize="small" />
+                        </IconButton>
+                        <img src="/wedflow-logo.png" alt="" style={{ width: 22, height: 22, borderRadius: '50%' }} />
+                        <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                          {wedflowConvs.find((c: any) => c.id === selWedflowConv)?.couple_name || 'Samtale'}
+                        </Typography>
+                      </Box>
+                      <Box sx={{ flex: 1, overflow: 'auto', mb: 2 }}>
+                        {wedflowMsgs.map((msg: any) => (
+                          <Box key={msg.id} sx={{ display: 'flex', justifyContent: msg.sender_type === 'vendor' ? 'flex-end' : 'flex-start', mb: 1 }}>
+                            <Paper elevation={0} sx={{
+                              p: 1.5, maxWidth: '75%', borderRadius: 2,
+                              bgcolor: msg.sender_type === 'vendor' ? '#E91E63' : '#f5f5f5',
+                              color: msg.sender_type === 'vendor' ? 'white' : 'text.primary'
+                            }}>
+                              <Typography variant="body2" sx={{ whiteSpace: 'pre-line' }}>{msg.body}</Typography>
+                              <Typography variant="caption" sx={{ display: 'block', mt: 0.5, opacity: 0.7, textAlign: 'right' }}>
+                                {new Date(msg.created_at).toLocaleString('nb-NO', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' })}
+                              </Typography>
+                            </Paper>
+                          </Box>
+                        ))}
+                      </Box>
+                      <Box sx={{ display: 'flex', gap: 1 }}>
+                        <TextField
+                          fullWidth size="small" placeholder="Skriv svar..."
+                          value={wedflowInput}
+                          onChange={(e) => setWedflowInput(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendWedflowMsgFull(); } }}
+                        />
+                        <IconButton
+                          onClick={sendWedflowMsgFull}
+                          disabled={!wedflowInput.trim()}
+                          sx={{ bgcolor: '#E91E63', color: 'white', '&:hover': { bgcolor: '#C2185B' }, '&:disabled': { bgcolor: 'grey.300' } }}
+                        >
+                          <Send sx={{ fontSize: 18 }} />
+                        </IconButton>
+                      </Box>
+                    </Box>
+                  ) : (
+                    <Box>
+                      <Box sx={{ mb: 2, p: 1.5, bgcolor: '#fce4ec', borderRadius: 2, border: '1px solid #E91E6330' }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                          <img src="/wedflow-logo.png" alt="" style={{ width: 22, height: 22, borderRadius: '50%' }} />
+                          <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#880E4F' }}>Wedflow Meldinger</Typography>
+                        </Box>
+                        <Typography variant="caption" color="text.secondary">
+                          Chat med par fra wedflow.no — leveransevarsler, meldinger og mer
+                        </Typography>
+                      </Box>
+                      {wedflowConvs.length > 0 ? (
+                        <List sx={{ p: 0 }}>
+                          {wedflowConvs.map((conv: any) => (
+                            <ListItem key={conv.id} component="div" onClick={() => fetchWedflowMsgsFull(conv.id)}
+                              sx={{ cursor: 'pointer', borderRadius: 1, mb: 0.5, '&:hover': { bgcolor: '#fce4ec' },
+                                borderLeft: conv.vendor_unread_count > 0 ? '3px solid #E91E63' : 'none' }}>
+                              <ListItemAvatar>
+                                <Avatar sx={{ bgcolor: '#fce4ec', width: 36, height: 36 }}>
+                                  <img src="/wedflow-logo.png" alt="" style={{ width: 24, height: 24, borderRadius: '50%' }} />
+                                </Avatar>
+                              </ListItemAvatar>
+                              <ListItemText
+                                primary={<Typography variant="body2" sx={{ fontWeight: 600 }}>{conv.couple_name || 'Par'}</Typography>}
+                                secondary={
+                                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <Typography variant="caption" color="text.secondary" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 240 }}>
+                                      {conv.last_message_sender === 'vendor' ? 'Du: ' : ''}{conv.last_message || 'Ingen meldinger'}
+                                    </Typography>
+                                    {conv.vendor_unread_count > 0 && (
+                                      <Chip label={conv.vendor_unread_count} size="small" sx={{ bgcolor: '#E91E63', color: 'white', height: 18, fontSize: '0.7rem' }} />
+                                    )}
+                                  </Box>
+                                }
+                              />
+                            </ListItem>
+                          ))}
+                        </List>
+                      ) : (
+                        <Box sx={{ p: 3, textAlign: 'center' }}>
+                          <Typography variant="body2" color="text.secondary">Ingen Wedflow-samtaler ennå</Typography>
+                        </Box>
+                      )}
+                    </Box>
+                  )}
+                </Box>
+              )}
+
               {/* Email Composer - Only for Email Tab */}
               {activeTab === 1 ? (
                 <Box sx={{ p: 2, borderTop: 1, borderColor: 'divider'}}>
@@ -1535,7 +1698,7 @@ export default function FullscreenChatWidget({
               ) : null}
 
               {/* Dynamic Input Area - Adapts to Active Tab */}
-              {(activeTab === 0 || activeTab === 1) && (
+              {(activeTab === 0) && (
                 <Box sx={{ 
                   p: 2,
                   borderTop: 1,

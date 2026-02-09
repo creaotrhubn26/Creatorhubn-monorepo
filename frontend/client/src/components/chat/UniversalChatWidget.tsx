@@ -461,7 +461,9 @@ export default function UniversalChatWidget({
   const [wedflowReplyInput, setWedflowReplyInput] = useState('');
   const [wedflowLoading, setWedflowLoading] = useState(false);
   const [wedflowVendorName, setWedflowVendorName] = useState('');
-  
+  // Delivery notification state
+  const [wedflowDeliveries, setWedflowDeliveries] = useState<any[]>([]);
+  const [showDeliveryNotify, setShowDeliveryNotify] = useState(false);  
   // ⚠️ CHAT & COMMUNICATION PROTOKOLL: Real-time WebSocket state
   const [wsConnection, setWsConnection] = useState<WebSocketConnection>({
     socket: null,
@@ -784,6 +786,38 @@ export default function UniversalChatWidget({
       fetchWedflowConversations();
     } catch (err) {
       console.error('Failed to send wedflow message:', err);
+    }
+  };
+
+  // Send delivery notification via chat
+  const sendDeliveryNotification = async (deliveryId: string) => {
+    try {
+      setWedflowLoading(true);
+      const result = await apiRequest('/api/wedflow/delivery-notify-chat', {
+        method: 'POST',
+        body: JSON.stringify({ deliveryId }),
+        headers: { 'Content-Type': 'application/json' }
+      });
+      setShowDeliveryNotify(false);
+      // Refresh conversations to show the new message
+      fetchWedflowConversations();
+      if (result.conversationId) {
+        fetchWedflowMessages(result.conversationId);
+      }
+    } catch (err) {
+      console.error('Failed to send delivery notification:', err);
+    } finally {
+      setWedflowLoading(false);
+    }
+  };
+
+  // Fetch deliveries list for notification picker
+  const fetchWedflowDeliveries = async () => {
+    try {
+      const data = await apiRequest('/api/wedflow/delivery-project-bridge');
+      setWedflowDeliveries(data.deliveries || []);
+    } catch (err) {
+      console.warn('Could not fetch deliveries:', err);
     }
   };
 
@@ -2038,6 +2072,56 @@ export default function UniversalChatWidget({
                         <Typography variant="caption" color="text.secondary">
                           Meldinger fra par på wedflow.no {wedflowVendorName && `• ${wedflowVendorName}`}
                         </Typography>
+                      </Box>
+
+                      {/* Delivery Notification Button */}
+                      <Box sx={{ mb: 2 }}>
+                        <Button
+                          fullWidth
+                          variant="outlined"
+                          size="small"
+                          startIcon={<span style={{ fontSize: 16 }}>📦</span>}
+                          onClick={() => {
+                            setShowDeliveryNotify(!showDeliveryNotify);
+                            if (!showDeliveryNotify) fetchWedflowDeliveries();
+                          }}
+                          sx={{
+                            borderColor: '#E91E6340',
+                            color: '#880E4F',
+                            textTransform: 'none',
+                            fontWeight: 600,
+                            '&:hover': { borderColor: '#E91E63', bgcolor: '#fce4ec' }
+                          }}
+                        >
+                          Send leveransebeskjed
+                        </Button>
+
+                        {showDeliveryNotify && wedflowDeliveries.length > 0 && (
+                          <Box sx={{ mt: 1, p: 1, bgcolor: '#f5f5f5', borderRadius: 1, maxHeight: 200, overflow: 'auto' }}>
+                            {wedflowDeliveries.filter((d: any) => !d.chat_notified).map((d: any) => (
+                              <Box
+                                key={d.id}
+                                sx={{
+                                  p: 1, mb: 0.5, bgcolor: 'white', borderRadius: 1, cursor: 'pointer',
+                                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                  '&:hover': { bgcolor: '#fce4ec' }
+                                }}
+                                onClick={() => sendDeliveryNotification(d.id)}
+                              >
+                                <Box>
+                                  <Typography variant="caption" sx={{ fontWeight: 600 }}>{d.title}</Typography>
+                                  <Typography variant="caption" display="block" color="text.secondary">{d.couple_name}</Typography>
+                                </Box>
+                                <Chip label="Varsle" size="small" sx={{ bgcolor: '#E91E63', color: 'white', height: 22, fontSize: '0.65rem' }} />
+                              </Box>
+                            ))}
+                            {wedflowDeliveries.filter((d: any) => !d.chat_notified).length === 0 && (
+                              <Typography variant="caption" color="text.secondary" sx={{ p: 1 }}>
+                                Alle leveranser er allerede varslet ✓
+                              </Typography>
+                            )}
+                          </Box>
+                        )}
                       </Box>
 
                       {wedflowConversations.length > 0 ? (
