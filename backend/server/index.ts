@@ -4860,6 +4860,23 @@ app.get('/api/wedflow/vendor-project-bridge', async (req: any, res: any) => {
 
       // Get shot list from project metadata
       const shotList = proj.metadata?.shotList || [];
+      const memoryCards = proj.metadata?.selectedMemoryCards || [];
+
+      // Get deliveries linked to this project
+      const deliveriesRes = await pool.query(
+        `SELECT id, title, couple_name, status, access_code, created_at
+         FROM deliveries WHERE project_id = $1 AND vendor_id = $2
+         ORDER BY created_at DESC`,
+        [proj.id, vendor.id]
+      );
+
+      // Get showcase items linked to this project
+      const showcaseRes = await pool.query(
+        `SELECT id, title, category, image_url, is_public, source_type, created_at
+         FROM showcase_items WHERE project_id = $1 AND user_id = $2 AND is_active = true
+         ORDER BY created_at DESC`,
+        [proj.id, vendor.id]
+      );
 
       projects.push({
         id: proj.id,
@@ -4871,6 +4888,9 @@ app.get('/api/wedflow/vendor-project-bridge', async (req: any, res: any) => {
         events,
         comments,
         shotList,
+        memoryCards,
+        deliveries: deliveriesRes.rows,
+        showcaseItems: showcaseRes.rows,
       });
     }
 
@@ -4985,6 +5005,385 @@ app.post('/api/wedflow/timeline-bridge/:timelineId/events', async (req: any, res
   } catch (error) {
     console.error('Add timeline event error:', error);
     res.status(500).json({ error: 'Kunne ikke legge til hendelse' });
+  }
+});
+
+// ==============================================================
+// DELIVERY ↔ PROJECT ↔ TIMELINE ↔ SHOWCASE BRIDGE
+// Links deliveries to projects, timelines, and auto-creates showcase items
+// ==============================================================
+
+// GET /api/wedflow/delivery-project-bridge — Get delivery with linked project/timeline/showcase data
+app.get('/api/wedflow/delivery-project-bridge', async (req: any, res: any) => {
+  try {
+    const vendor = await getVendorFromSession(req, res);
+    if (!vendor) return;
+
+    const coupleId = req.query.coupleId as string;
+    if (!coupleId) return res.status(400).json({ error: 'coupleId er påkrevd' });
+
+    // Verify vendor has access via conversation
+    const convCheck = await pool.query(
+      'SELECT id FROM conversations WHERE vendor_id = $1 AND couple_id = $2 LIMIT 1',
+      [vendor.id, coupleId]
+    );
+    if (!convCheck.rows.length) return res.status(403).json({ error: 'Ingen tilgang til dette paret' });
+
+    // Get couple info
+    const coupleRes = await pool.query('SELECT email, display_name, wedding_date FROM couple_profiles WHERE id = $1', [coupleId]);
+    const couple = coupleRes.rows[0] || {};
+
+    // Get project linked to this couple
+    const projectRes = await pool.query(
+      `SELECT id, title, category, status, metadata, settings, created_at
+       FROM legacy.projects
+       WHERE LOWER(client_email) = LOWER($1)
+       ORDER BY created_at DESC LIMIT 1`,
+      [couple.email || '']
+    );
+    const project = projectRes.rows[0] || null;
+
+    // Get timeline for project
+    let timeline = null;
+    let timelineEvents: any[] = [];
+    if (project) {
+      const tlRes = await pool.query(
+        `SELECT id, title, wedding_date, venue, couple_name, cultural_type, status
+         FROM wedding_timelines WHERE project_id = $1 ORDER BY created_at DESC LIMIT 1`,
+        [project.id]
+      );
+      timeline = tlRes.rows[0] || null;
+      if (timeline) {
+        const evRes = await pool.query(
+          `SELECT id, title, event_time, duration_minutes, description, location, status
+           FROM wedding_timeline_events WHERE timeline_id = $1 ORDER BY event_time ASC`,
+          [timeline.id]
+        );
+        timelineEvents = evRes.rows;
+      }
+    }
+
+    // Get deliveries for this couple/vendor
+    const deliveriesRes = await pool.query(
+      `SELECT id, couple_name, title, description, status, access_code, wedding_date, project_id, timeline_id, created_at
+       FROM deliveries WHERE vendor_id = $1 AND (couple_id = $2 OR LOWER(couple_email) = LOWER($3))
+       ORDER BY created_at DESC`,
+      [vendor.id, coupleId, couple.email || '']
+    );
+
+    // Get showcase items for this vendor + project
+    let showcaseItems: any[] = [];
+    if (project) {
+      const scRes = await pool.query(
+        `SELECT id, title, description, image_url, thumbnail_url, category, is_public, project_id, delivery_id, source_type, created_at
+         FROM showcase_items WHERE user_id = $1 AND (project_id = $2 OR delivery_id = ANY($3::varchar[]))
+         ORDER BY created_at DESC`,
+        [vendor.id, project.id, deliveriesRes.rows.map((d: any) => d.id)]
+      );
+      showcaseItems = scRes.rows;
+    }
+
+    // Get memory card config from project metadata
+    const memoryCards = project?.metadata?.selectedMemoryCards || [];
+    const memoryCardConfigs = project?.metadata?.memoryCardConfigs || [];
+
+    res.json({
+      success: true,
+      coupleId,
+      coupleName: couple.display_name || '',
+      coupleEmail: couple.email || '',
+      weddingDate: couple.wedding_date || '',
+      project: project ? {
+        id: project.id,
+        title: project.title,
+        category: project.category,
+        status: project.status,
+      } : null,
+      timeline: timeline ? { ...timeline, events: timelineEvents } : null,
+      deliveries: deliveriesRes.rows,
+      showcaseItems,
+      memoryCards: { cards: memoryCards, configs: memoryCardConfigs },
+    });
+  } catch (error) {
+    console.error('Delivery project bridge error:', error);
+    res.status(500).json({ error: 'Kunne ikke hente bro-data' });
+  }
+});
+
+// POST /api/wedflow/delivery-to-showcase-bridge — Auto-create showcase items from delivery items
+app.post('/api/wedflow/delivery-to-showcase-bridge', async (req: any, res: any) => {
+  try {
+    const vendor = await getVendorFromSession(req, res);
+    if (!vendor) return;
+
+    const { deliveryId, projectId, showcaseCategory } = req.body;
+    if (!deliveryId) return res.status(400).json({ error: 'deliveryId er påkrevd' });
+
+    // Verify delivery belongs to vendor
+    const delRes = await pool.query(
+      'SELECT id, title, couple_name, vendor_id FROM deliveries WHERE id = $1 AND vendor_id = $2',
+      [deliveryId, vendor.id]
+    );
+    if (!delRes.rows.length) return res.status(404).json({ error: 'Leveranse ikke funnet' });
+    const delivery = delRes.rows[0];
+
+    // Resolve vendor.id → users.id (showcase_items has FK to users, not vendors)
+    // getVendorFromSession only returns {id, business_name}, so get email from session
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    const session = token ? activeSessions.get(token) : null;
+    const vendorEmail = session?.email || '';
+    const userRes = await pool.query('SELECT id FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1', [vendorEmail]);
+    if (!userRes.rows.length) {
+      return res.status(400).json({ error: 'Fant ikke bruker for denne vendor-kontoen' });
+    }
+    const userId = userRes.rows[0].id;
+
+    // Get delivery items (only gallery/video types are showcase-worthy)
+    const itemsRes = await pool.query(
+      `SELECT id, type, label, url, description FROM delivery_items
+       WHERE delivery_id = $1 AND type IN ('gallery', 'video')
+       ORDER BY sort_order ASC`,
+      [deliveryId]
+    );
+
+    if (!itemsRes.rows.length) {
+      return res.status(400).json({ error: 'Ingen galleri/video-elementer å publisere til showcase' });
+    }
+
+    const now = new Date().toISOString();
+    const created: any[] = [];
+
+    for (const item of itemsRes.rows) {
+      const id = crypto.randomUUID();
+      const profession = item.type === 'video' ? 'videographer' : 'photographer';
+
+      await pool.query(
+        `INSERT INTO showcase_items (id, user_id, profession, category, title, description, image_url, thumbnail_url,
+         crop_data, is_public, is_active, project_id, delivery_id, source_type, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, true, true, $10, $11, 'delivery', $12::timestamp, $13::timestamp)`,
+        [
+          id, userId, profession,
+          showcaseCategory || 'Bryllup',
+          item.label || `${delivery.couple_name} — ${item.type === 'video' ? 'Video' : 'Galleri'}`,
+          item.description || `Fra leveranse: ${delivery.title}`,
+          item.url, item.url,
+          JSON.stringify({ tags: ['bryllup', item.type], clientName: delivery.couple_name }),
+          projectId || null, deliveryId,
+          now, now
+        ]
+      );
+
+      created.push({ id, title: item.label, type: item.type, sourceType: 'delivery' });
+    }
+
+    console.log(`🎨 ${created.length} showcase-elementer opprettet fra leveranse ${deliveryId} av ${vendor.id}`);
+
+    res.json({
+      success: true,
+      message: `${created.length} elementer publisert til showcase`,
+      showcaseItems: created,
+    });
+  } catch (error) {
+    console.error('Delivery to showcase bridge error:', error);
+    res.status(500).json({ error: 'Kunne ikke publisere til showcase' });
+  }
+});
+
+// POST /api/wedflow/link-delivery-project — Link a delivery to a project/timeline/couple
+app.post('/api/wedflow/link-delivery-project', async (req: any, res: any) => {
+  try {
+    const vendor = await getVendorFromSession(req, res);
+    if (!vendor) return;
+
+    const { deliveryId, projectId, timelineId, coupleId } = req.body;
+    if (!deliveryId) return res.status(400).json({ error: 'deliveryId er påkrevd' });
+
+    // Verify delivery belongs to vendor
+    const delCheck = await pool.query(
+      'SELECT id FROM deliveries WHERE id = $1 AND vendor_id = $2',
+      [deliveryId, vendor.id]
+    );
+    if (!delCheck.rows.length) return res.status(404).json({ error: 'Leveranse ikke funnet' });
+
+    // Build update
+    const updates: string[] = ['updated_at = NOW()'];
+    const params: any[] = [];
+    let idx = 1;
+
+    if (projectId) { updates.push(`project_id = $${idx++}`); params.push(projectId); }
+    if (timelineId) { updates.push(`timeline_id = $${idx++}`); params.push(timelineId); }
+    if (coupleId) { updates.push(`couple_id = $${idx++}`); params.push(coupleId); }
+
+    if (params.length === 0) return res.status(400).json({ error: 'Minst én lenke (projectId, timelineId, coupleId) er påkrevd' });
+
+    params.push(deliveryId);
+    await pool.query(
+      `UPDATE deliveries SET ${updates.join(', ')} WHERE id = $${idx}`,
+      params
+    );
+
+    // If linking to timeline, add a "Leveranse sendt" event
+    if (timelineId) {
+      const eventId = crypto.randomUUID();
+      await pool.query(
+        `INSERT INTO wedding_timeline_events (id, timeline_id, title, description, status, can_client_edit)
+         VALUES ($1, $2, 'Leveranse sendt', 'Fotograf/videograf har sendt leveranse', 'completed', false)
+         ON CONFLICT DO NOTHING`,
+        [eventId, timelineId]
+      ).catch(() => {});
+    }
+
+    console.log(`🔗 Leveranse ${deliveryId} koblet til prosjekt=${projectId || '-'}, tidslinje=${timelineId || '-'}, par=${coupleId || '-'}`);
+
+    res.json({ success: true, message: 'Leveranse koblet til prosjekt' });
+  } catch (error) {
+    console.error('Link delivery project error:', error);
+    res.status(500).json({ error: 'Kunne ikke koble leveranse' });
+  }
+});
+
+// GET /api/wedflow/project-showcase-bridge/:projectId — Get all showcase + delivery data for a project
+app.get('/api/wedflow/project-showcase-bridge/:projectId', async (req: any, res: any) => {
+  try {
+    const vendor = await getVendorFromSession(req, res);
+    if (!vendor) return;
+
+    const { projectId } = req.params;
+
+    // Get project (user_id is the couple, not the vendor — verify vendor access via deliveries)
+    const projRes = await pool.query(
+      'SELECT id, title, category, metadata, settings FROM legacy.projects WHERE id = $1',
+      [projectId]
+    );
+    if (!projRes.rows.length) return res.status(404).json({ error: 'Prosjekt ikke funnet' });
+    const project = projRes.rows[0];
+
+    // Resolve vendor → user ID for showcase queries
+    const tokenPSB = req.headers.authorization?.replace('Bearer ', '');
+    const sessionPSB = tokenPSB ? activeSessions.get(tokenPSB) : null;
+    const vendorEmail = sessionPSB?.email || '';
+    const userResPSB = await pool.query('SELECT id FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1', [vendorEmail]);
+    const userId = userResPSB.rows[0]?.id || vendor.id;
+
+    // Get timeline
+    const tlRes = await pool.query(
+      `SELECT id, title, wedding_date, venue, couple_name, cultural_type, status
+       FROM wedding_timelines WHERE project_id = $1 ORDER BY created_at DESC LIMIT 1`,
+      [projectId]
+    );
+    const timeline = tlRes.rows[0] || null;
+
+    // Get deliveries linked to this project
+    const deliveriesRes = await pool.query(
+      `SELECT d.id, d.title, d.couple_name, d.status, d.access_code, d.created_at,
+              (SELECT COUNT(*) FROM delivery_items di WHERE di.delivery_id = d.id) as item_count
+       FROM deliveries d WHERE d.project_id = $1 AND d.vendor_id = $2
+       ORDER BY d.created_at DESC`,
+      [projectId, vendor.id]
+    );
+
+    // Get showcase items linked to this project
+    const showcaseRes = await pool.query(
+      `SELECT id, title, description, image_url, category, is_public, delivery_id, source_type, created_at
+       FROM showcase_items WHERE project_id = $1 AND user_id = $2 AND is_active = true
+       ORDER BY created_at DESC`,
+      [projectId, userId]
+    );
+
+    // Memory card data
+    const memoryCards = project.metadata?.selectedMemoryCards || [];
+    const memoryCardConfigs = project.metadata?.memoryCardConfigs || [];
+
+    // Project showcase (from project_showcases table)
+    const projShowcaseRes = await pool.query(
+      'SELECT id, title, status, visibility, settings FROM project_showcases WHERE project_id = $1 LIMIT 1',
+      [projectId]
+    );
+
+    res.json({
+      success: true,
+      project: {
+        id: project.id,
+        title: project.title,
+        category: project.category,
+      },
+      timeline,
+      deliveries: deliveriesRes.rows,
+      showcaseItems: showcaseRes.rows,
+      projectShowcase: projShowcaseRes.rows[0] || null,
+      memoryCards: { cards: memoryCards, configs: memoryCardConfigs },
+    });
+  } catch (error) {
+    console.error('Project showcase bridge error:', error);
+    res.status(500).json({ error: 'Kunne ikke hente prosjekt-showcase-data' });
+  }
+});
+
+// ==============================================================
+// VENDOR — View important people for a couple (via CreatorHub)
+// ==============================================================
+app.get('/api/wedflow/couple/:coupleId/important-people', async (req: any, res: any) => {
+  try {
+    const vendor = await getVendorFromSession(req, res);
+    if (!vendor) return;
+
+    const { coupleId } = req.params;
+
+    // Verify vendor has relationship with this couple
+    const convCheck = await pool.query(
+      'SELECT id FROM conversations WHERE vendor_id = $1 AND couple_id = $2 LIMIT 1',
+      [vendor.id, coupleId]
+    );
+    if (!convCheck.rows.length) {
+      return res.status(403).json({ error: 'Ingen tilgang til dette bryllupets viktige personer' });
+    }
+
+    const result = await pool.query(
+      `SELECT id, name, role, phone, email, notes
+       FROM couple_important_people
+       WHERE couple_id = $1
+       ORDER BY sort_order ASC NULLS LAST`,
+      [coupleId]
+    );
+
+    res.json({ success: true, importantPeople: result.rows });
+  } catch (error) {
+    console.error('Get important people error:', error);
+    res.status(500).json({ error: 'Kunne ikke hente viktige personer' });
+  }
+});
+
+// ==============================================================
+// VENDOR — View wedding role invitations for a couple
+// ==============================================================
+app.get('/api/wedflow/couple/:coupleId/wedding-invites', async (req: any, res: any) => {
+  try {
+    const vendor = await getVendorFromSession(req, res);
+    if (!vendor) return;
+
+    const { coupleId } = req.params;
+
+    // Verify vendor has relationship with this couple
+    const convCheck = await pool.query(
+      'SELECT id FROM conversations WHERE vendor_id = $1 AND couple_id = $2 LIMIT 1',
+      [vendor.id, coupleId]
+    );
+    if (!convCheck.rows.length) {
+      return res.status(403).json({ error: 'Ingen tilgang' });
+    }
+
+    const result = await pool.query(
+      `SELECT id, name, role, status, joined_at, created_at
+       FROM wedding_role_invitations
+       WHERE couple_id = $1 AND status != 'revoked'
+       ORDER BY created_at DESC`,
+      [coupleId]
+    );
+
+    res.json({ success: true, invitations: result.rows });
+  } catch (error) {
+    console.error('Get wedding invitations error:', error);
+    res.status(500).json({ error: 'Kunne ikke hente invitasjoner' });
   }
 });
 
