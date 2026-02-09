@@ -42,7 +42,8 @@ import {
   Switch,
   FormControlLabel,
   Tabs,
-  Tab
+  Tab,
+  Snackbar,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -131,6 +132,7 @@ export default function UserManagementPanel({
   const [editProfessionOpen, setEditProfessionOpen] = useState(false);
   const [editProfessionValue, setEditProfessionValue] = useState<string>(', ');
   const [folderViewUserId, setFolderViewUserId] = useState<string | null>(null);
+  const [errorSnackbar, setErrorSnackbar] = useState<{ open: boolean; message: string }>({ open: false, message: '' });
 
   const { toast } = useToast();
   const { user } = useAuth();
@@ -679,9 +681,9 @@ export default function UserManagementPanel({
             if (!res.ok) {
               try {
                 const err = await res.json();
-                alert(err.message || 'Kunne ikke oppdatere profesjon');
+                setErrorSnackbar({ open: true, message: err.message || 'Kunne ikke oppdatere profesjon' });
               } catch {
-                alert('Kunne ikke oppdatere profesjon');
+                setErrorSnackbar({ open: true, message: 'Kunne ikke oppdatere profesjon' });
               }
               return;
             }
@@ -770,7 +772,7 @@ export default function UserManagementPanel({
             label="Enterprise"
             icon={<BusinessIcon />}
             iconPosition="start"
-            sx={{ textTransform: 'none', fontWeight: 50, color: '#9c27b0' }}
+            sx={{ textTransform: 'none', fontWeight: 500, color: '#9c27b0' }}
           />
         </Tabs>
       </Box>
@@ -1105,6 +1107,22 @@ export default function UserManagementPanel({
           </Card>
         </Box>
       )}
+
+      {/* Error Snackbar */}
+      <Snackbar
+        open={errorSnackbar.open}
+        autoHideDuration={6000}
+        onClose={() => setErrorSnackbar({ open: false, message: '' })}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert
+          onClose={() => setErrorSnackbar({ open: false, message: '' })}
+          severity="error"
+          sx={{ width: '100%' }}
+        >
+          {errorSnackbar.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 }

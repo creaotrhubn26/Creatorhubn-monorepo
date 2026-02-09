@@ -207,6 +207,9 @@ export default function VendorOrdersManager({
   const handleViewOrder = (order: VendorOrder) => {
     setSelectedOrder(order);
     setOrderDetailsOpen(true);
+    if (onOrderClick) {
+      onOrderClick(order.id);
+    }
     handleCloseMenu();
   };
 
@@ -296,7 +299,7 @@ export default function VendorOrdersManager({
             aria-pressed={statusFilter === 'all'}
             onClick={() => setStatusFilter('all')}
             onKeyDown={(e: React.KeyboardEvent) => {
-              if (e.key === 'Enter' || e.key === ', ') {
+              if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
                 setStatusFilter('all');
               }
@@ -336,7 +339,7 @@ export default function VendorOrdersManager({
             aria-pressed={statusFilter === 'pending'}
             onClick={() => setStatusFilter('pending')}
             onKeyDown={(e: React.KeyboardEvent) => {
-              if (e.key === 'Enter' || e.key === ', ') {
+              if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
                 setStatusFilter('pending');
               }
@@ -378,7 +381,7 @@ export default function VendorOrdersManager({
             aria-pressed={statusFilter === 'processing'}
             onClick={() => setStatusFilter('processing')}
             onKeyDown={(e: React.KeyboardEvent) => {
-              if (e.key === 'Enter' || e.key === ', ') {
+              if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
                 setStatusFilter('processing');
               }
@@ -418,7 +421,7 @@ export default function VendorOrdersManager({
             aria-pressed={statusFilter === 'shipped'}
             onClick={() => setStatusFilter('shipped')}
             onKeyDown={(e: React.KeyboardEvent) => {
-              if (e.key === 'Enter' || e.key === ', ') {
+              if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
                 setStatusFilter('shipped');
               }
@@ -458,7 +461,7 @@ export default function VendorOrdersManager({
             aria-pressed={statusFilter === 'delivered'}
             onClick={() => setStatusFilter('delivered')}
             onKeyDown={(e: React.KeyboardEvent) => {
-              if (e.key === 'Enter' || e.key === ', ') {
+              if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
                 setStatusFilter('delivered');
               }

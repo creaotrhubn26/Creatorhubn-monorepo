@@ -444,7 +444,7 @@ export const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <Select
             value={exportFormat}
-            onChange={(e) => setExportFormat(e.target.value as any)}
+            onChange={(e) => setExportFormat(e.target.value as 'html' | 'react' | 'vue')}
             size="small"
             sx={{
               color: '#CCCCCC',

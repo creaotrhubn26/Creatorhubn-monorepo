@@ -56,7 +56,7 @@ import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIn
 import { apiRequest } from '@/lib/queryClient';
 
 export const LintingAIFixPanel: React.FC = () => {
-  const theming = useTheming('prototype_tester, ');
+  const theming = useTheming('prototype_tester');
   const { componentRegistry, communication, analytics, auth } = useEnhancedMasterIntegration();
   
   const [scanResult, setScanResult] = useState<any>(null);

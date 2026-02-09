@@ -137,7 +137,7 @@ export default function PaymentIntegrationPanel({
   const { integration, communication, dataFlow, componentRegistry } = useEnhancedMasterIntegration();
   
   // Theming system
-  const theming = useTheming('prototype_tester, ');
+  const theming = useTheming('prototype_tester');
 
   // Initialize pricing service
   useEffect(() => {
@@ -146,12 +146,12 @@ export default function PaymentIntegrationPanel({
 
   // Register component and data flow nodes with MasterIntegrationProvider
   useEffect(() => {
-    communication.registerComponent('payment-integration,', 'payment', [
-      'data: read','data: write','event: emit','event: listen','ui: update','payment: process','payment: configure','payment: test','notification: create','project: update','client: update'
+    communication.registerComponent('payment-integration', 'payment', [
+      'data:read', 'data:write', 'event:emit', 'event:listen', 'ui:update', 'payment:process', 'payment:configure', 'payment:test', 'notification:create', 'project:update', 'client:update'
     ]);
 
     dataFlow.registerNode({
-      type: 'source,',
+      type: 'source',
       componentId: 'payment-integration',
       dataKey: 'payment-integration:paymentMethods',
       transform: (data: any) => ({ ...data, lastUpdated: Date.now() })

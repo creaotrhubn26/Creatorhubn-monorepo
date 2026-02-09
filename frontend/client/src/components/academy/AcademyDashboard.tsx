@@ -326,8 +326,53 @@ function AcademyDashboard() {
     setCurrentCourse,
     setCurrentLesson,
   } = useAcademyContext();
-  const { analytics, performance, debugging, features, lifecycle, health, auth } =
+  const { analytics, performance, debugging, features, lifecycle, health, auth, communication, dataFlow, componentRegistry } =
     useEnhancedMasterIntegration();
+
+  // Register component with integration system
+  useEffect(() => {
+    componentRegistry.register('academy-dashboard', {
+      capabilities: ['course-management', 'enrollment', 'learning-progress'],
+      dataNodes: ['enrolled-courses', 'current-lesson', 'progress'],
+      componentCategory: 'learning'
+    });
+
+    communication.registerComponent('academy-dashboard', {
+      capabilities: ['course-management', 'enrollment'],
+      features: { 
+        hasLearning: true,
+        userProfession: (auth.state.user as any)?.profession || 'photographer'
+      }
+    });
+
+    // DataFlow nodes
+    dataFlow.registerNode({
+      nodeId: 'academy-dashboard:enrolled',
+      type: 'source',
+      data: enrolledCourses
+    });
+
+    dataFlow.registerNode({
+      nodeId: 'academy-dashboard:progress',
+      type: 'source',
+      data: userProgress
+    });
+
+    // Listen for navigation requests
+    const unsubscribe = communication.onMessage('academy:navigate', (message: any) => {
+      if (message.data?.courseId) {
+        const course = courses.find((c: any) => c.id === message.data.courseId);
+        if (course) setCurrentCourse(course);
+      }
+    });
+
+    return () => {
+      componentRegistry.unregister('academy-dashboard');
+      dataFlow.unregisterNode('academy-dashboard:enrolled');
+      dataFlow.unregisterNode('academy-dashboard:progress');
+      unsubscribe?.();
+    };
+  }, [enrolledCourses, userProgress, courses, componentRegistry, communication, dataFlow, auth, setCurrentCourse]);
 
   // Profession system (API configs + adapter)
   const { professionConfigs: apiProfessionConfigs } = useProfessionConfigs();
@@ -800,7 +845,7 @@ function AcademyDashboard() {
     });
 
     // Track feature usage
-    features.trackFeatureUsage('academy-dashboard, ','opened', {
+    features.trackFeatureUsage('academy-dashboard', 'opened', {
       timestamp: Date.now(),
       component: 'AcademyDashboard',
       userRole: auth.state.user?.role,
@@ -1829,7 +1874,7 @@ function AcademyDashboard() {
                 <Typography variant="body2" sx={{ opacity: 0.9 }}>
                   Tilgjengelig
                 </Typography>
-                <Typography variant="h4" sx={{ fontWeight: 70, color: '#fff59d' }}>
+                <Typography variant="h4" sx={{ fontWeight: 700, color: '#fff59d' }}>
                   {((dashboardData?.instructorRevenue?.pendingRevenue || 0) / 100).toLocaleString(
                     'nb-NO',
                   )}
@@ -3492,7 +3537,23 @@ function AcademyDashboard() {
                         description: result.description || result.courseTitle,
                         type: result.type || 'course'
                       }}
-                      onClick={() => {}}
+                      onClick={() => {
+                        // Navigate to the course or lesson
+                        if (result.type === 'course' && result.id) {
+                          const course = courses.find((c: any) => c.id === result.id);
+                          if (course) {
+                            setCurrentCourse(course);
+                            setGlobalSearchOpen(false);
+                          }
+                        } else if (result.type === 'lesson' && result.courseId) {
+                          const course = courses.find((c: any) => c.id === result.courseId);
+                          if (course) {
+                            setCurrentCourse(course);
+                            if (result.id) setCurrentLesson(result);
+                            setGlobalSearchOpen(false);
+                          }
+                        }
+                      }}
                     />
                   )}
                 />

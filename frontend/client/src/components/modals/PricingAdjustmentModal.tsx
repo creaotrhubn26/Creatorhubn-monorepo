@@ -170,8 +170,9 @@ const PricingAdjustmentModal: React.FC<PricingAdjustmentModalProps> = ({
 
   // Fetch packages
   const { data: packages, isLoading: packagesLoading } = useQuery({
-    queryKey: ['/api/price-administration/packages', profession],
-    enabled: open,
+    queryKey: ['/api/pricing/packages', user?.id],
+    queryFn: () => fetch(`/api/pricing/packages/${user?.id}`).then(res => res.json()),
+    enabled: open && !!user?.id,
     onSuccess: (data) => {
       const defaultPackage = data.find((p: Package) => p.isDefault);
       if (defaultPackage) {
@@ -210,7 +211,7 @@ const PricingAdjustmentModal: React.FC<PricingAdjustmentModalProps> = ({
     onSuccess: () => {
       setSaveStatus('saved');
       queryClient.invalidateQueries({ queryKey: ['/api/price-administration/pricing-structures', profession] });
-      queryClient.invalidateQueries({ queryKey: ['/api/price-administration/packages', profession] });
+      queryClient.invalidateQueries({ queryKey: ['/api/pricing/packages', profession] });
       
       // Notify parent component
       if (onPricingUpdated) {
@@ -233,7 +234,7 @@ const PricingAdjustmentModal: React.FC<PricingAdjustmentModalProps> = ({
   // Save package mutation
   const savePackageMutation = useMutation({
     mutationFn: async (packageData: any) => {
-      const response = await fetch('/api/price-administration/packages', {
+      const response = await fetch('/api/pricing/packages', {
         method: 'POS',
         headers: {
           'Content-Type' : 'application/json','Authorization': `Bearer ${user?.token}`
@@ -253,7 +254,7 @@ const PricingAdjustmentModal: React.FC<PricingAdjustmentModalProps> = ({
   },
     onSuccess: () => {
       setSaveStatus('saved');
-      queryClient.invalidateQueries({ queryKey: ['/api/price-administration/packages', profession] });
+      queryClient.invalidateQueries({ queryKey: ['/api/pricing/packages', profession] });
       
       setTimeout(() => {
         setSaveStatus('idle');

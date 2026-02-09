@@ -148,6 +148,11 @@ export const surveys = pgTable('surveys', {
   startDate: timestamp('start_date'),
   endDate: timestamp('end_date'),
 
+  // Metadata
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+});
+
 
 // Survey Responses
 export const surveyResponses = pgTable('survey_responses', {

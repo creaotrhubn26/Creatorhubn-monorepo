@@ -1,5 +1,5 @@
 import { useTheming } from '../../utils/theming-helper';
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { useDemoMode } from '@/contexts/DemoModeContext';
@@ -12,92 +12,21 @@ import {
   Button,
   Card,
   CardContent,
-  CardActions,
   Alert,
   CircularProgress,
   Chip,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemIcon,
-  ListItemAvatar,
-  Divider,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
-  Paper,
-  Tooltip,
-  Fab,
-  useTheme,
-  useMediaQuery,
-  Stack,
-  LinearProgress,
-  alpha,
-  Fade,
-  Collapse,
-  Skeleton,
-  Switch,
-  FormControlLabel,
 } from '@mui/material';
 import {
-  Store,
-  Add,
-  Assessment,
-  Settings,
-  AttachMoney,
-  TrendingUp,
-  Event,
-  Visibility,
-  DirectionsBusiness,
-  Email,
-  Notifications,
-  CloudDone,
-  Article,
-  FolderOpen,
-  AddCircle,
-  Storage,
-  Star,
-  Chat,
-  Person,
-  Phone,
-  MoreVert,
-  AccessTime,
-  LocationOn,
-  Payment,
-  Keyboard,
-  Schedule,
-  Palette,
   CheckCircle,
-  HelpCenter,
-  Quiz,
-  PriorityHigh,
-  Delete,
-  Launch,
-  PhotoLibrary,
-  Edit,
-  Circle,
-  AccountCircle,
-  Collections,
-  Brightness1,
-  WbWbSunnyny,
-  Build,
   OpenWith,
   Wall,
   Corner,
   Ceiling,
   AcousticPanel,
-  Inventory,
-  ShoppingDirectionsCart,
-  Receipt,
-  Analytics,
-  Timeline,
-  Dashboard,
-  BoxChart,
-  BoxChart,
-  ShowChart,
-  TrendingDown,
-  TrendingFlat,
 } from '@mui/icons-material';
 
 interface AcousticPanel {
@@ -129,10 +58,23 @@ interface AcousticOrder {
     productName: string;
     quantity: number;
     price: number;
-,}>;
+  }>;
   installationType: 'self_install' | 'professional' | 'consultation';
   createdAt: string;
   updatedAt: string; 
+}
+
+type ChipColor = 'default' | 'primary' | 'secondary' | 'error' | 'info' | 'success' | 'warning';
+
+interface VendorShowcaseUpdateResponse {
+  status?: string;
+  [key: string]: unknown;
+}
+
+interface VendorShowcaseUpdatePayload {
+  vendorId: string;
+  featuredProductId?: string;
+  featuredOrderId?: string;
 }
 
 export default function NorthtoneVendorShowcase() {
@@ -141,8 +83,8 @@ export default function NorthtoneVendorShowcase() {
   // Theming system
   const theming = useTheming('vendor');
   const { isDemoMode } = useDemoMode();
-  const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+
+  const vendorId = isDemoMode ? 'demo-user' : 'northtone';
 
   // State management
   const [showProductModal, setShowProductModal] = useState(false);
@@ -152,40 +94,44 @@ export default function NorthtoneVendorShowcase() {
 
   // Data fetching
   const { data: vendorStats, isLoading: statsLoading, error: statsError } = useQuery({
-    queryKey: ['/api/vendor/stats','demo-user'],
-    queryFn: () => apiRequest('/api/vendor/stats/demo-user', ),
+    queryKey: ['/api/vendor/stats', vendorId],
+    queryFn: () => apiRequest(`/api/vendor/stats/${vendorId}`),
     retry: false,
-});
+  });
 
   const { data: products = [], isLoading: productsLoading, error: productsError } = useQuery({
-    queryKey: ['/api/vendor/products','demo-user'],
-    queryFn: () => apiRequest('/api/vendor/products/demo-user', ),
+    queryKey: ['/api/vendor/products', vendorId],
+    queryFn: () => apiRequest(`/api/vendor/products/${vendorId}`),
     retry: false,
-});
+  });
 
   const { data: orders = [], isLoading: ordersLoading, error: ordersError } = useQuery({
-    queryKey: ['/api/vendor/orders','demo-user'],
-    queryFn: () => apiRequest('/api/vendor/orders/demo-user', ),
+    queryKey: ['/api/vendor/orders', vendorId],
+    queryFn: () => apiRequest(`/api/vendor/orders/${vendorId}`),
     retry: false,
-});
+  });
 
   const { data: pluginMetrics, isLoading: metricsLoading, error: metricsError } = useQuery({
-    queryKey: ['/api/vendor/plugin-metrics','demo-user'],
-    queryFn: () => apiRequest('/api/vendor/plugin-metrics/demo-user', ),
+    queryKey: ['/api/vendor/plugin-metrics', vendorId],
+    queryFn: () => apiRequest(`/api/vendor/plugin-metrics/${vendorId}`),
     retry: false,
-});
+  });
 
   // Mutation for updating vendor data
-  const updateNorthtoneVendorShowcase = useMutation({
-    mutationFn: async (data: any) => 
+  const updateNorthtoneVendorShowcase = useMutation<
+    VendorShowcaseUpdateResponse,
+    Error,
+    VendorShowcaseUpdatePayload
+  >({
+    mutationFn: async (data) =>
       apiRequest('/api/vendor/update', {
-        method: 'POS',
-        body: JSON.stringify(data)
-    ,}),
+        method: 'POST',
+        body: data,
+      }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/vendor', ],});
-  }
-});
+      queryClient.invalidateQueries({ queryKey: ['/api/vendor'] });
+    },
+  });
 
   const isLoading = statsLoading || productsLoading || ordersLoading || metricsLoading;
   const hasError = statsError || productsError || ordersError || metricsError;
@@ -193,7 +139,7 @@ export default function NorthtoneVendorShowcase() {
   // Mock data for demo mode
   const mockAcousticPanels: AcousticPanel[] = [
     {
-      id: ', ',
+      id: '',
       name: 'Portable Acoustic Panel Pro',
       price: 299.9,
       status: 'active',
@@ -254,7 +200,7 @@ export default function NorthtoneVendorShowcase() {
       status: 'processing',
       installationType: 'professional',
       items: [
-        { productId: '', productName: 'Portable Acoustic Panel Pro', quantity: 2, price: 299.9, 9,}
+        { productId: '', productName: 'Portable Acoustic Panel Pro', quantity: 2, price: 299.9 }
       ],
       createdAt: '2024-01-20T10:00:00',
       updatedAt: '2024-01-20T10:00:00',
@@ -267,7 +213,7 @@ export default function NorthtoneVendorShowcase() {
       status: 'delivered',
       installationType: 'self_install',
       items: [
-        { productId: ', ', productName: 'Wall Mount Acoustic Panel', quantity: 1, price: 199.9, 9,}
+        { productId: '', productName: 'Wall Mount Acoustic Panel', quantity: 1, price: 199.9 }
       ],
       createdAt: '2024-01-18T14:30:00',
       updatedAt: '2024-01-19T16:45:00',
@@ -292,7 +238,7 @@ export default function NorthtoneVendorShowcase() {
   }
 };
 
-  const getStatusColor = (status: string) => {
+  const getStatusColor = (status: string): ChipColor => {
     switch (status) {
       case 'active':
       case 'delivered':
@@ -399,7 +345,7 @@ export default function NorthtoneVendorShowcase() {
           </Grid>
 
           {/* Products Showcase */}
-          <Grid item >
+          <Grid item xs={12} md={6}>
             <Card sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
                 <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
@@ -411,7 +357,21 @@ export default function NorthtoneVendorShowcase() {
                   </Typography>
                 ) : (
                   displayProducts.slice(0, 4).map((product: AcousticPanel, index: number) => (
-                    <Box key={index} sx={{ mb: 2, p: 2, border: '1px solid', borderColor: 'divider', borderRadius:  1 }}>
+                    <Box
+                      key={index}
+                      sx={{
+                        mb: 2,
+                        p: 2,
+                        border: '1px solid',
+                        borderColor: 'divider',
+                        borderRadius: 1,
+                        cursor: 'pointer'
+                      }}
+                      onClick={() => {
+                        setSelectedProduct(product);
+                        setShowProductModal(true);
+                      }}
+                    >
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
                         {getCategoryIcon(product.category)}
                         <Typography variant="subtitle1" gutterBottom>
@@ -419,7 +379,7 @@ export default function NorthtoneVendorShowcase() {
                         </Typography>
                         <Chip 
                           label={product.status} 
-                          color={getStatusColor(product.status) as any}
+                          color={getStatusColor(product.status)}
                           size="small"
                         />
                       </Box>
@@ -442,7 +402,7 @@ export default function NorthtoneVendorShowcase() {
           </Grid>
 
           {/* Recent Orders */}
-          <Grid item >
+          <Grid item xs={12} md={6}>
             <Card sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
                 <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
@@ -454,7 +414,21 @@ export default function NorthtoneVendorShowcase() {
                   </Typography>
                 ) : (
                   displayOrders.slice(0, 4).map((order: AcousticOrder, index: number) => (
-                    <Box key={index} sx={{ mb: 2, p: 2, border: '1px solid', borderColor: 'divider', borderRadius:  1 }}>
+                    <Box
+                      key={index}
+                      sx={{
+                        mb: 2,
+                        p: 2,
+                        border: '1px solid',
+                        borderColor: 'divider',
+                        borderRadius: 1,
+                        cursor: 'pointer'
+                      }}
+                      onClick={() => {
+                        setSelectedOrder(order);
+                        setShowOrderModal(true);
+                      }}
+                    >
                       <Typography variant="subtitle2" gutterBottom>
                         Order #{order.id}
                       </Typography>
@@ -464,7 +438,7 @@ export default function NorthtoneVendorShowcase() {
                       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
                         <Chip 
                           label={order.status} 
-                          color={getStatusColor(order.status) as any}
+                          color={getStatusColor(order.status)}
                           size="small"
                         />
                         <Typography variant="body2" color="text.secondary">
@@ -479,6 +453,88 @@ export default function NorthtoneVendorShowcase() {
           </Grid>
         </Grid>
       )}
+
+      <Dialog open={showProductModal} onClose={() => setShowProductModal(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Produktdetaljer</DialogTitle>
+        <DialogContent dividers>
+          {selectedProduct ? (
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+              <Typography variant="h6">{selectedProduct.name}</Typography>
+              <Typography variant="body2" color="text.secondary">
+                {selectedProduct.description}
+              </Typography>
+              <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                <Chip label={selectedProduct.category.replace('_', ' ')} />
+                <Chip label={selectedProduct.status} color={getStatusColor(selectedProduct.status)} />
+                <Chip label={`NRC ${selectedProduct.nrc ?? '-'}`} />
+              </Box>
+              <Typography variant="body2">Dimensjoner: {selectedProduct.dimensions || 'Ikke oppgitt'}</Typography>
+              <Typography variant="body2">Materiale: {selectedProduct.material || 'Ikke oppgitt'}</Typography>
+              <Typography variant="body2">Pris: ${selectedProduct.price}</Typography>
+            </Box>
+          ) : (
+            <Typography variant="body2" color="text.secondary">
+              Ingen produkt valgt.
+            </Typography>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowProductModal(false)}>Lukk</Button>
+          {selectedProduct && (
+            <Button
+              variant="contained"
+              onClick={() =>
+                updateNorthtoneVendorShowcase.mutate({
+                  vendorId,
+                  featuredProductId: selectedProduct.id
+                })
+              }
+            >
+              Marker som utvalgt
+            </Button>
+          )}
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={showOrderModal} onClose={() => setShowOrderModal(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Ordredetaljer</DialogTitle>
+        <DialogContent dividers>
+          {selectedOrder ? (
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+              <Typography variant="h6">Order #{selectedOrder.id}</Typography>
+              <Typography variant="body2" color="text.secondary">
+                {selectedOrder.customerName} • {selectedOrder.customerEmail}
+              </Typography>
+              <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                <Chip label={selectedOrder.status} color={getStatusColor(selectedOrder.status)} />
+                <Chip label={selectedOrder.installationType.replace('_', ' ')} />
+              </Box>
+              <Typography variant="body2">Total: ${selectedOrder.total}</Typography>
+              <Typography variant="body2">Produkter: {selectedOrder.items.length}</Typography>
+            </Box>
+          ) : (
+            <Typography variant="body2" color="text.secondary">
+              Ingen ordre valgt.
+            </Typography>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowOrderModal(false)}>Lukk</Button>
+          {selectedOrder && (
+            <Button
+              variant="contained"
+              onClick={() =>
+                updateNorthtoneVendorShowcase.mutate({
+                  vendorId,
+                  featuredOrderId: selectedOrder.id
+                })
+              }
+            >
+              Marker som viktig
+            </Button>
+          )}
+        </DialogActions>
+      </Dialog>
     </Container>
   );
 }

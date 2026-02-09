@@ -87,13 +87,129 @@ import PersonaBuilder, { PersonaData } from './PersonaBuilder';
 import SurveyBuilder, { SurveyData } from './SurveyBuilder';
 import EmailDesignerComplete from '../EmailDesigner/EmailDesignerComplete';
 import CommunicationHubV2 from './CommunicationHubV2';
-import businessIntelligenceService from '../../services/BusinessIntelligenceService';
+import businessIntelligenceService, {
+  SWOTItem,
+  SWOTTrend
+} from '../../services/BusinessIntelligenceService';
 import pdfExportService from '../../services/PDFExportService';
 import { ALL_ENHANCED_NEWSLETTER_TEMPLATES } from '../../data/enhancedNewsletterTemplates';
 
 interface BusinessIntelligenceDashboardProps {
   userId: string;
   profession: string
+}
+
+interface DashboardQuickStats {
+  averageMarketPrice?: number;
+  competitorCount?: number;
+  seasonalDemand?: string;
+  bestRegions?: string[];
+}
+
+interface DashboardResponse {
+  data?: {
+    quickStats?: DashboardQuickStats;
+    recommendations?: string[];
+  };
+}
+
+interface PriceRecommendationResponse {
+  data?: {
+    suggestedPrice?: number;
+    confidence?: number;
+    reasoning?: string;
+    competitiveAdvantage?: string[];
+  };
+}
+
+interface SeasonalTrendsResponse {
+  data?: {
+    serviceType?: string;
+    monthlyFactors?: number[];
+    recommendations?: string[];
+  };
+}
+
+interface SwotResponse {
+  data?: {
+    strengths?: string[];
+    weaknesses?: string[];
+    opportunities?: string[];
+    threats?: string[];
+    recommendations?: string[];
+    scores?: {
+      brand: number;
+      product: number;
+      distribution: number;
+      promotion: number;
+      overall: number;
+    };
+  };
+}
+
+interface MarketingStrategyResponse {
+  data?: {
+    socialMedia?: {
+      facebook?: string;
+      instagram?: string;
+      linkedin?: string;
+      twitter?: string;
+    };
+    contentPlan?: Array<{ day: string; content: string }>;
+    seo?: {
+      primaryKeywords?: string[];
+      secondaryKeywords?: string[];
+    };
+    campaigns?: Array<{ title: string; description: string; duration: string; expectedROI: string }>;
+  };
+}
+
+interface NewsletterCampaign {
+  id: string | number;
+  subject: string;
+  audience: string;
+  status: string;
+  scheduledDate: string;
+  openRate: string | number;
+}
+
+interface NewsletterResponse {
+  data?: {
+    stats?: {
+      totalCampaigns?: number;
+      totalSubscribers?: number;
+      avgOpenRate?: number;
+      avgClickRate?: number;
+    };
+    campaigns?: NewsletterCampaign[];
+  };
+}
+
+interface NewsletterForm {
+  subject: string;
+  content: string;
+  audienceSegment: string;
+  scheduledDate: string;
+  templateId: string;
+}
+
+interface ContractSummaryItem {
+  id: string | number;
+  title?: string;
+  client_name?: string;
+  project_name?: string;
+  daysUntilExpiry?: number;
+  signed_at?: string;
+}
+
+interface ContractSummaryResponse {
+  pending?: ContractSummaryItem[];
+  expiring?: ContractSummaryItem[];
+  recent?: ContractSummaryItem[];
+}
+
+interface ProjectTypeRef {
+  label: string;
 }
 
 interface TabPanelProps {
@@ -155,40 +271,46 @@ export default function BusinessIntelligenceDashboard({
   
   // Get project types for reference (used in recommendations)
   const availableProjectTypes = React.useMemo(() => getProjectTypes(), [professionAdapter]);
+  const isProjectTypeRef = (value: unknown): value is ProjectTypeRef => {
+    if (typeof value !== 'object' || value === null) return false;
+    const label = (value as Record<string, unknown>).label;
+    return typeof label === 'string';
+  };
+  const projectTypeRefs = availableProjectTypes.filter(isProjectTypeRef);
 
   // Fetch dashboard data
-  const { data: dashboardData, isLoading } = useQuery({
+  const { data: dashboardData, isLoading } = useQuery<DashboardResponse>({
     queryKey: [`/api/business/dashboard/${userId}/${profession}`],
     queryFn: () => apiRequest(`/api/business/dashboard/${userId}/${profession}`),
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
 
   // Fetch price recommendation
-  const { data: priceData } = useQuery({
+  const { data: priceData } = useQuery<PriceRecommendationResponse>({
     queryKey: [`/api/business/price-recommendation/${profession}/bryllup`],
     staleTime: 30 * 60 * 1000, // 30 minutes
 });
 
   // Fetch seasonal trends
-  const { data: seasonalData } = useQuery({
+  const { data: seasonalData } = useQuery<SeasonalTrendsResponse>({
     queryKey: [`/api/business/seasonal-trends/${profession}/bryllup`],
     staleTime: 60 * 60 * 1000, // 1 hour
 });
 
   // Fetch SWOT analysis
-  const { data: swotData, isLoading: swotLoading } = useQuery({
+  const { data: swotData, isLoading: swotLoading } = useQuery<SwotResponse>({
     queryKey: [`/api/business/swot-analysis/${userId}/${profession}`],
     staleTime: 30 * 60 * 1000, // 30 minutes
   });
 
   // Fetch marketing strategy
-  const { data: marketingData, isLoading: marketingLoading } = useQuery({
+  const { data: marketingData, isLoading: marketingLoading } = useQuery<MarketingStrategyResponse>({
     queryKey: [`/api/business/marketing-strategy/${userId}/${profession}`],
     staleTime: 30 * 60 * 1000, // 30 minutes
   });
 
   // Fetch newsletter campaigns
-  const { data: newsletterData, isLoading: newsletterLoading } = useQuery({
+  const { data: newsletterData, isLoading: newsletterLoading } = useQuery<NewsletterResponse>({
     queryKey: [`/api/business/newsletter-campaigns/${userId}`],
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
@@ -218,21 +340,21 @@ export default function BusinessIntelligenceDashboard({
   const [editingSurvey, setEditingSurvey] = useState<SurveyData | undefined>(undefined);
 
   // Fetch SWOT items
-  const { data: swotItems = [] } = useQuery({
+  const { data: swotItems = [] } = useQuery<SWOTItem[]>({
     queryKey: [`swot_items_${userId}_${profession}`],
     queryFn: () => businessIntelligenceService.getSWOTItems({ userId, profession }),
     staleTime: 5 * 60 * 1000,
   });
 
   // Fetch SWOT trends
-  const { data: swotTrends = [] } = useQuery({
+  const { data: swotTrends = [] } = useQuery<SWOTTrend[]>({
     queryKey: [`swot_trends_${userId}_${profession}`],
     queryFn: () => businessIntelligenceService.getSWOTTrends(userId, profession, 30),
     staleTime: 60 * 60 * 1000,
   });
 
   // Fetch personas
-  const { data: personas = [] } = useQuery({
+  const { data: personas = [] } = useQuery<PersonaData[]>({
     queryKey: [`personas_${userId}_${profession}`],
     queryFn: () => businessIntelligenceService.getCustomerPersonas(userId, profession),
     staleTime: 60 * 60 * 1000,
@@ -246,7 +368,7 @@ export default function BusinessIntelligenceDashboard({
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
 
-  const { data: contractSummary } = useQuery({
+  const { data: contractSummary } = useQuery<ContractSummaryResponse>({
     queryKey: ['/api/contracts/summary', userId],
     queryFn: () => apiRequest('/api/contracts/summary'),
     enabled: !!userId,
@@ -255,7 +377,7 @@ export default function BusinessIntelligenceDashboard({
 
   // Create newsletter mutation
   const createNewsletter = useMutation({
-    mutationFn: async (data: any) => {
+    mutationFn: async (data: NewsletterForm) => {
       const response = await fetch(`/api/business/newsletter-campaigns`, {
         method: 'POST',
         headers: { 'Content-Type' : 'application/json' },
@@ -267,13 +389,13 @@ export default function BusinessIntelligenceDashboard({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/business/newsletter-campaigns/${userId}`] });
       setNewsletterDialog(false);
-      setNewsletterForm({ subject: '', content: ',', audienceSegment: 'all', scheduledDate: ',', templateId: '' });
+      setNewsletterForm({ subject: '', content: '', audienceSegment: 'all', scheduledDate: '', templateId: '' });
     },
   });
 
   // SWOT mutations
   const saveSWOTMutation = useMutation({
-    mutationFn: (item: any) => businessIntelligenceService.saveSWOTItem(userId, profession, item),
+    mutationFn: (item: Partial<SWOTItem>) => businessIntelligenceService.saveSWOTItem(userId, profession, item),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`swot_items_${userId}_${profession}`] });
       queryClient.invalidateQueries({ queryKey: [`/api/business/swot-analysis/${userId}/${profession}`] });
@@ -312,8 +434,8 @@ export default function BusinessIntelligenceDashboard({
     );
 }
 
-  const quickStats = (dashboardData as any)?.data?.quickStats;
-  const recommendations = (dashboardData as any)?.data?.recommendations || [];
+  const quickStats = dashboardData?.data?.quickStats;
+  const recommendations = dashboardData?.data?.recommendations || [];
 
   return (
     <Box>
@@ -555,20 +677,20 @@ export default function BusinessIntelligenceDashboard({
                   <Typography variant="h6" sx={{ mb: 2, color: theming.colors.primary }}>
                     Prisanbefaling
                   </Typography>
-                  {(priceData as any)?.data ? (
+                  {priceData?.data ? (
                     <Box>
                       <Box sx={{ display: 'flex', alignItems: 'center', mb:  2 }}>
                         <Typography variant="h4" sx={{ color: theming.colors.primary, mr:  2 }}>
-                          {(priceData as any).data.suggestedPrice?.toLocaleString('no-NO')} kr
+                          {priceData.data.suggestedPrice?.toLocaleString('no-NO')} kr
                         </Typography>
                         <Chip
-                          label={`${Math.round((priceData as any).data.confidence * 100)}% sikkerhet`}
+                          label={`${Math.round((priceData.data.confidence || 0) * 100)}% sikkerhet`}
                           color="success"
                           size="small"
                         />
                       </Box>
                       <Typography variant="body2" color="text.secondary" sx={{ mb:  2 }}>
-                        {(priceData as any).data.reasoning}
+                        {priceData.data.reasoning}
                       </Typography>
                       {getDefaultHourlyRate() && (
                         <Box sx={{ mt: 2, p: 1.5, bgcolor: 'rgba(255, 107, 53, 0.1)', borderRadius: 1 }}>
@@ -580,7 +702,7 @@ export default function BusinessIntelligenceDashboard({
                       <Box sx={{ mb:  2 }}>
                         <Typography variant="subtitle2" sx={{ mb:  1 }}>
                           Konkurransefortrinn: </Typography>
-                        {(priceData as any).data.competitiveAdvantage?.map(
+                        {priceData.data.competitiveAdvantage?.map(
                           (advantage: string, index: number) => (
                             <Chip
                               key={index}
@@ -631,13 +753,13 @@ export default function BusinessIntelligenceDashboard({
                   <Typography variant="h6" sx={{ mb: 2, color: theming.colors.primary }}>
                     Sesongvariasjoner
                   </Typography>
-                  {(seasonalData as any)?.data ? (
+                  {seasonalData?.data ? (
                     <Box>
                       <Typography variant="body2" color="text.secondary" sx={{ mb:  2 }}>
-                        Månedlige etterspørselsfaktorer for {(seasonalData as any).data.serviceType}
+                        Månedlige etterspørselsfaktorer for {seasonalData.data.serviceType}
                       </Typography>
                       <Grid container spacing={1}>
-                        {(seasonalData as any).data.monthlyFactors?.map((factor: number, index: number) => {
+                        {seasonalData.data.monthlyFactors?.map((factor: number, index: number) => {
                           const months = [
                             'Jan','Feb','Mar','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Des',
                           ];
@@ -673,11 +795,11 @@ export default function BusinessIntelligenceDashboard({
                           );
                       })}
                       </Grid>
-                      {(seasonalData as any).data.recommendations?.length > 0 && (
+                      {seasonalData.data.recommendations?.length > 0 && (
                         <Box sx={{ mt:  2 }}>
                           <Typography variant="subtitle2" sx={{ mb:  1 }}>
                             Anbefalinger: </Typography>
-                          {(seasonalData as any).data.recommendations.map((rec: string, index: number) => (
+                          {seasonalData.data.recommendations.map((rec: string, index: number) => (
                             <Alert key={index} severity="info" sx={{ mb:  1 }}>
                               {rec}
                             </Alert>
@@ -763,7 +885,7 @@ export default function BusinessIntelligenceDashboard({
                       </Typography>
                     </Box>
                     <List>
-                      {((swotData as any)?.data?.strengths || [
+                      {(swotData?.data?.strengths || [
                         'Høy kvalitet på leveranser','Sterkt lokalt nettverk','Moderne utstyr og teknologi','Gode kundeomtaler',
                       ]).map((strength: string, index: number) => (
                         <ListItem key={index}>
@@ -789,7 +911,7 @@ export default function BusinessIntelligenceDashboard({
                       </Typography>
                     </Box>
                     <List>
-                      {((swotData as any)?.data?.weaknesses || [
+                      {(swotData?.data?.weaknesses || [
                         'Begrenset markedsføring','Høye priser sammenlignet med konkurrenter','Mangler online booking-system','Begrenset kapasitet i høysesongen',
                       ]).map((weakness: string, index: number) => (
                         <ListItem key={index}>
@@ -815,7 +937,7 @@ export default function BusinessIntelligenceDashboard({
                       </Typography>
                     </Box>
                     <List>
-                      {((swotData as any)?.data?.opportunities || [
+                      {(swotData?.data?.opportunities || [
                         'Økende etterspørsel etter profesjonelle tjenester','Vekst i sosiale medier markedsføring','Nye teknologier (AI, automatisering)','Samarbeid med andre leverandører',
                       ]).map((opportunity: string, index: number) => (
                         <ListItem key={index}>
@@ -841,7 +963,7 @@ export default function BusinessIntelligenceDashboard({
                       </Typography>
                     </Box>
                     <List>
-                      {((swotData as any)?.data?.threats || [
+                      {(swotData?.data?.threats || [
                         'Økende konkurranse fra nye aktører','Økonomisk usikkerhet','Endringer i kundeatferd','Teknologiske endringer',
                       ]).map((threat: string, index: number) => (
                         <ListItem key={index}>
@@ -867,7 +989,7 @@ export default function BusinessIntelligenceDashboard({
                       <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mb: 1 }}>
                         Prioriterte tiltak:
                       </Typography>
-                      {((swotData as any)?.data?.recommendations || [
+                      {(swotData?.data?.recommendations || [
                         'Utvikle en sterkere online tilstedeværelse gjennom sosiale medier','Implementer et online booking-system for å forbedre kundeopplevelsen','Utforsk samarbeidspartnere for å utvide tjenestetilbudet','Invester i markedsføring for å øke synlighet',
                       ]).map((rec: string, index: number) => (
                         <Typography key={index} variant="body2" sx={{ ml: 2, mb: 0.5 }}>
@@ -875,13 +997,13 @@ export default function BusinessIntelligenceDashboard({
                         </Typography>
                       ))}
                     </Alert>
-                    {availableProjectTypes.length > 0 && (
+                    {projectTypeRefs.length > 0 && (
                       <Box sx={{ mt: 2, p: 1.5, bgcolor: 'rgba(76, 175, 80, 0.1)', borderRadius: 1 }}>
                         <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mb: 1 }}>
                           Tilgjengelige prosjekttyper:
                         </Typography>
                         <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                          {availableProjectTypes.slice(0, 5).map((type: any, idx: number) => (
+                          {projectTypeRefs.slice(0, 5).map((type, idx) => (
                             <Chip
                               key={idx}
                               label={type.label}
@@ -913,7 +1035,7 @@ export default function BusinessIntelligenceDashboard({
                 <SWOTVisualizations
                   items={swotItems}
                   trends={swotTrends}
-                  scores={(swotData as any)?.data?.scores || {
+                  scores={swotData?.data?.scores || {
                     brand: 50,
                     product: 50,
                     distribution: 50,
@@ -948,7 +1070,7 @@ export default function BusinessIntelligenceDashboard({
                         <ListItemText
                           primary="Facebook"
                           secondary={
-                            (marketingData as any)?.data?.socialMedia?.facebook ||
+                            marketingData?.data?.socialMedia?.facebook ||
                             'Post 3-4 ganger per uke. Fokus på før/etter bilder og kundehistorier.'
                           }
                         />
@@ -961,7 +1083,7 @@ export default function BusinessIntelligenceDashboard({
                         <ListItemText
                           primary="Instagram"
                           secondary={
-                            (marketingData as any)?.data?.socialMedia?.instagram ||
+                            marketingData?.data?.socialMedia?.instagram ||
                             'Daglige stories og 4-5 feed posts per uke. Bruk reels for økt rekkevidde.'
                           }
                         />
@@ -974,7 +1096,7 @@ export default function BusinessIntelligenceDashboard({
                         <ListItemText
                           primary="LinkedIn"
                           secondary={
-                            (marketingData as any)?.data?.socialMedia?.linkedin ||
+                            marketingData?.data?.socialMedia?.linkedin ||
                             'Profesjonelt innhold 2-3 ganger per uke. Del bransjeinnsikt og case studies.'
                           }
                         />
@@ -987,7 +1109,7 @@ export default function BusinessIntelligenceDashboard({
                         <ListItemText
                           primary="Twitter/X"
                           secondary={
-                            (marketingData as any)?.data?.socialMedia?.twitter ||
+                            marketingData?.data?.socialMedia?.twitter ||
                             'Engasjer deg i bransjesamtaler. Del tips og nyheter daglig.'
                           }
                         />
@@ -1008,12 +1130,12 @@ export default function BusinessIntelligenceDashboard({
                       <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 'bold' }}>
                         Ukentlig Innholdsplan:
                       </Typography>
-                      {((marketingData as any)?.data?.contentPlan || [
+                      {(marketingData?.data?.contentPlan || [
                         { day: 'Mandag', content: 'Motiverende sitat eller tips' },
                         { day: 'Onsdag', content: 'Før/etter showcase' },
                         { day: 'Fredag', content: 'Kundehistorie eller testimonial' },
                         { day: 'Søndag', content: 'Bak kulissene innhold' },
-                      ]).map((item: any, index: number) => (
+                      ]).map((item: { day: string; content: string }, index: number) => (
                         <Box
                           key={index}
                           sx={{
@@ -1050,7 +1172,7 @@ export default function BusinessIntelligenceDashboard({
                           <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 'bold' }}>
                             Primære Søkeord:
                           </Typography>
-                          {((marketingData as any)?.data?.seo?.primaryKeywords || [
+                          {(marketingData?.data?.seo?.primaryKeywords || [
                             `${getProfessionDisplayName(profession)} Oslo`,
                             `Bryllup ${getProfessionDisplayName(profession).toLowerCase()}`,
                             `Profesjonell ${getProfessionDisplayName(profession).toLowerCase()}`,
@@ -1071,7 +1193,7 @@ export default function BusinessIntelligenceDashboard({
                           <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 'bold' }}>
                             Sekundære Søkeord:
                           </Typography>
-                          {((marketingData as any)?.data?.seo?.secondaryKeywords || getProfessionSpecificKeywords() || [
+                          {(marketingData?.data?.seo?.secondaryKeywords || getProfessionSpecificKeywords() || [
                             'Beste fotograf Norge','Rimelig bryllupsfotograf','Profesjonelle bilder',
                           ]).map((keyword: string, index: number) => (
                             <Chip
@@ -1122,7 +1244,7 @@ export default function BusinessIntelligenceDashboard({
                       Kampanjeideer
                     </Typography>
                     <Grid container spacing={2}>
-                      {((marketingData as any)?.data?.campaigns || [
+                      {(marketingData?.data?.campaigns || [
                         {
                           title: 'Vår Kampanje',
                           description: 'Tilby 15% rabatt på bryllupspakker booket i vårsesongen',
@@ -1141,7 +1263,7 @@ export default function BusinessIntelligenceDashboard({
                           duration: 'Månedlig',
                           expectedROI: '15%',
                         },
-                      ]).map((campaign: any, index: number) => (
+                      ]).map((campaign: { title: string; description: string; duration: string; expectedROI: string }, index: number) => (
                         <Grid size={{ xs: 12, md: 4 }} key={index}>
                           <Card
                             sx={{
@@ -1212,7 +1334,7 @@ export default function BusinessIntelligenceDashboard({
                       <Grid size={{ xs: 12, sm: 6, md: 3 }}>
                         <Box sx={{ p: 2, bgcolor: 'rgba(33, 150, 243, 0.1)', borderRadius: 1 }}>
                           <Typography variant="h4" sx={{ color: '#2196f3', fontWeight: 'bold' }}>
-                            {(newsletterData as any)?.data?.stats?.totalCampaigns || 0}
+                            {newsletterData?.data?.stats?.totalCampaigns || 0}
                           </Typography>
                           <Typography variant="body2" color="text.secondary">
                             Totale Kampanjer
@@ -1222,7 +1344,7 @@ export default function BusinessIntelligenceDashboard({
                       <Grid size={{ xs: 12, sm: 6, md: 3 }}>
                         <Box sx={{ p: 2, bgcolor: 'rgba(76, 175, 80, 0.1)', borderRadius: 1 }}>
                           <Typography variant="h4" sx={{ color: '#4caf50', fontWeight: 'bold' }}>
-                            {(newsletterData as any)?.data?.stats?.totalSubscribers || 0}
+                            {newsletterData?.data?.stats?.totalSubscribers || 0}
                           </Typography>
                           <Typography variant="body2" color="text.secondary">
                             Abonnenter
@@ -1232,7 +1354,7 @@ export default function BusinessIntelligenceDashboard({
                       <Grid size={{ xs: 12, sm: 6, md: 3 }}>
                         <Box sx={{ p: 2, bgcolor: 'rgba(255, 152, 0, 0.1)', borderRadius: 1 }}>
                           <Typography variant="h4" sx={{ color: '#ff9800', fontWeight: 'bold' }}>
-                            {(newsletterData as any)?.data?.stats?.avgOpenRate || '0'}%
+                            {newsletterData?.data?.stats?.avgOpenRate || 0}%
                           </Typography>
                           <Typography variant="body2" color="text.secondary">
                             Åpningsrate
@@ -1242,7 +1364,7 @@ export default function BusinessIntelligenceDashboard({
                       <Grid size={{ xs: 12, sm: 6, md: 3 }}>
                         <Box sx={{ p: 2, bgcolor: 'rgba(156, 39, 176, 0.1)', borderRadius: 1 }}>
                           <Typography variant="h4" sx={{ color: '#9c27b0', fontWeight: 'bold' }}>
-                            {(newsletterData as any)?.data?.stats?.avgClickRate || '0'}%
+                            {newsletterData?.data?.stats?.avgClickRate || 0}%
                           </Typography>
                           <Typography variant="body2" color="text.secondary">
                             Klikkrate
@@ -1265,7 +1387,7 @@ export default function BusinessIntelligenceDashboard({
                           </TableRow>
                         </TableHead>
                         <TableBody>
-                          {((newsletterData as any)?.data?.campaigns || [
+                          {(newsletterData?.data?.campaigns || [
                             {
                               id: 1,
                               subject: 'Vårtilbud 2024',
@@ -1290,7 +1412,7 @@ export default function BusinessIntelligenceDashboard({
                               scheduledDate: '-',
                               openRate: '-',
                             },
-                          ]).map((campaign: any) => (
+                          ]).map((campaign: NewsletterCampaign) => (
                             <TableRow key={campaign.id}>
                               <TableCell component="th" scope="row">{campaign.subject}</TableCell>
                               <TableCell>{campaign.audience}</TableCell>
@@ -1513,7 +1635,7 @@ export default function BusinessIntelligenceDashboard({
             </Alert>
           ) : (
             <Grid container spacing={3}>
-              {personas.map((persona: any) => (
+              {personas.map((persona: PersonaData) => (
                 <Grid key={persona.id} size={{ xs: 12, md: 6, lg: 4 }}>
                   <Card sx={theming.getThemedCardSx()}>
                     <CardContent>
@@ -1916,7 +2038,7 @@ export default function BusinessIntelligenceDashboard({
                                     (contractStats.stats.totalValue * (contractStats.stats.active / contractStats.stats.total)) /
                                       contractStats.stats.active
                                   ).toLocaleString('no-NO')
-                                : 0}{', '}
+                                : 0}
                               kr
                             </Typography>
                           </ListItem>
@@ -1931,7 +2053,7 @@ export default function BusinessIntelligenceDashboard({
                                     (contractStats.stats.totalValue * (contractStats.stats.completed / contractStats.stats.total)) /
                                       contractStats.stats.completed
                                   ).toLocaleString('no-NO')
-                                : 0}{', '}
+                                : 0}
                               kr
                             </Typography>
                           </ListItem>
@@ -1961,7 +2083,7 @@ export default function BusinessIntelligenceDashboard({
                               Venter Signatur ({contractSummary.pending.length})
                             </Typography>
                             <List dense>
-                              {contractSummary.pending.slice(0, 3).map((contract: any) => (
+                              {contractSummary.pending.slice(0, 3).map((contract: ContractSummaryItem) => (
                                 <ListItem key={contract.id}>
                                   <ListItemText
                                     primary={contract.title || contract.client_name}
@@ -1980,7 +2102,7 @@ export default function BusinessIntelligenceDashboard({
                               Utløper Snart ({contractSummary.expiring.length})
                             </Typography>
                             <List dense>
-                              {contractSummary.expiring.slice(0, 3).map((contract: any) => (
+                              {contractSummary.expiring.slice(0, 3).map((contract: ContractSummaryItem) => (
                                 <ListItem key={contract.id}>
                                   <ListItemText
                                     primary={contract.title || contract.client_name}
@@ -1999,7 +2121,7 @@ export default function BusinessIntelligenceDashboard({
                               Nylig Signert ({contractSummary.recent.length})
                             </Typography>
                             <List dense>
-                              {contractSummary.recent.slice(0, 3).map((contract: any) => (
+                              {contractSummary.recent.slice(0, 3).map((contract: ContractSummaryItem) => (
                                 <ListItem key={contract.id}>
                                   <ListItemText
                                     primary={contract.title || contract.client_name}

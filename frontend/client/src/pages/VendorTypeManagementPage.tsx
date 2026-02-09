@@ -58,10 +58,10 @@ const VendorTypeManagementPage: React.FC = () => {
           color: 'white',
       }}
        sx={theming.getThemedCardSx()}>
-        <Typography variant="h3" sx={{  fontWeight: 7, mb:  2  }}>
+        <Typography variant="h3" sx={{ fontWeight: 700, mb: 2 }}>
           🚀 Skalerbar Vendor Type System
         </Typography>
-        <Typography variant="h6" sx={{  opacity: 0.7, mb:  2  }}>
+        <Typography variant="h6" sx={{ opacity: 0.7, mb: 2 }}>
           Dynamisk ekspansjon av vendor kategorier for ubegrenset vekst
         </Typography>
 
@@ -69,7 +69,7 @@ const VendorTypeManagementPage: React.FC = () => {
           severity="info"
           sx={{
             mt:  2,
-            bgcolor: 'rgba(25,255,255,0.1)',
+            bgcolor: 'rgba(255,255,255,0.1)',
             color: 'white','& .MuiAlert-icon': { color: 'white',},
         }}
         >
@@ -124,7 +124,8 @@ const VendorTypeManagementPage: React.FC = () => {
                     sx={{
                       bgcolor: selectedVendorType === type.id ? type.color : 'transparent',
                       borderColor: type.color,
-                      color: selectedVendorType === type.id ? 'white' : type.color '&:hover': {
+                      color: selectedVendorType === type.id ? 'white' : type.color,
+                      '&:hover': {
                         bgcolor: `${type.color}20`,
                         borderColor: type.color
                       }
@@ -157,10 +158,10 @@ const VendorTypeManagementPage: React.FC = () => {
             <Grid item xs={12} md={6}>
               <Card sx={theming.getThemedCardSx()}>
                 <CardContent sx={theming.getThemedCardSx()}>
-                  <Typography variant="h6" sx={{  mb:  2  }}>
+                  <Typography variant="h6" sx={{ mb: 2 }}>
                     Aktive Vendor Typer
                   </Typography>
-                  <Typography variant="h3" sx={{  color: 'primary.main', fontWeight: 70 }}>
+                  <Typography variant="h3" sx={{ color: 'primary.main', fontWeight: 700 }}>
                     {vendorTypesData?.totalTypes || 0}
                   </Typography>
                   <Typography variant="body2" sx={{ color: 'text.secondary' }}>
@@ -174,10 +175,10 @@ const VendorTypeManagementPage: React.FC = () => {
             <Grid item xs={12} md={6}>
               <Card sx={theming.getThemedCardSx()}>
                 <CardContent sx={theming.getThemedCardSx()}>
-                  <Typography variant="h6" sx={{  mb:  2  }}>
+                  <Typography variant="h6" sx={{ mb: 2 }}>
                     Kategorier
                   </Typography>
-                  <Typography variant="h3" sx={{  color: 'success.main', fontWeight: 70 }}>
+                  <Typography variant="h3" sx={{ color: 'success.main', fontWeight: 700 }}>
                     {vendorTypesData?.categories?.length || 0}
                   </Typography>
                   <Typography variant="body2" sx={{ color: 'text.secondary',}}>

@@ -33,7 +33,8 @@ import {
   DialogContent,
   DialogActions,
   TextField,
-  CircularProgress
+  CircularProgress,
+  Snackbar
 } from '@mui/material';
 import {
   Business,
@@ -141,6 +142,8 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
   const [refundReason, setRefundReason] = useState(' , ');
   const [cancellationReason, setCancellationReason] = useState('');
   const [processingAction, setProcessingAction] = useState(false);
+  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'info' | 'warning' }>({ open: false, message: '', severity: 'info' });
+  const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; title: string; message: string; onConfirm: () => void }>({ open: false, title: '', message: '', onConfirm: () => {} });
   const theme = useTheme();
   
   // Push notifications
@@ -386,7 +389,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
             '& .MuiTab-root': {
               textTransform: 'none',
               fontSize: '0.95rem',
-              fontWeight: 50,
+              fontWeight: 500,
               minWidth: 100, '&.Mui-selected': { color: customBranding.color,
                 fontWeight: 600}
             }, '& .MuiTabs-indicator': {
@@ -852,7 +855,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
                             <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600}}>
                               Månedlig beløp
                             </Typography>
-                            <Typography variant="h6" sx={{ fontWeight: 70, color: customBranding.color }}>
+                            <Typography variant="h6" sx={{ fontWeight: 700, color: customBranding.color }}>
                               {currentSubscription.amount || 0} {currentSubscription.currency || 'NOK'}
                             </Typography>
                           </Box>
@@ -1082,17 +1085,25 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
                                 variant="text"
                                 color="error"
                                 startIcon={<MoneyOff />}
-                                onClick={async () => {
-                                  if (window.confirm('Er du sikker på at du vil slette denne betalingsmetoden?')) {
-                                    try {
-                                      await apiRequest(`/api/user/payment-methods/${method.id}`, {
-                                        method: 'DELETE'
-                                      });
-                                      refetchPaymentMethods();
-                                    } catch (error) {
-                                      console.error('Failed to delete:', error);
+                                onClick={() => {
+                                  setConfirmDialog({
+                                    open: true,
+                                    title: 'Slett betalingsmetode',
+                                    message: 'Er du sikker på at du vil slette denne betalingsmetoden?',
+                                    onConfirm: async () => {
+                                      try {
+                                        await apiRequest(`/api/user/payment-methods/${method.id}`, {
+                                          method: 'DELETE'
+                                        });
+                                        refetchPaymentMethods();
+                                        setSnackbar({ open: true, message: 'Betalingsmetode slettet', severity: 'success' });
+                                      } catch (error) {
+                                        console.error('Failed to delete:', error);
+                                        setSnackbar({ open: true, message: 'Kunne ikke slette betalingsmetode', severity: 'error' });
+                                      }
+                                      setConfirmDialog(prev => ({ ...prev, open: false }));
                                     }
-                                  }
+                                  });
                                 }}
                               >
                                 Slett
@@ -1309,10 +1320,11 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
                         body: JSON.stringify({ userId, profession })
                       });
                       if (response.ok) {
-                        alert('Manuell backup startet!');
+                        setSnackbar({ open: true, message: 'Manuell backup startet!', severity: 'success' });
                       }
                     } catch (error) {
                       console.error('Backup failed:', error);
+                      setSnackbar({ open: true, message: 'Backup feilet. Prøv igjen.', severity: 'error' });
                     }
                   }}
                 >
@@ -1995,7 +2007,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
 
           {/* What You'll Lose - Dynamic from profession feature matrix */}
           <Box sx={{ mb: 3, p: 2, bgcolor: '#fff3e0', borderRadius: 1, border: '1px solid #ffb74d' }}>
-            <Typography variant="subtitle2" sx={{ fontWeight: 70, mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
               <Warning color="warning" />
               Hva du mister tilgang til etter {currentSubscription?.accessUntil
                 ? new Date(currentSubscription.accessUntil).toLocaleDateString('nb-NO', { day: 'numeric', month: 'short' })
@@ -2047,7 +2059,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
 
           {/* What Happens Next */}
           <Box sx={{ mb: 3, p: 2, bgcolor: '#e3f2fd', borderRadius: 1, border: '1px solid #64b5f6' }}>
-            <Typography variant="subtitle2" sx={{ fontWeight: 70, mb: 2 }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 2 }}>
               Hva skjer når du kansellerer:
             </Typography>
             <Box component="ul" sx={{ m: 0, pl: 3 }}>
@@ -2131,18 +2143,18 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
                 });
                 await refetchSubscription();
                 setShowCancelDialog(false);
-                setCancellationReason(', ');
+                setCancellationReason('');
 
                 // Show success message
                 const accessUntil = currentSubscription?.accessUntil || currentSubscription?.nextBillingDate;
-                alert(
-                  `✅ Abonnement kansellert\n\n` +
-                  `Du beholder full tilgang til ${accessUntil ? new Date(accessUntil).toLocaleDateString('nb-NO', { day: 'numeric', month: 'long', year: 'numeric' }) : 'slutten av perioden'}.\n\n` +
-                  `Du vil motta en bekreftelse på e-post med alle detaljer.`
-                );
+                setSnackbar({
+                  open: true,
+                  message: `Abonnement kansellert. Du beholder tilgang til ${accessUntil ? new Date(accessUntil).toLocaleDateString('nb-NO', { day: 'numeric', month: 'long', year: 'numeric' }) : 'slutten av perioden'}.`,
+                  severity: 'success'
+                });
               } catch (error) {
                 console.error('Failed to cancel subscription:', error);
-                alert('❌ Kunne ikke kansellere abonnement. Prøv igjen senere eller kontakt support.');
+                setSnackbar({ open: true, message: 'Kunne ikke kansellere abonnement. Prøv igjen senere eller kontakt support.', severity: 'error' });
               } finally {
                 setProcessingAction(false);
               }
@@ -2225,12 +2237,12 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
                 });
                 await queryClient.invalidateQueries({ queryKey: ['/api/payments/history'] });
                 setShowRefundDialog(false);
-                setRefundReason(', ');
+                setRefundReason('');
                 setSelectedPaymentForRefund(null);
-                alert('Refunderingsforespørsel sendt! Du vil motta en e-post når den er behandlet.');
+                setSnackbar({ open: true, message: 'Refunderingsforespørsel sendt! Du vil motta en e-post når den er behandlet.', severity: 'success' });
               } catch (error) {
                 console.error('Failed to request refund:', error);
-                alert('Kunne ikke sende refunderingsforespørsel. Prøv igjen senere.');
+                setSnackbar({ open: true, message: 'Kunne ikke sende refunderingsforespørsel. Prøv igjen senere.', severity: 'error' });
               } finally {
                 setProcessingAction(false);
               }
@@ -2314,12 +2326,12 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
                         />
                       )}
 
-                      <Typography variant="h6" sx={{ fontWeight: 70, mb: 1 }}>
+                      <Typography variant="h6" sx={{ fontWeight: 700, mb: 1 }}>
                         {plan.name}
                       </Typography>
 
                       <Box sx={{ display: 'flex', alignItems: 'baseline', mb: 2 }}>
-                        <Typography variant="h4" sx={{ fontWeight: 70, color: customBranding.color }}>
+                        <Typography variant="h4" sx={{ fontWeight: 700, color: customBranding.color }}>
                           {plan.price}
                         </Typography>
                         <Typography variant="body2" color="text.secondary" sx={{ ml: 1 }}>
@@ -2378,7 +2390,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
               {/* Show profession-specific features that will be unlocked */}
               {premiumFeatures.length > 0 && (
                 <Box sx={{ mt: 4, p: 3, bgcolor: '#e8f5e9', borderRadius: 2, border: '1px solid #4caf50' }}>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 70, mb: 2, color: '#2e7d32' }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 2, color: '#2e7d32' }}>
                     ✨ Premium funksjoner du får tilgang til:
                   </Typography>
                   <Box component="ul" sx={{ m: 0, pl: 3 }}>
@@ -2449,9 +2461,10 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
 
                   refetchPaymentMethods();
                   setShowPaymentMethodDialog(false);
+                  setSnackbar({ open: true, message: 'Betalingsmetode lagt til!', severity: 'success' });
                 } catch (error) {
                   console.error('Failed to add payment method:', error);
-                  alert('Kunne ikke legge til betalingsmetode. Prøv igjen.');
+                  setSnackbar({ open: true, message: 'Kunne ikke legge til betalingsmetode. Prøv igjen.', severity: 'error' });
                 }
               }}
             >
@@ -2508,6 +2521,39 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
         existingProfession={profession}
         currentPlan={currentSubscription?.selectedPlan ||'pro'}
       />
+
+      {/* Confirmation Dialog */}
+      <Dialog open={confirmDialog.open} onClose={() => setConfirmDialog(prev => ({ ...prev, open: false }))}>
+        <DialogTitle>{confirmDialog.title}</DialogTitle>
+        <DialogContent>
+          <Typography>{confirmDialog.message}</Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmDialog(prev => ({ ...prev, open: false }))}>
+            Avbryt
+          </Button>
+          <Button variant="contained" color="error" onClick={confirmDialog.onConfirm}>
+            Bekreft
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Snackbar for notifications */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={5000}
+        onClose={() => setSnackbar(prev => ({ ...prev, open: false }))}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert 
+          onClose={() => setSnackbar(prev => ({ ...prev, open: false }))} 
+          severity={snackbar.severity}
+          variant="filled"
+          sx={{ width: '100%' }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 };

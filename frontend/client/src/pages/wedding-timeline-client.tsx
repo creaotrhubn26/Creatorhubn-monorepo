@@ -279,12 +279,12 @@ export default function WeddingTimelineClientPage() {
       if (pin) params.append('pin', pin);
       if (password) params.append('password', password);
       
-      const response = await apiRequest(`/api/wedding/timeline/access/${code}${params.toString() ? '?' + params.toString() : ','}`);
+      const response = await apiRequest(`/api/wedding/timeline/access/${code}${params.toString() ? `?${params.toString()}` : ''}`);
       setTimelineId(response.timelineId);
       setAccessCode(code);
 
       // Update URL to include timeline ID and access code
-      window.history.pushState(null', ', `/wedding-timeline/${response.timelineId}/${code}`);
+      window.history.pushState(null, '', `/wedding-timeline/${response.timelineId}/${code}`);
     } catch (error) {
       console.error('Access validation failed:', error);
     }

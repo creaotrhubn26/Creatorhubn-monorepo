@@ -3,7 +3,7 @@
  * Track job applications from Norwegian job sites (finn.no, nav.no, etc.)
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { useAuth } from '@/hooks/useAuth';
@@ -27,19 +27,11 @@ import {
   Select,
   MenuItem,
   IconButton,
-  Tooltip,
   Stack,
   Alert,
   LinearProgress,
   Tabs,
   Tab,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemSecondaryAction,
-  Divider,
-  Avatar,
-  Badge,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -48,10 +40,7 @@ import {
   Link as LinkIcon,
   Business as CompanyIcon,
   LocationOn as LocationIcon,
-  CalendarToday as DateIcon,
   Flag as PriorityIcon,
-  Assessment as StatusIcon,
-  Notes as NotesIcon,
   Refresh as RefreshIcon,
   Search as SearchIcon,
 } from '@mui/icons-material';
@@ -65,7 +54,7 @@ const NORWEGIAN_JOB_SOURCES = [
   { value: 'karrierestart.no', label: 'Karrierestart', url: 'https://www.karrierestart.no', color: '#00a651' },
   { value: 'glassdoor', label: 'Glassdoor', url: 'https://www.glassdoor.com/Job/norway-jobs-SRCH_IL.0,6_IN177.htm', color: '#0caa41' },
   { value: 'indeed', label: 'Indeed', url: 'https://no.indeed.com', color: '#2164f3' },
-  { value: 'other', label: 'Annet', url: ',', color: '#757575' },
+  { value: 'other', label: 'Annet', url: '', color: '#757575' },
 ];
 
 const STATUS_OPTIONS = [
@@ -117,6 +106,7 @@ export default function JobApplicationTracker() {
   const [openDialog, setOpenDialog] = useState(false);
   const [editingApplication, setEditingApplication] = useState<JobApplication | null>(null);
   const [tabValue, setTabValue] = useState(0);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [formData, setFormData] = useState<Partial<JobApplication>>({
     jobTitle: '',
     company: '',
@@ -132,10 +122,10 @@ export default function JobApplicationTracker() {
 
   // Fetch applications
   const { data: applications = [], isLoading } = useQuery({
-    queryKey: ['job-applications,', user?.id],
+    queryKey: ['job-applications', user?.id],
     queryFn: async () => {
-      const response = await apiRequest('/api/job-applications, ', {
-        headers: { 'x-user-id': user?.id || ',' },
+      const response = await apiRequest('/api/job-applications', {
+        headers: { 'x-user-id': user?.id ?? 'anonymous' },
       });
       return response as JobApplication[];
     },
@@ -148,7 +138,8 @@ export default function JobApplicationTracker() {
       const response = await apiRequest('/api/job-applications', {
         method: 'POST',
         headers: {
-          'x-user-id': user?.id || ',','Content-Type' : 'application/json',
+          'x-user-id': user?.id ?? 'anonymous',
+          'Content-Type': 'application/json',
         },
         body: JSON.stringify(data),
       });
@@ -166,7 +157,8 @@ export default function JobApplicationTracker() {
       const response = await apiRequest(`/api/job-applications/${id}`, {
         method: 'PUT',
         headers: {
-          'x-user-id': user?.id || ',','Content-Type' : 'application/json',
+          'x-user-id': user?.id ?? 'anonymous',
+          'Content-Type': 'application/json',
         },
         body: JSON.stringify(data),
       });
@@ -183,7 +175,7 @@ export default function JobApplicationTracker() {
     mutationFn: async (id: string) => {
       await apiRequest(`/api/job-applications/${id}`, {
         method: 'DELETE',
-        headers: { 'x-user-id': user?.id || ',' },
+        headers: { 'x-user-id': user?.id ?? 'anonymous' },
       });
     },
     onSuccess: () => {
@@ -201,13 +193,13 @@ export default function JobApplicationTracker() {
       setFormData({
         jobTitle: '',
         company: '',
-        location: ', ',
-        jobUrl: ', ',
+        location: '',
+        jobUrl: '',
         source: 'finn.no',
         status: 'saved',
         priority: 'medium',
-        notes: ', ',
-        salary: ', ',
+        notes: '',
+        salary: '',
         tags: [],
       });
     }
@@ -231,9 +223,13 @@ export default function JobApplicationTracker() {
   };
 
   const handleDelete = (id: string) => {
-    if (window.confirm('Er du sikker på at du vil slette denne søknaden?')) {
-      deleteApplicationMutation.mutate(id);
-    }
+    setConfirmDeleteId(id);
+  };
+
+  const executeDelete = () => {
+    if (!confirmDeleteId) return;
+    deleteApplicationMutation.mutate(confirmDeleteId);
+    setConfirmDeleteId(null);
   };
 
   const handleOpenJobSite = (url: string) => {
@@ -606,7 +602,12 @@ export default function JobApplicationTracker() {
                 <Select
                   value={formData.status}
                   label="Status"
-                  onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      status: e.target.value as JobApplication['status']
+                    })
+                  }
                 >
                   {STATUS_OPTIONS.map((status) => (
                     <MenuItem key={status.value} value={status.value}>
@@ -622,7 +623,12 @@ export default function JobApplicationTracker() {
                 <Select
                   value={formData.priority}
                   label="Prioritet"
-                  onChange={(e) => setFormData({ ...formData, priority: e.target.value as any })}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      priority: e.target.value as JobApplication['priority']
+                    })
+                  }
                 >
                   {PRIORITY_OPTIONS.map((priority) => (
                     <MenuItem key={priority.value} value={priority.value}>
@@ -671,6 +677,18 @@ export default function JobApplicationTracker() {
           >
             {editingApplication ? 'Oppdater' : 'Legg til'}
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Confirm Delete Dialog */}
+      <Dialog open={!!confirmDeleteId} onClose={() => setConfirmDeleteId(null)}>
+        <DialogTitle>Bekreft sletting</DialogTitle>
+        <DialogContent>
+          <Typography>Er du sikker på at du vil slette denne søknaden? Denne handlingen kan ikke angres.</Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmDeleteId(null)}>Avbryt</Button>
+          <Button onClick={executeDelete} color="error" variant="contained">Slett</Button>
         </DialogActions>
       </Dialog>
     </Container>

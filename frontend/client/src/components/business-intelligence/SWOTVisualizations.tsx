@@ -28,12 +28,17 @@ export const SWOTVisualizations: React.FC<SWOTVisualizationsProps> = ({
 }) => {
   const theming = useTheming();
 
+  type HeatmapDatum = [number, number, number];
+  type HeatmapTooltipParams = { data: HeatmapDatum };
+  type BubbleDatum = { value: [number, number, number]; name: string; itemStyle: { color: string } };
+  type BubbleTooltipParams = { data: BubbleDatum };
+
   // Prepare heatmap data - Impact vs Probability
   const getHeatmapData = () => {
     const impactLevels = ['low','medium','high','critical'];
     const types = ['strength','weakness','opportunity','threat'];
 
-    const data: any[] = [];
+    const data: HeatmapDatum[] = [];
 
     types.forEach((type, typeIndex) => {
       impactLevels.forEach((impact, impactIndex) => {
@@ -54,7 +59,7 @@ export const SWOTVisualizations: React.FC<SWOTVisualizationsProps> = ({
   const heatmapOption = {
     tooltip: {
       position: 'top',
-      formatter: (params: any) => {
+      formatter: (params: HeatmapTooltipParams) => {
         const types = ['Strength','Weakness','Opportunity','Threat'];
         const impacts = ['Low','Medium','High','Critical'];
         return `${types[params.data[0]]}<br/>${impacts[params.data[1]]} Impact: ${params.data[2]} items`;
@@ -279,7 +284,7 @@ export const SWOTVisualizations: React.FC<SWOTVisualizationsProps> = ({
   };
 
   // Bubble Chart - Impact vs Probability
-  const bubbleData = items.map((item) => {
+  const bubbleData: BubbleDatum[] = items.map((item) => {
     const impactValue = { low: 25, medium: 50, high: 75, critical: 100 }[item.impact];
     const typeColor = {
       strength: '#4caf50',
@@ -306,7 +311,7 @@ export const SWOTVisualizations: React.FC<SWOTVisualizationsProps> = ({
     },
     tooltip: {
       trigger: 'item',
-      formatter: (params: any) => {
+      formatter: (params: BubbleTooltipParams) => {
         return `${params.data.name}<br/>Impact: ${params.data.value[0]}<br/>Probability: ${params.data.value[1]}%`;
       },
     },
@@ -343,13 +348,13 @@ export const SWOTVisualizations: React.FC<SWOTVisualizationsProps> = ({
     series: [
       {
         type: 'scatter',
-        symbolSize: (data: any) => Math.sqrt(data[2]) * 20,
+        symbolSize: (data: number[]) => Math.sqrt(data[2] ?? 1) * 20,
         data: bubbleData,
         emphasis: {
           focus: 'self',
           label: {
             show: true,
-            formatter: (params: any) => params.data.name,
+            formatter: (params: BubbleTooltipParams) => params.data.name,
             position: 'top',
           },
         },

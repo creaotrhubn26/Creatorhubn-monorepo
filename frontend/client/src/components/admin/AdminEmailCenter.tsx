@@ -95,7 +95,7 @@ export default function AdminEmailCenter() {
   const { integration, communication, dataFlow, componentRegistry, auth } = useEnhancedMasterIntegration();
   
   // Theming system
-  const theming = useTheming('prototype_tester, ');
+  const theming = useTheming('prototype_tester');
   
   // Dynamic profession system
   const { getProfessionDisplayName } = useDynamicProfessions();

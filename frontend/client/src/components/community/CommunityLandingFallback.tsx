@@ -52,8 +52,51 @@ import {
 } from '@mui/icons-material';
 import { useLocation } from 'wouter';
 
-// Lazy load components
-const CommunityNetworkAnimation = React.lazy(() => import('./CommunityNetworkAnimation'));
+// Error boundary for lazy components
+class LazyLoadErrorBoundary extends React.Component<
+  { children: React.ReactNode; fallback?: React.ReactNode },
+  { hasError: boolean }
+> {
+  constructor(props: { children: React.ReactNode; fallback?: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error) {
+    console.error('Failed to load lazy component:', error);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        this.props.fallback || (
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', p: 2 }}>
+            <Typography sx={{ color: '#f59e0b' }}>Unable to load animation</Typography>
+          </Box>
+        )
+      );
+    }
+    return this.props.children;
+  }
+}
+
+// Lazy load components with better error handling
+const CommunityNetworkAnimation = React.lazy(() =>
+  import('./CommunityNetworkAnimation').catch(() => ({
+    default: () => (
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', p: 2 }}>
+        <Typography sx={{ color: '#f59e0b', fontSize: '0.875rem' }}>
+          Animation unavailable
+        </Typography>
+      </Box>
+    ),
+  }))
+);
+
 const LoginModal = React.lazy(() => import('@/components/auth/LoginModal'));
 import { GdprNotice } from '@/components/common/GdprNotice';
 
@@ -417,15 +460,25 @@ export const CommunityLandingFallback: React.FC<CommunityLandingFallbackProps> =
                   boxShadow: '0 0 60px rgba(245, 158, 11, 0.3), inset 0 0 30px rgba(245, 158, 11, 0.1)',
                 }}
               >
-                <Suspense
+                <LazyLoadErrorBoundary
                   fallback={
                     <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <CircularProgress sx={{ color: '#f59e0b' }} />
+                      <Typography sx={{ color: '#f59e0b', fontSize: '0.875rem' }}>
+                        Animation unavailable
+                      </Typography>
                     </Box>
                   }
                 >
-                  <CommunityNetworkAnimation width={360} height={360} />
-                </Suspense>
+                  <Suspense
+                    fallback={
+                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <CircularProgress sx={{ color: '#f59e0b' }} />
+                      </Box>
+                    }
+                  >
+                    <CommunityNetworkAnimation width={360} height={360} />
+                  </Suspense>
+                </LazyLoadErrorBoundary>
 
                 {/* Rotating text around circle */}
                 <Box

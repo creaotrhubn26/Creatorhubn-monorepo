@@ -7,6 +7,13 @@ set -e  # Exit on error
 
 echo "🔄 Starting database migrations..."
 
+# Load DATABASE_URL from .env file if not already set
+if [ -z "$DATABASE_URL" ] && [ -f .env ]; then
+  echo "📄 Loading DATABASE_URL from .env file..."
+  DATABASE_URL=$(grep '^DATABASE_URL=' .env | cut -d '=' -f2- | tr -d '"' | tr -d "'")
+  export DATABASE_URL
+fi
+
 # Check if DATABASE_URL is set
 if [ -z "$DATABASE_URL" ]; then
   echo "❌ Error: DATABASE_URL environment variable is not set"
@@ -68,10 +75,10 @@ if [ -d "migrations" ]; then
     
     # Try to install psql on Render (Debian/Ubuntu)
     if command -v apt-get &> /dev/null; then
-      apt-get update -qq && apt-get install -y -qq postgresql-client > /dev/null 2>&1 && echo "  ✅ postgresql-client installed" || echo "  ❌ Failed to install postgresql-client"
+      sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client > /dev/null 2>&1 && echo "  ✅ postgresql-client installed" || echo "  ❌ Failed to install postgresql-client"
     elif command -v apk &> /dev/null; then
       # Alpine Linux
-      apk add --no-cache postgresql-client > /dev/null 2>&1 && echo "  ✅ postgresql-client installed" || echo "  ❌ Failed to install postgresql-client"
+      sudo apk add --no-cache postgresql-client > /dev/null 2>&1 && echo "  ✅ postgresql-client installed" || echo "  ❌ Failed to install postgresql-client"
     else
       echo "  ❌ Cannot install psql automatically. Please add postgresql-client to your build."
       echo "  ℹ️  Skipping SQL migrations (will rely on Drizzle schema push)"

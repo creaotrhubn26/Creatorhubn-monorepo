@@ -162,7 +162,7 @@ const CourseCard = memo(({
 CourseCard.displayName = 'CourseCard';
 
 function AcademyLandingPage() {
-  const _theme = useTheme();
+  const theme = useTheme();
   const theming = useTheming('music_producer');
   const [, setLocation] = useLocation();
   const { analytics, performance, debugging } = useEnhancedMasterIntegration();
@@ -491,13 +491,13 @@ function AcademyLandingPage() {
           justifyContent: 'center',
           alignItems: 'center',
           minHeight: '100vh',
-          bgcolor: 'background.default',
-          p: 4,
+          bgcolor: theme.palette.background.default,
+          p: theme.spacing(4),
         }}
       >
-        <Stack spacing={3} alignItems="center" sx={{ width: '100%', maxWidth: 600 }}>
+        <Stack spacing={theme.spacing(3)} alignItems="center" sx={{ width: '100%', maxWidth: 600 }}>
           <CircularProgress size={60} sx={{ color: theming.colors.primary }} />
-          <Typography variant="h6" color="text.secondary">
+          <Typography variant="h6" sx={{ color: theme.palette.text.secondary }}>
             Loading Academy Data...
           </Typography>
           

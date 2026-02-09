@@ -10,6 +10,7 @@ import getProfessionIcon from '@/utils/profession-icons';
 import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
 import React, { useState, useEffect, useMemo } from 'react';
 import { useClientServicePricing } from '../../services/ClientServicePricingService';
+import { useQueryClient, useMutation } from '@tanstack/react-query';
 import {
   Dialog,
   DialogTitle,
@@ -213,6 +214,24 @@ const CreatePricingModal: React.FC<CreatePricingModalProps> = ({
   }));
 };
 
+  const getActiveRateFields = () => {
+    switch (formData.type) {
+      case 'timespris':
+        return ['hourlyRate'];
+      case 'heldagspris':
+        return ['fullDayRate'];
+      case 'halvdagspris':
+        return ['halfDayRate'];
+      case 'pakkepris':
+        return ['packageRate'];
+      case 'stykkpris':
+        return ['unitRate'];
+      case 'lisenspris':
+        return ['licenseRate'];
+      default: return ['hourlyRate'];
+}
+};
+
   // Calculate MVA for preview
   const currentRateMVA = useMemo(() => {
     const activeFields = getActiveRateFields();
@@ -231,24 +250,6 @@ const CreatePricingModal: React.FC<CreatePricingModalProps> = ({
         [field]: value
     }
   }));
-};
-
-  const getActiveRateFields = () => {
-    switch (formData.type) {
-      case 'timespris':
-        return ['hourlyRate'];
-      case 'heldagspris':
-        return ['fullDayRate'];
-      case 'halvdagspris':
-        return ['halfDayRate'];
-      case 'pakkepris':
-        return ['packageRate'];
-      case 'stykkpris':
-        return ['unitRate'];
-      case 'lisenspris':
-        return ['licenseRate'];
-      default: return ['hourlyRate'];
-}
 };
 
   const getRateLabel = (field: string) => {

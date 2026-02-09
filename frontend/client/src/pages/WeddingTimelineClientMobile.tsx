@@ -82,7 +82,7 @@ function MobileAccessCodeInput({ onSubmit }: { onSubmit: (code: string) => void 
           <Typography variant="h4"
             sx={{
               color: '#e65100',
-              fontWeight: 70,
+              fontWeight: 700,
               mb: 1,
               fontSize: '1.75rem',
           }}
@@ -105,7 +105,7 @@ function MobileAccessCodeInput({ onSubmit }: { onSubmit: (code: string) => void 
           elevation={0}
           sx={{
             borderRadius: '20px',
-            background: 'rgba(25,255,255,0.95)',
+            background: 'rgba(255,255,255,0.95)',
             backdropFilter: 'blur(10px)',
             border: '1px solid rgba(25, 1240.2)',
             boxShadow: '0 8px 32px rgba(25, 1240.15)',

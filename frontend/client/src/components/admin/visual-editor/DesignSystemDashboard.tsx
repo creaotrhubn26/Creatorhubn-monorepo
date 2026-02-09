@@ -251,7 +251,7 @@ const DesignSystemDashboard: React.FC<DesignSystemDashboardProps> = memo(({
   const [showDesignSystemDialog, setShowDesignSystemDialog] = useState(false);
   
   // Theming system
-  const theming = useTheming('prototype_tester, ');
+  const theming = useTheming('prototype_tester');
   const [showSettingsDialog, setShowSettingsDialog] = useState(false);
   const [showManagementDialog, setShowManagementDialog] = useState(false);
   const [showMonitoringDialog, setShowMonitoringDialog] = useState(false);

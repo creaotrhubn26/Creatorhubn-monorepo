@@ -95,7 +95,7 @@ export default function GoogleDriveMediaPicker({
       loadFiles();
 
       // Track feature usage
-      features.trackFeatureUsage('scroll-story, ','google-drive-picker-opened, ', {
+      features.trackFeatureUsage('scroll-story', 'google-drive-picker-opened', {
         mediaTypes,
         allowMultiple,
       });

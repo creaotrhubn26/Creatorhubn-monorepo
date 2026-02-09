@@ -279,7 +279,7 @@ export default function GoogleAnalyticsDashboardEnhanced({ hideHeader = false }:
       {!hideHeader && (
         <Box sx={{ mb: 4 }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-            <Typography variant="h4" sx={{ fontWeight: 70, color: dashboardTheme.text }}>
+            <Typography variant="h4" sx={{ fontWeight: 700, color: dashboardTheme.text }}>
               Analytics Dashboard
             </Typography>
             <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>

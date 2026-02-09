@@ -1,6 +1,6 @@
 import { useTheming } from '../../utils/theming-helper';
 import React, { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
 import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
 import {
@@ -118,19 +118,19 @@ export default function WeddingTimelineOverview({
   const { profession } = useProfessionAdapter();
   
   // Theming system - use dynamic profession
-  const theming = useTheming(profession || 'photographer,');
+  const theming = useTheming(profession || 'photographer');
   const queryClient = useQueryClient();
 
   // Fetch all timelines
   const { data: timelinesData, isLoading: timelinesLoading } = useQuery({
-    queryKey: [`/api/wedding-timeline/overview/${photographerd}`],
-    queryFn: () => apiRequest(`/api/wedding-timeline/overview/${photographerd}`)
+    queryKey: [`/api/wedding-timeline/overview/${photographerId}`],
+    queryFn: () => apiRequest(`/api/wedding-timeline/overview/${photographerId}`)
 });
 
   // Fetch comments for selected timeline
   const { data: commentsData, isLoading: commentsLoading } = useQuery({
-    queryKey: [`/api/wedding-timeline/${selectedTimeline?.d}/comments`],
-    queryFn: () => apiRequest(`/api/wedding-timeline/${selectedTimeline?.d}/comments`),
+    queryKey: [`/api/wedding-timeline/${selectedTimeline?.id}/comments`],
+    queryFn: () => apiRequest(`/api/wedding-timeline/${selectedTimeline?.id}/comments`),
     enabled: !!selectedTimeline?.id
 });
 
@@ -141,7 +141,7 @@ export default function WeddingTimelineOverview({
         headers: {
           "Content-Type" : "application/json"
     },
-        method: 'POS',
+        method: 'POST',
         body: {
           message: commentData.message,
           isPrivate: commentData.isPrivate,
@@ -151,12 +151,12 @@ export default function WeddingTimelineOverview({
   },
     onSuccess: () => {
       queryClient.invalidateQueries({ 
-        queryKey: [`/api/wedding-timeline/${selectedTimeline?.d}/comments`] 
+        queryKey: [`/api/wedding-timeline/${selectedTimeline?.id}/comments`] 
     });
       queryClient.invalidateQueries({ 
-        queryKey: [`/api/wedding-timeline/overview/${photographerd}`] 
+        queryKey: [`/api/wedding-timeline/overview/${photographerId}`] 
     });
-      setNewComment(', ');
+      setNewComment('');
       toast({
         title: "Kommentar lagt til",
         description: notifyClient && !isPrivateComment ? "Klient blir varslet om endringen" : "Kommentar lagret",
@@ -175,7 +175,7 @@ export default function WeddingTimelineOverview({
     if (!selectedTimeline || !newComment.trim()) return;
     
     addCommentMutation.mutate({
-      timelineId: selectedTimeline.d,
+      timelineId: selectedTimeline.id,
       message: newComment.trim(),
       isPrivate: isPrivateComment,
       notifyClient: notifyClient && !isPrivateComment

@@ -94,7 +94,7 @@ export default function AdminNotificationManager() {
   const { auth } = useEnhancedMasterIntegration();
 
   // Theming system
-  const theming = useTheming('prototype_tester, ');
+  const theming = useTheming('prototype_tester');
   
   // Dynamic profession system
   const { getProfessionDisplayName } = useDynamicProfessions();

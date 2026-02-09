@@ -105,7 +105,8 @@ import {
   AutoFixHigh,
   SmartToy,
   Switch as SwitchIcon,
-  MovieCreation
+  MovieCreation,
+  Close as CloseIcon
 } from '@mui/icons-material';
 
 // Import all the same components as the original
@@ -125,6 +126,7 @@ import { CreatorHubBadgeSystem } from '../gamification/CreatorHubBadgeSystem';
 import { CompactBadgeDisplay } from '../gamification/CompactBadgeDisplay';
 import WeddingTimelineAdmin from '../wedding/WeddingTimelineAdmin';
 import UniversalSettingsPanel from './UniversalSettingsPanel';
+import AdministrationHub from './AdministrationHub';
 import GoogleDriveManager from '../google-drive/GoogleDriveManager';
 import GoogleDriveProjectSync from '../google-drive/GoogleDriveProjectSync';
 import GoogleWorkspaceStorageInfo from './GoogleWorkspaceStorageInfo';
@@ -146,6 +148,7 @@ import UniversalKeyboardShortcuts from '../keyboard-shortcuts/UniversalKeyboardS
 import SmartTimingPreferences from '../smart-timing/SmartTimingPreferences';
 import HelpdeskSystem from './HelpdeskSystem';
 import ProjectTimeline from '../project/ProjectTimeline';
+import { ProjectProvider } from '@/contexts/ProjectContext';
 import ProjectShowcase from '../project/ProjectShowcase';
 import { ChatWidget } from '../communication/ChatWidget';
 import UniversalChatWidget from '../chat/UniversalChatWidget';
@@ -186,7 +189,6 @@ const localProfessionConfigs = {
     tabs: [
       { id: 'overview', label: 'Oversikt', icon: theming.getThemedIcon(',') },
       { id: 'projects', label: 'Prosjekter', icon: theming.getThemedIcon(',') },
-      { id: 'contracts', label: 'Kontrakter', icon: theming.getThemedIcon(',') },
       { id: 'wedding-timeline', label: 'Bryllupstidslinje', icon: <Event />,},
       { id: 'showcase-admin', label: 'Showcase Admin', icon: theming.getThemedIcon(',') },
       { id: 'ai-enhancement', label: 'AI Forbedring', icon: theming.getThemedIcon(',') },
@@ -197,6 +199,7 @@ const localProfessionConfigs = {
       { id: 'files', label: 'Filer', icon: theming.getThemedIcon(',') },
       { id: 'support', label: 'Support', icon: theming.getThemedIcon(',') },
       { id: 'settings', label: 'Innstillinger', icon: theming.getThemedIcon(',') },
+      { id: 'administration', label: 'Administrasjon', icon: theming.getThemedIcon('adminPanelSettings') },
       { id: 'communication', label: 'Kommunikasjon', icon: theming.getThemedIcon(',') }
     ],
     projectTypes: ['bryllup','bedrift','portrett','produkt'],
@@ -209,12 +212,11 @@ const localProfessionConfigs = {
 },
   videographer: {
     name: 'Videograf', // Fallback - will be overridden by dynamic profession data
-    color: '#',
-    icon: theming.getThemedIcon(''),
+    color: '#e91e63',
+    icon: theming.getThemedIcon('videocam'),
     tabs: [
       { id: 'overview', label: 'Oversikt', icon: theming.getThemedIcon(',') },
       { id: 'projects', label: 'Videoer', icon: theming.getThemedIcon(',') },
-      { id: 'contracts', label: 'Kontrakter', icon: theming.getThemedIcon(',') },
       { id: 'wedding-timeline', label: 'Bryllupstidslinje', icon: <Event />,},
       { id: 'showcase-admin', label: 'Showcase Admin', icon: theming.getThemedIcon(',') },
       { id: 'ai-enhancement', label: 'Video A', icon: theming.getThemedIcon(',') },
@@ -225,6 +227,7 @@ const localProfessionConfigs = {
       { id: 'files', label: 'Filer', icon: theming.getThemedIcon(',') },
       { id: 'support', label: 'Support', icon: theming.getThemedIcon(',') },
       { id: 'settings', label: 'Innstillinger', icon: theming.getThemedIcon(',') },
+      { id: 'administration', label: 'Administrasjon', icon: theming.getThemedIcon('adminPanelSettings') },
       { id: 'communication', label: 'Kommunikasjon', icon: theming.getThemedIcon(',') }
     ],
     projectTypes: ['bryllup','reklame','dokumentar','musikkvideo'],
@@ -237,12 +240,11 @@ const localProfessionConfigs = {
 },
   music_producer: {
     name: 'Musikkprodusent',
-    color: '#',
-    icon: theming.getThemedIcon(''),
+    color: '#9c27b0',
+    icon: theming.getThemedIcon('music'),
     tabs: [
       { id: 'overview', label: 'Oversikt', icon: theming.getThemedIcon(',') },
       { id: 'projects', label: 'Låter', icon: theming.getThemedIcon(',') },
-      { id: 'contracts', label: 'Kontrakter', icon: theming.getThemedIcon(',') },
       { id: 'ai-enhancement', label: 'Audio A', icon: theming.getThemedIcon(',') },
       { id: 'email-center', label: 'E-post', icon: theming.getThemedIcon(',') },
       { id: 'worklog', label: 'Worklog', icon: theming.getThemedIcon(',') },
@@ -251,6 +253,7 @@ const localProfessionConfigs = {
       { id: 'files', label: 'Filer', icon: theming.getThemedIcon(',') },
       { id: 'support', label: 'Support', icon: theming.getThemedIcon(',') },
       { id: 'settings', label: 'Innstillinger', icon: theming.getThemedIcon(',') },
+      { id: 'administration', label: 'Administrasjon', icon: theming.getThemedIcon('adminPanelSettings') },
       { id: 'communication', label: 'Kommunikasjon', icon: theming.getThemedIcon(',') }
     ],
     projectTypes: ['album','singel','podcast','jingle'],
@@ -272,7 +275,8 @@ const localProfessionConfigs = {
       { id: 'equipment', label: 'Lager', icon: theming.getThemedIcon(',') },
       { id: 'files', label: 'Filer', icon: theming.getThemedIcon(',') },
       { id: 'support', label: 'Support', icon: theming.getThemedIcon(',') },
-      { id: 'settings', label: 'Innstillinger', icon: theming.getThemedIcon(',') }
+      { id: 'settings', label: 'Innstillinger', icon: theming.getThemedIcon(',') },
+      { id: 'administration', label: 'Administrasjon', icon: theming.getThemedIcon('adminPanelSettings') }
     ],
     projectTypes: ['utleie','salg', 'service','konsultasjon'],
     stats: [
@@ -458,10 +462,10 @@ export default function UniversalDashboardDesktop({
 
   // All the same queries as the original
   const { data: userSession } = useQuery({
-    queryKey: [', '],
-    queryFn: () => apiRequest('/api/auth/public-session', ),
+    queryKey: ['/api/auth/public-session'],
+    queryFn: () => apiRequest('/api/auth/public-session'),
     retry: false
-});
+  });
 
   const userId = userSession?.userId || 'guest';
   const userEmail = userSession?.email;
@@ -560,9 +564,20 @@ export default function UniversalDashboardDesktop({
     const brandingInfo = brandingData?.businessInfo || {};
     const onboardingInfo = onboardingProfile || {};
     
+    // Helper to ensure we always get a string (not an object)
+    const getStringValue = (value: unknown): string | null => {
+      if (typeof value === 'string' && value.trim()) return value;
+      return null;
+    };
+    
+    const businessNameRaw = getStringValue(brandingInfo.businessName) 
+      || getStringValue(onboardingInfo.businessName) 
+      || getStringValue(config?.name)
+      || 'CreatorHub';
+    
     return {
       color: brandingInfo.brandingColor || onboardingInfo.brandingColor || config?.color || '#ff8c00',
-      businessName: brandingInfo.businessName || onboardingInfo.businessName || config?.name || 'CreatorHub',
+      businessName: businessNameRaw,
       tagline: brandingInfo.tagline || onboardingInfo.tagline || null,
       profilePhoto: onboardingInfo.profilePhoto || null,
       customLogo: brandingInfo.customLogo || onboardingInfo.customLogo || null
@@ -792,9 +807,9 @@ export default function UniversalDashboardDesktop({
                         fontSize: { xs: '1.1rem', sm: '1.25rem',}
                   }}
                       component="h3"
-                      aria-label={`Velkommen tilbake, ${customBranding.businessName}`}
+                      aria-label={`Velkommen tilbake, ${typeof customBranding.businessName === 'string' ? customBranding.businessName : 'bruker'}`}
                      sx={{ color: theming.colors.primary }}>
-                      Velkommen tilbake, {customBranding.businessName}!
+                      Velkommen tilbake, {typeof customBranding.businessName === 'string' ? customBranding.businessName : 'bruker'}!
                     </Typography>
                     {customBranding.customLogo && (
                       <img 
@@ -1020,12 +1035,13 @@ export default function UniversalDashboardDesktop({
                 <Grid size={{ xs: 12 }} sm={6} md={3} key={stat.key}>
                   <MuiCard
                     sx={{
-                      background: 'linear-gradient(135deg, rgba(2, 5, 5,255,255,0.9) 0%, rgba(2, 5, 5,255,255,0.95) 100%)',
+                      background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0.95) 100%)',
                       backdropFilter: 'blur(10px)',
                       border: `1px solid ${alpha(customBranding.color, 0.2)}`,
-                      borderRadius:  3,
+                      borderRadius: 3,
                       transition: 'all 0.3s ease',
-                      cursor: 'pointer','&:hover': {
+                      cursor: 'pointer',
+                      '&:hover': {
                         transform: 'translateY(-4px)',
                         boxShadow: `0 20px 40px ${alpha(customBranding.color, 0.15)}`,
                         border: `1px solid ${alpha(customBranding.color, 0.4)}`
@@ -1040,15 +1056,15 @@ export default function UniversalDashboardDesktop({
                       </Box>
                       <Typography variant="h4" 
                         sx={{  
-                          fontWeight: 7, 
-                          color: '#',
-                          mb: 1  }}>
+                          fontWeight: 700, 
+                          color: '#333',
+                          mb: 1 }}>
                         {dashboardData[stat.key] || '0'}
                       </Typography>
                       <Typography 
                         variant="body1" 
                         color="text.secondary"
-                        sx={{ fontWeight: 50}}
+                        sx={{ fontWeight: 500 }}
                       >
                         {stat.label}
                       </Typography>
@@ -1064,8 +1080,8 @@ export default function UniversalDashboardDesktop({
                 <Box sx={{ mb:  4 }}>
                   <Typography variant="h5" 
                     sx={{ 
-                      fontWeight: 7,
-                      fontSize: { xs: '1.25rem', sm: '1.5rem',},
+                      fontWeight: 700,
+                      fontSize: { xs: '1.25rem', sm: '1.5rem' },
                       background: `linear-gradient(135deg, ${customBranding.color}, #FF8C00)`,
                       backgroundClip: 'text',
                       WebkitBackgroundClip: 'text',
@@ -1100,17 +1116,19 @@ export default function UniversalDashboardDesktop({
                             <Fade in timeout={800 + index * 200}>
                               <MuiCard
                                 sx={{
-                                  background: 'linear-gradient(135deg, rgba(2, 5, 5,255,255,0.9) 0%, rgba(2, 5, 5,255,255,0.95) 100%)',
+                                  background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0.95) 100%)',
                                   backdropFilter: 'blur(10px)',
                                   border: `1px solid ${alpha(statusColor, 0.2)}`,
-                                  borderRadius:  3,
+                                  borderRadius: 3,
                                   transition: 'all 0.3s ease',
                                   cursor: 'pointer',
                                   position: 'relative',
-                                  overflow: 'visible','&:hover': {
+                                  overflow: 'visible',
+                                  '&:hover': {
                                     transform: 'translateY(-6px)',
                                     boxShadow: `0 25px 50px ${alpha(statusColor, 0.25)}`,
-                                    border: `1px solid ${alpha(statusColor, 0.4)}`'& .project-actions': {
+                                    border: `1px solid ${alpha(statusColor, 0.4)}`,
+                                    '& .project-actions': {
                                       opacity:  1,
                                       transform: 'translateY(0)'
                               }
@@ -1142,32 +1160,32 @@ export default function UniversalDashboardDesktop({
                                       {(project.clientName || project.title || project.name || 'P').charAt(0).toUpperCase()}
                                     </Avatar>
                                     
-                                    <Box sx={{ flex: 1, minWidth:  0 }}>
+                                    <Box sx={{ flex: 1, minWidth: 0 }}>
                                       <Typography variant="h6" 
                                         sx={{  
                                           fontSize: '1rem',
-                                          fontWeight: 60
-                                         , color: '#',
+                                          fontWeight: 600,
+                                          color: '#333',
                                           lineHeight: 1.2,
                                           mb: 0.5,
                                           overflow: 'hidden',
                                           textOverflow: 'ellipsis',
                                           whiteSpace: 'nowrap'
-                                   }}>
+                                        }}>
                                         {project.title || project.name}
                                       </Typography>
                                       
-                                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5}}>
-                                        <AccountCircle sx={{ fontSize:  14, color: '#666'}} />
+                                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                        <AccountCircle sx={{ fontSize: 14, color: '#666666' }} />
                                         <Typography 
                                           variant="body2" 
                                           sx={{ 
-                                            color: '#66',
+                                            color: '#666666',
                                             fontSize: '0.8rem',
                                             overflow: 'hidden',
                                             textOverflow: 'ellipsis',
                                             whiteSpace: 'nowrap'
-                                    }}
+                                          }}
                                         >
                                           {project.clientName || 'Klient ikke angitt'}
                                         </Typography>
@@ -1203,24 +1221,24 @@ export default function UniversalDashboardDesktop({
 
                                   {/* Project Details */}
                                   <Stack spacing={1}>
-                                    <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
-                                      <Event sx={{ fontSize:  16, color: statusColor }} />
-                                      <Typography variant="body2" sx={{ color: '#44', fontWeight: 50}}>
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                      <Event sx={{ fontSize: 16, color: statusColor }} />
+                                      <Typography variant="body2" sx={{ color: '#444444', fontWeight: 500 }}>
                                         {project.eventDate || project.date ? 
                                           new Date(project.eventDate || project.date).toLocaleDateString('no-NO', {
                                             weekday: 'short',
                                             day: '2-digit',
                                             month: 'short',
                                             year: 'numeric'
-                                    }) : 'Dato ikke satt'
-                                    }
+                                          }) : 'Dato ikke satt'
+                                        }
                                       </Typography>
                                     </Box>
                                     
                                     {project.location && (
-                                      <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
-                                        <LocationOn sx={{ fontSize:  16, color: statusColor }} />
-                                        <Typography variant="body2" sx={{ color: '#44', fontWeight: 50}}>
+                                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                        <LocationOn sx={{ fontSize: 16, color: statusColor }} />
+                                        <Typography variant="body2" sx={{ color: '#444444', fontWeight: 500 }}>
                                           {project.location}
                                         </Typography>
                                       </Box>
@@ -1228,17 +1246,19 @@ export default function UniversalDashboardDesktop({
 
                                     {/* Progress Bar */}
                                     {daysUntil >= 0 && daysUntil <= 30 && (
-                                      <Box sx={{ mt:  1 }}>
+                                      <Box sx={{ mt: 1 }}>
                                         <LinearProgress 
                                           variant="determinate" 
                                           value={Math.max(0, Math.min(100, ((30 - daysUntil) / 30) * 100))}
                                           sx={{
-                                            height:  4,
-                                            borderRadius:  2,
-                                            backgroundColor: alpha(statusColor, 0.15)'& .MuiLinearProgress-bar': {
+                                            height: 4,
+                                            borderRadius: 2,
+                                            backgroundColor: alpha(statusColor, 0.15),
+                                            '& .MuiLinearProgress-bar': {
                                               backgroundColor: statusColor,
-                                              borderRadius: 2 }
-                                      }}
+                                              borderRadius: 2
+                                            }
+                                          }}
                                         />
                                       </Box>
                                     )}
@@ -1267,16 +1287,17 @@ export default function UniversalDashboardDesktop({
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       handleViewProjectDetails(project);
-                                }}
+                                    }}
                                     sx={{
-                                      color: '#66','&:hover': {
+                                      color: '#666666',
+                                      '&:hover': {
                                         backgroundColor: alpha(customBranding.color, 0.1),
                                         color: customBranding.color
-                                }
-                                }}
+                                      }
+                                    }}
                                     title="Se større"
                                   >
-                                    <Launch sx={{ fontSize: 16}} />
+                                    <Launch sx={{ fontSize: 16 }} />
                                   </IconButton>
                                   
                                   <IconButton
@@ -1284,16 +1305,17 @@ export default function UniversalDashboardDesktop({
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       handleDeleteProject(project);
-                                }}
+                                    }}
                                     sx={{
-                                      color: '#66','&:hover': {
-                                        backgroundColor: alpha('#', 0.1),
+                                      color: '#666666',
+                                      '&:hover': {
+                                        backgroundColor: alpha('#f44336', 0.1),
                                         color: '#f44336'
-                                }
-                                }}
+                                      }
+                                    }}
                                     title="Slett prosjekt"
                                   >
-                                    <Delete sx={{ fontSize: 16}} />
+                                    <Delete sx={{ fontSize: 16 }} />
                                   </IconButton>
                                 </MuiCardActions>
                               </MuiCard>
@@ -1304,7 +1326,7 @@ export default function UniversalDashboardDesktop({
                     </Grid>
                   ) : (
                     <MuiCard sx={{
-                      background: 'linear-gradient(135deg, rgba(2, 5, 5,255,255,0.9) 0%, rgba(2, 5, 5,255,255,0.95) 100%)',
+                      background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0.95) 100%)',
                       backdropFilter: 'blur(10px)',
                       border: `1px solid ${alpha(customBranding.color, 0.2)}`,
                       borderRadius:  3,
@@ -1379,35 +1401,37 @@ export default function UniversalDashboardDesktop({
                     mb: 3 }}>
                     <Typography variant="h6" 
                       sx={{ 
-                        fontWeight: 7,
-                        fontSize: { xs: '1.1rem', sm: '1.25rem',},
+                        fontWeight: 700,
+                        fontSize: { xs: '1.1rem', sm: '1.25rem' },
                         background: `linear-gradient(135deg, ${customBranding.color}, #FF8C00)`,
                         backgroundClip: 'text',
                         WebkitBackgroundClip: 'text',
                         WebkitTextFillColor: 'transparent',
                         display: 'flex',
                         alignItems: 'center',
-                        gap: 1 }}
-                     sx={{ color: theming.colors.primary }}>
+                        gap: 1,
+                        color: theming.colors.primary
+                      }}>
                       <TimelineIcon sx={{ color: customBranding.color }} />
                       Prosjekt Tidslinje
                     </Typography>
                   </Box>
 
                   <MuiCard sx={{
-                    background: 'linear-gradient(135deg, rgba(2, 5, 5,255,255,0.9) 0%, rgba(2, 5, 5,255,255,0.95) 100%)',
+                    background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0.95) 100%)',
                     backdropFilter: 'blur(10px)',
                     border: `1px solid ${alpha(customBranding.color, 0.2)}`,
-                    borderRadius:  3,
+                    borderRadius: 3,
                     overflow: 'hidden',
-                    transition: 'all 0.3s ease', '&:hover': {
+                    transition: 'all 0.3s ease',
+                    '&:hover': {
                       transform: 'translateY(-2px)',
                       boxShadow: `0 20px 40px ${alpha(customBranding.color, 0.15)}`,
                       border: `1px solid ${alpha(customBranding.color, 0.3)}`
-                }
-              }}>
-                    <MuiCardContent sx={{ p:  3 }}>
-                      <Typography variant="body2" color="text.secondary" sx={{ mb:  3, fontWeight: 50}}>
+                    }
+                  }}>
+                    <MuiCardContent sx={{ p: 3 }}>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 3, fontWeight: 500 }}>
                         Administrer milepæler, frister, møter og viktige hendelser for dine prosjekter. Alt koblet sammen.
                       </Typography>
                     
@@ -1415,7 +1439,8 @@ export default function UniversalDashboardDesktop({
                         value={selectedTimelineTab}
                         onChange={(_, newValue) => setSelectedTimelineTab(newValue)}
                         sx={{ 
-                          mb: 3'& .MuiTab-root': {
+                          mb: 3,
+                          '& .MuiTab-root': {
                             fontWeight: 60
                             textTransform: 'none',
                             minHeight: 48'&.Mui-selected': { color: customBranding.color
@@ -1431,9 +1456,11 @@ export default function UniversalDashboardDesktop({
                       </MuiTabs>
 
                       {selectedTimelineTab === 0 && (
-                        <ProjectTimeline 
-                          projectId={userId}
-                        />
+                        <ProjectProvider>
+                          <ProjectTimeline 
+                            projectId={userId}
+                          />
+                        </ProjectProvider>
                       )}
                       
                       {selectedTimelineTab === 1 && (
@@ -1519,8 +1546,20 @@ export default function UniversalDashboardDesktop({
           <UniversalSettingsPanel profession={profession} userId={userId} />
         </TabPanel>
 
-        {/* Communication - Tab 13 */}
+        {/* Administrasjon - Tab 13 */}
         <TabPanel value={tabValue} index={13}>
+          <AdministrationHub
+            userId={userId}
+            profession={profession}
+            selectedClient={selectedClient}
+            onPricingUpdate={() => {
+              console.log('Pricing updated');
+            }}
+          />
+        </TabPanel>
+
+        {/* Communication - Tab 14 */}
+        <TabPanel value={tabValue} index={14}>
           <UniversalCommunication profession={profession} userId={userId} />
         </TabPanel>
 
@@ -1541,9 +1580,34 @@ export default function UniversalDashboardDesktop({
             onClose={() => setShowProjectCreation(false)}
             maxWidth="lg"
             fullWidth
+            PaperProps={{
+              sx: {
+                borderRadius: 3,
+                boxShadow: '0 20px 60px rgba(0, 0, 0, 0.15)',
+                background: '#fafbfc',
+              }
+            }}
           >
-            <DialogTitle>Opprett Nytt Prosjekt</DialogTitle>
-            <DialogContent>
+            <DialogTitle sx={{ 
+              bgcolor: '#1565c0',
+              color: 'white',
+              fontSize: '1.5rem',
+              fontWeight: 700,
+              py: 3,
+              borderBottom: '1px solid rgba(255,255,255,0.15)',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center'
+            }}>
+              <span>Opprett Nytt Prosjekt</span>
+              <IconButton 
+                size="small" 
+                onClick={() => setShowProjectCreation(false)}
+                sx={{ color: 'white', '&:hover': { bgcolor: 'rgba(255,255,255,0.15)' } }}>
+                <CloseIcon />
+              </IconButton>
+            </DialogTitle>
+            <DialogContent sx={{ pt: 4, pb: 3 }}>
               <ProjectCreationWithMemoryCards 
                 profession={profession}
                 userId={userId}

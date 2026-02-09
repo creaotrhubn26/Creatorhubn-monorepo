@@ -39,7 +39,8 @@ import {
   Accordion,
   AccordionSummary,
   AccordionDetails,
-  LinearProgress
+  LinearProgress,
+  Snackbar,
 } from '@mui/material';
 import {
   ExpandMore as ExpandMoreIcon,
@@ -178,6 +179,7 @@ export default function PriceManagementDashboard({
   const [featureDescription, setFeatureDescription] = useState('');
   const [featurePlan, setFeaturePlan] = useState('basic');
   const [featureEnabled, setFeatureEnabled] = useState(true);
+  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'info' }>({ open: false, message: '', severity: 'info' });
 
   // Enterprise pricing states
   const [enterprisePricing, setEnterprisePricing] = useState({
@@ -271,10 +273,10 @@ export default function PriceManagementDashboard({
     });
 
       const result = await response.json();
-      alert(`${result.demonstration.message}\n\n${result.demonstration.norwegianExplanation}\n\nAutomatisk oppførsel: ${result.demonstration.automaticBehavior}`);
+      setSnackbar({ open: true, message: `${result.demonstration.message}\n\n${result.demonstration.norwegianExplanation}\n\nAutomatisk oppførsel: ${result.demonstration.automaticBehavior}`, severity: 'info' });
   } catch (error) {
       console.error('Feil ved testing av tilgangskontroll: ', error);
-      alert('Feil ved testing av tilgangskontroll');
+      setSnackbar({ open: true, message: 'Feil ved testing av tilgangskontroll', severity: 'error' });
   }
 };
 
@@ -1185,7 +1187,7 @@ export default function PriceManagementDashboard({
             onClick={() => {
               const priceNum = Number(editingPlanPrice);
               if (Number.isNaN(priceNum) || priceNum < 0) {
-                alert('Ugyldig pris');
+                setSnackbar({ open: true, message: 'Ugyldig pris', severity: 'error' });
                 return;
               }
               fetch(`/api/platform/admin/subscription-plans/${editingPlanId}`, {
@@ -1224,6 +1226,22 @@ export default function PriceManagementDashboard({
         Komplett feature management med profesjon-kategorisering, subscription management og avansert analytics. 
         Alt er koblet sammen med real-time feature toggles og A/B testing kapabiliteter.
       </Alert>
+
+      {/* Snackbar Notifications */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={6000}
+        onClose={() => setSnackbar({ ...snackbar, open: false })}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert
+          onClose={() => setSnackbar({ ...snackbar, open: false })}
+          severity={snackbar.severity}
+          sx={{ width: '100%', whiteSpace: 'pre-line' }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 }

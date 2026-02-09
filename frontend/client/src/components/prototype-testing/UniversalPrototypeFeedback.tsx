@@ -1,6 +1,6 @@
 import { useTheming } from '../../utils/theming-helper';
 import React, { useState, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
 import {
   Box,
@@ -45,7 +45,16 @@ import {
   Psychology,
   AutoAwesome,
   TrendingUp,
-  AccessTime
+  AccessTime,
+  Science,
+  Edit,
+  ChatBubble,
+  PhotoCamera,
+  LocalOffer,
+  LocationOn,
+  Person,
+  CheckCircle,
+  Error
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import { useActionTracker } from '@/hooks/useActionTracker';
@@ -113,6 +122,7 @@ interface UniversalPrototypeFeedbackProps {
   dashboardType?: string;
   component?: string;
   isFloating?: boolean;
+  open?: boolean;
   currentTab?: string;
   userEmail?: string;
   projectContext?: any;
@@ -177,6 +187,7 @@ export default function UniversalPrototypeFeedback({
   dashboardType = 'universal',
   component,
   isFloating = true,
+  open,
   currentTab,
   userEmail,
   projectContext,
@@ -188,7 +199,10 @@ export default function UniversalPrototypeFeedback({
   selectedProject,
   onProjectSelect
 }: UniversalPrototypeFeedbackProps) {
-  const [isOpen, setIsOpen] = useState(false);
+  const [isOpen, setIsOpen] = useState(!isFloating); // Auto-open when embedded
+  
+  // Use open prop from parent if provided (controlled), otherwise use internal state (uncontrolled)
+  const dialogOpen = open ?? isOpen;
   const [isRecording, setIsRecording] = useState(false);
   
   // Action tracking for intelligent context
@@ -273,7 +287,7 @@ export default function UniversalPrototypeFeedback({
   // Auto-populate context information
   React.useEffect(() => {
     const contextInfo = [];
-    if (currentTab) contextInfo.push(`Current tab: ${currentTb}`);
+    if (currentTab) contextInfo.push(`Current tab: ${currentTab}`);
     if (projectContext) contextInfo.push(`Project: ${projectContext.title || 'Unnamed'}`);
     if (equipmentContext) contextInfo.push(`Equipment: ${equipmentContext.type || 'General'}`);
     
@@ -453,36 +467,11 @@ export default function UniversalPrototypeFeedback({
   const selectedFeedbackType = feedbackTypes.find(t => t.value === formData.feedbackType);
   const selectedPriority = priorityLevels.find(p => p.value === formData.priority);
 
-  if (!isFloating) {
-    // Embedded version for inline use
-    return (
-      <MuiCard sx={{ mb: 3 }}>
-        <CardContent sx={theming.getThemedCardSx()}>
-          <Typography variant="h6" gutterBottom sx={{  display: 'flex', alignItems: 'center', gap: 1  }}>
-            <Feedback color="primary" />
-            Gi tilbakemelding på denne funksjonen
-          </Typography>
-          <Button variant="contained" 
-            onClick={() => {
-              logPrototypeInteraction('Feedback Dialog Opened', { 
-                trigger: 'embedded_button',
-                component,
-                profession 
-            });
-              setIsOpen(true);
-          }}
-            sx={{
-              background: 'linear-gradient(135deg, #2196F3, #21CBF3)', '&:hover': { background: 'linear-gradient(135deg, #1976D2, #2196F3)' }
-          }}
-          >
-            Åpne tilbakemeldingsskjema
-          </Button>
-        </CardContent>
-      </MuiCard>
-    );
-}
-
-  return (
+  // Render embedded button or floating FAB
+  const feedbackTrigger = !isFloating ? (
+    // Embedded version - no trigger needed, dialog opens automatically
+    null
+  ) : (
     <>
       {/* Intelligent Prompt for Recent Actions */}
       {showIntelligentPrompt && contextualQuestion && !isOpen && (
@@ -585,7 +574,7 @@ export default function UniversalPrototypeFeedback({
             logPrototypeInteraction('Feedback Dialog Opened', {
               trigger: 'floating_fab',
               component,
-              profession,
+              profession: typeof profession === 'string' ? profession : profession?.profession || 'unknown',
               hasIntelligentPrompt: showIntelligentPrompt
             });
             setIsOpen(true);
@@ -594,69 +583,180 @@ export default function UniversalPrototypeFeedback({
           {showIntelligentPrompt ? theming.getThemedIcon('autoAwesome') : <Feedback />}
         </Fab>
       </Tooltip>
+    </>
+  );
 
-      {/* Feedback Dialog */}
-      <Dialog
-        open={isOpen}
-        onClose={() => {
-          logPrototypeInteraction('Feedback Dialog Closed', { 
-            reason: 'dialog_close_button'
-      });
-          setIsOpen(false);
-      }}
+  // Return combined view with dialog always available
+  return (
+    <>
+      {feedbackTrigger}
+
+      {/* Feedback Dialog - only render when open in controlled mode or always in uncontrolled mode */}
+      {(open !== undefined ? open : true) && (
+        <Dialog
+          open={dialogOpen}
+          onClose={() => {
+            logPrototypeInteraction('Feedback Dialog Closed', { 
+              reason: 'dialog_close_button'
+            });
+            if (onClose) {
+              onClose();
+            } else {
+              setIsOpen(false);
+            }
+          }}
         maxWidth="md"
         fullWidth
         PaperProps={{
           sx: {
-            bgcolor: 'background.default',
-            backgroundImage: 'none',
-            borderRadius:  2,
+            borderRadius: 4,
+            background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(250, 250, 255, 0.98))',
             backdropFilter: 'blur(20px)',
-            border: '1px solid rgba(25, 255, 255, 0.1)'
+            boxShadow: '0 24px 48px rgba(33, 150, 243, 0.15)',
+            border: '1px solid',
+            borderColor: 'rgba(33, 150, 243, 0.1)',
+            overflow: 'hidden'
         }
       }}
       >
-        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1,flex:  1 }}>
-            {selectedFeedbackType && (
-              <selectedFeedbackType.icon sx={{ color: selectedFeedbackType.color }} />
-            )}
-            <Typography variant="h6" sx={{  fontWeight: 600, color: '#2196F3'  }}>
-              CreatorHub Norge - Prototype Feedback
-            </Typography>
+        <DialogTitle 
+          sx={{ 
+            background: 'linear-gradient(135deg, #2196F3 0%, #21CBF3 100%)',
+            color: 'white',
+            py: 3,
+            px: 4,
+            position: 'relative',
+            overflow: 'hidden',
+            '&::before': {
+              content: '""',
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: 'radial-gradient(circle at top right, rgba(255,255,255,0.2), transparent 50%)',
+              pointerEvents: 'none'
+            }
+          }}
+        >
+          <Box sx={{ position: 'relative', zIndex: 1 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                <Box 
+                  sx={{
+                    p: 1.5,
+                    borderRadius: 2,
+                    bgcolor: 'rgba(255, 255, 255, 0.25)',
+                    backdropFilter: 'blur(10px)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}
+                >
+                  {selectedFeedbackType ? (
+                    <selectedFeedbackType.icon sx={{ fontSize: 28, color: 'white' }} />
+                  ) : (
+                    <Feedback sx={{ fontSize: 28 }} />
+                  )}
+                </Box>
+                <Box>
+                  <Typography variant="h5" sx={{ fontWeight: 700, color: 'white', mb: 0.5, display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Science sx={{ fontSize: 28 }} />
+                    Prototype Feedback
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.9)', fontSize: '0.875rem' }}>
+                    CreatorHub Norge - Hjelp oss å forbedre platformen
+                  </Typography>
+                </Box>
+              </Box>
+              <IconButton 
+                onClick={() => {
+                  logPrototypeInteraction('Feedback Dialog Closed', { 
+                    reason: 'close_icon_button'
+                  });
+                  if (onClose) {
+                    onClose();
+                  } else {
+                    setIsOpen(false);
+                  }
+                }}
+                sx={{
+                  color: 'white',
+                  bgcolor: 'rgba(255, 255, 255, 0.15)',
+                  '&:hover': {
+                    bgcolor: 'rgba(255, 255, 255, 0.25)',
+                    transform: 'rotate(90deg)'
+                  },
+                  transition: 'all 0.3s ease'
+                }}
+              >
+                <Close />
+              </IconButton>
+            </Box>
           </Box>
-          <IconButton onClick={() => {
-            logPrototypeInteraction('Feedback Dialog Closed', { 
-              reason: 'close_icon_button'
-        });
-            setIsOpen(false);
-        }}>
-            {theming.getThemedIcon('close')}
-          </IconButton>
         </DialogTitle>
 
-        <DialogContent sx={{ pt:  2 }}>
-          <Alert severity="info" sx={{ mb: 3 }}>
-            <Typography variant="body2">
+        <DialogContent sx={{ p: 4, bgcolor: 'background.paper' }}>
+          <Alert 
+            severity="info" 
+            sx={{ 
+              mb: 4,
+              borderRadius: 2,
+              bgcolor: 'rgba(33, 150, 243, 0.08)',
+              border: '1px solid rgba(33, 150, 243, 0.2)',
+              '& .MuiAlert-icon': {
+                color: '#2196F3'
+              }
+            }}
+          >
+            <Typography variant="body2" sx={{ fontWeight: 500 }}>
               Din tilbakemelding hjelper oss å forbedre CreatorHub Norge for {profession}s.
-              {component && ` Du gir feedback på: ${component}`}
+              {component && (
+                <Box component="span" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.5, color: 'text.secondary', fontSize: '0.875rem' }}>
+                  <LocationOn sx={{ fontSize: 16 }} />
+                  Du gir feedback på: <strong>{component}</strong>
+                </Box>
+              )}
             </Typography>
           </Alert>
 
           {submitFeedbackMutation.isPending && (
-            <LinearProgress sx={{ mb: 2 }} />
+            <Box sx={{ mb: 3 }}>
+              <LinearProgress 
+                sx={{ 
+                  height: 6,
+                  borderRadius: 3,
+                  bgcolor: 'rgba(33, 150, 243, 0.1)',
+                  '& .MuiLinearProgress-bar': {
+                    borderRadius: 3,
+                    background: 'linear-gradient(90deg, #2196F3, #21CBF3)'
+                  }
+                }} 
+              />
+              <Typography variant="caption" sx={{ mt: 1, display: 'block', textAlign: 'center', color: 'primary.main', fontWeight: 600 }}>
+                Sender tilbakemelding...
+              </Typography>
+            </Box>
           )}
 
           <Grid container spacing={3}>
             {/* Feedback Type Selection */}
             <Grid item xs={12}>
-              <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 600 }}>
-                Type tilbakemelding
-              </Typography>
-              <Grid container spacing={1}>
+              <Box sx={{ 
+                mb: 1,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1
+              }}>
+                <Typography variant="subtitle1" sx={{ fontWeight: 700, color: 'text.primary' }}>
+                  Type tilbakemelding
+                </Typography>
+                <Chip label="Påkrevd" size="small" color="primary" sx={{ height: 20, fontSize: '0.7rem' }} />
+              </Box>
+              <Grid container spacing={1.5}>
                 {feedbackTypes.map((type) => (
                   <Grid key={type.value}>
-                    <Tooltip title={type.description}>
+                    <Tooltip title={type.description} arrow placement="top">
                       <Chip
                         icon={<type.icon />}
                         label={type.label}
@@ -665,9 +765,20 @@ export default function UniversalPrototypeFeedback({
                         sx={{
                           backgroundColor: formData.feedbackType === type.value ? type.color : 'transparent',
                           color: formData.feedbackType === type.value ? 'white' : type.color,
-                          borderColor: type.color, '&:hover': {
+                          borderColor: type.color,
+                          borderWidth: 2,
+                          fontWeight: 600,
+                          fontSize: '0.875rem',
+                          py: 2.5,
+                          px: 2,
+                          cursor: 'pointer',
+                          transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                          boxShadow: formData.feedbackType === type.value ? `0 4px 12px ${type.color}40` : 'none',
+                          '&:hover': {
                             backgroundColor: type.color,
-                            color: 'white'
+                            color: 'white',
+                            transform: 'translateY(-2px)',
+                            boxShadow: `0 6px 16px ${type.color}50`
                           }
                         }}
                       />
@@ -679,47 +790,113 @@ export default function UniversalPrototypeFeedback({
 
             {/* Title */}
             <Grid item xs={12}>
+              <Box sx={{ mb: 1 }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'text.primary', mb: 0.5, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <Edit sx={{ fontSize: 18 }} />
+                  Tittel på tilbakemelding *
+                </Typography>
+              </Box>
               <TextField
                 fullWidth
-                label="Tittel på tilbakemelding"
-                value={formData.title || ', '}
+                value={formData.title || ''}
                 onChange={(e) => setFormData(prev => ({ ...prev, title: e.target.value }))}
                 placeholder="F.eks: Dashboard laster sakte, eller Trenger bedre navigasjon..."
                 required
                 error={submitFeedbackMutation.isError && !formData.title?.trim()}
+                sx={{
+                  '& .MuiOutlinedInput-root': {
+                    borderRadius: 2,
+                    bgcolor: 'background.paper',
+                    '&:hover fieldset': {
+                      borderColor: '#2196F3'
+                    },
+                    '&.Mui-focused fieldset': {
+                      borderWidth: 2
+                    }
+                  }
+                }}
               />
             </Grid>
 
             {/* Description */}
             <Grid item xs={12}>
+              <Box sx={{ mb: 1 }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'text.primary', mb: 0.5, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <ChatBubble sx={{ fontSize: 18 }} />
+                  Detaljert beskrivelse *
+                </Typography>
+              </Box>
               <TextField
                 fullWidth
                 multiline
                 rows={4}
-                label="Detaljert beskrivelse"
-                value={formData.description || ', '}
+                value={formData.description || ''}
                 onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
                 placeholder="Beskriv problemet eller forslaget detaljert. Hva forventet du? Hva skjedde faktisk?"
                 required
                 error={submitFeedbackMutation.isError && !formData.description?.trim()}
+                sx={{
+                  '& .MuiOutlinedInput-root': {
+                    borderRadius: 2,
+                    bgcolor: 'background.paper',
+                    '&:hover fieldset': {
+                      borderColor: '#2196F3'
+                    },
+                    '&.Mui-focused fieldset': {
+                      borderWidth: 2
+                    }
+                  }
+                }}
               />
             </Grid>
 
             {/* Rating */}
             <Grid item xs={12} sm={6}>
-              <Typography variant="subtitle2" gutterBottom>
-                Hvor fornøyd er du med denne funksjonen? ({formData.rating}/5)
-              </Typography>
-              <Rating
-                value={formData.rating || 5}
-                onChange={(_, value) => {
-                  logPrototypeInteraction('Feedback Rating Changed', {
-                    from: formData.rating,
-                    to: value || 5 });
-                  setFormData(prev => ({ ...prev, rating: value || 5 }));
-              }}
-                size="large"
-              />
+              <Box sx={{ 
+                p: 3, 
+                borderRadius: 2, 
+                border: '2px solid',
+                borderColor: 'divider',
+                bgcolor: 'background.paper',
+                transition: 'all 0.3s ease',
+                '&:hover': {
+                  borderColor: '#FFC107',
+                  boxShadow: '0 4px 12px rgba(255, 193, 7, 0.15)'
+                }
+              }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.5, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <Star sx={{ fontSize: 18, color: '#FFC107' }} />
+                  Hvor fornøyd er du?
+                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                  <Rating
+                    value={formData.rating || 5}
+                    onChange={(_, value) => {
+                      logPrototypeInteraction('Feedback Rating Changed', {
+                        from: formData.rating,
+                        to: value || 5 });
+                      setFormData(prev => ({ ...prev, rating: value || 5 }));
+                  }}
+                    size="large"
+                    sx={{
+                      '& .MuiRating-iconFilled': {
+                        color: '#FFC107'
+                      },
+                      '& .MuiRating-iconHover': {
+                        color: '#FFD54F'
+                      }
+                    }}
+                  />
+                  <Chip 
+                    label={`${formData.rating}/5`}
+                    color="warning"
+                    sx={{ 
+                      fontWeight: 700,
+                      fontSize: '0.875rem'
+                    }}
+                  />
+                </Box>
+              </Box>
             </Grid>
 
             {/* Priority */}
@@ -760,8 +937,9 @@ export default function UniversalPrototypeFeedback({
 
             {/* Screenshot Upload */}
             <Grid item xs={12}>
-              <Typography variant="subtitle2" gutterBottom>
-                📷 Legg ved screenshot (valgfritt)
+              <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <PhotoCamera sx={{ fontSize: 18 }} />
+                Legg ved screenshot (valgfritt)
               </Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
                 Ta screenshot direkte eller last opp eksisterende bilde
@@ -810,9 +988,10 @@ export default function UniversalPrototypeFeedback({
 
               {/* Show selected screenshot */}
               {screenshotFiles.length > 0 && (
-                <Box sx={{ mt:  2 }}>
-                  <Typography variant="caption" color="success.main">
-                    ✅ Screenshot valgt: {screenshotFiles[0].name}
+                <Box sx={{ mt: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <CheckCircle sx={{ fontSize: 18, color: 'success.main' }} />
+                  <Typography variant="caption" color="success.main" sx={{ fontWeight: 600 }}>
+                    Screenshot valgt: {screenshotFiles[0].name}
                   </Typography>
                 </Box>
               )}
@@ -820,41 +999,147 @@ export default function UniversalPrototypeFeedback({
 
             {/* Tags */}
             <Grid item xs={12}>
-              <Typography variant="subtitle2" gutterBottom>
-                Relevante områder (valgfritt)
-              </Typography>
-              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1,maxHeight: 10, overflowY: 'auto' }}>
-                {availableTags.map((tag) => (
-                  <Chip
-                    key={tag}
-                    label={tag}
-                    variant={formData.tags?.includes(tag) ? "filled" : "outlined"}
-                    onClick={() => handleTagToggle(tag)}
-                    size="small"
-                    color="primary"
-                    sx={{ cursor: 'pointer' }}
-                  />
-                ))}
+              <Box sx={{ mb: 1.5 }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'text.primary', mb: 0.5, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <LocalOffer sx={{ fontSize: 18 }} />
+                  Relevante områder (valgfritt)
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Velg ett eller flere områder som er relevante for tilbakemeldingen din
+                </Typography>
+              </Box>
+              
+              <Box sx={{ 
+                p: 3, 
+                borderRadius: 2, 
+                border: '2px solid',
+                borderColor: 'divider',
+                bgcolor: 'background.paper'
+              }}>
+                {/* Selected Tags Display */}
+                {formData.tags && formData.tags.length > 0 && (
+                  <Box sx={{ mb: 2, pb: 2, borderBottom: '1px solid', borderColor: 'divider' }}>
+                    <Typography variant="caption" sx={{ fontWeight: 600, color: 'primary.main', mb: 1, display: 'block' }}>
+                      Valgte områder ({formData.tags.length}):
+                    </Typography>
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                      {formData.tags.map((tag) => (
+                        <Chip
+                          key={tag}
+                          label={tag}
+                          onDelete={() => handleTagToggle(tag)}
+                          color="primary"
+                          sx={{ 
+                            fontWeight: 600,
+                            boxShadow: '0 2px 8px rgba(33, 150, 243, 0.2)'
+                          }}
+                        />
+                      ))}
+                    </Box>
+                  </Box>
+                )}
+
+                {/* Available Tags Grid */}
+                <Box sx={{ 
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
+                  gap: 1.5,
+                  maxHeight: 300,
+                  overflowY: 'auto',
+                  pr: 1,
+                  '&::-webkit-scrollbar': {
+                    width: '8px'
+                  },
+                  '&::-webkit-scrollbar-track': {
+                    bgcolor: 'grey.100',
+                    borderRadius: 4
+                  },
+                  '&::-webkit-scrollbar-thumb': {
+                    bgcolor: 'grey.400',
+                    borderRadius: 4,
+                    '&:hover': {
+                      bgcolor: 'grey.500'
+                    }
+                  }
+                }}>
+                  {availableTags.map((tag) => (
+                    <Chip
+                      key={tag}
+                      label={tag}
+                      variant={formData.tags?.includes(tag) ? "filled" : "outlined"}
+                      onClick={() => handleTagToggle(tag)}
+                      size="medium"
+                      color={formData.tags?.includes(tag) ? "primary" : "default"}
+                      sx={{ 
+                        cursor: 'pointer',
+                        fontWeight: formData.tags?.includes(tag) ? 600 : 500,
+                        transition: 'all 0.2s ease',
+                        justifyContent: 'flex-start',
+                        '&:hover': {
+                          transform: 'translateY(-2px)',
+                          boxShadow: formData.tags?.includes(tag) 
+                            ? '0 4px 12px rgba(33, 150, 243, 0.3)'
+                            : '0 4px 12px rgba(0, 0, 0, 0.1)',
+                          borderColor: '#2196F3'
+                        },
+                        '&:active': {
+                          transform: 'translateY(0)'
+                        }
+                      }}
+                    />
+                  ))}
+                </Box>
               </Box>
             </Grid>
 
             {/* Component/Page */}
             <Grid item xs={12}>
+              <Box sx={{ mb: 1 }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'text.primary', mb: 0.5, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <LocationOn sx={{ fontSize: 18 }} />
+                  Side/Komponent (valgfritt)
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Hvilken del av systemet gjelder tilbakemeldingen?
+                </Typography>
+              </Box>
               <TextField
                 fullWidth
-                label="Side/Komponent (valgfritt)"
-                value={formData.component || ', '}
+                value={formData.component || ''}
                 onChange={(e) => setFormData(prev => ({ ...prev, component: e.target.value }))}
                 placeholder="F.eks: Dashboard oversikt, Project creation, Settings..."
-                size="small"
+                size="medium"
+                sx={{
+                  '& .MuiOutlinedInput-root': {
+                    borderRadius: 2,
+                    bgcolor: 'background.paper',
+                    '&:hover fieldset': {
+                      borderColor: '#2196F3'
+                    },
+                    '&.Mui-focused fieldset': {
+                      borderWidth: 2
+                    }
+                  }
+                }}
               />
             </Grid>
 
             {/* User Information Display - Always Required */}
             <Grid item xs={12}>
-              <Alert severity="info" sx={{ bgcolor: 'rgba(25, 140, 0, 0.1)', border: '1px solid rgba(25, 140, 0, 0.3)' }}>
-                <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                  📝 Tilbakemelding sendes fra: {userEmail || currentUser?.email || 'Ikke pålogget'}
+              <Alert 
+                severity="info" 
+                sx={{ 
+                  bgcolor: 'rgba(33, 150, 243, 0.08)',
+                  border: '2px solid rgba(33, 150, 243, 0.2)',
+                  borderRadius: 2,
+                  '& .MuiAlert-icon': {
+                    color: '#2196F3'
+                  }
+                }}
+              >
+                <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <Person sx={{ fontSize: 18 }} />
+                  Tilbakemelding sendes fra: {userEmail || currentUser?.email || 'Ikke pålogget'}
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
                   Alle tilbakemeldinger krever brukeridentifikasjon for bedre oppfølging.
@@ -864,34 +1149,124 @@ export default function UniversalPrototypeFeedback({
           </Grid>
 
           {submitFeedbackMutation.isError && (
-            <Alert severity="error" sx={{ mt:  2 }}>
-              Kunne ikke sende tilbakemelding. Vennligst sjekk at alle påkrevde felt er fylt ut.
+            <Alert 
+              severity="error" 
+              sx={{ 
+                mt: 3,
+                borderRadius: 2,
+                bgcolor: 'rgba(211, 47, 47, 0.08)',
+                border: '2px solid rgba(211, 47, 47, 0.3)',
+                '& .MuiAlert-icon': {
+                  fontSize: 24
+                }
+              }}
+            >
+              <Typography variant="body2" sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <Error sx={{ fontSize: 18 }} />
+                Kunne ikke sende tilbakemelding
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                Vennligst sjekk at alle påkrevde felt er fylt ut korrekt.
+              </Typography>
             </Alert>
           )}
 
           {submitFeedbackMutation.isSuccess && (
-            <Alert severity="success" sx={{ mt:  2 }}>
-              Takk for tilbakemeldingen! Vi setter pris på dine innspill.
+            <Alert 
+              severity="success" 
+              sx={{ 
+                mt: 3,
+                borderRadius: 2,
+                bgcolor: 'rgba(46, 125, 50, 0.08)',
+                border: '2px solid rgba(46, 125, 50, 0.3)',
+                '& .MuiAlert-icon': {
+                  fontSize: 24
+                }
+              }}
+            >
+              <Typography variant="body2" sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <CheckCircle sx={{ fontSize: 18 }} />
+                Takk for tilbakemeldingen!
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                Vi setter stor pris på dine innspill og vil se på dette snarest.
+              </Typography>
             </Alert>
           )}
         </DialogContent>
 
-        <DialogActions sx={{ px:  3, pb:  3 }}>
-          <Button onClick={() => setIsOpen(false)}>
+        <DialogActions sx={{ 
+          px: 4, 
+          pb: 4, 
+          pt: 3,
+          bgcolor: 'grey.50',
+          borderTop: '1px solid',
+          borderColor: 'divider',
+          gap: 2
+        }}>
+          <Button 
+            onClick={() => {
+              if (onClose) {
+                onClose();
+              } else {
+                setIsOpen(false);
+              }
+            }}
+            variant="outlined"
+            sx={{
+              borderRadius: 2,
+              px: 3,
+              py: 1.25,
+              fontWeight: 600,
+              textTransform: 'none',
+              borderColor: 'grey.300',
+              color: 'text.secondary',
+              '&:hover': {
+                borderColor: 'grey.400',
+                bgcolor: 'grey.100'
+              }
+            }}
+          >
             Avbryt
           </Button>
-          <Button variant="contained"
+          <Button 
+            variant="contained"
             onClick={handleSubmit}
             disabled={!formData.title?.trim() || !formData.description?.trim() || submitFeedbackMutation.isPending}
             startIcon={<Send />}
             sx={{
-              background: 'linear-gradient(135deg, #2196F3, #21CBF3)', '&:hover': { background: 'linear-gradient(135deg, #1976D2, #2196F3)' }
-          }}
+              borderRadius: 2,
+              px: 4,
+              py: 1.25,
+              fontWeight: 700,
+              textTransform: 'none',
+              color: 'white !important',
+              background: 'linear-gradient(135deg, #2196F3 0%, #21CBF3 100%)',
+              boxShadow: '0 4px 14px rgba(33, 150, 243, 0.35)',
+              '& .MuiButton-startIcon': {
+                color: 'white'
+              },
+              '&:hover': {
+                background: 'linear-gradient(135deg, #1976D2 0%, #2196F3 100%)',
+                boxShadow: '0 6px 20px rgba(33, 150, 243, 0.45)',
+                transform: 'translateY(-1px)',
+                color: 'white !important'
+              },
+              '&:active': {
+                transform: 'translateY(0)'
+              },
+              '&.Mui-disabled': {
+                background: 'grey.300 !important',
+                color: 'grey.500 !important'
+              },
+              transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
+            }}
           >
             {submitFeedbackMutation.isPending ? 'Sender...' : 'Send tilbakemelding'}
           </Button>
         </DialogActions>
       </Dialog>
+      )}
 
       {/* Screenshot Capture Dialog */}
       <ScreenshotCapture

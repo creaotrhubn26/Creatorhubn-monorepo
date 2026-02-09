@@ -84,7 +84,7 @@ export default function AdminPrototypeTestingDashboard() {
   const queryClient = useQueryClient();
   
   // Theming system
-  const theming = useTheming('prototype_tester, ');
+  const theming = useTheming('prototype_tester');
   const [selectedFeedback, setSelectedFeedback] = useState<FeedbackEntry | null>(null);
   const [filterProfession, setFilterProfession] = useState<string>('all');
   const [showAnalytics, setShowAnalytics] = useState(false);

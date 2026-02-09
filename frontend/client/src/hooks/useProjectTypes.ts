@@ -52,10 +52,22 @@ export const useProjectTypes = (): UseProjectTypesReturn => {
       const response = await apiRequest<ProjectTypesData>('/api/project-types', {
         method: 'GET',
       });
-      setData(response);
+      // Ensure response has the expected structure
+      const safeData: ProjectTypesData = {
+        userTypes: Array.isArray(response?.userTypes) ? response.userTypes : [],
+        defaultTypes: Array.isArray(response?.defaultTypes) ? response.defaultTypes : [],
+        trendingTypes: Array.isArray(response?.trendingTypes) ? response.trendingTypes : [],
+      };
+      setData(safeData);
     } catch (err: any) {
       setError(err.message || 'Failed to fetch project types');
       console.error('Error fetching project types: ', err);
+      // Set default empty arrays on error
+      setData({
+        userTypes: [],
+        defaultTypes: [],
+        trendingTypes: [],
+      });
     } finally {
       setIsLoading(false);
     }
@@ -129,12 +141,12 @@ export const useProjectTypes = (): UseProjectTypesReturn => {
 
   // Merge all types (default + user + trending, removing duplicates)
   const allTypes = [
-    ...data.defaultTypes,
-    ...data.userTypes.filter(ut => !data.defaultTypes.some(dt => dt.name === ut.name)),
-    ...data.trendingTypes.filter(tt => 
-      !data.defaultTypes.some(dt => dt.name === tt.name) &&
-      !data.userTypes.some(ut => ut.name === tt.name)
-    ),
+    ...(Array.isArray(data.defaultTypes) ? data.defaultTypes : []),
+    ...(Array.isArray(data.userTypes) ? data.userTypes.filter(ut => !Array.isArray(data.defaultTypes) || !data.defaultTypes.some(dt => dt.name === ut.name)) : []),
+    ...(Array.isArray(data.trendingTypes) ? data.trendingTypes.filter(tt => 
+      (!Array.isArray(data.defaultTypes) || !data.defaultTypes.some(dt => dt.name === tt.name)) &&
+      (!Array.isArray(data.userTypes) || !data.userTypes.some(ut => ut.name === tt.name))
+    ) : []),
   ];
 
   return {

@@ -1945,7 +1945,7 @@ export default function KeyboardShortcutsTools({ profession }: KeyboardShortcuts
             backdropFilter: 'blur(10px)',
             textAlign: 'center' }}
         >
-          <Typography variant="h5" sx={{ fontWeight: 70, mb: 0.2, color: theming.colors.primary }}>
+          <Typography variant="h5" sx={{ fontWeight: 700, mb: 0.2, color: theming.colors.primary }}>
             3
           </Typography>
           <Typography variant="caption" sx={{ opacity: 0.9 }}>
@@ -1963,7 +1963,7 @@ export default function KeyboardShortcutsTools({ profession }: KeyboardShortcuts
             backdropFilter: 'blur(10px)',
             textAlign: 'center' }}
         >
-          <Typography variant="h5" sx={{ fontWeight: 70, mb: 0.2, color: theming.colors.primary }}>
+          <Typography variant="h5" sx={{ fontWeight: 700, mb: 0.2, color: theming.colors.primary }}>
             {shortcuts.length}
           </Typography>
           <Typography variant="caption" sx={{ opacity: 0.9 }}>
@@ -2113,7 +2113,7 @@ export default function KeyboardShortcutsTools({ profession }: KeyboardShortcuts
       >
         <Typography variant="h5" sx={{ 
           mb:  4, 
-          fontWeight: 70, 
+          fontWeight: 700, 
           display: 'flex', 
           alignItems: 'center', 
           gap:  2,
@@ -2184,7 +2184,7 @@ export default function KeyboardShortcutsTools({ profession }: KeyboardShortcuts
                     zIndex: 1,  ...theming.getThemedCardSx() }}>
                     <SoftwareIcon sx={{ fontSize: 36}} />
                     <Typography variant="h6" sx={{ 
-                      fontWeight: 70,
+                      fontWeight: 700,
                       textAlign: 'center'
             }}>
                       {software.name}
@@ -2228,7 +2228,7 @@ export default function KeyboardShortcutsTools({ profession }: KeyboardShortcuts
             <Box sx={{ position: 'relative' }}>
               <Typography variant="h6" sx={{  
                 mb: 2,
-    fontWeight: 7, 
+    fontWeight: 700, 
                 color: '#ff6b30',
                 display: 'flex',
                 alignItems: 'center',
@@ -2274,7 +2274,7 @@ export default function KeyboardShortcutsTools({ profession }: KeyboardShortcuts
           <Grid item xs={12} md={6}>
             <Typography variant="h6" sx={{ 
               mb: 2,
-    fontWeight: 70, 
+    fontWeight: 700, 
               color: '#ff6b35',
               display: 'flex',
               alignItems: 'center',
@@ -2346,7 +2346,7 @@ export default function KeyboardShortcutsTools({ profession }: KeyboardShortcuts
               sx: { color: currentSoftware.color, mr: 2, fontSize: 28}
       })}
             <Box sx={{ flexGrow:  1 }}>
-              <Typography variant="h5" sx={{ fontWeight: 70, mb: 0.5, color: theming.colors.primary }}>
+              <Typography variant="h5" sx={{ fontWeight: 700, mb: 0.5, color: theming.colors.primary }}>
                 {currentSoftware?.name} - Tastatursnarveier
               </Typography>
               <Typography variant="body2" color="text.secondary">
@@ -2488,7 +2488,7 @@ export default function KeyboardShortcutsTools({ profession }: KeyboardShortcuts
           <Box sx={{ display: 'flex', alignItems: 'center', width: '100%' }}>
             <Build sx={{ color: '#ff8c00', mr: 2, fontSize: 28}} />
             <Box sx={{ flexGrow:  1 }}>
-              <Typography variant="h5" sx={{ fontWeight: 70, mb: 0.5, color: theming.colors.primary }}>
+              <Typography variant="h5" sx={{ fontWeight: 700, mb: 0.5, color: theming.colors.primary }}>
                 Custom Actions & Retouching Shortcuts
               </Typography>
               <Typography variant="body2" color="text.secondary">
@@ -2718,7 +2718,7 @@ export default function KeyboardShortcutsTools({ profession }: KeyboardShortcuts
           <Box sx={{ display: 'flex', alignItems: 'center', width: '100%' }}>
             <CropFree sx={{ color: '#9c27b0', mr: 2, fontSize: 28}} />
             <Box sx={{ flexGrow:  1 }}>
-              <Typography variant="h5" sx={{ fontWeight: 70, mb: 0.5, color: theming.colors.primary }}>
+              <Typography variant="h5" sx={{ fontWeight: 700, mb: 0.5, color: theming.colors.primary }}>
                 Interactive Composition Guide
               </Typography>
               <Typography variant="body2" color="text.secondary">
@@ -3549,7 +3549,7 @@ export default function KeyboardShortcutsTools({ profession }: KeyboardShortcuts
           <Box sx={{ display: 'flex', alignItems: 'center', width: '100%' }}>
             <Tune sx={{ color: '#4caf50', mr: 2, fontSize: 28}} />
             <Box sx={{ flexGrow:  1 }}>
-              <Typography variant="h5" sx={{ fontWeight: 70, mb: 0.5, color: theming.colors.primary }}>
+              <Typography variant="h5" sx={{ fontWeight: 700, mb: 0.5, color: theming.colors.primary }}>
                 🧠 Interaktive Verktøyforklaringer
               </Typography>
               <Typography variant="body2" color="text.secondary">
@@ -3778,7 +3778,7 @@ export default function KeyboardShortcutsTools({ profession }: KeyboardShortcuts
 >
 
 
-                  <Typography variant="h5" sx={{  mb:  3, fontWeight: 70, color: '#ff8c00', display: 'flex', alignItems: 'center', gap:  2  }}>
+                  <Typography variant="h5" sx={{  mb:  3, fontWeight: 700, color: '#ff8c00', display: 'flex', alignItems: 'center', gap:  2  }}>
                     <RocketLaunch sx={{ fontSize: 32}} />
                     Raskere & Smartere Redigeringstips
                   </Typography>

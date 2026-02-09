@@ -129,7 +129,7 @@ export default function UniversalAdminCMS() {
   const queryClient = useQueryClient();
   
   // Theming system
-  const theming = useTheming('prototype_tester, ');
+  const theming = useTheming('prototype_tester');
   const { auth } = useEnhancedMasterIntegration();
   const user = auth.user;
   const isAuthenticated = !!user;

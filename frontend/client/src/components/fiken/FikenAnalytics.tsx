@@ -281,7 +281,7 @@ export const FikenAnalytics: React.FC<FikenAnalyticsProps> = ({ profession }) =>
                     <ListItemText
                       primary={customer.name}
                       secondary={`${customer.total.toLocaleString('no-NO')} kr (${customer.percentage}%)`}
-                      primaryTypographyProps={{ fontWeight: 50, fontSize: '0.875rem' }
+                      primaryTypographyProps={{ fontWeight: 500, fontSize: '0.875rem' }
                       secondaryTypographyProps={{ fontSize: '0.75rem' }} />
                   </ListItem>
                 ))}
@@ -377,7 +377,7 @@ export const FikenAnalytics: React.FC<FikenAnalyticsProps> = ({ profession }) =>
                     <ListItemText
                       primary={product.name}
                       secondary={`${product.total.toLocaleString('no-NO')} kr (${product.percentage}%) • ${product.count} solgt`}
-                      primaryTypographyProps={{ fontWeight: 50, fontSize: '0.875rem' }
+                      primaryTypographyProps={{ fontWeight: 500, fontSize: '0.875rem' }
                       secondaryTypographyProps={{ fontSize: '0.75rem' }} />
                   </ListItem>
                 ))}
@@ -415,7 +415,7 @@ export const FikenAnalytics: React.FC<FikenAnalyticsProps> = ({ profession }) =>
                 <Typography variant="caption" color="text.secondary">
                   Total omsetning (netto)
                 </Typography>
-                <Typography variant="h4" sx={{ fontWeight: 70, color: 'primary.main' }}>
+                <Typography variant="h4" sx={{ fontWeight: 700, color: 'primary.main' }}>
                   {(productsData?.summary?.grandTotal || 0).toLocaleString('no-NO')} kr
                 </Typography>
               </Box>

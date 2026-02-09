@@ -102,7 +102,7 @@ export default function ProfessionCMSManager() {
   const { auth } = useEnhancedMasterIntegration();
 
   // Theming system
-  const theming = useTheming('prototype_tester, ');
+  const theming = useTheming('prototype_tester');
   const [currentTab, setCurrentTab] = useState(0);
   const [openDialog, setOpenDialog] = useState(false);
   const [selectedProfession, setSelectedProfession] = useState<ProfessionConfig | null>(null);

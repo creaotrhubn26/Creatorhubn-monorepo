@@ -23,7 +23,9 @@ import {
   IconButton,
   Divider,
   Alert,
+  Snackbar,
 } from '@mui/material';
+import type { ChipProps } from '@mui/material';
 import {
   CloudUpload as UploadIcon,
   Refresh as RefreshIcon,
@@ -44,6 +46,9 @@ export default function BackgroundUploadTest() {
   const theming = useTheming('photographer');
   const [uploadStats, setUploadStats] = useState<UploadStats | null>(null);
   const [allTasks, setAllTasks] = useState<UploadTask[]>([]);
+  
+  // Snackbar state
+  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'warning' | 'info' }>({ open: false, message: '', severity: 'info' });
 
   // Update data from background service
   const updateData = () => {
@@ -80,7 +85,7 @@ export default function BackgroundUploadTest() {
   };
 }, []);
 
-  const getStatusColor = (status: string) => {
+  const getStatusColor = (status: UploadTask['status']): ChipProps['color'] => {
     switch (status) {
       case 'uploading':
         return 'primary';
@@ -149,8 +154,8 @@ export default function BackgroundUploadTest() {
                 sx={{
                   background: 'linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%)',
                   border: '1px solid rgba(3, 150, 243, 0.2)',
-              }}
-               sx={theming.getThemedCardSx()}>
+                  ...theming.getThemedCardSx(),
+              }}>
                 <CardContent sx={{ textAlign: 'center',  ...theming.getThemedCardSx() }}>
                   <Typography variant="h4" color="primary" fontWeight="bold" sx={{ color: theming.colors.primary }}>
                     {uploadStats.totalTasks}
@@ -167,8 +172,8 @@ export default function BackgroundUploadTest() {
                 sx={{
                   background: 'linear-gradient(135deg, #e8f5e8 0%, #c8e6c9 100%)',
                   border: '1px solid rgba(6, 175, 80, 0.2)',
-              }}
-               sx={theming.getThemedCardSx()}>
+                  ...theming.getThemedCardSx(),
+              }}>
                 <CardContent sx={{ textAlign: 'center',  ...theming.getThemedCardSx() }}>
                   <Typography variant="h4" color="success.main" fontWeight="bold" sx={{ color: theming.colors.primary }}>
                     {uploadStats.completed}
@@ -184,9 +189,9 @@ export default function BackgroundUploadTest() {
               <Card
                 sx={{
                   background: 'linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%)',
-                  border: '1px solid rgba(25, 1520.2)',
-              }}
-               sx={theming.getThemedCardSx()}>
+                  border: '1px solid rgba(255, 152, 0, 0.2)',
+                  ...theming.getThemedCardSx(),
+              }}>
                 <CardContent sx={{ textAlign: 'center',  ...theming.getThemedCardSx() }}>
                   <Typography variant="h4" color="warning.main" fontWeight="bold" sx={{ color: theming.colors.primary }}>
                     {uploadStats.uploading}
@@ -203,8 +208,8 @@ export default function BackgroundUploadTest() {
                 sx={{
                   background: 'linear-gradient(135deg, #ffebee 0%, #ffcdd2 100%)',
                   border: '1px solid rgba(24, 67, 54, 0.2)',
-              }}
-               sx={theming.getThemedCardSx()}>
+                  ...theming.getThemedCardSx(),
+              }}>
                 <CardContent sx={{ textAlign: 'center',  ...theming.getThemedCardSx() }}>
                   <Typography variant="h4" color="error.main" fontWeight="bold" sx={{ color: theming.colors.primary }}>
                     {uploadStats.failed}
@@ -254,9 +259,14 @@ export default function BackgroundUploadTest() {
             onFilesSelected={(files) => {
               console.log('Files selected, :', files);
           }}
-            onUploadComplete={(results) => {
-              console.log('Batch upload completed: ', results);
-              alert(`${results.length} filer fullført!`);
+            onUploadComplete={(results?: any[]) => {
+              const completedResults = results ?? [];
+              console.log('Batch upload completed: ', completedResults);
+              setSnackbar({
+                open: true,
+                message: `${completedResults.length} filer fullført!`,
+                severity: 'success'
+              });
           }}
             onUploadError={(error, file) => {
               console.error('Upload error:', error, file);
@@ -294,7 +304,7 @@ export default function BackgroundUploadTest() {
                           <Chip
                             label={task.status}
                             size="small"
-                            color={getStatusColor(task.status) as any}
+                            color={getStatusColor(task.status)}
                             variant="outlined"
                           />
                         </Box>
@@ -335,13 +345,24 @@ export default function BackgroundUploadTest() {
                     <ListItemSecondaryAction>
                       <Box sx={{ display: 'flex', gap: 0.5,}}>
                         {task.status === 'uploading' && (
-                          <IconButton
-                            size="small"
-                            onClick={() => backgroundUploadService.pauseTask(task.id)}
-                            color="warning"
-                          >
-                            <PauseIcon />
-                          </IconButton>
+                          <>
+                            <IconButton
+                              size="small"
+                              onClick={() => backgroundUploadService.pauseTask(task.id)}
+                              color="warning"
+                              title="Pause upload"
+                            >
+                              <PauseIcon />
+                            </IconButton>
+                            <IconButton
+                              size="small"
+                              onClick={() => backgroundUploadService.cancelTask(task.id)}
+                              color="error"
+                              title="Stop upload immediately"
+                            >
+                              <StopIcon />
+                            </IconButton>
+                          </>
                         )}
                         {task.status === 'paused' && (
                           <IconButton
@@ -361,13 +382,15 @@ export default function BackgroundUploadTest() {
                             <RefreshIcon />
                           </IconButton>
                         )}
-                        <IconButton
-                          size="small"
-                          onClick={() => backgroundUploadService.cancelTask(task.id)}
-                          color="error"
-                        >
-                          <DeleteIcon />
-                        </IconButton>
+                        {task.status !== 'uploading' && (
+                          <IconButton
+                            size="small"
+                            onClick={() => backgroundUploadService.cancelTask(task.id)}
+                            color="error"
+                          >
+                            <DeleteIcon />
+                          </IconButton>
+                        )}
                       </Box>
                     </ListItemSecondaryAction>
                   </ListItem>
@@ -478,9 +501,19 @@ export default function BackgroundUploadTest() {
             </Typography>
           </Paper>
         )}
+
+        {/* Snackbar for notifications */}
+        <Snackbar
+          open={snackbar.open}
+          autoHideDuration={6000}
+          onClose={() => setSnackbar({ ...snackbar, open: false })}
+          anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        >
+          <Alert onClose={() => setSnackbar({ ...snackbar, open: false })} severity={snackbar.severity} sx={{ width: '100%' }}>
+            {snackbar.message}
+          </Alert>
+        </Snackbar>
       </motion.div>
     </Container>
   );
-};
-
-export default BackgroundUploadTest;
+}

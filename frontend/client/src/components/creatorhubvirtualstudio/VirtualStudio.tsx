@@ -1409,7 +1409,7 @@ const VirtualStudioInner: React.FC = () => {
   // Track feature usage
   useEffect(() => {
     if (integration.isInitialized) {
-      integration.backend.trackFeatureUsage('virtual-studio, ','opened');
+      integration.backend.trackFeatureUsage('virtual-studio', 'opened');
     }
   }, [integration.isInitialized]);
 
@@ -2133,7 +2133,7 @@ const VirtualStudioInner: React.FC = () => {
                   bgcolor: `${inputModeInfo.color}20`,
                   color: inputModeInfo.color,
                   fontSize: 12,
-                  fontWeight: 50,
+                  fontWeight: 500,
                   ml: 2}}
               >
                 {inputModeInfo.icon}

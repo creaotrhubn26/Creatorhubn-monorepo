@@ -120,6 +120,8 @@ interface CommunicationHubV2Props {
   profession: string;
 }
 
+type Theming = ReturnType<typeof useTheming>;
+
 // Panel types for multi-panel layout
 type PanelType = 'email-detail' | 'email-compose' | 'note-editor' | 'meeting-detail' | 'meeting-schedule' | 'chat' | null;
 
@@ -127,10 +129,25 @@ interface Panel {
   id: string;
   type: PanelType;
   title: string;
-  data?: any;
+  data?: PanelData;
   position: 'right' | 'bottom' | 'fullscreen';
   width?: string | number;
 }
+
+interface EmailComposeData {
+  to?: string;
+  subject?: string;
+  replyTo?: Email;
+  forward?: Email;
+}
+
+type PanelData = Email | Meeting | Note | EmailComposeData | Record<string, unknown>;
+
+type ChatContext = {
+  type: 'email' | 'meeting' | 'note';
+  id: string;
+  title: string;
+};
 
 // Email interfaces
 interface EmailInbox {
@@ -223,7 +240,7 @@ export default function CommunicationHubV2({ userId, profession }: Communication
   const [selectedEmail, setSelectedEmail] = useState<Email | null>(null);
   const [selectedInbox, setSelectedInbox] = useState<string>('all');
   const [emailFilter, setEmailFilter] = useState<'all' | 'unread' | 'starred' | 'sent' | 'drafts'>('all');
-  const [emailSearchQuery, setEmailSearchQuery] = useState(' ');
+  const [emailSearchQuery, setEmailSearchQuery] = useState('');
 
   // Meeting state
   const [selectedMeeting, setSelectedMeeting] = useState<Meeting | null>(null);
@@ -248,7 +265,7 @@ export default function CommunicationHubV2({ userId, profession }: Communication
 
   // Chat state
   const [chatOpen, setChatOpen] = useState(false);
-  const [chatContext, setChatContext] = useState<any>(null);
+  const [chatContext, setChatContext] = useState<ChatContext | null>(null);
 
   // Google Drive & Dictionary state
   const [showGoogleDrive, setShowGoogleDrive] = useState(false);
@@ -262,7 +279,7 @@ export default function CommunicationHubV2({ userId, profession }: Communication
   // Snackbar
   const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'info' | 'warning' | 'error' }>({
     open: false,
-    message: ', ',
+    message: '',
     severity: 'info',
   });
 
@@ -270,7 +287,47 @@ export default function CommunicationHubV2({ userId, profession }: Communication
   // PANEL MANAGEMENT - Bidirectional Navigation
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-  const openPanel = useCallback((type: PanelType, data?: any, position: 'right' | 'bottom' | 'fullscreen' = 'right') => {
+  const isEmail = (data: PanelData | undefined): data is Email =>
+    !!data && typeof (data as Email).subject === 'string' && typeof (data as Email).from === 'string';
+
+  const isMeeting = (data: PanelData | undefined): data is Meeting =>
+    !!data && typeof (data as Meeting).title === 'string' && Array.isArray((data as Meeting).attendees);
+
+  const isNote = (data: PanelData | undefined): data is Note =>
+    !!data && typeof (data as Note).title === 'string' && typeof (data as Note).content === 'string';
+
+  const isEmailComposeData = (data: PanelData | undefined): data is EmailComposeData =>
+    !!data &&
+    !isEmail(data) &&
+    !isMeeting(data) &&
+    !isNote(data) &&
+    ('to' in data || 'subject' in data || 'replyTo' in data || 'forward' in data);
+
+  const buildNotePayload = (data: PanelData | undefined): Note => {
+    if (isNote(data)) {
+      return {
+        ...data,
+        title: noteTitle,
+        content: noteContent,
+        tags: noteTags,
+        category: noteCategory,
+        updatedAt: new Date().toISOString(),
+      };
+    }
+
+    return {
+      id: `note_${Date.now()}`,
+      title: noteTitle,
+      content: noteContent,
+      category: noteCategory,
+      status: 'draft',
+      tags: noteTags,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+  };
+
+  const openPanel = useCallback((type: PanelType, data?: PanelData, position: 'right' | 'bottom' | 'fullscreen' = 'right') => {
     const newPanel: Panel = {
       id: `${type}-${Date.now()}`,
       type,
@@ -286,16 +343,16 @@ export default function CommunicationHubV2({ userId, profession }: Communication
     setPanels((prev) => prev.filter((p) => p.id !== panelId));
   }, []);
 
-  const getPanelTitle = (type: PanelType, data?: any): string => {
+  const getPanelTitle = (type: PanelType, data?: PanelData): string => {
     switch (type) {
       case 'email-detail':
-        return data?.subject || 'Email';
+        return isEmail(data) ? data.subject : 'Email';
       case 'email-compose':
         return 'Ny E-post';
       case 'note-editor':
-        return data?.title || 'Nytt Notat';
+        return isNote(data) ? data.title : 'Nytt Notat';
       case 'meeting-detail':
-        return data?.title || 'Møte';
+        return isMeeting(data) ? data.title : 'Møte';
       case 'meeting-schedule':
         return 'Planlegg Møte';
       case 'chat':
@@ -499,7 +556,7 @@ export default function CommunicationHubV2({ userId, profession }: Communication
     mutationFn: (meeting: Partial<Meeting>) =>
       apiRequest(`/api/communication/meetings`, {
         method: 'POST',
-        body: JSON.stringify({ ...meeting, userId }),
+        body: { ...meeting, userId },
       }),
     onSuccess: () => {
       refetchMeetings();
@@ -515,12 +572,12 @@ export default function CommunicationHubV2({ userId, profession }: Communication
   const runAIOperation = async <T,>(
     operationName: string,
     apiPath: string,
-    payload: any
+    payload: Record<string, unknown>
   ): Promise<T> => {
     try {
       const response = await apiRequest(apiPath, {
         method: 'POST',
-        body: JSON.stringify(payload),
+        body: payload,
       });
       return response as T;
     } catch (error) {
@@ -853,7 +910,7 @@ export default function CommunicationHubV2({ userId, profession }: Communication
 
               {/* Panel Content */}
               <Box sx={{ p: 2 }}>
-                {panel.type === 'email-detail' && panel.data && (
+                {panel.type === 'email-detail' && isEmail(panel.data) && (
                   <EmailDetailPanel
                     email={panel.data}
                     onReply={() => openPanel('email-compose', { replyTo: panel.data }, 'right')}
@@ -872,9 +929,9 @@ export default function CommunicationHubV2({ userId, profession }: Communication
                     onClose={() => closePanel(panel.id)}
                     profession={profession}
                     userId={userId}
-                    initialTo={panel.data?.to}
-                    initialSubject={panel.data?.subject}
-                    replyToEmail={panel.data?.replyTo}
+                    initialTo={isEmailComposeData(panel.data) ? panel.data.to : undefined}
+                    initialSubject={isEmailComposeData(panel.data) ? panel.data.subject : undefined}
+                    replyToEmail={isEmailComposeData(panel.data) ? panel.data.replyTo : undefined}
                   />
                 )}
 
@@ -890,7 +947,7 @@ export default function CommunicationHubV2({ userId, profession }: Communication
                     noteCategory={noteCategory}
                     setNoteCategory={setNoteCategory}
                     onSave={() => {
-                      if (panel.data?.id) {
+                      if (isNote(panel.data) && panel.data.id) {
                         updateNoteMutation.mutate({
                           id: panel.data.id,
                           note: { title: noteTitle, content: noteContent, tags: noteTags, category: noteCategory },
@@ -907,9 +964,9 @@ export default function CommunicationHubV2({ userId, profession }: Communication
                         });
                       }
                     }}
-                    onSendEmail={() => emailFromNote({ ...panel.data, title: noteTitle, content: noteContent } as Note)}
-                    onScheduleMeeting={() => scheduleMeetingFromNote({ ...panel.data, title: noteTitle, content: noteContent } as Note)}
-                    onOpenChat={() => chatAboutNote({ ...panel.data, title: noteTitle, content: noteContent } as Note)}
+                    onSendEmail={() => emailFromNote(buildNotePayload(panel.data))}
+                    onScheduleMeeting={() => scheduleMeetingFromNote(buildNotePayload(panel.data))}
+                    onOpenChat={() => chatAboutNote(buildNotePayload(panel.data))}
                     showAITools={showAITools}
                     setShowAITools={setShowAITools}
                     aiToolState={aiToolState}
@@ -1021,7 +1078,7 @@ interface EmailListViewProps {
   onOpenChat: (email: Email) => void;
   onStar: (emailId: string) => void;
   onMarkAsRead: (emailId: string) => void;
-  theming: any;
+  theming: Theming;
 }
 
 function EmailListView({
@@ -1043,6 +1100,7 @@ function EmailListView({
 }: EmailListViewProps) {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [selectedEmail, setSelectedEmail] = useState<Email | null>(null);
+  const emailFilters: EmailListViewProps['emailFilter'][] = ['all', 'unread', 'starred', 'sent', 'drafts'];
 
   const filteredEmails = emails.filter((email) => {
     if (emailSearchQuery) {
@@ -1131,20 +1189,20 @@ function EmailListView({
               Filtre
             </Typography>
             <Stack spacing={0.5} role="group" aria-labelledby="filters-heading">
-              {[
-                { value: 'all', label: 'All e-post', icon: <InboxIcon aria-hidden="true" /> },
-                { value: 'unread', label: 'Ulest', icon: <EmailIcon aria-hidden="true" /> },
-                { value: 'starred', label: 'Stjernemerket', icon: <StarIcon aria-hidden="true" /> },
-                { value: 'sent', label: 'Sendt', icon: <SendIcon aria-hidden="true" /> },
-                { value: 'drafts', label: 'Utkast', icon: <DraftsIcon aria-hidden="true" /> },
-              ].map((filter) => (
+              {emailFilters.map((filter) => (
                 <Button
-                  key={filter.value}
+                  key={filter}
                   fullWidth
-                  variant={emailFilter === filter.value ? 'contained' : 'text'}
-                  startIcon={filter.icon}
-                  onClick={() => setEmailFilter(filter.value as any)}
-                  aria-pressed={emailFilter === filter.value}
+                  variant={emailFilter === filter ? 'contained' : 'text'}
+                  startIcon={
+                    filter === 'all' ? <InboxIcon aria-hidden="true" /> :
+                    filter === 'unread' ? <EmailIcon aria-hidden="true" /> :
+                    filter === 'starred' ? <StarIcon aria-hidden="true" /> :
+                    filter === 'sent' ? <SendIcon aria-hidden="true" /> :
+                    <DraftsIcon aria-hidden="true" />
+                  }
+                  onClick={() => setEmailFilter(filter)}
+                  aria-pressed={emailFilter === filter}
                   sx={{
                     justifyContent: 'flex-start',
                     color: emailFilter === filter.value ? 'white' : theming.colors.primary,
@@ -1154,7 +1212,15 @@ function EmailListView({
                       outlineOffset: '2px',
                     }}}
                 >
-                  {filter.label}
+                  {filter === 'all'
+                    ? 'All e-post'
+                    : filter === 'unread'
+                    ? 'Ulest'
+                    : filter === 'starred'
+                    ? 'Stjernemerket'
+                    : filter === 'sent'
+                    ? 'Sendt'
+                    : 'Utkast'}
                 </Button>
               ))}
             </Stack>
@@ -1194,7 +1260,7 @@ function EmailListView({
                 <React.Fragment key={email.id}>
                   <ListItemButton
                     onClick={() => onEmailClick(email)}
-                    aria-label={`${email.isRead ? ', ' : 'Ulest: '}${email.subject} fra ${email.from}`}
+                    aria-label={`${email.isRead ? '' : 'Ulest: '}${email.subject} fra ${email.from}`}
                     sx={{
                       borderRadius: 1,
                       mb: 1,
@@ -1210,7 +1276,7 @@ function EmailListView({
                     <ListItemText
                       primary={
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <Typography variant="body1" sx={{ fontWeight: mail.isRead ? 'normal' : 'bold' }}>
+                          <Typography variant="body1" sx={{ fontWeight: email.isRead ? 'normal' : 'bold' }}>
                             {email.from}
                           </Typography>
                           {email.hasAttachments && <AttachIcon fontSize="small" aria-label="Har vedlegg" />}
@@ -1221,7 +1287,7 @@ function EmailListView({
                       }
                       secondary={
                         <>
-                          <Typography variant="body2" sx={{ fontWeight: mail.isRead ? 'normal' : 'bold' }}>
+                          <Typography variant="body2" sx={{ fontWeight: email.isRead ? 'normal' : 'bold' }}>
                             {email.subject}
                           </Typography>
                           <Typography variant="caption" color="text.secondary">
@@ -1355,7 +1421,7 @@ interface MeetingListViewProps {
   onCreateNote: (meeting: Meeting) => void;
   onSendEmail: (meeting: Meeting) => void;
   onOpenChat: (meeting: Meeting) => void;
-  theming: any;
+  theming: Theming;
 }
 
 function MeetingListView({
@@ -1370,6 +1436,7 @@ function MeetingListView({
 }: MeetingListViewProps) {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [selectedMeeting, setSelectedMeeting] = useState<Meeting | null>(null);
+  const meetingFilters: MeetingListViewProps['meetingFilter'][] = ['upcoming', 'all', 'completed'];
 
   const filteredMeetings = meetings.filter((meeting) => {
     if (meetingFilter === 'upcoming') return meeting.status === 'upcoming';
@@ -1405,26 +1472,26 @@ function MeetingListView({
     <Box role="region" aria-label="Møteoversikt">
       {/* Filter Buttons */}
       <Stack direction="row" spacing={2} sx={{ mb: 3 }} role="group" aria-label="Møtefiltre">
-        {[
-          { value: 'upcoming', label: 'Kommende', count: meetings.filter((m) => m.status === 'upcoming').length },
-          { value: 'all', label: 'Alle møter', count: meetings.length },
-          { value: 'completed', label: 'Fullført', count: meetings.filter((m) => m.status === 'completed').length },
-        ].map((filter) => (
+        {meetingFilters.map((filter) => (
           <Button
-            key={filter.value}
-            variant={meetingFilter === filter.value ? 'contained' : 'outlined'}
-            onClick={() => setMeetingFilter(filter.value as any)}
+            key={filter}
+            variant={meetingFilter === filter ? 'contained' : 'outlined'}
+            onClick={() => setMeetingFilter(filter)}
             startIcon={<MeetingIcon aria-hidden="true" />}
-            aria-pressed={meetingFilter === filter.value}
+            aria-pressed={meetingFilter === filter}
             sx={{
-              bgcolor: meetingFilter === filter.value ? theming.colors.primary : 'transparent',
-              color: meetingFilter === filter.value ? 'white' : theming.colors.primary, '&:focus-visible': {
+              bgcolor: meetingFilter === filter ? theming.colors.primary : 'transparent',
+              color: meetingFilter === filter ? 'white' : theming.colors.primary, '&:focus-visible': {
                 outline: '3px solid',
                 outlineColor: 'primary.main',
                 outlineOffset: '2px',
               }}}
           >
-            {filter.label} ({filter.count})
+            {filter === 'upcoming'
+              ? `Kommende (${meetings.filter((m) => m.status === 'upcoming').length})`
+              : filter === 'all'
+              ? `Alle møter (${meetings.length})`
+              : `Fullført (${meetings.filter((m) => m.status === 'completed').length})`}
           </Button>
         ))}
       </Stack>
@@ -1447,7 +1514,7 @@ function MeetingListView({
               role="article"
               aria-label={`${meeting.title}, ${meeting.date} kl. ${meeting.time}`}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ', ') {
+                if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault();
                   onMeetingClick(meeting);
                 }
@@ -1587,7 +1654,7 @@ interface NotesGridViewProps {
   onScheduleMeeting: (note: Note) => void;
   onOpenChat: (note: Note) => void;
   onDelete: (noteId: string) => void;
-  theming: any;
+  theming: Theming;
 }
 
 function NotesGridView({
@@ -1683,7 +1750,7 @@ function NotesGridView({
             sx={{
               bgcolor: noteCategory === category ? getCategoryColor(category) : `${getCategoryColor(category)}20`,
               color: noteCategory === category ? 'white' : getCategoryColor(category),
-              fontWeight: oteCategory === category ? 'bold' : 'normal','&:hover': {
+              fontWeight: noteCategory === category ? 'bold' : 'normal','&:hover': {
                 bgcolor: noteCategory === category ? getCategoryColor(category) : `${getCategoryColor(category)}30`,
               }, '&:focus-visible': {
                 outline: '3px solid',
@@ -1739,7 +1806,7 @@ function NotesGridView({
               role="article"
               aria-label={`${note.title}, kategori: ${categoryLabels[note.category]}`}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ', ') {
+                if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault();
                   onNoteClick(note);
                 }
@@ -1797,7 +1864,7 @@ function NotesGridView({
                     WebkitLineClamp: 3,
                     WebkitBoxOrient: 'vertical'}}
                   dangerouslySetInnerHTML={{
-                    __html: note.content.replace(/<[^>]*>/g, ', ').substring(0, 150) + '...'}}
+                    __html: note.content.replace(/<[^>]*>/g, ' ').substring(0, 150) + '...'}}
                 />
 
                 {/* Tags */}
@@ -1963,7 +2030,7 @@ interface EmailDetailPanelProps {
   onCreateNote: () => void;
   onScheduleMeeting: () => void;
   onOpenChat: () => void;
-  theming: any;
+  theming: Theming;
 }
 
 function EmailDetailPanel({
@@ -2138,7 +2205,7 @@ interface MeetingDetailPanelProps {
   onSendEmail: () => void;
   onOpenChat: () => void;
   onPrepare: () => void;
-  theming: any;
+  theming: Theming;
 }
 
 function MeetingDetailPanel({
@@ -2386,7 +2453,7 @@ interface NoteEditorPanelProps {
   setShowAITools: (show: boolean) => void;
   aiToolState: AIToolState;
   setAiToolState: (state: AIToolState) => void;
-  runAIOperation: <T,>(operationName: string, apiPath: string, payload: any) => Promise<T>;
+  runAIOperation: <T,>(operationName: string, apiPath: string, payload: Record<string, unknown>) => Promise<T>;
   showGoogleDrive: boolean;
   setShowGoogleDrive: (show: boolean) => void;
   showDictionary: boolean;
@@ -2395,13 +2462,13 @@ interface NoteEditorPanelProps {
   setSelectedTextForDict: (text: string) => void;
   isSaving: boolean;
   lastSaved: Date | null;
-  theming: any;
+  theming: Theming;
   // Worklog context menu props
   userId: string;
   profession: string;
   projectId?: string;
-  onWorklogCreated?: (entry: any) => void;
-  onTaskCreated?: (task: any) => void;
+  onWorklogCreated?: (entry: Record<string, unknown>) => void;
+  onTaskCreated?: (task: Record<string, unknown>) => void;
 }
 
 function NoteEditorPanel({
@@ -2447,7 +2514,7 @@ function NoteEditorPanel({
   // Snackbar state for notifications
   const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'info' | 'warning' | 'error' }>({
     open: false,
-    message: ', ',
+    message: '',
     severity: 'info',
   });
 
@@ -2489,7 +2556,7 @@ function NoteEditorPanel({
   const handleAddTag = () => {
     if (newTag.trim() && !noteTags.includes(newTag.trim())) {
       setNoteTags([...noteTags, newTag.trim()]);
-      setNewTag(', ');
+      setNewTag('');
     }
   };
 
@@ -2518,7 +2585,7 @@ function NoteEditorPanel({
     if (!noteContent) return;
     setAiLoading(true);
     try {
-      const response = await runAIOperation<{ corrected: string; corrections: any[] }>(
+      const response = await runAIOperation<{ corrected: string; corrections: Record<string, unknown>[] }>(
         'grammar','/api/ai/grammar',
         { text: noteContent }
       );

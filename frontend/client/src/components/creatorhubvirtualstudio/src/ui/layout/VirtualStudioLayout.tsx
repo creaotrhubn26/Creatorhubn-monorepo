@@ -136,7 +136,7 @@ const InputModeIndicator = styled(Box, {
     : mode === 'touch'
     ? '#2196F3' : 'rgba(255, 255, 255, 0.7)',
   fontSize: 12,
-  fontWeight: 50,
+  fontWeight: 500,
 }));
 
 const FloatingPanelButton = styled(Fab)({
@@ -158,7 +158,7 @@ const SplitViewIndicator = styled(Box)({
   backgroundColor: 'rgba(255, 193, 7, 0.2)',
   color: '#FFC107',
   fontSize: 11,
-  fontWeight: 50,
+  fontWeight: 500,
   display: 'flex',
   alignItems: 'center',
   gap: 4,

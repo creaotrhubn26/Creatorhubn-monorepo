@@ -528,7 +528,7 @@ export const MultiSiteManager: React.FC<MultiSiteManagerProps> = ({
     const newWorkspace: Workspace = {
       id: `workspace_${Date.now()}`,
       name: workspaceData.name || 'New Workspace',
-      description: workspaceData.description as any || '',
+      description: workspaceData.description || '',
       sites: [],
       users: [],
       owner: 'current-user',
@@ -673,7 +673,7 @@ export const MultiSiteManager: React.FC<MultiSiteManagerProps> = ({
             }
               secondary={
                 <Box>
-                  <Typography variant="body2">{workspace.description as any}</Typography>
+                  <Typography variant="body2">{workspace.description}</Typography>
                   <Box sx={{ display: 'flex', gap: 1, mt: 0.5 }}>
                     <Chip size="small" label={`${workspace.sites.length} sites`} />
                     <Chip size="small" label={`${workspace.users.length} users`} />
@@ -836,7 +836,7 @@ export const MultiSiteManager: React.FC<MultiSiteManagerProps> = ({
                   <InputLabel>Site Type</InputLabel>
                   <Select
                     value={editingSite.type ||'development'}
-                    onChange={(e) => setEditingSite(prev => ({ ...prev, type: e.target.value as any }))}
+                    onChange={(e) => setEditingSite(prev => ({ ...prev, type: e.target.value as 'production' | 'staging' | 'development' }))}
                   >
                     <MenuItem value="development">Development</MenuItem>
                     <MenuItem value="staging">Staging</MenuItem>

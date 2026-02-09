@@ -119,7 +119,7 @@ export default function UniversalVendorShowcasePage() {
       <Box sx={{ mb:  4, textAlign: 'center',}}>
         <Typography variant="h3"
           sx={{ 
-            fontWeight: 7,
+            fontWeight: 700,
             mb:  2,
             background: 'linear-gradient(135deg, #CREATOR_HUB_BRANDING.colors.PHOTOGRAPHY, #e91e63, #9c27b0)',
             backgroundClip: 'text',
@@ -215,7 +215,7 @@ export default function UniversalVendorShowcasePage() {
             {currentConfig.icon}
           </Avatar>
           <Box>
-            <Typography variant="h4" sx={{  fontWeight: 7, color: currentConfig.color  }}>
+            <Typography variant="h4" sx={{  fontWeight: 700, color: currentConfig.color  }}>
               {currentConfig.name}
             </Typography>
             <Typography variant="body1" sx={{ color: 'text.secondary',}}>
@@ -249,8 +249,8 @@ export default function UniversalVendorShowcasePage() {
         <Box sx={{ mb:  4 }}>
           <Typography variant="h5"
             sx={{ 
-              fontWeight: 60
-              mb:  3,
+              fontWeight: 600,
+              mb: 3,
               color: currentConfig.color,
               display: 'flex',
               alignItems: 'center',

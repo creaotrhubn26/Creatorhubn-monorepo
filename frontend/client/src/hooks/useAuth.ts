@@ -2,12 +2,13 @@ import { useState, useEffect, useCallback } from 'react';
 import { useGoogleSSO } from './useGoogleSSO';
 import type { GoogleUser } from '../services/GoogleSSOService';
 
-// Backend API URL — use relative URLs so Vercel serverless functions handle /api/* in production
-const API_BASE_URL = import.meta.env.VITE_API_URL || '';
+// Backend API URL — points to Render backend in production
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://wedflow-api.onrender.com';
+const isDev = typeof window !== 'undefined' && (import.meta.env.DEV || window.location.hostname === 'localhost');
 
-/** Build URL for auth endpoints — relative by default (works with Vercel serverless functions) */
+/** Build absolute URL for auth endpoints */
 function authUrl(path: string): string {
-  return API_BASE_URL ? `${API_BASE_URL}${path}` : path;
+  return isDev ? path : `${API_BASE_URL}${path}`;
 }
 
 interface User extends GoogleUser {

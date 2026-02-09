@@ -67,7 +67,7 @@ export default function QuoteCreationModal({
   const { user } = useAuth();
   
   // Theming system
-  const theming = useTheming('photographer, ');
+  const theming = useTheming('photographer');
   const [quoteData, setQuoteData] = useState({
     title: `Tilbud for ${clientData.projectType || 'Prosjekt,'}`,
     description: '',

@@ -1,5 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
 
+export interface PWASnackbarState {
+  open: boolean;
+  message: string;
+  severity: 'success' | 'info' | 'warning' | 'error';
+}
+
 interface GeolocationData {
   lat: number;
   lng: number;
@@ -88,10 +94,17 @@ export function useTimeTrackingPWA() {
     };
   }, []);
 
+  // Snackbar state for notifications
+  const [pwaSnackbar, setPwaSnackbar] = useState<PWASnackbarState>({
+    open: false,
+    message: '',
+    severity: 'info',
+  });
+
   // Install PWA
   const installPWA = useCallback(async () => {
     if (!deferredPrompt) {
-      alert('App already installed or install prompt not available');
+      setPwaSnackbar({ open: true, message: 'Appen er allerede installert eller installasjonsforespørsel er ikke tilgjengelig', severity: 'warning' });
       return false;
     }
 
@@ -110,7 +123,7 @@ export function useTimeTrackingPWA() {
   // Request notification permission
   const requestNotificationPermission = useCallback(async () => {
     if (!('Notification' in window)) {
-      alert('Notifications not supported in this browser');
+      setPwaSnackbar({ open: true, message: 'Varsler støttes ikke i denne nettleseren', severity: 'error' });
       return false;
     }
 
@@ -120,13 +133,21 @@ export function useTimeTrackingPWA() {
     setPwaStatus((prev) => ({ ...prev, hasNotificationPermission: granted }));
 
     if (granted && pwaStatus.serviceWorkerRegistration) {
+      const vapidKey = import.meta.env.VITE_VAPID_PUBLIC_KEY || '';
+      if (!vapidKey) {
+        setPwaSnackbar({
+          open: true,
+          message: 'Push-varsler er ikke konfigurert (mangler VAPID-nokkel).',
+          severity: 'warning'
+        });
+        return false;
+      }
+
       // Subscribe to push notifications
       try {
         const subscription = await pwaStatus.serviceWorkerRegistration.pushManager.subscribe({
           userVisibleOnly: true,
-          applicationServerKey: urlBase64ToUint8Array(
-            import.meta.env.VITE_VAPID_PUBLIC_KEY || ', ',
-          ),
+          applicationServerKey: urlBase64ToArrayBuffer(vapidKey),
         });
 
         // Send subscription to server
@@ -198,9 +219,11 @@ export function useTimeTrackingPWA() {
         pwaStatus.serviceWorkerRegistration.showNotification(title, {
           icon: '/icons/time-tracking-192.png',
           badge: '/icons/time-tracking-badge.png',
-          vibrate: [100, 50, 100],
           ...options,
         });
+        if ('vibrate' in navigator) {
+          navigator.vibrate([100, 50, 100]);
+        }
       } else {
         new Notification(title, options);
       }
@@ -236,7 +259,7 @@ export function useTimeTrackingPWA() {
         const storeName = type === 'entry' ? 'pending-entries' : 'pending-clock-out';
 
         await new Promise((resolve, reject) => {
-          const transaction = db.transaction([storeName] 'readwrite');
+          const transaction = db.transaction([storeName], 'readwrite');
           const store = transaction.objectStore(storeName);
           const request = store.add({ data, timestamp: Date.now() });
 
@@ -245,8 +268,11 @@ export function useTimeTrackingPWA() {
         });
 
         // Trigger background sync when back online
-        if ('sync' in pwaStatus.serviceWorkerRegistration) {
-          await pwaStatus.serviceWorkerRegistration.sync.register(
+        const registration = pwaStatus.serviceWorkerRegistration as ServiceWorkerRegistration & {
+          sync?: { register: (tag: string) => Promise<void> };
+        };
+        if (registration.sync?.register) {
+          await registration.sync.register(
             type === 'entry' ? 'sync-time-entries' : 'sync-clock-out',
           );
         }
@@ -268,21 +294,24 @@ export function useTimeTrackingPWA() {
     sendNotification,
     scheduleReminder,
     saveForOfflineSync,
+    pwaSnackbar,
+    setPwaSnackbar,
   };
 }
 
 // Helper: Convert VAPID key
-function urlBase64ToUint8Array(base64String: string): Uint8Array {
+function urlBase64ToArrayBuffer(base64String: string): ArrayBuffer {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
-  const base64 = (base64String + padding).replace(/-/g'+').replace(/_/g'/');
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
   const rawData = window.atob(base64);
-  const outputArray = new Uint8Array(rawData.length);
+  const buffer = new ArrayBuffer(rawData.length);
+  const outputArray = new Uint8Array(buffer);
 
   for (let i = 0; i < rawData.length; ++i) {
     outputArray[i] = rawData.charCodeAt(i);
   }
 
-  return outputArray;
+  return buffer;
 }
 
 // Helper: Open IndexedDB

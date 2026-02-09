@@ -354,7 +354,7 @@ export class MemoryCardPriceUpdater {
     config: PriceUpdateConfig;
     totalUpdates: number;
     significantChanges: number;
-,} {
+  } {
     const totalUpdates = Array.from(this.priceHistory.values())
       .reduce((sum, history) => sum + history.length, 0);
     
@@ -366,8 +366,8 @@ export class MemoryCardPriceUpdater {
       config: this.config,
       totalUpdates,
       significantChanges
-  };
-}
+    };
+  }
 
   /**
    * Force immediate update

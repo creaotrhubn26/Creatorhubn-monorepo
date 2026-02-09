@@ -1,10 +1,195 @@
 /**
  * CreatorHub Academy Toast Templates
  * Pre-configured toast notifications for the Academy system
+ * Includes utility functions for rendering toasts with themed icons
  */
 
+import React from 'react';
 import { useTheming } from '../../../utils/theming-helper';
-import { CheckCircle, Error, Warning, Info, School, PlayArrow, Pause, Download, Bookmark, Note, Star, Person, VideoLibrary, Assignment, Quiz, Certificate } from '@mui/icons-material';
+import { CheckCircle, Error, Warning, Info, School, PlayArrow, Pause, Download, Bookmark, Note, Star, Person, VideoLibrary, Assignment, Quiz, Verified } from '@mui/icons-material';
+
+// Icon mapping for academy features and status types
+export const getAcademyIcon = (iconType: string, size: number = 24) => {
+  const iconProps = { sx: { fontSize: size } };
+  switch (iconType) {
+    case 'success':
+    case 'course-created':
+    case 'course-published':
+      return <CheckCircle {...iconProps} />;
+    case 'error':
+    case 'course-failed':
+      return <Error {...iconProps} />;
+    case 'warning':
+    case 'lesson-warning':
+      return <Warning {...iconProps} />;
+    case 'info':
+    case 'lesson-added':
+    case 'enrollment-info':
+      return <Info {...iconProps} />;
+    case 'school':
+    case 'course':
+      return <School {...iconProps} />;
+    case 'play':
+    case 'lesson-playing':
+    case 'video-play':
+      return <PlayArrow {...iconProps} />;
+    case 'pause':
+    case 'lesson-paused':
+      return <Pause {...iconProps} />;
+    case 'download':
+    case 'resource-download':
+      return <Download {...iconProps} />;
+    case 'bookmark':
+    case 'bookmark-added':
+      return <Bookmark {...iconProps} />;
+    case 'note':
+    case 'notes-added':
+      return <Note {...iconProps} />;
+    case 'star':
+    case 'rating':
+    case 'favorite-course':
+      return <Star {...iconProps} />;
+    case 'person':
+    case 'user':
+    case 'student':
+    case 'instructor':
+      return <Person {...iconProps} />;
+    case 'video':
+    case 'video-library':
+    case 'video-lesson':
+      return <VideoLibrary {...iconProps} />;
+    case 'assignment':
+    case 'assignment-submitted':
+      return <Assignment {...iconProps} />;
+    case 'quiz':
+    case 'quiz-completed':
+      return <Quiz {...iconProps} />;
+    case 'certificate':
+    case 'certificate-earned':
+      return <Verified {...iconProps} />;
+    default:
+      return <Info {...iconProps} />;
+  }
+};
+
+// Hook to use academy theming with toasts
+export const useAcademyToastTheming = (templateId: string) => {
+  const theming = useTheming('academy');
+  
+  // Find the template configuration for this templateId
+  const template = academyToastTemplates.find((t: any) => t.id === templateId);
+  
+  // Memoize template-specific theming
+  const templateSpecificStyle = React.useMemo(() => {
+    if (!template) {
+      return {
+        backgroundColor: theming.colors.primary,
+        color: '#ffffff'
+      };
+    }
+    return {
+      backgroundColor: template.config.style.backgroundColor || theming.colors.primary,
+      color: template.config.style.textColor || '#ffffff',
+      borderRadius: template.config.style.borderRadius,
+      boxShadow: template.config.style.boxShadow,
+      borderColor: template.config.style.borderColor,
+      fontSize: template.config.style.fontSize,
+      fontWeight: template.config.style.fontWeight,
+      padding: template.config.style.padding
+    };
+  }, [templateId, template, theming.colors.primary]);
+  
+  return {
+    getThemedStyle: (baseStyle: Record<string, any>) => ({
+      ...baseStyle,
+      ...templateSpecificStyle
+    }),
+    getThemedIcon: (iconType: string) => {
+      const iconFromTemplate = template?.config.icon.customIcon || getAcademyIcon(template?.config.icon.type || iconType, template?.config.icon.size);
+      return iconFromTemplate || getAcademyIcon(iconType);
+    },
+    colors: theming.colors,
+    theming,
+    template,
+    templateId
+  };
+};
+
+// Function to render a toast with themed styling and icon
+export const renderAcademyToast = (template: any) => {
+  const theming = useTheming('academy');
+  const icon = template.config.icon.customIcon || getAcademyIcon(template.config.icon.type, template.config.icon.size);
+  
+  return {
+    message: template.config.message,
+    icon,
+    style: {
+      ...template.config.style,
+      backgroundColor: theming.colors.primary || template.config.style.backgroundColor
+    },
+    actions: template.config.actions,
+    type: template.config.type
+  };
+};
+
+// Course status helpers using icons
+export const getCourseStatusIcon = (status: 'created' | 'published' | 'archived' | 'failed') => {
+  const size = 20;
+  switch (status) {
+    case 'created': return <School sx={{ fontSize: size }} />;
+    case 'published': return <CheckCircle sx={{ fontSize: size }} />;
+    case 'archived': return <Note sx={{ fontSize: size }} />;
+    case 'failed': return <Error sx={{ fontSize: size }} />;
+    default: return <Info sx={{ fontSize: size }} />;
+  }
+};
+
+// Lesson actions helpers using icons
+export const getLessonActionIcon = (action: 'play' | 'pause' | 'download' | 'bookmark' | 'note') => {
+  const size = 18;
+  switch (action) {
+    case 'play': return <PlayArrow sx={{ fontSize: size }} />;
+    case 'pause': return <Pause sx={{ fontSize: size }} />;
+    case 'download': return <Download sx={{ fontSize: size }} />;
+    case 'bookmark': return <Bookmark sx={{ fontSize: size }} />;
+    case 'note': return <Note sx={{ fontSize: size }} />;
+    default: return <Info sx={{ fontSize: size }} />;
+  }
+};
+
+// Student progress indicators using icons
+export const getStudentBadgeIcon = (badge: 'assignment' | 'quiz' | 'star' | 'verified') => {
+  const size = 22;
+  switch (badge) {
+    case 'assignment': return <Assignment sx={{ fontSize: size }} />;
+    case 'quiz': return <Quiz sx={{ fontSize: size }} />;
+    case 'star': return <Star sx={{ fontSize: size }} />;
+    case 'verified': return <Verified sx={{ fontSize: size }} />;
+    default: return <CheckCircle sx={{ fontSize: size }} />;
+  }
+};
+
+// User role icons for academy
+export const getUserRoleIcon = (role: 'instructor' | 'student' | 'admin') => {
+  const size = 20;
+  switch (role) {
+    case 'instructor': return <School sx={{ fontSize: size }} />;
+    case 'student': return <Person sx={{ fontSize: size }} />;
+    case 'admin': return <Star sx={{ fontSize: size }} />;
+    default: return <Person sx={{ fontSize: size }} />;
+  }
+};
+
+// Video library helpers
+export const getVideoLibraryIcon = (type: 'library' | 'lesson' | 'playlist') => {
+  const size = 24;
+  switch (type) {
+    case 'library': return <VideoLibrary sx={{ fontSize: size }} />;
+    case 'lesson': return <PlayArrow sx={{ fontSize: size }} />;
+    case 'playlist': return <Assignment sx={{ fontSize: size }} />;
+    default: return <VideoLibrary sx={{ fontSize: size }} />;
+  }
+};
 
 export const academyToastTemplates = [
   // Course Management Templates

@@ -193,7 +193,7 @@ export default function ScrollStoryWithToasts({
               minWidth: 300,
               boxShadow: 3'& .MuiAlert-message': {
                 fontSize: '0.95rem',
-                fontWeight: 50,
+                fontWeight: 500,
               }}}
           >
             {currentToast.message}

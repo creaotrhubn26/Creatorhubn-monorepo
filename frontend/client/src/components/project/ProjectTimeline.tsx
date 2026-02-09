@@ -1,18 +1,18 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { apiRequest } from '@/lib/queryClient';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
-import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
-import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
-import getProfessionIcon from '@/utils/profession-icons';
-import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
+import { useProfessionConfigs as _useProfessionConfigs } from '@/hooks/useProfessionConfigs';
+import { useProfessionAdapter as _useProfessionAdapter } from '@/hooks/useProfessionAdapter';
+import { getProfessionIcon as _getProfessionIcon } from '@/utils/profession-icons';
+import { useDynamicProfessions as _useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
 // Project Context integration
 import { useProject } from '../../contexts/ProjectContext';
 // Comprehensive feature system integration
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
 import { useTheming } from '../../utils/theming-helper';
 // Resume/CV Integration
-import { useProjectCompletionTrigger, addCompletedProjectToResumes } from '../../utils/resume-project-integration';
+import { useProjectCompletionTrigger, addCompletedProjectToResumes as _addCompletedProjectToResumes } from '../../utils/resume-project-integration';
 import { usePushNotifications } from '../../hooks/usePushNotifications';
 import { PushNotificationSettings } from '../shared/PushNotificationSettings';
 import {
@@ -25,7 +25,7 @@ import {
   DialogContent,
   DialogActions,
   TextField,
-  MenuItem,
+  MenuItem as _MenuItem,
   Chip,
   Card,
   CardContent,
@@ -49,13 +49,14 @@ import {
   Edit as EditIcon,
   Delete as DeleteIcon,
   CheckCircle as CheckCircleIcon,
-  RadioButtonUnchecked as RadioButtonUncheckedIcon,
-  Flag as FlagIcon,
-  WorkOutline,
-  MovieCreation,
+  RadioButtonUnchecked as _RadioButtonUncheckedIcon,
+  Flag as _FlagIcon,
+  WorkOutline as _WorkOutline,
+  MovieCreation as _MovieCreation,
   Notifications,
   NotificationsActive,
   AccountBalance as SplitSheetIcon,
+  Analytics as AnalyticsIcon,
 } from '@mui/icons-material';
 
 interface TimelineEvent {
@@ -125,37 +126,88 @@ export const ProjectTimeline: React.FC<ProjectTimelineProps> = ({
   selectedProject,
   profession,
 }) => {
-  const theme = useTheme();
+  const _theme = useTheme();
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const [pushSettingsOpen, setPushSettingsOpen] = useState(false);
   
   // Push notifications
-  const userId = user?.id || user?.sub;
+  const userId = user?.id;
   const { pushEnabled, isSupported } = usePushNotifications(userId, projectId);
 
   const {
     addProjectMilestone,
     getProjectTimeline,
-    updateProjectStatus,
-    addProjectComment,
+    updateProjectStatus: _updateProjectStatus,
+    addProjectComment: _addProjectComment,
     getProjectComments,
     getProjectFiles,
     getProjectIntegrations,
     getProjectPermissions,
+    getProjectCollaborators,
     validateProjectCompliance,
     getProjectAuditTrail,
     checkProjectHealth,
     getProjectAnalytics,
-    optimizeProjectData,
-    analyzeProjectData,
-  } = useProject();
+    optimizeProjectData: _optimizeProjectData,
+    analyzeProjectData: _analyzeProjectData,
+  } = useProject() || {};
 
-  const { features, communication } = useEnhancedMasterIntegration();
+  const { features, communication, dataFlow, componentRegistry } = useEnhancedMasterIntegration();
   const theming = useTheming('photographer');
   const { handleProjectCompleted } = useProjectCompletionTrigger();
 
-  const { data: events = [], isLoading } = useQuery({
+  // Query for timeline events - must be before useEffect to avoid hoisting issues
+  const { data: timelineEvents = [], isLoading } = useQuery({
+    queryKey: ['timeline-events', projectId],
+    queryFn: () => getProjectTimeline?.(projectId),
+    enabled: !!projectId && !!getProjectTimeline,
+  });
+
+  const events = timelineEvents;
+
+  // Register component with integration system
+  useEffect(() => {
+    componentRegistry.registerComponent({
+      id: 'project-timeline',
+      name: 'Project Timeline',
+      type: 'project',
+      category: 'project',
+      capabilities: ['timeline-management', 'event-tracking', 'milestone-management'],
+      dataKeys: ['timeline-events', 'project-status'],
+      dependencies: [],
+      props: [],
+      events: []
+    });
+
+    communication.registerComponent('project-timeline', 'project', ['timeline-management', 'event-tracking']);
+
+    // DataFlow nodes
+    dataFlow.registerNode({
+      type: 'source',
+      componentId: 'project-timeline',
+      dataKey: `timeline-events-${projectId}`,
+      transform: (data) => data
+    });
+
+    // Listen for timeline update requests
+    const unsubscribe = communication.onMessageType('timeline:add-event', (message: any) => {
+      if (message.data?.projectId === projectId) {
+        setDialogOpen(true);
+        if (message.data?.eventType) {
+          setFormData((prev: any) => ({ ...prev, type: message.data.eventType }));
+        }
+      }
+    });
+
+    return () => {
+      componentRegistry.unregisterComponent('project-timeline');
+      dataFlow.unregisterNode(`timeline-events-${projectId}`);
+      unsubscribe?.();
+    };
+  }, [projectId, events, componentRegistry, communication, dataFlow]);
+
+  const { data: _eventsQuery = [] } = useQuery({
     queryKey: [`project-timeline-${projectId}`],
     enabled: !!projectId,
     queryFn: async () => await getProjectTimeline(projectId),
@@ -280,16 +332,12 @@ export const ProjectTimeline: React.FC<ProjectTimelineProps> = ({
   });
 
   useEffect(() => {
-    features.trackFeatureUsage('project-timeline, ','component_opened', {
+    features.trackFeatureUsage('project-timeline', 'component_opened', {
       projectId,
       eventCount: events?.length || 0,
       timestamp: new Date().toISOString(),
     });
   }, [features, projectId, events?.length]);
-
-  useEffect(() => {
-    if (projectId) loadProjectContextData();
-  }, [projectId]);
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<TimelineEvent | null>(null);
@@ -312,9 +360,9 @@ export const ProjectTimeline: React.FC<ProjectTimelineProps> = ({
   const [projectComments, setProjectComments] = useState<any[]>([]);
   const [projectFiles, setProjectFiles] = useState<any[]>([]);
   const [projectIntegrations, setProjectIntegrations] = useState<any[]>([]);
-  const [projectPermissions, setProjectPermissions] = useState<any>(null);
+  const [_projectPermissions, _setProjectPermissions] = useState<any>(null);
   const [projectCompliance, setProjectCompliance] = useState<any>(null);
-  const [projectAuditTrail, setProjectAuditTrail] = useState<any[]>([]);
+  const [_projectAuditTrail, setProjectAuditTrail] = useState<any[]>([]);
   const [contextLoading, setContextLoading] = useState(false);
   const [contextError, setContextError] = useState<string | null>(null);
 
@@ -332,6 +380,7 @@ export const ProjectTimeline: React.FC<ProjectTimelineProps> = ({
   const [reminderSubject, setReminderSubject] = useState('Påminnelse: Vennligst signer kontrakten');
   const [reminderMessage, setReminderMessage] = useState('Hei! Dette er en vennlig påminnelse om å signere kontrakten for prosjektet. Gi beskjed om du har spørsmål.');
   const [reminderScheduleAt, setReminderScheduleAt] = useState<string>('');
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const createEventMutation = useMutation({
     mutationFn: async (eventData: any) =>
@@ -406,7 +455,7 @@ export const ProjectTimeline: React.FC<ProjectTimelineProps> = ({
     },
   });
 
-  const createMeetingMutation = useMutation({
+  const _createMeetingMutation = useMutation({
     mutationFn: async (eventData: any) => {
       const meetingPayload = {
         title: eventData.title,
@@ -440,7 +489,7 @@ export const ProjectTimeline: React.FC<ProjectTimelineProps> = ({
     },
   });
 
-  const createWorklogMutation = useMutation({
+  const _createWorklogMutation = useMutation({
     mutationFn: async (eventData: any) => {
       const worklogData = {
         projectId,
@@ -471,6 +520,58 @@ export const ProjectTimeline: React.FC<ProjectTimelineProps> = ({
       onWorklogCreate?.(data.worklog);
     },
   });
+
+  // Load project context data - useCallback and useEffect must be before any early returns
+  const loadProjectContextData = useCallback(async () => {
+    try {
+      setContextLoading(true);
+      setContextError(null);
+
+      const [health, analytics, collaborators, comments, files, integrations, permissions, compliance, auditTrail] = await Promise.all([
+        checkProjectHealth?.(projectId).catch(() => null),
+        getProjectAnalytics?.(projectId).catch(() => null),
+        getProjectCollaborators?.(projectId).catch(() => []),
+        getProjectComments?.(projectId).catch(() => []),
+        getProjectFiles?.(projectId).catch(() => []),
+        getProjectIntegrations?.(projectId).catch(() => []),
+        getProjectPermissions?.(projectId).catch(() => null),
+        validateProjectCompliance?.(projectId, []).catch(() => null),
+        getProjectAuditTrail?.(projectId).catch(() => []),
+      ]);
+
+      setProjectHealth(health);
+      setProjectAnalytics(analytics);
+      setProjectCollaborators(collaborators || []);
+      setProjectComments(comments || []);
+      setProjectFiles(files || []);
+      setProjectIntegrations(integrations || []);
+      _setProjectPermissions(permissions);
+      setProjectCompliance(compliance);
+      setProjectAuditTrail(auditTrail || []);
+    } catch (error: any) {
+      console.warn('Project context load error:', error);
+      setContextError(error?.message || 'Kunne ikke laste kontekst');
+    } finally {
+      setContextLoading(false);
+    }
+  }, [projectId, checkProjectHealth, getProjectAnalytics, getProjectCollaborators, getProjectComments, getProjectFiles, getProjectIntegrations, getProjectPermissions, validateProjectCompliance, getProjectAuditTrail]);
+
+  // Load project context data when projectId changes
+  useEffect(() => {
+    if (projectId) {
+      loadProjectContextData();
+    }
+  }, [projectId, loadProjectContextData]);
+
+  // Combine regular events with split sheet events - must be before early returns
+  const allEvents = useMemo(() => {
+    // Safely extract events array from various API response formats
+    const eventsArray = Array.isArray(events) 
+      ? events 
+      : (events as any)?.data || (events as any)?.events || (events as any)?.timeline || [];
+    const splitSheetArray = Array.isArray(splitSheetEvents) ? splitSheetEvents : [];
+    return [...eventsArray, ...splitSheetArray];
+  }, [events, splitSheetEvents]);
 
   const resetForm = () => {
     setFormData({
@@ -524,14 +625,18 @@ export const ProjectTimeline: React.FC<ProjectTimelineProps> = ({
   };
 
   const handleDelete = (eventId: string) => {
-    if (window.confirm('Er du sikker på at du vil slette denne hendelsen?')) {
-      features.trackFeatureUsage('project-timeline','event_delete', {
-        projectId,
-        eventId,
-        timestamp: new Date().toISOString(),
-      });
-      deleteEventMutation.mutate(eventId);
-    }
+    setConfirmDeleteId(eventId);
+  };
+
+  const executeDelete = () => {
+    if (!confirmDeleteId) return;
+    features.trackFeatureUsage('project-timeline','event_delete', {
+      projectId,
+      eventId: confirmDeleteId,
+      timestamp: new Date().toISOString(),
+    });
+    deleteEventMutation.mutate(confirmDeleteId);
+    setConfirmDeleteId(null);
   };
 
   const getEventTypeInfo = (value: string) => eventTypes.find((t) => t.value === value) || eventTypes[0];
@@ -540,7 +645,7 @@ export const ProjectTimeline: React.FC<ProjectTimelineProps> = ({
 
   // DaVinci Resolve integration
   const davinciIntegrationAccess = features.checkFeatureAccess('davinci-resolve-integration');
-  const openDavinciScriptManager = (event: TimelineEvent) => {
+  const _openDavinciScriptManager = (event: TimelineEvent) => {
     if (!davinciIntegrationAccess.hasAccess) return;
     features.trackFeatureUsage('davinci-resolve-integration','timeline_event_triggered', {
       projectId,
@@ -583,11 +688,7 @@ export const ProjectTimeline: React.FC<ProjectTimelineProps> = ({
         data = await apiRequest(`/api/contracts/signers?projectId=${projectId}`);
       } catch (e1) {
         if (cid) {
-          try {
-            data = await apiRequest(`/api/contracts/${cid}/signers`);
-          } catch (e2) {
-            throw e2;
-          }
+          data = await apiRequest(`/api/contracts/${cid}/signers`);
         } else {
           throw e1 as any;
         }
@@ -611,7 +712,9 @@ export const ProjectTimeline: React.FC<ProjectTimelineProps> = ({
       if (cname) {
         setReminderMessage(`Hei ${cname}! Dette er en vennlig påminnelse om å signere kontrakten. Ta kontakt hvis noe er uklart.`);
       }
-    } catch {}
+    } catch (_e) {
+      // Empty catch block - error handling not needed
+    }
   };
 
   const sendReminder = async () => {
@@ -626,47 +729,17 @@ export const ProjectTimeline: React.FC<ProjectTimelineProps> = ({
           from: 'project-timeline',
           to: 'universal-chat-widget',
           type: 'chat:prefill',
+          priority: 'medium',
           data: { message: prefill, selectConversationId: null, projectId }
         });
-      } catch {}
+      } catch (_e) {
+        // Empty catch block - error handling not needed
+      }
       setReminderSuccess('Påminnelse er gjort klar i chatten.');
     } catch (err: any) {
       setReminderError(err?.message || 'Kunne ikke starte påminnelse');
     } finally {
       setReminderLoading(false);
-    }
-  };
-
-  const loadProjectContextData = async () => {
-    try {
-      setContextLoading(true);
-      setContextError(null);
-
-      const [health, analytics, collaborators, comments, files, integrations, permissions, compliance, auditTrail] = await Promise.all([
-        checkProjectHealth(projectId),
-        getProjectAnalytics(projectId),
-        getProjectCollaborators(projectId),
-        getProjectComments(projectId),
-        getProjectFiles(projectId),
-        getProjectIntegrations(projectId),
-        getProjectPermissions(projectId),
-        validateProjectCompliance(projectId),
-        getProjectAuditTrail(projectId),
-      ]);
-
-      setProjectHealth(health);
-      setProjectAnalytics(analytics);
-      setProjectCollaborators(collaborators);
-      setProjectComments(comments);
-      setProjectFiles(files);
-      setProjectIntegrations(integrations);
-      setProjectPermissions(permissions);
-      setProjectCompliance(compliance);
-      setProjectAuditTrail(auditTrail);
-    } catch (error: any) {
-      setContextError(error?.message || 'Kunne ikke laste kontekst');
-    } finally {
-      setContextLoading(false);
     }
   };
 
@@ -836,11 +909,11 @@ export const ProjectTimeline: React.FC<ProjectTimelineProps> = ({
         {projectCompliance && (
           <Paper sx={{ p: 2, mb: 2, bgcolor: projectCompliance.compliant ? 'success.light' : 'warning.light' }}>
             <Typography variant="subtitle2" gutterBottom>
-              Compliance: {projectCompliance.compliant ? 'Compliant' : 'Issues Found'}
+              Samsvar: {projectCompliance.compliant ? 'OK' : 'Problemer funnet'}
             </Typography>
             {projectCompliance.violations && projectCompliance.violations.length > 0 && (
               <Typography variant="body2" color="text.secondary">
-                Violations: {projectCompliance.violations.length}
+                Brudd: {projectCompliance.violations.length}
               </Typography>
             )}
           </Paper>
@@ -848,11 +921,6 @@ export const ProjectTimeline: React.FC<ProjectTimelineProps> = ({
       </Box>
     );
   };
-
-  // Combine regular events with split sheet events
-  const allEvents = useMemo(() => {
-    return [...(events || []), ...splitSheetEvents];
-  }, [events, splitSheetEvents]);
 
   // Normalize events to handle different field name formats
   const normalizedEvents = allEvents.map((event: any) => ({
@@ -925,7 +993,7 @@ export const ProjectTimeline: React.FC<ProjectTimelineProps> = ({
                 variant="outlined"
                 startIcon={pushEnabled ? <NotificationsActive /> : <Notifications />}
                 onClick={() => setPushSettingsOpen(true)}
-                color={pushEnabled ? 'primary' : 'default'}
+                color={pushEnabled ? 'primary' : 'inherit'}
               >
                 Push-varsler
               </Button>
@@ -1016,6 +1084,7 @@ export const ProjectTimeline: React.FC<ProjectTimelineProps> = ({
                                       from: 'project-timeline',
                                       to: 'split-sheet-manager',
                                       type: 'view-split-sheet',
+                                      priority: 'medium',
                                       data: { splitSheetId: event.metadata.splitSheetId }
                                     });
                                   }
@@ -1349,18 +1418,22 @@ export const ProjectTimeline: React.FC<ProjectTimelineProps> = ({
       {/* Project Context & Analytics */}
       <Paper sx={{ mt: 3, p: 2, bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider' }}>
         <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          📊 Project Context & Analytics
+          <AnalyticsIcon /> Prosjektkontekst og Analyse
         </Typography>
         {(() => {
           const has = !!contractSummary?.hasContract || !!contractSummary?.contractId;
           const signed = !!contractSummary?.isSigned || contractSummary?.status === 'signed';
           const navigateContracts = () => {
             try {
-              communication?.sendMessage?.({ from: 'project-timeline', to: 'all', type: 'navigate:contracts', data: { projectId } });
-            } catch {}
+              communication?.sendMessage?.({ from: 'project-timeline', to: 'all', type: 'navigate:contracts', priority: 'medium', data: { projectId } });
+            } catch (_e) {
+              // Empty catch block - error handling not needed
+            }
             try {
               window.dispatchEvent(new CustomEvent('custom-navigation', { detail: { type: 'navigate', tab: 'contracts' } }));
-            } catch {}
+            } catch (_e) {
+              // Empty catch block - error handling not needed
+            }
           };
           if (!has) {
             return (
@@ -1375,6 +1448,18 @@ export const ProjectTimeline: React.FC<ProjectTimelineProps> = ({
         })()}
         {renderProjectContextPanel()}
       </Paper>
+
+      {/* Confirm Delete Dialog */}
+      <Dialog open={!!confirmDeleteId} onClose={() => setConfirmDeleteId(null)}>
+        <DialogTitle>Bekreft sletting</DialogTitle>
+        <DialogContent>
+          <Typography>Er du sikker på at du vil slette denne hendelsen? Denne handlingen kan ikke angres.</Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmDeleteId(null)}>Avbryt</Button>
+          <Button onClick={executeDelete} color="error" variant="contained">Slett</Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

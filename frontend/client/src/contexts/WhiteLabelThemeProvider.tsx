@@ -64,25 +64,25 @@ const createBrandedTheme = (brandColor: string, mode: 'light' | 'dark', branding
         '-apple-system','BlinkMacSystemFont','"Segoe UI"','Roboto',', "Helvetica Neue"','Arial','sans-serif',
       ].join(''),
       h1: {
-        fontWeight: 70,
+        fontWeight: 700,
         color: primaryPalette.main,
       },
       h2: {
-        fontWeight: 600
+        fontWeight: 600,
         color: primaryPalette.main,
       },
       h3: {
-        fontWeight: 600
+        fontWeight: 600,
         color: primaryPalette.main,
       },
       h4: {
-        fontWeight: 600
+        fontWeight: 600,
       },
       h5: {
-        fontWeight: 50,
+        fontWeight: 500,
       },
       h6: {
-        fontWeight: 50,
+        fontWeight: 500,
       },
     },
     components: {
@@ -91,10 +91,11 @@ const createBrandedTheme = (brandColor: string, mode: 'light' | 'dark', branding
           root: {
             borderRadius: 8,
             textTransform: 'none',
-            fontWeight: 50,
+            fontWeight: 500,
           },
           contained: {
-            boxShadow: 'none','&:hover': {
+            boxShadow: 'none',
+            '&:hover': {
               boxShadow: `0 4px 12px ${alpha(brandColor, 0.3)}`,
             },
           },
@@ -144,7 +145,7 @@ const createBrandedTheme = (brandColor: string, mode: 'light' | 'dark', branding
           filled: {
             backgroundColor: alpha(primaryPalette.main, 0.1),
             color: primaryPalette.main,
-            fontWeight: 50,
+            fontWeight: 500,
           },
         },
       },
@@ -157,7 +158,8 @@ const createBrandedTheme = (brandColor: string, mode: 'light' | 'dark', branding
                 borderColor: primaryPalette.main,
                 borderWidth: 2,
               },
-            }'& .MuiInputLabel-root.Mui-focused': {
+            },
+            '& .MuiInputLabel-root.Mui-focused': {
               color: primaryPalette.main,
             },
           },
@@ -166,7 +168,7 @@ const createBrandedTheme = (brandColor: string, mode: 'light' | 'dark', branding
       MuiTableCell: {
         styleOverrides: {
           head: {
-            fontWeight: 600
+            fontWeight: 600,
             backgroundColor: alpha(primaryPalette.main, 0.05),
             color: primaryPalette.main,
           },
@@ -176,7 +178,8 @@ const createBrandedTheme = (brandColor: string, mode: 'light' | 'dark', branding
         styleOverrides: {
           root: {
             color: primaryPalette.main,
-            textDecoration: 'none', '&:hover': {
+            textDecoration: 'none',
+            '&:hover': {
               textDecoration: 'underline',
             },
           },
@@ -204,7 +207,8 @@ const createBrandedTheme = (brandColor: string, mode: 'light' | 'dark', branding
         styleOverrides: {
           root: {
             textTransform: 'none',
-            fontWeight: 50'&.Mui-selected': {
+            fontWeight: 500,
+            '&.Mui-selected': {
               color: primaryPalette.main,
             },
           },

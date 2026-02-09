@@ -52,7 +52,7 @@ export default function CornerButtons({
   const theme = useTheme();
   
   // Theming system
-  const theming = useTheming('photographer, ');
+  const theming = useTheming('photographer');
   const isMobile = useMediaQuery(theme.breakpoints.down(, 'md'));
 
   // Get unread notification count

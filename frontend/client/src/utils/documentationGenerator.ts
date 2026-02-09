@@ -309,13 +309,13 @@ export class DocumentationGenerator {
       
       for (const match of propMatches) {
         props.push({
-          name: match[],
+          name: match[1],
           type: match[3].trim(),
-          required: !match[],
+          required: !match[2],
           description: 'No description available'
-    });
+        });
+      }
     }
-  }
     
     return props;
 }
@@ -330,15 +330,15 @@ export class DocumentationGenerator {
     
     for (const match of methodMatches) {
       methods.push({
-        name: match[],
-        parameters:  [],
+        name: match[1],
+        parameters: [],
         returns: {
           type: match[2].trim(),
           description: 'No description available'
-    },
+        },
         description: 'No description available'
-  });
-  }
+      });
+    }
     
     return methods;
 }
@@ -352,11 +352,11 @@ export class DocumentationGenerator {
     
     for (const match of exampleMatches) {
       const example = match[0]
-        .replace(/@example\s*\n\s*\*\s*``, `, /g, '')
-        .replace(/```$/', ')
+        .replace(/@example\s*\n\s*\*\s*/g, '')
+        .replace(/```/g, '')
         .trim();
       examples.push(example);
-  }
+    }
     
     return examples;
 }

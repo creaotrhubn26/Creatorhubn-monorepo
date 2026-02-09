@@ -357,7 +357,7 @@ export const CoursePostAnalyticsDialog: React.FC<CoursePostAnalyticsDialogProps>
       textStyle: {
         color: '#333',
         fontSize: 13,
-        fontWeight: 50,
+        fontWeight: 500,
       },
       formatter: (params: any) => {
         let result = `<div style="font-weight: 700; margin-bottom: 8px; font-size: 14px;">${params[0].axisValue}</div>`;
@@ -564,7 +564,7 @@ export const CoursePostAnalyticsDialog: React.FC<CoursePostAnalyticsDialogProps>
       textStyle: {
         color: '#333',
         fontSize: 13,
-        fontWeight: 50,
+        fontWeight: 500,
       },
       formatter: (params: any) => {
         const hour = params[0].axisValue;
@@ -697,7 +697,7 @@ export const CoursePostAnalyticsDialog: React.FC<CoursePostAnalyticsDialogProps>
       textStyle: {
         color: '#333',
         fontSize: 13,
-        fontWeight: 50,
+        fontWeight: 500,
       },
       formatter: (params: any) => {
         const stage = params.name;
@@ -1584,7 +1584,7 @@ export const CoursePostAnalyticsDialog: React.FC<CoursePostAnalyticsDialogProps>
                           textStyle: {
                             color: '#333',
                             fontSize: 13,
-                            fontWeight: 50,
+                            fontWeight: 500,
                           },
                           formatter: (params: any) => {
                             const postTitle = params[0].axisValue;
@@ -1726,7 +1726,7 @@ export const CoursePostAnalyticsDialog: React.FC<CoursePostAnalyticsDialogProps>
                           textStyle: {
                             color: '#333',
                             fontSize: 13,
-                            fontWeight: 50,
+                            fontWeight: 500,
                           },
                           formatter: (params: any) => {
                             const postTitle = params[0].axisValue;
@@ -1843,7 +1843,7 @@ export const CoursePostAnalyticsDialog: React.FC<CoursePostAnalyticsDialogProps>
                             <th style={{
                               padding: '16px',
                               textAlign: 'left',
-                              fontWeight: 70,
+                              fontWeight: 700,
                               borderRadius: '8px 0 0 8px'}}>
                               Kurs
                             </th>
@@ -1854,7 +1854,7 @@ export const CoursePostAnalyticsDialog: React.FC<CoursePostAnalyticsDialogProps>
                             <th style={{
                               padding: '16px',
                               textAlign: 'right',
-                              fontWeight: 70,
+                              fontWeight: 700,
                               borderRadius: '0 8px 8px 0'}}>
                               Konvertering
                             </th>
@@ -1904,7 +1904,7 @@ export const CoursePostAnalyticsDialog: React.FC<CoursePostAnalyticsDialogProps>
                                     label={views.toLocaleString()}
                                     size="small"
                                     sx={{
-                                      fontWeight: 70,
+                                      fontWeight: 700,
                                       background: views === maxViews && views > 0
                                         ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
                                         : '#f0f0f0',
@@ -1916,7 +1916,7 @@ export const CoursePostAnalyticsDialog: React.FC<CoursePostAnalyticsDialogProps>
                                     label={clicks.toLocaleString()}
                                     size="small"
                                     sx={{
-                                      fontWeight: 70,
+                                      fontWeight: 700,
                                       background: clicks === maxClicks && clicks > 0
                                         ? 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)'
                                         : '#f0f0f0',
@@ -1928,7 +1928,7 @@ export const CoursePostAnalyticsDialog: React.FC<CoursePostAnalyticsDialogProps>
                                     label={enrollments.toLocaleString()}
                                     size="small"
                                     sx={{
-                                      fontWeight: 70,
+                                      fontWeight: 700,
                                       background: enrollments === maxEnrollments && enrollments > 0
                                         ? 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)'
                                         : '#f0f0f0',

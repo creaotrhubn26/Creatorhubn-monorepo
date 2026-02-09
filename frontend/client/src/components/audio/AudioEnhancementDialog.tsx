@@ -1,10 +1,4 @@
-/**
- * AUDIO ENHANCEMENT DIALOG
- * Automatic audio enhancement with before/after comparison
- * Triggered when user adds audio to timeline
- */
-
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -18,40 +12,52 @@ import {
   Card,
   CardContent,
   IconButton,
-  Slider,
   Chip,
   Alert,
   ToggleButtonGroup,
-  ToggleButton,
-  Divider
+  ToggleButton
 } from '@mui/material';
 import {
   PlayArrow,
   Pause,
-  Stop,
-  VolumeUp,
-  GraphicEq,
   AutoFixHigh,
   CompareArrows,
   CheckCircle,
   Close
 } from '@mui/icons-material';
-import { apiRequest } from '@/lib/queryClient';
 
 interface AudioEnhancementDialogProps {
   open: boolean;
   onClose: () => void;
   audioFile: File | null;
-  onEnhanced: (enhancedUrl: string, metrics: any) => void;
+  onEnhanced: (enhancedUrl: string, metrics: Record<string, unknown>) => void;
   onSkip: () => void;
-  preset?: 'podcast' | 'youtube' | 'broadcast' | 'audiobook' | 'music' | 'radio' | 'tiktok' | 'twitch' | 'discord' | 'auto';
+  preset?:
+    | 'podcast'
+    | 'youtube'
+    | 'broadcast'
+    | 'audiobook'
+    | 'music'
+    | 'radio'
+    | 'tiktok'
+    | 'twitch'
+    | 'discord'
+    | 'auto';
+}
+
+interface EnhancementMetrics {
+  loudness?: {
+    original_lufs?: number;
+    final_lufs?: number;
+  };
+  [key: string]: unknown;
 }
 
 const BRAND_COLORS = {
   orange: '#ff8c00',
   purple: '#9333ea',
   blue: '#3b82f6',
-  green: '#16a34a',
+  green: '#16a34a'
 };
 
 export default function AudioEnhancementDialog({
@@ -67,85 +73,85 @@ export default function AudioEnhancementDialog({
   const [status, setStatus] = useState<string>('');
   const [originalUrl, setOriginalUrl] = useState<string | null>(null);
   const [enhancedUrl, setEnhancedUrl] = useState<string | null>(null);
-  const [metrics, setMetrics] = useState<any>(null);
+  const [metrics, setMetrics] = useState<EnhancementMetrics | null>(null);
   const [comparing, setComparing] = useState<'original' | 'enhanced'>('original');
   const [playing, setPlaying] = useState(false);
   const [selectedPreset, setSelectedPreset] = useState(preset);
-  
+  const [autoStarted, setAutoStarted] = useState(false);
+
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  // Auto-start processing when dialog opens
-  useEffect(() => {
-    if (open && audioFile && !processing && !enhancedUrl) {
-      startEnhancement();
-    }
-  }, [open, audioFile]);
-
-  // Create object URL for original audio
   useEffect(() => {
     if (audioFile) {
       const url = URL.createObjectURL(audioFile);
       setOriginalUrl(url);
       return () => URL.revokeObjectURL(url);
     }
+    return undefined;
   }, [audioFile]);
 
-  const startEnhancement = async () => {
+  useEffect(() => {
+    setSelectedPreset(preset);
+  }, [preset]);
+
+  const startEnhancement = useCallback(async () => {
     if (!audioFile) return;
 
     setProcessing(true);
-    setProgress(0);
-    setStatus('Analyzing audio... ');
+    setProgress(10);
+    setStatus('Analyserer lyd...');
 
     try {
-      // Step 1: Upload and analyze
       const formData = new FormData();
-      formData.append('file,', audioFile);
-      formData.append('preset,', selectedPreset);
+      formData.append('file', audioFile);
+      formData.append('preset', selectedPreset);
       formData.append('autoDetect', 'true');
 
-      setProgress(10);
-      setStatus('Measuring loudness (LUFS)...');
-
-      // Step 2: Process with professional audio processor
-      const response = await apiRequest('/api/audio-enhancement/auto-enhance', {
+      const response = await fetch('/api/audio-enhancement/auto-enhance', {
         method: 'POST',
         body: formData
       });
 
-      setProgress(50);
-      setStatus('Normalizing loudness...');
+      if (!response.ok) {
+        throw new Error('Enhancement failed');
+      }
 
-      await new Promise(resolve => setTimeout(resolve, 500));
+      setProgress(60);
+      setStatus('Optimaliserer...');
 
-      setProgress(70);
-      setStatus('Applying true peak limiter...');
-
-      await new Promise(resolve => setTimeout(resolve, 500));
-
-      setProgress(90);
-      setStatus('Reducing noise...');
-
-      await new Promise(resolve => setTimeout(resolve, 500));
+      const data = (await response.json()) as {
+        enhancedUrl?: string;
+        metrics?: EnhancementMetrics;
+      };
+      if (!data.enhancedUrl) {
+        throw new Error('Missing enhanced URL');
+      }
+      setEnhancedUrl(data.enhancedUrl);
+      setMetrics(data.metrics || {});
 
       setProgress(100);
-      setStatus('Enhancement complete!');
-
-      // Set enhanced URL and metrics
-      setEnhancedUrl(response.enhancedUrl);
-      setMetrics(response.metrics);
-      setProcessing(false);
-
+      setStatus('Ferdig!');
     } catch (error) {
-      console.error('Enhancement error: ', error);
-      setStatus('Enhancement failed');
+      console.error('Enhancement error:', error);
+      setStatus('Forbedring feilet');
+    } finally {
       setProcessing(false);
     }
-  };
+  }, [audioFile, selectedPreset]);
+
+  useEffect(() => {
+    if (!open) {
+      setAutoStarted(false);
+      return;
+    }
+    if (open && audioFile && !processing && !enhancedUrl && !autoStarted && preset === 'auto') {
+      setAutoStarted(true);
+      startEnhancement();
+    }
+  }, [audioFile, autoStarted, enhancedUrl, open, preset, processing, startEnhancement]);
 
   const togglePlayback = () => {
     if (!audioRef.current) return;
-
     if (playing) {
       audioRef.current.pause();
       setPlaying(false);
@@ -156,15 +162,12 @@ export default function AudioEnhancementDialog({
   };
 
   const handleCompareToggle = (newValue: 'original' | 'enhanced') => {
-    if (newValue && audioRef.current) {
-      setComparing(newValue);
-      const currentTime = audioRef.current.currentTime;
-      audioRef.current.src = newValue === 'original' ? originalUrl! : enhancedUrl!;
-      audioRef.current.currentTime = currentTime;
-      if (playing) {
-        audioRef.current.play();
-      }
-    }
+    if (!audioRef.current || !originalUrl || !enhancedUrl) return;
+    setComparing(newValue);
+    const currentTime = audioRef.current.currentTime;
+    audioRef.current.src = newValue === 'original' ? originalUrl : enhancedUrl;
+    audioRef.current.currentTime = currentTime;
+    if (playing) audioRef.current.play();
   };
 
   const handleAddToTimeline = () => {
@@ -174,9 +177,14 @@ export default function AudioEnhancementDialog({
     }
   };
 
-  const handleSkip = () => {
-    onSkip();
-    onClose();
+  const handleRestartEnhancement = () => {
+    if (!audioFile || processing) return;
+    audioRef.current?.pause();
+    setPlaying(false);
+    setComparing('original');
+    setEnhancedUrl(null);
+    setMetrics(null);
+    startEnhancement();
   };
 
   return (
@@ -196,20 +204,16 @@ export default function AudioEnhancementDialog({
       <DialogTitle sx={{ color: '#fff', borderBottom: '1px solid #333' }}>
         <Stack direction="row" alignItems="center" spacing={2}>
           <AutoFixHigh sx={{ color: BRAND_COLORS.orange }} />
-          <Typography variant="h6" sx={{ fontWeight: 700}}>
+          <Typography variant="h6" sx={{ fontWeight: 700 }}>
             Forbedre lyd automatisk
           </Typography>
-          <IconButton
-            onClick={onClose}
-            sx={{ ml: 'auto', color: '#9ca3af' }}
-          >
+          <IconButton onClick={onClose} sx={{ ml: 'auto', color: '#9ca3af' }}>
             <Close />
           </IconButton>
         </Stack>
       </DialogTitle>
 
       <DialogContent sx={{ p: 3 }}>
-        {/* Processing Status */}
         {processing && (
           <Box sx={{ mb: 3 }}>
             <Stack spacing={2}>
@@ -219,7 +223,8 @@ export default function AudioEnhancementDialog({
                 sx={{
                   height: 8,
                   borderRadius: 4,
-                  bgcolor: '#333','& .MuiLinearProgress-bar': {
+                  bgcolor: '#333',
+                  '& .MuiLinearProgress-bar': {
                     background: `linear-gradient(90deg, ${BRAND_COLORS.orange}, ${BRAND_COLORS.purple})`
                   }
                 }}
@@ -231,10 +236,8 @@ export default function AudioEnhancementDialog({
           </Box>
         )}
 
-        {/* Enhancement Complete */}
         {!processing && enhancedUrl && metrics && (
           <Box>
-            {/* Success Alert */}
             <Alert
               severity="success"
               icon={<CheckCircle />}
@@ -243,131 +246,117 @@ export default function AudioEnhancementDialog({
               Lyden er forbedret! Sammenlign original og forbedret versjon nedenfor.
             </Alert>
 
-            {/* Metrics */}
             <Card sx={{ bgcolor: '#2a2a2a', mb: 3 }}>
               <CardContent>
-                <Typography sx={{ color: BRAND_COLORS.orange, fontWeight: 70, mb: 2 }}>
-                  📊 Forbedringer
+                <Typography sx={{ color: BRAND_COLORS.orange, fontWeight: 700, mb: 2 }}>
+                  Forbedringer
                 </Typography>
                 <Stack spacing={1.5}>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                     <Typography sx={{ color: '#9ca3af', fontSize: '14px' }}>
-                      Lydstyrke (LUFS):
+                      Preset
                     </Typography>
-                    <Typography sx={{ color: '#fff', fontSize: '14px', fontWeight: 600}}>
-                      {metrics.loudness?.original_lufs?.toFixed(1)} → {metrics.loudness?.final_lufs?.toFixed(1)} LUFS
-                      <Chip
-                        label={`${metrics.loudness?.gain_applied_db > 0 ? '+' : ','}${metrics.loudness?.gain_applied_db?.toFixed(1)} dB`}
-                        size="small"
-                        sx={{ ml: 1, bgcolor: BRAND_COLORS.green, color: '#fff', fontSize: '11px' }}
-                      />
-                    </Typography>
+                    <Chip label={selectedPreset} size="small" />
                   </Box>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                     <Typography sx={{ color: '#9ca3af', fontSize: '14px' }}>
-                      Standard:
+                      Loudness
                     </Typography>
-                    <Typography sx={{ color: '#fff', fontSize: '14px', fontWeight: 600}}>
-                      {metrics.loudness?.standard === 'podcast' && 'Podcast (-16 LUFS)'}
-                      {metrics.loudness?.standard === 'youtube' && 'YouTube (-14 LUFS)'}
-                      {metrics.loudness?.standard === 'broadcast' && 'Broadcast (-23 LUFS)'}
+                    <Typography sx={{ color: '#fff', fontSize: '14px', fontWeight: 600 }}>
+                      {metrics.loudness?.original_lufs ?? '-'} → {metrics.loudness?.final_lufs ?? '-'}
                     </Typography>
                   </Box>
-                  {metrics.limiter?.limited && (
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <Typography sx={{ color: '#9ca3af', fontSize: '14px' }}>
-                        Peak Limiting:
-                      </Typography>
-                      <Typography sx={{ color: '#fff', fontSize: '14px', fontWeight: 600}}>
-                        {metrics.limiter?.reduction_db?.toFixed(1)} dB reduksjon
-                      </Typography>
-                    </Box>
-                  )}
                 </Stack>
               </CardContent>
             </Card>
 
-            {/* Comparison Player */}
-            <Card sx={{ bgcolor: '#2a2a2a' }}>
-              <CardContent>
-                <Typography sx={{ color: BRAND_COLORS.purple, fontWeight: 70, mb: 2 }}>
-                  🎧 Sammenlign lyd
-                </Typography>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mb: 2 }}>
+              <Typography sx={{ color: '#9ca3af', fontSize: '14px' }}>Velg preset</Typography>
+              <ToggleButtonGroup
+                value={selectedPreset}
+                exclusive
+                onChange={(_, value) => value && setSelectedPreset(value)}
+                size="small"
+                disabled={processing}
+              >
+                <ToggleButton value="auto">Auto</ToggleButton>
+                <ToggleButton value="podcast">Podcast</ToggleButton>
+                <ToggleButton value="youtube">YouTube</ToggleButton>
+                <ToggleButton value="broadcast">Broadcast</ToggleButton>
+                <ToggleButton value="music">Music</ToggleButton>
+              </ToggleButtonGroup>
+            </Stack>
 
-                {/* Toggle Original/Enhanced */}
-                <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2 }}>
-                  <ToggleButtonGroup
-                    value={comparing}
-                    exclusive
-                    onChange={(e, val) => handleCompareToggle(val)}
-                    sx={{ bgcolor: '#1a1a1a' }}
-                  >
-                    <ToggleButton
-                      value="original"
-                      sx={{
-                        color: comparing === 'original' ? BRAND_COLORS.orange : '#9ca3af','&.Mui-selected': { bgcolor: `${BRAND_COLORS.orange}20`, color: BRAND_COLORS.orange }
-                      }}
-                    >
-                      Original
-                    </ToggleButton>
-                    <ToggleButton
-                      value="enhanced"
-                      sx={{
-                        color: comparing === 'enhanced' ? BRAND_COLORS.green : '#9ca3af', '&.Mui-selected': { bgcolor: `${BRAND_COLORS.green}20`, color: BRAND_COLORS.green }
-                      }}
-                    >
-                      Forbedret
-                    </ToggleButton>
-                  </ToggleButtonGroup>
-                </Box>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+              <IconButton onClick={togglePlayback} color="primary">
+                {playing ? <Pause /> : <PlayArrow />}
+              </IconButton>
+              <ToggleButtonGroup
+                value={comparing}
+                exclusive
+                onChange={(_, value) => value && handleCompareToggle(value)}
+                size="small"
+              >
+                <ToggleButton value="original">Original</ToggleButton>
+                <ToggleButton value="enhanced">Forbedret</ToggleButton>
+              </ToggleButtonGroup>
+            </Box>
 
-                {/* Playback Controls */}
-                <Box sx={{ display: 'flex', justifyContent: 'center', gap: 2 }}>
-                  <IconButton
-                    onClick={togglePlayback}
-                    sx={{
-                      bgcolor: BRAND_COLORS.purple,
-                      color: '#fff',
-                      '&:hover': { bgcolor: BRAND_COLORS.orange }
-                    }}
-                  >
-                    {playing ? <Pause /> : <PlayArrow />}
-                  </IconButton>
-                </Box>
-
-                {/* Hidden Audio Element */}
-                <audio
-                  ref={audioRef}
-                  src={comparing === 'original' ? originalUrl! : enhancedUrl!}
-                  onEnded={() => setPlaying(false)}
-                />
-              </CardContent>
-            </Card>
+            <audio
+              ref={audioRef}
+              src={comparing === 'original' ? originalUrl || '' : enhancedUrl}
+              controls
+              style={{ width: '100%' }}
+              onEnded={() => setPlaying(false)}
+            />
           </Box>
+        )}
+
+        {!processing && !enhancedUrl && (
+          <Stack spacing={2}>
+            <Alert severity="info">Klar til a behandle lyden.</Alert>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems="center">
+              <Typography sx={{ color: '#9ca3af', fontSize: '14px' }}>Velg preset</Typography>
+              <ToggleButtonGroup
+                value={selectedPreset}
+                exclusive
+                onChange={(_, value) => value && setSelectedPreset(value)}
+                size="small"
+                disabled={processing}
+              >
+                <ToggleButton value="auto">Auto</ToggleButton>
+                <ToggleButton value="podcast">Podcast</ToggleButton>
+                <ToggleButton value="youtube">YouTube</ToggleButton>
+                <ToggleButton value="broadcast">Broadcast</ToggleButton>
+                <ToggleButton value="music">Music</ToggleButton>
+              </ToggleButtonGroup>
+            </Stack>
+          </Stack>
         )}
       </DialogContent>
 
-      <DialogActions sx={{ p: 3, borderTop: '1px solid #333' }}>
-        <Button
-          onClick={handleSkip}
-          sx={{ color: '#9ca3af' }}
-        >
-          Bruk original
+      <DialogActions sx={{ p: 3, pt: 0 }}>
+        <Button onClick={onSkip} variant="outlined" startIcon={<CompareArrows />}>
+          Hopp over
         </Button>
+        {!enhancedUrl && (
+          <Button onClick={startEnhancement} variant="contained" disabled={!audioFile || processing}>
+            Start forbedring
+          </Button>
+        )}
+        {enhancedUrl && (
+          <Button onClick={handleRestartEnhancement} variant="outlined" disabled={processing}>
+            Forbedre pa nytt
+          </Button>
+        )}
         <Button
           onClick={handleAddToTimeline}
           variant="contained"
-          disabled={!enhancedUrl}
-          startIcon={<CheckCircle />}
-          sx={{
-            bgcolor: BRAND_COLORS.green,
-            '&:hover': { bgcolor: '#15803d' }
-          }}
+          disabled={!enhancedUrl || !metrics}
         >
-          Legg til i tidslinje
+          Bruk forbedret lyd
         </Button>
       </DialogActions>
     </Dialog>
   );
 }
-

@@ -122,7 +122,7 @@ export function GooglePayManager({ onClose }: GooglePayManagerProps) {
   const { toast } = useToast();
   
   // Theming system
-  const theming = useTheming('photographer, ');
+  const theming = useTheming('photographer');
 
   // Sjekk Workload Identity status
   useEffect(() => {

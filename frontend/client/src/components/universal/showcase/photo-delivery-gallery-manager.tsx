@@ -75,7 +75,7 @@ export default function PhotoDeliveryGalleryManager() {
   const queryClient = useQueryClient();
   
   // Theming system
-  const theming = useTheming('photographer, ');
+  const theming = useTheming('photographer');
   const [activeTab, setActiveTab] = useState(0);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [selectedGallery, setSelectedGallery] = useState<Gallery | null>(null);
@@ -195,7 +195,7 @@ export default function PhotoDeliveryGalleryManager() {
         <Button variant="contained"
           startIcon={theming.getThemedIcon('add')}
           onClick={() => setShowCreateDialog(true)}
-          sx={{ borderRadius: 2px:  3 }}
+          sx={{ borderRadius: 3 }}
         >
           Nytt galleri
         </Button>
@@ -209,8 +209,10 @@ export default function PhotoDeliveryGalleryManager() {
               sx={{
                 bgcolor: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
                 color: 'white',
-                boxShadow:  3}}
-             sx={theming.getThemedCardSx()}>
+                boxShadow: 3,
+                ...theming.getThemedCardSx(),
+              }}
+            >
               <CardContent sx={theming.getThemedCardSx()}>
                 <Typography variant="h6" sx={{ color: theming.colors.primary }}>{analytics.totalGalleries || galleries.length}</Typography>
                 <Typography variant="body2">Totale gallerier</Typography>
@@ -222,8 +224,10 @@ export default function PhotoDeliveryGalleryManager() {
               sx={{
                 bgcolor: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
                 color: 'white',
-                boxShadow:  3}}
-             sx={theming.getThemedCardSx()}>
+                boxShadow: 3,
+                ...theming.getThemedCardSx(),
+              }}
+            >
               <CardContent sx={theming.getThemedCardSx()}>
                 <Typography variant="h6" sx={{ color: theming.colors.primary }}>{analytics.totalViews || 0}</Typography>
                 <Typography variant="body2">Totale visninger</Typography>
@@ -307,21 +311,26 @@ export default function PhotoDeliveryGalleryManager() {
                       height: '100%',
                       display: 'flex',
                       flexDirection: 'column',
-                      transition: 'all 0.3s ease','&:hover': {
+                      transition: 'all 0.3s ease',
+                      '&:hover': {
                         transform: 'translateY(-4px)',
-                        boxShadow:  6,
-                    },
+                        boxShadow: 6,
+                      },
                       borderRadius:  2,
-                      overflow: 'hidden' }}
-                   sx={theming.getThemedCardSx()}>
+                      overflow: 'hidden',
+                      ...theming.getThemedCardSx(),
+                    }}
+                  >
                     {gallery.thumbnailUrl && (
-                      <CardMedia component="img"
+                      <CardMedia
+                        component="img"
                         height="200"
                         image={gallery.thumbnailUrl}
                         alt={gallery.title}
-                        sx={{ objectFit: 'cover' ,  ...theming.getThemedCardSx() }}>
+                        sx={{ objectFit: 'cover', ...theming.getThemedCardSx() }}
+                      />
                     )}
-                    <CardContent sx={{ flexGrow: 1p:  2 ,  ...theming.getThemedCardSx() }}>
+                    <CardContent sx={{ flexGrow: 1, p: 2, ...theming.getThemedCardSx() }}>
                       <Box
                         sx={{
                           display: 'flex',
@@ -355,21 +364,21 @@ export default function PhotoDeliveryGalleryManager() {
                           flexWrap: 'wrap' }}
                       >
                         <Chip
-                          icon={theming.getThemedIcon('photoLibrary')}}
+                          icon={theming.getThemedIcon('photoLibrary')}
                           label={gallery.imageCount}
                           size="small"
                           variant="outlined"
                           color="primary"
                         />
                         <Chip
-                          icon={theming.getThemedIcon('videoLibrary')}}
+                          icon={theming.getThemedIcon('videoLibrary')}
                           label={gallery.videoCount}
                           size="small"
                           variant="outlined"
                           color="secondary"
                         />
                         <Chip
-                          icon={theming.getThemedIcon('visibility')}}
+                          icon={theming.getThemedIcon('visibility')}
                           label={gallery.viewCount}
                           size="small"
                           variant="outlined"

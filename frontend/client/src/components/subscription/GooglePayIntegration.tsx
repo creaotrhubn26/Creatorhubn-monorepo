@@ -217,7 +217,7 @@ export default function GooglePayIntegration({ onConfigurationUpdate }: GooglePa
         <Stack direction="row" alignItems="center" spacing={2}>
           <PaymentIcon sx={{ fontSize: 32}} />
           <Box sx={{ flex:  1 }}>
-            <Typography variant="h5" sx={{  fontWeight: 7, mb:  1  }}>
+            <Typography variant="h5" sx={{  fontWeight: 700, mb:  1  }}>
               Google Pay Integration
             </Typography>
             <Typography variant="body2" sx={{ opacity: 0.9}}>

@@ -224,13 +224,13 @@ class ResponsiveDesignManager {
       enableAccessibility: true,
       enableTesting: true,
       breakpoints: {
-        xs:, 0,
-        sm: 60,
-        md: 90,
-        lg: 120,
-        xl: 156,
-        xxl: 190,
-        custom:  {}
+        xs: 0,
+        sm: 600,
+        md: 900,
+        lg: 1200,
+        xl: 1536,
+        xxl: 1920,
+        custom: {}
   },
       fluidLayout: {
         enableFluidGrid: true,
@@ -240,8 +240,8 @@ class ResponsiveDesignManager {
         enableContainerQueries: true,
         gridColumns:  12,
         gridGap:  16,
-        maxWidth: 120,
-        minWidth: 30,
+        maxWidth: 1200,
+        minWidth: 320,
         fluidScale: 1.2,
         typographyScale: 1.5,
         spacingScale: 1.5
@@ -365,8 +365,8 @@ class ResponsiveDesignManager {
       currentBreakpoint: 'xs',
       currentOrientation: 'portrait',
       currentViewport: {
-        width:, 0,
-        height:  0,
+        width: 0,
+        height: 0,
         scale: 1
 },
       deviceType: 'unknown',
@@ -374,15 +374,15 @@ class ResponsiveDesignManager {
       orientationSupport: false,
       viewportSupport: false,
       performanceMetrics: {
-        layoutShift:, 0,
-        firstContentfulPaint:  0,
-        largestContentfulPaint:  0,
-        firstInputDelay:  0,
+        layoutShift: 0,
+        firstContentfulPaint: 0,
+        largestContentfulPaint: 0,
+        firstInputDelay: 0,
         cumulativeLayoutShift: 0
 },
       accessibilityMetrics: {
-        colorContrast:, 0,
-        textSize:  16,
+        colorContrast: 0,
+        textSize: 16,
         focusVisibility: false,
         keyboardNavigation: false,
         screenReaderSupport: false
@@ -477,7 +477,7 @@ class ResponsiveDesignManager {
     if (this.config.adaptiveImages.enableLazyLoading && window.IntersectionObserver) {
       this.intersectionObserver = new IntersectionObserver(
         this.handleIntersection.bind(this),
-        { threshold: 0., 1,}
+        { threshold: 0.1 }
     );
 }
 }
@@ -488,11 +488,11 @@ class ResponsiveDesignManager {
   private setupMediaQueryListeners(): void {
     const breakpoints = this.config.breakpoints;
     const mediaQueries = [
-      { name: 'xs', query: `(max-width: ${breakpoints.sm -, 1}px)` },
-      { name: 'sm', query: `(min-width: ${breakpoints.m}px) and (max-width: ${breakpoints.md -, 1}px)` },
-      { name: 'md', query: `(min-width: ${breakpoints.d}px) and (max-width: ${breakpoints.lg -, 1}px)` },
-      { name: 'lg', query: `(min-width: ${breakpoints.g}px) and (max-width: ${breakpoints.xl -, 1}px)` },
-      { name: 'xl', query: `(min-width: ${breakpoints.l}px) and (max-width: ${breakpoints.xxl -, 1}px)` },
+      { name: 'xs', query: `(max-width: ${breakpoints.sm - 1}px)` },
+      { name: 'sm', query: `(min-width: ${breakpoints.sm}px) and (max-width: ${breakpoints.md - 1}px)` },
+      { name: 'md', query: `(min-width: ${breakpoints.md}px) and (max-width: ${breakpoints.lg - 1}px)` },
+      { name: 'lg', query: `(min-width: ${breakpoints.lg}px) and (max-width: ${breakpoints.xl - 1}px)` },
+      { name: 'xl', query: `(min-width: ${breakpoints.xl}px) and (max-width: ${breakpoints.xxl - 1}px)` },
       { name: 'xxl', query: `(min-width: ${breakpoints.xxl}px)` }
     ];
 

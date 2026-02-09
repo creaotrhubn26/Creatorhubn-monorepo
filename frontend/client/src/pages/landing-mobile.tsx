@@ -320,10 +320,10 @@ const LandingMobile: React.FC = () => {
   // Merge dynamic professions with static fallback
   const allProfessions = React.useMemo(() => {
     const staticProfessions = [
-      { role: 'photographer', label: getProfessionDisplayName('photographer'), icon: <CameraAlt sx={{ fontSize: 32}} />, color: '#2e7d32', description: 'Bryllup, portrett, events og mer', gradient: 'linear-gradient(135deg, rgba(46,125,50,0.1) 0%, rgba(76,175,80,0.05) 100%)', isStatic: false },
-      { role: 'videographer', label: getProfessionDisplayName('videographer'), icon: <VideoLibrary sx={{ fontSize: 32}} />, color: '#1565c0', description: 'Produksjon, redigering og levering', gradient: 'linear-gradient(135deg, rgba(21,101,192,0.1) 0%, rgba(33,150,243,0.05) 100%)', isStatic: false },
-      { role: 'music_producer', label: getProfessionDisplayName('music_producer'), icon: <LibraryMusic sx={{ fontSize: 32}} />, color: '#7b1fa2', description: 'Opptak, miksing og mastering', gradient: 'linear-gradient(135deg, rgba(1, 2, 3,31,162,0.1) 0%, rgba(1, 5, 6,39,176,0.05) 100%)', isStatic: false },
-      { role: 'vendor', label: getProfessionDisplayName('vendor'), icon: <Business sx={{ fontSize: 32}} />, color: '#ff8c00', description: 'Utstyr, tjenester og produkter', gradient: 'linear-gradient(135deg, rgba(2, 1, 7,119,6,0.1) 0%, rgba(2, 5, 5,140,0,0.05) 100%)', isStatic: false }
+      { role: 'photographer', label: getProfessionDisplayName('photographer'), icon: <CameraAlt sx={{ fontSize: 32}} />, color: '#2e7d32', description: 'Bryllup, portrett, events og mer', gradient: 'linear-gradient(135deg, rgba(46,125,50,0.1) 0%, rgba(46,125,50,0.05) 100%)', isStatic: false },
+      { role: 'videographer', label: getProfessionDisplayName('videographer'), icon: <VideoLibrary sx={{ fontSize: 32}} />, color: '#1565c0', description: 'Produksjon, redigering og levering', gradient: 'linear-gradient(135deg, rgba(21,101,192,0.1) 0%, rgba(21,101,192,0.05) 100%)', isStatic: false },
+      { role: 'music_producer', label: getProfessionDisplayName('music_producer'), icon: <LibraryMusic sx={{ fontSize: 32}} />, color: '#7b1fa2', description: 'Opptak, miksing og mastering', gradient: 'linear-gradient(135deg, rgba(123,31,162,0.1) 0%, rgba(123,31,162,0.05) 100%)', isStatic: false },
+      { role: 'vendor', label: getProfessionDisplayName('vendor'), icon: <Business sx={{ fontSize: 32}} />, color: '#ff8c00', description: 'Utstyr, tjenester og produkter', gradient: 'linear-gradient(135deg, rgba(255,140,0,0.1) 0%, rgba(255,140,0,0.05) 100%)', isStatic: false }
     ];
     
     // Prototype Tester - ALWAYS included as meta-profession (admin-controlled)
@@ -498,20 +498,25 @@ const LandingMobile: React.FC = () => {
     [setLocation, resetAllModals],
 );
 
-  // PERFORMANCE: Optimized user data fetching with aggressive caching
-  // Use correct endpoint /api/auth/status
-  const { data: authData, isLoading: userLoading } = useQuery<AuthStatusResponse>({
-    queryKey: ['/api/auth/status'],
-    retry: false,
-    refetchOnWindowFocus: false,
-    staleTime: 5 * 60 * 100, // 5 minutes - reduce unnecessary refetches
-    gcTime: 10 * 60 * 100, // 10 minutes cache (replaces cacheTime in v5)
-  });
+  // PERFORMANCE: User data - DISABLED: Auto-authenticated
+  // Authentication disabled - use mock data
+  const authData = {
+    authenticated: true,
+    user: {
+      id: 'local-user',
+      email: 'user@local.dev',
+      name: 'Local User',
+      profession: 'photographer',
+      userType: 'photographer',
+      isAdmin: true
+    }
+  };
+  const userLoading = false;
 
-  const isAuthenticated = authData?.authenticated || false;
-  const currentUser = authData?.user;
+  const isAuthenticated = true;
+  const currentUser = authData.user;
   const userProfession = currentUser?.profession || currentUser?.userType;
-  const isAdmin = currentUser?.email === 'daniel@creatorhubn.com' || currentUser?.isAdmin;
+  const isAdmin = true;
 
   // Listen for 'auth-changed' event from LoginModal
   React.useEffect(() => {
@@ -1310,7 +1315,7 @@ const LandingMobile: React.FC = () => {
                   mb:  3,
                   lineHeight: 1.7,
                   fontSize: '15px',
-                  fontWeight: 5,
+                  fontWeight: 500,
                   textAlign: 'center',
             }}
               >
@@ -2422,7 +2427,7 @@ const LandingMobile: React.FC = () => {
                   sx={{
                     borderRadius: '8px',
                     mb: 0.5,
-                    backgroundColor: 'rgba(255,255,255,0.1)','&:hover': { backgroundColor: 'rgba(25,255,255,0.2)' },
+                    backgroundColor: 'rgba(255,255,255,0.1)','&:hover': { backgroundColor: 'rgba(255,255,255,0.2)' },
                   }}
                 >
                   <ListItemIcon>

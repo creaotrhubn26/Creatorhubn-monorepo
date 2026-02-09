@@ -1,7 +1,7 @@
 import { useTheming } from '../../utils/theming-helper';
-import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
-import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
-import getProfessionIcon from '@/utils/profession-icons';
+import { useProfessionConfigs as _useProfessionConfigs } from '@/hooks/useProfessionConfigs';
+import { useProfessionAdapter as _useProfessionAdapter } from '@/hooks/useProfessionAdapter';
+import _getProfessionIcon from '@/utils/profession-icons';
 import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -23,7 +23,7 @@ import {
   AccordionDetails,
   LinearProgress,
   Tooltip,
-  IconButton,
+  IconButton as _IconButton,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -31,7 +31,7 @@ import {
   List,
   ListItem,
   ListItemText,
-  ListItemSecondaryAction,
+  ListItemSecondaryAction as _ListItemSecondaryAction,
   Tabs,
   Tab,
   Select,
@@ -39,18 +39,19 @@ import {
   FormControl,
   InputLabel,
   Paper,
-  Divider
+  Divider,
+  Snackbar,
 } from '@mui/material';
 import {
   ExpandMore,
   Settings,
-  Info,
+  Info as _Info,
   Warning,
   CheckCircle,
-  Error as ErrorIcon,
+  Error as _ErrorIcon,
   Refresh,
-  Save,
-  RestoreFromTrash,
+  Save as _Save,
+  RestoreFromTrash as _RestoreFromTrash,
   PowerSettingsNew,
   Category,
   Lock,
@@ -60,38 +61,38 @@ import {
 import { apiRequest } from '@/lib/queryClient';
 import { 
   PROFESSION_FEATURE_MATRIX,
-  isProfessionFeatureAvailable,
-  isProfessionFeatureEnabled,
-  isProfessionFeatureOptional,
+  isProfessionFeatureAvailable as _isProfessionFeatureAvailable,
+  isProfessionFeatureEnabled as _isProfessionFeatureEnabled,
+  isProfessionFeatureOptional as _isProfessionFeatureOptional,
   enableProfessionFeature,
   disableProfessionFeature,
   getOptionalFeaturesForProfession,
   getRequiredFeaturesForProfession,
   getProfessionFeatureStats
 } from '@shared/profession-feature-matrix';
-import { getAllProfessionTypes } from '@shared/profession-type-registry';
+import { getAllProfessionTypes as _getAllProfessionTypes } from '@shared/profession-type-registry';
 import {
   PROFESSION_DASHBOARD_CONFIG,
   getProfessionTabs,
-  getProfessionTab,
-  isTabEnabled,
-  isTabFeatureEnabled,
+  getProfessionTab as _getProfessionTab,
+  isTabEnabled as _isTabEnabled,
+  isTabFeatureEnabled as _isTabFeatureEnabled,
   toggleProfessionTab,
   toggleTabFeature,
   getProfessionDashboardStats,
   DashboardTabConfig
 } from '@shared/profession-dashboard-config';
 import {
-  UserFeatureOverride,
-  hasUserTabAccess,
-  hasUserFeatureAccess,
-  createUserFeatureOverride,
-  addUserTabOverride,
-  addUserFeatureOverride,
-  upgradeUserPlan,
-  enableBetaTester,
-  enableVIP,
-  getActiveUserOverrides
+  UserFeatureOverride as _UserFeatureOverride,
+  hasUserTabAccess as _hasUserTabAccess,
+  hasUserFeatureAccess as _hasUserFeatureAccess,
+  createUserFeatureOverride as _createUserFeatureOverride,
+  addUserTabOverride as _addUserTabOverride,
+  addUserFeatureOverride as _addUserFeatureOverride,
+  upgradeUserPlan as _upgradeUserPlan,
+  enableBetaTester as _enableBetaTester,
+  enableVIP as _enableVIP,
+  getActiveUserOverrides as _getActiveUserOverrides
 } from '@shared/user-feature-override';
 
 interface Feature {
@@ -110,33 +111,33 @@ interface Feature {
 // Integration props for unified workflow connectivity
 interface FeatureManagementProps {
   // Integration props for unified workflow connectivity
-  onMeetingCreate?: (meeting: any) => void;
-  onProjectUpdate?: (project: any) => void;
-  onWorklogCreate?: (worklog: any) => void;
-  onClientSelect?: (client: any) => void;
-  onClientUpdate?: (client: any) => void;
-  onShowcaseCreate?: (showcase: any) => void;
-  onFileUpload?: (file: any) => void;
-  onFileDownload?: (file: any) => void;
+  onMeetingCreate?: (_meeting: any) => void;
+  onProjectUpdate?: (_project: any) => void;
+  onWorklogCreate?: (_worklog: any) => void;
+  onClientSelect?: (_client: any) => void;
+  onClientUpdate?: (_client: any) => void;
+  onShowcaseCreate?: (_showcase: any) => void;
+  onFileUpload?: (_file: any) => void;
+  onFileDownload?: (_file: any) => void;
   selectedProject?: any;
-  onProjectSelect?: (project: any) => void;
+  onProjectSelect?: (_project: any) => void;
   selectedClient?: any;
   onSettingsUpdate?: (settings: any) => void;
   onNotificationCreate?: (notification: any) => void;
 }
 
 export default function FeatureManagement({
-  onMeetingCreate,
-  onProjectUpdate,
-  onWorklogCreate,
-  onClientSelect,
-  onClientUpdate,
-  onShowcaseCreate,
-  onFileUpload,
-  onFileDownload,
-  selectedProject,
-  onProjectSelect,
-  selectedClient,
+  onMeetingCreate: _onMeetingCreate,
+  onProjectUpdate: _onProjectUpdate,
+  onWorklogCreate: _onWorklogCreate,
+  onClientSelect: _onClientSelect,
+  onClientUpdate: _onClientUpdate,
+  onShowcaseCreate: _onShowcaseCreate,
+  onFileUpload: _onFileUpload,
+  onFileDownload: _onFileDownload,
+  selectedProject: _selectedProject,
+  onProjectSelect: _onProjectSelect,
+  selectedClient: _selectedClient,
   onSettingsUpdate,
   onNotificationCreate
 }: FeatureManagementProps) {
@@ -146,7 +147,7 @@ export default function FeatureManagement({
   const { lifecycle, analytics, performance, debugging, dataFlow, communication, auth } = useEnhancedMasterIntegration();
 
   // Theming system
-  const theming = useTheming('prototype_tester, ');
+  const theming = useTheming('prototype_tester');
   
   // Dynamic profession system
   const { getProfessionDisplayName } = useDynamicProfessions();
@@ -154,6 +155,10 @@ export default function FeatureManagement({
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedProfession, setSelectedProfession] = useState<string>('videographer');
   const [mainTabValue, setMainTabValue] = useState(0);
+  
+  // Snackbar state
+  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'warning' | 'info' }>({ open: false, message: '', severity: 'info' });
+  
   const [confirmDialog, setConfirmDialog] = useState<{
     open: boolean;
     feature?: Feature;
@@ -166,7 +171,7 @@ export default function FeatureManagement({
     featureName?: string;
     action: 'enable' | 'disable';
   }>({ open: false, action: 'enable' });
-  const [selectedTabId, setSelectedTabId] = useState<string>('');
+  const [_selectedTabId, setSelectedTabId] = useState<string>('');
   const [tabDialog, setTabDialog] = useState<{
     open: boolean;
     professionId?: string;
@@ -174,9 +179,9 @@ export default function FeatureManagement({
     tabLabel?: string;
     action: 'enable' | 'disable';
   }>({ open: false, action: 'enable' });
-  const [searchQuery, setSearchQuery] = useState('');
+  const [_searchQuery, _setSearchQuery] = useState('');
   const [selectedUserId, setSelectedUserId] = useState<string>(', ');
-  const [userOverrideDialog, setUserOverrideDialog] = useState<{
+  const [_userOverrideDialog, setUserOverrideDialog] = useState<{
     open: boolean;
     type: 'tab' | 'feature' | 'plan' | 'beta' | 'vip';
     userId?: string;
@@ -187,7 +192,7 @@ export default function FeatureManagement({
   // Register component with Master Integration
   React.useEffect(() => {
     lifecycle.registerComponent({
-      id: 'FeatureManagement,',
+      id: 'FeatureManagement',
       type: 'admin',
       version: '1.0.0',
       capabilities: {
@@ -219,7 +224,7 @@ export default function FeatureManagement({
 
   // Integration handlers for unified workflow system
   const handleFeatureToggled = (feature: Feature, enabled: boolean) => {
-    debugging.logIntegration('info, ','Feature toggled', { feature: feature.name, enabled });
+    debugging.logIntegration('info', 'Feature toggled', { feature: feature.name, enabled });
     
     // Track analytics
     analytics.trackEvent('feature_toggled', {
@@ -354,7 +359,7 @@ export default function FeatureManagement({
 });
 
   const categories = Array.from(new Set(features.map((f: Feature) => f.category))) as string[];
-  const filteredFeatures = selectedCategory === 'all' 
+  const _filteredFeatures = selectedCategory === 'all' 
     ? features 
     : features.filter((f: Feature) => f.category === selectedCategory);
 
@@ -1275,7 +1280,7 @@ export default function FeatureManagement({
                             </Box>
                             <Switch
                               checked={false}
-                              onChange={(e) => {
+                              onChange={(_e) => {
                                 setUserOverrideDialog({
                                   open: true,
                                   type: 'tab',
@@ -1306,7 +1311,7 @@ export default function FeatureManagement({
                             </Box>
                             <Switch
                               checked={false}
-                              onChange={(e) => {
+                              onChange={(_e) => {
                                 setUserOverrideDialog({
                                   open: true,
                                   type: 'tab',
@@ -1337,7 +1342,7 @@ export default function FeatureManagement({
                             </Box>
                             <Switch
                               checked={false}
-                              onChange={(e) => {
+                              onChange={(_e) => {
                                 setUserOverrideDialog({
                                   open: true,
                                   type: 'tab',
@@ -1368,7 +1373,7 @@ export default function FeatureManagement({
                             </Box>
                             <Switch
                               checked={false}
-                              onChange={(e) => {
+                              onChange={(_e) => {
                                 setUserOverrideDialog({
                                   open: true,
                                   type: 'tab',
@@ -1414,7 +1419,7 @@ export default function FeatureManagement({
                             </Box>
                             <Switch
                               checked={false}
-                              onChange={(e) => {
+                              onChange={(_e) => {
                                 setUserOverrideDialog({
                                   open: true,
                                   type: 'feature',
@@ -1445,7 +1450,7 @@ export default function FeatureManagement({
                             </Box>
                             <Switch
                               checked={false}
-                              onChange={(e) => {
+                              onChange={(_e) => {
                                 setUserOverrideDialog({
                                   open: true,
                                   type: 'feature',
@@ -1476,7 +1481,7 @@ export default function FeatureManagement({
                             </Box>
                             <Switch
                               checked={false}
-                              onChange={(e) => {
+                              onChange={(_e) => {
                                 setUserOverrideDialog({
                                   open: true,
                                   type: 'feature',
@@ -1507,7 +1512,7 @@ export default function FeatureManagement({
                             </Box>
                             <Switch
                               checked={false}
-                              onChange={(e) => {
+                              onChange={(_e) => {
                                 setUserOverrideDialog({
                                   open: true,
                                   type: 'feature',
@@ -1762,7 +1767,7 @@ export default function FeatureManagement({
                 // Update in-memory config
                 const success = toggleProfessionTab(professionId, tabId, action === 'enable');
                 if (!success) {
-                  alert('Kunne ikke endre tab (kan være påkrevd)');
+                  setSnackbar({ open: true, message: 'Kunne ikke endre tab (kan være påkrevd)', severity: 'warning' });
                   return;
                 }
 
@@ -1796,6 +1801,22 @@ export default function FeatureManagement({
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Snackbar for notifications */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={4000}
+        onClose={() => setSnackbar((prev) => ({ ...prev, open: false }))}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert
+          onClose={() => setSnackbar((prev) => ({ ...prev, open: false }))}
+          severity={snackbar.severity}
+          variant="filled"
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 }

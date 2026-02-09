@@ -277,7 +277,7 @@ const ModalCreator: React.FC<ModalCreatorProps> = ({
     setModalName(template.name);
     setModalTitle(template.preview.title);
     setModalContent(template.preview.content);
-    setModalType(template.category as any);
+    setModalType(template.category as 'dialog' | 'confirm' | 'form' | 'display');
     setModalWidth(template.structure.styles.width);
     setModalHeight(template.structure.styles.height);
 
@@ -550,7 +550,7 @@ const ModalCreator: React.FC<ModalCreatorProps> = ({
                       <Box>
                         <Typography variant="h6" sx={{ color: theming.colors.primary }}>{template.name}</Typography>
                         <Typography variant="body2" color="text.secondary">
-                          {template.description as any}
+                          {template.description}
                         </Typography>
                       </Box>
                     </Box>
@@ -678,7 +678,7 @@ const ModalCreator: React.FC<ModalCreatorProps> = ({
                         <InputLabel>Modal Type</InputLabel>
                         <Select
                           value={modalType}
-                          onChange={(e) => setModalType(e.target.value as any)}
+                          onChange={(e) => setModalType(e.target.value as 'dialog' | 'confirm' | 'form' | 'display')}
                           label="Modal Type"
                         >
                           <MenuItem value="dialog">Dialog</MenuItem>
@@ -958,7 +958,7 @@ const ModalCreator: React.FC<ModalCreatorProps> = ({
                     <CardContent sx={theming.getThemedCardSx()}>
                         <Typography variant="h6" sx={{ color: theming.colors.primary }}>{modal.name}</Typography>
                         <Typography variant="body2" color="text.secondary" gutterBottom>
-                          {modal.description as any}
+                          {modal.description}
                         </Typography>
                         <Box sx={{ mt: 2, display: 'flex', gap:  1 }}>
                           <Chip 

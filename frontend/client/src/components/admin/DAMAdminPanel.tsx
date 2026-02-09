@@ -183,7 +183,7 @@ export default function DAMAdminPanel() {
   const [loading, setLoading] = useState(false);
   
   // Theming system
-  const theming = useTheming('prototype_tester, ');
+  const theming = useTheming('prototype_tester');
   const [error, setError] = useState<string | null>(null);
 
   // UI state

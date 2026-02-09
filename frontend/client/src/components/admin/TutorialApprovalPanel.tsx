@@ -31,7 +31,8 @@ import {
   LinearProgress,
   Stack,
   IconButton,
-  Tooltip
+  Tooltip,
+  Snackbar,
 } from '@mui/material';
 import {
   AdminPanelSettings as AdminIcon,
@@ -89,6 +90,7 @@ export const TutorialApprovalPanel: React.FC<TutorialApprovalPanelProps> = ({
   const [reviewNotes, setReviewNotes] = useState('');
   const [reviewAction, setReviewAction] = useState<'approve' | 'reject' | null>(null);
   const [tabValue, setTabValue] = useState(0);
+  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' }>({ open: false, message: '', severity: 'success' });
 
   // Mock data for demonstration
   useEffect(() => {
@@ -125,12 +127,10 @@ export const TutorialApprovalPanel: React.FC<TutorialApprovalPanelProps> = ({
 
       // Show success message
       const actionText = reviewAction === 'approve' ? 'godkjent' : 'avslått';
-      alert(`✅ Tutorial "${selectedSubmission.title}," er ${actionText}!
-      
-${reviewAction === 'approve' ? 
-  '🎉 Tutorial vil nå vises i FAQ-systemet!\n📧 Bruker vil få melding om godkjenning og motta poeng.' :
-  '📧 Bruker vil få melding om avslag med begrunnelse.'
-}`);
+      const message = reviewAction === 'approve' 
+        ? `✅ Tutorial "${selectedSubmission.title}" er godkjent! Tutorial vil nå vises i FAQ-systemet.`
+        : `✅ Tutorial "${selectedSubmission.title}" er avslått. Bruker vil få melding om avslag.`;
+      setSnackbar({ open: true, message, severity: 'success' });
 
       setReviewDialog(false);
       setSelectedSubmission(null);
@@ -138,7 +138,7 @@ ${reviewAction === 'approve' ?
 
   } catch (error) {
       console.error('Review failed: ', error);
-      alert('❌ Feil ved vurdering. Prøv igjen.');
+      setSnackbar({ open: true, message: '❌ Feil ved vurdering. Prøv igjen.', severity: 'error' });
   }
 };
 
@@ -420,6 +420,22 @@ ${reviewAction === 'approve' ?
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Snackbar Notifications */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={6000}
+        onClose={() => setSnackbar({ ...snackbar, open: false })}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert
+          onClose={() => setSnackbar({ ...snackbar, open: false })}
+          severity={snackbar.severity}
+          sx={{ width: '100%' }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </>
   );
 };

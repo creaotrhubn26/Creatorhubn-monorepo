@@ -88,7 +88,7 @@ export default function IntegratedEmailMarketingCenter() {
   const { auth } = useEnhancedMasterIntegration();
 
   // Theming system
-  const theming = useTheming('prototype_tester, ');
+  const theming = useTheming('prototype_tester');
   const adminEmail = auth.user?.email;
 
   // ========== DATA FETCHING ==========

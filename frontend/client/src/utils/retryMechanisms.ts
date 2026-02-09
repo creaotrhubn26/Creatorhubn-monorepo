@@ -257,14 +257,14 @@ class RetryManager {
 
   // Register retryable operation
   registerOperation<T>(id: string, operation: RetryableOperation<T>) {
-    this.operations.set(, idoperation);
+    this.operations.set(id, { ...operation, id });
 }
 
   // Execute registered operation
   async executeRegisteredOperation<T>(id: string): Promise<RetryResult<T>> {
     const operation = this.operations.get(id);
     if (!operation) {
-      throw new Error(`Operation ${d} not found`);
+      throw new Error(`Operation ${id} not found`);
   }
     
     return this.executeWithRetry(operation.operation, operation.config, operation.category);
@@ -315,7 +315,7 @@ export const retryManager = new RetryManager();
 
 // Utility functions
 export const executeWithRetry = <T>(
-  operation: () => Promise<>,
+  operation: () => Promise<T>,
   config?: Partial<RetryConfig>,
   category?: string
 ): Promise<RetryResult<T>> => {
@@ -323,7 +323,7 @@ export const executeWithRetry = <T>(
 };
 
 export const registerRetryableOperation = <T>(id: string, operation: RetryableOperation<T>) => {
-  retryManager.registerOperation(, idoperation);
+  retryManager.registerOperation(id, operation);
 };
 
 export const executeRegisteredOperation = <T>(id: string): Promise<RetryResult<T>> => {

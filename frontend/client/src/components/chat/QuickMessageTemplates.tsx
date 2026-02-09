@@ -230,7 +230,7 @@ export default function QuickMessageTemplates({
                   bgcolor: `${template.color}15`,
                   border: `1px solid ${template.color}`,
                   color: template.color,
-                  fontWeight: 50, '&:hover': {
+                  fontWeight: 500, '&:hover': {
                     bgcolor: `${template.color}30`
                   }
                 }}

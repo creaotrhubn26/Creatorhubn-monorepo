@@ -155,7 +155,7 @@ const CollaborationDashboard: React.FC<CollaborationDashboardProps> = memo(({
   const [showCollaborationDialog, setShowCollaborationDialog] = useState(false);
   
   // Theming system
-  const theming = useTheming('prototype_tester, ');
+  const theming = useTheming('prototype_tester');
   const [showSettingsDialog, setShowSettingsDialog] = useState(false);
   const [showConflictsDialog, setShowConflictsDialog] = useState(false);
   const [showCursorsDialog, setShowCursorsDialog] = useState(false);

@@ -7,6 +7,7 @@ import {
   Dialog,
   DialogContent,
   DialogTitle,
+  DialogActions,
   Box,
   Typography,
   IconButton,
@@ -886,7 +887,7 @@ export default function FullscreenChatWidget({
                           backgroundColor: communicationStatus.googleChatStatus === 'connected' ? '#4caf50' : '#f44336'
                   }}
                       />
-                      <Typography variant="caption" sx={{ fontWeight: 50}}>
+                      <Typography variant="caption" sx={{ fontWeight: 500}}>
                         Google Chat API: {communicationStatus.googleChatStatus === 'connected' ? 'Connected' : 'Disconnected'}
                       </Typography>
                     </Box>
@@ -2731,7 +2732,7 @@ export default function FullscreenChatWidget({
                           borderRadius:  1,
                           border: '1px solid #e0e0e0'
                   }}>
-                        <Typography sx={{ fontWeight: 50}}>{item.issue}</Typography>
+                        <Typography sx={{ fontWeight: 500}}>{item.issue}</Typography>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap:  2}}>
                           <Typography sx={{ fontWeight: 600}}>{item.count}</Typography>
                           <Typography sx={{ 
@@ -2926,7 +2927,7 @@ export default function FullscreenChatWidget({
                         p: 1.5,
                         bgcolor: '#e3f2fd',
                         borderRadius: 1}}>
-                        <Typography variant="body2" sx={{ fontWeight: 50}}>
+                        <Typography variant="body2" sx={{ fontWeight: 500}}>
                           {item.question}
                         </Typography>
                         <Typography variant="body2" sx={{ 
@@ -3482,7 +3483,7 @@ export default function FullscreenChatWidget({
                           borderRadius:  1,
                           border: '1px solid #9C27B0'
                   }}>
-                          <Typography variant="body2" sx={{ fontWeight: 50}}>
+                          <Typography variant="body2" sx={{ fontWeight: 500}}>
                             {stage.stage}
                           </Typography>
                           <Box sx={{ textAlign: 'right'}}>

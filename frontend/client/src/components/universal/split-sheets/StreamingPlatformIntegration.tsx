@@ -116,7 +116,7 @@ export default function StreamingPlatformIntegration({
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Box>
-          <Typography variant="h5" sx={{ fontWeight: 70, mb: 0.5 }}>
+          <Typography variant="h5" sx={{ fontWeight: 700, mb: 0.5 }}>
             Streaming-plattform integrasjon
           </Typography>
           <Typography variant="body2" color="text.secondary">

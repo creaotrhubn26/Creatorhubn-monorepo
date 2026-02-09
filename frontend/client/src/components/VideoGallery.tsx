@@ -78,7 +78,7 @@ export default function VideoGallery({ userId, isClientView = false }: Videograp
   const [searchTerm, setSearchTerm] = useState(false);
   
   // Theming system
-  const theming = useTheming('photographer, ');
+  const theming = useTheming('photographer');
   const [selectedCategory, setSelectedCategory] = useState('all,');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [selectedVideo, setSelectedVideo] = useState<VideoItem | null>(null);
@@ -359,7 +359,7 @@ export default function VideoGallery({ userId, isClientView = false }: Videograp
             <VideoLibraryIcon sx={{ fontSize: '2rem'}} />
           </Avatar>
           <Box>
-            <Typography variant="h4" component="h1" sx={{  fontWeight: 7, color: theming.colors.primary }}>
+            <Typography variant="h4" component="h1" sx={{  fontWeight: 700, color: theming.colors.primary }}>
               Videographer Showcase
             </Typography>
             <Typography variant="h6" color="text.secondary" sx={{ color: theming.colors.primary }}>

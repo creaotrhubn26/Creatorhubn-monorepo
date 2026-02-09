@@ -19,6 +19,7 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
+  DialogContentText,
   DialogActions,
   TextField,
   Accordion,
@@ -82,6 +83,7 @@ export default function VisualEditorWithPageSelection() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [editorMode, setEditorMode] = useState<'visual' | 'code'>('visual');
   const [livePreview, setLivePreview] = useState(true);
+  const [pendingPageSwitch, setPendingPageSwitch] = useState<PageStructure | null>(null);
   const editorRef = useRef<HTMLDivElement>(null);
 
   // Fetch page structure
@@ -135,12 +137,21 @@ export default function VisualEditorWithPageSelection() {
 
   const handlePageSelect = (page: PageStructure) => {
     if (editSession?.isDirty) {
-      if (window.confirm('Du har ulagrede endringer. Vil du lagre før du bytter side?')) {
-        handleSave();
-  }
-  }
-    setSelectedPage(page);
-};
+      setPendingPageSwitch(page);
+    } else {
+      setSelectedPage(page);
+    }
+  };
+
+  const handleConfirmPageSwitch = (shouldSave: boolean) => {
+    if (shouldSave) {
+      handleSave();
+    }
+    if (pendingPageSwitch) {
+      setSelectedPage(pendingPageSwitch);
+    }
+    setPendingPageSwitch(null);
+  };
 
   const handleSave = () => {
     if (editSession && selectedPage) {
@@ -403,6 +414,26 @@ export default function VisualEditorWithPageSelection() {
         <DialogActions>
           <Button onClick={() => setCreatePageOpen(false)}>Avbryt</Button>
           <Button variant="contained" sx={theming.getThemedButtonSx()}>Opprett</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Unsaved Changes Confirmation Dialog */}
+      <Dialog
+        open={!!pendingPageSwitch}
+        onClose={() => setPendingPageSwitch(null)}
+      >
+        <DialogTitle>Ulagrede Endringer</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Du har ulagrede endringer. Vil du lagre før du bytter side?
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPendingPageSwitch(null)}>Avbryt</Button>
+          <Button onClick={() => handleConfirmPageSwitch(false)}>Ikke Lagre</Button>
+          <Button onClick={() => handleConfirmPageSwitch(true)} variant="contained">
+            Lagre og Bytt
+          </Button>
         </DialogActions>
       </Dialog>
     </Box>

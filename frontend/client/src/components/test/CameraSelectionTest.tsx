@@ -57,7 +57,7 @@ const CAMERA_OPTIONS: CameraOption[] = [
 
 const CameraSelectionTest: React.FC = (
   // Theming system
-  const theming = useTheming('photographer, ');) => {
+  const theming = useTheming('photographer');) => {
   const [selectedCamera, setSelectedCamera] = useState<string>(',');
   const [budget, setBudget] = useState<number>(30000);
 

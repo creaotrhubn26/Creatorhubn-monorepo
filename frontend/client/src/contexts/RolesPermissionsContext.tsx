@@ -17,7 +17,7 @@ export interface Role {
   users: string[];
   isSystem: boolean;
   createdAt: Date;
-  createdBy: string, ;, 
+  createdBy: string;
 }
 
 export interface Permission {
@@ -27,13 +27,13 @@ export interface Permission {
   category: 'content' | 'design' | 'publishing' | 'admin' | 'development' | 'collaboration';
   resource: string;
   action: string;
-  conditions?: PermissionCondition[], ;, 
+  conditions?: PermissionCondition[];
 }
 
 export interface PermissionCondition {
   field: string;
   operator: 'equals' | 'not_equals' | 'contains' | 'in' | 'not_in';
-  value: any, ;, 
+  value: any;
 }
 
 export interface User {
@@ -44,7 +44,7 @@ export interface User {
   roles: string[];
   permissions: string[];
   lastActive: Date;
-  status: 'active' | 'inactive' | 'pending', ;, 
+  status: 'active' | 'inactive' | 'pending';
 }
 
 // State
@@ -54,22 +54,22 @@ interface RolesPermissionsState {
   permissions: Permission[];
   currentUser: User | null;
   isLoading: boolean;
-  error: string | null, ;, 
+  error: string | null;
 }
 
 // Actions
 type RolesPermissionsAction =
   | { type: 'SET_LOADING'; payload: boolean }
   | { type: 'SET_ERROR'; payload: string | null }
-  | { type: 'SET_ROLES'; payload: Role[, ],}
-  | { type: 'SET_USERS'; payload: User[, ],}
-  | { type: 'SET_PERMISSIONS'; payload: Permission[, ],}
+  | { type: 'SET_ROLES'; payload: Role[] }
+  | { type: 'SET_USERS'; payload: User[] }
+  | { type: 'SET_PERMISSIONS'; payload: Permission[] }
   | { type: 'SET_CURRENT_USER'; payload: User | null }
   | { type: 'ADD_ROLE'; payload: Role }
-  | { type: 'UPDATE_ROLE'; payload: { id: string; updates: Partial<Role>,} }
+  | { type: 'UPDATE_ROLE'; payload: { id: string; updates: Partial<Role> } }
   | { type: 'DELETE_ROLE'; payload: string }
   | { type: 'ADD_USER'; payload: User }
-  | { type: 'UPDATE_USER'; payload: { id: string; updates: Partial<User>,} }
+  | { type: 'UPDATE_USER'; payload: { id: string; updates: Partial<User> } }
   | { type: 'DELETE_USER'; payload: string }
   | { type: 'ASSIGN_ROLE_TO_USER'; payload: { userId: string; roleId: string } }
   | { type: 'REMOVE_ROLE_FROM_USER'; payload: { userId: string; roleId: string } };
@@ -99,7 +99,7 @@ interface RolesPermissionsContextType {
   getRoleById: (roleId: string) => Role | undefined;
   getUserById: (userId: string) => User | undefined;
   getPermissionById: (permissionId: string) => Permission | undefined;
-  refreshData: () => Promise<void>, ;, 
+  refreshData: () => Promise<void>;
 }
 
 const RolesPermissionsContext = createContext<RolesPermissionsContextType | undefined>(undefined);
@@ -210,13 +210,14 @@ const rolesPermissionsReducer = (
           })()
           : state.currentUser
     };
-    default: return state;
-,}
+    default:
+      return state;
+  }
 };
 
 // Provider
 export const RolesPermissionsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { analytics, lifecycle, performance, debugging, communication } = useEnhancedMasterIntegration();
+  const { analytics, lifecycle, performance, debugging, communication, dataFlow } = useEnhancedMasterIntegration();
   
   const [state, dispatch] = useReducer(rolesPermissionsReducer, {
     roles:  [],
@@ -225,7 +226,7 @@ export const RolesPermissionsProvider: React.FC<{ children: React.ReactNode }> =
     currentUser: null,
     isLoading: true,
     error: null
-,});
+  });
 
   // Initialize default roles and permissions
   const initializeDefaultData = useCallback(() => {
@@ -346,10 +347,34 @@ export const RolesPermissionsProvider: React.FC<{ children: React.ReactNode }> =
 
   // Component registration
   useEffect(() => {
+    // Register with communication system
+    communication.registerComponent('roles-permissions-context', 'context', [
+      'data:read', 'data:write', 'event:emit', 'event:listen',
+    ]);
+
+    // Register dataFlow nodes for bi-directional data flow
+    dataFlow.registerNode({
+      type: 'source',
+      componentId: 'roles-permissions-context',
+      dataKey: 'roles-data',
+    });
+
+    dataFlow.registerNode({
+      type: 'source',
+      componentId: 'roles-permissions-context',
+      dataKey: 'permissions-data',
+    });
+
+    dataFlow.registerNode({
+      type: 'source',
+      componentId: 'roles-permissions-context',
+      dataKey: 'users-data',
+    });
+
     lifecycle.registerComponent('roles-permissions-context', {
       capabilities: [
-        'role:create','role: update','role: delete','user: manage','permission: assign','permission: check'
-     , ],
+        'role:create', 'role:update', 'role:delete', 'user:manage', 'permission:assign', 'permission:check'
+      ],
       metadata: {
         version: '1.0.0',
         rolesCount: state.roles.length,
@@ -368,12 +393,16 @@ export const RolesPermissionsProvider: React.FC<{ children: React.ReactNode }> =
   ,});
 
     return () => {
+      communication.unregisterComponent('roles-permissions-context');
+      dataFlow.unregisterNode('roles-data');
+      dataFlow.unregisterNode('permissions-data');
+      dataFlow.unregisterNode('users-data');
       lifecycle.unregisterComponent('roles-permissions-context');
       analytics.trackEvent('roles_permissions_context_unmounted', {
         timestamp: Date.now()
     ,});
   };
-}, [lifecycle, analytics, initializeDefaultData, state.roles.length, state.users.length, state.permissions.length]);
+}, [lifecycle, analytics, initializeDefaultData, state.roles.length, state.users.length, state.permissions.length, communication, dataFlow]);
 
   // Role management functions
   const createRole = useCallback(async (roleData: Partial<Role>): Promise<Role> => {
@@ -402,7 +431,7 @@ export const RolesPermissionsProvider: React.FC<{ children: React.ReactNode }> =
     ,});
 
       // Broadcast role creation
-      communication.sendBroadcast('role: created', { role: newRole });
+      communication.sendBroadcast('role:created', { role: newRole });
       
       return newRole;
   } finally {
@@ -422,7 +451,7 @@ export const RolesPermissionsProvider: React.FC<{ children: React.ReactNode }> =
     ,});
 
       // Broadcast role update
-      communication.sendBroadcast('role: updated', { roleId, updates });
+      communication.sendBroadcast('role:updated', { roleId, updates });
   } finally {
       endTiming();
   }
@@ -440,7 +469,7 @@ export const RolesPermissionsProvider: React.FC<{ children: React.ReactNode }> =
     ,});
 
       // Broadcast role deletion
-      communication.sendBroadcast('role: deleted', { roleId });
+      communication.sendBroadcast('role:deleted', { roleId });
   } finally {
       endTiming();
   }
@@ -471,7 +500,7 @@ export const RolesPermissionsProvider: React.FC<{ children: React.ReactNode }> =
     ,});
 
       // Broadcast user creation
-      communication.sendBroadcast('user: created', { user: newUser });
+      communication.sendBroadcast('user:created', { user: newUser });
       
       return newUser;
   } finally {
@@ -491,7 +520,7 @@ export const RolesPermissionsProvider: React.FC<{ children: React.ReactNode }> =
     ,});
 
       // Broadcast user update
-      communication.sendBroadcast('user: updated', { userId, updates });
+      communication.sendBroadcast('user:updated', { userId, updates });
   } finally {
       endTiming();
   }
@@ -501,15 +530,15 @@ export const RolesPermissionsProvider: React.FC<{ children: React.ReactNode }> =
     const endTiming = performance.startTiming('user_delete');
     
     try {
-      dispatch({ type: 'DELETE_USE', payload: userI, d,});
+      dispatch({ type: 'DELETE_USER', payload: userId });
       
       analytics.trackEvent('user_deleted', {
         userId,
         timestamp: Date.now()
-    ,});
+      });
 
       // Broadcast user deletion
-      communication.sendBroadcast('user: deleted', { userId });
+      communication.sendBroadcast('user:deleted', { userId });
   } finally {
       endTiming();
   }
@@ -520,16 +549,16 @@ export const RolesPermissionsProvider: React.FC<{ children: React.ReactNode }> =
     const endTiming = performance.startTiming('user_role_assign');
     
     try {
-      dispatch({ type: 'ASSIGN_ROLE_TO_USE', payload: { userd, roleId } });
+      dispatch({ type: 'ASSIGN_ROLE_TO_USER', payload: { userId, roleId } });
       
       analytics.trackEvent('user_role_assigned', {
         userId,
         roleId,
         timestamp: Date.now()
-    ,});
+      });
 
       // Broadcast role assignment
-      communication.sendBroadcast('role: assigned', { userId, roleId });
+      communication.sendBroadcast('role:assigned', { userId, roleId });
   } finally {
       endTiming();
   }
@@ -539,16 +568,16 @@ export const RolesPermissionsProvider: React.FC<{ children: React.ReactNode }> =
     const endTiming = performance.startTiming('user_role_remove');
     
     try {
-      dispatch({ type: 'REMOVE_ROLE_FROM_USE', payload: { userd, roleId } });
+      dispatch({ type: 'REMOVE_ROLE_FROM_USER', payload: { userId, roleId } });
       
       analytics.trackEvent('user_role_removed', {
         userId,
         roleId,
         timestamp: Date.now()
-    ,});
+      });
 
       // Broadcast role removal
-      communication.sendBroadcast('role: removed', { userId, roleId });
+      communication.sendBroadcast('role:removed', { userId, roleId });
   } finally {
       endTiming();
   }
@@ -560,63 +589,63 @@ export const RolesPermissionsProvider: React.FC<{ children: React.ReactNode }> =
     if (!user) return false;
     
     return user.permissions.includes(permissionId);
-,}, [state.users]);
+  }, [state.users]);
 
   const hasRole = useCallback((userId: string, roleId: string): boolean => {
     const user = state.users.find(u => u.id === userId);
     if (!user) return false;
     
     return user.roles.includes(roleId);
-,}, [state.users]);
+  }, [state.users]);
 
   const hasAnyRole = useCallback((userId: string, roleIds: string[]): boolean => {
     const user = state.users.find(u => u.id === userId);
     if (!user) return false;
     
     return roleIds.some(roleId => user.roles.includes(roleId));
-,}, [state.users]);
+  }, [state.users]);
 
   const hasAnyPermission = useCallback((userId: string, permissionIds: string[]): boolean => {
     const user = state.users.find(u => u.id === userId);
     if (!user) return false;
     
     return permissionIds.some(permissionId => user.permissions.includes(permissionId));
-,}, [state.users]);
+  }, [state.users]);
 
   const getUserPermissions = useCallback((userId: string): string[] => {
     const user = state.users.find(u => u.id === userId);
     return user?.permissions || [];
-,}, [state.users]);
+  }, [state.users]);
 
   const getUserRoles = useCallback((userId: string): string[] => {
     const user = state.users.find(u => u.id === userId);
     return user?.roles || [];
-,}, [state.users]);
+  }, [state.users]);
 
   // Utility functions
   const getRoleById = useCallback((roleId: string): Role | undefined => {
     return state.roles.find(role => role.id === roleId);
-,}, [state.roles]);
+  }, [state.roles]);
 
   const getUserById = useCallback((userId: string): User | undefined => {
     return state.users.find(user => user.id === userId);
-,}, [state.users]);
+  }, [state.users]);
 
   const getPermissionById = useCallback((permissionId: string): Permission | undefined => {
     return state.permissions.find(permission => permission.id === permissionId);
-,}, [state.permissions]);
+  }, [state.permissions]);
 
   const refreshData = useCallback(async (): Promise<void> => {
-    dispatch({ type: 'SET_LOADIN', payload: true });
+    dispatch({ type: 'SET_LOADING', payload: true });
     
     try {
       // In a real implementation, this would fetch from the API
       // For now, we'll just reinitialize the default data
       initializeDefaultData();
   } catch (error) {
-      dispatch({ type: 'SET_ERRO', payload: error instanceof Error ? error.message : 'Failed to refresh data',});
+      dispatch({ type: 'SET_ERROR', payload: error instanceof Error ? error.message : 'Failed to refresh data' });
   } finally {
-      dispatch({ type: 'SET_LOADIN', payload: false });
+      dispatch({ type: 'SET_LOADING', payload: false });
   }
 }, [initializeDefaultData]);
 

@@ -259,7 +259,7 @@ export default function VendorQuickStats({
                 }}
                 onClick={() => stat.clickable && handleStatClick(stat.key)}
                 onKeyDown={(e: React.KeyboardEvent) => {
-                  if (stat.clickable && (e.key === 'Enter' || e.key === ', ')) {
+                  if (stat.clickable && (e.key === 'Enter' || e.key === ' ')) {
                     e.preventDefault();
                     handleStatClick(stat.key);
                   }

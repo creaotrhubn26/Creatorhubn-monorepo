@@ -255,7 +255,7 @@ export default function ContractPreviewModal({
                     <TableCell sx={{ color: 'rgba(25,255,255,0.7)', border: 'none', py:  2 }}>
                       <Typography sx={{ fontWeight: 600 }}>Inkluderte bilder: </Typography>
                     </TableCell>
-                    <TableCell sx={{ color: '#ffa720', border: 'none', py: 2, fontWeight: 7, fontSize: '1.1rem'}}>
+                    <TableCell sx={{ color: '#ffa720', border: 'none', py: 2, fontWeight: 700, fontSize: '1.1rem'}}>
                       {contract.includedImages} bilder
                     </TableCell>
                   </TableRow>
@@ -267,7 +267,7 @@ export default function ContractPreviewModal({
                         <Typography sx={{ fontWeight: 600 }}>Total pris: </Typography>
                       </Box>
                     </TableCell>
-                    <TableCell sx={{ color: '#4caf50', border: 'none', py: 2, fontWeight: 7, fontSize: '1.2rem'}}>
+                    <TableCell sx={{ color: '#4caf50', border: 'none', py: 2, fontWeight: 700, fontSize: '1.2rem'}}>
                       {contract.totalPrice.toLocaleString('nb-NO,')} {contract.currency}
                     </TableCell>
                   </TableRow>

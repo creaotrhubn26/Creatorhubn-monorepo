@@ -78,7 +78,7 @@ interface SOMEStatus {
 }
 
 export default function SOMESettings() {
-  const theming = useTheming('photographer, ');
+  const theming = useTheming('photographer');
   const queryClient = useQueryClient();
   const [secretDialog, setSecretDialog] = useState(false);
   const [copiedSecret, setCopiedSecret] = useState(false);

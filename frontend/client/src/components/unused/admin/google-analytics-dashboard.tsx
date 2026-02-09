@@ -258,7 +258,7 @@ export default function GoogleAnalyticsDashboard() {
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb:  3 }}>
         <Typography variant="h4" sx={{  
           color: colors.primary, 
-          fontWeight: 7,
+          fontWeight: 700,
           display: 'flex',
           alignItems: 'center',
           gap: 1  }}>
@@ -337,7 +337,7 @@ export default function GoogleAnalyticsDashboard() {
             <CardContent sx={theming.getThemedCardSx()}>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between'}}>
                 <Box>
-                  <Typography variant="h4" sx={{  fontWeight: 7, color: colors.primary  }}>
+                  <Typography variant="h4" sx={{  fontWeight: 700, color: colors.primary  }}>
                     {formatNumber(data.overview.totalUsers)}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
@@ -361,7 +361,7 @@ export default function GoogleAnalyticsDashboard() {
             <CardContent sx={theming.getThemedCardSx()}>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between'}}>
                 <Box>
-                  <Typography variant="h4" sx={{  fontWeight: 7, color: colors.secondary  }}>
+                  <Typography variant="h4" sx={{  fontWeight: 700, color: colors.secondary  }}>
                     {formatNumber(data.overview.sessions)}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
@@ -385,7 +385,7 @@ export default function GoogleAnalyticsDashboard() {
             <CardContent sx={theming.getThemedCardSx()}>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between'}}>
                 <Box>
-                  <Typography variant="h4" sx={{  fontWeight: 7, color: colors.success  }}>
+                  <Typography variant="h4" sx={{  fontWeight: 700, color: colors.success  }}>
                     {formatNumber(data.overview.pageviews)}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
@@ -409,7 +409,7 @@ export default function GoogleAnalyticsDashboard() {
             <CardContent sx={theming.getThemedCardSx()}>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between'}}>
                 <Box>
-                  <Typography variant="h4" sx={{  fontWeight: 7, color: colors.info  }}>
+                  <Typography variant="h4" sx={{  fontWeight: 700, color: colors.info  }}>
                     {data.overview.conversions}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">

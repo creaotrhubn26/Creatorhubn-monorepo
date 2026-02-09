@@ -116,7 +116,7 @@ export default function DeploymentPipeline() {
   const { toast } = useToast();
 
   // Theming system
-  const theming = useTheming('prototype_tester, ');
+  const theming = useTheming('prototype_tester');
   const queryClient = useQueryClient();
 
   // Get auth from master integration

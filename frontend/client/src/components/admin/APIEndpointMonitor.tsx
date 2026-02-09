@@ -67,7 +67,7 @@ const APIEndpointMonitor: React.FC = () => {
   const { auth, analytics, features } = useEnhancedMasterIntegration();
 
   // Theming system
-  const theming = useTheming('prototype_tester, ');
+  const theming = useTheming('prototype_tester');
 
   // Hent API endpoint health data
   const {

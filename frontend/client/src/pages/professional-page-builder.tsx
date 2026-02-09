@@ -2,9 +2,8 @@ import { useTheming } from '../utils/theming-helper';
 import React from 'react';
 import { Container, Typography, Box } from '@mui/material';
 
-export default function
-  // Theming system
-  const theming = useTheming('photographer'); ProfessionalPageBuilder() {
+export default function ProfessionalPageBuilder() {
+  const theming = useTheming('photographer');
   return (
     <Container maxWidth="lg" sx={{ py:  4 }}>
       <Box sx={{ textAlign: 'center',}}>

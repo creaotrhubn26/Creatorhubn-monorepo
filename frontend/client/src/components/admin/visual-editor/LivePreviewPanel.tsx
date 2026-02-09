@@ -146,7 +146,7 @@ export const LivePreviewPanel: React.FC<LivePreviewPanelProps> = ({ code, mode =
 
     // Inject console capture
     if (iframe.contentWindow) {
-      const win = iframe.contentWindow as any;
+      const win = iframe.contentWindow as Window & typeof globalThis;
       const originalConsole = {
         log: win.console.log,
         warn: win.console.warn,

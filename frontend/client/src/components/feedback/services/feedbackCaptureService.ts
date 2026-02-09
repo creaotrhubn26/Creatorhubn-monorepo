@@ -637,7 +637,7 @@ class ContextDetectionService {
 
   private getElementSelector(el: HTMLElement): string {
     if (el.id) return `#${el.id}`;
-    if (el.className) return `.${el.className.split(', ').join('.')}`;
+    if (el.className && typeof el.className === 'string') return `.${el.className.split(' ').join('.')}`;
     return el.tagName.toLowerCase();
   }
 

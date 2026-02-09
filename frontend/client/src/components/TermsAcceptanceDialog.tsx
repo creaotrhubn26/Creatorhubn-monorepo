@@ -58,7 +58,7 @@ export default function TermsAcceptanceDialog({
   const [termsAccepted, setTermsAccepted] = useState(false);
   
   // Theming system
-  const theming = useTheming('photographer, ');
+  const theming = useTheming('photographer');
   const [gdprAccepted, setGdprAccepted] = useState(false);
 
   // Fetch terms templates based on project type
@@ -202,7 +202,7 @@ export default function TermsAcceptanceDialog({
                       />
                   }
                     label={
-                      <Typography sx={{ color: '#fff', fontWeight: 50}}>
+                      <Typography sx={{ color: '#fff', fontWeight: 500}}>
                         Jeg aksepterer kontraktvilkårene ovenfor
                       </Typography>
                   }
@@ -245,7 +245,7 @@ export default function TermsAcceptanceDialog({
                       />
                   }
                     label={
-                      <Typography sx={{ color: '#fff', fontWeight: 50}}>
+                      <Typography sx={{ color: '#fff', fontWeight: 500}}>
                         Jeg aksepterer personvernvilkårene og GDPR-bestemmelsene
                       </Typography>
                   }

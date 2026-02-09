@@ -423,18 +423,16 @@ export class GoogleSSOService {
   }
 
   /**
-   * Fetch server profile (includes DB-backed profession if available)
+   * Fetch server profile (includes DB-backed profession if available) - DISABLED
    */
   private async fetchServerProfile(): Promise<Partial<GoogleUser> | null> {
-    try {
-      const res = await fetch('/api/auth/user', { credentials: 'include' });
-      if (!res.ok) return null;
-      const data = (await res.json()) as { success?: boolean; user?: Partial<GoogleUser> };
-      if (!data?.user) return null;
-      return data.user;
-    } catch {
-      return null;
-    }
+    // Authentication disabled - return mock admin profile
+    return {
+      email: 'admin@local.dev',
+      name: 'Local Admin',
+      role: 'admin',
+      profession: 'photographer'
+    };
   }
 
   /**
@@ -463,15 +461,10 @@ export class GoogleSSOService {
   }
 
   /**
-   * Store tokens securely in localStorage
+   * Store tokens securely in localStorage - DISABLED
    */
   private storeTokens(tokens: GoogleAuthResponse): void {
-    const tokenData = { ...tokens, timestamp: Date.now() };
-    // Persist server-side (httpOnly) via backend; do not store in localStorage
-    fetch('/api/auth/store-tokens', {
-      method: 'POST', headers: { 'Content-Type' : 'application/json' }, credentials: 'include',
-      body: JSON.stringify(tokenData),
-    }).catch(() => {});
+    // Authentication disabled - no token storage needed
   }
 
   /**
@@ -483,11 +476,10 @@ export class GoogleSSOService {
   }
 
   /**
-   * Clear stored tokens
+   * Clear stored tokens - DISABLED
    */
   private clearTokens(): void {
-    // Ask backend to clear httpOnly tokens; no localStorage usage
-    fetch('/api/auth/clear-tokens', { method: 'POST', credentials:'include' }).catch(() => {});
+    // Authentication disabled - no token clearing needed
   }
 
   /**

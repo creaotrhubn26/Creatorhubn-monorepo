@@ -118,14 +118,14 @@ export interface UnifiedAnalytics {
 // Action types
 type AdminAction =
   | { type: 'SET_LOADING'; payload: boolean }
-  | { type: 'SET_FEATURES'; payload: UnifiedFeature[, ],}
-  | { type: 'UPDATE_FEATURE'; payload: { id: string; updates: Partial<UnifiedFeature>,} }
-  | { type: 'SET_USERS'; payload: UnifiedUser[, ],}
-  | { type: 'UPDATE_USER'; payload: { id: string; updates: Partial<UnifiedUser>,} }
-  | { type: 'SET_PROFESSION_TYPES'; payload: UnifiedProfessionType[, ],}
-  | { type: 'UPDATE_PROFESSION_TYPE'; payload: { id: string; updates: Partial<UnifiedProfessionType>,} }
-  | { type: 'SET_PRODUCTS'; payload: UnifiedProduct[, ],}
-  | { type: 'UPDATE_PRODUCT'; payload: { id: string; updates: Partial<UnifiedProduct>,} }
+  | { type: 'SET_FEATURES'; payload: UnifiedFeature[] }
+  | { type: 'UPDATE_FEATURE'; payload: { id: string; updates: Partial<UnifiedFeature> } }
+  | { type: 'SET_USERS'; payload: UnifiedUser[] }
+  | { type: 'UPDATE_USER'; payload: { id: string; updates: Partial<UnifiedUser> } }
+  | { type: 'SET_PROFESSION_TYPES'; payload: UnifiedProfessionType[] }
+  | { type: 'UPDATE_PROFESSION_TYPE'; payload: { id: string; updates: Partial<UnifiedProfessionType> } }
+  | { type: 'SET_PRODUCTS'; payload: UnifiedProduct[] }
+  | { type: 'UPDATE_PRODUCT'; payload: { id: string; updates: Partial<UnifiedProduct> } }
   | { type: 'SET_ANALYTICS'; payload: UnifiedAnalytics }
   | { type: 'ADD_NOTIFICATION'; payload: { id: string; message: string; type: 'success' | 'error' | 'info' | 'warning' } }
   | { type: 'REMOVE_NOTIFICATION'; payload: string };
@@ -278,69 +278,69 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // Fetch features
   const { data: features, refetch: refetchFeatures } = useQuery({
-    queryKey: ['/api/admin/features, ', ],
-    queryFn: () => apiRequest('/api/admin/features,', ),
+    queryKey: ['/api/admin/features'],
+    queryFn: () => apiRequest('/api/admin/features'),
     staleTime: 3000,
 });
 
   // Fetch users
   const { data: users, refetch: refetchUsers } = useQuery({
-    queryKey: ['/api/admin-provisioning/users,', ],
-    queryFn: () => apiRequest('/api/admin-provisioning/users,', ),
+    queryKey: ['/api/admin-provisioning/users'],
+    queryFn: () => apiRequest('/api/admin-provisioning/users'),
     staleTime: 3000,
 });
 
   // Fetch profession types
   const { data: professionTypes, refetch: refetchProfessionTypes } = useQuery({
-    queryKey: ['/api/admin/profession-types,', ],
-    queryFn: () => apiRequest('/api/admin/profession-types,', ),
+    queryKey: ['/api/admin/profession-types'],
+    queryFn: () => apiRequest('/api/admin/profession-types'),
     staleTime: 3000,
 });
 
   // Fetch products
   const { data: products, refetch: refetchProducts } = useQuery({
-    queryKey: ['/api/admin/products,', ],
-    queryFn: () => apiRequest('/api/admin/products,', ),
+    queryKey: ['/api/admin/products'],
+    queryFn: () => apiRequest('/api/admin/products'),
     staleTime: 3000,
 });
 
   // Fetch analytics
   const { data: analytics, refetch: refetchAnalytics } = useQuery({
-    queryKey: ['/api/admin/analytics/unified,', ],
-    queryFn: () => apiRequest('/api/admin/analytics/unified', ),
+    queryKey: ['/api/admin/analytics/unified'],
+    queryFn: () => apiRequest('/api/admin/analytics/unified'),
     staleTime: 6000,
 });
 
   // Update state when data changes
   useEffect(() => {
-    if (features) dispatch({ type: 'SET_FEATURE', payload: features });
-}, [features]);
+    if (features) dispatch({ type: 'SET_FEATURES', payload: features });
+  }, [features]);
 
   useEffect(() => {
-    if (users) dispatch({ type: 'SET_USER', payload: users.users || [, ],});
-}, [users]);
+    if (users) dispatch({ type: 'SET_USERS', payload: users.users || [] });
+  }, [users]);
 
   useEffect(() => {
-    if (professionTypes) dispatch({ type: 'SET_PROFESSION_TYPE', payload: professionTypes });
-}, [professionTypes]);
+    if (professionTypes) dispatch({ type: 'SET_PROFESSION_TYPES', payload: professionTypes });
+  }, [professionTypes]);
 
   useEffect(() => {
-    if (products) dispatch({ type: 'SET_PRODUCT', payload: products.data || [, ],});
-}, [products]);
+    if (products) dispatch({ type: 'SET_PRODUCTS', payload: products.data || [] });
+  }, [products]);
 
   useEffect(() => {
-    if (analytics) dispatch({ type: 'SET_ANALYTIC', payload: analytics });
-}, [analytics]);
+    if (analytics) dispatch({ type: 'SET_ANALYTICS', payload: analytics });
+  }, [analytics]);
 
   // Feature management functions
   const updateFeature = async (id: string, updates: Partial<UnifiedFeature>) => {
     try {
-      await apiRequest(`/api/admin/features/${d}`, {
-        method: 'PATC',
+      await apiRequest(`/api/admin/features/${id}`, {
+        method: 'PATCH',
         body: JSON.stringify(updates),
     });
-      dispatch({ type: 'UPDATE_FEATUR', payload: { , idupdates } });
-      queryClient.invalidateQueries({ queryKey: ['/api/admin/features', ],});
+      dispatch({ type: 'UPDATE_FEATURE', payload: { id, updates } });
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/features'] });
       notify('Feature updated successfully','success');
   } catch (error) {
       notify('Failed to update feature','error');
@@ -351,14 +351,14 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const publishFeatures = async (environment: 'staging' | 'production') => {
     try {
       await apiRequest(`/api/feature-flags/publish/${environment}`, {
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify({
           features: state.features,
           publishedBy: 'admin',
-          metadata: { timestamp: new Date().toISOString(, ),},
+          metadata: { timestamp: new Date().toISOString() }
       }),
     });
-      queryClient.invalidateQueries({ queryKey: ['/api/feature-flags', ],});
+      queryClient.invalidateQueries({ queryKey: ['/api/feature-flags'] });
       notify(`Features published to ${environment}`, 'success');
   } catch (error) {
       notify(`Failed to publish features to ${environment}`, 'error');
@@ -369,16 +369,16 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const revertFeatures = async (environment: 'staging' | 'production') => {
     try {
       await apiRequest(`/api/feature-flags/revert/${environment}`, {
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify({
           publishedBy: 'admin',
-          metadata: { timestamp: new Date().toISOString(, ),},
+          metadata: { timestamp: new Date().toISOString() }
       }),
     });
-      queryClient.invalidateQueries({ queryKey: ['/api/feature-flags', ],});
+      queryClient.invalidateQueries({ queryKey: ['/api/feature-flags'] });
       notify(`Features reverted in ${environment}`, 'success');
   } catch (error) {
-      notify(`Failed to revert features in ${environment}`'error');
+      notify(`Failed to revert features in ${environment}`, 'error');
       throw error;
   }
 };
@@ -395,10 +395,10 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 }) => {
     try {
       await apiRequest('/api/admin-provisioning/create-user', {
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify(userData),
     });
-      queryClient.invalidateQueries({ queryKey: ['/api/admin-provisioning/users', ],});
+      queryClient.invalidateQueries({ queryKey: ['/api/admin-provisioning/users'] });
       notify('User created successfully','success');
   } catch (error) {
       notify('Failed to create user','error');
@@ -408,12 +408,12 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const updateUser = async (id: string, updates: Partial<UnifiedUser>) => {
     try {
-      await apiRequest(`/api/admin-provisioning/users/${d}`, {
-        method: 'PATC',
+      await apiRequest(`/api/admin-provisioning/users/${id}`, {
+        method: 'PATCH',
         body: JSON.stringify(updates),
     });
-      dispatch({ type: 'UPDATE_USE', payload: { , idupdates } });
-      queryClient.invalidateQueries({ queryKey: ['/api/admin-provisioning/users', ],});
+      dispatch({ type: 'UPDATE_USER', payload: { id, updates } });
+      queryClient.invalidateQueries({ queryKey: ['/api/admin-provisioning/users'] });
       notify('User updated successfully','success');
   } catch (error) {
       notify('Failed to update user','error');
@@ -424,11 +424,11 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const approveUser = async (userId: string, userType: string, enableIntegrations: boolean) => {
     try {
       await apiRequest('/api/admin-provisioning/approve-music-producer', {
-        method: 'POS',
-        body: JSON.stringify({ userd, userType, enableIntegrations }),
+        method: 'POST',
+        body: JSON.stringify({ userId, userType, enableIntegrations }),
     });
-      queryClient.invalidateQueries({ queryKey: ['/api/admin-provisioning/pending-approvals', ],});
-      queryClient.invalidateQueries({ queryKey: ['/api/admin-provisioning/users', ],});
+      queryClient.invalidateQueries({ queryKey: ['/api/admin-provisioning/pending-approvals'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/admin-provisioning/users'] });
       notify('User approved successfully','success');
   } catch (error) {
       notify('Failed to approve user','error');
@@ -439,11 +439,11 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const rejectUser = async (userId: string, reason: string) => {
     try {
       await apiRequest('/api/admin-provisioning/reject-user', {
-        method: 'POS',
-        body: JSON.stringify({ userd, reason }),
+        method: 'POST',
+        body: JSON.stringify({ userId, reason }),
     });
-      queryClient.invalidateQueries({ queryKey: ['/api/admin-provisioning/pending-approvals', ],});
-      queryClient.invalidateQueries({ queryKey: ['/api/admin-provisioning/users', ],});
+      queryClient.invalidateQueries({ queryKey: ['/api/admin-provisioning/pending-approvals'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/admin-provisioning/users'] });
       notify('User rejected','success');
   } catch (error) {
       notify('Failed to reject user','error');
@@ -464,31 +464,31 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       
       // Create feature flags
       await apiRequest(`/api/admin/profession-types/${result.id}/create-feature-flags`, {
-        method: 'POS',
+        method: 'POST',
     });
       
       // Deploy components
       await apiRequest(`/api/admin/profession-types/${result.id}/deploy-components`, {
-        method: 'POS',
+        method: 'POST',
     });
       
       // Update permissions
       await apiRequest(`/api/admin/profession-types/${result.id}/update-permissions`, {
-        method: 'POS',
+        method: 'POST',
     });
       
       // Configure integrations
       await apiRequest(`/api/admin/profession-types/${result.id}/configure-integrations`, {
-        method: 'POS',
+        method: 'POST',
     });
       
       // Setup analytics
       await apiRequest(`/api/admin/profession-types/${result.id}/setup-analytics`, {
-        method: 'POS',
+        method: 'POST',
     });
       
-      queryClient.invalidateQueries({ queryKey: ['/api/admin/profession-types', ],});
-      queryClient.invalidateQueries({ queryKey: ['/api/admin/features', ],});
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/profession-types'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/features'] });
       notify('Profession type created and deployed successfully','success');
   } catch (error) {
       notify('Failed to create profession type','error');
@@ -498,9 +498,9 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const updateProfessionType = async (id: string, updates: Partial<UnifiedProfessionType>) => {
     try {
-      await apiRequest('PATC', `/api/admin/profession-types/${id}`, updates);
-      dispatch({ type: 'UPDATE_PROFESSION_TYP', payload: { , idupdates } });
-      queryClient.invalidateQueries({ queryKey: ['/api/admin/profession-types', ],});
+      await apiRequest('PATCH', `/api/admin/profession-types/${id}`, updates);
+      dispatch({ type: 'UPDATE_PROFESSION_TYPE', payload: { id, updates } });
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/profession-types'] });
       notify('Profession type updated successfully','success');
   } catch (error) {
       notify('Failed to update profession type','error');
@@ -510,8 +510,8 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const deleteProfessionType = async (id: string) => {
     try {
-      await apiRequest('DELET', `/api/admin/profession-types/${id}`);
-      queryClient.invalidateQueries({ queryKey: ['/api/admin/profession-types', ],});
+      await apiRequest('DELETE', `/api/admin/profession-types/${id}`);
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/profession-types'] });
       notify('Profession type deleted successfully','success');
   } catch (error) {
       notify('Failed to delete profession type','error');
@@ -522,8 +522,8 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // Product management functions
   const createProduct = async (data: Partial<UnifiedProduct>) => {
     try {
-      await apiRequest('POS','/api/admin/products', data);
-      queryClient.invalidateQueries({ queryKey: ['/api/admin/products', ],});
+      await apiRequest('POST', '/api/admin/products', data);
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/products'] });
       notify('Product created successfully','success');
   } catch (error) {
       notify('Failed to create product','error');
@@ -533,9 +533,9 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const updateProduct = async (id: string, updates: Partial<UnifiedProduct>) => {
     try {
-      await apiRequest('PU', `/api/admin/products/${id}`, updates);
-      dispatch({ type: 'UPDATE_PRODUC', payload: { , idupdates } });
-      queryClient.invalidateQueries({ queryKey: ['/api/admin/products', ],});
+      await apiRequest('PUT', `/api/admin/products/${id}`, updates);
+      dispatch({ type: 'UPDATE_PRODUCT', payload: { id, updates } });
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/products'] });
       notify('Product updated successfully','success');
   } catch (error) {
       notify('Failed to update product','error');
@@ -545,8 +545,8 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const deleteProduct = async (id: string) => {
     try {
-      await apiRequest('DELET', `/api/admin/products/${id}`);
-      queryClient.invalidateQueries({ queryKey: ['/api/admin/products', ],});
+      await apiRequest('DELETE', `/api/admin/products/${id}`);
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/products'] });
       notify('Product deleted successfully','success');
   } catch (error) {
       notify('Failed to delete product','error');
@@ -568,16 +568,16 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // Notification functions
   const notify = (message: string, type: 'success' | 'error' | 'info') => {
     const id = Date.now().toString();
-    dispatch({ type: 'ADD_NOTIFICATIO', payload: { , idmessage, type } });
+    dispatch({ type: 'ADD_NOTIFICATION', payload: { id, message, type } });
     
     // Auto-remove notification after 5 seconds
     setTimeout(() => {
-      dispatch({ type: 'REMOVE_NOTIFICATIO', payload: id });
+      dispatch({ type: 'REMOVE_NOTIFICATION', payload: id });
   }, 5000);
 };
 
   const removeNotification = (id: string) => {
-    dispatch({ type: 'REMOVE_NOTIFICATIO', payload: id });
+    dispatch({ type: 'REMOVE_NOTIFICATION', payload: id });
 };
 
   // Refresh all data

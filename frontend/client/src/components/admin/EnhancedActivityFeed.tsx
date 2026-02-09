@@ -127,7 +127,7 @@ export default function EnhancedActivityFeed({
 }: EnhancedActivityFeedProps) {
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
-  const theming = useTheming('prototype_tester, ');
+  const theming = useTheming('prototype_tester');
   const { auth } = useEnhancedMasterIntegration();
   const [pushSettingsOpen, setPushSettingsOpen] = useState(false);
   

@@ -164,7 +164,7 @@ export default function VisualCMSDashboard() {
   const { toast } = useToast();
   
   // Theming system
-  const theming = useTheming('prototype_tester, ');
+  const theming = useTheming('prototype_tester');
   const queryClient = useQueryClient();
 
   // State management

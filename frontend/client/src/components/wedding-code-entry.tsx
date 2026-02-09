@@ -106,7 +106,7 @@ export default function WeddingCodeEntry({ projectId, onValidCode }: WeddingCode
           }}>
             <Lock sx={{ fontSize: 40, color: '#d81b60' }} />
           </Box>
-          <Typography variant="h4" sx={{ fontWeight: 70, color: theming.colors.primary, mb: 1 }}>
+          <Typography variant="h4" sx={{ fontWeight: 700, color: theming.colors.primary, mb: 1 }}>
             💕 Bryllupstidslinje
           </Typography>
           <Typography variant="body1" color="text.secondary">

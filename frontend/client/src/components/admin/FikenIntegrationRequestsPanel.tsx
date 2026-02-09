@@ -107,7 +107,7 @@ interface FikenStats {
 export default function FikenIntegrationRequestsPanel() {
   const queryClient = useQueryClient();
   const { auth } = useEnhancedMasterIntegration();
-  const theming = useTheming('prototype_tester, ');
+  const theming = useTheming('prototype_tester');
 
   const [selectedRequest, setSelectedRequest] = useState<FikenRequest | null>(null);
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
@@ -373,7 +373,7 @@ export default function FikenIntegrationRequestsPanel() {
               <path d="M12.462,15.174C11.743,15.174 11.055,14.892 10.548,14.391C10.041,13.89 9.757,13.211 9.759,12.504L9.759,11.471C9.752,5.672 14.515,0.962 20.405,0.944C22.528,0.941 24.603,1.568 26.359,2.743C27.573,3.575 27.884,5.212 27.058,6.421C26.233,7.629 24.576,7.962 23.335,7.169C22.471,6.591 21.45,6.283 20.405,6.285C17.504,6.295 15.16,8.616 15.164,11.471L15.164,12.509C15.166,13.216 14.882,13.894 14.375,14.395C13.868,14.896 13.18,15.178 12.462,15.179" fill="#75ABF7"/>
               <path d="M21.45,17.681L15.161,17.681L15.161,11.472C15.195,10.5 14.688,9.587 13.838,9.092C12.989,8.596 11.932,8.596 11.082,9.092C10.233,9.587 9.725,10.5 9.759,11.472L9.759,17.686L3.47,17.686C1.972,17.686 0.758,18.881 0.758,20.356C0.758,21.831 1.972,23.027 3.47,23.027L9.759,23.027L9.759,29.241C9.735,30.206 10.245,31.109 11.091,31.599C11.937,32.088 12.985,32.088 13.831,31.599C14.677,31.109 15.187,30.206 15.163,29.241L15.163,23.022L21.452,23.022C22.95,23.022 24.164,21.826 24.164,20.352C24.164,18.877 22.95,17.681 21.452,17.681" fill="#5239BA"/>
             </svg>
-            <Typography variant="h6" sx={{ ml: 1, fontWeight: 50, color: '#5239BA' }}>fiken</Typography>
+            <Typography variant="h6" sx={{ ml: 1, fontWeight: 500, color: '#5239BA' }}>fiken</Typography>
           </Box>
           <Box>
             <Typography variant="h5" fontWeight="bold">Fiken Integrasjonsforespørsler</Typography>

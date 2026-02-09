@@ -210,7 +210,7 @@ const FrameNumber = styled(Box)({
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  fontWeight: 70,
+  fontWeight: 700,
   fontSize: 12,
   color: '#fff',
   backdropFilter: 'blur(4px)',

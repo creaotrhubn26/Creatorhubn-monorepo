@@ -122,7 +122,7 @@ const PersonalizedNews: React.FC = () => {
             background: 'linear-gradient(45deg, #FF6B35 30%, #F7931E 90%)',
             WebkitBackgroundClip: 'text',
             WebkitTextFillColor: 'transparent',
-            fontWeight: 7 }}>
+            fontWeight: 700 }}>
           CreatorHub Norge Nyheter
         </Typography>
         <Typography variant="h6" color="text.secondary" sx={{ color: theming.colors.primary }}>

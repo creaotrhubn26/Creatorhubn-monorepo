@@ -86,7 +86,7 @@ export default function UniversalOAuthIntegration({
   const { integration, communication, dataFlow, componentRegistry } = useEnhancedMasterIntegration();
   
   // Theming system
-  const theming = useTheming('photographer, ');
+  const theming = useTheming('photographer');
 
   // Check user invite status first
   const { data: inviteStatus, isLoading: inviteLoading } = useQuery({

@@ -77,7 +77,7 @@ export function AIPhotoEditor({ projectId, initialImage, mode = 'single', classN
   const queryClient = useQueryClient();
   
   // Theming system
-  const theming = useTheming('photographer, ');
+  const theming = useTheming('photographer');
 
   // Norwegian Intelligent operations with professional photography focus
   const aiOperations: AIOperation[] = [

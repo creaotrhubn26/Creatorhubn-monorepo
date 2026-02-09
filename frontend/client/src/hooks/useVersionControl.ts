@@ -23,8 +23,8 @@ export interface UseVersionControlOptions {
   onVersionDeleted?: (data: { version: Version }) => void;
   onVersionRollback?: (data: { version: Version }) => void;
   onChangeTracked?: (data: { change: Change }) => void;
-  onChangesStaged?: (data: { changes: Change[, ],}) => void;
-  onChangesUnstaged?: (data: { changes: Change[, ],}) => void;
+  onChangesStaged?: (data: { changes: Change[] }) => void;
+  onChangesUnstaged?: (data: { changes: Change[] }) => void;
   onCommitCreated?: (data: { commit: Commit }) => void;
   onBranchCreated?: (data: { branch: Branch }) => void;
   onBranchSwitched?: (data: { branch: Branch }) => void;
@@ -34,7 +34,7 @@ export interface UseVersionControlOptions {
   onBackupCreated?: (data: { timestamp: number }) => void;
   onSyncCompleted?: () => void;
   onError?: (error: string) => void;
-  onInitialized?: () => void
+  onInitialized?: () => void;
 }
 
 export interface UseVersionControlReturn {
@@ -168,13 +168,13 @@ export const useVersionControl = (options: UseVersionControlOptions = {}): UseVe
     }
   };
 
-    const handleChangesStaged = (data: { changes: Change[, ],}) => {
+    const handleChangesStaged = (data: { changes: Change[] }) => {
       if (onChangesStaged) {
         onChangesStaged(data);
     }
   };
 
-    const handleChangesUnstaged = (data: { changes: Change[, ],}) => {
+    const handleChangesUnstaged = (data: { changes: Change[] }) => {
       if (onChangesUnstaged) {
         onChangesUnstaged(data);
     }

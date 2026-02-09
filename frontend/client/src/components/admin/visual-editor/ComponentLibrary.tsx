@@ -470,7 +470,7 @@ export const ComponentLibrary: React.FC<ComponentLibraryProps> = ({
             fullWidth
             select
             value={newComponent.category}
-            onChange={(e) => setNewComponent({ ...newComponent, category: e.target.value as any })}}
+            onChange={(e) => setNewComponent({ ...newComponent, category: e.target.value as 'Buttons' | 'Forms' | 'Cards' | 'Navigation' | 'Layout' | 'Custom' })}
           >
             <MenuItem value="Buttons">Buttons</MenuItem>
             <MenuItem value="Forms">Forms</MenuItem>

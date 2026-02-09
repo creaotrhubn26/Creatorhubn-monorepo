@@ -173,9 +173,19 @@ const CommunicationHub: React.FC<CommunicationHubProps> = ({ userId, profession 
   const [noteContent, setNoteContent] = useState('');
   const [noteTitle, setNoteTitle] = useState('');
   const [noteCategory, setNoteCategory] = useState<'meeting' | 'email' | 'project' | 'personal'>('personal');
+  const noteCategories: Array<'meeting' | 'email' | 'project' | 'personal'> = [
+    'meeting',
+    'email',
+    'project',
+    'personal'
+  ];
 
   // Chat state
   const [chatOpen, setChatOpen] = useState(false);
+
+  // Email action menu state
+  const [emailMenuAnchor, setEmailMenuAnchor] = useState<null | HTMLElement>(null);
+  const [emailMenuTarget, setEmailMenuTarget] = useState<Email | null>(null);
 
   // Fetch inboxes
   const { data: inboxes = [] } = useQuery<EmailInbox[]>({
@@ -227,13 +237,13 @@ const CommunicationHub: React.FC<CommunicationHubProps> = ({ userId, profession 
     mutationFn: (note: Partial<Note>) =>
       apiRequest(`/api/communication/notes`, {
         method: 'POST',
-        body: JSON.stringify({ ...note, userId })
+        body: { ...note, userId }
       }),
     onSuccess: () => {
       refetchNotes();
       setNoteDialog(false);
       setNoteTitle('');
-      setNoteContent(', ');
+      setNoteContent('');
     },
   });
 
@@ -261,8 +271,8 @@ const CommunicationHub: React.FC<CommunicationHubProps> = ({ userId, profession 
 
   const handleCreateNote = () => {
     setSelectedNote(null);
-    setNoteTitle(', ');
-    setNoteContent(', ');
+    setNoteTitle('');
+    setNoteContent('');
     setNoteDialog(true);
   };
 
@@ -273,6 +283,22 @@ const CommunicationHub: React.FC<CommunicationHubProps> = ({ userId, profession 
       category: noteCategory,
       tags: [],
     });
+  };
+
+  const handleNoteCategoryChange = (value: string) => {
+    if (noteCategories.includes(value as Note['category'])) {
+      setNoteCategory(value as Note['category']);
+    }
+  };
+
+  const handleEmailMenuOpen = (event: React.MouseEvent<HTMLElement>, email: Email) => {
+    setEmailMenuAnchor(event.currentTarget);
+    setEmailMenuTarget(email);
+  };
+
+  const handleEmailMenuClose = () => {
+    setEmailMenuAnchor(null);
+    setEmailMenuTarget(null);
   };
 
   const filteredEmails = emails.filter(email => {
@@ -299,10 +325,14 @@ const CommunicationHub: React.FC<CommunicationHubProps> = ({ userId, profession 
                   refetchEmails();
                   refetchMeetings();
                   refetchNotes();
+                  queryClient.invalidateQueries({ queryKey: [`/api/communication/inboxes/${userId}`] });
+                  queryClient.invalidateQueries({ queryKey: [`/api/communication/emails/${userId}`] });
+                  queryClient.invalidateQueries({ queryKey: [`/api/communication/meetings/${userId}`] });
+                  queryClient.invalidateQueries({ queryKey: [`/api/communication/notes/${userId}`] });
                 }}
                 aria-label="Oppdater alle data"
                 sx={{
-                  , '&:focus-visible': {
+                  '&:focus-visible': {
                     outline: '3px solid',
                     outlineColor: 'primary.main',
                     outlineOffset: '2px',
@@ -338,8 +368,10 @@ const CommunicationHub: React.FC<CommunicationHubProps> = ({ userId, profession 
           aria-label="Kommunikasjon navigasjon"
           sx={{
             borderBottom: 1,
-            borderColor: 'divider','& .MuiTab-root': {
-              color: theming.colors.primary'&:focus-visible': {
+            borderColor: 'divider',
+            '& .MuiTab-root': {
+              color: theming.colors.primary,
+              '&:focus-visible': {
                 outline: '3px solid',
                 outlineColor: 'primary.main',
                 outlineOffset: '2px',
@@ -548,18 +580,26 @@ const CommunicationHub: React.FC<CommunicationHubProps> = ({ userId, profession 
                               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                                 <Typography
                                   variant="body2"
-                                  sx={{ fontWeight: mail.isRead ? 'normal' : 'bold' }}
+                                  sx={{ fontWeight: email.isRead ? 'normal' : 'bold' }}
                                 >
                                   {email.from}
                                 </Typography>
                                 {email.hasAttachments && (
                                   <Chip size="small" label="📎" />
                                 )}
+                                {email.labels?.length > 0 && (
+                                  <Chip
+                                    size="small"
+                                    label={`${email.labels.length} etiketter`}
+                                    icon={<LabelIcon />}
+                                    variant="outlined"
+                                  />
+                                )}
                               </Box>
                             }
                             secondary={
                               <>
-                                <Typography variant="body2" sx={{ fontWeight: mail.isRead ? 'normal' : 'bold' }}>
+                                <Typography variant="body2" sx={{ fontWeight: email.isRead ? 'normal' : 'bold' }}>
                                   {email.subject}
                                 </Typography>
                                 <Typography variant="caption" color="text.secondary">
@@ -568,6 +608,15 @@ const CommunicationHub: React.FC<CommunicationHubProps> = ({ userId, profession 
                               </>
                             }
                           />
+                          <ListItemSecondaryAction>
+                            <IconButton
+                              size="small"
+                              aria-label="Flere handlinger"
+                              onClick={(event) => handleEmailMenuOpen(event, email)}
+                            >
+                              <MoreIcon fontSize="small" />
+                            </IconButton>
+                          </ListItemSecondaryAction>
                         </ListItem>
                         <Divider />
                       </React.Fragment>
@@ -957,7 +1006,7 @@ const CommunicationHub: React.FC<CommunicationHubProps> = ({ userId, profession 
         profession={profession}
         userId={userId}
         initialTo={selectedEmail?.from || ''}
-        initialSubject={selectedEmail ? `Re: ${selectedEmail.subject}` : ', '}
+        initialSubject={selectedEmail ? `Re: ${selectedEmail.subject}` : ''}
         replyToEmail={selectedEmail}
       />
 
@@ -1020,7 +1069,7 @@ const CommunicationHub: React.FC<CommunicationHubProps> = ({ userId, profession 
               <InputLabel>Category</InputLabel>
               <Select
                 value={noteCategory}
-                onChange={(e) => setNoteCategory(e.target.value as any)}
+                onChange={(e) => handleNoteCategoryChange(String(e.target.value))}
                 label="Category"
               >
                 <MenuItem value="meeting">Meeting</MenuItem>
@@ -1049,6 +1098,58 @@ const CommunicationHub: React.FC<CommunicationHubProps> = ({ userId, profession 
           </Button>
         </DialogActions>
       </Dialog>
+
+      <Menu
+        anchorEl={emailMenuAnchor}
+        open={Boolean(emailMenuAnchor)}
+        onClose={handleEmailMenuClose}
+      >
+        <MenuItem
+          onClick={() => {
+            if (emailMenuTarget) {
+              handleReplyEmail(emailMenuTarget);
+            }
+            handleEmailMenuClose();
+          }}
+        >
+          <ReplyIcon fontSize="small" style={{ marginRight: 8 }} />
+          Reply
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            if (emailMenuTarget) {
+              setEmailComposerOpen(true);
+              setSelectedEmail(emailMenuTarget);
+            }
+            handleEmailMenuClose();
+          }}
+        >
+          <ForwardIcon fontSize="small" style={{ marginRight: 8 }} />
+          Forward
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            if (emailMenuTarget) {
+              toggleStarMutation.mutate(emailMenuTarget.id);
+            }
+            handleEmailMenuClose();
+          }}
+        >
+          <StarIcon fontSize="small" style={{ marginRight: 8 }} />
+          Toggle Star
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            if (emailMenuTarget) {
+              deleteEmailMutation.mutate(emailMenuTarget.id);
+            }
+            handleEmailMenuClose();
+          }}
+        >
+          <DeleteIcon fontSize="small" style={{ marginRight: 8 }} />
+          Delete
+        </MenuItem>
+      </Menu>
     </Box>
   );
 };

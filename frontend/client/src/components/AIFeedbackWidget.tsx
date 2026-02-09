@@ -200,7 +200,7 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: '13px',
     color: '#aaa',
     marginBottom: '12px',
-    fontWeight: 50,
+    fontWeight: 500,
   },
   buttons: {
     display: 'flex',
@@ -310,7 +310,7 @@ const styles: Record<string, React.CSSProperties> = {
   thankYouText: {
     fontSize: '13px',
     color:'#00ff00',
-    fontWeight: 50,
+    fontWeight: 500,
   },
 };
 

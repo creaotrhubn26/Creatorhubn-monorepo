@@ -107,7 +107,7 @@ export default function WhatsNewPreview() {
       maintenance: '#ff9800',
       tip: '#9c27b0',
     };
-    return colors[category as keyof typeof colors] || '#666',;
+    return colors[category as keyof typeof colors] || '#666';
   };
 
   const getCategoryLabel = (category: string) => {
@@ -134,7 +134,7 @@ export default function WhatsNewPreview() {
     <Container maxWidth="lg" sx={{ py: 4 }}>
       {/* Header */}
       <Box sx={{ mb: 4 }}>
-        <Typography variant="h3" sx={{ fontWeight: 70, mb: 2 }}>
+        <Typography variant="h3" sx={{ fontWeight: 700, mb: 2 }}>
           🎉 What's New Preview
         </Typography>
         <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
@@ -226,7 +226,7 @@ export default function WhatsNewPreview() {
 
                 {announcement.featureInfo && (
                   <Card sx={{ bgcolor: 'grey.50', mb: 2 }}>
-                    <CardContent sx={{ py: 1.5 '&:last-child': { pb: 1.5 } }>
+                    <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
                       <Typography
                         variant="caption"
                         sx={{ fontWeight: 600, display: 'block', mb: 0.5 }}>
@@ -299,7 +299,7 @@ export default function WhatsNewPreview() {
                     textTransform: 'none',
                     borderRadius: 1,
                     px: 3,
-                    py: 1.5
+                    py: 1.5,
                     '&:hover': { bgcolor: '#e67e00' },
                   }}
                 >

@@ -4,14 +4,12 @@ import {
   Button,
   Typography,
   Card,
-  CardContent,
   IconButton,
   Tooltip,
   Chip,
   Badge,
   Divider,
   List,
-  ListItem,
   ListItemText,
   ListItemSecondaryAction,
   TextField,
@@ -33,7 +31,9 @@ import {
   Fab,
   Drawer,
   AppBar,
-  Toolbar
+  Toolbar,
+  Grid,
+  ListItemButton,
 } from '@mui/material';
 import {
   Add,
@@ -42,7 +42,6 @@ import {
   Share,
   Download,
   Upload,
-  Star,
   StarBorder,
   CameraAlt,
   Videocam,
@@ -55,38 +54,23 @@ import {
   Close,
   FilterList,
   Search,
-  Menu,
-  SaveAlt,
-  GetApp
+  GetApp,
 } from '@mui/icons-material';
 import { 
-  CREATOR_HUB_ICONS,
   CameraTemplateIcon,
-  TemplateManagerIcon,
   CameraGearIcon,
   LensIcon,
   TripodIcon,
   GimbalIcon,
   LightingIcon,
   MemoryCardIcon,
-  CameraSettingsIcon,
   VideoSettingsIcon,
   PhotoSettingsIcon,
   WorkflowIcon,
-  TemplateCategoryIcon,
-  TemplateShareIcon,
-  TemplateImportIcon,
-  TemplateExportIcon,
-  TemplateSearchIcon,
-  TemplateFilterIcon,
-  TemplateRatingIcon,
-  TemplateUsageIcon
+  CameraSetupIcon,
 } from '../shared/CreatorHubIcons';
-import { useCameraDiscovery } from '../../integration/EnhancedMasterIntegrationProvider';
 import { useTheming } from '../../utils/theming-helper';
 import { cameraTemplateManager, CameraTemplate, CameraTemplateCategory, CameraTemplateSearchFilters } from '../../data/camera-templates';
-import { Camera } from '../../data/video-camera-database';
-import { PhotoCamera as PhotoCameraType } from '../../data/photo-camera-database';
 
 interface CameraTemplateSidebarProps {
   open: boolean;
@@ -113,18 +97,18 @@ export const CameraTemplateSidebar: React.FC<CameraTemplateSidebarProps> = ({
   width = 400,
   position = 'right'
 }) => {
-  const cameraDiscovery = useCameraDiscovery();
   
   // Theming system
-  const theming = useTheming('photographer, ');
+  const theming = useTheming('photographer');
   const [templates, setTemplates] = useState<CameraTemplate[]>([]);
   const [categories, setCategories] = useState<CameraTemplateCategory[]>([]);
   const [selectedTemplate, setSelectedTemplate] = useState<CameraTemplate | null>(null);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
-  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [_isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isShareDialogOpen, setIsShareDialogOpen] = useState(false);
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchFilters, setSearchFilters] = useState<CameraTemplateSearchFilters>({
     category: projectType,
@@ -134,6 +118,7 @@ export const CameraTemplateSidebar: React.FC<CameraTemplateSidebarProps> = ({
   const [importData, setImportData] = useState('');
   const [shareToken, setShareToken] = useState('');
   const [showFilters, setShowFilters] = useState(false);
+  const [alertMessage, setAlertMessage] = useState<{type: 'success' | 'error' | 'info' | 'warning', text: string} | null>(null);
 
   // Form state for creating/editing templates
   const [templateForm, setTemplateForm] = useState<Partial<CameraTemplate>>({
@@ -143,28 +128,28 @@ export const CameraTemplateSidebar: React.FC<CameraTemplateSidebarProps> = ({
     profession: profession as any,
     culture,
     phase: 'all',
-    primaryCamera:  , {},
-    additionalCameras:  [],
-    lenses:  [],
-    accessories:  [],
+    primaryCamera: {},
+    additionalCameras: [],
+    lenses: [],
+    accessories: [],
     settings: {
       video: {
         resolution: '4',
         frameRate: '25fps',
         colorSpace: 'Rec.70',
         codec: 'H.264'
-    ,},
+      },
       photo: {
         fileFormat: 'raw+jpeg',
         quality: 'maximum',
-        colorSpace: 'sRG',
+        colorSpace: 'sRGB',
         whiteBalance: 'auto'
     }
   },
     workflow: {
       backupStrategy: 'realtime',
       backupFrequency:  30,
-      memoryCardLabeling: 'ABC',
+      memoryCardLabeling: 'ABCD',
       estimatedPhotos: 100,
       estimatedVideoHours:  4,
       estimatedStorage: '200'
@@ -218,7 +203,7 @@ export const CameraTemplateSidebar: React.FC<CameraTemplateSidebarProps> = ({
   const handleTemplateSelect = (template: CameraTemplate) => {
     setSelectedTemplate(template);
     onTemplateSelect?.(template);
-,};
+  };
 
   const handleCreateTemplate = () => {
     setIsCreateDialogOpen(true);
@@ -229,36 +214,36 @@ export const CameraTemplateSidebar: React.FC<CameraTemplateSidebarProps> = ({
       profession: profession as any,
       culture,
       phase: 'all',
-      primaryCamera:  , {},
-      additionalCameras:  [],
-      lenses:  [],
-      accessories:  [],
+      primaryCamera: {},
+      additionalCameras: [],
+      lenses: [],
+      accessories: [],
       settings: {
         video: {
           resolution: '4',
           frameRate: '25fps',
           colorSpace: 'Rec.70',
           codec: 'H.264'
-      ,},
+        },
         photo: {
           fileFormat: 'raw+jpeg',
           quality: 'maximum',
-          colorSpace: 'sRG',
+          colorSpace: 'sRGB',
           whiteBalance: 'auto'
-      }
-    },
+        }
+      },
       workflow: {
         backupStrategy: 'realtime',
-        backupFrequency:  30,
-        memoryCardLabeling: 'ABC',
+        backupFrequency: 30,
+        memoryCardLabeling: 'ABCD',
         estimatedPhotos: 100,
-        estimatedVideoHours:  4,
+        estimatedVideoHours: 4,
         estimatedStorage: '200'
-    ,},
+      },
       isPublic: false,
       tags: []
-  ,});
-};
+    });
+  };
 
   const handleSaveTemplate = async () => {
     if (!templateForm.name || !templateForm.category) return;
@@ -270,11 +255,13 @@ export const CameraTemplateSidebar: React.FC<CameraTemplateSidebarProps> = ({
         createdBy: 'current-user',
         isPublic: templateForm.isPublic || false,
         tags: templateForm.tags || []
-    ,} as any);
+      } as any);
 
       setTemplates(prev => [...prev, newTemplate]);
       setIsCreateDialogOpen(false);
       onTemplateSave?.(newTemplate);
+      setAlertMessage({ type: 'success', text: `Template "${newTemplate.name}" created successfully!` });
+      setTimeout(() => setAlertMessage(null), 5000);
       
       // Reset form
       setTemplateForm({
@@ -284,48 +271,50 @@ export const CameraTemplateSidebar: React.FC<CameraTemplateSidebarProps> = ({
         profession: profession as any,
         culture,
         phase: 'all',
-        primaryCamera:  , {},
-        additionalCameras:  [],
-        lenses:  [],
-        accessories:  [],
+        primaryCamera: {},
+        additionalCameras: [],
+        lenses: [],
+        accessories: [],
         settings: {
           video: {
             resolution: '4',
             frameRate: '25fps',
             colorSpace: 'Rec.70',
             codec: 'H.264'
-        ,},
+          },
           photo: {
             fileFormat: 'raw+jpeg',
             quality: 'maximum',
-            colorSpace: 'sRG',
+            colorSpace: 'sRGB',
             whiteBalance: 'auto'
-        }
-      },
+          }
+        },
         workflow: {
           backupStrategy: 'realtime',
-          backupFrequency:  30,
-          memoryCardLabeling: 'ABC',
+          backupFrequency: 30,
+          memoryCardLabeling: 'ABCD',
           estimatedPhotos: 100,
-          estimatedVideoHours:  4,
+          estimatedVideoHours: 4,
           estimatedStorage: '200'
-      ,},
+        },
         isPublic: false,
         tags: []
-    ,});
-  } catch (error) {
+      });
+    } catch (error) {
       console.error('Failed to save template: ', error);
-  } finally {
+      setAlertMessage({ type: 'error', text: 'Failed to save template. Please try again.' });
+      setTimeout(() => setAlertMessage(null), 5000);
+    } finally {
       setIsLoading(false);
-  }
-};
+    }
+  };
 
   const handleEditTemplate = (template: CameraTemplate) => {
     setTemplateForm(template);
     setIsEditDialogOpen(true);
-,};
+  };
 
-  const handleUpdateTemplate = async () => {
+  const _handleUpdateTemplate = async () => {
     if (!templateForm.id) return;
 
     setIsLoading(true);
@@ -335,39 +324,58 @@ export const CameraTemplateSidebar: React.FC<CameraTemplateSidebarProps> = ({
         setTemplates(prev => prev.map(t => t.id === updatedTemplate.id ? updatedTemplate : t));
         setIsEditDialogOpen(false);
         onTemplateSave?.(updatedTemplate);
+        setAlertMessage({ type: 'success', text: `Template "${updatedTemplate.name}" updated successfully!` });
+        setTimeout(() => setAlertMessage(null), 5000);
     }
   } catch (error) {
       console.error('Failed to update template:', error);
+      setAlertMessage({ type: 'error', text: 'Failed to update template. Please try again.' });
+      setTimeout(() => setAlertMessage(null), 5000);
   } finally {
       setIsLoading(false);
   }
 };
 
   const handleDeleteTemplate = (templateId: string) => {
-    if (window.confirm('Are you sure you want to delete this template?')) {
-      const success = cameraTemplateManager.deleteTemplate(templateId);
-      if (success) {
-        setTemplates(prev => prev.filter(t => t.id !== templateId));
-        if (selectedTemplate?.id === templateId) {
-          setSelectedTemplate(null);
+    setConfirmDeleteId(templateId);
+  };
+
+  const executeDeleteTemplate = () => {
+    if (!confirmDeleteId) return;
+    const templateName = templates.find(t => t.id === confirmDeleteId)?.name;
+    const success = cameraTemplateManager.deleteTemplate(confirmDeleteId);
+    if (success) {
+      setTemplates(prev => prev.filter(t => t.id !== confirmDeleteId));
+      if (selectedTemplate?.id === confirmDeleteId) {
+        setSelectedTemplate(null);
       }
+      setAlertMessage({ type: 'success', text: `Template "${templateName}" deleted successfully.` });
+      setTimeout(() => setAlertMessage(null), 5000);
+    } else {
+      setAlertMessage({ type: 'error', text: 'Failed to delete template.' });
+      setTimeout(() => setAlertMessage(null), 5000);
     }
-  }
-};
+    setConfirmDeleteId(null);
+  };
 
   const handleShareTemplate = (template: CameraTemplate) => {
     setSelectedTemplate(template);
     setIsShareDialogOpen(true);
-,};
+  };
 
   const handleGenerateShareLink = () => {
     if (!selectedTemplate) return;
 
-    const token = cameraTemplateManager.shareTemplate(selectedTemplate.id'view');
+    const token = cameraTemplateManager.shareTemplate(selectedTemplate.id, 'view');
     if (token) {
       setShareToken(token);
-  }
-};
+      setAlertMessage({ type: 'success', text: 'Share link generated successfully!' });
+      setTimeout(() => setAlertMessage(null), 5000);
+    } else {
+      setAlertMessage({ type: 'error', text: 'Failed to generate share link.' });
+      setTimeout(() => setAlertMessage(null), 5000);
+    }
+  };
 
   const handleImportTemplates = () => {
     if (!importData.trim()) return;
@@ -379,14 +387,59 @@ export const CameraTemplateSidebar: React.FC<CameraTemplateSidebarProps> = ({
         loadTemplates();
         setImportData('');
         setIsImportDialogOpen(false);
+        setAlertMessage({ type: 'success', text: `Successfully imported ${result.success} template(s)!` });
+        setTimeout(() => setAlertMessage(null), 5000);
+    } else {
+        setAlertMessage({ type: 'warning', text: 'No templates were imported.' });
+        setTimeout(() => setAlertMessage(null), 5000);
     }
       console.log('Import result:', result);
   } catch (error) {
       console.error('Failed to import templates:', error);
+      setAlertMessage({ type: 'error', text: 'Failed to import templates. Please check the format.' });
+      setTimeout(() => setAlertMessage(null), 5000);
   } finally {
       setIsLoading(false);
   }
 };
+
+  const handleDuplicateTemplate = (template: CameraTemplate) => {
+    const { id, version, createdAt, updatedAt, usageCount, lastUsed, reviews, ...templateData } = template;
+    const duplicated = cameraTemplateManager.createTemplate({
+      ...templateData,
+      name: `${template.name} (Copy)`,
+      createdBy: 'current-user',
+    });
+    setTemplates(prev => [...prev, duplicated]);
+    setAlertMessage({ type: 'success', text: `Template "${duplicated.name}" duplicated successfully!` });
+    setTimeout(() => setAlertMessage(null), 5000);
+  };
+
+  const handleRefreshTemplates = () => {
+    setIsLoading(true);
+    loadTemplates();
+    loadCategories();
+    setTimeout(() => {
+      setIsLoading(false);
+      setAlertMessage({ type: 'info', text: 'Templates refreshed successfully!' });
+      setTimeout(() => setAlertMessage(null), 5000);
+    }, 500);
+  };
+
+  const handleDownloadTemplate = (template: CameraTemplate) => {
+    const exportData = cameraTemplateManager.exportTemplates([template.id]);
+    const blob = new Blob([exportData], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${template.name.replace(/\s+/g, '-').toLowerCase()}-template.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    setAlertMessage({ type: 'success', text: `Template "${template.name}" downloaded!` });
+    setTimeout(() => setAlertMessage(null), 3000);
+  };
 
   const handleExportTemplates = (templateIds: string[]) => {
     const exportData = cameraTemplateManager.exportTemplates(templateIds);
@@ -399,32 +452,43 @@ export const CameraTemplateSidebar: React.FC<CameraTemplateSidebarProps> = ({
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+    setAlertMessage({ type: 'success', text: `Exported ${templateIds.length} template(s)!` });
+    setTimeout(() => setAlertMessage(null), 3000);
 };
 
   const renderTemplateListItem = (template: CameraTemplate) => (
-    <ListItem
-      key={template.d}
-      button
-      selected={selectedTemplateId === template.id}
-      onClick={() => handleTemplateSelect(template)}
+    <Card 
+      key={template.id}
+      elevation={selectedTemplateId === template.id ? 4 : 1}
       sx={{
-        borderRadius:  1,
-        mb:  1,
+        mb: 1,
         border: selectedTemplateId === template.id ? 2 : 1,
-        borderColor: selectedTemplateId === template.id ? 'primary.main' : 'divider'
-    }}
+        borderColor: selectedTemplateId === template.id ? 'primary.main' : 'divider',
+        transition: 'all 0.2s'
+      }}
     >
+      <ListItemButton
+        selected={selectedTemplateId === template.id}
+        onClick={() => handleTemplateSelect(template)}
+      >
       <ListItemText
         primary={
-            <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5}}>
-              <CameraTemplateIcon 
-                sx={{ 
-                  mr: 1, fontSize:  16,
-                  color: template.profession === 'photographer' ? 'secondary.main' : 
-                         template.profession === 'videographer' ? 'primary.main' : 
-                         'text.primary'
-              }} 
-              />
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5, gap: 0.5}}>              
+              <Badge 
+                badgeContent={template.usageCount > 99 ? '99+' : template.usageCount} 
+                color="primary"
+                invisible={!template.usageCount || template.usageCount === 0}
+                sx={{ mr: 0.5 }}
+              >
+                <CameraSetupIcon 
+                  sx={{ 
+                    fontSize: 18,
+                    color: template.profession === 'photographer' ? 'secondary.main' : 
+                           template.profession === 'videographer' ? 'primary.main' : 
+                           'text.primary'
+                }} 
+                />
+              </Badge>
               <Typography variant="subtitle2" noWrap sx={{ flexGrow:  1 }}>
                 {template.name}
               </Typography>
@@ -447,14 +511,14 @@ export const CameraTemplateSidebar: React.FC<CameraTemplateSidebarProps> = ({
               <Chip 
                 label={template.category} 
                 size="small" 
-                sx={{ mr: 0, .fontSize: '0.7rem' }}
+                sx={{ mr: 0, fontSize: '0.7rem' }}
                 color="primary"
                 variant="outlined"
               />
               <Chip 
                 label={template.profession} 
                 size="small" 
-                sx={{ mr: 0, .fontSize: '0.7rem' }}
+                sx={{ mr: 0, fontSize: '0.7rem' }}
                 color="secondary"
                 variant="outlined"
               />
@@ -463,7 +527,7 @@ export const CameraTemplateSidebar: React.FC<CameraTemplateSidebarProps> = ({
                   icon={<Videocam sx={{ fontSize: 12}} />}
                   label="Video" 
                   size="small" 
-                  sx={{ mr: 0, .fontSize: '0.7rem' }}
+                  sx={{ mr: 0, fontSize: '0.7rem' }}
                   color="primary"
                 />
               )}
@@ -472,29 +536,47 @@ export const CameraTemplateSidebar: React.FC<CameraTemplateSidebarProps> = ({
                   icon={<PhotoCamera sx={{ fontSize: 12}} />}
                   label="Photo" 
                   size="small" 
-                  sx={{ mr: 0, .fontSize: '0.7rem' }}
+                  sx={{ mr: 0, fontSize: '0.7rem' }}
                   color="secondary"
                 />
               )}
             </Box>
-            <Box sx={{ display: 'flex', alignItems: 'center', mt: 0.5}}>
-              <Typography variant="caption" color="text.secondary">
-                Used {template.usageCount} times
+            <Box sx={{ display: 'flex', alignItems: 'center', mt: 0.5, gap: 1}}>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <StarBorder sx={{ fontSize: 14 }} />
+                {template.rating ? template.rating.toFixed(1) : 'Not rated'}
               </Typography>
-              {template.rating && (
-                <Rating 
-                  value={template.rating} 
-                  size="small" 
-                  readOnly 
-                  sx={{ ml:  1 }}
-                />
-              )}
+              <Typography variant="caption" color="text.secondary">
+                • {template.usageCount || 0} uses
+              </Typography>
             </Box>
           </Box>
       }
       />
       <ListItemSecondaryAction>
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5}}>
+        <Box sx={{ display: 'flex', flexDirection: 'row', gap: 0.5, flexWrap: 'wrap'}}>          
+          <Tooltip title="Download">
+            <IconButton 
+              size="small" 
+              onClick={(e) => {
+                e.stopPropagation();
+                handleDownloadTemplate(template);
+            }}
+            >
+              <Download fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Duplicate">
+            <IconButton 
+              size="small" 
+              onClick={(e) => {
+                e.stopPropagation();
+                handleDuplicateTemplate(template);
+            }}
+            >
+              <ContentCopy fontSize="small" />
+            </IconButton>
+          </Tooltip>
           <Tooltip title="Edit">
             <IconButton 
               size="small" 
@@ -514,7 +596,7 @@ export const CameraTemplateSidebar: React.FC<CameraTemplateSidebarProps> = ({
                 handleShareTemplate(template);
             }}
             >
-              <TemplateShareIcon fontSize="small" />
+              <Share fontSize="small" />
             </IconButton>
           </Tooltip>
           <Tooltip title="Delete">
@@ -530,10 +612,11 @@ export const CameraTemplateSidebar: React.FC<CameraTemplateSidebarProps> = ({
           </Tooltip>
         </Box>
       </ListItemSecondaryAction>
-    </ListItem>
+      </ListItemButton>
+    </Card>
   );
 
-  const renderTemplateDetails = (template: CameraTemplate) => (
+  const _renderTemplateDetails = (template: CameraTemplate) => (
     <Box sx={{ p: 2 }}>
       <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
         {template.name}
@@ -747,14 +830,19 @@ export const CameraTemplateSidebar: React.FC<CameraTemplateSidebarProps> = ({
             <Typography variant="h6" sx={{  flexGrow:  1  }}>
               Camera Templates
             </Typography>
+            <Tooltip title="Refresh">
+              <IconButton onClick={handleRefreshTemplates} disabled={isLoading}>
+                <Refresh />
+              </IconButton>
+            </Tooltip>
             <Tooltip title="Filters">
               <IconButton onClick={() => setShowFilters(!showFilters)}>
-                <TemplateFilterIcon />
+                <FilterList />
               </IconButton>
             </Tooltip>
             <Tooltip title="Close">
               <IconButton onClick={onClose}>
-                {theming.getThemedIcon('close')}
+                <Close />
               </IconButton>
             </Tooltip>
           </Toolbar>
@@ -769,7 +857,7 @@ export const CameraTemplateSidebar: React.FC<CameraTemplateSidebarProps> = ({
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             InputProps={{
-              startAdornment: <TemplateSearchIcon sx={{ mr: 1, color: 'text.secondary' }} />
+              startAdornment: <Search sx={{ mr: 1, color: 'text.secondary' }} />
           }}
           />
           
@@ -823,8 +911,26 @@ export const CameraTemplateSidebar: React.FC<CameraTemplateSidebarProps> = ({
           )}
         </Box>
 
+        {/* Alerts */}
+        {alertMessage && (
+          <Box sx={{ p: 2, pb: 0 }}>
+            <Alert 
+              severity={alertMessage.type} 
+              onClose={() => setAlertMessage(null)}
+              sx={{ mb: 1 }}
+            >
+              {alertMessage.text}
+            </Alert>
+          </Box>
+        )}
+
         {/* Content */}
-        <Box sx={{ flexGrow: 1, overflow: 'auto' }}>
+        <Box sx={{ flexGrow: 1, overflow: 'auto' }}>          
+          {isLoading && (
+            <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
+              <CircularProgress />
+            </Box>
+          )}
           {/* Recommended Templates */}
           {recommendedTemplates.length > 0 && (
             <Box sx={{ p:  2 }}>
@@ -856,7 +962,7 @@ export const CameraTemplateSidebar: React.FC<CameraTemplateSidebarProps> = ({
             <Button
               variant="outlined"
               size="small"
-              startIcon={<TemplateImportIcon />}
+              startIcon={<Upload />}
               onClick={() => setIsImportDialogOpen(true)}
               fullWidth
             >
@@ -865,7 +971,7 @@ export const CameraTemplateSidebar: React.FC<CameraTemplateSidebarProps> = ({
             <Button
               variant="outlined"
               size="small"
-              startIcon={<TemplateExportIcon />}
+              startIcon={<GetApp />}
               onClick={() => handleExportTemplates(templates.map(t => t.id))}
               fullWidth
             >
@@ -874,7 +980,7 @@ export const CameraTemplateSidebar: React.FC<CameraTemplateSidebarProps> = ({
           </Box>
           <Button variant="contained"
             size="small"
-            startIcon={<CameraTemplateIcon />}
+            startIcon={<Add />}
             onClick={handleCreateTemplate}
             fullWidth
           >
@@ -883,9 +989,31 @@ export const CameraTemplateSidebar: React.FC<CameraTemplateSidebarProps> = ({
         </Box>
       </Drawer>
 
+      {/* Floating Action Button for quick template creation */}
+      {!isCreateDialogOpen && (
+        <Fab
+          color="primary"
+          aria-label="create template"
+          onClick={handleCreateTemplate}
+          sx={{
+            position: 'fixed',
+            bottom: 80,
+            right: position === 'right' ? width + 16 : 16,
+            left: position === 'left' ? width + 16 : 'auto'
+          }}
+        >
+          <Add />
+        </Fab>
+      )}
+
       {/* Create Template Dialog */}
       <Dialog open={isCreateDialogOpen} onClose={() => setIsCreateDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Create Camera Template</DialogTitle>
+        <DialogTitle>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <CameraAlt />
+            Create Camera Template
+          </Box>
+        </DialogTitle>
         <DialogContent>
           <Grid container spacing={2} sx={{ mt:  1 }}>
             <Grid item xs={12}>
@@ -948,11 +1076,13 @@ export const CameraTemplateSidebar: React.FC<CameraTemplateSidebarProps> = ({
           </Grid>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setIsCreateDialogOpen(false)}>Cancel</Button>
+          <Button onClick={() => setIsCreateDialogOpen(false)} startIcon={<Cancel />}>
+            Cancel
+          </Button>
           <Button onClick={handleSaveTemplate} 
             variant="contained"
             disabled={isLoading || !templateForm.name}
-            startIcon={isLoading ? <CircularProgress size={20} sx={theming.getThemedButtonSx()}> : theming.getThemedIcon('save')}
+            startIcon={isLoading ? <CircularProgress size={20} /> : <Save />}
           >
             {isLoading ? 'Saving...' : 'Save Template'}
           </Button>
@@ -961,7 +1091,12 @@ export const CameraTemplateSidebar: React.FC<CameraTemplateSidebarProps> = ({
 
       {/* Share Template Dialog */}
       <Dialog open={isShareDialogOpen} onClose={() => setIsShareDialogOpen(false)}>
-        <DialogTitle>Share Template</DialogTitle>
+        <DialogTitle>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Share />
+            Share Template
+          </Box>
+        </DialogTitle>
         <DialogContent>
           {selectedTemplate && (
             <Box>
@@ -982,8 +1117,12 @@ export const CameraTemplateSidebar: React.FC<CameraTemplateSidebarProps> = ({
                     InputProps={{
                       readOnly: true,
                       endAdornment: (
-                        <IconButton onClick={() => navigator.clipboard.writeText(`${window.location.origin}/templates/${shareToken}`)}>
-                          {theming.getThemedIcon('contentCopy')}
+                        <IconButton onClick={() => {
+                          navigator.clipboard.writeText(`${window.location.origin}/templates/${shareToken}`);
+                          setAlertMessage({ type: 'success', text: 'Link copied to clipboard!' });
+                          setTimeout(() => setAlertMessage(null), 3000);
+                        }}>
+                          <ContentCopy />
                         </IconButton>
                       )
                   }}
@@ -992,8 +1131,7 @@ export const CameraTemplateSidebar: React.FC<CameraTemplateSidebarProps> = ({
               ) : (
                 <Button variant="contained"
                   onClick={handleGenerateShareLink}
-                  startIcon={theming.getThemedIcon('share')}
-                 sx={theming.getThemedButtonSx()}>
+                  startIcon={<Share />}>
                   Generate Share Link
                 </Button>
               )}
@@ -1001,13 +1139,20 @@ export const CameraTemplateSidebar: React.FC<CameraTemplateSidebarProps> = ({
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setIsShareDialogOpen(false)}>Close</Button>
+          <Button onClick={() => setIsShareDialogOpen(false)} startIcon={<Close />}>
+            Close
+          </Button>
         </DialogActions>
       </Dialog>
 
       {/* Import Templates Dialog */}
       <Dialog open={isImportDialogOpen} onClose={() => setIsImportDialogOpen(false)} maxWidth="md" fullWidth>
-        <DialogTitle>Import Templates</DialogTitle>
+        <DialogTitle>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Upload />
+            Import Templates
+          </Box>
+        </DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="text.secondary" sx={{ mb:  2 }}>
             Paste the exported template JSON data below: </Typography>
@@ -1021,13 +1166,31 @@ export const CameraTemplateSidebar: React.FC<CameraTemplateSidebarProps> = ({
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setIsImportDialogOpen(false)}>Cancel</Button>
+          <Button onClick={() => setIsImportDialogOpen(false)} startIcon={<Cancel />}>
+            Cancel
+          </Button>
           <Button onClick={handleImportTemplates} 
             variant="contained"
             disabled={isLoading || !importData.trim()}
-            startIcon={isLoading ? <CircularProgress size={20} sx={theming.getThemedButtonSx()}> : theming.getThemedIcon('upload')}
+            startIcon={isLoading ? <CircularProgress size={20} /> : <Upload />}
           >
             {isLoading ? 'Importing...' : 'Import Templates'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Confirm Delete Dialog */}
+      <Dialog open={!!confirmDeleteId} onClose={() => setConfirmDeleteId(null)}>
+        <DialogTitle>Bekreft sletting</DialogTitle>
+        <DialogContent>
+          <Typography>Er du sikker på at du vil slette denne malen? Denne handlingen kan ikke angres.</Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmDeleteId(null)} startIcon={<Cancel />}>
+            Avbryt
+          </Button>
+          <Button onClick={executeDeleteTemplate} color="error" variant="contained" startIcon={<Delete />}>
+            Slett
           </Button>
         </DialogActions>
       </Dialog>

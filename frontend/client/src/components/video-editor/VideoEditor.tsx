@@ -81,7 +81,7 @@ function TabPanel(props: TabPanelProps) {
 }
 
 export default function CreatorHubVideoSuite() {
-  const [tabValue, setTabValue] = useState(false);
+  const [tabValue, setTabValue] = useState(0);
   
   // Theming system
   const theming = useTheming('photographer');
@@ -95,58 +95,57 @@ export default function CreatorHubVideoSuite() {
   const uploadToDeliveryFolder = useMutation({
     mutationFn: async (file: File) => {
       const formData = new FormData();
-      formData.append('video,', file);
-      formData.append('folder', 'Leveranse,');
+      formData.append('video', file);
+      formData.append('folder', 'Leveranse');
 
       const response = await fetch('/api/video/upload-delivery', {
-        method: 'POS',
+        method: 'POST',
         body: formData,
-    });
+      });
 
       if (!response.ok) throw new Error('Upload failed');
       return response.json();
-  },
+    },
     onSuccess: (data, file) => {
       const newVideo: UploadedVideo = {
-        id: data.videod,
+        id: data.videoId,
         name: file.name,
         size: file.size,
-        duration: 0// Vil bli oppdatert fra server
+        duration: 0, // Vil bli oppdatert fra server
         status: 'processing',
         highlights: {
           social30: { status: 'processing' },
           social60: { status: 'processing' },
           extended: { status: 'processing' },
-      },
-    };
+        },
+      };
 
       setUploadedVideos((prev) => [...prev, newVideo]);
       // Toast notification removed for Zero Toast Policy
 
       // Start automatisk highlight generering
-      generateHighlights.mutate({ videoId: data.videod, fileName: file.name });
-  },
-});
+      generateHighlights.mutate({ videoId: data.videoId, fileName: file.name });
+    },
+  });
 
   // Automatisk highlight generering
   const generateHighlights = useMutation({
-    mutationFn: async ({ videod, fileName }: { videoId: string; fileName: string }) => {
-      return apiRequest('/api/davinci-resolve/auto-generate-highlights', {
-        method: 'POS',
+    mutationFn: async ({ videoId, fileName }: { videoId: string; fileName: string }) =>
+      apiRequest('/api/davinci-resolve/auto-generate-highlights', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify({
-          videod,
+          videoId,
           fileName,
           highlights: [
-            { type: 'social', duration:  30, name: 'Sosiale medier (30s)' },
-            { type: 'social', duration:  60, name: 'Sosiale medier (60s)' },
-            {
-              type: 'extended',
-              duration: 10,
-              name: 'Utvidet highlight (3 min, )' },
+            { type: 'social', duration: 30, name: 'Sosiale medier (30s)' },
+            { type: 'social', duration: 60, name: 'Sosiale medier (60s)' },
+            { type: 'extended', duration: 180, name: 'Utvidet highlight (3 min)' },
           ],
+        }),
       }),
-    });
-  },
     onSuccess: (data) => {
       // Oppdater status for highlights
       setUploadedVideos((prev) =>
@@ -155,41 +154,42 @@ export default function CreatorHubVideoSuite() {
             ? {
                 ...video,
                 highlights: {
-                  social30: { status: 'ready', url: data.highlights.social3, 0,},
-                  social60: { status: 'ready', url: data.highlights.social6, 0,},
+                  social30: { status: 'ready', url: data.highlights.social30 },
+                  social60: { status: 'ready', url: data.highlights.social60 },
                   extended: { status: 'ready', url: data.highlights.extended },
-              },
-            }
+                },
+              }
             : video,
         ),
       );
       // Toast notification removed for Zero Toast Policy
-  },
-});
+    },
+  });
 
   const handleFilesSelected = (files: File[]) => {
-    console.log('🎬 Video filer valgt for kreativ suite, :', files);
-};
+    console.log('🎬 Video filer valgt for kreativ suite:', files);
+  };
 
   const handleUploadComplete = (results: any[]) => {
-    console.log('✅ Video Suite opplasting fullført, :', results);
+    console.log('✅ Video Suite opplasting fullført:', results);
     if (results.length > 0) {
       const result = results[0];
       const file = new File([], result.originalName || 'video.mp4');
       uploadToDeliveryFolder.mutate(file);
-  }
-};
+    }
+  };
 
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue);
-};
+  };
 
   const formatFileSize = (bytes: number): string => {
     // Mock data removed - using database connection
     if (bytes === 0) return '0 B';
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
     const i = Math.floor(Math.log(bytes) / Math.log(1024));
-    return Math.round((bytes / Math.pow(104, i)) * 100) / 100 + ', ' + sizes[i];
-};
+    return `${Math.round((bytes / Math.pow(1024, i)) * 100) / 100} ${sizes[i]}`;
+  };
 
   return (
     <Box sx={{ p:  3 }}>
@@ -219,26 +219,30 @@ export default function CreatorHubVideoSuite() {
           onChange={handleTabChange}
           sx={{
             borderBottom:  1,
-            borderColor: 'divider','& .MuiTab-root': {
-              color: '#66', '&.Mui-selected': {
+            borderColor: 'divider',
+            '& .MuiTab-root': {
+              color: '#666',
+              '&.Mui-selected': {
                 color: '#ff8c00',
-                fontWeight: 'bold' },
-          }}}
+                fontWeight: 'bold',
+              },
+            },
+          }}
         >
           <Tab
-            icon={theming.getThemedIcon('upload')}}
+            icon={theming.getThemedIcon('upload')}
             label="Leveranse Upload"
             id="video-tab-0"
             aria-controls="video-tabpanel-0"
           />
           <Tab
-            icon={theming.getThemedIcon('autoFixHigh')}}
+            icon={theming.getThemedIcon('autoFixHigh')}
             label="Automatiske Highlights"
             id="video-tab-1"
             aria-controls="video-tabpanel-1"
           />
           <Tab
-            icon={theming.getThemedIcon('videoLibrary')}}
+            icon={theming.getThemedIcon('videoLibrary')}
             label="DaVinci Resolve"
             id="video-tab-2"
             aria-controls="video-tabpanel-2"
@@ -251,12 +255,17 @@ export default function CreatorHubVideoSuite() {
             <Grid item xs={12} md={6}>
               <MuiCard
                 sx={{
-                  background: 'linear-gradient(135deg, rgba(2, 5, 5,140,0,0.1) 0%, rgba(2, 5, 5,140,0,0.05) 100%)',
-                  border: '2px dashed rgba(25,140,0,0.3)',
+                  background:
+                    'linear-gradient(135deg, rgba(2, 5, 5, 0.1) 0%, rgba(2, 5, 5, 0.05) 100%)',
+                  border: '2px dashed rgba(25, 140, 0, 0.3)',
                   cursor: 'pointer',
-                  transition: 'all 0.3s ease', '&:hover': {
-                    border: '2px dashed rgba(25,140,0,0.6)',
-                    background: 'linear-gradient(135deg, rgba(2, 5, 5,140,0,0.15) 0%, rgba(2, 5, 5,140,0,0.08) 100%)' }}}
+                  transition: 'all 0.3s ease',
+                  '&:hover': {
+                    border: '2px dashed rgba(25, 140, 0, 0.6)',
+                    background:
+                      'linear-gradient(135deg, rgba(2, 5, 5, 0.15) 0%, rgba(2, 5, 5, 0.08) 100%)',
+                  },
+                }}
               >
                 <CardContent sx={{ textAlign: 'center', py:  4 ,  ...theming.getThemedCardSx() }}>
                   <Typography variant="h5" gutterBottom sx={{ color: theming.colors.primary }}>
@@ -276,7 +285,6 @@ export default function CreatorHubVideoSuite() {
                     profession="videographer"
                     showFormatInfo={true}
                     uploadEndpoint="/api/video-editor/upload-delivery"
-                    profession="videographer"
                   />
                 </CardContent>
               </MuiCard>
@@ -304,13 +312,13 @@ export default function CreatorHubVideoSuite() {
                     </ListItem>
                     <ListItem sx={{ pl:  4 }}>
                       <ListItemIcon>
-                        <VideoLibrary sx={{ color: '#666', '}} />
+                        <VideoLibrary sx={{ color: '#666' }} />
                       </ListItemIcon>
                       <ListItemText primary="🎬 Full_Videos" secondary="Komplette leveranser" />
                     </ListItem>
                     <ListItem sx={{ pl:  4 }}>
                       <ListItemIcon>
-                        <SmartDisplay sx={{ color: '#666', '}} />
+                        <SmartDisplay sx={{ color: '#666' }} />
                       </ListItemIcon>
                       <ListItemText
                         primary="📱 Social_Highlights"
@@ -319,7 +327,7 @@ export default function CreatorHubVideoSuite() {
                     </ListItem>
                     <ListItem sx={{ pl:  4 }}>
                       <ListItemIcon>
-                        <TimelineIcon sx={{ color: '#666', '}} />
+                        <TimelineIcon sx={{ color: '#666' }} />
                       </ListItemIcon>
                       <ListItemText
                         primary="🎞️ Extended_Highlights"

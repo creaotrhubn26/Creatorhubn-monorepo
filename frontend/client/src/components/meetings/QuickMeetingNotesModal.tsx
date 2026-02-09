@@ -9,7 +9,7 @@ import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
 import getProfessionIcon from '@/utils/profession-icons';
 import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
 import React, { useState, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
 import {
   Dialog,
@@ -252,7 +252,7 @@ export function QuickMeetingNotesModal({
                       <FileTextIcon sx={{ fontSize: 16}} />
                     </Box>
                     <Box>
-                      <Typography variant="body2" sx={{ fontWeight: 50}}>Personlige notater</Typography>
+                      <Typography variant="body2" sx={{ fontWeight: 500}}>Personlige notater</Typography>
                       <Typography variant="caption" color="text.secondary">Backup til Google Drive</Typography>
                     </Box>
                   </Box>
@@ -279,7 +279,7 @@ export function QuickMeetingNotesModal({
                       <ProfessionIcon sx={{ fontSize: 16}} />
                     </Box>
                     <Box>
-                      <Typography variant="body2" sx={{ fontWeight: 50}}>Prosjektnotater</Typography>
+                      <Typography variant="body2" sx={{ fontWeight: 500}}>Prosjektnotater</Typography>
                       <Typography variant="caption" color="text.secondary">
                         Kobling til {profConfig.projectLabel.toLowerCase()}
                       </Typography>

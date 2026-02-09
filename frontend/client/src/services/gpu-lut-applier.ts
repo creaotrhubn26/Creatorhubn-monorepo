@@ -338,9 +338,9 @@ export class GPULUTApplier {
       this.gl.useProgram(this.program);
 
       // Set uniforms
-      const imageLocation = this.gl.getUniformLocation(this.program 'u_image');
-      const lutLocation = this.gl.getUniformLocation(this.program'u_lut');
-      const lutSizeLocation = this.gl.getUniformLocation(this.program'u_lutSize');
+      const imageLocation = this.gl.getUniformLocation(this.program, 'u_image');
+      const lutLocation = this.gl.getUniformLocation(this.program, 'u_lut');
+      const lutSizeLocation = this.gl.getUniformLocation(this.program, 'u_lutSize');
 
       this.gl.uniform1i(imageLocation, 0);
       this.gl.uniform1i(lutLocation, 1);
@@ -369,7 +369,7 @@ export class GPULUTApplier {
         this.gl.STATIC_DRAW,
       );
 
-      const positionLocation = this.gl.getAttribLocation(this.program'a_position');
+      const positionLocation = this.gl.getAttribLocation(this.program, 'a_position');
       this.gl.enableVertexAttribArray(positionLocation);
       this.gl.vertexAttribPointer(positionLocation, 2, this.gl.FLOAT, false, 0, 0);
 
@@ -381,7 +381,7 @@ export class GPULUTApplier {
         this.gl.STATIC_DRAW,
       );
 
-      const texCoordLocation = this.gl.getAttribLocation(this.program'a_texCoord');
+      const texCoordLocation = this.gl.getAttribLocation(this.program, 'a_texCoord');
       this.gl.enableVertexAttribArray(texCoordLocation);
       this.gl.vertexAttribPointer(texCoordLocation, 2, this.gl.FLOAT, false, 0, 0);
 

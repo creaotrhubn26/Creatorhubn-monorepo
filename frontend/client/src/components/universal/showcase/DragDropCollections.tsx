@@ -346,7 +346,8 @@ export const DragDropCollections: React.FC<DragDropCollectionsProps> = ({
             startIcon={<Add />}
             onClick={() => setShowNewCollectionDialog(true)}
             sx={{
-              bgcolor: accentColor'&:hover': { bgcolor: `${accentColor}dd` }
+              bgcolor: accentColor,
+              '&:hover': { bgcolor: `${accentColor}dd` }
             }}
           >
             New Collection
@@ -575,7 +576,7 @@ export const DragDropCollections: React.FC<DragDropCollectionsProps> = ({
             onClick={handleCreateCollection}
             variant="contained"
             disabled={!newCollectionName.trim()}
-            sx={{ bgcolor: accentColor'&:hover': { bgcolor: `${accentColor}dd` } }}
+            sx={{ bgcolor: accentColor, '&:hover': { bgcolor: `${accentColor}dd` } }}
           >
             Create
           </Button>

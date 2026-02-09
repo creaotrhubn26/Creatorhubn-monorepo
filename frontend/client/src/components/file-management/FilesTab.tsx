@@ -495,7 +495,7 @@ const FilesTab: React.FC<FilesTabProps> = ({
             }}>
                   <FolderOpen sx={{ fontSize:  16, color: 'primary.main' }} />
                   <Typography variant="caption" sx={{ 
-                    fontWeight: 5,
+                    fontWeight: 500,
                     color: 'text.secondary'
                 }}>
                     {folder}
@@ -894,7 +894,7 @@ const FilesTab: React.FC<FilesTabProps> = ({
               }}
                 icon={<Lightbulb sx={{ color: 'info.main' }} />}
               >
-                <AlertTitle sx={{ display: 'flex', flexGrow: 1, alignItems: 'center', gap: 1, fontWeight: 70}}>
+                <AlertTitle sx={{ display: 'flex', flexGrow: 1, alignItems: 'center', gap: 1, fontWeight: 700}}>
                   <AutoFixHigh sx={{ fontSize: 2}} />
                   Ikke bekymre deg - vi tar hånd om alt!
                 </AlertTitle>
@@ -915,7 +915,7 @@ const FilesTab: React.FC<FilesTabProps> = ({
                 <Box sx={{ display: 'flex', flexGrow: 1, alignItems: 'center', gap: 2, mb:  2 }}>
                   <Construction sx={{ color: 'warning.main', fontSize: 2}} />
                   <Typography variant="h6" sx={{  flexGrow: 1, color: 'warning.main',   
-                    fontWeight: 7, 
+                    fontWeight: 700, 
                     color: 'warning.main',
                     background: 'linear-gradient(45deg, warning.light, warning.main)',
                     WebkitBackgroundClip: 'text',
@@ -958,7 +958,7 @@ const FilesTab: React.FC<FilesTabProps> = ({
                 </Box>
                 
                 <Typography variant="h6" sx={{  
-                  fontWeight: 7, 
+                  fontWeight: 700, 
                   color: 'text.primary', 
                   mb:  2,
                   display: 'flex',
@@ -1006,7 +1006,7 @@ const FilesTab: React.FC<FilesTabProps> = ({
                             display: 'flex', 
                             alignItems: 'center', 
                             gap:  1,
-                            fontWeight: 5,
+                            fontWeight: 500,
                             color: 'info.main'
                         }}>
                             {iconComponents[folder.icon]}
@@ -1047,7 +1047,7 @@ const FilesTab: React.FC<FilesTabProps> = ({
                     <Box sx={{ textAlign: 'center' }}>
                     <Typography variant="h5" sx={{  
                       color: 'info.main', 
-                      fontWeight: 7,
+                      fontWeight: 700,
                       mb: 0.5
                    }}>
                       Magien skjer nå!

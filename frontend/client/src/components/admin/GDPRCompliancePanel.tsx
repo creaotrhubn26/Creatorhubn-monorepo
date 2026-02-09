@@ -37,7 +37,8 @@ import {
   Paper,
   Tooltip,
   Link,
-  MenuItem
+  MenuItem,
+  Snackbar,
 } from '@mui/material';
 import {
   Security,
@@ -60,9 +61,7 @@ import { apiRequest } from '@/lib/queryClient';
 import {
   DATATILSYNET_REQUIREMENTS,
   DATATILSYNET_CONTACT,
-  GDPR_COMPLIANCE_CHECKLIST,
-  calculateComplianceScore,
-  getPendingComplianceItems
+  GDPR_COMPLIANCE_CHECKLIST
 } from '@shared/datatilsynet-gdpr-reference';
 
 interface TabPanelProps {
@@ -99,6 +98,9 @@ export function GDPRCompliancePanel() {
   const [exportFormat, setExportFormat] = useState('json');
   const [exportUserId, setExportUserId] = useState('');
 
+  // Snackbar state
+  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'warning' | 'info' }>({ open: false, message: '', severity: 'info' });
+
   // GDPR Settings state
   const [editingSettings, setEditingSettings] = useState(false);
   const [personvernombudEmail, setPersonvernombudEmail] = useState('daniel@creatorhubn.com');
@@ -112,7 +114,7 @@ export function GDPRCompliancePanel() {
 
   // Calculate real-time compliance score based on Datatilsynet requirements
   const complianceScore = 100; // Will be 100% after implementing export
-  const pendingItems = [] as any[]; // No pending items after implementation
+  const _pendingItems = [] as any[]; // No pending items after implementation
 
   // Fetch privacy policy
   const { data: privacyPolicyData } = useQuery({
@@ -186,7 +188,7 @@ export function GDPRCompliancePanel() {
   // Export user data
   const handleDataExport = async () => {
     if (!exportUserId) {
-      alert('Vennligst oppgi bruker-ID');
+      setSnackbar({ open: true, message: 'Vennligst oppgi bruker-ID', severity: 'warning' });
       return;
     }
 
@@ -213,7 +215,7 @@ export function GDPRCompliancePanel() {
       setExportUserId('');
     } catch (error) {
       console.error('Export error: ', error);
-      alert('Feil ved eksport av data');
+      setSnackbar({ open: true, message: 'Feil ved eksport av data', severity: 'error' });
     }
   };
 
@@ -1149,9 +1151,9 @@ export function GDPRCompliancePanel() {
                       })
                         .then(() => {
                           setEditingSettings(false);
-                          alert('Innstillinger lagret!');
+                          setSnackbar({ open: true, message: 'Innstillinger lagret!', severity: 'success' });
                         })
-                        .catch(() => alert('Feil ved lagring'));
+                        .catch(() => setSnackbar({ open: true, message: 'Feil ved lagring', severity: 'error' }));
                     }}
                     sx={theming.getThemedButtonSx()}
                   >
@@ -1492,6 +1494,22 @@ export function GDPRCompliancePanel() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Snackbar for notifications */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={4000}
+        onClose={() => setSnackbar((prev) => ({ ...prev, open: false }))}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert
+          onClose={() => setSnackbar((prev) => ({ ...prev, open: false }))}
+          severity={snackbar.severity}
+          variant="filled"
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 }

@@ -25,20 +25,20 @@ export interface Participant {
   isOnline: boolean;
   lastSeen?: string;
   cursor?: CursorPosition;
-  selectedElements?: string[], ;, 
+  selectedElements?: string[];
 }
 
 export interface Permission {
   action: 'read' | 'write' | 'delete' | 'comment' | 'share';
   resource: string;
-  scope: 'global' | 'project' | 'element', ;, 
+  scope: 'global' | 'project' | 'element';
 }
 
 export interface CursorPosition {
   x: number;
   y: number;
   elementId?: string;
-  timestamp: string, ;, 
+  timestamp: string;
 }
 
 export interface CollaborationCapabilities {
@@ -47,7 +47,7 @@ export interface CollaborationCapabilities {
   screenSharing: boolean;
   cursorSharing: boolean;
   annotationEnabled: boolean;
-  whiteboardMode: boolean, ;, 
+  whiteboardMode: boolean;
 }
 
 export interface CollaborationEvent {
@@ -68,7 +68,7 @@ export interface ProjectShare {
   permissions: Permission[];
   expiresAt?: string;
   createdBy: string;
-  createdAt: string, ;, 
+  createdAt: string;
 }
 
 export interface TeamInvitation {
@@ -79,7 +79,7 @@ export interface TeamInvitation {
   invitedBy: string;
   expiresAt: string;
   status: 'pending' | 'accepted' | 'declined' | 'expired';
-  message?: string, ;, 
+  message?: string;
 }
 
 export interface ChatMessage {
@@ -91,7 +91,7 @@ export interface ChatMessage {
   timestamp: string;
   type: 'text' | 'emoji' | 'file' | 'image' | 'system';
   mentions?: string[];
-  attachments?: FileAttachment[], ;, 
+  attachments?: FileAttachment[];
 }
 
 export interface FileAttachment {
@@ -99,7 +99,7 @@ export interface FileAttachment {
   fileName: string;
   fileSize: number;
   fileType: string;
-  url: string, ;, 
+  url: string;
 }
 
 export interface VoiceCall {
@@ -109,14 +109,14 @@ export interface VoiceCall {
   status: 'connecting' | 'connected' | 'ended';
   startTime?: string;
   endTime?: string;
-  audioSettings: AudioSettings, ;, 
+  audioSettings: AudioSettings;
 }
 
 export interface AudioSettings {
   microphone: boolean;
   speakers: boolean;
   noiseCancellation: boolean;
-  gain: number, ;, 
+  gain: number;
 }
 
 class CollaborationService {
@@ -130,7 +130,7 @@ class CollaborationService {
   constructor(baseUrl = '/api/collaboration') {
     this.baseUrl = baseUrl;
     this.initWebSocket();
-,}
+  }
 
   /**
    * Initialize WebSocket connection for real-time collaboration
@@ -183,10 +183,10 @@ class CollaborationService {
       const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       
       const session: CollaborationSession = {
-        sessiond,
+        sessionId,
         projectId,
         sessionName,
-        participants:  [],
+        participants: [],
         startTime: new Date().toISOString(),
         status: 'active',
         capabilities: {
@@ -197,8 +197,8 @@ class CollaborationService {
           annotationEnabled: capabilities?.annotationEnabled ?? true,
           whiteboardMode: capabilities?.whiteboardMode ?? false,
           ...capabilities
-      }
-    };
+        }
+      };
 
       this.activeSessions.set(sessionId, session);
 
@@ -207,8 +207,8 @@ class CollaborationService {
         this.socket.send(JSON.stringify({
           type: 'session_start',
           sessionData: session
-      ,}));
-    }
+        }));
+      }
 
       return sessionId;
   } catch (error) {
@@ -232,18 +232,18 @@ class CollaborationService {
     }
 
       const participant: Participant = {
-        userd,
+        userId,
         name: userDetails.name,
         email: userDetails.email,
         role: 'editor', // Default role
         permissions: [
-          { action: 'read', resource: ', *, ', scope: 'global,',},
-          { action: 'write', resource: session.projectd, scope: 'project',}
+          { action: 'read', resource: '*', scope: 'global' },
+          { action: 'write', resource: session.projectId, scope: 'project' }
         ],
         avatar: userDetails.avatar,
         isOnline: true,
         lastSeen: new Date().toISOString()
-    ,};
+      };
 
       session.participants.push(participant);
       this.userId = userId;
@@ -254,15 +254,15 @@ class CollaborationService {
           type: 'participant_joined',
           sessionId,
           participant
-      }));
-    }
+        }));
+      }
 
       return true;
-  } catch (error) {
+    } catch (error) {
       console.error('Failed to join collaboration session:', error);
       return false;
+    }
   }
-}
 
   /**
    * Leave a collaboration session
@@ -331,15 +331,15 @@ class CollaborationService {
    */
   async sendChatMessage(
     sessionId: string,
-    message: Omit<ChatMessage, 'messageId' | , 'timestamp, '>
+    message: Omit<ChatMessage, 'messageId' | 'timestamp'>
   ): Promise<string> {
     try {
       const messageId = `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       const chatMessage: ChatMessage = {
-        messaged,
+        messageId,
         timestamp: new Date().toISOString(),
         ...message
-    };
+      };
 
       // Send to WebSocket
       if (this.isConnected && this.socket) {
@@ -347,50 +347,50 @@ class CollaborationService {
           type: 'chat_message',
           sessionId,
           message: chatMessage
-      ,}));
-    }
+        }));
+      }
 
       return messageId;
-  } catch (error) {
+    } catch (error) {
       console.error('Failed to send chat message:', error);
       throw error;
+    }
   }
-}
 
   /**
    * Share a project with specific permissions
    */
   async shareProject(
     projectId: string,
-    accessLevel: ProjectShare[', '],
+    accessLevel: ProjectShare['accessLevel'],
     options: {
       permissions: Permission[];
       expiresAt?: string;
       message?: string;
-  }
+    }
   ): Promise<ProjectShare> {
     try {
       const shareToken = `share_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       const shareUrl = `${window.location.origin}/shared/${shareToken}`;
 
       const projectShare: ProjectShare = {
-        projectd,
+        projectId,
         shareUrl,
         accessLevel,
         shareToken,
         permissions: options.permissions,
-        expiresAt: options.expirest,
+        expiresAt: options.expiresAt,
         createdBy: this.userId || 'anonymous',
         createdAt: new Date().toISOString()
-    ,};
+      };
 
       // Send to server
       if (this.isConnected && this.socket) {
         this.socket.send(JSON.stringify({
           type: 'share_project',
           share: projectShare
-      ,}));
-    }
+        }));
+      }
 
       return projectShare;
   } catch (error) {
@@ -407,27 +407,26 @@ class CollaborationService {
       const invitationId = `inv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       
       const fullInvitation: TeamInvitation = {
-        invitationd,
+        invitationId,
         invitedBy: this.userId || 'anonymous',
-        timestamp: new Date().toISOString(),
         status: 'pending',
         ...invitation
-    };
+      };
 
       // Send invitation to server
       if (this.isConnected && this.socket) {
         this.socket.send(JSON.stringify({
           type: 'team_invitation',
           invitation: fullInvitation
-      ,}));
-    }
+        }));
+      }
 
       return invitationId;
-  } catch (error) {
+    } catch (error) {
       console.error('Failed to send team invitation:', error);
       throw error;
+    }
   }
-}
 
   /**
    * Start a voice call in the session
@@ -437,32 +436,32 @@ class CollaborationService {
       const callId = `call_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       
       const voiceCall: VoiceCall = {
-        calld,
+        callId,
         sessionId,
-        participants:  [],
+        participants: [],
         status: 'connecting',
         audioSettings: {
           microphone: audioSettings?.microphone ?? true,
           speakers: audioSettings?.speakers ?? true,
           noiseCancellation: audioSettings?.noiseCancellation ?? true,
           gain: audioSettings?.gain ?? 1.0
-      }
-    };
+        }
+      };
 
       // Initialize WebRTC connection or use service audio
       if (this.isConnected && this.socket) {
         this.socket.send(JSON.stringify({
           type: 'voice_call_start',
           call: voiceCall
-      ,}));
-    }
+        }));
+      }
 
       return callId;
-  } catch (error) {
+    } catch (error) {
       console.error('Failed to start voice call:', error);
       throw error;
+    }
   }
-}
 
   /**
    * Enable real-time editing
@@ -540,14 +539,14 @@ class CollaborationService {
    */
   getActiveSessions(): CollaborationSession[] {
     return Array.from(this.activeSessions.values());
-}
+  }
 
   /**
    * Get collaboration session details
    */
   getSession(sessionId: string): CollaborationSession | undefined {
     return this.activeSessions.get(sessionId);
-,}
+  }
 
   /**
    * Disconnect from collaboration service
@@ -556,17 +555,17 @@ class CollaborationService {
     if (this.socket) {
       this.socket.close();
       this.socket = undefined;
-  }
+    }
     this.isConnected = false;
     this.activeSessions.clear();
-}
+  }
 
   /**
    * Check if service is connected and ready
    */
   get isConnectionHealthy(): boolean {
     return this.isConnected && this.socket?.readyState === WebSocket.OPEN;
-}
+  }
 }
 
 // Create singleton instance

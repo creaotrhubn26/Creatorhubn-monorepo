@@ -5,19 +5,19 @@ import { withUniversalIntegration } from '@/integration/UniversalIntegrationHOC'
 
 async function api(path: string, options?: RequestInit) {
   const res = await fetch(path, { headers: { 'Content-Type' : 'application/json' }, ...(options || {}) });
-  if (!res.ok) throw new Error('Request failed , ');
+  if (!res.ok) throw new Error('Request failed');
   return res.json();
 }
 
 function ReceiptUploader({ onUploaded }: { onUploaded?: () => void }) {
   const [merchant, setMerchant] = React.useState('');
-  const [amount, setAmount] = React.useState<number | ''>(',');
+  const [amount, setAmount] = React.useState<number | ''>('');
   const [date, setDate] = React.useState<string>(new Date().toISOString().slice(0, 10));
 
-  const additionalMetadata = React.useMemo(
-    () => ({ module: 'receipts', merchant, amount: amount || 0, date }),
-    [merchant, amount, date],
-  );
+  const additionalMetadata: Record<string, unknown> = React.useMemo(() => {
+    const normalizedAmount = typeof amount === 'number' ? amount : 0;
+    return { module: 'receipts', merchant, amount: normalizedAmount, date };
+  }, [merchant, amount, date]);
 
   return (
     <Box sx={{ p: 2, border: '1px solid #eee', borderRadius: 1, mb: 2 }}>
@@ -32,7 +32,7 @@ function ReceiptUploader({ onUploaded }: { onUploaded?: () => void }) {
         <TextField
           label="Beløp"
           value={amount}
-          onChange={(e) => setAmount(e.target.value === '' ? ', ' : Number(e.target.value))}
+          onChange={(e) => setAmount(e.target.value === '' ? '' : Number(e.target.value))}
           size="small"
           type="number"
           inputProps={{ min: 0, step: 0.01 }}
@@ -48,7 +48,7 @@ function ReceiptUploader({ onUploaded }: { onUploaded?: () => void }) {
       </Stack>
       <UniversalFileUpload
         uploadEndpoint="/api/upload"
-        additionalMetadata={additionalMetadata as any}
+        additionalMetadata={additionalMetadata}
         allowedTypes="images"
         maxFiles={5}
         onUploadComplete={async (results: any[]) => {
@@ -60,10 +60,12 @@ function ReceiptUploader({ onUploaded }: { onUploaded?: () => void }) {
               method: 'POST',
               body: JSON.stringify({
                 eventType: 'receipt_scanned',
-                eventData: { id: fileId, merchant, amount: amount || 0, date },
+                eventData: { id: fileId, merchant, amount: typeof amount === 'number' ? amount : 0, date },
               }),
             });
-          } catch {}
+          } catch (error) {
+            console.error('[Receipts] Failed to track receipt scan:', error);
+          }
           onUploaded?.();
         }}
       />

@@ -20,7 +20,8 @@ import {
   MenuItem,
   IconButton,
   Tooltip,
-  Stack
+  Stack,
+  Snackbar,
 } from '@mui/material';
 import {
   TrendingUp,
@@ -37,12 +38,13 @@ interface BillingAnalyticsProps {
 }
 
 export default function BillingAnalytics({ compact = false }: BillingAnalyticsProps) {
-  const { trackEvent } = useEnhancedMasterIntegration();
+  const { analytics } = useEnhancedMasterIntegration();
 
   // Filter states
   const [dateRange, setDateRange] = useState<'7d' | '30d' | '90d' | 'all'>('30d');
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
   const [showFilters, setShowFilters] = useState(false);
+  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'warning' | 'error' }>({ open: false, message: '', severity: 'success' });
 
   // Chart refs for PDF export
   const revenueChartRef = useRef<any>(null);
@@ -79,7 +81,7 @@ export default function BillingAnalytics({ compact = false }: BillingAnalyticsPr
 
   // Refresh all analytics
   const refreshAll = () => {
-    trackEvent('billing_analytics_refresh', { dateRange });
+    analytics.trackEvent('billing_analytics_refresh', { dateRange });
     refetchCancellations();
     refetchRefunds();
     refetchRevenue();
@@ -88,7 +90,7 @@ export default function BillingAnalytics({ compact = false }: BillingAnalyticsPr
 
   // Export to CSV function
   const exportToCSV = () => {
-    trackEvent('billing_analytics_export', { format: 'csv', dateRange });
+    analytics.trackEvent('billing_analytics_export', { format: 'csv', dateRange });
 
     const csvData = [
       ['Billing Analytics Export', `Date Range: ${dateRange}`, `Generated: ${new Date().toLocaleString('nb-NO')}`],
@@ -137,7 +139,7 @@ export default function BillingAnalytics({ compact = false }: BillingAnalyticsPr
 
   // Export to PDF function with charts and Google Drive upload
   const exportToPDF = async () => {
-    trackEvent('billing_analytics_export', { format: 'pdf', dateRange });
+    analytics.trackEvent('billing_analytics_export', { format: 'pdf', dateRange });
 
     try {
       // Show loading state
@@ -341,12 +343,11 @@ export default function BillingAnalytics({ compact = false }: BillingAnalyticsPr
           doc.save(filename);
 
           // Show success message with link
-          alert(
-            `✅ PDF rapport generert!\n\n` +
-            `📁 Lagret lokalt: ${filename}\n` +
-            `☁️ Lastet opp til Google Drive: BI Reports\n\n` +
-            `Åpne i Google Drive: ${uploadResponse.webViewLink || 'Se BI Reports mappen'}`
-          );
+          setSnackbar({
+            open: true,
+            message: `✅ PDF rapport generert og lagret! ☁️ Lastet opp til Google Drive: BI Reports`,
+            severity: 'success'
+          });
         } else {
           throw new Error('Upload failed');
         }
@@ -355,16 +356,17 @@ export default function BillingAnalytics({ compact = false }: BillingAnalyticsPr
 
         // Fallback: just save locally
         doc.save(filename);
-        alert(
-          `⚠️ PDF generert og lagret lokalt: ${filename}\n\n` +
-          `Google Drive opplasting feilet. Filen er lagret på din enhet.`
-        );
+        setSnackbar({
+          open: true,
+          message: `⚠️ PDF generert og lagret lokalt. Google Drive opplasting feilet.`,
+          severity: 'warning'
+        });
       }
 
       console.log('✅ PDF export completed:', filename);
     } catch (error) {
       console.error('❌ Error exporting PDF:', error);
-      alert('Kunne ikke generere PDF. Vennligst prøv igjen.');
+      setSnackbar({ open: true, message: 'Kunne ikke generere PDF. Vennligst prøv igjen.', severity: 'error' });
     }
   };
 
@@ -677,7 +679,7 @@ export default function BillingAnalytics({ compact = false }: BillingAnalyticsPr
                   Totale Kanselleringer
                 </Typography>
               </Box>
-              <Typography variant="h4" sx={{ fontWeight: 70, color: '#ff6b6b' }}>
+              <Typography variant="h4" sx={{ fontWeight: 700, color: '#ff6b6b' }}>
                 {cancellationData?.data?.totalCancellations || 0}
               </Typography>
             </CardContent>
@@ -693,7 +695,7 @@ export default function BillingAnalytics({ compact = false }: BillingAnalyticsPr
                   Refunderingsforespørsler
                 </Typography>
               </Box>
-              <Typography variant="h4" sx={{ fontWeight: 70, color: '#ff9800' }}>
+              <Typography variant="h4" sx={{ fontWeight: 700, color: '#ff9800' }}>
                 {refundStats.totalRequests || 0}
               </Typography>
               <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
@@ -713,7 +715,7 @@ export default function BillingAnalytics({ compact = false }: BillingAnalyticsPr
                   Totalt Refundert
                 </Typography>
               </Box>
-              <Typography variant="h4" sx={{ fontWeight: 70, color: '#f44336' }}>
+              <Typography variant="h4" sx={{ fontWeight: 700, color: '#f44336' }}>
                 {(refundStats.totalRefunded || 0).toLocaleString('nb-NO')} kr
               </Typography>
             </CardContent>
@@ -729,7 +731,7 @@ export default function BillingAnalytics({ compact = false }: BillingAnalyticsPr
                   Gjennomsnittlig Refundering
                 </Typography>
               </Box>
-              <Typography variant="h4" sx={{ fontWeight: 70, color: '#2196f3' }}>
+              <Typography variant="h4" sx={{ fontWeight: 700, color: '#2196f3' }}>
                 {(refundStats.avgRefundAmount || 0).toLocaleString('nb-NO')} kr
               </Typography>
             </CardContent>
@@ -746,7 +748,7 @@ export default function BillingAnalytics({ compact = false }: BillingAnalyticsPr
                   Månedlig Tilbakevendende Inntekt (MRR)
                 </Typography>
               </Box>
-              <Typography variant="h3" sx={{ fontWeight: 70, color: 'white' }}>
+              <Typography variant="h3" sx={{ fontWeight: 700, color: 'white' }}>
                 {(revenueData?.data?.mrr || 0).toLocaleString('nb-NO')} kr
               </Typography>
               <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.8)' }}>
@@ -765,7 +767,7 @@ export default function BillingAnalytics({ compact = false }: BillingAnalyticsPr
                   Churn Rate
                 </Typography>
               </Box>
-              <Typography variant="h3" sx={{ fontWeight: 70, color: 'white' }}>
+              <Typography variant="h3" sx={{ fontWeight: 700, color: 'white' }}>
                 {churnData?.data?.churnRate || 0}%
               </Typography>
               <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.8)' }}>
@@ -784,7 +786,7 @@ export default function BillingAnalytics({ compact = false }: BillingAnalyticsPr
                   Customer Lifetime Value (CLV)
                 </Typography>
               </Box>
-              <Typography variant="h3" sx={{ fontWeight: 70, color: 'white' }}>
+              <Typography variant="h3" sx={{ fontWeight: 700, color: 'white' }}>
                 {(churnData?.data?.customerLifetimeValue || 0).toLocaleString('nb-NO')} kr
               </Typography>
               <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.8)' }}>
@@ -907,7 +909,7 @@ export default function BillingAnalytics({ compact = false }: BillingAnalyticsPr
                       <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600}}>
                         Totalt refundert beløp
                       </Typography>
-                      <Typography variant="h6" sx={{ fontWeight: 70, color:'#f44336' }}>
+                      <Typography variant="h6" sx={{ fontWeight: 700, color:'#f44336' }}>
                         {(refundStats.totalRefunded || 0).toLocaleString('nb-NO')} kr
                       </Typography>
                     </Box>
@@ -918,6 +920,22 @@ export default function BillingAnalytics({ compact = false }: BillingAnalyticsPr
           </>
         )}
       </Grid>
+
+      {/* Snackbar Notifications */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={6000}
+        onClose={() => setSnackbar({ ...snackbar, open: false })}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert
+          onClose={() => setSnackbar({ ...snackbar, open: false })}
+          severity={snackbar.severity}
+          sx={{ width: '100%' }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 }

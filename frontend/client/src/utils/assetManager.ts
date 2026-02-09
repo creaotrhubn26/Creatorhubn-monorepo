@@ -703,26 +703,26 @@ class AssetManager {
       category: assetData.category || 'uncategorized',
       subcategory: assetData.subcategory,
       tags: assetData.tags || [],
-      url: assetData.url ||'',
-      thumbnailUrl: assetData.thumbnailUl,
-      previewUrl: assetData.previewUl,
+      url: assetData.url || '',
+      thumbnailUrl: assetData.thumbnailUrl,
+      previewUrl: assetData.previewUrl,
       size: assetData.size || 0,
-      format: assetData.format ||'',
+      format: assetData.format || '',
       dimensions: assetData.dimensions,
       duration: assetData.duration,
       metadata: assetData.metadata || {},
       usage: assetData.usage || {
-        viewCount:, 0,
-        downloadCount:  0,
-        shareCount:  0,
+        viewCount: 0,
+        downloadCount: 0,
+        shareCount: 0,
         lastUsed: 0,
-        usedInProjects:  [],
-        usedInComponents:  [],
-        usageFrequency:  0,
-        popularity:  0,
-        rating:  0,
+        usedInProjects: [],
+        usedInComponents: [],
+        usageFrequency: 0,
+        popularity: 0,
+        rating: 0,
         reviews: []
-  },
+      },
       permissions: assetData.permissions || {
         canView: true,
         canDownload: true,
@@ -741,15 +741,15 @@ class AssetManager {
         canCollaborate: false,
         canManage: false,
         canAdmin: false
-  },
-      version: assetData.version || '1.0.',
+      },
+      version: assetData.version || '1.0.0',
       createdAt: assetData.createdAt || Date.now(),
       updatedAt: Date.now(),
       createdBy: assetData.createdBy || 'user',
       updatedBy: assetData.updatedBy || 'user',
       status: assetData.status || 'active',
       config: assetData.config || {}
-  };
+    };
 
     try {
       // Validate asset

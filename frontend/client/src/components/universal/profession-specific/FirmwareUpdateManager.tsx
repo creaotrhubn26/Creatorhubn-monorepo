@@ -1,99 +1,70 @@
 import { useTheming } from '../../../utils/theming-helper';
-import React, { useState, useEffect } from 'react';
+import { useAuth } from '../../../hooks/useAuth';
+import React, { useEffect, useState } from 'react';
 import {
-  Box,
-  Card,
-  CardContent,
-  Typography,
-  Grid,
-  Paper,
-  Tabs,
-  Tab,
-  Stack,
-  LinearProgress,
-  Chip,
-  Button,
-  IconButton,
-  TextField,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  Alert,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemIcon,
-  Divider,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
   Accordion,
-  AccordionSummary,
   AccordionDetails,
-  Badge,
-  Tooltip,
-  CircularProgress,
-  Switch,
-  FormControlLabel,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
+  AccordionSummary,
+  Alert,
   Avatar,
   Box,
-  TimelineItem,
-  TimelineSeparator,
+  Button,
+  Card,
+  CardContent,
+  Chip,
+  CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Divider,
+  FormControl,
+  FormControlLabel,
+  Grid,
+  InputLabel,
+  LinearProgress,
+  List,
+  ListItem,
+  ListItemIcon,
+  ListItemText,
+  MenuItem,
+  Paper,
+  Select,
+  Stack,
+  Switch,
+  Tab,
+  Tabs,
+  Typography,
+} from '@mui/material';
+import {
+  Timeline,
   TimelineConnector,
   TimelineContent,
   TimelineDot,
+  TimelineItem,
   TimelineOppositeContent,
-} from '@mui/material';
+  TimelineSeparator,
+} from '@mui/lab';
 import {
-  SystemUpdateAlt,
-  Security,
-  Schedule,
-  Notifications,
-  CloudDownload,
-  CheckCircle,
-  Warning,
-  Error,
-  Info,
-  Update,
-  ExpandMore,
-  Refresh,
-  Download,
-  Upload,
-  Settings,
-  History,
-  Star,
-  NewReleases,
-  BugReport,
-  Speed,
-  Security,
-  Memory,
-  Storage,
-  CameraAltAlt,
-  Videocamcam,
-  MusicNoteNote,
-  DirectionsBusiness,
   AutoMode,
-  ManualMode,
-  NotificationImportant,
-  VerifiedPerson,
-  CloudSync,
-  Timeline as TimelineIcon,
-  TrendingUp,
-  Assessment,
-  Lightbulb,
-  SdDirectionsCard,
+  BugReport,
+  CameraAlt,
   CameraStand,
-  BoxarScale,
-  FlashOnOn,
+  CheckCircle,
+  CloudSync,
+  FlashOn,
+  History,
   Lens,
+  Lightbulb,
+  LinearScale,
+  MusicNote,
+  NewReleases,
+  NotificationImportant,
+  Schedule,
+  SdCard,
+  Security,
+  Star,
+  SystemUpdateAlt,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
@@ -101,7 +72,7 @@ import { apiRequest } from '@/lib/queryClient';
 interface FirmwareUpdateManagerProps {
   profession?: 'photographer' | 'videographer' | 'musicproducer' | 'vendor';
   mode?: 'standalone' | 'integrated';
-  onUpdateComplete?: (updateData: any) => void
+  onUpdateComplete?: (updateData: any) => void;
 }
 
 interface FirmwareUpdate {
@@ -121,9 +92,9 @@ interface FirmwareUpdate {
     | 'flash';
   currentVersion: string;
   latestVersion: string;
-  releaseDate: Date;
+  releaseDate: string;
   priority: 'critical' | 'high' | 'medium' | 'low';
-  updateSize: number; // MB
+  updateSize: number | null; // MB
   description: string;
   releaseNotes: string[];
   bugFixes: string[];
@@ -131,7 +102,7 @@ interface FirmwareUpdate {
   securityUpdates: string[];
   compatibility: string[];
   downloadUrl: string;
-  installationTime: number; // minutes
+  installationTime: number | null; // minutes
   status: 'available' | 'downloading' | 'installing' | 'completed' | 'failed';
   autoUpdate: boolean;
   backupRequired: boolean;
@@ -139,7 +110,7 @@ interface FirmwareUpdate {
 }
 
 interface DeviceInfo {
-  id: string;
+  id: string | number;
   brand: string;
   model: string;
   type:
@@ -153,340 +124,608 @@ interface DeviceInfo {
     | 'tripod'
     | 'slider'
     | 'flash';
-  currentFirmware: string;
-  serialNumber: string;
-  purchaseDate: Date;
-  lastChecked: Date;
-  autoUpdateEnabled: boolean;
-  updateChannel: 'stable' | 'beta' | 'alpha';
-  criticalUpdatesOnly: boolean;
-  maintenanceMode: boolean
+  currentFirmware: string | null;
+  serialNumber?: string | null;
+  purchaseDate?: string | null;
+  lastChecked?: string | null;
+  autoUpdateEnabled?: boolean;
+  updateChannel?: 'stable' | 'beta' | 'alpha';
+  criticalUpdatesOnly?: boolean;
+  maintenanceMode?: boolean;
 }
+
+interface FirmwareUpdateHistory {
+  id: string;
+  deviceBrand: string;
+  deviceModel: string;
+  deviceType: FirmwareUpdate['deviceType'];
+  currentVersion: string;
+  latestVersion: string;
+  priority: FirmwareUpdate['priority'];
+  description: string;
+  completedAt: string;
+  duration: number | null;
+}
+
+type FirmwarePriority = FirmwareUpdate['priority'];
+type PriorityColor = 'error' | 'warning' | 'info' | 'success';
 
 const DEVICE_CATEGORIES = {
   photographer: [
     {
       type: 'camera',
       brands: [
-        'Alpa','Canon','Fujifilm','GoPro','Hasselblad','Leica','Nikon','OM SYSTEM','Panasonic Lumix','Pentax','Phase One','Polaroid','Ricoh','Sigma','Sony','Zeiss',
+        'Alpa',
+        'Canon',
+        'Fujifilm',
+        'GoPro',
+        'Hasselblad',
+        'Leica',
+        'Nikon',
+        'OM SYSTEM',
+        'Panasonic Lumix',
+        'Pentax',
+        'Phase One',
+        'Polaroid',
+        'Ricoh',
+        'Sigma',
+        'Sony',
+        'Zeiss',
       ],
-  },
+    },
     {
       type: 'lens',
       brands: [
-        'Canon','Fujinon','Irix','Laowa','Leica','Lensbaby','Meike','Nikon','Samyang','Schneider-Kreuznach','Sigma','Sirui','Sony','Tamron','Tokina','Viltrox','Voigtländer''Zeiss',
+        'Canon',
+        'Fujinon',
+        'Irix',
+        'Laowa',
+        'Leica',
+        'Lensbaby',
+        'Meike',
+        'Nikon',
+        'Samyang',
+        'Schneider-Kreuznach',
+        'Sigma',
+        'Sirui',
+        'Sony',
+        'Tamron',
+        'Tokina',
+        'Viltrox',
+        'Voigtländer',
+        'Zeiss',
       ],
-  },
+    },
     {
       type: 'software',
-      brands: ['Adobe','Capture One','Luminar','ON1','Skylum','DxO'],
-  },
+      brands: ['Adobe', 'Capture One', 'Luminar', 'ON1', 'Skylum', 'DxO'],
+    },
     {
       type: 'flash',
       brands: [
-        'Broncolor','Canon Speedlite','Elinchrom','Godox','Hensel','Interfit','Jinbei','Metz','Neewer','Nikon Speedlight','Nissin','OM SYSTEM','Pentax','Phottix','Profoto','Sony HVL','Visico','Westcott',
+        'Broncolor',
+        'Canon Speedlite',
+        'Elinchrom',
+        'Godox',
+        'Hensel',
+        'Interfit',
+        'Jinbei',
+        'Metz',
+        'Neewer',
+        'Nikon Speedlight',
+        'Nissin',
+        'OM SYSTEM',
+        'Pentax',
+        'Phottix',
+        'Profoto',
+        'Sony HVL',
+        'Visico',
+        'Westcott',
       ],
-  },
+    },
     {
       type: 'lighting',
       brands: [
-        'Aladdin','Aputure','Astera','Creamsource','Dedolight','Dracast','FalconEyes','Fiilex','Godox','GVM','Kino Flo','Lupo','Luxli','Nanlite','Neewer','Rotolight','SmallRig','Westcott','Zhiyun','Quasar Science','COLBOR',
+        'Aladdin',
+        'Aputure',
+        'Astera',
+        'Creamsource',
+        'Dedolight',
+        'Dracast',
+        'FalconEyes',
+        'Fiilex',
+        'Godox',
+        'GVM',
+        'Kino Flo',
+        'Lupo',
+        'Luxli',
+        'Nanlite',
+        'Neewer',
+        'Rotolight',
+        'SmallRig',
+        'Westcott',
+        'Zhiyun',
+        'Quasar Science',
+        'COLBOR',
       ],
-  },
+    },
     {
       type: 'memory',
       brands: [
-        'ADAT','Angelbird','Delkin Devices','Gigastone','Hoodman','Integral','Kioxia','Kingston','Lexar','Panasonic','Patriot','PNY','ProGrade Digital','Samsung','SanDisk','Silicon Power','Sony','Team Group','Transcend','Verbatim','Wise Advanced',
+        'ADAT',
+        'Angelbird',
+        'Delkin Devices',
+        'Gigastone',
+        'Hoodman',
+        'Integral',
+        'Kioxia',
+        'Kingston',
+        'Lexar',
+        'Panasonic',
+        'Patriot',
+        'PNY',
+        'ProGrade Digital',
+        'Samsung',
+        'SanDisk',
+        'Silicon Power',
+        'Sony',
+        'Team Group',
+        'Transcend',
+        'Verbatim',
+        'Wise Advanced',
       ],
-  },
+    },
     {
       type: 'tripod',
       brands: [
-        '3 Legged Thing','Benro','Cullmann','Feisol','Gitzo','Joby','K&F Concept''Leofoto','Manfrotto','Neewer','Peak Design','Really Right Stuff','Rollei','Sirui','SmallRig','Ulanzi','Vanguard','Velbon',
+        '3 Legged Thing',
+        'Benro',
+        'Cullmann',
+        'Feisol',
+        'Gitzo',
+        'Joby',
+        'K&F Concept',
+        'Leofoto',
+        'Manfrotto',
+        'Neewer',
+        'Peak Design',
+        'Really Right Stuff',
+        'Rollei',
+        'Sirui',
+        'SmallRig',
+        'Ulanzi',
+        'Vanguard',
+        'Velbon',
       ],
-  },
+    },
     {
       type: 'accessory',
-      brands: [
-        'Manfrotto','Peak Design','SmallRig','Really Right Stuff','K&F Concept''Ulanzi',
-      ],
-  },
+      brands: ['Manfrotto', 'Peak Design', 'SmallRig', 'Really Right Stuff', 'K&F Concept', 'Ulanzi'],
+    },
   ],
   videographer: [
     {
       type: 'camera',
       brands: [
-        'ARR','AJA Video Systems','Atomos','Blackmagic Design','Canon Cinema EOS','DJI','Ikegami','JVC','Kinefinity','Panasonic','RED Digital Cinema','Sharp','SmallHD','Sony','Z CAM',
+        'ARR',
+        'AJA Video Systems',
+        'Atomos',
+        'Blackmagic Design',
+        'Canon Cinema EOS',
+        'DJI',
+        'Ikegami',
+        'JVC',
+        'Kinefinity',
+        'Panasonic',
+        'RED Digital Cinema',
+        'Sharp',
+        'SmallHD',
+        'Sony',
+        'Z CAM',
       ],
-  },
+    },
     {
       type: 'lens',
       brands: [
-        'Angénieux','ARRI','Atlas Lens Co.','Canon','Cooke','DZOFilm','Fujinon','Laowa','Leica','Samyang','Sigma','Sony','Tokina','Vazen','Zeiss',
+        'Angénieux',
+        'ARRI',
+        'Atlas Lens Co.',
+        'Canon',
+        'Cooke',
+        'DZOFilm',
+        'Fujinon',
+        'Laowa',
+        'Leica',
+        'Samyang',
+        'Sigma',
+        'Sony',
+        'Tokina',
+        'Vazen',
+        'Zeiss',
       ],
-  },
+    },
     {
       type: 'audio',
       brands: [
-        'AK','Audio-Technica','BOYA','Countryman','Deity','DJI','DPA Microphones','Hollyland','K-Tek''Lectrosonics','Movo','Neumann','RØDE','Rycote','Sanken','Sennheiser','Shure','Schoeps','Sound Devices','Sony','Tascam','Tentacle Sync','Zoom','Zaxcom','Ambient Recording',
+        'AK',
+        'Audio-Technica',
+        'BOYA',
+        'Countryman',
+        'Deity',
+        'DJI',
+        'DPA Microphones',
+        'Hollyland',
+        'K-Tek',
+        'Lectrosonics',
+        'Movo',
+        'Neumann',
+        'RØDE',
+        'Rycote',
+        'Sanken',
+        'Sennheiser',
+        'Shure',
+        'Schoeps',
+        'Sound Devices',
+        'Sony',
+        'Tascam',
+        'Tentacle Sync',
+        'Zoom',
+        'Zaxcom',
+        'Ambient Recording',
       ],
-  },
+    },
     {
       type: 'software',
-      brands: ['Adobe','DaVinci Resolve','Final Cut Pro','Avid','Grass Valley'],
-  },
+      brands: ['Adobe', 'DaVinci Resolve', 'Final Cut Pro', 'Avid', 'Grass Valley'],
+    },
     {
       type: 'lighting',
       brands: [
-        'Aladdin','Aputure','ARRI','Astera','Creamsource','Dedolight','Dracast','FalconEyes','Fiilex','Godox','GVM','Kino Flo','Lupo','Luxli','Nanlite','Neewer','Rotolight','SmallRig','Westcott','Zhiyun','Quasar Science','COLBOR',
+        'Aladdin',
+        'Aputure',
+        'ARRI',
+        'Astera',
+        'Creamsource',
+        'Dedolight',
+        'Dracast',
+        'FalconEyes',
+        'Fiilex',
+        'Godox',
+        'GVM',
+        'Kino Flo',
+        'Lupo',
+        'Luxli',
+        'Nanlite',
+        'Neewer',
+        'Rotolight',
+        'SmallRig',
+        'Westcott',
+        'Zhiyun',
+        'Quasar Science',
+        'COLBOR',
       ],
-  },
+    },
     {
       type: 'slider',
       brands: [
-        'Edelkrone','GVM','iFootage','Kessler','Konova','Manfrotto','Moza','Neewer','Rhino','Smartta','YC Onion','Zeapon','Cinevate',
+        'Edelkrone',
+        'GVM',
+        'iFootage',
+        'Kessler',
+        'Konova',
+        'Manfrotto',
+        'Moza',
+        'Neewer',
+        'Rhino',
+        'Smartta',
+        'YC Onion',
+        'Zeapon',
+        'Cinevate',
       ],
-  },
+    },
     {
       type: 'tripod',
       brands: [
-        '3 Legged Thing','Benro','Cartoni','Cullmann','E-Image''Feisol','Gitzo','iFootage','K&F Concept','Leofoto','Libec','Manfrotto','Miller','Neewer','OConnor','Sachtler','Sirui','SmallRig','Ulanzi','Vinten',
+        '3 Legged Thing',
+        'Benro',
+        'Cartoni',
+        'Cullmann',
+        'E-Image',
+        'Feisol',
+        'Gitzo',
+        'iFootage',
+        'K&F Concept',
+        'Leofoto',
+        'Libec',
+        'Manfrotto',
+        'Miller',
+        'Neewer',
+        'OConnor',
+        'Sachtler',
+        'Sirui',
+        'SmallRig',
+        'Ulanzi',
+        'Vinten',
       ],
-  },
+    },
     {
       type: 'memory',
       brands: [
-        'ADAT','Angelbird','Delkin Devices','Gigastone','Hoodman','Integral','Kioxia','Kingston','Lexar','Panasonic','Patriot','PNY','ProGrade Digital','Samsung','SanDisk','Silicon Power','Sony','Team Group','Transcend','Verbatim','Wise Advanced',
+        'ADAT',
+        'Angelbird',
+        'Delkin Devices',
+        'Gigastone',
+        'Hoodman',
+        'Integral',
+        'Kioxia',
+        'Kingston',
+        'Lexar',
+        'Panasonic',
+        'Patriot',
+        'PNY',
+        'ProGrade Digital',
+        'Samsung',
+        'SanDisk',
+        'Silicon Power',
+        'Sony',
+        'Team Group',
+        'Transcend',
+        'Verbatim',
+        'Wise Advanced',
       ],
-  },
+    },
   ],
   musicproducer: [
     {
       type: 'audio',
       brands: [
-        'AK','Audio-Technica','DPA Microphones','Focusrite','Neumann','PreSonus','RME','RØDE','Sennheiser','Shure','Sound Devices','Steinberg','Universal Audio','MOTU','Zoom','Tascam',
+        'AK',
+        'Audio-Technica',
+        'DPA Microphones',
+        'Focusrite',
+        'Neumann',
+        'PreSonus',
+        'RME',
+        'RØDE',
+        'Sennheiser',
+        'Shure',
+        'Sound Devices',
+        'Steinberg',
+        'Universal Audio',
+        'MOTU',
+        'Zoom',
+        'Tascam',
       ],
-  },
+    },
     {
       type: 'software',
       brands: [
-        'Ableton','Logic Pro','Pro Tools','Cubase','FL Studio','Reaper','Steinberg','Native Instruments',
+        'Ableton',
+        'Logic Pro',
+        'Pro Tools',
+        'Cubase',
+        'FL Studio',
+        'Reaper',
+        'Steinberg',
+        'Native Instruments',
       ],
-  },
+    },
     {
       type: 'accessory',
       brands: [
-        'Akai','Native Instruments','Novation','Arturia','Roland','Focusrite','PreSonus','Universal Audio','MOTU',
+        'Akai',
+        'Native Instruments',
+        'Novation',
+        'Arturia',
+        'Roland',
+        'Focusrite',
+        'PreSonus',
+        'Universal Audio',
+        'MOTU',
       ],
-  },
+    },
   ],
   vendor: [
     {
       type: 'software',
-      brands: ['Shopify','WooCommerce','Magento','BigCommerce','Salesforce'],
-  },
+      brands: ['Shopify', 'WooCommerce', 'Magento', 'BigCommerce', 'Salesforce'],
+    },
     {
       type: 'accessory',
-      brands: ['Zebra','Honeywell','Datalogic','Cognex','Symbol'],
-  },
+      brands: ['Zebra', 'Honeywell', 'Datalogic', 'Cognex', 'Symbol'],
+    },
     {
       type: 'memory',
       brands: [
-        'ADAT','Angelbird','Delkin Devices','Kingston','Lexar','ProGrade Digital','Samsung','SanDisk','Sony','Transcend','Wise Advanced',
+        'ADAT',
+        'Angelbird',
+        'Delkin Devices',
+        'Kingston',
+        'Lexar',
+        'ProGrade Digital',
+        'Samsung',
+        'SanDisk',
+        'Sony',
+        'Transcend',
+        'Wise Advanced',
       ],
-  },
+    },
   ],
 };
 
 export default function FirmwareUpdateManager({
-  profession = 'photographer,',
+  profession = 'photographer',
   mode = 'standalone',
   onUpdateComplete,
 }: FirmwareUpdateManagerProps) {
+  const { user } = useAuth();
+  const userId = user?.id ?? null;
   const [activeTab, setActiveTab] = useState(0);
-  const [devices, setDevices] = useState<DeviceInfo[]>([]);
-  const [availableUpdates, setAvailableUpdates] = useState<FirmwareUpdate[]>([]);
   const [selectedUpdate, setSelectedUpdate] = useState<FirmwareUpdate | null>(null);
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
   const [isChecking, setIsChecking] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   const [autoUpdateEnabled, setAutoUpdateEnabled] = useState(true);
-  const [updateHistory, setUpdateHistory] = useState<any[]>([]);
+  const [lastCheckedAt, setLastCheckedAt] = useState<string | null>(null);
   const [releaseNotesDialogOpen, setReleaseNotesDialogOpen] = useState(false);
   const [currentReleaseNotes, setCurrentReleaseNotes] = useState<FirmwareUpdate | null>(null);
   const queryClient = useQueryClient();
+  const isIntegrated = mode === 'integrated';
   
   // Theming system
-  const theming = useTheming('photographer,');
+  const theming = useTheming(profession);
 
   const professionColors = {
     photographer: '#ff8c00',
     videographer: '#e74c30',
     musicproducer: '#9b59b0',
-    vendor: '#27ae60' };
+    vendor: '#27ae60',
+  };
 
-  const color = professionColors[profession];
+  const color = professionColors[profession] ?? '#ff8c00';
 
   // Firmware updates query
-  const { data: firmwareData, isLoading: isLoadingFirmware } = useQuery({
-    queryKey: ['/api/firmware/updates', profession],
-    staleTime: 1000 * 60 *,  5// 5 minutes
-});
+  const { data: availableUpdates = [], isLoading: isLoadingFirmware } = useQuery<
+    FirmwareUpdate[]
+  >({
+    queryKey: ['/api/firmware/updates', profession, userId],
+    queryFn: async () =>
+      (await apiRequest(
+        `/api/firmware/updates?profession=${encodeURIComponent(
+          profession
+        )}&userId=${encodeURIComponent(userId ?? '')}`
+      )) as FirmwareUpdate[],
+    staleTime: 1000 * 60 * 5, // 5 minutes
+  });
 
-  const { data: devicesList, isLoading: isLoadingDevices } = useQuery({
-    queryKey: ['/api/firmware/devices', profession],
+  const { data: devices = [], isLoading: isLoadingDevices } = useQuery<DeviceInfo[]>({
+    queryKey: ['/api/firmware/devices', profession, userId],
+    queryFn: async () =>
+      (await apiRequest(
+        `/api/firmware/devices?profession=${encodeURIComponent(
+          profession
+        )}&userId=${encodeURIComponent(userId ?? '')}`
+      )) as DeviceInfo[],
     staleTime: 1000 * 60 * 10, // 10 minutes
-});
+  });
+
+  const { data: updateHistory = [] } = useQuery<FirmwareUpdateHistory[]>({
+    queryKey: ['/api/firmware/history', profession, userId],
+    queryFn: async () =>
+      (await apiRequest(
+        `/api/firmware/history?profession=${encodeURIComponent(
+          profession
+        )}&userId=${encodeURIComponent(userId ?? '')}`
+      )) as FirmwareUpdateHistory[],
+    staleTime: 1000 * 60 * 10,
+  });
 
   // Update priority mapping
-  const priorityConfig = {
+  const priorityConfig: Record<
+    FirmwarePriority,
+    { color: PriorityColor; icon: React.ReactNode; urgency: string }
+  > = {
     critical: {
       color: 'error',
-      icon: theming.getThemedIcon(''),
-      urgency: 'Kritisk - Installer umiddelbart' },
+      icon: theming.getThemedIcon('error'),
+      urgency: 'Kritisk - Installer umiddelbart',
+    },
     high: {
       color: 'warning',
-      icon: theming.getThemedIcon(''),
-      urgency: 'Høy - Installer innen 24 timer' },
+      icon: theming.getThemedIcon('warning'),
+      urgency: 'Høy - Installer innen 24 timer',
+    },
     medium: {
       color: 'info',
-      icon: theming.getThemedIcon(''),
-      urgency: 'Middels - Installer innen en uke' },
+      icon: theming.getThemedIcon('info'),
+      urgency: 'Middels - Installer innen en uke',
+    },
     low: {
       color: 'success',
-      icon: theming.getThemedIcon(''),
-      urgency: 'Lav - Installer ved bekvemmelighet' },
-};
+      icon: theming.getThemedIcon('checkCircle'),
+      urgency: 'Lav - Installer ved bekvemmelighet',
+    },
+  };
+
+  const lastCheckedLabel = lastCheckedAt
+    ? new Date(lastCheckedAt).toLocaleDateString('no-NO', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    : 'Ikke sjekket enda';
+
+  const isLoadingData = isLoadingFirmware || isLoadingDevices;
 
   const checkForUpdates = async () => {
     setIsChecking(true);
     try {
-      // Simulate firmware check API call
-      const mockUpdates: FirmwareUpdate[] = [
-        {
-          id: 'update-',
-          deviceBrand: 'Canon',
-          deviceModel: 'EOS R',
-          deviceType: 'camera',
-          currentVersion: '1.8.',
-          latestVersion: '1.9.',
-          releaseDate: new Date('2024-12-15', ),
-          priority: 'high',
-          updateSize: 45.2,
-          description: 'Forbedret autofokus-ytelse og stabilitet',
-          releaseNotes: [
-            'Forbedret Eye AF-nøyaktighet','Fikset overopphetingsproblem i 8K-modus''Forbedret batterilevetid','Nye kreative filtre',
-          ],
-          bugFixes: [
-            'Fikset sporadisk frysing ved oppstart','Korrigert fargebalanse i tungstenlys','Løst problem med SD-kort kompatibilitet',
-          ],
-          newFeatures: [
-            'Ny portrettmodus for dyr','Forbedret HDR-prosessering','Støtte for nye objektiver',
-          ],
-          securityUpdates: [
-            'Patchet sikkerhetssårbarhet i WiFi-modul','Forbedret kryptering av metadata',
-          ],
-          compatibility: ['EF 24-70mm f/2.8','RF 50mm f/1.2L','RF 85mm f/1.2L'],
-          downloadUrl: 'https://firmware.canon.com/r5-1.9.',
-          installationTime:  15,
-          status: 'available',
-          autoUpdate: false,
-          backupRequired: true,
-          restartRequired: true,
-      },
-        {
-          id: 'update-',
-          deviceBrand: 'Adobe',
-          deviceModel: 'Lightroom Classic',
-          deviceType: 'software',
-          currentVersion: '13.0.',
-          latestVersion: '13.1.',
-          releaseDate: new Date('2024-12-20', ),
-          priority: 'medium',
-          updateSize: 156.7,
-          description: 'Nye AI-drevne redigeringsverktøy og ytelsesforberinger',
-          releaseNotes: [
-            'Ny AI Masking funksjonalitet','Forbedret RAW-prosessering for Sony-kameraer','Raskere eksport til web-formater', 'Forbedret fargerom-støtte',
-          ],
-          bugFixes: [
-            'Fikset krasj ved import av store bildebibliotek', 'Korrigert synkroniseringsproblem med Creative Cloud', 'Løst minnelekkasje i Develop-modul',
-          ],
-          newFeatures: [
-            'AI-drevet bakgrunnsfjernering', 'Smart objektidentifisering', 'Forbedret batch-prosessering',
-          ],
-          securityUpdates: [
-            'Oppdatert sikkerhetssertifikater', 'Forbedret beskyttelse mot skadelig kode',
-          ],
-          compatibility: ['macOS 12, +', 'Windows 11','M1/M2 Mac optimalisering'],
-          downloadUrl: 'https://adobe.com/lightroom/update',
-          installationTime:  25,
-          status: 'available',
-          autoUpdate: true,
-          backupRequired: false,
-          restartRequired: true,
-      },
-      ];
+      if (!userId) {
+        throw new Error('Missing user ID for firmware check');
+      }
+      const result = await apiRequest('/api/firmware/check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ profession, userId }),
+      });
 
-      setAvailableUpdates(mockUpdates);
-
-      // Update last checked time for devices
-      setDevices((prev) =>
-        prev.map((device) => ({
-          ...device,
-          lastChecked: new Date(),
-      })),
-      );
-  } catch (error) {
+      if (result?.updates) {
+        queryClient.setQueryData(
+          ['/api/firmware/updates', profession, userId],
+          result.updates
+        );
+      }
+      if (result?.devices) {
+        queryClient.setQueryData(
+          ['/api/firmware/devices', profession, userId],
+          result.devices
+        );
+      }
+      if (result?.history) {
+        queryClient.setQueryData(
+          ['/api/firmware/history', profession, userId],
+          result.history
+        );
+      }
+      if (result?.checkedAt) {
+        setLastCheckedAt(result.checkedAt);
+      }
+    } catch (error) {
       console.error('Error checking for updates: ', error);
-  } finally {
+    } finally {
       setIsChecking(false);
-  }
-};
+    }
+  };
 
   const startUpdate = async (update: FirmwareUpdate) => {
     setIsUpdating(true);
     try {
-      // Create backup if required
-      if (update.backupRequired) {
-        console.log('Creating backup before update..., ');
-        await new Promise((resolve) => setTimeout(resolve, 2000));
-    }
+      if (!userId) {
+        throw new Error('Missing user ID for firmware update');
+      }
+      const result = await apiRequest('/api/firmware/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ updateId: update.id, userId, profession }),
+      });
 
-      // Download and install update
-      console.log('Downloading update:', update.id);
-      await new Promise((resolve) => setTimeout(resolve, 5000));
+      queryClient.invalidateQueries({ queryKey: ['/api/firmware/updates', profession, userId] });
+      queryClient.invalidateQueries({ queryKey: ['/api/firmware/devices', profession, userId] });
+      queryClient.invalidateQueries({ queryKey: ['/api/firmware/history', profession, userId] });
 
-      console.log('Installing update:', update.id);
-      await new Promise((resolve) => setTimeout(resolve, update.installationTime * 1000));
-
-      // Update completion
-      const completedUpdate = { ...update, status: 'completed' as const };
-      setAvailableUpdates((prev) => prev.map((u) => (u.id === update.id ? completedUpdate : u)));
-
-      // Add to history
-      setUpdateHistory((prev) => [
-        {
-          ...completedUpdate,
-          completedAt: new Date(),
-          duration: update.installationTime,
-      },
-        ...prev,
-      ]);
-
-      if (onUpdateComplete) {
-        onUpdateComplete(completedUpdate);
-    }
+      if (onUpdateComplete && result?.update) {
+        onUpdateComplete(result.update);
+      }
 
       setUpdateDialogOpen(false);
-  } catch (error) {
+    } catch (error) {
       console.error('Error during update:', error);
-      setAvailableUpdates((prev) =>
-        prev.map((u) => (u.id === update.id ? { ...u, status: 'failed' as const } : u)),
-      );
-  } finally {
+    } finally {
       setIsUpdating(false);
-  }
-};
+    }
+  };
 
   const showReleaseNotes = (update: FirmwareUpdate) => {
     setCurrentReleaseNotes(update);
@@ -521,24 +760,26 @@ export default function FirmwareUpdateManager({
           <Button fullWidth
             variant="contained"
             onClick={checkForUpdates}
-            disabled={isChecking}
-            startIcon={isChecking ? <CircularProgress size={20} sx={theming.getThemedButtonSx()}> : theming.getThemedIcon('refresh')}
+            disabled={isChecking || isLoadingData}
+            startIcon={
+              isChecking ? (
+                <CircularProgress size={20} sx={theming.getThemedButtonSx()} />
+              ) : (
+                theming.getThemedIcon('refresh')
+              )
+            }
             sx={{
-              bgcolor: color, '&:hover': { bgcolor: color },
-              mb:  2}}
+              bgcolor: color,
+              '&:hover': { bgcolor: color },
+              mb:  2,
+            }}
           >
             {isChecking ? 'Sjekker...' : 'Sjekk etter oppdateringer'}
           </Button>
 
           <Alert severity="info" sx={{ mb:  2 }}>
             <Typography variant="body2">
-              Siste sjekk: {', '}
-              {new Date().toLocaleDateString('no-NO', {
-                year: 'numeric',
-                month: 'long',
-                day: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit' })}
+              Siste sjekk: {lastCheckedLabel}
             </Typography>
           </Alert>
         </Grid>
@@ -548,7 +789,7 @@ export default function FirmwareUpdateManager({
             Oppdateringsstatistikk
           </Typography>
 
-          <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+          <Box sx={{ display: 'flex', gap: 2, mb: 2, flexWrap: 'wrap' }}>
             <Box
               sx={{
                 flex:  1,
@@ -591,6 +832,21 @@ export default function FirmwareUpdateManager({
               </Typography>
               <Typography variant="body2">Fullført</Typography>
             </Box>
+            <Box
+              sx={{
+                flex:  1,
+                p:  2,
+                bgcolor: 'info.light',
+                color: 'info.contrastText',
+                borderRadius:  1,
+                textAlign: 'center',
+              }}
+            >
+              <Typography variant="h6" sx={{  fontWeight: 600 }}>
+                {devices.length}
+              </Typography>
+              <Typography variant="body2">Enheter</Typography>
+            </Box>
           </Box>
         </Grid>
       </Grid>
@@ -622,7 +878,7 @@ export default function FirmwareUpdateManager({
                     ) : update.deviceType === 'lens' ? (
                       <Lens />
                     ) : update.deviceType === 'software' ? (
-                      {theming.getThemedIcon('settings')}
+                      theming.getThemedIcon('settings')
                     ) : update.deviceType === 'audio' ? (
                       <MusicNote />
                     ) : update.deviceType === 'lighting' ? (
@@ -636,7 +892,7 @@ export default function FirmwareUpdateManager({
                     ) : update.deviceType === 'slider' ? (
                       <LinearScale />
                     ) : (
-                      {theming.getThemedIcon('business')}
+                      theming.getThemedIcon('business')
                     )}
                   </Avatar>
                 </ListItemIcon>
@@ -649,18 +905,24 @@ export default function FirmwareUpdateManager({
                       <Chip
                         size="small"
                         label={update.priority.toUpperCase()}
-                        color={priorityConfig[update.priority].color as any}
+                        color={priorityConfig[update.priority].color}
                         icon={priorityConfig[update.priority].icon}
                       />
                       {update.securityUpdates.length > 0 && (
-                        <Chip size="small" label="SIKKERHET" color="error" icon={theming.getThemedIcon('security')}} />
+                        <Chip
+                          size="small"
+                          label="SIKKERHET"
+                          color="error"
+                          icon={theming.getThemedIcon('security')}
+                        />
                       )}
                     </Box>
                 }
                   secondary={
                     <Box>
                       <Typography variant="body2">
-                        {update.currentVersion} → {update.latestVersion} ({update.updateSize} MB)
+                        {update.currentVersion} → {update.latestVersion}{' '}
+                        {update.updateSize !== null ? `(${update.updateSize} MB)` : '(Ukjent størrelse)'}
                       </Typography>
                       <Typography variant="body2" color="text.secondary">
                         {update.description}
@@ -734,7 +996,7 @@ export default function FirmwareUpdateManager({
                 <Chip
                   size="small"
                   label={availableUpdates.filter((u) => u.priority === level).length}
-                  color={config.color as any}
+                  color={config.color}
                 />
               </ListItem>
             ))}
@@ -830,7 +1092,7 @@ export default function FirmwareUpdateManager({
           </Typography>
 
           <Accordion>
-            <AccordionSummary expandIcon={theming.getThemedIcon('expandMore')>
+            <AccordionSummary expandIcon={theming.getThemedIcon('expandMore')}>
               <Typography variant="subtitle2">Kritiske oppdateringer</Typography>
             </AccordionSummary>
             <AccordionDetails>
@@ -856,7 +1118,7 @@ export default function FirmwareUpdateManager({
           </Accordion>
 
           <Accordion>
-            <AccordionSummary expandIcon={theming.getThemedIcon('expandMore')>
+            <AccordionSummary expandIcon={theming.getThemedIcon('expandMore')}>
               <Typography variant="subtitle2">Sikkerhetsoppdateringer</Typography>
             </AccordionSummary>
             <AccordionDetails>
@@ -878,7 +1140,7 @@ export default function FirmwareUpdateManager({
           </Accordion>
 
           <Accordion>
-            <AccordionSummary expandIcon={theming.getThemedIcon('expandMore')>
+            <AccordionSummary expandIcon={theming.getThemedIcon('expandMore')}>
               <Typography variant="subtitle2">Funksjonsoppdateringer</Typography>
             </AccordionSummary>
             <AccordionDetails>
@@ -914,7 +1176,7 @@ export default function FirmwareUpdateManager({
                   ) : category.type === 'lens' ? (
                     <Lens />
                   ) : category.type === 'software' ? (
-                    {theming.getThemedIcon('settings')}
+                    theming.getThemedIcon('settings')
                   ) : category.type === 'audio' ? (
                     <MusicNote />
                   ) : category.type === 'lighting' ? (
@@ -928,7 +1190,7 @@ export default function FirmwareUpdateManager({
                   ) : category.type === 'slider' ? (
                     <LinearScale />
                   ) : (
-                    {theming.getThemedIcon('business')}
+                    theming.getThemedIcon('business')
                   )}
                 </ListItemIcon>
                 <ListItemText
@@ -958,19 +1220,19 @@ export default function FirmwareUpdateManager({
       </Typography>
 
       {updateHistory.length > 0 ? (
-        <Box>
+        <Timeline>
           {updateHistory.map((update, index) => (
             <TimelineItem key={update.id}>
               <TimelineOppositeContent>
                 <Typography variant="body2" color="text.secondary">
-                  {update.completedAt.toLocaleDateString('no-NO')}
+                  {new Date(update.completedAt).toLocaleDateString('no-NO')}
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
-                  {update.completedAt.toLocaleTimeString('no-NO')}
+                  {new Date(update.completedAt).toLocaleTimeString('no-NO')}
                 </Typography>
               </TimelineOppositeContent>
               <TimelineSeparator>
-                <TimelineDot color={priorityConfig[update.priority].color as any}>
+                <TimelineDot color={priorityConfig[update.priority].color}>
                   {theming.getThemedIcon('checkCircle')}
                 </TimelineDot>
                 {index < updateHistory.length - 1 && <TimelineConnector />}
@@ -984,18 +1246,26 @@ export default function FirmwareUpdateManager({
                 </Typography>
                 <Typography variant="body2">{update.description}</Typography>
                 <Box sx={{ mt:  1 }}>
-                  <Chip size="small" label={`${update.duration} min`} icon={theming.getThemedIcon('schedule')}} />
+                  <Chip
+                    size="small"
+                    label={
+                      update.duration !== null
+                        ? `${update.duration} min`
+                        : 'Ukjent tid'
+                    }
+                    icon={theming.getThemedIcon('schedule')}
+                  />
                   <Chip
                     size="small"
                     label={update.priority}
-                    color={priorityConfig[update.priority].color as any}
+                    color={priorityConfig[update.priority].color}
                     sx={{ ml:  1 }}
                   />
                 </Box>
               </TimelineContent>
             </TimelineItem>
           ))}
-        </Box>
+        </Timeline>
       ) : (
         <Alert severity="info">
           <Typography variant="body2">Ingen oppdateringshistorikk ennå</Typography>
@@ -1006,12 +1276,13 @@ export default function FirmwareUpdateManager({
 
   // Auto-check for updates on component mount
   useEffect(() => {
+    if (!userId) return;
     checkForUpdates();
 
     // Set up periodic checks
     const interval = setInterval(checkForUpdates, 1000 * 60 * 30); // 30 minutes
     return () => clearInterval(interval);
-}, []);
+  }, [userId, profession]);
 
   return (
     <Box sx={{ width: '100%' }}>
@@ -1031,7 +1302,7 @@ export default function FirmwareUpdateManager({
                   Firmware-oppdateringsadministrasjon
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Automatisk sjekking og prioritering av oppdateringer for{', '}
+                  Automatisk sjekking og prioritering av oppdateringer for
                   {profession === 'photographer'
                     ? 'fotografer'
                     : profession === 'videographer'
@@ -1059,6 +1330,7 @@ export default function FirmwareUpdateManager({
               }
                 size="small"
               />
+              {isIntegrated && <Chip label="Integrert" size="small" />}
             </Box>
           </Box>
         </CardContent>
@@ -1069,17 +1341,21 @@ export default function FirmwareUpdateManager({
         onChange={handleTabChange}
         variant="fullWidth"
         sx={{
-          mb: 3'& .MuiTab-root': {
+          mb: 3,
+          '& .MuiTab-root': {
             textTransform: 'none',
-            fontWeight: 60
-        }, '& .Mui-selected': {
+            fontWeight: 600,
+          },
+          '& .Mui-selected': {
             color: `${color} !important`,
-        }, '& .MuiTabs-indicator': {
+          },
+          '& .MuiTabs-indicator': {
             backgroundColor: color,
-        }}}
+          },
+        }}
       >
         <Tab icon={<SystemUpdateAlt />} iconPosition="start" label="Oppdateringsjekk" />
-        <Tab icon={theming.getThemedIcon('star')}} iconPosition="start" label="Prioritering" />
+        <Tab icon={theming.getThemedIcon('star')} iconPosition="start" label="Prioritering" />
         <Tab icon={<AutoMode />} iconPosition="start" label="Automatisering" />
         <Tab icon={<History />} iconPosition="start" label="Historikk" />
       </Tabs>
@@ -1128,14 +1404,20 @@ export default function FirmwareUpdateManager({
                   <Typography variant="body2" color="text.secondary">
                     Nedlastingsstørrelse
                   </Typography>
-                  <Typography variant="body1">{selectedUpdate.updateSize} MB</Typography>
+                  <Typography variant="body1">
+                    {selectedUpdate.updateSize !== null
+                      ? `${selectedUpdate.updateSize} MB`
+                      : 'Ukjent'}
+                  </Typography>
                 </Grid>
                 <Grid item xs={6} >
                   <Typography variant="body2" color="text.secondary">
                     Estimert tid
                   </Typography>
                   <Typography variant="body1">
-                    {selectedUpdate.installationTime} minutter
+                    {selectedUpdate.installationTime !== null
+                      ? `${selectedUpdate.installationTime} minutter`
+                      : 'Ukjent'}
                   </Typography>
                 </Grid>
               </Grid>
@@ -1176,7 +1458,7 @@ export default function FirmwareUpdateManager({
             onClick={() => selectedUpdate && startUpdate(selectedUpdate)}
             variant="contained"
             disabled={isUpdating}
-            sx={{ bgcolor: color'&:hover': { bgcolor: color } }}
+            sx={{ bgcolor: color, '&:hover': { bgcolor: color } }}
           >
             {isUpdating ? 'Installerer...' : 'Start installasjon'}
           </Button>

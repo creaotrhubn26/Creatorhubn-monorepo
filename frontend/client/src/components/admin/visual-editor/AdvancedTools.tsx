@@ -69,7 +69,7 @@ export const AdvancedTools: React.FC<AdvancedToolsProps> = ({
   const { analytics, lifecycle, performance, debugging, auth } = useEnhancedMasterIntegration();
 
   // Theming system
-  const theming = useTheming('prototype_tester, ');
+  const theming = useTheming('prototype_tester');
   
   const [showAnalysisDialog, setShowAnalysisDialog] = useState(false);
 

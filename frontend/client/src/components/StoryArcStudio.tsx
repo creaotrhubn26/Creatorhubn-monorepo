@@ -248,6 +248,20 @@ export default function StoryArcStudio({
   const [showSceneDetectionDialog, setShowSceneDetectionDialog] = useState(false);
   const [sceneDetectionJobId, setSceneDetectionJobId] = useState<string | null>(null);
   
+  // Face detection options dialog state (replaces window.confirm/prompt)
+  const [showFaceDetectionOptionsDialog, setShowFaceDetectionOptionsDialog] = useState(false);
+  const [faceDetectionOptions, setFaceDetectionOptions] = useState<{
+    scanEntire: boolean;
+    fps: number;
+    taskChoice: string;
+  }>({ scanEntire: false, fps: 0.5, taskChoice: '1' });
+  const [pendingFaceDetectionResolve, setPendingFaceDetectionResolve] = useState<((options: { scanEntire: boolean; fps: number; taskChoice: string } | null) => void) | null>(null);
+  
+  // Subclips confirm dialog state (replaces window.confirm for subclips)
+  const [showSubclipsConfirmDialog, setShowSubclipsConfirmDialog] = useState(false);
+  const [subclipsConfirmData, setSubclipsConfirmData] = useState<{ facesFound: number; totalClips: number } | null>(null);
+  const [pendingSubclipsResolve, setPendingSubclipsResolve] = useState<((createSubclips: boolean) => void) | null>(null);
+  
   const [searchQuery, setSearchQuery] = useState('');
   const [filterTags, setFilterTags] = useState<string[]>([]);
   const [reviewerMode, setReviewerMode] = useState(false);
@@ -1448,28 +1462,21 @@ export default function StoryArcStudio({
                     });
                     
                     try {
-                      // Ask user for analysis options
-                      const scanEntire = window.confirm(
-                        'Face Detection Options:\n\n' +
-                        '• Yes: Full video scan (analyzes multiple frames)\n' +
-                        '• No: Quick scan (3-4 key frames)'
-                      );
+                      // Ask user for analysis options via dialog
+                      const userOptions = await new Promise<{ scanEntire: boolean; fps: number; taskChoice: string } | null>((resolve) => {
+                        setPendingFaceDetectionResolve(() => resolve);
+                        setFaceDetectionOptions({ scanEntire: false, fps: 0.5, taskChoice: '1' });
+                        setShowFaceDetectionOptionsDialog(true);
+                      });
                       
-                      const fps = scanEntire 
-                        ? parseFloat(window.prompt('Frames per second to sample (default: 0.5 = 1 frame every 2 seconds):','0.5') || '0.5')
-                        : 0.5;
+                      if (!userOptions) {
+                        // User cancelled
+                        setFaceDetectionRunning(false);
+                        setShowFaceDetectionDialog(false);
+                        return;
+                      }
                       
-                      // Ask which tasks to run
-                      const taskChoice = window.prompt(
-                        'FaceXFormer Analysis Tasks:\n\n' +
-                        '1. all - All tasks (parsing, landmarks, headpose, attributes)\n' +
-                        '2. parsing - Face segmentation only\n' +
-                        '3. landmarks - 68 landmark points only\n' +
-                        '4. headpose - Head pose estimation only\n' +
-                        '5. attributes - Face attributes only\n' +
-                        '6. Custom - Comma-separated: parsing,landmarks,headpose,attributes\n\n' +
-                        'Enter choice (1-6) or task name:','1'
-                      );
+                      const { scanEntire, fps, taskChoice } = userOptions;
                       
                       let tasks: 'all' | 'parsing' | 'landmarks' | 'headpose' | 'attributes' | Array<'parsing' | 'landmarks' | 'headpose' | 'attributes'> = 'all';
                       
@@ -1618,13 +1625,13 @@ export default function StoryArcStudio({
                         setMarkers(prev => [...prev, ...faceMarkers]);
                       }
                       
-                      // Ask if user wants to auto-create sub-clips from face-detected segments
-                      const createSubclips = window.confirm(
-                        `Face detection complete! Found faces in ${results.filter(r => r.hasFace).length} of ${results.length} clips.\n\n` +
-                        `Would you like to automatically create sub-clips from face-detected segments?\n\n` +
-                        `• Yes: Creates sub-clips for each face-detected segment\n` +
-                        `• No: Just adds timeline markers`
-                      );
+                      // Ask if user wants to auto-create sub-clips from face-detected segments via dialog
+                      const facesFound = results.filter(r => r.hasFace).length;
+                      const createSubclips = await new Promise<boolean>((resolve) => {
+                        setPendingSubclipsResolve(() => resolve);
+                        setSubclipsConfirmData({ facesFound, totalClips: results.length });
+                        setShowSubclipsConfirmDialog(true);
+                      });
                       
                       if (createSubclips) {
                         // Auto-create sub-clips from face-detected segments
@@ -2710,6 +2717,108 @@ export default function StoryArcStudio({
         <Snackbar open={snackbar.open} autoHideDuration={4000} onClose={() => setSnackbar((s) => ({ ...s, open: false }))}>
           <Alert severity={snackbar.severity} onClose={() => setSnackbar((s) => ({ ...s, open: false }))}>{snackbar.message}</Alert>
         </Snackbar>
+
+        {/* Face Detection Options Dialog */}
+        <Dialog open={showFaceDetectionOptionsDialog} onClose={() => {
+          setShowFaceDetectionOptionsDialog(false);
+          if (pendingFaceDetectionResolve) {
+            pendingFaceDetectionResolve(null);
+            setPendingFaceDetectionResolve(null);
+          }
+        }} maxWidth="sm" fullWidth>
+          <DialogTitle>Ansiktsgjenkjenning - Alternativer</DialogTitle>
+          <DialogContent>
+            <Stack spacing={2} sx={{ mt: 1 }}>
+              <FormControlLabel
+                control={<Switch checked={faceDetectionOptions.scanEntire} onChange={(e) => setFaceDetectionOptions(prev => ({ ...prev, scanEntire: e.target.checked }))} />}
+                label="Full videoskanning (analyserer flere bilder)"
+              />
+              <Typography variant="body2" color="text.secondary">
+                {faceDetectionOptions.scanEntire ? 'Analyserer flere bilder gjennom videoen' : 'Rask skanning (3-4 nøkkelbilder)'}
+              </Typography>
+              {faceDetectionOptions.scanEntire && (
+                <TextField
+                  label="Bilder per sekund å sample"
+                  type="number"
+                  value={faceDetectionOptions.fps}
+                  onChange={(e) => setFaceDetectionOptions(prev => ({ ...prev, fps: parseFloat(e.target.value) || 0.5 }))}
+                  inputProps={{ step: 0.1, min: 0.1, max: 5 }}
+                  helperText="Standard: 0.5 = 1 bilde hvert 2. sekund"
+                  fullWidth
+                />
+              )}
+              <FormControl fullWidth>
+                <InputLabel>Analyseoppgaver</InputLabel>
+                <Select
+                  value={faceDetectionOptions.taskChoice}
+                  onChange={(e) => setFaceDetectionOptions(prev => ({ ...prev, taskChoice: e.target.value }))}
+                  label="Analyseoppgaver"
+                >
+                  <MenuItem value="1">Alle oppgaver (parsing, landmarks, headpose, attributes)</MenuItem>
+                  <MenuItem value="2">Kun ansiktssegmentering (parsing)</MenuItem>
+                  <MenuItem value="3">Kun 68 landemerker (landmarks)</MenuItem>
+                  <MenuItem value="4">Kun hodeposisjon (headpose)</MenuItem>
+                  <MenuItem value="5">Kun ansiktsattributter (attributes)</MenuItem>
+                </Select>
+              </FormControl>
+            </Stack>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => {
+              setShowFaceDetectionOptionsDialog(false);
+              if (pendingFaceDetectionResolve) {
+                pendingFaceDetectionResolve(null);
+                setPendingFaceDetectionResolve(null);
+              }
+            }}>Avbryt</Button>
+            <Button variant="contained" onClick={() => {
+              setShowFaceDetectionOptionsDialog(false);
+              if (pendingFaceDetectionResolve) {
+                pendingFaceDetectionResolve(faceDetectionOptions);
+                setPendingFaceDetectionResolve(null);
+              }
+            }}>Start analyse</Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Subclips Confirm Dialog */}
+        <Dialog open={showSubclipsConfirmDialog} onClose={() => {
+          setShowSubclipsConfirmDialog(false);
+          if (pendingSubclipsResolve) {
+            pendingSubclipsResolve(false);
+            setPendingSubclipsResolve(null);
+          }
+        }} maxWidth="sm" fullWidth>
+          <DialogTitle>Ansiktsgjenkjenning fullført!</DialogTitle>
+          <DialogContent>
+            <Typography gutterBottom>
+              Fant ansikter i {subclipsConfirmData?.facesFound} av {subclipsConfirmData?.totalClips} klipp.
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Vil du automatisk opprette sub-klipp fra ansiktsgjenkjente segmenter?
+            </Typography>
+            <Box sx={{ mt: 2 }}>
+              <Typography variant="body2">• <strong>Ja:</strong> Oppretter sub-klipp for hvert ansiktsgjenkjent segment</Typography>
+              <Typography variant="body2">• <strong>Nei:</strong> Legger kun til tidslinje-markører</Typography>
+            </Box>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => {
+              setShowSubclipsConfirmDialog(false);
+              if (pendingSubclipsResolve) {
+                pendingSubclipsResolve(false);
+                setPendingSubclipsResolve(null);
+              }
+            }}>Nei, bare markører</Button>
+            <Button variant="contained" color="primary" onClick={() => {
+              setShowSubclipsConfirmDialog(false);
+              if (pendingSubclipsResolve) {
+                pendingSubclipsResolve(true);
+                setPendingSubclipsResolve(null);
+              }
+            }}>Ja, opprett sub-klipp</Button>
+          </DialogActions>
+        </Dialog>
 
         {/* Settings Dialog */}
         <Dialog open={settingsOpen} onClose={() => setSettingsOpen(false)} maxWidth="sm" fullWidth>

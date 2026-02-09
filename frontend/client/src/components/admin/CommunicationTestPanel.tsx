@@ -97,7 +97,7 @@ export default function CommunicationTestPanel({
   } = useEnhancedMasterIntegration();
 
   // Theming system
-  const theming = useTheming('prototype_tester, ');
+  const theming = useTheming('prototype_tester');
 
   // Comprehensive Feature System for Communication Test Panel
   const communicationTestPanelAccess = features.checkFeatureAccess('communication-test-panel,');

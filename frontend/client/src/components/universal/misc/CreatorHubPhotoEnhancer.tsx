@@ -200,7 +200,7 @@ export default function CreatorHubPhotoEnhancer({
         const analysis = await compositionAnalyzer.analyzeImage(imgElement);
         setCompositionAnalysis(analysis);
         
-        console.log('🎨 Komposisjonsanalyse fullført, :', analysis);
+        console.log('🎨 Komposisjonsanalyse fullført:', analysis);
   } catch (error) {
         console.error('Feil ved komposisjonsanalyse: ', error);
   }
@@ -211,19 +211,16 @@ export default function CreatorHubPhotoEnhancer({
   const analyzeImageMutation = useMutation({
     mutationFn: async (formData: FormData) => {
       return apiRequest('/api/photo-enhancer/analyze', {
-        headers: {
-          "Content-Type" : "application/json"
-  },
-        method: 'POS',
+        method: 'POST',
         body: formData,
-  });
+      });
 },
     onSuccess: (data) => {
       setAnalysisResult(data);
-      console.log('Analysis complete, :', data);
+      console.log('Analysis complete:', data);
 },
     onError: (error) => {
-      console.error('Analysis failed, :', error);
+      console.error('Analysis failed:', error);
 },
 });
 
@@ -232,18 +229,15 @@ export default function CreatorHubPhotoEnhancer({
     mutationFn: async (formData: FormData) => {
       setShowProgress(true);
       return apiRequest('/api/photo-enhancer/upload-enhance', {
-        headers: {
-          "Content-Type" : "application/json"
-  },
-        method: 'POS',
+        method: 'POST',
         body: formData,
-  });
+      });
 },
     onSuccess: (data) => {
-      console.log('✅ Enhancement API response, :', data);
+      console.log('✅ Enhancement API response:', data);
       setEnhancedImageUrl(data.enhancedPath || data.outputPath);
-      setProgressSessionId(data.progressSessionId || ', ');
-      setHistorySessionId(data.historySessionId || ', ');
+      setProgressSessionId(data.progressSessionId || '');
+      setHistorySessionId(data.historySessionId || '');
       setIsProcessing(false);
       setProgress(100);
       console.log('Enhancement complete:', data);
@@ -257,7 +251,7 @@ export default function CreatorHubPhotoEnhancer({
       setIsProcessing(false);
       setProgress(0);
       setShowProgress(false);
-      console.error('❌ Enhancement failed, :', error);
+      console.error('❌ Enhancement failed:', error);
 },
 });
 
@@ -278,7 +272,7 @@ export default function CreatorHubPhotoEnhancer({
 }
 
     console.log('🚀 Starting enhancement process with progress tracking...');
-    console.log('📁 Uploaded image:', uploadedImage.name, uploadedImage.size'bytes');
+    console.log('📁 Uploaded image:', uploadedImage.name, `${uploadedImage.size} bytes`);
     console.log('⚙️ Settings:', { activePreset, profession, settings });
 
     setIsProcessing(true);
@@ -317,7 +311,7 @@ export default function CreatorHubPhotoEnhancer({
     try {
       await apiRequest('/api/ai-training/collect/photo-enhancement', {
         method: 'POST',
-        body: JSON.stringify({
+        body: {
           userId: user.id,
           enhancementType: activePreset,
           preset: activePreset,
@@ -327,10 +321,10 @@ export default function CreatorHubPhotoEnhancer({
           userRating: rating,
           userFeedback: feedback,
           qualityMetrics: {
-            processingTime: 0, // Could track this
+            processingTime: 0
           },
-          modelsUsed: ['nafnet','restormer','realesrgan','gfpgan','codeformer','hdrnet','unet'],
-        }),
+          modelsUsed: ['nafnet','restormer','realesrgan','gfpgan','codeformer','hdrnet','unet']
+        }
       });
 
       console.log('✅ Rating submitted successfully:', rating, feedback);
@@ -352,7 +346,7 @@ export default function CreatorHubPhotoEnhancer({
               label="AI-Powered"
               color="primary"
               size="small"
-              icon={theming.getThemedIcon('autoFixHigh')}}
+              icon={theming.getThemedIcon('autoFixHigh')}
             />
           </Box>
 
@@ -386,20 +380,21 @@ export default function CreatorHubPhotoEnhancer({
                 value={progress}
                 sx={{ 
                   height:  8,
-                  bgcolor: color + '2','& .MuiLinearProgress-bar': {
+                  bgcolor: `${color}20`,
+                  '& .MuiLinearProgress-bar': {
                     bgcolor: color
             }
             }}
               />
               <Typography variant="caption" sx={{ mt: 1, display: 'block'}}>
-                {Math.round(progress)}% - Estimert tid: {Math.ceil((100 - progress) * 0.)} sekunder
+                {Math.round(progress)}% - Estimert tid: {Math.ceil((100 - progress) * 0.3)} sekunder
               </Typography>
             </Alert>
           )}
 
           <Grid container spacing={3}>
             {/* Enhancement Presets */}
-            <Grid size={{ xs: 12 }} md={6}>
+            <Grid item xs={12} md={6}>
               <Typography variant="h6" sx={{  mb: 2, fontWeight: 600}}>
                 AI Enhancement Presets
               </Typography>
@@ -408,7 +403,7 @@ export default function CreatorHubPhotoEnhancer({
                 {presets.map((preset) => {
                   const IconComponent = preset.icon;
                   return (
-                    <Grid size={{ xs: 12 }} sm={6} key={preset.id}>
+                    <Grid item xs={12} sm={6} key={preset.id}>
                       <Card 
                         sx={{ 
                           cursor: 'pointer',
@@ -471,7 +466,7 @@ export default function CreatorHubPhotoEnhancer({
             </Grid>
 
             {/* Upload and AI Features */}
-            <Grid size={{ xs: 12 }} md={6}>
+            <Grid item xs={12} md={6}>
               <Typography variant="h6" sx={{  mb: 2, fontWeight: 600}}>
                 AI Features Status
               </Typography>
@@ -603,7 +598,7 @@ export default function CreatorHubPhotoEnhancer({
                   <Box sx={{ position: 'relative', height: '400px', borderRadius: 2, overflow: 'hidden', border: `2px solid ${color}` }}>
                     {viewMode === 'side-by-side' && (
                       <Grid container sx={{ height: '100%'}}>
-                        <Grid size={{ xs:  6 }}>
+                        <Grid item xs={6}>
                           <Box sx={{ position: 'relative', height: '100%', borderRight: `1px solid ${color}` }}>
                             <Typography variant="caption" sx={{ 
                               position: 'absolute', top:  8, left:  8, zIndex: 2,
@@ -626,7 +621,7 @@ export default function CreatorHubPhotoEnhancer({
                             )}
                           </Box>
                         </Grid>
-                        <Grid size={{ xs:  6 }}>
+                        <Grid item xs={6}>
                           <Box sx={{ position: 'relative', height: '100%'}}>
                             <Typography variant="caption" sx={{ 
                               position: 'absolute', top:  8, left:  8, zIndex: 2,
@@ -1143,7 +1138,7 @@ export default function CreatorHubPhotoEnhancer({
     }}>
             {viewMode === 'side-by-side' && (
               <Grid container sx={{ height: '100%'}}>
-                <Grid size={{ xs:  6 }}>
+                <Grid item xs={6}>
                   <Box sx={{ 
                     position: 'relative', 
                     height: '100%', 
@@ -1227,7 +1222,7 @@ export default function CreatorHubPhotoEnhancer({
                     )}
                   </Box>
                 </Grid>
-                <Grid size={{ xs:  6 }}>
+                <Grid item xs={6}>
                   <Box sx={{ 
                     position: 'relative', 
                     height: '100%',

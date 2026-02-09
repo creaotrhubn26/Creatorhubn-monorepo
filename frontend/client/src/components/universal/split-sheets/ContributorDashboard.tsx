@@ -179,7 +179,7 @@ export default function ContributorDashboard({
 
   return (
     <Box sx={{ p: 3 }}>
-      <Typography variant="h4" sx={{ fontWeight: 70, mb: 1 }}>
+      <Typography variant="h4" sx={{ fontWeight: 700, mb: 1 }}>
         Min Split Sheet Oversikt
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
@@ -197,7 +197,7 @@ export default function ContributorDashboard({
                   Mine Split Sheets
                 </Typography>
               </Stack>
-              <Typography variant="h4" sx={{ fontWeight: 70, color: '#9f7aea' }}>
+              <Typography variant="h4" sx={{ fontWeight: 700, color: '#9f7aea' }}>
                 {totals.totalSplitSheets}
               </Typography>
             </CardContent>
@@ -212,7 +212,7 @@ export default function ContributorDashboard({
                   Signert
                 </Typography>
               </Stack>
-              <Typography variant="h4" sx={{ fontWeight: 70, color: '#4caf50' }}>
+              <Typography variant="h4" sx={{ fontWeight: 700, color: '#4caf50' }}>
                 {totals.signedCount}
               </Typography>
             </CardContent>
@@ -227,7 +227,7 @@ export default function ContributorDashboard({
                   Venter på signatur
                 </Typography>
               </Stack>
-              <Typography variant="h4" sx={{ fontWeight: 70, color: '#ff9800' }}>
+              <Typography variant="h4" sx={{ fontWeight: 700, color: '#ff9800' }}>
                 {totals.unsignedCount}
               </Typography>
             </CardContent>
@@ -242,7 +242,7 @@ export default function ContributorDashboard({
                   Total inntekt
                 </Typography>
               </Stack>
-              <Typography variant="h4" sx={{ fontWeight: 70, color: '#2196f3' }}>
+              <Typography variant="h4" sx={{ fontWeight: 700, color: '#2196f3' }}>
                 {formatCurrency(totals.totalPaid + totals.totalPending)}
               </Typography>
             </CardContent>

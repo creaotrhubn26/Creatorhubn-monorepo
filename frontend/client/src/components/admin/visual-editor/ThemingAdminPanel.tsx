@@ -16,7 +16,13 @@ import {
   Chip,
   Alert,
   Collapse,
-  Divider
+  Divider,
+  Snackbar,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions,
 } from '@mui/material';
 import {
   Edit,
@@ -37,6 +43,8 @@ export const ThemingAdminPanel: React.FC = () => {
   const [professionEdits, setProfessionEdits] = useState<Partial<ProfessionBranding>>({});
   const [stats, setStats] = useState(themingAdminService.getStats());
   const [updateKey, setUpdateKey] = useState(0); // Force re-render
+  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' }>({ open: false, message: '', severity: 'success' });
+  const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; type: 'reset' | 'resetAll'; profession?: string }>({ open: false, type: 'reset' });
 
   // Enhanced Master Integration
   const { analytics, performance, debugging, lifecycle } = useEnhancedMasterIntegration();
@@ -137,7 +145,12 @@ export const ThemingAdminPanel: React.FC = () => {
   };
 
   const handleReset = (profession: string) => {
-    if (confirm(`Reset ${profession} branding to default?`)) {
+    setConfirmDialog({ open: true, type: 'reset', profession });
+  };
+
+  const confirmReset = () => {
+    const profession = confirmDialog.profession;
+    if (profession) {
       themingAdminService.resetProfession(profession);
       
       analytics.trackEvent('profession_branding_reset', {
@@ -147,22 +160,26 @@ export const ThemingAdminPanel: React.FC = () => {
       
       debugging.logIntegration('info', `Profession branding reset: ${profession}`);
     }
+    setConfirmDialog({ open: false, type: 'reset' });
   };
 
   const handleResetAll = () => {
-    if (confirm('Reset ALL profession branding to defaults? This cannot be undone.')) {
-      const beforeStats = themingAdminService.getStats();
-      themingAdminService.resetAll();
-      
-      analytics.trackEvent('all_branding_reset', {
-        professionsReset: beforeStats.customizedProfessions,
-        timestamp: Date.now()
-      });
-      
-      debugging.logIntegration('warn','All profession branding reset to defaults', {
-        professionsAffected: beforeStats.customizedProfessions
-      });
-    }
+    setConfirmDialog({ open: true, type: 'resetAll' });
+  };
+
+  const confirmResetAll = () => {
+    const beforeStats = themingAdminService.getStats();
+    themingAdminService.resetAll();
+    
+    analytics.trackEvent('all_branding_reset', {
+      professionsReset: beforeStats.customizedProfessions,
+      timestamp: Date.now()
+    });
+    
+    debugging.logIntegration('warn','All profession branding reset to defaults', {
+      professionsAffected: beforeStats.customizedProfessions
+    });
+    setConfirmDialog({ open: false, type: 'resetAll' });
   };
 
   const handleExport = () => {
@@ -208,7 +225,7 @@ export const ThemingAdminPanel: React.FC = () => {
             customizedCount: newStats.customizedProfessions
           });
           
-          alert('Branding configuration imported successfully!');
+          setSnackbar({ open: true, message: 'Branding configuration imported successfully!', severity: 'success' });
         } else {
           analytics.trackEvent('theming_config_import_failed', {
             filename: file.name,
@@ -220,7 +237,7 @@ export const ThemingAdminPanel: React.FC = () => {
             filename: file.name
           });
           
-          alert('Failed to import configuration. Please check the file format.');
+          setSnackbar({ open: true, message: 'Failed to import configuration. Please check the file format.', severity: 'error' });
         }
         
         endTiming();
@@ -304,7 +321,8 @@ export const ThemingAdminPanel: React.FC = () => {
         Profession Branding
       </Typography>
 
-      {Object.keys(PROFESSION_BRANDING).map(profession => {
+      <Box key={`profession-list-${updateKey}`}>
+        {Object.keys(PROFESSION_BRANDING).map(profession => {
         const current = themingAdminService.getProfessionBranding(profession);
         const isEditing = editingProfession === profession;
         const hasCustomizations = themingAdminService.hasCustomizations(profession);
@@ -356,7 +374,10 @@ export const ThemingAdminPanel: React.FC = () => {
                 </Box>
 
                 {/* Actions */}
-                <Box sx={{ display: 'flex', gap: 1 }}>
+                <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                  {isEditing && professionEdits.color && !professionEdits.color.match(/^#[0-9A-Fa-f]{6}$/) && (
+                    <Warning sx={{ color: 'error.main', fontSize: 20 }} title="Invalid color format" />
+                  )}
                   <IconButton 
                     onClick={() => isEditing ? setEditingProfession(null) : handleEdit(profession)}
                     color={isEditing ? 'primary' : 'default'}
@@ -485,6 +506,7 @@ export const ThemingAdminPanel: React.FC = () => {
           </Card>
         );
       })}
+      </Box>
 
       {/* Info Alert */}
       <Alert severity="info" sx={{ mt: 3 }}>
@@ -494,6 +516,51 @@ export const ThemingAdminPanel: React.FC = () => {
           and persist across sessions.
         </Typography>
       </Alert>
+
+      {/* Confirm Dialog */}
+      <Dialog
+        open={confirmDialog.open}
+        onClose={() => setConfirmDialog({ open: false, type: 'reset' })}
+      >
+        <DialogTitle>
+          {confirmDialog.type === 'resetAll' ? 'Reset All Branding' : 'Reset Branding'}
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            {confirmDialog.type === 'resetAll'
+              ? 'Reset ALL profession branding to defaults? This cannot be undone.'
+              : `Reset ${confirmDialog.profession} branding to default?`}
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmDialog({ open: false, type: 'reset' })}>
+            Cancel
+          </Button>
+          <Button
+            onClick={confirmDialog.type === 'resetAll' ? confirmResetAll : confirmReset}
+            color="error"
+            variant="contained"
+          >
+            Reset
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Snackbar Notifications */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={5000}
+        onClose={() => setSnackbar({ ...snackbar, open: false })}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert
+          onClose={() => setSnackbar({ ...snackbar, open: false })}
+          severity={snackbar.severity}
+          sx={{ width: '100%' }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 };

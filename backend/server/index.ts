@@ -4788,6 +4788,207 @@ app.post('/api/wedflow/photo-shots-bridge/push', async (req: any, res: any) => {
 });
 
 // ==============================================================
+// VENDOR ↔ CREATORHUB PROJECT BRIDGE  
+// Lets wedflow vendors see timeline, add comments, manage shots
+// ==============================================================
+
+// GET /api/wedflow/vendor-project-bridge — Vendor sees CreatorHub project + timeline for a couple
+app.get('/api/wedflow/vendor-project-bridge', async (req: any, res: any) => {
+  try {
+    const vendor = await getVendorFromSession(req, res);
+    if (!vendor) return;
+
+    const coupleId = req.query.coupleId as string;
+    if (!coupleId) return res.status(400).json({ error: 'coupleId er påkrevd' });
+
+    // Verify vendor has access to this couple via conversation
+    const convCheck = await pool.query(
+      'SELECT id FROM conversations WHERE vendor_id = $1 AND couple_id = $2 LIMIT 1',
+      [vendor.id, coupleId]
+    );
+    if (!convCheck.rows.length) return res.status(403).json({ error: 'Ingen tilgang til dette paret' });
+
+    // Get couple email
+    const coupleRes = await pool.query('SELECT email, display_name FROM couple_profiles WHERE id = $1', [coupleId]);
+    if (!coupleRes.rows.length) return res.status(404).json({ error: 'Par ikke funnet' });
+    const coupleEmail = coupleRes.rows[0].email;
+    const coupleName = coupleRes.rows[0].display_name;
+
+    // Find projects linked to this couple's email
+    const projectsRes = await pool.query(
+      `SELECT id, title, category, status, client_email, metadata, settings, created_at
+       FROM legacy.projects
+       WHERE LOWER(client_email) = LOWER($1)
+       ORDER BY created_at DESC`,
+      [coupleEmail]
+    );
+
+    // For each project, get timeline + events + comments
+    const projects = [];
+    for (const proj of projectsRes.rows) {
+      const timelineRes = await pool.query(
+        `SELECT id, title, wedding_date, venue, couple_name, cultural_type, status,
+                photographer_message, client_notes, client_access_enabled
+         FROM wedding_timelines
+         WHERE project_id = $1
+         ORDER BY created_at DESC LIMIT 1`,
+        [proj.id]
+      );
+      const timeline = timelineRes.rows[0] || null;
+
+      let events: any[] = [];
+      let comments: any[] = [];
+      if (timeline) {
+        const eventsRes = await pool.query(
+          `SELECT id, title, event_time, duration_minutes, description, location, status, can_client_edit
+           FROM wedding_timeline_events
+           WHERE timeline_id = $1
+           ORDER BY event_time ASC`,
+          [timeline.id]
+        );
+        events = eventsRes.rows;
+
+        const commentsRes = await pool.query(
+          `SELECT id, author_type, author_name, message, is_private, created_at
+           FROM wedding_timeline_comments
+           WHERE timeline_id = $1
+           ORDER BY created_at ASC`,
+          [timeline.id]
+        );
+        comments = commentsRes.rows;
+      }
+
+      // Get shot list from project metadata
+      const shotList = proj.metadata?.shotList || [];
+
+      projects.push({
+        id: proj.id,
+        title: proj.title,
+        category: proj.category,
+        status: proj.status,
+        createdAt: proj.created_at,
+        timeline,
+        events,
+        comments,
+        shotList,
+      });
+    }
+
+    res.json({
+      success: true,
+      coupleId,
+      coupleName,
+      coupleEmail,
+      projects,
+      conversationId: convCheck.rows[0].id,
+    });
+  } catch (error) {
+    console.error('Vendor project bridge error:', error);
+    res.status(500).json({ error: 'Kunne ikke hente prosjektdata' });
+  }
+});
+
+// GET /api/wedflow/timeline-bridge/:timelineId/comments — Get timeline comments
+app.get('/api/wedflow/timeline-bridge/:timelineId/comments', async (req: any, res: any) => {
+  try {
+    const vendor = await getVendorFromSession(req, res);
+    if (!vendor) return;
+
+    const { timelineId } = req.params;
+
+    const result = await pool.query(
+      `SELECT id, author_type, author_name, message, is_private, created_at
+       FROM wedding_timeline_comments
+       WHERE timeline_id = $1
+       ORDER BY created_at ASC`,
+      [timelineId]
+    );
+
+    res.json({ success: true, comments: result.rows });
+  } catch (error) {
+    console.error('Get timeline comments error:', error);
+    res.status(500).json({ error: 'Kunne ikke hente kommentarer' });
+  }
+});
+
+// POST /api/wedflow/timeline-bridge/:timelineId/comments — Add a comment to the timeline
+app.post('/api/wedflow/timeline-bridge/:timelineId/comments', async (req: any, res: any) => {
+  try {
+    const vendor = await getVendorFromSession(req, res);
+    if (!vendor) return;
+
+    const { timelineId } = req.params;
+    const { message, isPrivate } = req.body;
+
+    if (!message || !message.trim()) {
+      return res.status(400).json({ error: 'Melding er påkrevd' });
+    }
+
+    // Verify timeline exists
+    const tlCheck = await pool.query('SELECT id FROM wedding_timelines WHERE id = $1', [timelineId]);
+    if (!tlCheck.rows.length) return res.status(404).json({ error: 'Tidslinje ikke funnet' });
+
+    const id = crypto.randomUUID();
+    const now = new Date().toISOString();
+
+    await pool.query(
+      `INSERT INTO wedding_timeline_comments (id, timeline_id, author_type, author_name, message, is_private, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $7)`,
+      [id, timelineId, 'vendor', vendor.business_name, message.trim(), isPrivate || false, now]
+    );
+
+    res.json({
+      success: true,
+      comment: {
+        id,
+        timeline_id: timelineId,
+        author_type: 'vendor',
+        author_name: vendor.business_name,
+        message: message.trim(),
+        is_private: isPrivate || false,
+        created_at: now,
+      },
+    });
+  } catch (error) {
+    console.error('Add timeline comment error:', error);
+    res.status(500).json({ error: 'Kunne ikke legge til kommentar' });
+  }
+});
+
+// POST /api/wedflow/timeline-bridge/:timelineId/events — Vendor adds an event to the timeline
+app.post('/api/wedflow/timeline-bridge/:timelineId/events', async (req: any, res: any) => {
+  try {
+    const vendor = await getVendorFromSession(req, res);
+    if (!vendor) return;
+
+    const { timelineId } = req.params;
+    const { title, eventTime, durationMinutes, description, location } = req.body;
+
+    if (!title) return res.status(400).json({ error: 'Tittel er påkrevd' });
+
+    // Verify timeline exists
+    const tlCheck = await pool.query('SELECT id FROM wedding_timelines WHERE id = $1', [timelineId]);
+    if (!tlCheck.rows.length) return res.status(404).json({ error: 'Tidslinje ikke funnet' });
+
+    const id = crypto.randomUUID();
+
+    await pool.query(
+      `INSERT INTO wedding_timeline_events (id, timeline_id, title, event_time, duration_minutes, description, location, status, can_client_edit)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'planned', false)`,
+      [id, timelineId, title, eventTime || null, durationMinutes || 30, description || '', location || '']
+    );
+
+    res.json({
+      success: true,
+      event: { id, timeline_id: timelineId, title, event_time: eventTime, duration_minutes: durationMinutes || 30, description, location, status: 'planned' },
+    });
+  } catch (error) {
+    console.error('Add timeline event error:', error);
+    res.status(500).json({ error: 'Kunne ikke legge til hendelse' });
+  }
+});
+
+// ==============================================================
 // UPDATE EXPECTED GUESTS — Set guest count on couple profile
 // ==============================================================
 app.put('/api/wedflow/couple/guests', async (req: any, res: any) => {

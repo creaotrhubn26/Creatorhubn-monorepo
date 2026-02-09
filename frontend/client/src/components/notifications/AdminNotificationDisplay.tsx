@@ -83,13 +83,50 @@ export default function AdminNotificationDisplay() {
 
   // Initialize WebSocket connection for real-time notifications
   useEffect(() => {
+    // Skip WebSocket connection in development to avoid console spam
+    const isDev = import.meta.env.DEV;
+    
+    // Don't attempt WebSocket connection in dev mode
+    if (isDev) {
+      return;
+    }
+    
     try {
       // Use the correct protocol based on the current page protocol
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const host = window.location.host || 'localhost:5000';
-      const wsUrl = `${protocol}//${host}/ws`;
+      // Use API base URL for WebSocket - fallback to same host for dev
+      const apiUrl = import.meta.env.VITE_API_URL || '';
+      let wsHost: string;
       
-      console.log('🔗 Attempting WebSocket connection to:', wsUrl);
+      if (apiUrl) {
+        // Extract host from API URL
+        try {
+          const url = new URL(apiUrl);
+          wsHost = url.host;
+        } catch {
+          wsHost = window.location.host;
+        }
+      } else {
+        // In development, backend is typically on port 5000
+        const currentHost = window.location.host;
+        // If we're on a dev port (5001, 5002, etc), use port 5000 for backend
+        if (currentHost.includes(':500')) {
+          wsHost = currentHost.replace(/:500\d/, ':5000');
+        } else if (currentHost.includes('github.dev')) {
+          // For Codespaces, replace the port in the URL
+          wsHost = currentHost.replace(/-500\d\./, '-5000.');
+        } else {
+          wsHost = currentHost;
+        }
+      }
+      
+      const wsUrl = `${protocol}//${wsHost}/ws`;
+      
+      // Only log in non-dev mode to reduce console noise
+      if (!isDev) {
+        console.log('🔗 Attempting WebSocket connection to:', wsUrl);
+      }
+      
       const ws = new WebSocket(wsUrl);
       
       ws.onopen = () => {
@@ -119,12 +156,19 @@ export default function AdminNotificationDisplay() {
       };
 
       ws.onclose = () => {
-        console.log('🔔 Disconnected from notification server');
+        // Only log in non-dev mode to reduce console noise
+        if (!isDev) {
+          console.log('🔔 Disconnected from notification server');
+        }
         setWsConnection(null);
       };
 
-      ws.onerror = (error) => {
-        console.error('WebSocket error:', error);
+      ws.onerror = () => {
+        // Silently fail in dev mode - WebSocket server may not be running
+        // Only log errors in production
+        if (!isDev) {
+          console.warn('WebSocket connection failed - notification server may be unavailable');
+        }
       };
 
       return () => {
@@ -133,7 +177,10 @@ export default function AdminNotificationDisplay() {
         }
       };
     } catch (error) {
-      console.error('Failed to initialize WebSocket connection:', error);
+      // Silently fail - WebSocket is optional for notifications
+      if (!isDev) {
+        console.error('Failed to initialize WebSocket connection:', error);
+      }
       // Don't crash the app if WebSocket fails
     }
   }, [refetch]);

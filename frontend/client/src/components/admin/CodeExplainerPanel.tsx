@@ -56,7 +56,7 @@ export const CodeExplainerPanel: React.FC<{ file?: string; errors?: any[] }> = (
   file: initialFile, 
   errors: initialErrors = [] 
 }) => {
-  const theming = useTheming('prototype_tester, ');
+  const theming = useTheming('prototype_tester');
   const { componentRegistry, analytics } = useEnhancedMasterIntegration();
   
   const [file, setFile] = useState(initialFile || ',');

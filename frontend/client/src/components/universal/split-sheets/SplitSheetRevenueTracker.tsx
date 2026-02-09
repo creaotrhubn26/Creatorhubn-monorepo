@@ -141,7 +141,7 @@ export default function SplitSheetRevenueTracker({
                   Total inntekt
                 </Typography>
               </Stack>
-              <Typography variant="h4" sx={{ fontWeight: 70, color: '#9f7aea' }}>
+              <Typography variant="h4" sx={{ fontWeight: 700, color: '#9f7aea' }}>
                 {formatCurrency(totalRevenue)}
               </Typography>
             </CardContent>
@@ -156,7 +156,7 @@ export default function SplitSheetRevenueTracker({
                   Antall registreringer
                 </Typography>
               </Stack>
-              <Typography variant="h4" sx={{ fontWeight: 70, color: '#4caf50' }}>
+              <Typography variant="h4" sx={{ fontWeight: 700, color: '#4caf50' }}>
                 {revenues.length}
               </Typography>
             </CardContent>

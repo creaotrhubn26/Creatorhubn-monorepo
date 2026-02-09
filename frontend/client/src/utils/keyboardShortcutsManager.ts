@@ -475,13 +475,13 @@ class KeyboardShortcutsManager {
     const shortcut: KeyboardShortcut = {
       id: shortcutData.id || this.generateId(),
       name: shortcutData.name || 'Untitled Shortcut',
-      description: shortcutData.description ||', ',
+      description: shortcutData.description || '',
       category: shortcutData.category || 'custom',
-      key: shortcutData.key ||', ',
+      key: shortcutData.key || '',
       modifiers: shortcutData.modifiers || [],
-      context: shortcutData.context || ['*', ],
-      action: shortcutData.action ||', ',
-      handler: shortcutData.handler || (() =>, {}),
+      context: shortcutData.context || ['*'],
+      action: shortcutData.action || '',
+      handler: shortcutData.handler || (() => {}),
       enabled: shortcutData.enabled !== undefined ? shortcutData.enabled : true,
       global: shortcutData.global !== undefined ? shortcutData.global : false,
       preventDefault: shortcutData.preventDefault !== undefined ? shortcutData.preventDefault : true,
@@ -498,7 +498,7 @@ class KeyboardShortcutsManager {
         successCount: 0,
         errorCount: 0,
         performance: {
-          executionTime:, 0,
+          executionTime: 0,
           memoryUsage: 0
     }
     },

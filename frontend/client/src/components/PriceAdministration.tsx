@@ -11,6 +11,7 @@ import { useExternalData } from '../services/ExternalDataService';
 import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
 import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
 import getProfessionIcon from '@/utils/profession-icons';
+import { useAuth } from '@/hooks/useAuth';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Box,
@@ -19,13 +20,12 @@ import {
   Tabs,
   Tab,
   Button,
-  Grid,
   Card,
   CardContent,
   CardActions,
   Chip,
   IconButton,
-  Fab,
+  Fab as _Fab,
   Alert,
   Table,
   TableHead,
@@ -36,6 +36,7 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
+  DialogContentText,
   DialogActions,
   TextField,
   FormControlLabel,
@@ -45,8 +46,10 @@ import {
   AccordionSummary,
   AccordionDetails,
   Stack,
-  Divider
+  Divider,
+  Snackbar as _Snackbar,
 } from '@mui/material';
+import Grid2 from '@mui/material/Grid2';
 import {
   Add as AddIcon,
   Edit as EditIcon,
@@ -58,13 +61,14 @@ import {
   DriveEta as TravelIcon,
   LocalGasStation as FuelIcon,
   Analytics as AnalyticsIcon,
-  Assessment as ReportIcon,
+  Assessment as _ReportIcon,
   CameraAlt as CameraIcon,
   Upload as UploadIcon,
   Receipt as ReceiptIcon,
   Scanner as ScanIcon,
   DirectionsCar as CarIcon,
-  AddCircle,
+  AddCircle as _AddCircle,
+  CheckCircle as CheckCircleIcon,
   LocationOn as GPSIcon,
   Calculate as CalculateIcon,
   ExpandMore as ExpandMoreIcon,
@@ -74,6 +78,7 @@ import {
   Description as DescriptionIcon,
   EventNote as EventIcon,
   AccountBalance,
+  TrendingUp as TrendingUpIcon,
 } from '@mui/icons-material';
 import CreatePackageModal from './modals/CreatePackageModal';
 import CreatePricingModal from './modals/CreatePricingModal';
@@ -84,7 +89,6 @@ import TollCalculationModal from './travel/TollCalculationModal';
 
 // Import dynamic profession system
 import { useDynamicProfessions } from './universal/hooks/useDynamicProfessions';
-import { useAuth } from '@/hooks/useAuth';
 
 interface PriceAdministrationProps {
   profession?: string;
@@ -118,12 +122,13 @@ function TabPanel({ children, value, index, ...other }: TabPanelProps) {
 
 const PriceAdministration: React.FC<PriceAdministrationProps> = ({
   profession,
-  userId,
+  userId: _userId,
   onProjectUpdate,
   onContractCreate,
   selectedProject,
   onProjectSelect
 }) => {
+  const queryClient = useQueryClient();
   const [tabValue, setTabValue] = useState(0);
   
   // Get user and profession context
@@ -131,38 +136,36 @@ const PriceAdministration: React.FC<PriceAdministrationProps> = ({
   const userProfession = user?.profession || 'photographer';
   
   // Profession system hooks
-  const { professionConfigs, getUserProfessionColor, isLoading: professionsLoading, getProfessionDisplayName } = useDynamicProfessions();
+  const { professionConfigs, getUserProfessionColor, isLoading: _professionsLoading, getProfessionDisplayName: _getProfessionDisplayName } = useDynamicProfessions();
   const { professionConfigs: apiProfessionConfigs } = useProfessionConfigs();
   const professionAdapter = useProfessionAdapter();
   const currentProfession = professionAdapter.profession || profession || userProfession || 'photographer';
-  const professionIcon = getProfessionIcon(currentProfession);
-  const professionConfig = professionConfigs?.[currentProfession];
-  const enhancedProfessionConfig = apiProfessionConfigs?.[currentProfession] || professionConfig;
-  const professionColor = getUserProfessionColor(currentProfession) || '#FF6B35';
+  // This is intentionally unused but kept for profession system consistency
+  const _professionIcon = getProfessionIcon(currentProfession);
+  const _professionConfig = professionConfigs?.[currentProfession];
+  const _enhancedProfessionConfig = apiProfessionConfigs?.[currentProfession] || _professionConfig;
+  const _professionColor = getUserProfessionColor(currentProfession) || '#FF6B35';
 
   // Client service pricing service integration
   const { 
     formatCurrency,
-    getDefaultPrice,
-    getMVA,
-    getTotalWithMVA,
-    convertCurrency,
-    isLoading: pricingLoading 
+    getTotalWithMVA: _getTotalWithMVA,
+    convertCurrency: _convertCurrency
 } = useClientServicePricing();
 
   // External data service integration
   const {
-    getVehicleData,
-    calculateTollCosts,
-    calculateTravelCosts,
-    getFuelPrices,
+    getVehicleData: _getVehicleData,
+    calculateTollCosts: _calculateTollCosts,
+    calculateTravelCosts: _calculateTravelCosts,
+    getFuelPrices: _getFuelPrices,
     getTaxRates,
     getMarketRates
 } = useExternalData();
   // Use enhanced profession config (already set above)
 
   // Master integration system for "everything interacts with everything"
-  const { integration, communication, dataFlow, componentRegistry } = useEnhancedMasterIntegration();
+  const { integration: _integration, communication, dataFlow, componentRegistry: _componentRegistry } = useEnhancedMasterIntegration();
   
   // Theming system - use dynamic profession instead of hardcoded value
   // Theming system - use dynamic profession
@@ -170,12 +173,15 @@ const PriceAdministration: React.FC<PriceAdministrationProps> = ({
 
   // Register component and data flow nodes with MasterIntegrationProvider
   useEffect(() => {
-    communication.registerComponent('price-administration, ', 'pricing', [
-      'data:read','data:write','event:emit','event:listen','ui:update','pricing:create','pricing:update','pricing:delete','package:manage','category:manage','quote:generate','travel:log'
+    communication.registerComponent('price-administration', 'pricing', [
+      'data:read','data:write','event:emit','event:listen','ui:update',
+      'pricing:create','pricing:update','pricing:delete',
+      'package:manage','category:manage','quote:generate','travel:log',
+      'showcase:pricing-link','project:pricing-link','client:pricing-link'
     ]);
 
     dataFlow.registerNode({
-      type: 'source,',
+      type: 'source',
       componentId: 'price-administration',
       dataKey: 'price-administration:packages',
       transform: <T extends Record<string, unknown>>(data: T) => ({ ...data, lastUpdated: Date.now() }),
@@ -195,6 +201,35 @@ const PriceAdministration: React.FC<PriceAdministrationProps> = ({
       transform: <T extends Record<string, unknown>>(data: T) => ({ ...data, lastUpdated: Date.now() }),
     });
 
+    // Additional data flow nodes for quotes, discounts, costs, and travel logs
+    dataFlow.registerNode({
+      type: 'source',
+      componentId: 'price-administration',
+      dataKey: 'price-administration:quotes',
+      transform: <T extends Record<string, unknown>>(data: T) => ({ ...data, lastUpdated: Date.now() }),
+    });
+
+    dataFlow.registerNode({
+      type: 'source',
+      componentId: 'price-administration',
+      dataKey: 'price-administration:discounts',
+      transform: <T extends Record<string, unknown>>(data: T) => ({ ...data, lastUpdated: Date.now() }),
+    });
+
+    dataFlow.registerNode({
+      type: 'source',
+      componentId: 'price-administration',
+      dataKey: 'price-administration:costs',
+      transform: <T extends Record<string, unknown>>(data: T) => ({ ...data, lastUpdated: Date.now() }),
+    });
+
+    dataFlow.registerNode({
+      type: 'source',
+      componentId: 'price-administration',
+      dataKey: 'price-administration:travel-logs',
+      transform: <T extends Record<string, unknown>>(data: T) => ({ ...data, lastUpdated: Date.now() }),
+    });
+
 
     return () => {
       communication.unregisterComponent('price-administration');
@@ -204,42 +239,91 @@ const PriceAdministration: React.FC<PriceAdministrationProps> = ({
   // Listen to global events from other components
   useEffect(() => {
     const unsubscribe = communication.onMessage((message: any) => {
+      // Project selection from UniversalDashboard
       if (message.type === 'project:selected' && message.data) {
-        console.log('💰 Price Administration: Project selected, ', message.data);
-        // Update pricing context based on selected project
+        console.log('💰 Price Administration: Project selected', message.data);
+        // Store selected project for quote generation context
+        if (onProjectSelect) onProjectSelect(message.data);
       }
-      if (message.type === 'client: selected' && message.data) {
+      // Client selection from UniversalDashboard
+      if (message.type === 'client:selected' && message.data) {
         console.log('💰 Price Administration: Client selected', message.data);
-        // Update pricing context based on selected client
+        // Update pricing context based on selected client - could auto-apply client discounts
       }
-      if (message.type === 'data: sync' && message.data.dataKey === 'price-administration:packages') {
+      // Showcase item selected - link pricing to showcase
+      if (message.type === 'showcase:item-selected' && message.data) {
+        console.log('💰 Price Administration: Showcase item selected', message.data);
+        // Could suggest pricing based on showcase item type
+      }
+      // Showcase synced to drive - could link pricing to showcase exports
+      if (message.type === 'showcase-synced-to-drive' && message.data) {
+        console.log('💰 Price Administration: Showcase synced to drive', message.data);
+      }
+      // Package sync from other components
+      if (message.type === 'data:sync' && message.data.dataKey === 'price-administration:packages') {
         console.log('💰 Price Administration: Packages synced', message.data.data);
       }
+      // Contract created - refresh quotes
       if (message.type === 'contract:created' && message.data) {
         console.log('💰 Price Administration: Contract created event received', message.data);
-        // Could refresh quotes or show notification
         queryClient.invalidateQueries({ queryKey: ['/api/price-administration/quotes'] });
       }
+      // Split sheet created
       if (message.type === 'split-sheet:created' && message.data) {
         console.log('💰 Price Administration: Split sheet created event received', message.data);
-        // Could refresh quotes or show notification
       }
-      if (message.type === 'project:selected' && message.data) {
-        console.log('💰 Price Administration: Project selected event received', message.data);
-        // Could filter quotes by project
+      // Showcase updated - could link pricing
+      if (message.type === 'showcase:updated' && message.data) {
+        console.log('💰 Price Administration: Showcase updated', message.data);
+      }
+      // Request for pricing data from other components
+      if (message.type === 'pricing:request-packages' && message.to === 'price-administration') {
+        // Send packages data to requesting component (Note: packagesData, pricingData, discountsData defined below)
+        // This listener is only registered once per mount, separate effect handles data syncing
+      }
+      // Request for quote generation from external component
+      if (message.type === 'pricing:generate-quote-request' && message.data) {
+        console.log('💰 Price Administration: Quote generation requested', message.data);
+        setQuoteGeneratorOpen(true);
       }
     });
     return unsubscribe;
-  }, [communication, queryClient]);
+  }, [communication, queryClient, onProjectSelect]);
 
   const [createPackageOpen, setCreatePackageOpen] = useState(false);
   const [createPricingOpen, setCreatePricingOpen] = useState(false);
   const [createCategoryOpen, setCreateCategoryOpen] = useState(false);
+  const [createCostOpen, setCreateCostOpen] = useState(false);
+  const [createDiscountOpen, setCreateDiscountOpen] = useState(false);
   const [quoteGeneratorOpen, setQuoteGeneratorOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<any>(null);
   const [scanningReceipt, setScanningReceipt] = useState(false);
   const [scannedReceipts, setScannedReceipts] = useState<any[]>([]);
   const [registeredReceiptIds, setRegisteredReceiptIds] = useState<string[]>([]);
+  
+  // Loading states
+  const [isDeletingItem, setIsDeletingItem] = useState(false);
+  const [isGeneratingReport, setIsGeneratingReport] = useState(false);
+  
+  // Cost form state
+  const [costForm, setCostForm] = useState({
+    name: '',
+    description: '',
+    type: 'fixed',
+    amount: 0,
+    category: ''
+  });
+  
+  // Discount form state
+  const [discountForm, setDiscountForm] = useState({
+    name: '',
+    discountValue: 0,
+    isPercentage: true,
+    discountCode: '',
+    validFrom: '',
+    validTo: '',
+    minPurchase: 0
+  });
   
   // Manual travel log state
   const [manualEntryOpen, setManualEntryOpen] = useState(false);
@@ -261,12 +345,11 @@ const PriceAdministration: React.FC<PriceAdministrationProps> = ({
     additionalFeesDescription: '',
     selectedVehicleData: null as any
 });
-  const [vehicles, setVehicles] = useState<any[]>([]);
+  const [_vehicles, _setVehicles] = useState<any[]>([]);
   const [gpsTrackingEnabled, setGpsTrackingEnabled] = useState(false);
   const [tollCalculationResult, setTollCalculationResult] = useState<any>(null);
   const [travelCostResult, setTravelCostResult] = useState<any>(null);
-
-  const queryClient = useQueryClient();
+  const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; type: string; id: string | null; label: string }>({ open: false, type: '', id: null, label: '' });
 
   // Minimal analytics tracker for Skattemelding aggregation
   const trackAnalytics = async (eventType: string, eventData: any) => {
@@ -276,18 +359,21 @@ const PriceAdministration: React.FC<PriceAdministrationProps> = ({
         headers: { 'Content-Type' : 'application/json' },
         body: JSON.stringify({ eventType, eventData, userId: user?.id || null })
       });
-    } catch {}
+    } catch {
+      // Silently handle analytics tracking errors
+    }
   };
 
   // Calculate travel costs using real APIs
   const calculateTravelCostMutation = useMutation({
     mutationFn: async (travelData: any) => {
-      const response = await apiRequest('/api/price-administration/travel-costs', {
+      const response = await fetch('/api/price-administration/travel-costs', {
         method: 'POST',
         headers: { 'Content-Type' : 'application/json' },
         body: JSON.stringify(travelData)
 });
-      return response;
+      if (!response.ok) throw new Error('Failed to calculate travel costs');
+      return response.json();
 },
     onSuccess: (data) => {
       setTravelCostResult(data);
@@ -295,14 +381,15 @@ const PriceAdministration: React.FC<PriceAdministrationProps> = ({
 });
 
   // Toll calculation mutation  
-  const tollCalculationMutation = useMutation({
+  const _tollCalculationMutation = useMutation({
     mutationFn: async (routeData: any) => {
-      const response = await apiRequest('/api/price-administration/toll-calculation', {
+      const response = await fetch('/api/price-administration/toll-calculation', {
         method: 'POST',
         headers: { 'Content-Type' : 'application/json' },
         body: JSON.stringify(routeData)
 });
-      return response;
+      if (!response.ok) throw new Error('Failed to calculate toll');
+      return response.json();
 },
     onSuccess: (data) => {
       setTollCalculationResult(data);
@@ -364,7 +451,8 @@ const PriceAdministration: React.FC<PriceAdministrationProps> = ({
     setTollCalculationOpen(false);
 };
 
-  const handleCalculateFullTravelCost = () => {
+  // Travel log calculation helpers
+  const _handleCalculateFullTravelCost = () => {
     if (!travelLogForm.fromAddress || !travelLogForm.toAddress) {
       return;
 }
@@ -405,13 +493,14 @@ const PriceAdministration: React.FC<PriceAdministrationProps> = ({
           description: '',
           contact: '',
           fromAddress: '',
-          toAddress: ', ',
-          extraDestinations:  [],
+          toAddress: '',
+          extraDestinations: [],
           returnTrip: false,
-          kilometers:  0,
-          tollFees:  0,
-          additionalFees:  0,
-          additionalFeesDescription: ', '
+          kilometers: 0,
+          tollFees: 0,
+          additionalFees: 0,
+          additionalFeesDescription: '',
+          selectedVehicleData: null
   });
         console.log('Travel log entry saved successfully');
         
@@ -423,10 +512,12 @@ const PriceAdministration: React.FC<PriceAdministrationProps> = ({
             tollFees: travelLogForm.tollFees,
             additionalFees: travelLogForm.additionalFees,
           });
-        } catch {}
+        } catch {
+          // Silently handle analytics tracking errors
+        }
   }
-} catch (error) {
-      console.error('Failed to save travel log: ', error);
+} catch (_error) {
+      console.error('Failed to save travel log: ', _error);
 }
 };
 
@@ -437,10 +528,10 @@ const PriceAdministration: React.FC<PriceAdministrationProps> = ({
     }));
   };
 
-const removeExtraDestination = (index: number) => {
+const removeExtraDestination = (_index: number) => {
   setTravelLogForm((prev) => ({
     ...prev,
-    extraDestinations: prev.extraDestinations.filter((_, i) => i !== index),
+    extraDestinations: prev.extraDestinations.filter((_: any, i: number) => i !== _index),
   }));
 };
 
@@ -461,7 +552,7 @@ const removeExtraDestination = (index: number) => {
 };
 
   // OCR Receipt Scanning Function
-  const handleReceiptScan = async (file: File, source: 'camera' | 'upload') => {
+  const _handleReceiptScan = async (file: File, source: 'camera' | 'upload') => {
     setScanningReceipt(true);
 
     try {
@@ -490,7 +581,7 @@ const removeExtraDestination = (index: number) => {
       setScannedReceipts(prev => [...prev, newReceipt]);
       
       // Save to Google Drive and Google Sheets
-      await saveReceiptToGoogleDrive(newReceipt);
+      await _handleReceiptScan(newReceipt.imageFile, 'camera');
       
       // Track scanned receipt (registered receipts can be tracked elsewhere when finalized)
       try {
@@ -502,7 +593,9 @@ const removeExtraDestination = (index: number) => {
           merchant: newReceipt.extractedData?.merchant,
           source,
         });
-      } catch {}
+} catch {
+          // Silently handle error in scanned receipt analytics
+        }
       
       console.log('✅ OCR scanning completed:', receiptData);
 } catch (error) {
@@ -514,12 +607,12 @@ const removeExtraDestination = (index: number) => {
 
   // Extract relevant data from OCR text
   const extractReceiptData = (text: string) => {
-    const lines = text.split('\n').filter(line => line.trim());
+    const _lines = text.split('\n').filter(line => line.trim());
     
     // Norwegian-specific patterns
-    const amountPattern = /(\d, +, [,\.]\d+)\s*(kr|NOK|kroner)/i;
-    const datePattern = /(\d{1,2})[\.\/\-](\d{1,2})[\.\/\-](\d{2,4})/;
-    const timePattern = /(\d{1,2}):(\d{2})/;
+    const amountPattern = /(\d[.,]\d+)\s*(kr|NOK|kroner)/i;
+    const datePattern = /(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})/;
+    const _timePattern = /(\d{1,2}):(\d{2})/;
     
     // Common Norwegian fuel station names
     const fuelStations = ['shell','statoil','esso','circle k','uno-x','7-eleven'];
@@ -568,10 +661,10 @@ const removeExtraDestination = (index: number) => {
 };
 
   // Save receipt to Google Drive and Sheets
-  const saveReceiptToGoogleDrive = async (receiptData: any) => {
+  const _saveReceiptToGoogleDrive = async (receiptData: any) => {
     try {
       const response = await fetch('/api/price-administration/save-receipt', {
-        method: 'POS',
+        method: 'POST',
         headers: { 'Content-Type' : 'application/json',},
         body: JSON.stringify({
           receiptData,
@@ -591,7 +684,7 @@ const removeExtraDestination = (index: number) => {
 
   // Fetch data
   const { data: packagesData, isLoading: packagesLoading } = useQuery({
-    queryKey: ['/api/price-administration/packages', ],
+    queryKey: ['/api/pricing/packages'],
 });
 
   const { data: pricingData, isLoading: pricingDataLoading } = useQuery({
@@ -611,102 +704,260 @@ const removeExtraDestination = (index: number) => {
 });
 
   const { data: categoriesData } = useQuery({
-    queryKey: ['/api/price-administration/categories', ],
+    queryKey: [`/api/pricing/categories/${user?.id}`],
+    enabled: !!user?.id
 });
 
-  // Delete mutations
   const deletePackageMutation = useMutation({
     mutationFn: async (id: string) => {
-      const response = await fetch(`/api/price-administration/packages/${id}`, {
+      setIsDeletingItem(true);
+      const response = await fetch(`/api/pricing/packages/${id}`, {
         method: 'DELETE',
-  });
+      });
       if (!response.ok) throw new Error('Failed to delete package');
       return response.json();
-},
+    },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/price-administration/packages', ],});
-},
-});
+      queryClient.invalidateQueries({ queryKey: ['/api/pricing/packages'] });
+      setIsDeletingItem(false);
+    },
+    onError: () => {
+      setIsDeletingItem(false);
+    }
+  });
+
+  const deletePricingMutation = useMutation({
+    mutationFn: async (id: string) => {
+      setIsDeletingItem(true);
+      const response = await fetch(`/api/price-administration/pricing/${id}`, {
+        method: 'DELETE',
+      });
+      if (!response.ok) throw new Error('Failed to delete pricing');
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/price-administration/pricing'] });
+      setIsDeletingItem(false);
+    },
+    onError: () => {
+      setIsDeletingItem(false);
+    }
+  });
+
+  const deleteCostMutation = useMutation({
+    mutationFn: async (id: string) => {
+      setIsDeletingItem(true);
+      const response = await fetch(`/api/price-administration/additional-costs/${id}`, {
+        method: 'DELETE',
+      });
+      if (!response.ok) throw new Error('Failed to delete cost');
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/price-administration/additional-costs'] });
+      setIsDeletingItem(false);
+    },
+    onError: () => {
+      setIsDeletingItem(false);
+    }
+  });
+
+  const deleteDiscountMutation = useMutation({
+    mutationFn: async (id: string) => {
+      setIsDeletingItem(true);
+      const response = await fetch(`/api/price-administration/discounts/${id}`, {
+        method: 'DELETE',
+      });
+      if (!response.ok) throw new Error('Failed to delete discount');
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/price-administration/discounts'] });
+      setIsDeletingItem(false);
+    },
+    onError: () => {
+      setIsDeletingItem(false);
+    }
+  });
+
+  const deleteQuoteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      setIsDeletingItem(true);
+      const response = await fetch(`/api/price-administration/quotes/${id}`, {
+        method: 'DELETE',
+      });
+      if (!response.ok) throw new Error('Failed to delete quote');
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/price-administration/quotes'] });
+      setIsDeletingItem(false);
+    },
+    onError: () => {
+      setIsDeletingItem(false);
+    }
+  });
+
+  const createCostMutation = useMutation({
+    mutationFn: async (costData: any) => {
+      const response = await fetch('/api/price-administration/additional-costs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(costData)
+      });
+      if (!response.ok) throw new Error('Failed to create cost');
+      return response.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/price-administration/additional-costs'] });
+      setCreateCostOpen(false);
+      setCostForm({ name: '', description: '', type: 'fixed', amount: 0, category: '' });
+      handleCostCreated(data);
+    }
+  });
+
+  const createDiscountMutation = useMutation({
+    mutationFn: async (discountData: any) => {
+      const response = await fetch('/api/price-administration/discounts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(discountData)
+      });
+      if (!response.ok) throw new Error('Failed to create discount');
+      return response.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/price-administration/discounts'] });
+      setCreateDiscountOpen(false);
+      setDiscountForm({ name: '', discountValue: 0, isPercentage: true, discountCode: '', validFrom: '', validTo: '', minPurchase: 0 });
+      handleDiscountCreated(data);
+    }
+  });
+
+  // Fetch travel logs
+  const { data: travelLogsData, isLoading: travelLogsLoading } = useQuery({
+    queryKey: ['/api/travel-log'],
+  });
+
+  const deleteTravelLogMutation = useMutation({
+    mutationFn: async (id: string) => {
+      setIsDeletingItem(true);
+      const response = await fetch(`/api/travel-log/${id}`, {
+        method: 'DELETE',
+      });
+      if (!response.ok) throw new Error('Failed to delete travel log');
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/travel-log'] });
+      setIsDeletingItem(false);
+    },
+    onError: () => {
+      setIsDeletingItem(false);
+    }
+  });
 
   // Sync pricing data on component mount and data changes
   useEffect(() => {
     if (packagesData) {
-      dataFlow.syncData('price-administration: packages', packagesData);
-}
+      dataFlow.syncData('price-administration:packages', packagesData);
+    }
     if (pricingData) {
-      dataFlow.syncData('price-administration: pricing', pricingData);
-}
+      dataFlow.syncData('price-administration:pricing', pricingData);
+    }
     if (categoriesData) {
-      dataFlow.syncData('price-administration: categories', categoriesData);
-}
-}, [dataFlow, packagesData, pricingData, categoriesData]);
+      dataFlow.syncData('price-administration:categories', categoriesData);
+    }
+    if (quotesData) {
+      dataFlow.syncData('price-administration:quotes', quotesData);
+    }
+    if (discountsData) {
+      dataFlow.syncData('price-administration:discounts', discountsData);
+    }
+    if (costsData) {
+      dataFlow.syncData('price-administration:costs', costsData);
+    }
+    if (travelLogsData) {
+      dataFlow.syncData('price-administration:travel-logs', travelLogsData);
+    }
+  }, [dataFlow, packagesData, pricingData, categoriesData, quotesData, discountsData, costsData, travelLogsData]);
 
   // Enhanced handlers with integration broadcasting
-  const handlePackageCreated = (packageData: any) => {
-    console.log('💰 Package Created, :', packageData);
+  const _handlePackageCreated = (packageData: any) => {
+    console.log('💰 Package Created:', packageData);
     
-    // Broadcast to other components
+    // Broadcast to other components (UniversalDashboard, UniversalShowcase, etc.)
     communication.sendMessage({
       from: 'price-administration',
       to: 'all',
       type: 'pricing:packageCreated',
+      priority: 'medium',
       data: {
         ...packageData,
         createdBy: 'price-administration',
         timestamp: Date.now()
-}
-});
+      }
+    });
 
-    // Sync data flow
-    dataFlow.syncData('price-administration: packages', [...(packagesData || []), packageData]);
-};
+    // Sync data flow for real-time updates across components
+    dataFlow.syncData('price-administration:packages', packagesData ? [...(Array.isArray(packagesData) ? packagesData : []), packageData] : [packageData]);
+    
+    // Invalidate queries for data refresh
+    queryClient.invalidateQueries({ queryKey: ['/api/pricing/packages'] });
+  };
 
-  const handlePricingCreated = (pricingData: any) => {
-    console.log('💰 Pricing Created, :', pricingData);
+  const _handlePricingCreated = (pricingCreatedData: any) => {
+    console.log('💰 Pricing Created:', pricingCreatedData);
     
     // Broadcast to other components
     communication.sendMessage({
       from: 'price-administration',
       to: 'all',
       type: 'pricing:pricingCreated',
+      priority: 'medium',
       data: {
-        ...pricingData,
+        ...pricingCreatedData,
         createdBy: 'price-administration',
         timestamp: Date.now()
-}
-});
+      }
+    });
 
     // Sync data flow
-    dataFlow.syncData('price-administration: pricing', [...(pricingData || []), pricingData]);
-};
+    dataFlow.syncData('price-administration:pricing', pricingData ? [...(Array.isArray(pricingData) ? pricingData : []), pricingCreatedData] : [pricingCreatedData]);
+    
+    // Invalidate queries
+    queryClient.invalidateQueries({ queryKey: ['/api/price-administration/pricing'] });
+  };
 
-  const handleCategoryCreated = (categoryData: any) => {
-    console.log('💰 Category Created, :', categoryData);
+  const _handleCategoryCreated = (categoryData: any) => {
+    console.log('💰 Category Created:', categoryData);
     
     // Broadcast to other components
     communication.sendMessage({
       from: 'price-administration',
       to: 'all',
       type: 'pricing:categoryCreated',
+      priority: 'medium',
       data: {
         ...categoryData,
         createdBy: 'price-administration',
         timestamp: Date.now()
-}
-});
+      }
+    });
 
     // Sync data flow
-    dataFlow.syncData('price-administration: categories', [...(categoriesData || []), categoryData]);
-};
+    dataFlow.syncData('price-administration:categories', categoriesData ? [...(Array.isArray(categoriesData) ? categoriesData : []), categoryData] : [categoryData]);
+  };
 
-  const handleQuoteGenerated = (quoteData: any) => {
-    console.log('💰 Quote Generated, :', quoteData);
+  const _handleQuoteGenerated = (quoteData: any) => {
+    console.log('💰 Quote Generated:', quoteData);
     
-    // Broadcast to other components
+    // Broadcast to other components - important for ContractHub, ClientManagement
     communication.sendMessage({
       from: 'price-administration',
       to: 'all',
       type: 'quote:created',
+      priority: 'high',
       data: {
         ...quoteData,
         generatedBy: 'price-administration',
@@ -714,8 +965,25 @@ const removeExtraDestination = (index: number) => {
       }
     });
 
+    // Also broadcast to specific components that need quote data
+    communication.sendMessage({
+      from: 'price-administration',
+      to: 'contract-hub',
+      type: 'quote:available-for-contract',
+      priority: 'medium',
+      data: quoteData
+    });
+
     // Sync data flow
-    dataFlow.syncData('price-administration: quotes', [...(quotesData || []), quoteData]);
+    dataFlow.syncData('price-administration:quotes', quotesData ? [...(Array.isArray(quotesData) ? quotesData : []), quoteData] : [quoteData]);
+    
+    // Invalidate quotes query
+    queryClient.invalidateQueries({ queryKey: ['/api/price-administration/quotes'] });
+    
+    // Notify project update if linked to a project
+    if (quoteData.projectId && onProjectUpdate) {
+      onProjectUpdate({ id: quoteData.projectId, hasQuote: true, quoteId: quoteData.id });
+    }
   };
 
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
@@ -726,6 +994,7 @@ const removeExtraDestination = (index: number) => {
       from: 'price-administration',
       to: 'all',
       type: 'pricing:tabChanged',
+      priority: 'low',
       data: {
         tabValue: newValue,
         tabName: ['Pakker','Priser','Kategorier','Kvoter','Reise','Rapporter'][newValue] || 'Unknown',
@@ -741,10 +1010,202 @@ const removeExtraDestination = (index: number) => {
 };
 
   const handleDeletePackage = (id: string) => {
-    if (window.confirm('Er du sikker på at du vil slette denne pakken?')) {
-      deletePackageMutation.mutate(id);
-}
-};
+    setConfirmDelete({ open: true, type: 'package', id, label: 'pakken' });
+  };
+
+  const handleDeletePricing = (id: string) => {
+    setConfirmDelete({ open: true, type: 'pricing', id, label: 'prisstrukturen' });
+  };
+
+  const handleDeleteCost = (id: string) => {
+    setConfirmDelete({ open: true, type: 'cost', id, label: 'tilleggskostnaden' });
+  };
+
+  const handleDeleteDiscount = (id: string) => {
+    setConfirmDelete({ open: true, type: 'discount', id, label: 'rabatten' });
+  };
+
+  const handleDeleteQuote = (id: string) => {
+    setConfirmDelete({ open: true, type: 'quote', id, label: 'tilbudet' });
+  };
+
+  const handleDeleteTravelLog = (id: string) => {
+    setConfirmDelete({ open: true, type: 'travelLog', id, label: 'kjøreturen' });
+  };
+
+  const executeDelete = () => {
+    if (!confirmDelete.id) return;
+    switch (confirmDelete.type) {
+      case 'package': deletePackageMutation.mutate(confirmDelete.id); break;
+      case 'pricing': deletePricingMutation.mutate(confirmDelete.id); break;
+      case 'cost': deleteCostMutation.mutate(confirmDelete.id); break;
+      case 'discount': deleteDiscountMutation.mutate(confirmDelete.id); break;
+      case 'quote': deleteQuoteMutation.mutate(confirmDelete.id); break;
+      case 'travelLog': deleteTravelLogMutation.mutate(confirmDelete.id); break;
+    }
+    setConfirmDelete({ open: false, type: '', id: null, label: '' });
+  };
+
+  const handleCostCreated = (costData: any) => {
+    console.log('💰 Cost Created:', costData);
+    communication.sendMessage({
+      from: 'price-administration',
+      to: 'all',
+      type: 'pricing:costCreated',
+      priority: 'medium',
+      data: { ...costData, createdBy: 'price-administration', timestamp: Date.now() }
+    });
+    // Sync data flow
+    dataFlow.syncData('price-administration:costs', costsData ? [...(Array.isArray(costsData) ? costsData : []), costData] : [costData]);
+  };
+
+  const handleDiscountCreated = (discountData: any) => {
+    console.log('💰 Discount Created:', discountData);
+    communication.sendMessage({
+      from: 'price-administration',
+      to: 'all',
+      type: 'pricing:discountCreated',
+      priority: 'medium',
+      data: { ...discountData, createdBy: 'price-administration', timestamp: Date.now() }
+    });
+    // Sync data flow
+    dataFlow.syncData('price-administration:discounts', discountsData ? [...(Array.isArray(discountsData) ? discountsData : []), discountData] : [discountData]);
+  };
+
+  const handleCreateCost = () => {
+    createCostMutation.mutate({
+      ...costForm,
+      userId: user?.id,
+      createdAt: new Date().toISOString()
+    });
+  };
+
+  const handleCreateDiscount = () => {
+    createDiscountMutation.mutate({
+      ...discountForm,
+      userId: user?.id,
+      createdAt: new Date().toISOString()
+    });
+  };
+
+  const handleEditCost = (cost: any) => {
+    setCostForm({
+      name: cost.name || '',
+      description: cost.description || '',
+      type: cost.type || 'fixed',
+      amount: cost.amount || 0,
+      category: cost.category || ''
+    });
+    setSelectedItem(cost);
+    setCreateCostOpen(true);
+  };
+
+  const handleEditDiscount = (discount: any) => {
+    setDiscountForm({
+      name: discount.name || '',
+      discountValue: discount.discountValue || 0,
+      isPercentage: discount.isPercentage ?? true,
+      discountCode: discount.discountCode || '',
+      validFrom: discount.validFrom || '',
+      validTo: discount.validTo || '',
+      minPurchase: discount.minPurchase || 0
+    });
+    setSelectedItem(discount);
+    setCreateDiscountOpen(true);
+  };
+
+  // Report generation handlers
+  const handleGeneratePriceReport = async () => {
+    setIsGeneratingReport(true);
+    try {
+      const response = await fetch('/api/price-administration/reports/pricing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user?.id })
+      });
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `prisrapport-${new Date().toISOString().split('T')[0]}.pdf`;
+        a.click();
+      }
+    } catch (error) {
+      console.error('Failed to generate price report:', error);
+    } finally {
+      setIsGeneratingReport(false);
+    }
+  };
+
+  const handleGeneratePackageAnalysis = async () => {
+    setIsGeneratingReport(true);
+    try {
+      const response = await fetch('/api/price-administration/reports/packages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user?.id })
+      });
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `pakkeanalyse-${new Date().toISOString().split('T')[0]}.pdf`;
+        a.click();
+      }
+    } catch (error) {
+      console.error('Failed to generate package analysis:', error);
+    } finally {
+      setIsGeneratingReport(false);
+    }
+  };
+
+  const handleGenerateQuoteReport = async () => {
+    setIsGeneratingReport(true);
+    try {
+      const response = await fetch('/api/price-administration/reports/quotes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user?.id })
+      });
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `tilbudsrapport-${new Date().toISOString().split('T')[0]}.pdf`;
+        a.click();
+      }
+    } catch (error) {
+      console.error('Failed to generate quote report:', error);
+    } finally {
+      setIsGeneratingReport(false);
+    }
+  };
+
+  const handleExportAll = async () => {
+    setIsGeneratingReport(true);
+    try {
+      const response = await fetch('/api/price-administration/reports/export-all', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user?.id })
+      });
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `prisadministrasjon-eksport-${new Date().toISOString().split('T')[0]}.zip`;
+        a.click();
+      }
+    } catch (error) {
+      console.error('Failed to export all data:', error);
+    } finally {
+      setIsGeneratingReport(false);
+    }
+  };
 
   // Use centralized currency formatting
   const formatPrice = (price: string | number) => {
@@ -752,7 +1213,7 @@ const removeExtraDestination = (index: number) => {
       const numPrice = parseFloat(price.toString());
       if (isNaN(numPrice)) return '0 NOK';
       return formatCurrency(numPrice, 'NOK');
-    } catch (error) {
+    } catch (_error) {
       // Fallback formatting
       return new Intl.NumberFormat('nb-NO', {
         style: 'currency',
@@ -772,61 +1233,106 @@ const removeExtraDestination = (index: number) => {
     return categoryMap[category] || category;
 };
 
+  // Helper function for vehicle info fetch
+  const fetchVehicleInfo = async (regNumber: string) => {
+    try {
+      const response = await fetch(`/api/vehicle-info/${regNumber}`);
+      if (response.ok) {
+        return await response.json();
+      }
+    } catch (error) {
+      console.error('Failed to fetch vehicle info:', error);
+    }
+    return null;
+  };
+
+  // Helper function for toll calculation
+  const calculateTollFees = async (fromAddress: string, toAddress: string) => {
+    try {
+      const response = await fetch('/api/calculate-toll', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fromAddress, toAddress })
+      });
+      if (response.ok) {
+        const data = await response.json();
+        return data.totalTolls || 0;
+      }
+    } catch (error) {
+      console.error('Failed to calculate toll fees:', error);
+    }
+    return 0;
+  };
+
+  // Helper function for extra destinations
+  const updateExtraDestination = (index: number, value: string) => {
+    setTravelLogForm(prev => {
+      const newDestinations = [...prev.extraDestinations];
+      newDestinations[index] = value;
+      return { ...prev, extraDestinations: newDestinations };
+    });
+  };
+
   return (
-    <Box sx={{ width: '100%', minHeight: '100vh', bgcolor: 'background.default' }}>
-      {/* Header */}
-      <Paper
-        elevation={0}
-        sx={{
-          p: 3,
-          background: 'linear-gradient(135deg, #1e3c72 0%, #2a5298 100%)',
-          color: 'white',
-          borderRadius: 0,
-          ...theming.getThemedCardSx()
-        }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-          {professionIcon && (
-            <Box sx={{ color: professionColor, display: 'flex', alignItems: 'center' }}>
-              {professionIcon}
-            </Box>
-          )}
-          <Typography variant="h4" component="h1" gutterBottom sx={{ color: theming.colors.primary }}>
-            {enhancedProfessionConfig?.displayName || professionConfig?.displayName
-              ? `${enhancedProfessionConfig?.displayName || professionConfig.displayName} - Prisadministrasjon`
-              : 'Prisadministrasjon'}
-          </Typography>
-        </Box>
-        {professionConfig && (
-          <Typography variant="body1" color="text.secondary" gutterBottom sx={{ mb:  3 }}>
-            Prisadministrasjon for {professionConfig.displayName.toLowerCase()}
-          </Typography>
-        )}
-<Typography variant="body1" sx={{ opacity: 0.9 }}>
+    <Box sx={{ width: '100%', bgcolor: 'background.default' }}>
+      {/* Simple Header */}
+      <Box sx={{ mb: 4, pb: 2, borderBottom: '2px solid', borderColor: 'divider' }}>
+        <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.6 }}>
           Administrer standardpakker, prisstrukturer, rabatter og generer tilbud
         </Typography>
-      </Paper>
+      </Box>
 
       {/* Navigation Tabs */}
-      <Paper elevation={1} sx={{ borderRadius: 0, ...theming.getThemedCardSx() }}>
+      <Paper 
+        elevation={0} 
+        sx={{ 
+          mb: 4,
+          borderRadius: 3,
+          border: '1px solid',
+          borderColor: 'divider',
+          overflow: 'hidden',
+          ...theming.getThemedCardSx() 
+        }}
+      >
         <Tabs
           value={tabValue}
           onChange={handleTabChange}
           variant="scrollable"
           scrollButtons="auto"
           sx={{
+            px: 2,
+            pt: 2,
             '& .MuiTab-root': {
               textTransform: 'none',
-              fontWeight: 5,
+              fontWeight: 600,
               fontSize: '0.95rem',
-        }}}
+              minHeight: 56,
+              px: 3,
+              gap: 1.5,
+              color: 'text.secondary',
+              '&.Mui-selected': {
+                color: theming.colors.primary,
+                fontWeight: 700
+              },
+              '&:hover': {
+                bgcolor: 'action.hover',
+                borderRadius: '8px 8px 0 0'
+              }
+            },
+            '& .MuiTabs-indicator': {
+              height: 3,
+              borderRadius: '3px 3px 0 0',
+              backgroundColor: theming.colors.primary
+            }
+        }}
         >
-          <Tab icon={<CategoryIcon />} label="Standardpakker" />
-          <Tab icon={<PriceIcon />} label="Prisstrukturer" />
-          <Tab icon={<AddIcon />} label="Tilleggskostnader" />
-          <Tab icon={<TravelIcon />} label="Kjørebok & Reise" />
-          <Tab icon={<DiscountIcon />} label="Rabatter" />
-          <Tab icon={<QuoteIcon />} label="Tilbud" />
-          <Tab icon={<AnalyticsIcon />} label="Analyse & Rapporter" />
+          <Tab icon={<CategoryIcon />} iconPosition="start" label="Standardpakker" />
+          <Tab icon={<PriceIcon />} iconPosition="start" label="Prisstrukturer" />
+          <Tab icon={<AddIcon />} iconPosition="start" label="Tilleggskostnader" />
+          <Tab icon={<TravelIcon />} iconPosition="start" label="Kjørebok & Reise" />
+          <Tab icon={<DiscountIcon />} iconPosition="start" label="Rabatter" />
+          <Tab icon={<QuoteIcon />} iconPosition="start" label="Tilbud" />
+          <Tab icon={<AnalyticsIcon />} iconPosition="start" label="Analyse & Rapporter" />
         </Tabs>
       </Paper>
 
@@ -834,25 +1340,69 @@ const removeExtraDestination = (index: number) => {
       
       {/* Standard Packages */}
       <TabPanel value={tabValue} index={0}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb:  3 }}>
-          <Typography variant="h5" sx={{ color: theming.colors.primary }}>
-            {professionConfig ? `${professionConfig.displayName} - Standardpakker` : 'Standardpakker'}
-          </Typography>
-          <Box>
+        <Box sx={{ 
+          display: 'flex', 
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          mb: 4,
+          pb: 3,
+          borderBottom: '1px solid',
+          borderColor: 'divider'
+        }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Box
+              sx={{
+                p: 1.25,
+                borderRadius: 2,
+                bgcolor: 'primary.50',
+                color: 'primary.main',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
+              <CategoryIcon sx={{ fontSize: 24 }} />
+            </Box>
+            <Box>
+              <Typography variant="h6" sx={{ color: theming.colors.primary, fontWeight: 700 }}>
+                {_professionConfig ? `${_professionConfig.displayName} - Standardpakker` : 'Standardpakker'}
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
+                Opprett og administrer standardiserte prispakker
+              </Typography>
+            </Box>
+          </Box>
+          <Box sx={{ display: 'flex', gap: 2 }}>
             <Button
               variant="outlined"
               startIcon={<CategoryIcon />}
               onClick={() => setCreateCategoryOpen(true)}
-              sx={{ mr:  2 }}
+              sx={{ 
+                borderRadius: 2,
+                textTransform: 'none',
+                fontWeight: 600
+              }}
             >
               Legg til kategori
             </Button>
             <Button
   variant="contained"
-  startIcon={<AddIcon sx={theming.getThemedButtonSx()} />}
+  startIcon={<AddIcon />}
   onClick={() => {
     setSelectedItem(null);
     setCreatePackageOpen(true);
+  }}
+  sx={{
+    ...theming.getThemedButtonSx(),
+    borderRadius: 2,
+    px: 3,
+    py: 1.25,
+    fontWeight: 700,
+    textTransform: 'none',
+    boxShadow: 2,
+    '&:hover': {
+      boxShadow: 4
+    }
   }}
 >
               Ny pakke
@@ -863,9 +1413,9 @@ const removeExtraDestination = (index: number) => {
         {packagesLoading ? (
           <Alert severity="info">Laster standardpakker...</Alert>
         ) : (
-          <Grid container spacing={3}>
-            {packagesData?.packages?.map((pkg: any) => (
-              <Grid size={{ xs: 12, md: 6, lg: 4 }} key={pkg.id}>
+          <Grid2 container spacing={3}>
+            {(Array.isArray(packagesData) ? packagesData : ((packagesData as any)?.packages) || [])?.map((pkg: any) => (
+              <Grid2 size={{ xs: 12, md: 6, lg: 4 }} key={pkg.id}>
                 <Card
                   elevation={2}
                   sx={{
@@ -889,7 +1439,7 @@ const removeExtraDestination = (index: number) => {
                       />
                     </Box>
                     
-                    <Typography variant="h5" color="primary" gutterBottom sx={{ color: theming.colors.primary }}>
+                    <Typography variant="h6" color="primary" gutterBottom sx={{ color: theming.colors.primary, fontWeight: 700, fontSize: '1.25rem' }}>
                       {formatPrice(pkg.basePrice)}
                     </Typography>
                     
@@ -932,17 +1482,17 @@ const removeExtraDestination = (index: number) => {
                     </IconButton>
                   </CardActions>
                 </Card>
-              </Grid>
+              </Grid2>
             ))}
-          </Grid>
+          </Grid2>
         )}
       </TabPanel>
 
       {/* Pricing Structures */}
       <TabPanel value={tabValue} index={1}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', mb:  3 }}>
-          <Typography variant="h5" sx={{ color: theming.colors.primary }}>
-            {professionConfig ? `${professionConfig.displayName} - Prisstrukturer` : 'Prisstrukturer'}
+          <Typography variant="h6" sx={{ color: theming.colors.primary, fontWeight: 700, fontSize: '1.25rem' }}>
+            {_professionConfig ? `${_professionConfig.displayName} - Prisstrukturer` : 'Prisstrukturer'}
           </Typography>
           <Button
   variant="contained"
@@ -956,7 +1506,7 @@ const removeExtraDestination = (index: number) => {
           </Button>
         </Box>
 
-        {pricingLoading ? (
+        {pricingDataLoading ? (
           <Alert severity="info">Laster prisstrukturer...</Alert>
         ) : (
           <TableContainer component={Paper}>
@@ -971,7 +1521,7 @@ const removeExtraDestination = (index: number) => {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {pricingData?.pricing?.map((pricing: any) => (
+                {((Array.isArray(pricingData) ? pricingData : ((pricingData as any)?.pricing)) || [])?.map((pricing: any) => (
                   <TableRow key={pricing.d}>
                     <TableCell>{pricing.name}</TableCell>
                     <TableCell>
@@ -1001,6 +1551,14 @@ const removeExtraDestination = (index: number) => {
                       >
                         <EditIcon fontSize="small" />
                       </IconButton>
+                      <IconButton 
+                        size="small" 
+                        onClick={() => handleDeletePricing(pricing.id)}
+                        color="error"
+                        disabled={isDeletingItem}
+                      >
+                        <DeleteIcon fontSize="small" />
+                      </IconButton>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -1012,56 +1570,133 @@ const removeExtraDestination = (index: number) => {
 
       {/* Additional Costs */}
       <TabPanel value={tabValue} index={2}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb:  3 }}>
-          <Typography variant="h5" sx={{ color: theming.colors.primary }}>
-            {professionConfig ? `${professionConfig.displayName} - Tilleggskostnader` : 'Tilleggskostnader'}
-          </Typography>
+        <Box sx={{ 
+          display: 'flex', 
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          mb: 4,
+          pb: 3,
+          borderBottom: '1px solid',
+          borderColor: 'divider'
+        }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Box
+              sx={{
+                p: 1.25,
+                borderRadius: 2,
+                bgcolor: 'warning.50',
+                color: 'warning.main',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
+              <AddIcon sx={{ fontSize: 24 }} />
+            </Box>
+            <Box>
+              <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                {_professionConfig ? `${_professionConfig.displayName} - Tilleggskostnader` : 'Tilleggskostnader'}
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
+                Håndter ekstra kostnader og tillegg
+              </Typography>
+            </Box>
+          </Box>
           <Button
-  variant="contained"
-  startIcon={<AddIcon sx={theming.getThemedButtonSx()} />}>
-  Ny tilleggskostnad
-</Button>
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={() => {
+              setSelectedItem(null);
+              setCostForm({ name: '', description: '', type: 'fixed', amount: 0, category: '' });
+              setCreateCostOpen(true);
+            }}
+            sx={{
+              ...theming.getThemedButtonSx(),
+              borderRadius: 2,
+              px: 3,
+              py: 1.25,
+              fontWeight: 700,
+              textTransform: 'none',
+              boxShadow: 2,
+              '&:hover': { boxShadow: 4 }
+            }}
+          >
+            Ny tilleggskostnad
+          </Button>
         </Box>
 
         {costsLoading ? (
           <Alert severity="info">Laster tilleggskostnader...</Alert>
         ) : (
-          <Grid container spacing={2}>
-            {costsData?.costs?.map((cost: any) => (
-              <Grid size={{ xs: 12, md:  6 }} key={cost.id}>
+          <Grid2 container spacing={2}>
+            {((Array.isArray(costsData) ? costsData : ((costsData as any)?.costs)) || [])?.map((cost: any) => (
+              <Grid2 size={{ xs: 12, md:  6 }} key={cost.id}>
                 <Card sx={theming.getThemedCardSx()}>
                   <CardContent sx={theming.getThemedCardSx()}>
-                    <Typography variant="h6" sx={{ color: theming.colors.primary }}>{cost.name}</Typography>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <Typography variant="h6" sx={{ color: theming.colors.primary }}>{cost.name}</Typography>
+                      <Box>
+                        <IconButton size="small" onClick={() => handleEditCost(cost)} color="primary">
+                          <EditIcon fontSize="small" />
+                        </IconButton>
+                        <IconButton size="small" onClick={() => handleDeleteCost(cost.id)} color="error" disabled={isDeletingItem}>
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </Box>
+                    </Box>
                     <Typography variant="body2" color="text.secondary">
                       {cost.description}
                     </Typography>
-                    <Chip 
-                      label={cost.type}
-                      size="small" 
-                      sx={{ mt:  1 }}
-                    />
+                    <Box sx={{ display: 'flex', gap: 1, mt: 1, flexWrap: 'wrap' }}>
+                      <Chip label={cost.type} size="small" />
+                      {cost.amount && <Chip label={formatPrice(cost.amount)} size="small" color="primary" />}
+                    </Box>
                   </CardContent>
                 </Card>
-              </Grid>
+              </Grid2>
             ))}
-          </Grid>
+          </Grid2>
         )}
       </TabPanel>
 
       {/* Travel & Mileage */}
       <TabPanel value={tabValue} index={3}>
-        <Box sx={{ mb:  3 }}>
-          <Typography variant="h5" gutterBottom sx={{ color: theming.colors.primary }}>
-            {professionConfig ? `${professionConfig.displayName} - Kjørebok & Reisekostnader` : 'Kjørebok & Reisekostnader'}
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Automatisk GPS-basert kjørebok med norske satser for {professionConfig ? professionConfig.displayName.toLowerCase() : 'profesjonelle'}
-          </Typography>
+        <Box sx={{ 
+          display: 'flex',
+          alignItems: 'center',
+          mb: 4,
+          pb: 3,
+          borderBottom: '1px solid',
+          borderColor: 'divider'
+        }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Box
+              sx={{
+                p: 1.25,
+                borderRadius: 2,
+                bgcolor: 'info.50',
+                color: 'info.main',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
+              <TravelIcon sx={{ fontSize: 24 }} />
+            </Box>
+            <Box>
+              <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                {_professionConfig ? `${_professionConfig.displayName} - Kjørebok & Reisekostnader` : 'Kjørebok & Reisekostnader'}
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
+                Automatisk GPS-basert kjørebok med norske satser for {_professionConfig ? _professionConfig.displayName.toLowerCase() : 'profesjonelle'}
+              </Typography>
+            </Box>
+          </Box>
         </Box>
 
-        <Grid container spacing={3}>
+        <Grid2 container spacing={3}>
           {/* Mileage Settings */}
-          <Grid size={{ xs:  12, md:  6 }}>
+          <Grid2 size={{ xs:  12, md:  6 }}>
             <Card sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
                 <Box sx={{ display: 'flex', alignItems: 'center', mb:  2 }}>
@@ -1099,10 +1734,10 @@ const removeExtraDestination = (index: number) => {
                 </Button>
               </CardContent>
             </Card>
-          </Grid>
+          </Grid2>
 
           {/* Fuel & Charging Costs */}
-          <Grid size={{ xs:  12, md:  6 }}>
+          <Grid2 size={{ xs:  12, md:  6 }}>
             <Card sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
                 <Box sx={{ display: 'flex', alignItems: 'center', mb:  2 }}>
@@ -1139,16 +1774,16 @@ const removeExtraDestination = (index: number) => {
                 </Button>
               </CardContent>
             </Card>
-          </Grid>
+          </Grid2>
 
           {/* Norwegian-specific costs */}
-          <Grid size={12}>
+          <Grid2 size={12}>
             <Card sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
                 <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>Norskspesifikke kostnader</Typography>
                 
-                <Grid container spacing={2}>
-                  <Grid size={{ xs:  12, md:  4 }}>
+                <Grid2 container spacing={2}>
+                  <Grid2 size={{ xs:  12, md:  4 }}>
                   <Box sx={{ p: 2, bgcolor: 'background.paper', borderRadius: 1 }}>
                       <Typography variant="subtitle2" gutterBottom>Bompenger</Typography>
                       <Typography variant="body2" color="text.secondary">
@@ -1156,9 +1791,9 @@ const removeExtraDestination = (index: number) => {
                       </Typography>
                       <Chip label={`Gjennomsnitt: ${getMarketRates().tolls.range.min}-${getMarketRates().tolls.range.max} kr`} size="small" sx={{ mt: 1 }} />
                     </Box>
-                  </Grid>
+                  </Grid2>
                   
-                  <Grid size={{ xs:  12, md:  4 }}>
+                  <Grid2 size={{ xs:  12, md:  4 }}>
                   <Box sx={{ p: 2, bgcolor: 'background.paper', borderRadius: 1 }}>
                       <Typography variant="subtitle2" gutterBottom>Ferge</Typography>
                       <Typography variant="body2" color="text.secondary">
@@ -1166,9 +1801,9 @@ const removeExtraDestination = (index: number) => {
                       </Typography>
                       <Chip label={`Varierer: ${getMarketRates().ferries.range.min}-${getMarketRates().ferries.range.max} kr`} size="small" sx={{ mt: 1 }} />
                     </Box>
-                  </Grid>
+                  </Grid2>
                   
-                  <Grid size={{ xs:  12, md:  4 }}>
+                  <Grid2 size={{ xs:  12, md:  4 }}>
                   <Box sx={{ p: 2, bgcolor: 'background.paper', borderRadius: 1 }}>
                       <Typography variant="subtitle2" gutterBottom>Parkering</Typography>
                       <Typography variant="body2" color="text.secondary">
@@ -1176,8 +1811,8 @@ const removeExtraDestination = (index: number) => {
                       </Typography>
                       <Chip label={`Bysentrum: ${getMarketRates().parking.city_center.min}-${getMarketRates().parking.city_center.max} kr/t`} size="small" sx={{ mt: 1 }} />
                     </Box>
-                  </Grid>
-                </Grid>
+                  </Grid2>
+                </Grid2>
 
                 <Button
   variant="contained"
@@ -1189,10 +1824,10 @@ const removeExtraDestination = (index: number) => {
 </Button>
               </CardContent>
             </Card>
-          </Grid>
+          </Grid2>
 
           {/* Manual Travel Log Entry */}
-          <Grid size={12}>
+          <Grid2 size={12}>
             <Card sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb:  2 }}>
@@ -1232,18 +1867,100 @@ const removeExtraDestination = (index: number) => {
     border: '1px solid',
     borderColor: 'success.200'}}
 >
-  <Typography variant="subtitle2" color="success.main" gutterBottom>
-    💰 Siste kostnadsberegning
+  <Typography variant="subtitle2" color="success.main" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+    <PriceIcon fontSize="small" /> Siste kostnadsberegning
   </Typography>
   <Typography variant="body2">{calculateTravelCost.breakdown}</Typography>
 </Paper>
                 )}
               </CardContent>
             </Card>
-          </Grid>
+          </Grid2>
+
+          {/* Travel Log History */}
+          <Grid2 size={12}>
+            <Card sx={theming.getThemedCardSx()}>
+              <CardContent sx={theming.getThemedCardSx()}>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                    <RouteIcon sx={{ mr: 2, color: 'primary.main' }} />
+                    <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+                      Kjørelogg historikk
+                    </Typography>
+                  </Box>
+                </Box>
+
+                {travelLogsLoading ? (
+                  <Alert severity="info">Laster kjørelogg...</Alert>
+                ) : (
+                  <TableContainer component={Paper} sx={{ maxHeight: 400 }}>
+                    <Table stickyHeader size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Dato</TableCell>
+                          <TableCell>Beskrivelse</TableCell>
+                          <TableCell>Fra</TableCell>
+                          <TableCell>Til</TableCell>
+                          <TableCell align="right">Km</TableCell>
+                          <TableCell align="right">Bompenger</TableCell>
+                          <TableCell align="right">Total</TableCell>
+                          <TableCell align="right">Handlinger</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {((Array.isArray(travelLogsData) ? travelLogsData : ((travelLogsData as any)?.logs)) || []).length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={8} align="center">
+                              <Typography variant="body2" color="text.secondary" sx={{ py: 3 }}>
+                                Ingen kjøreturer registrert ennå. Klikk "Ny kjøretur" for å komme i gang.
+                              </Typography>
+                            </TableCell>
+                          </TableRow>
+                        ) : (
+                          ((Array.isArray(travelLogsData) ? travelLogsData : ((travelLogsData as any)?.logs)) || []).map((log: any) => (
+                            <TableRow key={log.id} hover>
+                              <TableCell>{new Date(log.date).toLocaleDateString('nb-NO')}</TableCell>
+                              <TableCell>
+                                <Typography variant="body2" sx={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  {log.description || '-'}
+                                </Typography>
+                              </TableCell>
+                              <TableCell>
+                                <Typography variant="body2" sx={{ maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  {log.fromAddress}
+                                </Typography>
+                              </TableCell>
+                              <TableCell>
+                                <Typography variant="body2" sx={{ maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  {log.toAddress}
+                                </Typography>
+                              </TableCell>
+                              <TableCell align="right">{log.kilometers} km</TableCell>
+                              <TableCell align="right">{formatPrice(log.tollFees || 0)}</TableCell>
+                              <TableCell align="right" sx={{ fontWeight: 600 }}>{formatPrice(log.calculatedCost || 0)}</TableCell>
+                              <TableCell align="right">
+                                <IconButton 
+                                  size="small" 
+                                  onClick={() => handleDeleteTravelLog(log.id)}
+                                  color="error"
+                                  disabled={isDeletingItem}
+                                >
+                                  <DeleteIcon fontSize="small" />
+                                </IconButton>
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        )}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                )}
+              </CardContent>
+            </Card>
+          </Grid2>
 
           {/* Receipt OCR Scanner */}
-          <Grid size={12}>
+          <Grid2 size={12}>
             <Card sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
                 <Typography variant="h6" gutterBottom sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
@@ -1255,8 +1972,8 @@ const removeExtraDestination = (index: number) => {
                   Automatisk scanning av kvitteringer med Tesseract.js OCR - fungerer både på mobil og desktop
                 </Typography>
 
-                <Grid container spacing={2}>
-                  <Grid size={{ xs:  12, md:  6 }}>
+                <Grid2 container spacing={2}>
+                  <Grid2 size={{ xs:  12, md:  6 }}>
                   <Card
   variant="outlined"
   sx={{ ...theming.getThemedCardSx(), p: 2, textAlign: 'center' }}
@@ -1271,14 +1988,14 @@ const removeExtraDestination = (index: number) => {
 
                       <input
                         accept="image/*"
-                        capture="camera"
+                        capture
                         style={{ display: 'none'}}
                         id="camera-capture"
                         type="file"
                         onChange={(e) => {
                           const file = e.target.files?.[0];
                           if (file) {
-                            handleReceiptScan(file, 'camera');
+                            _handleReceiptScan(file, 'camera');
                           }
                         }}
                       />
@@ -1293,9 +2010,9 @@ const removeExtraDestination = (index: number) => {
                         </Button>
                       </label>
                     </Card>
-                  </Grid>
+                  </Grid2>
                   
-                  <Grid size={{ xs:  12, md:  6 }}>
+                  <Grid2 size={{ xs:  12, md:  6 }}>
                     <Card variant="outlined" sx={{ p: 2, textAlign: 'center', ...theming.getThemedCardSx() }}>
                       <UploadIcon sx={{ fontSize:  48, color: 'secondary.main', mb:  2 }} />
                       <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>Last opp eksisterende bilde</Typography>
@@ -1310,7 +2027,7 @@ const removeExtraDestination = (index: number) => {
                         onChange={(e) => {
                           const file = e.target.files?.[0];
                           if (file) {
-                            handleReceiptScan(file, 'upload');
+                            _handleReceiptScan(file, 'upload');
                           }
                         }}
                       />
@@ -1326,8 +2043,8 @@ const removeExtraDestination = (index: number) => {
                         </Button>
                       </label>
                     </Card>
-                  </Grid>
-                </Grid>
+                  </Grid2>
+                </Grid2>
 
                 {/* OCR Results Display */}
                 <Box sx={{ mt:  3 }}>
@@ -1343,19 +2060,19 @@ const removeExtraDestination = (index: number) => {
                     <br />• Norskspråkig OCR med valutagjenkjenning
                   </Alert>
 
-                  <Grid container spacing={2}>
+                  <Grid2 container spacing={2}>
                     {scannedReceipts.length === 0 ? (
-                      <Grid size={12}>
+                      <Grid2 size={12}>
                         <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'grey.50', ...theming.getThemedCardSx() }}>
                           <ScanIcon sx={{ fontSize:  32, color: 'grey.40', mb:  1 }} />
                           <Typography variant="body2" color="text.secondary">
                             Scannede kvitteringer vil vises her med ekstrahert informasjon
                           </Typography>
                         </Paper>
-                      </Grid>
+                      </Grid2>
                     ) : (
                       scannedReceipts.map((receipt) => (
-                        <Grid size={{ xs:  12, md:  6 }} key={receipt.id}>
+                        <Grid2 size={{ xs:  12, md:  6 }} key={receipt.id}>
                           <Card variant="outlined" sx={theming.getThemedCardSx()}>
                             <CardContent sx={theming.getThemedCardSx()}>
                               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb:  2 }}>
@@ -1370,7 +2087,7 @@ const removeExtraDestination = (index: number) => {
                                 />
                               </Box>
                               
-                              <Typography variant="h5" color="success.main" gutterBottom sx={{ color: theming.colors.primary }}>
+                              <Typography variant="h6" color="success.main" gutterBottom sx={{ color: theming.colors.primary, fontWeight: 700, fontSize: '1.25rem' }}>
                                 {formatPrice(receipt.extractedData.amount)}
                               </Typography>
                               
@@ -1403,7 +2120,11 @@ const removeExtraDestination = (index: number) => {
                                 category: receipt.extractedData?.category,
                               });
                               setRegisteredReceiptIds((prev) => (prev.includes(receipt.id) ? prev : [...prev, receipt.id]));
-                            } catch {}
+                            } catch {
+                              // Silently handle API errors
+                            
+          // Silently handle analytics tracking errors
+        }
                           }}
                         >
                           Marker som registrert
@@ -1417,24 +2138,70 @@ const removeExtraDestination = (index: number) => {
                               )}
                             </CardContent>
                           </Card>
-                        </Grid>
+                        </Grid2>
                       ))
                     )}
-                  </Grid>
+                  </Grid2>
                 </Box>
               </CardContent>
             </Card>
-          </Grid>
-        </Grid>
+          </Grid2>
+        </Grid2>
       </TabPanel>
 
       {/* Discounts */}
       <TabPanel value={tabValue} index={4}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb:  3 }}>
-          <Typography variant="h5" sx={{ color: theming.colors.primary }}>
-            {professionConfig ? `${professionConfig.displayName} - Rabatter` : 'Rabatter'}
-          </Typography>
-          <Button variant="contained" startIcon={<AddIcon />}>
+        <Box sx={{ 
+          display: 'flex', 
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          mb: 4,
+          pb: 3,
+          borderBottom: '1px solid',
+          borderColor: 'divider'
+        }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Box
+              sx={{
+                p: 1.25,
+                borderRadius: 2,
+                bgcolor: 'success.50',
+                color: 'success.main',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
+              <DiscountIcon sx={{ fontSize: 24 }} />
+            </Box>
+            <Box>
+              <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                {_professionConfig ? `${_professionConfig.displayName} - Rabatter` : 'Rabatter'}
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
+                Administrer rabatter og kampanjer
+              </Typography>
+            </Box>
+          </Box>
+          <Button 
+            variant="contained" 
+            startIcon={<AddIcon />}
+            onClick={() => {
+              setSelectedItem(null);
+              setDiscountForm({ name: '', discountValue: 0, isPercentage: true, discountCode: '', validFrom: '', validTo: '', minPurchase: 0 });
+              setCreateDiscountOpen(true);
+            }}
+            sx={{
+              ...theming.getThemedButtonSx(),
+              borderRadius: 2,
+              px: 3,
+              py: 1.25,
+              fontWeight: 700,
+              textTransform: 'none',
+              boxShadow: 2,
+              '&:hover': { boxShadow: 4 }
+            }}
+          >
             Ny rabatt
           </Button>
         </Box>
@@ -1442,42 +2209,91 @@ const removeExtraDestination = (index: number) => {
         {discountsLoading ? (
           <Alert severity="info">Laster rabatter...</Alert>
         ) : (
-          <Grid container spacing={2}>
-            {discountsData?.discounts?.map((discount: any) => (
-              <Grid size={{ xs: 12, md:  6 }} key={discount.id}>
+          <Grid2 container spacing={2}>
+            {((Array.isArray(discountsData) ? discountsData : ((discountsData as any)?.discounts)) || [])?.map((discount: any) => (
+              <Grid2 size={{ xs: 12, md:  6 }} key={discount.id}>
                 <Card sx={theming.getThemedCardSx()}>
                   <CardContent sx={theming.getThemedCardSx()}>
-                    <Typography variant="h6" sx={{ color: theming.colors.primary }}>{discount.name}</Typography>
-                    <Typography variant="h5" color="success.main" sx={{ color: theming.colors.primary }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <Typography variant="h6" sx={{ color: theming.colors.primary }}>{discount.name}</Typography>
+                      <Box>
+                        <IconButton size="small" onClick={() => handleEditDiscount(discount)} color="primary">
+                          <EditIcon fontSize="small" />
+                        </IconButton>
+                        <IconButton size="small" onClick={() => handleDeleteDiscount(discount.id)} color="error" disabled={isDeletingItem}>
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </Box>
+                    </Box>
+                    <Typography variant="h6" color="success.main" sx={{ color: theming.colors.primary, fontWeight: 700, fontSize: '1.25rem' }}>
                       {discount.isPercentage 
                         ? `${discount.discountValue}%` 
                         : formatPrice(discount.discountValue)
-                  }
+                      }
                     </Typography>
                     {discount.discountCode && (
                       <Chip 
                         label={`Kode: ${discount.discountCode}`}
                         size="small" 
-                        sx={{ mt:  1 }}
+                        sx={{ mt: 1 }}
                       />
                     )}
                   </CardContent>
                 </Card>
-              </Grid>
+              </Grid2>
             ))}
-          </Grid>
+          </Grid2>
         )}
       </TabPanel>
 
       {/* Quotes */}
       <TabPanel value={tabValue} index={5}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb:  3 }}>
-          <Typography variant="h5" sx={{ color: theming.colors.primary }}>
-            {professionConfig ? `${professionConfig.displayName} - Tilbud` : 'Tilbud'}
-          </Typography>
-          <Button variant="contained"
+        <Box sx={{ 
+          display: 'flex', 
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          mb: 4,
+          pb: 3,
+          borderBottom: '1px solid',
+          borderColor: 'divider'
+        }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Box
+              sx={{
+                p: 1.25,
+                borderRadius: 2,
+                bgcolor: 'secondary.50',
+                color: 'secondary.main',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
+              <QuoteIcon sx={{ fontSize: 24 }} />
+            </Box>
+            <Box>
+              <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                {_professionConfig ? `${_professionConfig.displayName} - Tilbud` : 'Tilbud'}
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
+                Opprett og administrer tilbud til kunder
+              </Typography>
+            </Box>
+          </Box>
+          <Button 
+            variant="contained"
             startIcon={<AddIcon />}
             onClick={() => setQuoteGeneratorOpen(true)}
+            sx={{
+              ...theming.getThemedButtonSx(),
+              borderRadius: 2,
+              px: 3,
+              py: 1.25,
+              fontWeight: 700,
+              textTransform: 'none',
+              boxShadow: 2,
+              '&:hover': { boxShadow: 4 }
+            }}
           >
             Lag et tilbud
           </Button>
@@ -1499,7 +2315,7 @@ const removeExtraDestination = (index: number) => {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {quotesData?.quotes?.map((quote: any) => (
+                {((Array.isArray(quotesData) ? quotesData : ((quotesData as any)?.quotes)) || [])?.map((quote: any) => (
                   <TableRow key={quote.d}>
                     <TableCell>{quote.quoteNumber}</TableCell>
                     <TableCell>{quote.clientId}</TableCell>
@@ -1515,7 +2331,7 @@ const removeExtraDestination = (index: number) => {
                       {new Date(quote.createdAt).toLocaleDateString('nb-NO')}
                     </TableCell>
                     <TableCell align="right">
-                      <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
+                      <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end', alignItems: 'center' }}>
                         <Button
                           size="small"
                           variant="outlined"
@@ -1527,6 +2343,7 @@ const removeExtraDestination = (index: number) => {
                                 from: 'price-administration',
                                 to: 'contract-hub',
                                 type: 'contract:create-from-quote',
+                                priority: 'medium',
                                 data: {
                                   quoteId: quote.id,
                                   clientId: quote.clientId,
@@ -1559,6 +2376,7 @@ const removeExtraDestination = (index: number) => {
                                   from: 'price-administration',
                                   to: 'split-sheet-manager',
                                   type: 'split-sheet:create-from-quote',
+                                  priority: 'medium',
                                   data: {
                                     quoteId: quote.id,
                                     projectId: selectedProject?.id,
@@ -1573,6 +2391,14 @@ const removeExtraDestination = (index: number) => {
                             Opprett Split Sheet
                           </Button>
                         )}
+                        <IconButton 
+                          size="small" 
+                          onClick={() => handleDeleteQuote(quote.id)}
+                          color="error"
+                          disabled={isDeletingItem}
+                        >
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
                       </Box>
                     </TableCell>
                   </TableRow>
@@ -1583,18 +2409,199 @@ const removeExtraDestination = (index: number) => {
         )}
       </TabPanel>
 
-      {/* Floating Action Button for Quick Quote */}
-      <Fab
-        color="primary"
-        size="large"
-        sx={{
-          position: 'fixed',
-          bottom:  24,
-          right:  24}}
-        onClick={() => setQuoteGeneratorOpen(true)}
-      >
-        <QuoteIcon />
-      </Fab>
+      {/* Analytics & Reports */}
+      <TabPanel value={tabValue} index={6}>
+        <Box sx={{ 
+          display: 'flex', 
+          alignItems: 'center',
+          mb: 4,
+          pb: 3,
+          borderBottom: '1px solid',
+          borderColor: 'divider'
+        }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Box
+              sx={{
+                p: 1.25,
+                borderRadius: 2,
+                bgcolor: 'info.50',
+                color: 'info.main',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
+              <AnalyticsIcon sx={{ fontSize: 24 }} />
+            </Box>
+            <Box>
+              <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                Analyse & Rapporter
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
+                Innsikt i prising og økonomi
+              </Typography>
+            </Box>
+          </Box>
+        </Box>
+
+        <Grid2 container spacing={3}>
+          {/* Revenue Overview */}
+          <Grid2 size={{ xs: 12, md: 4 }}>
+            <Card
+              sx={{
+                p: 3,
+                height: '100%',
+                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                color: 'white',
+                borderRadius: 2.5
+              }}
+            >
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                <TrendingUpIcon sx={{ fontSize: 32, mr: 1.5 }} />
+                <Typography variant="h6" sx={{ fontWeight: 700 }}>Total omsetning</Typography>
+              </Box>
+              <Typography variant="h3" sx={{ fontWeight: 700, mb: 1 }}>
+                {formatPrice(0)}
+              </Typography>
+              <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                Basert på alle tilbud og pakker
+              </Typography>
+            </Card>
+          </Grid2>
+
+          <Grid2 size={{ xs: 12, md: 4 }}>
+            <Card
+              sx={{
+                p: 3,
+                height: '100%',
+                background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+                color: 'white',
+                borderRadius: 2.5
+              }}
+            >
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                <CategoryIcon sx={{ fontSize: 32, mr: 1.5 }} />
+                <Typography variant="h6" sx={{ fontWeight: 700 }}>Aktive pakker</Typography>
+              </Box>
+              <Typography variant="h3" sx={{ fontWeight: 700, mb: 1 }}>
+                {(Array.isArray(packagesData) ? packagesData : ((packagesData as any)?.packages) || []).length}
+              </Typography>
+              <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                Standardpakker tilgjengelig
+              </Typography>
+            </Card>
+          </Grid2>
+
+          <Grid2 size={{ xs: 12, md: 4 }}>
+            <Card
+              sx={{
+                p: 3,
+                height: '100%',
+                background: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
+                color: 'white',
+                borderRadius: 2.5
+              }}
+            >
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                <QuoteIcon sx={{ fontSize: 32, mr: 1.5 }} />
+                <Typography variant="h6" sx={{ fontWeight: 700 }}>Tilbud sendt</Typography>
+              </Box>
+              <Typography variant="h3" sx={{ fontWeight: 700, mb: 1 }}>
+                {(Array.isArray(quotesData) ? quotesData : ((quotesData as any)?.quotes) || []).length}
+              </Typography>
+              <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                Totalt antall tilbud
+              </Typography>
+            </Card>
+          </Grid2>
+
+          {/* Reports Section */}
+          <Grid2 size={12}>
+            <Card
+              sx={{
+                p: 3,
+                borderRadius: 2.5,
+                bgcolor: 'white',
+                boxShadow: 2
+              }}
+            >
+              <Typography variant="h6" sx={{ fontWeight: 700, mb: 3 }}>
+                Rapporter
+              </Typography>
+              <Grid2 container spacing={2}>
+                <Grid2 size={{ xs: 12, sm: 6, md: 3 }}>
+                  <Button
+                    variant="outlined"
+                    fullWidth
+                    startIcon={<DescriptionIcon />}
+                    onClick={handleGeneratePriceReport}
+                    disabled={isGeneratingReport}
+                    sx={{
+                      py: 2,
+                      borderRadius: 2,
+                      textTransform: 'none',
+                      fontWeight: 600
+                    }}
+                  >
+                    {isGeneratingReport ? 'Genererer...' : 'Prisrapport'}
+                  </Button>
+                </Grid2>
+                <Grid2 size={{ xs: 12, sm: 6, md: 3 }}>
+                  <Button
+                    variant="outlined"
+                    fullWidth
+                    startIcon={<DescriptionIcon />}
+                    onClick={handleGeneratePackageAnalysis}
+                    disabled={isGeneratingReport}
+                    sx={{
+                      py: 2,
+                      borderRadius: 2,
+                      textTransform: 'none',
+                      fontWeight: 600
+                    }}
+                  >
+                    {isGeneratingReport ? 'Genererer...' : 'Pakkeanalyse'}
+                  </Button>
+                </Grid2>
+                <Grid2 size={{ xs: 12, sm: 6, md: 3 }}>
+                  <Button
+                    variant="outlined"
+                    fullWidth
+                    startIcon={<DescriptionIcon />}
+                    onClick={handleGenerateQuoteReport}
+                    disabled={isGeneratingReport}
+                    sx={{
+                      py: 2,
+                      borderRadius: 2,
+                      textTransform: 'none',
+                      fontWeight: 600
+                    }}
+                  >
+                    {isGeneratingReport ? 'Genererer...' : 'Tilbudsrapport'}
+                  </Button>
+                </Grid2>
+                <Grid2 size={{ xs: 12, sm: 6, md: 3 }}>
+                  <Button
+                    variant="outlined"
+                    fullWidth
+                    startIcon={<DescriptionIcon />}
+                    onClick={handleExportAll}
+                    disabled={isGeneratingReport}
+                    sx={{
+                      py: 2,
+                      borderRadius: 2,
+                      textTransform: 'none',
+                      fontWeight: 600
+                    }}
+                  >
+                    {isGeneratingReport ? 'Eksporterer...' : 'Eksporter alt'}
+                  </Button>
+                </Grid2>
+              </Grid2>
+            </Card>
+          </Grid2>
+        </Grid2>
+      </TabPanel>
 
       {/* Modals */}
       <CreatePackageModal
@@ -1602,9 +2609,9 @@ const removeExtraDestination = (index: number) => {
         onClose={() => {
           setCreatePackageOpen(false);
           setSelectedItem(null);
-    }}
+        }}
         editData={selectedItem}
-        categories={categoriesData?.categories || []}
+        categories={(Array.isArray(categoriesData) ? categoriesData : ((categoriesData as any)?.categories)) || []}
       />
 
       <CreatePricingModal
@@ -1612,7 +2619,7 @@ const removeExtraDestination = (index: number) => {
         onClose={() => {
           setCreatePricingOpen(false);
           setSelectedItem(null);
-    }}
+        }}
         editData={selectedItem}
       />
 
@@ -1624,10 +2631,10 @@ const removeExtraDestination = (index: number) => {
       <QuoteGeneratorModal
         open={quoteGeneratorOpen}
         onClose={() => setQuoteGeneratorOpen(false)}
-        packages={packagesData?.packages || []}
-        pricing={pricingData?.pricing || []}
-        additionalCosts={costsData?.costs || []}
-        discounts={discountsData?.discounts || []}
+        packages={(Array.isArray(packagesData) ? packagesData : ((packagesData as any)?.packages)) || []}
+        pricing={(Array.isArray(pricingData) ? pricingData : ((pricingData as any)?.pricing)) || []}
+        additionalCosts={(Array.isArray(costsData) ? costsData : ((costsData as any)?.costs)) || []}
+        discounts={(Array.isArray(discountsData) ? discountsData : ((discountsData as any)?.discounts)) || []}
       />
 
       {/* Manual Travel Log Entry Dialog */}
@@ -1652,8 +2659,8 @@ const removeExtraDestination = (index: number) => {
                 <Typography variant="h6" sx={{ color: theming.colors.primary }}>Detaljer</Typography>
               </AccordionSummary>
               <AccordionDetails>
-                <Grid container spacing={2}>
-                  <Grid size={{ xs:  12, sm:  6 }}>
+                <Grid2 container spacing={2}>
+                  <Grid2 size={{ xs:  12, sm:  6 }}>
                     <TextField
                       fullWidth
                       label="Dato"
@@ -1665,9 +2672,9 @@ const removeExtraDestination = (index: number) => {
                         startAdornment: <EventIcon sx={{ mr: 1, color: 'text.secondary'}} />
                   }}
                     />
-                  </Grid>
+                  </Grid2>
                   
-                  <Grid size={{ xs:  12, sm:  6 }}>
+                  <Grid2 size={{ xs:  12, sm:  6 }}>
                     <Box sx={{ display: 'flex', gap:  1 }}>
                       <TextField
                         fullWidth
@@ -1688,14 +2695,14 @@ const removeExtraDestination = (index: number) => {
                         Velg
                       </Button>
                     </Box>
-                  </Grid>
+                  </Grid2>
 
                   {travelLogForm.selectedVehicleData && (
-                    <Grid size={12}>
+                    <Grid2 size={12}>
                       <Card variant="outlined" sx={{ bgcolor: 'success.5', border: '1px solid', borderColor: 'success.200', ...theming.getThemedCardSx() }}>
                         <CardContent sx={{ py: 2, ...theming.getThemedCardSx() }}>
-                          <Typography variant="subtitle2" color="success.main" gutterBottom>
-                            ✅ Kjøretøy verifisert via Statens Vegvesen
+                          <Typography variant="subtitle2" color="success.main" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <CheckCircleIcon fontSize="small" /> Kjøretøy verifisert via Statens Vegvesen
                           </Typography>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap'}}>
                             <Typography variant="body2">
@@ -1714,10 +2721,10 @@ const removeExtraDestination = (index: number) => {
                           </Box>
                         </CardContent>
                       </Card>
-                    </Grid>
+                    </Grid2>
                   )}
                   
-                  <Grid size={{ xs:  12, sm:  6 }}>
+                  <Grid2 size={{ xs:  12, sm:  6 }}>
                     <TextField
                       fullWidth
                       label="Registreringsnummer"
@@ -1735,9 +2742,9 @@ const removeExtraDestination = (index: number) => {
                         }
                       }}
                     />
-                  </Grid>
+                  </Grid2>
                   
-                  <Grid size={{ xs:  12, sm:  6 }}>
+                  <Grid2 size={{ xs:  12, sm:  6 }}>
                     <TextField
                       fullWidth
                       label="Kontakt (valgfri)"
@@ -1748,9 +2755,9 @@ const removeExtraDestination = (index: number) => {
                   }}
                       placeholder="Klientnavn eller kontaktperson"
                     />
-                  </Grid>
+                  </Grid2>
                   
-                  <Grid size={12}>
+                  <Grid2 size={12}>
                     <TextField
                       fullWidth
                       label="Beskrivelse/formål med reisen"
@@ -1763,8 +2770,8 @@ const removeExtraDestination = (index: number) => {
                   }}
                       placeholder="F.eks. Bryllupsfotografering hos brudeparet"
                     />
-                  </Grid>
-                </Grid>
+                  </Grid2>
+                </Grid2>
               </AccordionDetails>
             </Accordion>
 
@@ -1774,8 +2781,8 @@ const removeExtraDestination = (index: number) => {
                 <Typography variant="h6" sx={{ color: theming.colors.primary }}>Strekning</Typography>
               </AccordionSummary>
               <AccordionDetails>
-                <Grid container spacing={2}>
-                  <Grid size={{ xs:  12, sm:  5 }}>
+                <Grid2 container spacing={2}>
+                  <Grid2 size={{ xs:  12, sm:  5 }}>
                     <TextField
                       fullWidth
                       label="Fra adresse"
@@ -1786,9 +2793,9 @@ const removeExtraDestination = (index: number) => {
                   }}
                       placeholder="Hjemmeadresse eller startpunkt"
                     />
-                  </Grid>
+                  </Grid2>
                   
-                  <Grid size={{ xs:  12, sm:  5 }}>
+                  <Grid2 size={{ xs:  12, sm:  5 }}>
                     <TextField
                       fullWidth
                       label="Til adresse"
@@ -1805,9 +2812,9 @@ const removeExtraDestination = (index: number) => {
                     }
                   }}
                     />
-                  </Grid>
+                  </Grid2>
 
-                  <Grid size={{ xs: 12, sm: 2 }}>
+                  <Grid2 size={{ xs: 12, sm: 2 }}>
                     <Button
                       variant="contained"
                       onClick={() => setTollCalculationOpen(true)}
@@ -1817,10 +2824,10 @@ const removeExtraDestination = (index: number) => {
                     >
                       Beregn bompenger kostnader
                     </Button>
-                  </Grid>
+                  </Grid2>
 
                   {tollCalculationResult?.success && (
-                    <Grid size={12}>
+                    <Grid2 size={12}>
                       <Alert severity="success">
                         <Typography variant="body2">
                           <strong>Bompengeberegning: </strong> {tollCalculationResult.calculation.totalTolls} kr • 
@@ -1828,12 +2835,12 @@ const removeExtraDestination = (index: number) => {
                           <strong>Bomstasjoner: </strong> {tollCalculationResult.calculation.tollStations?.length || 0}
                         </Typography>
                       </Alert>
-                    </Grid>
+                    </Grid2>
                   )}
                   
                   {/* Extra Destinations */}
                   {travelLogForm.extraDestinations.map((destination, index) => (
-                    <Grid size={12} key={index}>
+                    <Grid2 size={12} key={index}>
                       <Box sx={{ display: 'flex', gap: 1, alignItems: 'center'}}>
                         <TextField
                           fullWidth
@@ -1849,10 +2856,10 @@ const removeExtraDestination = (index: number) => {
                           <DeleteIcon />
                         </IconButton>
                       </Box>
-                    </Grid>
+                    </Grid2>
                   ))}
                   
-                  <Grid size={12}>
+                  <Grid2 size={12}>
                     <Button
                       startIcon={theming.getThemedIcon('addCircle')}
                       onClick={addExtraDestination}
@@ -1861,9 +2868,9 @@ const removeExtraDestination = (index: number) => {
                     >
                       Legg til ekstra destinasjon
                     </Button>
-                  </Grid>
+                  </Grid2>
                   
-                  <Grid size={12}>
+                  <Grid2 size={12}>
                     <FormControlLabel
                       control={
                         <Checkbox
@@ -1873,8 +2880,8 @@ const removeExtraDestination = (index: number) => {
                   }
                       label="Samme strekning ble kjørt i retur (beregner automatisk dobbel distanse)"
                     />
-                  </Grid>
-                </Grid>
+                  </Grid2>
+                </Grid2>
               </AccordionDetails>
             </Accordion>
 
@@ -1884,8 +2891,8 @@ const removeExtraDestination = (index: number) => {
                 <Typography variant="h6" sx={{ color: theming.colors.primary }}>Kostnadsberegning</Typography>
               </AccordionSummary>
               <AccordionDetails>
-                <Grid container spacing={2}>
-                  <Grid size={{ xs:  12, sm:  4 }}>
+                <Grid2 container spacing={2}>
+                  <Grid2 size={{ xs:  12, sm:  4 }}>
                     <TextField
                       fullWidth
                       label="Antall kilometer for strekning"
@@ -1897,9 +2904,9 @@ const removeExtraDestination = (index: number) => {
                       }}
                       helperText={travelLogForm.returnTrip ? `Total: ${travelLogForm.kilometers * 2} km (inkl. retur)` : ''}
                     />
-                  </Grid>
+                  </Grid2>
                   
-                  <Grid size={{ xs:  12, sm:  4 }}>
+                  <Grid2 size={{ xs:  12, sm:  4 }}>
                     <TextField
                       fullWidth
                       label="Totale bompenger"
@@ -1923,9 +2930,9 @@ const removeExtraDestination = (index: number) => {
                         </span>
                   }
                     />
-                  </Grid>
+                  </Grid2>
                   
-                  <Grid size={{ xs:  12, sm:  4 }}>
+                  <Grid2 size={{ xs:  12, sm:  4 }}>
                     <TextField
                       fullWidth
                       label="Totalsum tilleggssatser"
@@ -1936,9 +2943,9 @@ const removeExtraDestination = (index: number) => {
                         endAdornment: <Typography sx={{ color: 'text.secondary'}}>kr</Typography>
                   }}
                     />
-                  </Grid>
+                  </Grid2>
                   
-                  <Grid size={12}>
+                  <Grid2 size={12}>
                     <TextField
                       fullWidth
                       label="Beskrivelse av tilleggssatser"
@@ -1949,8 +2956,8 @@ const removeExtraDestination = (index: number) => {
                       placeholder={`F.eks. Tillegg for ekstra passasjerer, bruk av tilhenger, bagasje over 150kg/500liter, eller kjøring på skogs- og anleggsvei. Satsen er ${getTaxRates().additional_fees}kr per km for disse tilleggene.`}
                       helperText={`Tillegg for ekstra passasjerer, tilhenger, bagasje over 150kg/500L, eller skogs-/anleggsvei (${getTaxRates().additional_fees} kr/km)`}
                     />
-                  </Grid>
-                </Grid>
+                  </Grid2>
+                </Grid2>
                 
                 {/* Cost Summary */}
                 {calculateTravelCost.totalKm > 0 && (
@@ -1962,24 +2969,24 @@ const removeExtraDestination = (index: number) => {
                       </Typography>
                     </Box>
                     
-                    <Grid container spacing={2}>
-                      <Grid size={{ xs:  12, sm:  6 }}>
+                    <Grid2 container spacing={2}>
+                      <Grid2 size={{ xs:  12, sm:  6 }}>
                         <Typography variant="body2">
                         <strong>Kjørelengde: </strong> {calculateTravelCost.totalKm} km
                         </Typography>
                         <Typography variant="body2">
                           <strong>Kjøregodtgjørelse: </strong> {calculateTravelCost.kmCost.toFixed()} NOK
                         </Typography>
-                      </Grid>
-                      <Grid size={{ xs:  12, sm:  6 }}>
+                      </Grid2>
+                      <Grid2 size={{ xs:  12, sm:  6 }}>
                         <Typography variant="body2">
                           <strong>Bompenger: </strong> {travelLogForm.tollFees.toFixed(2)} NOK
                         </Typography>
                         <Typography variant="body2">
                           <strong>Tilleggssatser: </strong> {travelLogForm.additionalFees.toFixed()} NOK
                         </Typography>
-                      </Grid>
-                    </Grid>
+                      </Grid2>
+                    </Grid2>
                     
                     <Divider sx={{ my:  2 }} />
                     
@@ -2019,6 +3026,217 @@ const removeExtraDestination = (index: number) => {
         initialTo={travelLogForm.toAddress}
         vehicleData={travelLogForm.selectedVehicleData}
       />
+
+      {/* Create/Edit Cost Dialog */}
+      <Dialog 
+        open={createCostOpen}
+        onClose={() => {
+          setCreateCostOpen(false);
+          setSelectedItem(null);
+          setCostForm({ name: '', description: '', type: 'fixed', amount: 0, category: '' });
+        }}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            <AddIcon sx={{ mr: 2, color: 'primary.main' }} />
+            {selectedItem ? 'Rediger tilleggskostnad' : 'Ny tilleggskostnad'}
+          </Box>
+        </DialogTitle>
+        <DialogContent dividers>
+          <Stack spacing={3} sx={{ pt: 1 }}>
+            <TextField
+              fullWidth
+              label="Navn"
+              value={costForm.name}
+              onChange={(e) => setCostForm(prev => ({ ...prev, name: e.target.value }))}
+              placeholder="F.eks. Reisekostnader, Utstyrleie"
+            />
+            <TextField
+              fullWidth
+              label="Beskrivelse"
+              multiline
+              rows={2}
+              value={costForm.description}
+              onChange={(e) => setCostForm(prev => ({ ...prev, description: e.target.value }))}
+              placeholder="Beskriv tilleggskostnaden"
+            />
+            <TextField
+              fullWidth
+              label="Type"
+              select
+              value={costForm.type}
+              onChange={(e) => setCostForm(prev => ({ ...prev, type: e.target.value }))}
+            >
+              <MenuItem value="fixed">Fast beløp</MenuItem>
+              <MenuItem value="percentage">Prosent</MenuItem>
+              <MenuItem value="per_hour">Per time</MenuItem>
+              <MenuItem value="per_item">Per enhet</MenuItem>
+            </TextField>
+            <TextField
+              fullWidth
+              label="Beløp"
+              type="number"
+              value={costForm.amount}
+              onChange={(e) => setCostForm(prev => ({ ...prev, amount: parseFloat(e.target.value) || 0 }))}
+              InputProps={{
+                endAdornment: <Typography sx={{ color: 'text.secondary' }}>{costForm.type === 'percentage' ? '%' : 'kr'}</Typography>
+              }}
+            />
+            <TextField
+              fullWidth
+              label="Kategori (valgfritt)"
+              value={costForm.category}
+              onChange={(e) => setCostForm(prev => ({ ...prev, category: e.target.value }))}
+              placeholder="F.eks. Reise, Utstyr, Materialer"
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => {
+            setCreateCostOpen(false);
+            setSelectedItem(null);
+            setCostForm({ name: '', description: '', type: 'fixed', amount: 0, category: '' });
+          }}>Avbryt</Button>
+          <Button 
+            variant="contained" 
+            onClick={handleCreateCost}
+            disabled={!costForm.name || createCostMutation.isPending}
+            sx={theming.getThemedButtonSx()}
+          >
+            {createCostMutation.isPending ? 'Lagrer...' : selectedItem ? 'Oppdater' : 'Opprett'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Create/Edit Discount Dialog */}
+      <Dialog 
+        open={createDiscountOpen}
+        onClose={() => {
+          setCreateDiscountOpen(false);
+          setSelectedItem(null);
+          setDiscountForm({ name: '', discountValue: 0, isPercentage: true, discountCode: '', validFrom: '', validTo: '', minPurchase: 0 });
+        }}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            <DiscountIcon sx={{ mr: 2, color: 'primary.main' }} />
+            {selectedItem ? 'Rediger rabatt' : 'Ny rabatt'}
+          </Box>
+        </DialogTitle>
+        <DialogContent dividers>
+          <Stack spacing={3} sx={{ pt: 1 }}>
+            <TextField
+              fullWidth
+              label="Navn"
+              value={discountForm.name}
+              onChange={(e) => setDiscountForm(prev => ({ ...prev, name: e.target.value }))}
+              placeholder="F.eks. Returkunde-rabatt, Kampanje"
+            />
+            <Box sx={{ display: 'flex', gap: 2 }}>
+              <TextField
+                fullWidth
+                label="Rabattverdi"
+                type="number"
+                value={discountForm.discountValue}
+                onChange={(e) => setDiscountForm(prev => ({ ...prev, discountValue: parseFloat(e.target.value) || 0 }))}
+                InputProps={{
+                  endAdornment: <Typography sx={{ color: 'text.secondary' }}>{discountForm.isPercentage ? '%' : 'kr'}</Typography>
+                }}
+              />
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={discountForm.isPercentage}
+                    onChange={(e) => setDiscountForm(prev => ({ ...prev, isPercentage: e.target.checked }))}
+                  />
+                }
+                label="Prosent"
+                sx={{ minWidth: 120 }}
+              />
+            </Box>
+            <TextField
+              fullWidth
+              label="Rabattkode (valgfritt)"
+              value={discountForm.discountCode}
+              onChange={(e) => setDiscountForm(prev => ({ ...prev, discountCode: e.target.value.toUpperCase() }))}
+              placeholder="F.eks. SOMMAR25"
+            />
+            <Grid2 container spacing={2}>
+              <Grid2 size={6}>
+                <TextField
+                  fullWidth
+                  label="Gyldig fra"
+                  type="date"
+                  value={discountForm.validFrom}
+                  onChange={(e) => setDiscountForm(prev => ({ ...prev, validFrom: e.target.value }))}
+                  InputLabelProps={{ shrink: true }}
+                />
+              </Grid2>
+              <Grid2 size={6}>
+                <TextField
+                  fullWidth
+                  label="Gyldig til"
+                  type="date"
+                  value={discountForm.validTo}
+                  onChange={(e) => setDiscountForm(prev => ({ ...prev, validTo: e.target.value }))}
+                  InputLabelProps={{ shrink: true }}
+                />
+              </Grid2>
+            </Grid2>
+            <TextField
+              fullWidth
+              label="Minimumskjøp (valgfritt)"
+              type="number"
+              value={discountForm.minPurchase}
+              onChange={(e) => setDiscountForm(prev => ({ ...prev, minPurchase: parseFloat(e.target.value) || 0 }))}
+              InputProps={{
+                endAdornment: <Typography sx={{ color: 'text.secondary' }}>kr</Typography>
+              }}
+              helperText="Rabatten gjelder kun for kjøp over dette beløpet"
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => {
+            setCreateDiscountOpen(false);
+            setSelectedItem(null);
+            setDiscountForm({ name: '', discountValue: 0, isPercentage: true, discountCode: '', validFrom: '', validTo: '', minPurchase: 0 });
+          }}>Avbryt</Button>
+          <Button 
+            variant="contained" 
+            onClick={handleCreateDiscount}
+            disabled={!discountForm.name || createDiscountMutation.isPending}
+            sx={theming.getThemedButtonSx()}
+          >
+            {createDiscountMutation.isPending ? 'Lagrer...' : selectedItem ? 'Oppdater' : 'Opprett'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Confirm Delete Dialog */}
+      <Dialog
+        open={confirmDelete.open}
+        onClose={() => setConfirmDelete({ open: false, type: '', id: null, label: '' })}
+      >
+        <DialogTitle>Bekreft Sletting</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Er du sikker på at du vil slette denne {confirmDelete.label}? Denne handlingen kan ikke angres.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmDelete({ open: false, type: '', id: null, label: '' })}>
+            Avbryt
+          </Button>
+          <Button onClick={executeDelete} color="error" variant="contained">
+            Slett
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
 );
 };

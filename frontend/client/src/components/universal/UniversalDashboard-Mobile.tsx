@@ -236,8 +236,8 @@ const localProfessionConfigs = {
 },
   videographer: {
     name: 'Videograf', // Fallback - will be overridden by dynamic profession data
-    color: '#',
-    icon: theming.getThemedIcon(''),
+    color: '#e91e63',
+    icon: theming.getThemedIcon('videocam'),
     tabs: [
       { id: 'overview', label: 'Hjem', icon: theming.getThemedIcon(','), mobileLabel: 'Hjem',},
       { id: 'projects', label: 'Videoer', icon: theming.getThemedIcon(','), mobileLabel: 'Videoer',},
@@ -261,8 +261,8 @@ const localProfessionConfigs = {
 },
   music_producer: {
     name: 'Musikkprodusent',
-    color: '#',
-    icon: theming.getThemedIcon(''),
+    color: '#9c27b0',
+    icon: theming.getThemedIcon('music'),
     tabs: [
       { id: 'overview', label: 'Hjem', icon: theming.getThemedIcon(','), mobileLabel: 'Hjem',},
       { id: 'projects', label: 'Låter', icon: theming.getThemedIcon(','), mobileLabel: 'Låter',},
@@ -433,9 +433,20 @@ export default function UniversalDashboardMobile({
     const brandingInfo = brandingData?.businessInfo || {};
     const onboardingInfo = onboardingProfile || {};
     
+    // Helper to ensure we always get a string (not an object)
+    const getStringValue = (value: unknown): string | null => {
+      if (typeof value === 'string' && value.trim()) return value;
+      return null;
+    };
+    
+    const businessNameRaw = getStringValue(brandingInfo.businessName) 
+      || getStringValue(onboardingInfo.businessName) 
+      || getStringValue(config?.name)
+      || 'CreatorHub';
+    
     return {
       color: brandingInfo.brandingColor || onboardingInfo.brandingColor || config?.color || '#ff8c00',
-      businessName: brandingInfo.businessName || onboardingInfo.businessName || config?.name || 'CreatorHub',
+      businessName: businessNameRaw,
       tagline: brandingInfo.tagline || onboardingInfo.tagline || null,
       profilePhoto: onboardingInfo.profilePhoto || null,
       customLogo: brandingInfo.customLogo || onboardingInfo.customLogo || null
@@ -613,7 +624,7 @@ export default function UniversalDashboardMobile({
                   fontWeight: 600,
                   color: customBranding.color,
                   mb: 0.5  }}>
-                Hei, {customBranding.businessName}!
+                Hei, {typeof customBranding.businessName === 'string' ? customBranding.businessName : 'bruker'}!
               </Typography>
               <Typography 
                 variant="body2" 
@@ -666,16 +677,17 @@ export default function UniversalDashboardMobile({
       {/* Mobile Stats Grid */}
       <Grid container spacing={2} sx={{ mb:  3 }}>
         {config.stats.map((stat, index) => (
-          <Grid size={{ xs:  6 }} key={stat.key}>
+          <Grid size={{ xs: 6 }} key={stat.key}>
             <MuiCard
               sx={{
-                background: 'linear-gradient(135deg, rgba(2, 5, 5,255,255,0.9) 0%, rgba(2, 5, 5,255,255,0.95) 100%)',
+                background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0.95) 100%)',
                 border: `1px solid ${alpha(customBranding.color, 0.1)}`,
-                borderRadius:  2,
-                transition: 'transform 0.2s ease','&:active': {
+                borderRadius: 2,
+                transition: 'transform 0.2s ease',
+                '&:active': {
                   transform: 'scale(0.98)'
-          }
-          }}
+                }
+              }}
             >
               <MuiCardContent sx={{ p: 2, textAlign: 'center'}}>
                 <Box sx={{ color: customBranding.color, mb:  1 }}>
@@ -713,14 +725,15 @@ export default function UniversalDashboardMobile({
               <MuiCard
                 key={project.id || index}
                 sx={{
-                  background: 'rgba(25,255,255,0.95)',
+                  background: 'rgba(255, 255, 255, 0.95)',
                   border: `1px solid ${alpha(customBranding.color, 0.1)}`,
-                  borderRadius:  2,
+                  borderRadius: 2,
                   transition: 'all 0.2s ease',
-                  cursor: 'pointer','&:active': {
+                  cursor: 'pointer',
+                  '&:active': {
                     transform: 'scale(0.98)'
-            }
-            }}
+                  }
+                }}
                 onClick={() => handleViewProjectDetails(project)}
               >
                 <MuiCardContent sx={{ p:  2 }}>
@@ -776,11 +789,11 @@ export default function UniversalDashboardMobile({
           </Stack>
         ) : (
           <MuiCard sx={{ 
-            p:  4, 
+            p: 4, 
             textAlign: 'center',
-            background: 'rgba(25,255,255,0.7)' 
-      }}>
-            <Box sx={{ color: alpha(customBranding.color, 0.5), mb:  2 }}>
+            background: 'rgba(255, 255, 255, 0.7)' 
+          }}>
+            <Box sx={{ color: alpha(customBranding.color, 0.5), mb: 2 }}>
               {config.icon}
             </Box>
             <Typography variant="h6" color="text.secondary" gutterBottom sx={{ color: theming.colors.primary }}>
@@ -821,11 +834,12 @@ export default function UniversalDashboardMobile({
             <MuiCard
               key={project.id || index}
               sx={{
-                background: 'rgba(25,255,255,0.95)',
+                background: 'rgba(255, 255, 255, 0.95)',
                 border: `1px solid ${alpha(customBranding.color, 0.1)}`,
-                borderRadius: 2 }}
+                borderRadius: 2
+              }}
             >
-              <MuiCardContent sx={{ p:  2 }}>
+              <MuiCardContent sx={{ p: 2 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
                   <Avatar 
                     sx={{ 
@@ -1003,10 +1017,10 @@ export default function UniversalDashboardMobile({
       <AppBar 
         position="sticky" 
         sx={{ 
-          bgcolor: 'rgba(25,255,255,0.95)',
+          bgcolor: 'rgba(255, 255, 255, 0.95)',
           backdropFilter: 'blur(10px)',
           boxShadow: '0 2px 20px rgba(0,0,0,0.1)'
-    }}
+        }}
       >
         <Toolbar sx={{ justifyContent: 'space-between', px:  2 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
@@ -1062,25 +1076,26 @@ export default function UniversalDashboardMobile({
       <Paper 
         sx={{ 
           position: 'fixed', 
-          bottom: 0
-          left: 0
-         , right: 0
+          bottom: 0,
+          left: 0,
+          right: 0,
           zIndex: 10,
-          background: 'rgba(25,255,255,0.95)',
+          background: 'rgba(255, 255, 255, 0.95)',
           backdropFilter: 'blur(10px)',
           borderTop: `1px solid ${alpha(customBranding.color, 0.2)}`
-    }}
+        }}
         elevation={3}
-       sx={theming.getThemedCardSx()}>
+      >
         <BottomNavigation
           value={activeTab}
           onChange={(event, newValue) => setActiveTab(newValue)}
           sx={{
             '& .MuiBottomNavigationAction-root': {
-              color: 'text.secondary','&.Mui-selected': {
+              color: 'text.secondary',
+              '&.Mui-selected': {
                 color: customBranding.color
-        }
-        }
+              }
+            }
       }}
         >
           {config.tabs.slice(0, 5).map((tab, index) => (
@@ -1106,12 +1121,12 @@ export default function UniversalDashboardMobile({
         onOpen={() => setShowMobileMenu(true)}
         sx={{
           '& .MuiDrawer-paper': {
-            width: '80, %',
-            maxWidth: 30,
-            bgcolor: 'rgba(25,255,255,0.95)',
+            width: '80%',
+            maxWidth: 300,
+            bgcolor: 'rgba(255, 255, 255, 0.95)',
             backdropFilter: 'blur(10px)'
-    }
-    }}
+          }
+        }}
       >
         <Box sx={{ p:  2 }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb:  3 }}>

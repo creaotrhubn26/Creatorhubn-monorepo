@@ -103,7 +103,7 @@ export default function ContractView({}: ContractViewProps) {
       <Box
         sx={{
           p:  3,
-          borderBottom: '1px solid rgba(25,255,255,0.1)',
+          borderBottom: '1px solid rgba(255,255,255,0.1)',
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
@@ -115,7 +115,7 @@ export default function ContractView({}: ContractViewProps) {
             <Typography variant="h4" sx={{ fontWeight: 600, color: theming.colors.primary }}>
               Fotografikontrakt
             </Typography>
-            <Typography variant="body1" sx={{ color: 'rgba(25,255,255,0.7)' }}>
+            <Typography variant="body1" sx={{ color: 'rgba(255,255,255,0.7)' }}>
               {contract.projectTitle}
             </Typography>
           </Box>
@@ -148,7 +148,7 @@ export default function ContractView({}: ContractViewProps) {
         <Paper
           sx={{
             bgcolor: '#0f1410',
-            border: '1px solid rgba(25,255,255,0.1)',
+            border: '1px solid rgba(255,255,255,0.1)',
             borderRadius: 2,
             overflow: 'hidden',
             ...theming.getThemedCardSx(),
@@ -158,7 +158,7 @@ export default function ContractView({}: ContractViewProps) {
             sx={{
               p:  3,
               bgcolor: 'rgba(25, 167, 38, 0.1)',
-              borderBottom: '1px solid rgba(25,255,255,0.1)',
+              borderBottom: '1px solid rgba(255,255,255,0.1)',
           }}
           >
             <Box
@@ -186,7 +186,7 @@ export default function ContractView({}: ContractViewProps) {
                 <TableRow sx={{ '&:last-child td': { border:  0 } }}>
                   <TableCell
                     sx={{
-                      color: 'rgba(25,255,255,0.7)',
+                      color: 'rgba(255,255,255,0.7)',
                       border: 'none',
                       py:  1,
                   }}
@@ -210,7 +210,7 @@ export default function ContractView({}: ContractViewProps) {
                 <TableRow sx={{ '&:last-child td': { border:  0 } }}>
                   <TableCell
                     sx={{
-                      color: 'rgba(25,255,255,0.7)',
+                      color: 'rgba(255,255,255,0.7)',
                       border: 'none',
                       py:  1,
                   }}
@@ -231,7 +231,7 @@ export default function ContractView({}: ContractViewProps) {
                 <TableRow sx={{ '&:last-child td': { border:  0 } }}>
                   <TableCell
                     sx={{
-                      color: 'rgba(25,255,255,0.7)',
+                      color: 'rgba(255,255,255,0.7)',
                       border: 'none',
                       py:  1,
                   }}
@@ -255,7 +255,7 @@ export default function ContractView({}: ContractViewProps) {
                 <TableRow sx={{ '&:last-child td': { border:  0 } }}>
                   <TableCell
                     sx={{
-                      color: 'rgba(25,255,255,0.7)',
+                      color: 'rgba(255,255,255,0.7)',
                       border: 'none',
                       py:  1,
                   }}
@@ -276,7 +276,7 @@ export default function ContractView({}: ContractViewProps) {
                 <TableRow sx={{ '&:last-child td': { border:  0 } }}>
                   <TableCell
                     sx={{
-                      color: 'rgba(25,255,255,0.7)',
+                      color: 'rgba(255,255,255,0.7)',
                       border: 'none',
                       py:  1,
                   }}
@@ -297,7 +297,7 @@ export default function ContractView({}: ContractViewProps) {
                 <TableRow sx={{ '&:last-child td': { border:  0 } }}>
                   <TableCell
                     sx={{
-                      color: 'rgba(25,255,255,0.7)',
+                      color: 'rgba(255,255,255,0.7)',
                       border: 'none',
                       py:  1,
                   }}
@@ -311,7 +311,7 @@ export default function ContractView({}: ContractViewProps) {
                       color: '#4caf50',
                       border: 'none',
                       py:  1,
-                      fontWeight: 60,
+                      fontWeight: 600,
                       fontSize: '1.1rem',
                   }}
                   >
@@ -322,7 +322,7 @@ export default function ContractView({}: ContractViewProps) {
                 <TableRow sx={{ '&:last-child td': { border:  0 } }}>
                   <TableCell
                     sx={{
-                      color: 'rgba(25,255,255,0.7)',
+                      color: 'rgba(255,255,255,0.7)',
                       border: 'none',
                       py:  1,
                   }}
@@ -337,12 +337,12 @@ export default function ContractView({}: ContractViewProps) {
 
             {contract.description && (
               <>
-                <Divider sx={{ my: 3, borderColor: 'rgba(25,255,255,0.1)' }} />
+                <Divider sx={{ my: 3, borderColor: 'rgba(255,255,255,0.1)' }} />
                 <Box>
                   <Typography variant="h6" sx={{ color: theming.colors.primary, mb: 2 }}>
                     Beskrivelse
                   </Typography>
-                  <Typography sx={{ color: 'rgba(25,255,255,0.8)', lineHeight: 1.6 }}>
+                  <Typography sx={{ color: 'rgba(255,255,255,0.8)', lineHeight: 1.6 }}>
                     {contract.description}
                   </Typography>
                 </Box>
@@ -351,12 +351,12 @@ export default function ContractView({}: ContractViewProps) {
 
             {contract.additionalTerms && contract.additionalTerms.length > 0 && (
               <>
-                <Divider sx={{ my: 3, borderColor: 'rgba(25,255,255,0.1)' }} />
+                <Divider sx={{ my: 3, borderColor: 'rgba(255,255,255,0.1)' }} />
                 <Box>
                   <Typography variant="h6" sx={{ color: theming.colors.primary, mb: 2 }}>
                     Tilleggsbestemmelser
                   </Typography>
-                  <Box component="ul" sx={{ pl: 2, color: 'rgba(25,255,255,0.8)' }}>
+                  <Box component="ul" sx={{ pl: 2, color: 'rgba(255,255,255,0.8)' }}>
                     {contract.additionalTerms.map((term, index) => (
                       <Typography component="li" key={index} sx={{ mb: 1 }}>
                         {term}
@@ -371,7 +371,7 @@ export default function ContractView({}: ContractViewProps) {
 
         {/* Footer Note */}
         <Box sx={{ mt:  3, textAlign: 'center',}}>
-          <Typography variant="body2" sx={{ color: 'rgba(25,255,255,0.5)' }}>
+          <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.5)' }}>
             Dette dokumentet er generert elektronisk og er gyldig uten signatur.
           </Typography>
         </Box>

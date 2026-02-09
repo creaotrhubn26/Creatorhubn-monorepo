@@ -26,6 +26,7 @@ import {
   Analytics,
 } from '@mui/icons-material';
 import ProductManager from '../components/admin/ProductManager';
+import PricingManagement from '../components/pricing/PricingManagement';
 
 interface TabPanelProps {
   children?: React.ReactNode;

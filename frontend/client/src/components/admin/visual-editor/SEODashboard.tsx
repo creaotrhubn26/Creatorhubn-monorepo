@@ -194,6 +194,7 @@ const SEODashboard: React.FC<SEODashboardProps> = ({
   const [keywordSearchTerm, setKeywordSearchTerm] = useState('');
   const [competitorDomain, setCompetitorDomain] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [issueDialogOpen, setIssueDialogOpen] = useState(false);
 
   // Fetch initial data from APIs
   useEffect(() => {
@@ -211,7 +212,7 @@ const SEODashboard: React.FC<SEODashboardProps> = ({
           setCompetitors(competitorsResponse.competitors);
         }
 
-        // Fetch JSON-LD schemas from recent crawls
+        // Fetch JSON-LD schemas from recent crawls  
         const schemasResponse = await apiRequest('/api/seo/schemas/recent');
         if (schemasResponse.success && schemasResponse.schemas) {
           setJsonLDSchemas(schemasResponse.schemas);

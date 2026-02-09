@@ -4,7 +4,7 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { useEnhancedMasterIntegration } from "@/integration/EnhancedMasterIntegrationProvider import { useTheming } from '../../utils/theming-helper';";
+import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { INTEGRATION_EVENTS, DATA_KEYS, ACTIONS } from './ComponentIntegrationManager';
 import { MESSAGE_TYPES } from './CrossComponentCommunication';
 import { DATA_FLOW_PATTERNS, DATA_TRANSFORMATIONS, DATA_FILTERS } from './UniversalDataFlow';
@@ -17,8 +17,6 @@ const ExampleIntegratedComponent: React.FC<{
 }> = ({ componentId, componentType, capabilities }) => {
   const { integration, communication, dataFlow } = useEnhancedMasterIntegration();
   
-  // Theming system
-  const theming = useTheming('prototype_tester, ');
   const [connectedComponents, setConnectedComponents] = useState<string[]>([]);
   const [messageHistory, setMessageHistory] = useState<any[]>([]);
   const [sharedData, setSharedData] = useState<any>({});
@@ -31,7 +29,7 @@ const ExampleIntegratedComponent: React.FC<{
     dataFlow.registerNode({
       type: 'source',
       componentId,
-      dataKey: `${componentd}:data`,
+      dataKey: `${componentId}:data`,
       transform: DATA_TRANSFORMATIONS.IDENTITY
 });
 
@@ -61,7 +59,7 @@ const ExampleIntegratedComponent: React.FC<{
   // Listen to component registrations
   useEffect(() => {
     const unsubscribe = communication.onMessageType(MESSAGE_TYPES.SYSTEM_STATUS, (message) => {
-      if (message.data.type === 'component: registered') {
+      if (message.data.type === 'component:registered') {
         setConnectedComponents(prev => [...prev, message.data.componentId]);
     }
   });
@@ -73,33 +71,33 @@ const ExampleIntegratedComponent: React.FC<{
   const broadcastData = () => {
     const data = {
       timestamp: Date.now(),
-      from: componentd,
-      message: `Hello from ${componentd}!`
+      from: componentId,
+      message: `Hello from ${componentId}!`
   };
 
     // Method 1: Using integration system
-    integration.emit(INTEGRATION_EVENTS.DATA_UPDATD, data);
+    integration.emit(INTEGRATION_EVENTS.DATA_UPDATED, data);
 
     // Method 2: Using communication system
-    communication.sendBroadcast(MESSAGE_TYPES.DATA_UPDAE, data 'medium');
+    communication.sendBroadcast(MESSAGE_TYPES.DATA_UPDATE, data, 'medium');
 
     // Method 3: Using data flow system
-    dataFlow.syncData(`${componentd}:broadcast`, data);
+    dataFlow.syncData(`${componentId}:broadcast`, data);
 };
 
   // Example: Send data to specific component
   const sendToComponent = (targetComponentId: string) => {
     const data = {
       timestamp: Date.now(),
-      from: componentd,
-      to: targetComponentd,
-      message: `Private message from ${componentd} to ${targetComponentId}`
+      from: componentId,
+      to: targetComponentId,
+      message: `Private message from ${componentId} to ${targetComponentId}`
   };
 
     communication.sendMessage({
-      from: componentd,
-      to: targetComponentd,
-      type: MESSAGE_TYPES.DATA_UPDAE,
+      from: componentId,
+      to: targetComponentId,
+      type: MESSAGE_TYPES.DATA_UPDATE,
       data,
       priority: 'high'
 });
@@ -123,55 +121,30 @@ const ExampleIntegratedComponent: React.FC<{
   // Example: Create data flow between components
   const createDataFlow = (targetComponentId: string) => {
     const connectionId = dataFlow.createConnection({
-      from: `${componentd}:data`,
-      to: `${targetComponentd}:data`,
+      from: `${componentId}:data`,
+      to: `${targetComponentId}:data`,
       dataKey: 'sharedData',
       transform: DATA_TRANSFORMATIONS.STRINGIY,
-      condition: DATA_FILTERS.IS_OBJET,
+      condition: DATA_FILTERS.IS_OBJECT,
       priority: 1
 });
 
-    console.log(`Created data flow connection: ${connectiond}`);
+    console.log(`Created data flow connection: ${connectionId}`);
 };
 
   // Example: Get data from all connected components
   const getConnectedData = async () => {
-    const allData = await dataFlow.flowDataFromAll(`${componentd}:data`, 'sharedData');
+    const allData = await dataFlow.flowDataFromAll(`${componentId}:data`, 'sharedData');
     console.log('Data from all connected components: ', allData);
 };
 
   return (
-    <div style={{ padding: '20px', border: '1px solid #ccc', margin: '10px,',}}>
-      <h3>Component: {componentd}</h3>
+    <div style={{ padding: '20px', border: '1px solid #ccc', margin: '10px' }}>
+      <h3>Component: {componentId}</h3>
       <p>Type: {componentType}</p>
-      <p>Capabilities: {capabilities.join('')}</p>
-      import React, { useEffect, useState } from "react";
+      <p>Capabilities: {capabilities.join(', ')}</p>
 
-export default function ExampleUsage() {
-  const [records, setRecords] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    let isMounted = true;
-    setLoading(true);
-    (async () => {
-      try {
-        const res = await fetch("/api/example");
-        const json = await res.json();
-        if (isMounted) setRecords(Array.isArray(json) ? json : []);
-      } catch {
-        if (isMounted) setRecords([]);
-      } finally {
-        if (isMounted) setLoading(false);
-      }
-    })();
-    return () => { isMounted = false; };
-  }, []); // ✅ don’t forget deps
-
-  // …render
-}
-
-      <div style={{ marginTop: '20px,',}}>
+      <div style={{ marginTop: '20px' }}>
         <h4>Actions: </h4>
         <button onClick={broadcastData}>Broadcast Data to All</button>
         <button onClick={executeGlobalAction}>Execute Global Action</button>
@@ -180,23 +153,23 @@ export default function ExampleUsage() {
 
       <div style={{ marginTop: '20px,',}}>
         <h4>Send to Specific Component: </h4>
-        {connectedComponents.map(compId => (
-          <button key={compd} onClick={() => sendToComponent(compId)}>
+        {connectedComponents.map((compId) => (
+          <button key={compId} onClick={() => sendToComponent(compId)}>
             Send to {compId}
           </button>
         ))}
       </div>
 
-      <div style={{ marginTop: '20px,',}}>
+      <div style={{ marginTop: '20px' }}>
         <h4>Create Data Flow: </h4>
-        {connectedComponents.map(compId => (
-          <button key={compd} onClick={() => createDataFlow(compId)}>
+        {connectedComponents.map((compId) => (
+          <button key={compId} onClick={() => createDataFlow(compId)}>
             Flow to {compId}
           </button>
         ))}
       </div>
 
-      <div style={{ marginTop: '20px,',}}>
+      <div style={{ marginTop: '20px' }}>
         <h4>Connected Components ({connectedComponents.length}):</h4>
         <ul>
           {connectedComponents.map(compId => (
@@ -205,11 +178,11 @@ export default function ExampleUsage() {
         </ul>
       </div>
 
-      <div style={{ marginTop: '20px,',}}>
+      <div style={{ marginTop: '20px' }}>
         <h4>Recent Messages ({messageHistory.length}):</h4>
-        <div style={{ maxHeight: '200px', overflowY: 'auto,',}}>
+        <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
           {messageHistory.slice(-5).map((msg, index) => (
-            <div key={index} style={{ fontSize: '12px', marginBottom: '5px,',}}>
+            <div key={index} style={{ fontSize: '12px', marginBottom: '5px' }}>
               <strong>{msg.from}</strong> → <strong>{msg.to}</strong>: {msg.type}
               <br />
               <small>{new Date(msg.timestamp).toLocaleTimeString()}</small>
@@ -218,9 +191,9 @@ export default function ExampleUsage() {
         </div>
       </div>
 
-      <div style={{ marginTop: '20px,',}}>
+      <div style={{ marginTop: '20px' }}>
         <h4>Shared Data: </h4>
-        <pre style={{ fontSize: '12px', background: '#f5f5f', padding: '10px,',}}>
+        <pre style={{ fontSize: '12px', background: '#f5f5f5', padding: '10px' }}>
           {JSON.stringify(sharedData, null, 2)}
         </pre>
       </div>
@@ -238,25 +211,25 @@ export const ExampleIntegrationDemo: React.FC = () => {
       <ExampleIntegratedComponent
         componentId="admin-dashboard"
         componentType="admin-dashboard"
-        capabilities={['data:read','data: write','event: emit','event: listen','action: execute', ]}
+        capabilities={['data:read', 'data:write', 'event:emit', 'event:listen', 'action:execute']}
       />
       
       <ExampleIntegratedComponent
         componentId="visual-editor"
         componentType="visual-editor"
-        capabilities={['data: read','data: write','event: emit','event: listen','collaboration: update', ]}
+        capabilities={['data:read', 'data:write', 'event:emit', 'event:listen', 'collaboration:update']}
       />
       
       <ExampleIntegratedComponent
         componentId="analytics-panel"
         componentType="panel"
-        capabilities={['data: read','event: listen','analytics: track', ]}
+        capabilities={['data:read', 'event:listen', 'analytics:track']}
       />
       
       <ExampleIntegratedComponent
         componentId="notification-widget"
         componentType="widget"
-        capabilities={['event: listen', 'ui: notify', ]}
+        capabilities={['event:listen', 'ui:notify']}
       />
     </div>
   );

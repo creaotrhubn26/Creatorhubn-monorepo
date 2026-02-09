@@ -19,17 +19,17 @@ export interface CameraTemplate {
   primaryCamera: {
     video?: Camera;
     photo?: PhotoCamera;
-,};
+  };
   backupCamera?: {
     video?: Camera;
     photo?: PhotoCamera;
-};
+  };
   additionalCameras: Array<{
     video?: Camera;
     photo?: PhotoCamera;
     role: 'b-roll' | 'close-up' | 'wide' | 'detail' | 'backup' | 'custom';
     customRole?: string;
-,}>;
+  }>;
   
   // Equipment configuration
   lenses: Array<{
@@ -39,7 +39,7 @@ export interface CameraTemplate {
     brand: string;
     model: string;
     purpose: string;
-,}>;
+  }>;
   
   accessories: Array<{
     type: 'tripod' | 'gimbal' | 'monopod' | 'slider' | 'drone' | 'lighting' | 'audio' | 'storage' | 'other';
@@ -47,7 +47,7 @@ export interface CameraTemplate {
     model: string;
     quantity: number;
     purpose: string;
-,}>;
+  }>;
   
   // Settings and preferences
   settings: {
@@ -58,14 +58,14 @@ export interface CameraTemplate {
       logFormat?: string;
       codec: string;
       bitrate?: string;
-  ,};
+    };
     photo: {
       fileFormat: 'raw' | 'jpeg' | 'raw+jpeg' | 'heif';
       quality: 'low' | 'medium' | 'high' | 'maximum';
       colorSpace: 'sRGB' | 'Adobe RGB' | 'ProPhoto RGB';
       whiteBalance: 'auto' | 'daylight' | 'tungsten' | 'fluorescent' | 'custom';
-  ,};
-};
+    };
+  };
   
   // Workflow preferences
   workflow: {
@@ -76,7 +76,7 @@ export interface CameraTemplate {
     estimatedPhotos: number;
     estimatedVideoHours: number;
     estimatedStorage: string; // GB
-,};
+  };
   
   // Template metadata
   createdBy: string;
@@ -94,7 +94,7 @@ export interface CameraTemplate {
     rating: number;
     comment: string;
     createdAt: string;
-,}>;
+  }>;
   
   // Template sharing
   shareSettings: {
@@ -102,7 +102,7 @@ export interface CameraTemplate {
     shareToken?: string;
     permissions: 'view' | 'copy' | 'edit';
     expiresAt?: string;
-,};
+  };
 }
 
 export interface CameraTemplateCategory {
@@ -112,7 +112,7 @@ export interface CameraTemplateCategory {
   icon: string;
   color: string;
   defaultTemplates: string[];
-  isSystemCategory: boolean, ;, 
+  isSystemCategory: boolean;
 }
 
 export interface CameraTemplateSearchFilters {
@@ -146,71 +146,71 @@ export class CameraTemplateManager {
         id: 'wedding',
         name: 'Wedding Photography/Videography',
         description: 'Complete camera setups for wedding events',
-        icon: '�, � ',
+        icon: 'heart',
         color: '#e91e63',
         defaultTemplates: ['wedding-norwegian-classic','wedding-indian-traditional'],
         isSystemCategory: true
-    , isPhotoOptimized: false, addedDate: "2024-01-01", lastUpdated: "2024-01-01", isNew: false, isRecentlyUpdated: false, source: "manual" as const, version: 1 },
+      },
       {
         id: 'event',
         name: 'Event Coverage',
         description: 'Camera setups for corporate events, parties, and celebrations',
-        icon: '�, �, ',
-        color: '#',
+        icon: 'calendar',
+        color: '#9c27b0',
         defaultTemplates: ['event-corporate','event-party'],
         isSystemCategory: true
-    , isPhotoOptimized: false, addedDate: "2024-01-01", lastUpdated: "2024-01-01", isNew: false, isRecentlyUpdated: false, source: "manual" as const, version: 1 },
+      },
       {
         id: 'commercial',
         name: 'Commercial Photography',
         description: 'Professional setups for product and commercial photography',
-        icon: '�, �, ',
-        color: '#',
+        icon: 'briefcase',
+        color: '#3f51b5',
         defaultTemplates: ['commercial-product','commercial-portrait'],
         isSystemCategory: true
-    , isPhotoOptimized: false, addedDate: "2024-01-01", lastUpdated: "2024-01-01", isNew: false, isRecentlyUpdated: false, source: "manual" as const, version: 1 },
+      },
       {
         id: 'cinema',
         name: 'Cinema Production',
         description: 'High-end camera setups for film and cinema production',
-        icon: '�, �, ',
-        color: '#',
+        icon: 'film',
+        color: '#ff5722',
         defaultTemplates: ['cinema-narrative','cinema-documentary'],
         isSystemCategory: true
-    , isPhotoOptimized: false, addedDate: "2024-01-01", lastUpdated: "2024-01-01", isNew: false, isRecentlyUpdated: false, source: "manual" as const, version: 1 },
+      },
       {
         id: 'documentary',
         name: 'Documentary',
         description: 'Mobile and versatile setups for documentary work',
-        icon: '�, �, ',
+        icon: 'document',
         color: '#4caf50',
         defaultTemplates: ['documentary-travel','documentary-interview'],
         isSystemCategory: true
-    , isPhotoOptimized: false, addedDate: "2024-01-01", lastUpdated: "2024-01-01", isNew: false, isRecentlyUpdated: false, source: "manual" as const, version: 1 },
+      },
       {
         id: 'sports',
         name: 'Sports Photography',
         description: 'Fast-action camera setups for sports events',
-        icon: ', ⚽, ',
-        color: '#',
+        icon: 'sports',
+        color: '#ff9800',
         defaultTemplates: ['sports-outdoor','sports-indoor'],
         isSystemCategory: true
-    , isPhotoOptimized: false, addedDate: "2024-01-01", lastUpdated: "2024-01-01", isNew: false, isRecentlyUpdated: false, source: "manual" as const, version: 1 },
+      },
       {
         id: 'travel',
         name: 'Travel Photography',
         description: 'Lightweight and portable setups for travel',
-        icon: '✈, ️, ',
-        color: '#',
+        icon: 'travel',
+        color: '#2196f3',
         defaultTemplates: ['travel-lightweight','travel-adventure'],
         isSystemCategory: true
-    , isPhotoOptimized: false, addedDate: "2024-01-01", lastUpdated: "2024-01-01", isNew: false, isRecentlyUpdated: false, source: "manual" as const, version: 1 },
+      },
       {
         id: 'custom',
         name: 'Custom Templates',
         description: 'User-created custom camera setups',
-        icon: '⚙, ️, ',
-        color: '#',
+        icon: 'settings',
+        color: '#607d8b',
         defaultTemplates:  [],
         isSystemCategory: false
     }
@@ -446,7 +446,7 @@ export class CameraTemplateManager {
       if (storedTemplates) {
         const templates = JSON.parse(storedTemplates);
         templates.forEach((template: CameraTemplate) => {
-          this.templates.set(template., idtemplate);
+          this.templates.set(template.id, template);
     });
   }
 
@@ -481,7 +481,7 @@ export class CameraTemplateManager {
       updatedAt: now,
       version:  1,
       usageCount: 0
-  ,};
+    };
 
     this.templates.set(id, newTemplate);
     this.saveToStorage();
@@ -498,7 +498,7 @@ export class CameraTemplateManager {
       id,
       updatedAt: new Date().toISOString(),
       version: template.version + 1
-  ,};
+    };
 
     this.templates.set(id, updatedTemplate);
     this.saveToStorage();
@@ -516,7 +516,7 @@ export class CameraTemplateManager {
 
   getTemplate(id: string): CameraTemplate | null {
     return this.templates.get(id) || null;
-,}
+  }
 
   getAllTemplates(): CameraTemplate[] {
     return Array.from(this.templates.values());
@@ -524,17 +524,17 @@ export class CameraTemplateManager {
 
   getTemplatesByCategory(category: string): CameraTemplate[] {
     return this.getAllTemplates().filter(template => template.category === category);
-,}
+  }
 
   getTemplatesByProfession(profession: string): CameraTemplate[] {
     return this.getAllTemplates().filter(template => 
       template.profession === profession || template.profession === 'both'
   );
-,}
+  }
 
   getTemplatesByCulture(culture: string): CameraTemplate[] {
     return this.getAllTemplates().filter(template => template.culture === culture);
-,}
+  }
 
   getDefaultTemplates(): CameraTemplate[] {
     return this.getAllTemplates().filter(template => template.isDefault);
@@ -543,7 +543,7 @@ export class CameraTemplateManager {
   getUserTemplates(userId: string): CameraTemplate[] {
     const userTemplateIds = this.userTemplates.get(userId) || [];
     return userTemplateIds.map(id => this.templates.get(id)).filter(Boolean) as CameraTemplate[];
-,}
+  }
 
   searchTemplates(filters: CameraTemplateSearchFilters): CameraTemplate[] {
     let templates = this.getAllTemplates();
@@ -599,10 +599,10 @@ export class CameraTemplateManager {
 
     const updatedTemplate = {
       ...template,
-      usageCount: template.usageCount +, 1,
+      usageCount: template.usageCount + 1,
       lastUsed: new Date().toISOString(),
       updatedAt: new Date().toISOString()
-  ,};
+    };
 
     this.templates.set(id, updatedTemplate);
     this.saveToStorage();
@@ -625,7 +625,7 @@ export class CameraTemplateManager {
         expiresAt
   },
       updatedAt: new Date().toISOString()
-  ,};
+    };
 
     this.templates.set(id, updatedTemplate);
     this.saveToStorage();
@@ -634,7 +634,7 @@ export class CameraTemplateManager {
 
   getTemplateByShareToken(shareToken: string): CameraTemplate | null {
     return this.getAllTemplates().find(t => t.shareSettings.shareToken === shareToken) || null;
-,}
+  }
 
   // Categories
   getCategories(): CameraTemplateCategory[] {
@@ -643,7 +643,7 @@ export class CameraTemplateManager {
 
   getCategory(id: string): CameraTemplateCategory | null {
     return this.categories.get(id) || null;
-,}
+  }
 
   // Template recommendations
   getRecommendedTemplates(userId: string, projectType: string, culture?: string): CameraTemplate[] {
@@ -674,7 +674,7 @@ export class CameraTemplateManager {
     return JSON.stringify(templates, null, 2);
 }
 
-  importTemplates(jsonData: string): { success: number; failed: number; errors: string[, ],} {
+  importTemplates(jsonData: string): { success: number; failed: number; errors: string[] } {
     try {
       const templates = JSON.parse(jsonData) as CameraTemplate[];
       let success = 0;
@@ -687,12 +687,12 @@ export class CameraTemplateManager {
           const newId = `imported-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
           const importedTemplate = {
             ...template,
-            id: newd,
+            id: newId,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
             isPublic: false, // Imported templates are private by default
             isDefault: false
-        ,};
+          };
 
           this.templates.set(newId, importedTemplate);
           success++;
@@ -705,7 +705,7 @@ export class CameraTemplateManager {
       this.saveToStorage();
       return { success, failed, errors };
 } catch (error) {
-      return { success:  ,  0failed:  ,  0errors: [`Invalid JSON data: ${error}`] };
+  return { success: 0, failed: 0, errors: [`Invalid JSON data: ${error}`] };
 }
 }
 }

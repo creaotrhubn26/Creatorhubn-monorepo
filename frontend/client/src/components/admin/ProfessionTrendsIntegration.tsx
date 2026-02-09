@@ -24,6 +24,7 @@ import {
   Stack,
   IconButton,
   Tooltip,
+  Snackbar,
 } from '@mui/material';
 import {
   TrendingUp,
@@ -35,6 +36,10 @@ import {
   LocationOn,
   Schedule,
   Star,
+  Link,
+  Whatshot,
+  Lightbulb,
+  Build,
 } from '@mui/icons-material';
 import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
 
@@ -47,14 +52,17 @@ export default function ProfessionTrendsIntegration() {
     getSEOSuggestions,
     getSEOInsights,
     applySEOFixes,
-} = useDynamicProfessions();
+  } = useDynamicProfessions();
 
   const [selectedProfession, setSelectedProfession] = useState<string>('photographer');
   const [selectedRegion, setSelectedRegion] = useState<string>('norway');
   const [isLoading, setIsLoading] = useState(false);
   
+  // Snackbar state
+  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'warning' | 'info' }>({ open: false, message: '', severity: 'info' });
+  
   // Theming system
-  const theming = useTheming('prototype_tester, ');
+  const theming = useTheming('prototype_tester');
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
 
   const currentProfession = getCurrentUserProfession();
@@ -80,9 +88,9 @@ export default function ProfessionTrendsIntegration() {
   const handleApplySEOFixes = async () => {
     const success = await applySEOFixes(selectedProfession, selectedRegion);
     if (success) {
-      alert('✅ SEO fixes applied successfully!');
+      setSnackbar({ open: true, message: 'SEO fixes applied successfully!', severity: 'success' });
   } else {
-      alert('❌ Error applying SEO fixes');
+      setSnackbar({ open: true, message: 'Error applying SEO fixes', severity: 'error' });
   }
 };
 
@@ -111,8 +119,9 @@ export default function ProfessionTrendsIntegration() {
     <Box sx={{ width: '100%'}}>
       {/* Header */}
       <Box sx={{ mb:  3 }}>
-        <Typography variant="h4" gutterBottom sx={{ color: theming.colors.primary }}>
-          🔗 Profession-Trends Integration
+        <Typography variant="h4" gutterBottom sx={{ color: theming.colors.primary, display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Link sx={{ fontSize: 32 }} />
+          Profession-Trends Integration
         </Typography>
         <Typography variant="body1" color="text.secondary">
           How useDynamicProfessions connects to Google Trends and SEO
@@ -134,11 +143,6 @@ export default function ProfessionTrendsIntegration() {
                 Display Name: <strong>{professionConfig?.displayName}</strong>
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                Category: <strong>{professionConfig?.getProfessionCategory?.() || 'N/'}</strong>
-              </Typography>
-            </Grid>
-            <Grid item >
-              <Typography variant="body2" color="text.secondary">
                 Icon Color: <Chip label={professionConfig?.iconColor} size="small" />
               </Typography>
               <Typography variant="body2" color="text.secondary">
@@ -153,8 +157,10 @@ export default function ProfessionTrendsIntegration() {
       <Card sx={{ mb:  3 ,  ...theming.getThemedCardSx() }}>
         <CardContent sx={theming.getThemedCardSx()}>
           <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+            <Search sx={{ mr: 1, verticalAlign: 'middle' }} />
             Test Different Professions
           </Typography>
+          <Divider sx={{ mb: 2 }} />
           <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mb:  2 }}>
             {Object.keys(professionConfigs).map((profession) => (
               <Chip
@@ -166,16 +172,21 @@ export default function ProfessionTrendsIntegration() {
               />
             ))}
           </Stack>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            <LocationOn fontSize="small" />
+            Select Region:
+          </Typography>
           <Stack direction="row" spacing={1} flexWrap="wrap">
             {['norway', 'oslo', 'bergen', 'trondheim', 'stavanger'].map((region) => (
-              <Chip
-                key={region}
-                label={region.charAt(0).toUpperCase() + region.slice(1)}
-                onClick={() => setSelectedRegion(region)}
-                color={selectedRegion === region ? 'secondary' : 'default'}
-                variant={selectedRegion === region ? 'filled' : 'outlined'}
-                icon={theming.getThemedIcon('location')}}
-              />
+              <Tooltip key={region} title={`Analyze trends for ${region}`} arrow>
+                <Chip
+                  label={region.charAt(0).toUpperCase() + region.slice(1)}
+                  onClick={() => setSelectedRegion(region)}
+                  color={selectedRegion === region ? 'secondary' : 'default'}
+                  variant={selectedRegion === region ? 'filled' : 'outlined'}
+                  icon={<LocationOn />}
+                />
+              </Tooltip>
             ))}
           </Stack>
         </CardContent>
@@ -188,12 +199,15 @@ export default function ProfessionTrendsIntegration() {
           <Card sx={theming.getThemedCardSx()}>
             <CardContent sx={theming.getThemedCardSx()}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb:  2 }}>
-                <Typography variant="h6" sx={{ color: theming.colors.primary }}>
-                  🔥 Trending Keywords
+                <Typography variant="h6" sx={{ color: theming.colors.primary, display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Whatshot />
+                  Trending Keywords
                 </Typography>
-                <IconButton onClick={loadTrendsForProfession} disabled={isLoading}>
-                  {theming.getThemedIcon('refresh')}
-                </IconButton>
+                <Tooltip title="Refresh trend data" arrow>
+                  <IconButton onClick={loadTrendsForProfession} disabled={isLoading}>
+                    <Refresh />
+                  </IconButton>
+                </Tooltip>
               </Box>
               
               {isLoading ? (
@@ -202,7 +216,7 @@ export default function ProfessionTrendsIntegration() {
                 </Box>
               ) : (
                 <List dense>
-                  {getTrendingKeywords(selectedProfession).map((keyword, index) => (
+                  {getTrendingKeywords(selectedProfession).map((keyword: any, index: number) => (
                     <ListItem key={index}>
                       <ListItemIcon>
                         {getTrendIcon(keyword.trend)}
@@ -228,8 +242,9 @@ export default function ProfessionTrendsIntegration() {
         <Grid item >
           <Card sx={theming.getThemedCardSx()}>
             <CardContent sx={theming.getThemedCardSx()}>
-              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                📊 SEO Insights
+              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary, display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Analytics />
+                SEO Insights
               </Typography>
               
               {getSEOInsights(selectedProfession) ? (
@@ -252,7 +267,7 @@ export default function ProfessionTrendsIntegration() {
                           Trend Direction
                         </Typography>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
-                          {getTrendIcon(getSEOInsights(selectedProfession)?.trend || 'stable')}
+                          {getTrendIcon(getSEOInsights(selectedProfession)?.trend)}
                           <Typography variant="body2">
                             {getSEOInsights(selectedProfession)?.trend}
                           </Typography>
@@ -262,26 +277,33 @@ export default function ProfessionTrendsIntegration() {
                   </Paper>
 
                   <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
-                    <Chip
-                      label={`Opportunity: ${getSEOInsights(selectedProfession)?.opportunity}`}
-                      color={getOpportunityColor(getSEOInsights(selectedProfession)?.opportunity || 'medium')}
-                      size="small"
-                    />
-                    <Chip
-                      label={getSEOInsights(selectedProfession)?.seasonality}
-                      icon={theming.getThemedIcon('schedule')}}
-                      size="small"
-                    />
+                    <Tooltip title="Market opportunity level based on competition and demand" arrow>
+                      <Chip
+                        icon={<Star />}
+                        label={`Opportunity: ${getSEOInsights(selectedProfession)?.opportunity}`}
+                        color={getOpportunityColor(getSEOInsights(selectedProfession)?.opportunity || 'medium')}
+                        size="small"
+                      />
+                    </Tooltip>
+                    <Tooltip title="Peak season for this profession" arrow>
+                      <Chip
+                        icon={<Schedule />}
+                        label={getSEOInsights(selectedProfession)?.seasonality}
+                        size="small"
+                      />
+                    </Tooltip>
                   </Box>
 
-                  <Button variant="contained"
-                    startIcon={theming.getThemedIcon('autoFixHigh')}
-                    onClick={handleApplySEOFixes}
-                    fullWidth
-                    color="success"
-                   sx={theming.getThemedButtonSx()}>
-                    Apply SEO Fixes
-                  </Button>
+                  <Tooltip title="Apply top 3 SEO optimizations automatically" arrow placement="top">
+                    <Button variant="contained"
+                      startIcon={<AutoFixHigh />}
+                      onClick={handleApplySEOFixes}
+                      fullWidth
+                      color="success"
+                     sx={theming.getThemedButtonSx()}>
+                      Apply SEO Fixes
+                    </Button>
+                  </Tooltip>
                 </Box>
               ) : (
                 <Alert severity="info">
@@ -296,13 +318,14 @@ export default function ProfessionTrendsIntegration() {
         <Grid item >
           <Card sx={theming.getThemedCardSx()}>
             <CardContent sx={theming.getThemedCardSx()}>
-              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                💡 SEO Suggestions
+              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary, display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Lightbulb />
+                SEO Suggestions
               </Typography>
               
               {getSEOSuggestions(selectedProfession).length > 0 ? (
                 <List>
-                  {getSEOSuggestions(selectedProfession).map((suggestion, index) => (
+                  {getSEOSuggestions(selectedProfession).map((suggestion: any, index: number) => (
                     <ListItem key={index}>
                       <ListItemIcon>
                         <CheckCircle color="success" />
@@ -329,12 +352,16 @@ export default function ProfessionTrendsIntegration() {
         </Grid>
       </Grid>
 
+      <Divider sx={{ my: 3 }} />
+
       {/* Integration Details */}
       <Card sx={{ mt:  3 ,  ...theming.getThemedCardSx() }}>
         <CardContent sx={theming.getThemedCardSx()}>
-          <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-            🔧 How the Integration Works
+          <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary, display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Build />
+            How the Integration Works
           </Typography>
+          <Divider sx={{ mb: 2 }} />
           <Grid container spacing={2}>
             <Grid item >
               <Typography variant="subtitle2" gutterBottom>
@@ -394,6 +421,22 @@ export default function ProfessionTrendsIntegration() {
           </Typography>
         </Box>
       )}
+
+      {/* Snackbar for notifications */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={4000}
+        onClose={() => setSnackbar((prev) => ({ ...prev, open: false }))}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert
+          onClose={() => setSnackbar((prev) => ({ ...prev, open: false }))}
+          severity={snackbar.severity}
+          variant="filled"
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 }

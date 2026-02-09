@@ -127,7 +127,7 @@ function QuoteCard({
   onQuoteAction: (action: string, quote: Quote) => void;
   isDragging?: boolean;
 }) {
-  const theming = useTheming('photographer, ');
+  const theming = useTheming('photographer');
 
   const {
     attributes,

@@ -178,7 +178,7 @@ export default function ShowcaseClient() {
           backdropFilter: 'blur(10px)',
         }}
       >
-        <Typography variant="h4" sx={{ fontWeight: 70, color: theming.colors.primary, mb: 1 }}>
+        <Typography variant="h4" sx={{ fontWeight: 700, color: theming.colors.primary, mb: 1 }}>
           📸 {showcaseData.coupleNames.join(' & ')} Showcase
         </Typography>
         <Typography variant="h6" sx={{ color: theming.colors.primary, mb: 2 }}>

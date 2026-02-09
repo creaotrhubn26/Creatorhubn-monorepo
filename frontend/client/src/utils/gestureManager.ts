@@ -413,7 +413,7 @@ class GestureManager {
       threshold: gestureData.threshold || 10,
       tolerance: gestureData.tolerance || 5,
       element: gestureData.element || document.body,
-      handler: gestureData.handler || (() =>, {}),
+      handler: gestureData.handler || (() => {}),
       enabled: gestureData.enabled !== undefined ? gestureData.enabled : true,
       preventDefault: gestureData.preventDefault !== undefined ? gestureData.preventDefault : true,
       stopPropagation: gestureData.stopPropagation !== undefined ? gestureData.stopPropagation : false,
@@ -429,7 +429,7 @@ class GestureManager {
         successCount: 0,
         errorCount: 0,
         performance: {
-          recognitionTime:, 0,
+          recognitionTime: 0,
           executionTime:  0,
           accuracy: 0
   }
@@ -515,7 +515,7 @@ class GestureManager {
     if (matchingGestures.length === 0) return null;
 
     // Sort by priority (higher priority first)
-    matchingGestures.sort(, (b) => b.priority - a.priority);
+    matchingGestures.sort((a, b) => b.priority - a.priority);
 
     // Return the highest priority gesture
     return matchingGestures[0];
@@ -689,21 +689,21 @@ class GestureManager {
   private calculateCenter(event: TouchEvent | MouseEvent): { x: number; y: number } {
     if (event instanceof TouchEvent) {
       const touches = Array.from(event.touches);
-      if (touches.length === 0) return { x:  ,  0y:  0 };
+      if (touches.length === 0) return { x: 0, y: 0 };
       
       const sum = touches.reduce((acc, touch) => ({
         x: acc.x + touch.clientX,
         y: acc.y + touch.clientY
-}), { x:  ,  0y:  0 });
+}), { x: 0, y: 0 });
       
       return {
         x: sum.x / touches.length,
         y: sum.y / touches.length
 };
 } else if (event instanceof MouseEvent) {
-      return { x: event.clientX, y: event.client, Y,};
+      return { x: event.clientX, y: event.clientY };
 }
-    return { x:  ,  0y:  0 };
+    return { x: 0, y: 0 };
 }
 
   /**
@@ -739,7 +739,7 @@ class GestureManager {
       const dx = touch2.clientX - touch1.clientX;
       const dy = touch2.clientY - touch1.clientY;
       
-      return Math.atan2(, dydx) * 180 / Math.PI;
+        return Math.atan2(dy, dx) * 180 / Math.PI;
 }
     return 0;
 }
@@ -749,7 +749,7 @@ class GestureManager {
    */
   private calculateVelocity(event: TouchEvent | MouseEvent): { x: number; y: number } {
     // Implementation depends on velocity calculation strategy
-    return { x:  ,  0y:  0 };
+    return { x: 0, y: 0 };
 }
 
   /**
@@ -784,7 +784,7 @@ class GestureManager {
       currentDistance: this.calculateDistance(event),
       startAngle: this.calculateAngle(event),
       currentAngle: this.calculateAngle(event),
-      velocity: { x:,  0y:  0 },
+      velocity: { x: 0, y: 0 },
       direction: 'any',
       duration: 0
 };

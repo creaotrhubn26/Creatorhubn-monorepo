@@ -32,6 +32,7 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
+  DialogContentText,
   DialogActions,
   List,
   ListItem,
@@ -231,6 +232,9 @@ const AuditDashboard: React.FC<AuditDashboardProps> = memo(({
     setEventDetailsOpen(true);
 }, []);
 
+  // Confirm clear dialog state
+  const [confirmClearOpen, setConfirmClearOpen] = useState(false);
+
   // Handle export
   const handleExport = useCallback((format: 'json' | 'csv' | 'xml') => {
     const data = auditLogger.export(format);
@@ -245,11 +249,14 @@ const AuditDashboard: React.FC<AuditDashboardProps> = memo(({
 
   // Handle clear
   const handleClear = useCallback(() => {
-    if (window.confirm('Are you sure you want to clear all audit logs?')) {
-      auditLogger.clear();
-      loadData();
-  }
-}, [auditLogger, loadData]);
+    setConfirmClearOpen(true);
+  }, []);
+
+  const executeClear = useCallback(() => {
+    auditLogger.clear();
+    loadData();
+    setConfirmClearOpen(false);
+  }, [auditLogger, loadData]);
 
   if (variant === 'minimal') {
     return (
@@ -512,7 +519,7 @@ const AuditDashboard: React.FC<AuditDashboardProps> = memo(({
                       <TableCell>
                         <Chip
                           label={event.severity}
-                          color={getSeverityColor(event.severity) as any}
+                          color={getSeverityColor(event.severity) as 'error' | 'warning' | 'success' | 'default' | 'info'}
                           size="small"
                         />
                       </TableCell>
@@ -574,7 +581,7 @@ const AuditDashboard: React.FC<AuditDashboardProps> = memo(({
                         <ListItemIcon>
                           <Chip
                             label={severity}
-                            color={getSeverityColor(severity) as any}
+                            color={getSeverityColor(severity) as 'error' | 'warning' | 'success' | 'default' | 'info'}
                             size="small"
                           />
                         </ListItemIcon>
@@ -661,7 +668,7 @@ const AuditDashboard: React.FC<AuditDashboardProps> = memo(({
                   <Typography variant="subtitle2">Severity</Typography>
                   <Chip
                     label={selectedEvent.severity}
-                    color={getSeverityColor(selectedEvent.severity) as any}
+                    color={getSeverityColor(selectedEvent.severity) as 'error' | 'warning' | 'success' | 'default' | 'info'}
                     size="small"
                   />
                 </Grid>
@@ -691,6 +698,25 @@ const AuditDashboard: React.FC<AuditDashboardProps> = memo(({
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setEventDetailsOpen(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Confirm Clear Audit Logs Dialog */}
+      <Dialog
+        open={confirmClearOpen}
+        onClose={() => setConfirmClearOpen(false)}
+      >
+        <DialogTitle>Clear Audit Logs</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Are you sure you want to clear all audit logs? This action cannot be undone.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmClearOpen(false)}>Cancel</Button>
+          <Button onClick={executeClear} color="error" variant="contained">
+            Clear All Logs
+          </Button>
         </DialogActions>
       </Dialog>
     </Box>

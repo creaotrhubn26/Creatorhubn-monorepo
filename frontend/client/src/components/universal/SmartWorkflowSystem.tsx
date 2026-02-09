@@ -715,7 +715,7 @@ export default function SmartWorkflowSystem({
               <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
                 <PlayArrow sx={{ color: '#9c27b', fontSize: 32}} />
                 <Box sx={{ flex:  1 }}>
-                  <Typography variant="body1" sx={{ fontWeight: 50}}>
+                  <Typography variant="body1" sx={{ fontWeight: 500}}>
                     {recentAction || 'Venter på kommando...'}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">

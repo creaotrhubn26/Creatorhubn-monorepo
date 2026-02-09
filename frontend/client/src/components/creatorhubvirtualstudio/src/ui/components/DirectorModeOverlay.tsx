@@ -579,7 +579,7 @@ export const DirectorModeOverlay: React.FC<DirectorModeOverlayProps> = ({
                 color="error"
                 size="small"
                 sx={{ 
-                  fontWeight: 70,
+                  fontWeight: 700,
                   animation: isRecording ? 'pulse 1s infinite' : 'none','@keyframes pulse': {
                     '0%, 100%': { opacity: 1 }, '50%': { opacity: 0.6 },
                   }}}
@@ -719,7 +719,7 @@ export const DirectorModeOverlay: React.FC<DirectorModeOverlayProps> = ({
                     sx={{
                       bgcolor: 'rgba(255,255,255,0.2)',
                       color: '#fff',
-                      fontWeight: 70,
+                      fontWeight: 700,
                       fontFamily: 'monospace',
                       minWidth: 32}}
                   />

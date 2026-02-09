@@ -8,7 +8,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { useTheming } from '../../../utils/theming-helper';
 import { useAuth } from '@/hooks/useAuth';
-import { useUniversalDashboard } from '../UniversalDashboardContext';
+import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
 import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
 import getProfessionIcon from '@/utils/profession-icons';
@@ -41,8 +41,7 @@ import {
   Tabs,
   Tab,
   alpha,
-  useTheme,
-  TabPanel as MuiTabPanel
+  useTheme
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -56,7 +55,7 @@ import {
   Search as SearchIcon,
   CheckCircle as CheckCircleIcon,
   Pending as PendingIcon,
-  Draft as DraftIcon,
+  Drafts as DraftIcon,
   Archive as ArchiveIcon,
   LibraryMusic as MusicIcon
 } from '@mui/icons-material';
@@ -72,13 +71,36 @@ import SplitSheetCollaborationProvider from './SplitSheetCollaborationProvider';
 import SplitSheetBillingPanel from './SplitSheetBillingPanel';
 import SplitSheetReports from './SplitSheetReports';
 import ContractEditingInterface from '../../contracts/ContractEditingInterface';
-import type { 
-  SplitSheet, 
-  SplitSheetStatus, 
-  STATUS_DISPLAY_NAMES, 
-  STATUS_COLORS 
-} from './types';
-import { STATUS_DISPLAY_NAMES as STATUS_NAMES, STATUS_COLORS as STATUS_COL } from './types';
+import type { SplitSheet, SplitSheetStatus } from './types';
+import { STATUS_DISPLAY_NAMES, STATUS_COLORS } from './types';
+
+// Simple TabPanel component to replace MUI's non-existent TabPanel
+interface TabPanelProps {
+  children?: React.ReactNode;
+  index: number;
+  value: number;
+  sx?: any;
+}
+
+function TabPanel(props: TabPanelProps) {
+  const { children, value, index, sx, ...other } = props;
+
+  return (
+    <div
+      role="tabpanel"
+      hidden={value !== index}
+      id={`split-sheet-tabpanel-${index}`}
+      aria-labelledby={`split-sheet-tab-${index}`}
+      {...other}
+    >
+      {value === index && (
+        <Box sx={sx}>
+          {children}
+        </Box>
+      )}
+    </div>
+  );
+}
 
 interface SplitSheetManagerProps {
   profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
@@ -89,7 +111,7 @@ interface SplitSheetManagerProps {
 }
 
 export default function SplitSheetManager({
-  profession = 'music_producer,',
+  profession = 'music_producer',
   userId,
   projectId,
   trackId,
@@ -171,6 +193,11 @@ export default function SplitSheetManager({
   };
   
   const terminology = getProfessionTerminology();
+  const dashboardTitle = adaptDashboardTitle();
+  const projectTypes = getProjectTypes();
+  const dynamicConfig = professionConfigs?.[profession];
+  const configDisplayName = dynamicConfig?.displayName || professionDisplayName;
+  const musicFeatureEnabled = hasFeature('audio_recording') || hasFeature('music_production');
   
   const [selectedSplitSheet, setSelectedSplitSheet] = useState<SplitSheet | null>(null);
   const [showEditor, setShowEditor] = useState(false);
@@ -179,11 +206,15 @@ export default function SplitSheetManager({
   const [statusFilter, setStatusFilter] = useState<SplitSheetStatus | 'all'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [activeView, setActiveView] = useState<'list' | 'templates' | 'analytics' | 'billing' | 'reports'>('list');
+  const [confirmDeleteSheet, setConfirmDeleteSheet] = useState<SplitSheet | null>(null);
+  const [viewerTab, setViewerTab] = useState(0);
+  const [showContractEditor, setShowContractEditor] = useState(false);
+  const [contractEditorData, setContractEditorData] = useState<any>(null);
 
   const effectiveUserId = userId || user?.id;
   
-  // UniversalDashboard context for data synchronization
-  const { dataFlow, communication } = useUniversalDashboard();
+  // EnhancedMasterIntegration context for data synchronization
+  const { dataFlow, communication } = useEnhancedMasterIntegration();
 
   // Fetch split sheets
   const { data: splitSheetsData, isLoading, error } = useQuery({
@@ -226,6 +257,15 @@ export default function SplitSheetManager({
     return filtered;
   }, [splitSheets, statusFilter, searchQuery]);
 
+  const activeFilters = (statusFilter !== 'all' ? 1 : 0) + (searchQuery ? 1 : 0);
+  const statusOptions: Array<{ value: SplitSheetStatus | 'all'; label: string; color?: string; icon?: React.ReactNode }> = [
+    { value: 'all', label: 'Alle' },
+    { value: 'draft', label: STATUS_DISPLAY_NAMES.draft || 'Utkast', color: STATUS_COLORS.draft, icon: <DraftIcon /> },
+    { value: 'pending_signatures', label: STATUS_DISPLAY_NAMES.pending_signatures || 'Venter', color: STATUS_COLORS.pending_signatures, icon: <PendingIcon /> },
+    { value: 'completed', label: STATUS_DISPLAY_NAMES.completed || 'Fullført', color: STATUS_COLORS.completed, icon: <CheckCircleIcon /> },
+    { value: 'archived', label: STATUS_DISPLAY_NAMES.archived || 'Arkivert', color: STATUS_COLORS.archived, icon: <ArchiveIcon /> }
+  ];
+
   // Delete mutation
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
@@ -237,35 +277,38 @@ export default function SplitSheetManager({
     }
   });
 
-  const handleCreateNew = () => {
+  const handleCreateNew = useCallback(() => {
     setSelectedSplitSheet(null);
     setShowEditor(true);
-  };
+  }, []);
 
-  const handleEdit = (splitSheet: SplitSheet) => {
+  const handleEdit = useCallback((splitSheet: SplitSheet) => {
     setSelectedSplitSheet(splitSheet);
     setShowEditor(true);
-  };
+  }, []);
 
-  const handleView = (splitSheet: SplitSheet) => {
+  const handleView = useCallback((splitSheet: SplitSheet) => {
     setSelectedSplitSheet(splitSheet);
+    setViewerTab(0);
     setShowViewer(true);
-  };
+  }, []);
 
-  const handleDelete = async (splitSheet: SplitSheet) => {
-    if (window.confirm(`Er du sikker på at du vil slette "${splitSheet.title},"?`)) {
-      if (splitSheet.id) {
-        deleteMutation.mutate(splitSheet.id);
-      }
-    }
-  };
+  const handleDelete = useCallback((splitSheet: SplitSheet) => {
+    setConfirmDeleteSheet(splitSheet);
+  }, []);
 
-  const handleEditorClose = () => {
+  const executeDelete = useCallback(async () => {
+    if (!confirmDeleteSheet?.id) return;
+    deleteMutation.mutate(confirmDeleteSheet.id);
+    setConfirmDeleteSheet(null);
+  }, [confirmDeleteSheet, deleteMutation]);
+
+  const handleEditorClose = useCallback(() => {
     setShowEditor(false);
     setSelectedSplitSheet(null);
-  };
+  }, []);
 
-  const handleEditorSave = (splitSheet: SplitSheet) => {
+  const handleEditorSave = useCallback((splitSheet: SplitSheet) => {
     queryClient.invalidateQueries({ queryKey: ['split-sheets'] });
     
     // Sync to UniversalDashboard
@@ -282,12 +325,12 @@ export default function SplitSheetManager({
     if (onSplitSheetCreated) {
       onSplitSheetCreated(splitSheet);
     }
-  };
+  }, [dataFlow, onSplitSheetCreated, queryClient]);
 
-  const handleViewerClose = () => {
+  const handleViewerClose = useCallback(() => {
     setShowViewer(false);
     setSelectedSplitSheet(null);
-  };
+  }, []);
 
   // Statistics
   const stats = useMemo(() => {
@@ -362,15 +405,14 @@ export default function SplitSheetManager({
     return unsubscribe;
   }, [communication, queryClient, effectiveUserId, selectedSplitSheet]);
 
-  // Register component with UniversalDashboard
+  // Register component with EnhancedMasterIntegration
   useEffect(() => {
     if (!communication) return;
 
-    communication.registerComponent('split-sheet-manager', {
-      componentId: 'split-sheet-manager',
-      dataKey: 'split-sheets:data',
-      transform: (data: any) => ({ ...data, lastUpdated: Date.now() })
-    });
+    communication.registerComponent('split-sheet-manager', 'data', [
+      'split-sheets:data',
+      'split-sheets:sync'
+    ]);
 
     return () => {
       communication.unregisterComponent('split-sheet-manager');
@@ -392,11 +434,11 @@ export default function SplitSheetManager({
   }
 
   return (
-    <Box sx={{ p: 3 }}>
+    <Box sx={{ p: 3, bgcolor: theme.palette.background.default }}>
       {/* Header - Profession-specific styling */}
-      <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Box>
-          <Typography variant="h4" sx={{ fontWeight: 70, mb: 1, display: 'flex', alignItems: 'center', gap: 1.5 }}>
+      <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 2 }}>
+        <Box sx={{ flex: 1 }}>
+          <Typography variant="h4" sx={{ fontWeight: 700, mb: 1, display: 'flex', alignItems: 'center', gap: 1.5 }}>
             <Box sx={{ 
               display: 'flex', 
               alignItems: 'center',
@@ -407,80 +449,181 @@ export default function SplitSheetManager({
             </Box>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
               <SplitSheetIcon sx={{ color: professionColor, fontSize: 28 }} />
-              Split Sheets
+              Split Sheets • {dashboardTitle}
             </Box>
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            {terminology.description}
+            {terminology.description} · {tabLabels.projects}: {terminology.itemNamePlural}
           </Typography>
-          <Chip 
-            label={professionCategory} 
-            size="small" 
-            sx={{ 
-              mt: 1, 
-              bgcolor: alpha(professionColor, 0.1), 
-              color: professionColor,
-              fontWeight: 50
-            }} 
-          />
+          <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mt: 1 }}>
+            <Chip 
+              label={professionCategory} 
+              size="small" 
+              sx={{ 
+                bgcolor: alpha(professionColor, 0.1), 
+                color: professionColor,
+                fontWeight: 600
+              }} 
+            />
+            <Chip
+              label={`Profil: ${configDisplayName}`}
+              size="small"
+              variant="outlined"
+              sx={{ borderColor: alpha(professionColor, 0.4), color: professionColor }}
+            />
+            {configsLoading ? (
+              <Chip
+                icon={<CircularProgress size={14} />}
+                label="Laster profiler"
+                size="small"
+                variant="outlined"
+              />
+            ) : (
+              <Chip
+                label={`Profiler: ${Object.keys(dashboardConfigs || {}).length}`}
+                size="small"
+                variant="outlined"
+              />
+            )}
+            <Chip
+              label={`Bruker: ${userProfession || profession}`}
+              size="small"
+              variant="outlined"
+            />
+            {musicFeatureEnabled && (
+              <Chip
+                icon={<MusicIcon />}
+                label="Audio workflow"
+                size="small"
+                variant="outlined"
+              />
+            )}
+          </Stack>
+          {projectTypes.length > 0 && (
+            <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mt: 1 }}>
+              {projectTypes.slice(0, 4).map((type) => (
+                <Chip
+                  key={type.value}
+                  label={type.label}
+                  size="small"
+                  variant="outlined"
+                  sx={{ fontSize: '0.7rem' }}
+                />
+              ))}
+            </Stack>
+          )}
         </Box>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={handleCreateNew}
-          sx={{
-            bgcolor: professionColor, '&:hover': { bgcolor: alpha(professionColor, 0.85) }
-          }}
-        >
-          Ny Split Sheet
-        </Button>
+        <Stack direction="row" spacing={1} alignItems="center">
+          <Tooltip title="Filtrer">
+            <IconButton>
+              <Badge color="primary" badgeContent={activeFilters}>
+                <FilterIcon />
+              </Badge>
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Vis">
+            <span>
+              <IconButton disabled={!selectedSplitSheet} onClick={() => selectedSplitSheet && handleView(selectedSplitSheet)}>
+                <ViewIcon />
+              </IconButton>
+            </span>
+          </Tooltip>
+          <Tooltip title="Rediger">
+            <span>
+              <IconButton disabled={!selectedSplitSheet} onClick={() => selectedSplitSheet && handleEdit(selectedSplitSheet)}>
+                <EditIcon />
+              </IconButton>
+            </span>
+          </Tooltip>
+          <Tooltip title="Slett">
+            <span>
+              <IconButton disabled={!selectedSplitSheet} onClick={() => selectedSplitSheet && handleDelete(selectedSplitSheet)}>
+                <DeleteIcon />
+              </IconButton>
+            </span>
+          </Tooltip>
+          <Tooltip title="Del">
+            <IconButton
+              disabled={!selectedSplitSheet}
+              onClick={() => {
+                if (!selectedSplitSheet) return;
+                communication?.sendMessage({
+                  from: 'split-sheet-manager',
+                  to: 'all',
+                  type: 'split-sheet:share',
+                  data: { splitSheetId: selectedSplitSheet.id, title: selectedSplitSheet.title },
+                  priority: 'medium'
+                });
+              }}
+            >
+              <ShareIcon />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Rapporter (PDF)">
+            <IconButton onClick={() => setActiveView('reports')}>
+              <PdfIcon />
+            </IconButton>
+          </Tooltip>
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={handleCreateNew}
+            sx={{
+              bgcolor: professionColor, '&:hover': { bgcolor: alpha(professionColor, 0.85) }
+            }}
+          >
+            Ny Split Sheet
+          </Button>
+        </Stack>
       </Box>
+
+      <Divider sx={{ mb: 3 }} />
 
       {/* Statistics Cards - with profession-themed accent */}
       <Grid container spacing={2} sx={{ mb: 3 }}>
         <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ borderTop: `3px solid ${professionColor}` }}>
+          <Card sx={{ ...theming.getThemedCardSx(), borderTop: `3px solid ${professionColor}` }}>
             <CardContent>
               <Typography variant="body2" color="text.secondary" gutterBottom>
                 Totalt
               </Typography>
-              <Typography variant="h4" sx={{ fontWeight: 70, color: professionColor }}>
+              <Typography variant="h4" sx={{ fontWeight: 700, color: professionColor }}>
                 {stats.total}
               </Typography>
             </CardContent>
           </Card>
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
-          <Card>
+          <Card sx={{ ...theming.getThemedCardSx() }}>
             <CardContent>
               <Typography variant="body2" color="text.secondary" gutterBottom>
                 Utkast
               </Typography>
-              <Typography variant="h4" sx={{ fontWeight: 70, color: STATUS_COL.draft }}>
+              <Typography variant="h4" sx={{ fontWeight: 700, color: STATUS_COLORS.draft }}>
                 {stats.draft}
               </Typography>
             </CardContent>
           </Card>
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
-          <Card>
+          <Card sx={{ ...theming.getThemedCardSx() }}>
             <CardContent>
               <Typography variant="body2" color="text.secondary" gutterBottom>
                 Venter på signaturer
               </Typography>
-              <Typography variant="h4" sx={{ fontWeight: 70, color: STATUS_COL.pending_signatures }}>
+              <Typography variant="h4" sx={{ fontWeight: 700, color: STATUS_COLORS.pending_signatures }}>
                 {stats.pending}
               </Typography>
             </CardContent>
           </Card>
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
-          <Card>
+          <Card sx={{ ...theming.getThemedCardSx() }}>
             <CardContent>
               <Typography variant="body2" color="text.secondary" gutterBottom>
                 Fullført
               </Typography>
-              <Typography variant="h4" sx={{ fontWeight: 70, color: STATUS_COL.completed }}>
+              <Typography variant="h4" sx={{ fontWeight: 700, color: STATUS_COLORS.completed }}>
                 {stats.completed}
               </Typography>
             </CardContent>
@@ -508,11 +651,14 @@ export default function SplitSheetManager({
               label="Status"
               onChange={(e) => setStatusFilter(e.target.value as SplitSheetStatus | 'all')}
             >
-              <MenuItem value="all">Alle</MenuItem>
-              <MenuItem value="draft">Utkast</MenuItem>
-              <MenuItem value="pending_signatures">Venter på signaturer</MenuItem>
-              <MenuItem value="completed">Fullført</MenuItem>
-              <MenuItem value="archived">Arkivert</MenuItem>
+              {statusOptions.map((option) => (
+                <MenuItem key={option.value} value={option.value}>
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    {option.icon && <Box sx={{ display: 'flex', alignItems: 'center' }}>{option.icon}</Box>}
+                    <Typography variant="body2">{option.label}</Typography>
+                  </Stack>
+                </MenuItem>
+              ))}
             </Select>
           </FormControl>
         </Stack>
@@ -676,59 +822,146 @@ export default function SplitSheetManager({
         <DialogTitle>
           {selectedSplitSheet?.title || 'Split Sheet'}
         </DialogTitle>
+        {/* Viewer Tabs */}
+        <Paper sx={{ borderBottom: 1, borderColor: 'divider' }}>
+          <Tabs
+            value={viewerTab}
+            onChange={(_, newValue) => setViewerTab(newValue)}
+            aria-label="split sheet viewer tabs"
+            variant="scrollable"
+            scrollButtons="auto"
+          >
+            <Tab label="Split Sheet" />
+            <Tab label="Inntektstracking" />
+            <Tab label="Betalingshistorikk" />
+            <Tab label="Kommentarer" />
+          </Tabs>
+        </Paper>
+        
         <DialogContent>
           {selectedSplitSheet && (
-          <SplitSheetViewer
-            splitSheet={selectedSplitSheet}
-            onClose={handleViewerClose}
-            profession={profession}
-            onViewContract={(contract) => {
-              // Emit event to open contract in contract hub
-              if (communication) {
-                communication.sendMessage({
-                  from: 'split-sheet-manager',
-                  to: 'contract-hub',
-                  type: 'contract:view',
-                  data: { contractId: contract.id },
-                });
-              }
-            }}
-            onCreateContract={() => {
-              // Pre-populate contract from split sheet
-              if (selectedSplitSheet) {
-                const totalRevenue = selectedSplitSheet.contributors?.reduce(
-                  (sum: number, c: any) => sum + (c.percentage || 0),
-                  0
-                ) || 0;
-                const clientContributor = selectedSplitSheet.contributors?.find(
-                  (c: any) => c.role === 'client' || c.role === 'artist');
-                
-                setContractEditorData({
-                  clientName: clientContributor?.name || 'Klient',
-                  clientEmail: clientContributor?.email || '',
-                  projectDescription: selectedSplitSheet.title || selectedSplitSheet.description || ', ',
-                  totalAmount: totalRevenue || selectedSplitSheet.total_revenue || 0,
-                  status: 'draft',
-                  projectId: selectedSplitSheet.project_id,
-                });
-                setShowContractEditor(true);
-                setShowViewer(false);
-                
-                // Emit event
+          <>
+            {/* Tab 0: Split Sheet Viewer */}
+            <TabPanel value={viewerTab} index={0} sx={{ p: 2 }}>
+              <SplitSheetViewer
+                splitSheet={selectedSplitSheet}
+                onClose={handleViewerClose}
+                profession={profession}
+                onViewContract={(contract) => {
+                  // Emit event to open contract in contract hub
+                  if (communication) {
+                    communication.sendMessage({
+                      from: 'split-sheet-manager',
+                      to: 'contract-hub',
+                      type: 'contract:view',
+                      data: { contractId: contract.id },
+                      priority: 'medium'
+                    });
+                  }
+                }}
+                onCreateContract={() => {
+                  // Pre-populate contract from split sheet
+                  if (selectedSplitSheet) {
+                    const totalRevenue = selectedSplitSheet.contributors?.reduce(
+                      (sum: number, c: any) => sum + (c.percentage || 0),
+                      0
+                    ) || 0;
+                    const clientContributor = selectedSplitSheet.contributors?.find(
+                      (c: any) => c.role === 'client' || c.role === 'artist');
+                    
+                    setContractEditorData({
+                      clientName: clientContributor?.name || 'Klient',
+                      clientEmail: clientContributor?.email || '',
+                      projectDescription: selectedSplitSheet.title || selectedSplitSheet.description || '',
+                      totalAmount: totalRevenue || 0,
+                      status: 'draft',
+                      projectId: selectedSplitSheet.project_id,
+                    });
+                    setShowContractEditor(true);
+                    setShowViewer(false);
+                    
+                    // Emit event
+                    if (communication) {
+                      communication.sendMessage({
+                        from: 'split-sheet-manager',
+                        to: 'contract-hub',
+                        type: 'contract:create-from-split-sheet',
+                        data: {
+                          splitSheetId: selectedSplitSheet.id,
+                          projectId: selectedSplitSheet.project_id,
+                        },
+                        priority: 'medium'
+                      });
+                    }
+                  }
+                }}
+              />
+            </TabPanel>
+
+            {/* Tab 1: Revenue Tracking */}
+            <TabPanel value={viewerTab} index={1} sx={{ p: 2 }}>
+              <SplitSheetRevenueTracker splitSheetId={selectedSplitSheet.id || ''} />
+            </TabPanel>
+
+            {/* Tab 2: Payment History */}
+            <TabPanel value={viewerTab} index={2} sx={{ p: 2 }}>
+              <SplitSheetPaymentHistory splitSheetId={selectedSplitSheet.id || ''} />
+            </TabPanel>
+
+            {/* Tab 3: Comments */}
+            <TabPanel value={viewerTab} index={3} sx={{ p: 2 }}>
+              <SplitSheetComments splitSheetId={selectedSplitSheet.id || ''} />
+            </TabPanel>
+          </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Confirm Delete Dialog */}
+      <Dialog open={!!confirmDeleteSheet} onClose={() => setConfirmDeleteSheet(null)}>
+        <DialogTitle>Bekreft sletting</DialogTitle>
+        <DialogContent>
+          <Typography>
+            Er du sikker på at du vil slette "{confirmDeleteSheet?.title}"? Denne handlingen kan ikke angres.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmDeleteSheet(null)}>Avbryt</Button>
+          <Button onClick={executeDelete} color="error" variant="contained">Slett</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Contract Editor Dialog */}
+      <Dialog
+        open={showContractEditor}
+        onClose={() => setShowContractEditor(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>Opprett ny kontrakt fra split sheet</DialogTitle>
+        <DialogContent sx={{ p: 3 }}>
+          {contractEditorData && (
+            <ContractEditingInterface
+              initialData={contractEditorData}
+              onSave={(contractData) => {
+                // Emit event to save contract
                 if (communication) {
                   communication.sendMessage({
                     from: 'split-sheet-manager',
                     to: 'contract-hub',
-                    type: 'contract:create-from-split-sheet',
-                    data: {
-                      splitSheetId: selectedSplitSheet.id,
-                      projectId: selectedSplitSheet.project_id,
-                    },
+                    type: 'contract:save',
+                    data: contractData,
+                    priority: 'high'
                   });
                 }
-              }
-            }}
-          />
+                setShowContractEditor(false);
+                setContractEditorData(null);
+              }}
+              onCancel={() => {
+                setShowContractEditor(false);
+                setContractEditorData(null);
+              }}
+            />
           )}
         </DialogContent>
       </Dialog>

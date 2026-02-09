@@ -298,7 +298,7 @@ const AcademyContext = createContext<AcademyContextType | null>(null);
 // Provider
 export const AcademyProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [state, dispatch] = useReducer(academyReducer, initialState);
-  const { analytics, lifecycle, performance, debugging } = useEnhancedMasterIntegration();
+  const { analytics, lifecycle, performance, debugging, communication, dataFlow } = useEnhancedMasterIntegration();
   
   // Profession system hooks
   const { professionConfigs, getUserProfessionColor } = useDynamicProfessions();
@@ -312,7 +312,37 @@ export const AcademyProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   // Component registration
   useEffect(() => {
-    const endTiming = performance.startTiming('academy_context_render, ');
+    const endTiming = performance.startTiming('academy_context_render');
+    
+    // Register with communication system
+    communication.registerComponent('academy-context', 'context', [
+      'data:read', 'data:write', 'event:emit', 'event:listen',
+    ]);
+
+    // Register dataFlow nodes for bi-directional data flow
+    dataFlow.registerNode({
+      type: 'source',
+      componentId: 'academy-context',
+      dataKey: 'academy-courses',
+    });
+
+    dataFlow.registerNode({
+      type: 'source',
+      componentId: 'academy-context',
+      dataKey: 'academy-progress',
+    });
+
+    dataFlow.registerNode({
+      type: 'source',
+      componentId: 'academy-context',
+      dataKey: 'academy-current-course',
+    });
+
+    dataFlow.registerNode({
+      type: 'source',
+      componentId: 'academy-context',
+      dataKey: 'academy-enrollments',
+    });
     
     lifecycle.registerComponent({
       id: 'AcademyContext',
@@ -346,13 +376,18 @@ export const AcademyProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     return () => {
       endTiming();
+      communication.unregisterComponent('academy-context');
+      dataFlow.unregisterNode('academy-courses');
+      dataFlow.unregisterNode('academy-progress');
+      dataFlow.unregisterNode('academy-current-course');
+      dataFlow.unregisterNode('academy-enrollments');
       lifecycle.unregisterComponent('AcademyContext');
       analytics.trackEvent('academy_context_unmounted', {
         componentId: 'AcademyContext',
         timestamp: Date.now()
     });
   };
-}, [analytics, lifecycle, performance, debugging]);
+}, [analytics, lifecycle, performance, debugging, communication, dataFlow]);
 
   // Load courses
   const loadCourses = useCallback(async () => {

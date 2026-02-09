@@ -29,6 +29,7 @@ import {
   Tooltip,
   CircularProgress,
   Alert,
+  Snackbar,
 } from '@mui/material';
 import {
   Search,
@@ -81,6 +82,7 @@ export const VirtualStudioCommunityFeed: React.FC = () => {
   const [useCaseFilter, setUseCaseFilter] = useState('all');
   const [sortBy, setSortBy] = useState('recent');
   const [minRating, setMinRating] = useState(0);
+  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' }>({ open: false, message: '', severity: 'success' });
 
   useEffect(() => {
     fetchStudios();
@@ -123,13 +125,15 @@ export const VirtualStudioCommunityFeed: React.FC = () => {
         }
       );
       
-      alert(`Successfully cloned "${studio.title}"! Opening your new project...`);
+      setSnackbar({ open: true, message: `Successfully cloned "${studio.title}"! Opening your new project...`, severity: 'success' });
       
       // Navigate to the cloned project
-      window.location.href = `/virtual-studio/project/${response.clonedProjectId}`;
+      setTimeout(() => {
+        window.location.href = `/virtual-studio/project/${response.clonedProjectId}`;
+      }, 1500);
     } catch (error) {
       console.error('Error cloning studio:', error);
-      alert('Failed to clone studio. Please try again.');
+      setSnackbar({ open: true, message: 'Failed to clone studio. Please try again.', severity: 'error' });
     } finally {
       setCloning(null);
     }
@@ -428,6 +432,22 @@ export const VirtualStudioCommunityFeed: React.FC = () => {
           ))}
         </Grid>
       )}
+
+      {/* Snackbar Notifications */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={4000}
+        onClose={() => setSnackbar({ ...snackbar, open: false })}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert
+          onClose={() => setSnackbar({ ...snackbar, open: false })}
+          severity={snackbar.severity}
+          sx={{ width: '100%' }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Container>
   );
 };

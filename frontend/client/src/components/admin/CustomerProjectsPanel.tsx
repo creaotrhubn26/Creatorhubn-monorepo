@@ -93,7 +93,7 @@ export default function CustomerProjectsPanel({
   const [tabValue, setTabValue] = useState(0);
   
   // Theming system
-  const theming = useTheming('prototype_tester, ');
+  const theming = useTheming('prototype_tester');
   const [searchTerm, setSearchTerm] = useState('');
 
   // Fetch real customer and project data

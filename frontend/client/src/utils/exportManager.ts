@@ -31,7 +31,7 @@ export interface ExportConfig {
   cdnTimeout: number;
   versionTimeout: number;
   backupTimeout: number;
-  debug: boolean
+  debug: boolean;
 }
 
 export interface ExportFormat {
@@ -40,7 +40,7 @@ export interface ExportFormat {
   extension: string;
   mimeType: string;
   description: string;
-  category: 'code, ' | 'image' | 'video' | 'audio' | 'document' | 'archive' | 'data' | 'other';
+  category: 'code' | 'image' | 'video' | 'audio' | 'document' | 'archive' | 'data' | 'other';
   supported: boolean;
   compression: boolean;
   encryption: boolean;
@@ -64,7 +64,7 @@ export interface ExportFormat {
     deviceId?: string;
     ipAddress?: string;
     userAgent?: string;
-};
+  };
 }
 
 export interface ExportOptions {
@@ -108,6 +108,7 @@ export interface ExportResult {
     userAgent?: string;
     processingTime: number;
     optimizationTime: number;
+    minificationTime: number;
     compressionTime: number;
     encryptionTime: number;
     validationTime: number;
@@ -120,10 +121,10 @@ export interface ExportResult {
     cdnTime: number;
     versioningTime: number;
     backupTime: number;
-};
+  };
   errors: string[];
   warnings: string[];
-  success: boolean
+  success: boolean;
 }
 
 export interface ExportState {
@@ -243,18 +244,26 @@ class ExportManager {
       this.setupSupportedFormats();
       this.state.isEnabled = true;
       this.state.isInitialized = true;
-      this.emit('initialized, ');
-} catch (error) {
+      this.emit('initialized');
+    } catch (error) {
       this.state.hasError = true;
       this.state.error = error instanceof Error ? error.message : 'Unknown error';
-      this.emit('error, ', { error: this.state.error });
-}
-}
+      this.emit('error', { error: this.state.error });
+    }
+  }
 
   /**
    * Setup supported formats
    */
   private setupSupportedFormats(): void {
+    const defaultMetadata: ExportFormat['metadata'] = {
+      size: 0,
+      checksum: '',
+      timestamp: 0,
+      userId: '',
+      sessionId: ''
+    };
+
     const formats: ExportFormat[] = [
       // Code formats
       {
@@ -278,14 +287,8 @@ class ExportManager {
         cdn: true,
         versioning: true,
         backup: true,
-        metadata: {
-          size:, 0,
-          checksum: '',
-          timestamp:  0,
-          userId: '',
-          sessionId: ''
-  }
-  },
+        metadata: { ...defaultMetadata }
+      },
       {
         id: 'typescript',
         name: 'TypeScript',
@@ -307,17 +310,11 @@ class ExportManager {
         cdn: true,
         versioning: true,
         backup: true,
-        metadata: {
-          size:, 0,
-          checksum: '',
-          timestamp:  0,
-          userId: '',
-          sessionId: ''
-  }
-  },
+        metadata: { ...defaultMetadata }
+      },
       {
         id: 'jsx',
-        name: 'JS',
+        name: 'JSX',
         extension: '.jsx',
         mimeType: 'text/jsx',
         description: 'JSX code',
@@ -336,17 +333,11 @@ class ExportManager {
         cdn: true,
         versioning: true,
         backup: true,
-        metadata: {
-          size:, 0,
-          checksum: '',
-          timestamp:  0,
-          userId: '',
-          sessionId: ''
-  }
-  },
+        metadata: { ...defaultMetadata }
+      },
       {
         id: 'tsx',
-        name: 'TS',
+        name: 'TSX',
         extension: '.tsx',
         mimeType: 'text/tsx',
         description: 'TSX code',
@@ -365,17 +356,11 @@ class ExportManager {
         cdn: true,
         versioning: true,
         backup: true,
-        metadata: {
-          size:, 0,
-          checksum: '',
-          timestamp:  0,
-          userId: '',
-          sessionId: ''
-  }
-  },
+        metadata: { ...defaultMetadata }
+      },
       {
         id: 'css',
-        name: 'CS',
+        name: 'CSS',
         extension: '.css',
         mimeType: 'text/css',
         description: 'CSS styles',
@@ -394,17 +379,11 @@ class ExportManager {
         cdn: true,
         versioning: true,
         backup: true,
-        metadata: {
-          size:, 0,
-          checksum: '',
-          timestamp:  0,
-          userId: '',
-          sessionId: ''
-  }
-  },
+        metadata: { ...defaultMetadata }
+      },
       {
         id: 'scss',
-        name: 'SCS',
+        name: 'SCSS',
         extension: '.scss',
         mimeType: 'text/scss',
         description: 'SCSS styles',
@@ -423,17 +402,11 @@ class ExportManager {
         cdn: true,
         versioning: true,
         backup: true,
-        metadata: {
-          size:, 0,
-          checksum: '',
-          timestamp:  0,
-          userId: '',
-          sessionId: ''
-  }
-  },
+        metadata: { ...defaultMetadata }
+      },
       {
         id: 'html',
-        name: 'HTM',
+        name: 'HTML',
         extension: '.html',
         mimeType: 'text/html',
         description: 'HTML markup',
@@ -452,17 +425,11 @@ class ExportManager {
         cdn: true,
         versioning: true,
         backup: true,
-        metadata: {
-          size:, 0,
-          checksum: '',
-          timestamp:  0,
-          userId: '',
-          sessionId: ''
-  }
-  },
+        metadata: { ...defaultMetadata }
+      },
       {
         id: 'json',
-        name: 'JSO',
+        name: 'JSON',
         extension: '.json',
         mimeType: 'application/json',
         description: 'JSON data',
@@ -481,18 +448,12 @@ class ExportManager {
         cdn: true,
         versioning: true,
         backup: true,
-        metadata: {
-          size:, 0,
-          checksum: '',
-          timestamp:  0,
-          userId: '',
-          sessionId: ''
-  }
-  },
+        metadata: { ...defaultMetadata }
+      },
       // Image formats
       {
         id: 'png',
-        name: 'PN',
+        name: 'PNG',
         extension: '.png',
         mimeType: 'image/png',
         description: 'PNG image',
@@ -511,17 +472,11 @@ class ExportManager {
         cdn: true,
         versioning: true,
         backup: true,
-        metadata: {
-          size:, 0,
-          checksum: '',
-          timestamp:  0,
-          userId: '',
-          sessionId: ''
-  }
-  },
+        metadata: { ...defaultMetadata }
+      },
       {
         id: 'jpg',
-        name: 'JPE',
+        name: 'JPG',
         extension: '.jpg',
         mimeType: 'image/jpeg',
         description: 'JPEG image',
@@ -540,17 +495,11 @@ class ExportManager {
         cdn: true,
         versioning: true,
         backup: true,
-        metadata: {
-          size:, 0,
-          checksum: '',
-          timestamp:  0,
-          userId: '',
-          sessionId: ''
-  }
-  },
+        metadata: { ...defaultMetadata }
+      },
       {
         id: 'svg',
-        name: 'SV',
+        name: 'SVG',
         extension: '.svg',
         mimeType: 'image/svg+xml',
         description: 'SVG image',
@@ -569,18 +518,12 @@ class ExportManager {
         cdn: true,
         versioning: true,
         backup: true,
-        metadata: {
-          size:, 0,
-          checksum: '',
-          timestamp:  0,
-          userId: '',
-          sessionId: ''
-  }
-  },
+        metadata: { ...defaultMetadata }
+      },
       // Archive formats
       {
         id: 'zip',
-        name: 'ZI',
+        name: 'ZIP',
         extension: '.zip',
         mimeType: 'application/zip',
         description: 'ZIP archive',
@@ -599,17 +542,11 @@ class ExportManager {
         cdn: true,
         versioning: true,
         backup: true,
-        metadata: {
-          size:, 0,
-          checksum: ', ',
-          timestamp:  0,
-          userId: ', ',
-          sessionId: ', '
-  }
-  },
+        metadata: { ...defaultMetadata }
+      },
       {
         id: 'tar',
-        name: 'TA',
+        name: 'TAR',
         extension: '.tar',
         mimeType: 'application/x-tar',
         description: 'TAR archive',
@@ -628,20 +565,14 @@ class ExportManager {
         cdn: true,
         versioning: true,
         backup: true,
-        metadata: {
-          size:, 0,
-          checksum: ', ',
-          timestamp:  0,
-          userId: ', ',
-          sessionId: ', '
-  }
-  }
+        metadata: { ...defaultMetadata }
+      }
     ];
 
-    formats.forEach(format => {
+    formats.forEach((format) => {
       this.state.supportedFormats.set(format.id, format);
-});
-}
+    });
+  }
 
   /**
    * Export data
@@ -656,34 +587,35 @@ class ExportManager {
     if (!format) throw new Error(`Unsupported format: ${options.format}`);
 
     const result: ExportResult = {
-      id: exportd,
+      id: exportId,
       format: options.format,
       data: null,
-      size:  0,
-      checksum: ', ',
+      size: 0,
+      checksum: '',
       metadata: {
         timestamp: Date.now(),
         userId: 'unknown',
         sessionId: this.generateSessionId(),
-        processingTime:  0,
-        optimizationTime:  0,
-        compressionTime:  0,
-        encryptionTime:  0,
-        validationTime:  0,
-        bundlingTime:  0,
-        treeShakingTime:  0,
-        codeSplittingTime:  0,
-        sourceMapTime:  0,
-        progressiveLoadingTime:  0,
-        cachingTime:  0,
-        cdnTime:  0,
-        versioningTime:  0,
+        processingTime: 0,
+        optimizationTime: 0,
+        minificationTime: 0,
+        compressionTime: 0,
+        encryptionTime: 0,
+        validationTime: 0,
+        bundlingTime: 0,
+        treeShakingTime: 0,
+        codeSplittingTime: 0,
+        sourceMapTime: 0,
+        progressiveLoadingTime: 0,
+        cachingTime: 0,
+        cdnTime: 0,
+        versioningTime: 0,
         backupTime: 0
-},
-      errors:  [],
-      warnings:  [],
+      },
+      errors: [],
+      warnings: [],
       success: false
-};
+    };
 
     try {
       // Process data
@@ -899,8 +831,8 @@ class ExportManager {
    */
   private async compressData(data: any, format: ExportFormat): Promise<{ data: any; size: number }> {
     // Implementation depends on format
-    return { data, size: this.calculateDataSize(data, ),};
-}
+    return { data, size: this.calculateDataSize(data) };
+  }
 
   /**
    * Encrypt data
@@ -908,22 +840,22 @@ class ExportManager {
   private async encryptData(data: any, format: ExportFormat): Promise<any> {
     // Implementation depends on format
     return data;
-}
+  }
 
   /**
    * Cache data
    */
   private async cacheData(data: any, format: ExportFormat, exportId: string): Promise<void> {
     // Implementation depends on caching strategy
-}
+  }
 
   /**
    * Upload to CDN
    */
   private async uploadToCDN(data: any, format: ExportFormat, exportId: string): Promise<string> {
     // Implementation depends on CDN provider
-    return `https://cdn.example.com/exports/${exportd}${format.extension}`;
-}
+    return `https://cdn.example.com/exports/${exportId}${format.extension}`;
+  }
 
   /**
    * Version data
@@ -931,36 +863,36 @@ class ExportManager {
   private async versionData(data: any, format: ExportFormat, exportId: string): Promise<string> {
     // Implementation depends on versioning strategy
     return `v${Date.now()}`;
-}
+  }
 
   /**
    * Backup data
    */
   private async backupData(data: any, format: ExportFormat, exportId: string): Promise<string> {
     // Implementation depends on backup strategy
-    return `backup_${exportd}`;
-}
+    return `backup_${exportId}`;
+  }
 
   /**
    * Generate URL
    */
   private generateUrl(exportId: string, format: ExportFormat): string {
-    return `/api/exports/${exportd}${format.extension}`;
-}
+    return `/api/exports/${exportId}${format.extension}`;
+  }
 
   /**
    * Generate download URL
    */
   private generateDownloadUrl(exportId: string, format: ExportFormat): string {
-    return `/api/exports/${exportd}/download${format.extension}`;
-}
+    return `/api/exports/${exportId}/download${format.extension}`;
+  }
 
   /**
    * Calculate data size
    */
   private calculateDataSize(data: any): number {
     return new Blob([JSON.stringify(data)]).size;
-}
+  }
 
   /**
    * Calculate checksum
@@ -973,10 +905,10 @@ class ExportManager {
       const char = str.charCodeAt(i);
       hash = ((hash << 5) - hash) + char;
       hash = hash & hash;
-}
+    }
     
     return hash.toString(16);
-}
+  }
 
   /**
    * Update averages

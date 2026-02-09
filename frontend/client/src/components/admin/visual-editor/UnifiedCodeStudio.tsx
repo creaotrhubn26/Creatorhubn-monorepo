@@ -656,7 +656,7 @@ export const UnifiedCodeStudio: React.FC<UnifiedCodeStudioProps> = ({
       <AISettingsDialog
         open={showAISettings}
         onClose={() => setShowAISettings(false)}
-        config={aiCompletion.updateConfig ? ({} as any) : ({} as any)}
+        config={aiCompletion.updateConfig ? ({} as Record<string, any>) : ({} as Record<string, any>)}
         onSave={(config, apiKey) => {
           if (apiKey) {
             aiCompletion.setApiKey(apiKey);

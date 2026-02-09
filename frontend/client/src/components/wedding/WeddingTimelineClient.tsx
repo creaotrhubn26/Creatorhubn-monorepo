@@ -476,7 +476,7 @@ export default function WeddingTimelineClient({ timelineId, clientAccessCode }: 
                 {editingEvent === event.id && event.canClientEdit ? (
                   // Edit Mode
                   <Box>
-                    <Typography variant="h6" sx={{ color: theming.colors.primary, fontWeight: 70, mb: 2 }}>
+                    <Typography variant="h6" sx={{ color: theming.colors.primary, fontWeight: 700, mb: 2 }}>
                       {event.title} - REDIGER
                     </Typography>
                     
@@ -656,7 +656,7 @@ export default function WeddingTimelineClient({ timelineId, clientAccessCode }: 
                   }}>
                         <Typography variant="subtitle2" sx={{ 
                           color: '#9c27b0',
-                          fontWeight: 7,
+                          fontWeight: 700,
                           display: 'flex',
                           alignItems: 'center',
                           gap: 1,

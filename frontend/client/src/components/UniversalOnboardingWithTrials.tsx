@@ -190,7 +190,7 @@ export default function UniversalOnboardingWithTrials({
   const queryClient = useQueryClient();
   
   // Theming system
-  const theming = useTheming('photographer, ');
+  const theming = useTheming('photographer');
 
   // Use dynamic profession system
   const {

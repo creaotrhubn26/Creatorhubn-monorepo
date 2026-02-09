@@ -355,7 +355,7 @@ const ContextualPhotographyTipsOverlay: React.FC<ContextualPhotographyTipsOverla
                   </Typography>
 
                   <Grid container spacing={2}>
-                    <Grid size={{ xs: 12 }} sm={6} md={3}>
+                    <Grid size={{ xs: 12, sm: 6, md: 3 }}>
                       <FormControl fullWidth>
                         <InputLabel>Lysforhold</InputLabel>
                         <Select
@@ -392,7 +392,7 @@ const ContextualPhotographyTipsOverlay: React.FC<ContextualPhotographyTipsOverla
                       </FormControl>
                     </Grid>
 
-                    <Grid size={{ xs: 12 }} sm={6} md={3}>
+                    <Grid size={{ xs: 12, sm: 6, md: 3 }}>
                       <FormControl fullWidth>
                         <InputLabel>Motiv</InputLabel>
                         <Select
@@ -420,7 +420,7 @@ const ContextualPhotographyTipsOverlay: React.FC<ContextualPhotographyTipsOverla
                       </FormControl>
                     </Grid>
 
-                    <Grid size={{ xs: 12 }} sm={6} md={3}>
+                    <Grid size={{ xs: 12, sm: 6, md: 3 }}>
                       <FormControl fullWidth>
                         <InputLabel>Kamera</InputLabel>
                         <Select
@@ -435,7 +435,7 @@ const ContextualPhotographyTipsOverlay: React.FC<ContextualPhotographyTipsOverla
                       </FormControl>
                     </Grid>
 
-                    <Grid size={{ xs: 12 }} sm={6} md={3}>
+                    <Grid size={{ xs: 12, sm: 6, md: 3 }}>
                       <FormControl fullWidth>
                         <InputLabel>Erfaring</InputLabel>
                         <Select

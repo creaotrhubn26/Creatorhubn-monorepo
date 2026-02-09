@@ -33,7 +33,7 @@ export const UniversalIntegrationWrapper: React.FC<UniversalIntegrationWrapperPr
   const { integration, communication, dataFlow, componentRegistry } = useEnhancedMasterIntegration();
   
   // Theming system
-  const theming = useTheming('prototype_tester, ');
+  const theming = useTheming('prototype_tester');
 
   // Register component in the integration system
   useEffect(() => {

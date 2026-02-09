@@ -133,7 +133,7 @@ const CreatorhubVisualEditorContent: React.FC<CreatorhubVisualEditorProps> = ({
   const { integration, communication, dataFlow } = useEnhancedMasterIntegration();
   
   // Theming system (Optional) if you want to add a theme. If you don't want to add a theme, you can leave it blank. If you want to add a description, you can add it here. If you don't want to add a description, you can leave it blank.
-  const theming = useTheming('prototype_tester, ');
+  const theming = useTheming('prototype_tester');
   
   // CreatorHub Branding system (Optional) if you want to add a branding. If you don't want to add a branding, you can leave it blank. If you want to add a description, you can add it here. If you don't want to add a description, you can leave it blank.
   const [brandingProfession, setBrandingProfession] = useState<'admin' | 'photographer' | 'videographer' | 'music_producer' | 'vendor'>('photographer');
@@ -141,7 +141,7 @@ const CreatorhubVisualEditorContent: React.FC<CreatorhubVisualEditorProps> = ({
   const [customBrandColor, setCustomBrandColor] = useState<string | undefined>(undefined);
   const branding = useCreatorHubBranding({
     profession: brandingProfession,
-    projectCategory: brandingCategory as any,
+    projectCategory: brandingCategory,
     customColor: customBrandColor,
     validate: true
 });
@@ -160,7 +160,7 @@ const CreatorhubVisualEditorContent: React.FC<CreatorhubVisualEditorProps> = ({
     getUserProjects = async () => [], 
     searchProjects = async () => [], 
     deleteProject = async () => {} 
-} = (databaseHook as any) || {};
+} = (databaseHook || {}) as Record<string, any>;
   
   // Core state (moved to top to avoid hoisting issues) (Optional) if you want to add a project. If you don't want to add a project, you can leave it blank. If you want to add a description, you can add it here. If you don't want to add a description, you can leave it blank.
   const [project, setProject] = useState<EditorProject>({
@@ -185,13 +185,13 @@ const CreatorhubVisualEditorContent: React.FC<CreatorhubVisualEditorProps> = ({
   const visualEditorHook = useVisualEditor();
   const {
     addNotification = () => {},
-} = (visualEditorHook as any) || {};
+} = (visualEditorHook || {}) as Record<string, any>;
 
   // Initialize database integration
   useEffect(() => {
     if (dbConnected && !dbIntegration) {
       // Get database instance from the integration system
-      const dbInstance = (integration as any).getDatabase?.() || null;
+      const dbInstance = integration?.getDatabase?.() || null;
       if (dbInstance) {
         setDbIntegration(new DatabaseIntegrationService(dbInstance, communication, integration, dataFlow));
     }
@@ -200,7 +200,7 @@ const CreatorhubVisualEditorContent: React.FC<CreatorhubVisualEditorProps> = ({
 
   // Register this component in the integration system
   useEffect(() => {
-    communication.registerComponent('visual-editor,', 'visual-editor', [
+    communication.registerComponent('visual-editor', 'visual-editor', [
       'data:read','data:write','event:emit','event:listen','action:execute','ui:update','collaboration:update'
     ]);
 
@@ -342,10 +342,10 @@ const CreatorhubVisualEditorContent: React.FC<CreatorhubVisualEditorProps> = ({
   
 
   // Database sync handler (defined early to avoid hoisting issues)
-  const handleSyncProjectChanges = useCallback(async (changes: any) => {
+  const handleSyncProjectChanges = useCallback(async (changes: Record<string, unknown>) => {
     try {
       if (dbConnected && dbIntegration) {
-        await dbIntegration.syncProjectChanges(project?.id || "", changes as any || {}, 'visual-editor', 'all');
+        await dbIntegration.syncProjectChanges(project?.id || "", changes || {}, 'visual-editor', 'all');
         console.log('🔄 Project changes synced');
       }
     } catch (error) {
@@ -461,9 +461,10 @@ const CreatorhubVisualEditorContent: React.FC<CreatorhubVisualEditorProps> = ({
   }, [integration, communication, dataFlow]);
 
   const handleElementAdd = useCallback((componentType: string, position: { x: number; y: number }) => {
+    const validType = (componentType || 'button') as 'button' | 'text' | 'image' | 'card' | 'container' | 'grid' | 'audio' | 'video';
     const newElement: EditorElement = {
       id: `element_${Date.now()}`,
-      type: componentType as any,
+      type: validType,
       x: position.x,
       y: position.y,
       width: 100,
@@ -1051,7 +1052,7 @@ const CreatorhubVisualEditorContent: React.FC<CreatorhubVisualEditorProps> = ({
             <Box sx={{ borderBottom: 1, borderColor: 'divider'}}>
               <Tabs
                 value={selectedView}
-                onChange={(_, newValue: string | number) => setSelectedView(newValue as string | number as any as string)}
+                onChange={(_, newValue: string | number) => setSelectedView(String(newValue))}
                 variant="scrollable"
                 scrollButtons="auto"
                 sx={{ minHeight: 48 }}

@@ -5,19 +5,13 @@
 
 import { useTheming } from '../../utils/theming-helper';
 import React, { useState, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
 import { apiRequest } from '@/lib/queryClient';
-import { useToast } from '@/hooks/use-toast';
 import EditCollaboratorDialog from './EditCollaboratorDialog';
-import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
-import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
-import getProfessionIcon from '@/utils/profession-icons';
 import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
 import {
   Box,
-  Card,
-  CardContent,
   Typography,
   Button,
   TextField,
@@ -42,7 +36,6 @@ import {
   Select,
   MenuItem,
   Alert,
-  Divider,
   Grid,
   Paper,
   CircularProgress
@@ -50,39 +43,13 @@ import {
 import {
   PersonAdd,
   Search,
-  Email,
-  Phone,
-  Delete,
   Send,
   Group,
   CameraAlt,
-  Videocam,
   MusicNote,
-  Store,
-  Business,
-  Check,
-  Warning,
-  Info,
-  ContactPage,
-  Save,
-  CloudUpload,
-  Edit,
-  MoreVert
+  ContactPage
 } from '@mui/icons-material';
-
-interface ProjectCollaborator {
-  id?: string;
-  name: string;
-  email: string;
-  phone?: string;
-  role: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'client' | 'assistant' | 'coordinator';
-  isExistingUser: boolean;
-  userId?: string;
-  profileImageUrl?: string;
-  invitationStatus: 'pending' | 'accepted' | 'declined' | 'not_sent';
-  addedBy: string;
-  addedAt: string
-}
+import { ProjectCollaborator } from '@/types/project-collaborator';
 
 interface ExistingUser {
   id: string;
@@ -91,7 +58,7 @@ interface ExistingUser {
   email: string;
   profession: string;
   profileImageUrl?: string;
-  businessName?: string
+  businessName?: string;
 }
 
 interface ProjectCollaboratorsProps {
@@ -109,21 +76,22 @@ export default function ProjectCollaborators({
   const { getProfessionDisplayName } = useDynamicProfessions();
   const [collaborators, setCollaborators] = useState<ProjectCollaborator[]>([]);
   const [showAddDialog, setShowAddDialog] = useState(false);
-  const [searchQuery, setSearchQuery] = useState(' ');
+  const [searchQuery, setSearchQuery] = useState('');
   const [selectedUser, setSelectedUser] = useState<ExistingUser | null>(null);
   const [manualEntry, setManualEntry] = useState({
-    name: ',',
+    name: '',
     email: '',
     phone: '',
     role: 'photographer' as ProjectCollaborator['role']
 });
   const [isManualMode, setIsManualMode] = useState(false);
   const [searchMode, setSearchMode] = useState(0); // 0 = CreatorHub, 1 = Google Contacts
-  const [googleContacts, setGoogleContacts] = useState<any[]>([]);
-  const [isLoadingGoogleContacts, setIsLoadingGoogleContacts] = useState(false);
+  const [_googleContacts, _setGoogleContacts] = useState<any[]>([]);
+  const [_isLoadingGoogleContacts, _setIsLoadingGoogleContacts] = useState(false);
   const [showGoogleAuthSnackbar, setShowGoogleAuthSnackbar] = useState(false);
   const [editingCollaborator, setEditingCollaborator] = useState<ProjectCollaborator | null>(null);
   const [showEditDialog, setShowEditDialog] = useState(false);
+  const [pendingGoogleSaveData, setPendingGoogleSaveData] = useState<{ firstName: string; lastName: string; email: string; phone?: string; role: string } | null>(null);
 
   const handleEditCollaborator = (collaborator: ProjectCollaborator) => {
     setEditingCollaborator(collaborator);
@@ -137,18 +105,17 @@ export default function ProjectCollaborators({
 };
 
   const queryClient = useQueryClient();
+  const { user } = useAuth();
   
   // Theming system
-  const theming = useTheming('photographer');
+  const theming = useTheming(currentUserProfession || 'photographer');
 
   // Søk i eksisterende brukere (CreatorHub Norge)
   const { data: searchResults, isLoading: isSearching } = useQuery({
     queryKey: ['/api/users/search', searchQuery],
     enabled: searchQuery.length >= 2 && !isManualMode && searchMode === 0,
     queryFn: async () => {
-      return apiRequest(`/api/users/search?q=${searchQuery}`, {
-        headers: auth
-  });
+      return apiRequest(`/api/users/search?q=${searchQuery}`);
   },
     retry: false
 });
@@ -158,47 +125,43 @@ export default function ProjectCollaborators({
     queryKey: ['/api/google/people/search-contacts', searchQuery],
     enabled: searchQuery.length >= 2 && !isManualMode && searchMode === 1,
     queryFn: async () => {
-      return apiRequest(`/api/google/people/search-contacts?q=${searchQuery}`, {
-        headers: auth
-  });
+      return apiRequest(`/api/google/people/search-contacts?q=${searchQuery}`);
   },
     retry: false
 });
 
   // Legg til samarbeidspartner
-  const addCollaboratorMutation = useMutation({
-    mutationFn: async (collaborator: Omit<ProjectCollaborator, 'id' | , 'addedAt, '>) => {
+  const _addCollaboratorMutation = useMutation({
+    mutationFn: async (collaborator: Omit<ProjectCollaborator, 'id' | 'addedAt'>) => {
       return apiRequest('/api/projects/collaborators', {
+        method: 'POST',
         headers: {
-          "Content-Type" : "application/json"
-    },
-        
-        method: 'POS',
+          'Content-Type': 'application/json'
+        },
         body: JSON.stringify(collaborator)
-  });
-  },
+      });
+    },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/projects/collaborators', ],});
-  }
-});
+      queryClient.invalidateQueries({ queryKey: ['/api/projects/collaborators'] });
+    }
+  });
 
   // Send invitasjon
   const sendInvitationMutation = useMutation({
-    mutationFn: async (collaboratorId: string) => {
-      return apiRequest(`/api/projects/collaborators/${collaboratord}/invite`, {
+    mutationFn: async (_collaboratorId: string) => {
+      return apiRequest(`/api/projects/collaborators/${_collaboratorId}/invite`, {
+        method: 'POST',
         headers: {
-          "Content-Type" : "application/json"
-    },
-        
-        method: 'POS',
+          'Content-Type': 'application/json'
+        },
         body: JSON.stringify({
-          projectId: projectData.d,
-          projectName: projectData.projectName,
-          clientName: projectData.clientName
-    })
-    });
-  }
-});
+          projectId: projectData?.id || '',
+          projectName: projectData?.projectName || '',
+          clientName: projectData?.clientName || ''
+        })
+      });
+    }
+  });
 
   // Lagre kontakt i Google People
   const saveToGoogleContactsMutation = useMutation({
@@ -207,8 +170,7 @@ export default function ProjectCollaborators({
         headers: {
           "Content-Type" : "application/json"
     },
-        
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify({
           firstName: contactData.firstName,
           lastName: contactData.lastName,
@@ -233,12 +195,12 @@ export default function ProjectCollaborators({
     const newCollaborator: ProjectCollaborator = {
       name: `${selectedUser.firstName} ${selectedUser.lastName}`,
       email: selectedUser.email,
-      role: selectedUser.profession as ProjectCollaborator[''],
+      role: selectedUser.profession as ProjectCollaborator['role'],
       isExistingUser: true,
-      userId: selectedUser.d,
-      profileImageUrl: selectedUser.profileImageUl,
+      userId: selectedUser.id,
+      profileImageUrl: selectedUser.profileImageUrl,
       invitationStatus: 'not_sent',
-      addedBy: 'current-user',
+      addedBy: user?.id || 'current-user',
       addedAt: new Date().toISOString()
 };
 
@@ -251,8 +213,8 @@ export default function ProjectCollaborators({
   const handleAddManualEntry = async () => {
     if (!manualEntry.name || !manualEntry.email) return;
 
-    const [firstName, ...lastNameParts] = manualEntry.name.split('');
-    const lastName = lastNameParts.join('');
+    const [firstName, ...lastNameParts] = manualEntry.name.split(' ');
+    const lastName = lastNameParts.join(' ');
 
     const newCollaborator: ProjectCollaborator = {
       name: manualEntry.name,
@@ -261,48 +223,54 @@ export default function ProjectCollaborators({
       role: manualEntry.role,
       isExistingUser: false,
       invitationStatus: 'not_sent',
-      addedBy: 'current-user',
+      addedBy: user?.id || 'current-user',
       addedAt: new Date().toISOString()
 };
 
     setCollaborators(prev => [...prev, newCollaborator]);
 
-    // Spør brukeren om de vil lagre i Google kontakter
-    const saveToGoogle = window.confirm(
-      `Vil du lagre ${manualEntry.name} i Google kontakter for fremtidig bruk?`
-    );
-
-    if (saveToGoogle) {
-      try {
-        await saveToGoogleContactsMutation.mutateAsync({
-          firstName,
-          lastName,
-          email: manualEntry.email,
-          phone: manualEntry.phone,
-          role: manualEntry.role,
-          companyName: ''
+    // Lagre data for eventuell Google-lagring og vis dialogboks
+    setPendingGoogleSaveData({
+      firstName,
+      lastName,
+      email: manualEntry.email,
+      phone: manualEntry.phone,
+      role: manualEntry.role
     });
-    } catch (error) {
-        console.error('Failed to save to Google contacts: ', error);
-    }
-  }
 
-    setManualEntry({ name: '', email: ', ', phone: ', ', role: 'photographer',});
+    setManualEntry({ name: '', email: '', phone: '', role: 'photographer',});
     setIsManualMode(false);
     setShowAddDialog(false);
-};
+  };
+
+  const handleSaveToGoogle = async () => {
+    if (!pendingGoogleSaveData) return;
+    try {
+      await saveToGoogleContactsMutation.mutateAsync({
+        firstName: pendingGoogleSaveData.firstName,
+        lastName: pendingGoogleSaveData.lastName,
+        email: pendingGoogleSaveData.email,
+        phone: pendingGoogleSaveData.phone,
+        role: pendingGoogleSaveData.role,
+        companyName: ''
+      });
+    } catch (error) {
+      console.error('Failed to save to Google contacts: ', error);
+    }
+    setPendingGoogleSaveData(null);
+  };
 
   const handleAddGoogleContact = () => {
     if (!selectedUser) return;
 
     const newCollaborator: ProjectCollaborator = {
-      name: selectedUser.displayName || `${selectedUser.firstName} ${selectedUser.lastName}`,
+      name: `${selectedUser.firstName} ${selectedUser.lastName}`,
       email: selectedUser.email,
-      phone: selectedUser.phone,
+      phone: selectedUser.businessName,
       role: selectedUser.profession as ProjectCollaborator['role'] || 'assistant',
       isExistingUser: false,
       invitationStatus: 'not_sent',
-      addedBy: 'current-user',
+      addedBy: user?.id || 'current-user',
       addedAt: new Date().toISOString()
 };
 
@@ -330,19 +298,21 @@ export default function ProjectCollaborators({
   }
 };
 
-  const getRoleIcon = (role: ProjectCollaborator['role']) => {
-    switch (role) {
+  const getRoleIcon = (role: string) => {
+    const roleType = role as 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'client' | 'assistant' | 'coordinator';
+    switch (roleType) {
       case 'photographer': return <CameraAlt />;
-      case 'videographer': return theming.getThemedIcon(', ');
+      case 'videographer': return theming.getThemedIcon('videocam');
       case 'music_producer': return <MusicNote />;
       case 'vendor': return theming.getThemedIcon('store');
       case 'client': return theming.getThemedIcon('business');
-      default: return theming.getThemedIcon(', ');
+      default: return theming.getThemedIcon('group');
   }
 };
 
   const getRoleColor = (role: ProjectCollaborator['role']) => {
-    switch (role) {
+    const roleType = role as 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'client' | 'assistant' | 'coordinator';
+    switch (roleType) {
       case 'photographer': return 'primary';
       case 'videographer': return 'secondary';
       case 'music_producer': return 'success';
@@ -352,8 +322,9 @@ export default function ProjectCollaborators({
 }
 };
 
-  const getRoleName = (role: ProjectCollaborator['role']) => {
-    const roleNames = {
+  const getRoleName = (role: string) => {
+    const roleType = role as 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'client' | 'assistant' | 'coordinator';
+    const roleNames: Record<string, string> = {
       photographer: getProfessionDisplayName('photographer'),
       videographer: getProfessionDisplayName('videographer'),
       music_producer: getProfessionDisplayName('music_producer'),
@@ -362,7 +333,7 @@ export default function ProjectCollaborators({
       assistant: 'Assistent',
       coordinator: 'Koordinator'
 };
-    return roleNames[role];
+    return roleNames[roleType] || roleType;
 };
 
   const getInvitationStatusColor = (status: ProjectCollaborator['invitationStatus']) => {
@@ -447,11 +418,6 @@ export default function ProjectCollaborators({
                     {collaborator.phone && (
                       <Typography variant="body2" color="text.secondary">
                         📞 {collaborator.phone}
-                      </Typography>
-                    )}
-                    {collaborator.organizationNumber && (
-                      <Typography variant="body2" color="text.secondary">
-                        🏢 Org.nr: {collaborator.organizationNumber}
                       </Typography>
                     )}
                     <Box display="flex" alignItems="center" gap={1} mt={1}>
@@ -545,11 +511,11 @@ export default function ProjectCollaborators({
                 onChange={(_, newValue) => setSearchMode(newValue)}
                 sx={{ mb:  2 }}
               >
-                <Tab 
-                  icon={theming.getThemedIcon('group')}}
-                  label="CreatorHub Norge" 
-                  iconPosition="start"
-                />
+              <Tab 
+                icon={<Group />}
+                label="CreatorHub Norge" 
+                iconPosition="start"
+              />
                 <Tab 
                   icon={<ContactPage />}
                   label="Google kontakter" 
@@ -589,21 +555,21 @@ export default function ProjectCollaborators({
                 </Box>
               )}
               
-              <Autocomplete
+              <Autocomplete<ExistingUser>
                 options={searchMode === 0 ? (searchResults || []) : (googleSearchResults || [])}
-                getOptionLabel={(option) => 
+                getOptionLabel={(option: ExistingUser) => 
                   searchMode === 0 
                     ? `${option.firstName} ${option.lastName} (${option.email})`
-                    : `${option.displayName || option.firstName + ', ' + option.lastName} (${option.email})`
+                    : `${option.businessName || option.firstName + ' ' + option.lastName} (${option.email})`
               }
-                renderOption={(props, option) => (
+                renderOption={(props, option: ExistingUser) => (
                   <Box component="li" {...props}>
                     <Avatar 
                       src={option.profileImageUrl}
                       sx={{ mr: 2, width:  32, height: 32}}
                     >
                       {searchMode === 0 
-                        ? getRoleIcon(option.profession as any)
+                        ? getRoleIcon(option.profession)
                         : <ContactPage />
                     }
                     </Avatar>
@@ -611,34 +577,26 @@ export default function ProjectCollaborators({
                       <Typography variant="subtitle2">
                         {searchMode === 0 
                           ? `${option.firstName} ${option.lastName}`
-                          : (option.displayName || `${option.firstName} ${option.lastName}`)
+                          : `${option.firstName} ${option.lastName}`
                       }
                       </Typography>
                       <Typography variant="body2" color="text.secondary">
                         {option.email} • {searchMode === 0 
-                          ? getRoleName(option.profession as any)
-                          : getRoleName(option.profession as any)
+                          ? getRoleName(option.profession)
+                          : getRoleName(option.profession)
                       }
                       </Typography>
-                      {(option.businessName || option.companyName) && (
+                      {option.businessName && (
                         <Typography variant="caption" color="text.secondary">
-                          {option.businessName || option.companyName}
+                          {option.businessName}
                         </Typography>
-                      )}
-                      {searchMode === 1 && option.isCreatorHubPartner && (
-                        <Chip 
-                          label="CreatorHub partner"
-                          size="small"
-                          color="success"
-                          sx={{ ml:  1 }}
-                        />
                       )}
                     </Box>
                   </Box>
                 )}
                 loading={searchMode === 0 ? isSearching : isSearchingGoogle}
                 onInputChange={(_, value) => setSearchQuery(value)}
-                onChange={(_, value) => setSelectedUser(value)}
+                onChange={(_, value: ExistingUser | null) => setSelectedUser(value)}
                 renderInput={(params) => (
                   <TextField
                     {...params}
@@ -665,7 +623,7 @@ export default function ProjectCollaborators({
                   <Box display="flex" alignItems="center" gap={2}>
                     <Avatar src={selectedUser.profileImageUrl}>
                       {searchMode === 0 
-                        ? getRoleIcon(selectedUser.profession as any)
+                        ? getRoleIcon(selectedUser.profession)
                         : <ContactPage />
                     }
                     </Avatar>
@@ -673,11 +631,11 @@ export default function ProjectCollaborators({
                       <Typography variant="body1">
                         {searchMode === 0 
                           ? `${selectedUser.firstName} ${selectedUser.lastName}`
-                          : (selectedUser.displayName || `${selectedUser.firstName} ${selectedUser.lastName}`)
+                          : `${selectedUser.firstName} ${selectedUser.lastName}`
                       }
                       </Typography>
                       <Typography variant="body2" color="text.secondary">
-                        {selectedUser.email} • {getRoleName(selectedUser.profession as any)}
+                        {selectedUser.email} • {getRoleName(selectedUser.profession)}
                       </Typography>
                       {searchMode === 1 && (
                         <Chip 
@@ -706,7 +664,7 @@ export default function ProjectCollaborators({
               </Alert>
               
               <Grid container spacing={2}>
-                <Grid size={{ xs: 12 }}>
+                <Grid xs={12}>
                   <TextField
                     fullWidth
                     label="Fullt navn"
@@ -715,7 +673,7 @@ export default function ProjectCollaborators({
                     required
                   />
                 </Grid>
-                <Grid size={{ xs: 12 }} sm={6}>
+                <Grid xs={12} sm={6}>
                   <TextField
                     fullWidth
                     label="E-post"
@@ -725,7 +683,7 @@ export default function ProjectCollaborators({
                     required
                   />
                 </Grid>
-                <Grid size={{ xs: 12 }} sm={6}>
+                <Grid xs={12} sm={6}>
                   <TextField
                     fullWidth
                     label="Telefon"
@@ -733,12 +691,12 @@ export default function ProjectCollaborators({
                     onChange={(e) => setManualEntry(prev => ({ ...prev, phone: e.target.value }))}
                   />
                 </Grid>
-                <Grid size={{ xs: 12 }}>
+                <Grid xs={12}>
                   <FormControl fullWidth>
                     <InputLabel>Rolle i prosjektet</InputLabel>
                     <Select
                       value={manualEntry.role}
-                      onChange={(e) => setManualEntry(prev => ({ ...prev, role: e.target.value as any }))}
+                      onChange={(e) => setManualEntry(prev => ({ ...prev, role: e.target.value as ProjectCollaborator['role'] }))}
                       label="Rolle i prosjektet"
                     >
                       <MenuItem value="photographer">
@@ -830,6 +788,22 @@ export default function ProjectCollaborators({
       }}
         onUpdate={handleUpdateCollaborator}
       />
+
+      {/* Save to Google Contacts Dialog */}
+      <Dialog open={!!pendingGoogleSaveData} onClose={() => setPendingGoogleSaveData(null)}>
+        <DialogTitle>Lagre i Google Kontakter</DialogTitle>
+        <DialogContent>
+          <Typography>
+            Vil du lagre {pendingGoogleSaveData?.firstName} {pendingGoogleSaveData?.lastName} i Google kontakter for fremtidig bruk?
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPendingGoogleSaveData(null)}>Nei takk</Button>
+          <Button onClick={handleSaveToGoogle} variant="contained" color="primary">
+            Ja, lagre
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

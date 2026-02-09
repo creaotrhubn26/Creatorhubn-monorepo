@@ -83,13 +83,13 @@ export const INTEGRATION_CONFIGS = {
   ADMIN_DASHBOARD: {
     componentType: 'admin-dashboard',
     capabilities: [
-      'data:read', 'data: write','event: emit','event: listen','action: execute','ui: update','system: access'
-   , ],
+      'data:read', 'data:write', 'event:emit', 'event:listen', 'action:execute', 'ui:update', 'system:access'
+    ],
     dataKeys: [
       'selectedUser','selectedProject','selectedClient','systemStatus','notifications'
     ],
     messageTypes: [
-      'data:update','ui: update','action: execute','system: status'
+      'data:update', 'ui:update', 'action:execute', 'system:status'
     ]
 },
   
@@ -97,13 +97,13 @@ export const INTEGRATION_CONFIGS = {
   VISUAL_EDITOR: {
     componentType: 'visual-editor',
     capabilities: [
-      'data:read','data: write','event: emit','event: listen','action: execute','ui: update','collaboration: update'
-   , ],
+      'data:read', 'data:write', 'event:emit', 'event:listen', 'action:execute', 'ui:update', 'collaboration:update'
+    ],
     dataKeys: [
       'selectedElement','projectData','designSystem','componentLibrary','templates'
     ],
     messageTypes: [
-      'data:update','ui: update','collaboration: update','realtime: sync'
+      'data:update', 'ui:update', 'collaboration:update', 'realtime:sync'
     ]
 },
   
@@ -111,13 +111,13 @@ export const INTEGRATION_CONFIGS = {
   DASHBOARD: {
     componentType: 'dashboard',
     capabilities: [
-      'data:read','data: write','event: emit','event: listen','ui: update','analytics: track'
-   , ],
+      'data:read', 'data:write', 'event:emit', 'event:listen', 'ui:update', 'analytics:track'
+    ],
     dataKeys: [
       'dashboardData','widgets','layout','analytics'
     ],
     messageTypes: [
-      'data:update','ui: update','analytics: track'
+      'data:update','ui:update','analytics:track'
     ]
 },
   
@@ -125,13 +125,13 @@ export const INTEGRATION_CONFIGS = {
   PANEL: {
     componentType: 'panel',
     capabilities: [
-      'data:read','data: write','event: emit','event: listen','ui: update'
-   , ],
+      'data:read', 'data:write', 'event:emit', 'event:listen', 'ui:update'
+    ],
     dataKeys: [
       'panelData','settings'
     ],
     messageTypes: [
-      'data:update','ui: update'
+      'data:update', 'ui:update'
     ]
 },
   

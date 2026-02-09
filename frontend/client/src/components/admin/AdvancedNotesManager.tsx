@@ -348,7 +348,7 @@ export default function AdvancedNotesManager({
     <Box className={className} sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       {/* Header */}
       <Box sx={{ p: 3, borderBottom: 1, borderColor: 'divider' }}>
-        <Typography variant="h4" sx={{ fontWeight: 70, mb: 2, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
+        <Typography variant="h4" sx={{ fontWeight: 700, mb: 2, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
           <Notes color="primary" />
           Stor Notatsløsning - CreatorHub Norge
         </Typography>

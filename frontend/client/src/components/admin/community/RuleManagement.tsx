@@ -20,6 +20,7 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
+  DialogContentText,
   DialogActions,
   TextField,
   FormControl,
@@ -31,6 +32,7 @@ import {
   Chip,
   IconButton,
   Alert,
+  Snackbar,
 } from '@mui/material';
 import { Add, Edit, Delete, CheckCircle, Warning } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
@@ -53,6 +55,8 @@ export default function RuleManagement() {
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingRule, setEditingRule] = useState<Rule | null>(null);
+  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'warning' | 'info' }>({ open: false, message: '', severity: 'info' });
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     ruleCode:  ',',
     ruleName: '',
@@ -152,24 +156,28 @@ export default function RuleManagement() {
       loadRules();
     } catch (error) {
       console.error('Error saving rule:', error);
-      alert('Kunne ikke lagre regel');
+      setSnackbar({ open: true, message: 'Kunne ikke lagre regel', severity: 'error' });
     }
   };
 
   const handleDeleteRule = async (ruleId: string) => {
-    if (!confirm('Er du sikker på at du vil deaktivere denne regelen?')) {
-      return;
-    }
+    setConfirmDeleteId(ruleId);
+  };
+
+  const executeDeleteRule = async () => {
+    if (!confirmDeleteId) return;
 
     try {
-      await apiRequest(`/api/community/moderation/rules/${ruleId}`, {
+      await apiRequest(`/api/community/moderation/rules/${confirmDeleteId}`, {
         method: 'DELETE',
       });
       loadRules();
+      setSnackbar({ open: true, message: 'Regel deaktivert', severity: 'success' });
     } catch (error) {
       console.error('Error deleting rule:', error);
-      alert('Kunne ikke slette regel');
+      setSnackbar({ open: true, message: 'Kunne ikke slette regel', severity: 'error' });
     }
+    setConfirmDeleteId(null);
   };
 
   const getSeverityColor = (severity: string) => {
@@ -276,6 +284,41 @@ export default function RuleManagement() {
         onSave={handleSaveRule}
         isEditing={!!editingRule}
       />
+
+      {/* Confirm Delete Dialog */}
+      <Dialog
+        open={!!confirmDeleteId}
+        onClose={() => setConfirmDeleteId(null)}
+      >
+        <DialogTitle>Deaktiver Regel</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Er du sikker på at du vil deaktivere denne regelen?
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmDeleteId(null)}>Avbryt</Button>
+          <Button onClick={executeDeleteRule} color="error" variant="contained">
+            Deaktiver
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Snackbar for notifications */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={4000}
+        onClose={() => setSnackbar((prev) => ({ ...prev, open: false }))}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert
+          onClose={() => setSnackbar((prev) => ({ ...prev, open: false }))}
+          severity={snackbar.severity}
+          variant="filled"
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 }

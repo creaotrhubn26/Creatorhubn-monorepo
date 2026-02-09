@@ -50,18 +50,19 @@ import { apiRequest } from '../../../lib/queryClient';
 const createApiKeySchema = z.object({
   name: z
     .string()
-    .min(3 'Navn må være minst 3 tegn, ')
+    .min(3, 'Navn må være minst 3 tegn')
     .max(50, 'Navn kan ikke være lengre enn 50 tegn')
     .regex(
-      /^[a-zA-Z0-9\s\-_]+$/'Kun bokstaver, tall, mellomrom, bindestrek og understrek tillatt',
+      /^[a-zA-Z0-9\s\-_]+$/,
+      'Kun bokstaver, tall, mellomrom, bindestrek og understrek tillatt'
     ),
   service: z.string().min(1, 'Velg en tjeneste'),
   keyType: z.string().min(1, 'Velg nøkkeltype'),
-  permissions: z.array(z.string()).min(1'Velg minst én tillatelse'),
-  environment: z.enum(['development','staging','production']),
+  permissions: z.array(z.string()).min(1, 'Velg minst én tillatelse'),
+  environment: z.enum(['development', 'staging', 'production']),
   autoRotate: z.boolean(),
   rotationDays: z.number().optional(),
-  apiKeyValue: z.string().min(1'API-nøkkel verdi er påkrevd'),
+  apiKeyValue: z.string().min(1, 'API-nøkkel verdi er påkrevd'),
   frontendComponents: z.array(z.string()).optional(),
   autoGenerateIntegration: z.boolean().optional(),
 });
@@ -71,7 +72,7 @@ type CreateApiKeyForm = z.infer<typeof createApiKeySchema>;
 interface CreateApiKeyDialogProps {
   open: boolean;
   onClose: () => void;
-  onSubmit: (data: any) => void;
+  onSubmit: (data: CreateApiKeyForm & { envKey: string; envFile: string; generated?: any }) => void;
   isLoading?: boolean;
 }
 
@@ -145,28 +146,31 @@ export default function CreateApiKeyDialog({
     formState: { errors, isValid },
     reset,
     getValues,
-} = useForm<CreateApiKeyForm>({
+  } = useForm<CreateApiKeyForm>({
     resolver: zodResolver(createApiKeySchema),
     defaultValues: {
-      name: ', ',
-      service: ', ',
+      name: '',
+      service: '',
       keyType: 'api_key',
       permissions: [],
       environment: 'development',
       autoRotate: false,
       rotationDays: 30,
-      apiKeyValue: ', ',
+      apiKeyValue: '',
       frontendComponents: [],
       autoGenerateIntegration: true,
   },
     mode: 'onChange',
-});
+  });
 
   const watchedValues = watch();
   const selectedService = services.find((s) => s.value === watchedValues.service);
 
   const steps = [
-    'Grunnleggende informasjon','Tillatelser og sikkerhet','Auto-generering og komponenter','Forhåndsvisning og bekreftelse',
+    'Grunnleggende informasjon',
+    'Tillatelser og sikkerhet',
+    'Auto-generering og komponenter',
+    'Forhåndsvisning og bekreftelse',
   ];
 
   const availableComponents = [
@@ -209,7 +213,8 @@ export default function CreateApiKeyDialog({
       const response = await apiRequest('/api/admin/env-secrets', {
         method: 'POST',
         headers: {
-          ...headers, , 'Content-Type': 'application/json'
+          ...headers,
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
           key: envKey,
@@ -226,9 +231,9 @@ export default function CreateApiKeyDialog({
             frontendComponents: data.frontendComponents || [],
             autoGenerateIntegration: data.autoGenerateIntegration,
             createdAt: new Date().toISOString(),
-        },
-      }),
-    });
+          },
+        }),
+      });
 
       if (response.success) {
         let statusMessage = `✅ Lagret til ${envFile}`;
@@ -261,8 +266,9 @@ export default function CreateApiKeyDialog({
     } else {
         throw new Error(response.error || 'Feil ved lagring');
     }
-  } catch (error: any) {
-      setEnvUpdateStatus(`❌ Feil: ${error.message}`);
+  } catch (error) {
+      const message = error instanceof Error ? error.message : 'Ukjent feil';
+      setEnvUpdateStatus(`❌ Feil: ${message}`);
   }
 };
 

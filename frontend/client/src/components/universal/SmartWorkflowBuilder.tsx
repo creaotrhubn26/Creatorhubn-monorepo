@@ -3,8 +3,9 @@ import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
 import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
 import getProfessionIcon from '@/utils/profession-icons';
 import { useDynamicProfessions } from './hooks/useDynamicProfessions';
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { apiRequest } from '@/lib/queryClient';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import {
   Box,
@@ -26,7 +27,9 @@ import {
   DialogActions,
   Tabs,
   Tab,
-  TextField
+  TextField,
+  alpha,
+  LinearProgress
 } from '@mui/material';
 import {
   PhotoCamera,
@@ -49,7 +52,10 @@ import {
   Restore,
   DeleteForever,
   Archive,
-  History
+  History,
+  Speed,
+  TrendingUp,
+  CheckCircle
 } from '@mui/icons-material';
 
 interface WorkflowAction {
@@ -149,7 +155,7 @@ const predefinedWorkflows: { [profession: string]: CustomWorkflow[] } = {
   photographer: [
     {
       id: 'complete-photo-workflow',
-      name: '🚀 Komplett Fotografprosess',
+      name: 'Komplett Fotografprosess',
       profession: 'photographer',
       isRunning: false,
       steps: [
@@ -163,7 +169,7 @@ const predefinedWorkflows: { [profession: string]: CustomWorkflow[] } = {
     },
     {
       id: 'wedding-day-workflow',
-      name: '💒 Bryllupsdagprosess',
+      name: 'Bryllupsdagprosess',
       profession: 'photographer',
       isRunning: false,
       steps: [
@@ -175,7 +181,7 @@ const predefinedWorkflows: { [profession: string]: CustomWorkflow[] } = {
     },
     {
       id: 'client-onboarding-workflow',
-      name: '👥 Klient Onboarding',
+      name: 'Klient Onboarding',
       profession: 'photographer',
       isRunning: false,
       steps: [
@@ -189,7 +195,7 @@ const predefinedWorkflows: { [profession: string]: CustomWorkflow[] } = {
   videographer: [
     {
       id: 'complete-video-production',
-      name: '🎬 Komplett Videoproduksjon',
+      name: 'Komplett Videoproduksjon',
       profession: 'videographer',
       isRunning: false,
       steps: [
@@ -203,7 +209,7 @@ const predefinedWorkflows: { [profession: string]: CustomWorkflow[] } = {
     },
     {
       id: 'wedding-video-workflow',
-      name: '💒 Bryllupsvideo Produksjon',
+      name: 'Bryllupsvideo Produksjon',
       profession: 'videographer',
       isRunning: false,
       steps: [
@@ -217,7 +223,7 @@ const predefinedWorkflows: { [profession: string]: CustomWorkflow[] } = {
   musicproducer: [
     {
       id: 'complete-music-production',
-      name: '🎵 Komplett Musikkproduksjon',
+      name: 'Komplett Musikkproduksjon',
       profession: 'musicproducer',
       isRunning: false,
       steps: [
@@ -231,7 +237,7 @@ const predefinedWorkflows: { [profession: string]: CustomWorkflow[] } = {
     },
     {
       id: 'demo-creation-workflow',
-      name: '🎤 Demo Produksjon',
+      name: 'Demo Produksjon',
       profession: 'musicproducer',
       isRunning: false,
       steps: [
@@ -245,7 +251,7 @@ const predefinedWorkflows: { [profession: string]: CustomWorkflow[] } = {
   vendor: [
     {
       id: 'order-fulfillment-workflow',
-      name: '📦 Ordre Fullføring',
+      name: 'Ordre Fullføring',
       profession: 'vendor',
       isRunning: false,
       steps: [
@@ -279,15 +285,174 @@ const SmartWorkflowBuilder: React.FC<SmartWorkflowBuilderProps> = ({
   const [archivedWorkflows, setArchivedWorkflows] = useState<CustomWorkflow[]>([]);
   const [currentWorkflow, setCurrentWorkflow] = useState<WorkflowStep[]>([]);
   const [isBuilding, setIsBuilding] = useState(false);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Theming system
   const theming = useTheming(profession);
+  
+  // Profession-specific hooks for dynamic workflow adaptation
+  const professionConfigsData = useProfessionConfigs();
+  const professionAdapter = useProfessionAdapter();
+  const { professionConfigs: dynamicProfessionConfigs } = useDynamicProfessions();
+  
+  // Get profession-specific configuration
+  const currentProfessionConfig = professionAdapter.config;
+  const professionIcon = getProfessionIcon(profession);
+  const dynamicProfessionData = dynamicProfessionConfigs?.[profession];
+  
+  // Get adapted project types for the profession
+  const professionProjectTypes = professionAdapter.getProjectTypes();
   const [workflowName, setWorkflowName] = useState('');
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [runningWorkflows, setRunningWorkflows] = useState<Set<string>>(new Set());
   const [activeTab, setActiveTab] = useState<'active' | 'archived'>('active');
 
-  const { auth } = useEnhancedMasterIntegration();
+  const { auth, communication, dataFlow, componentRegistry } = useEnhancedMasterIntegration();
+  const queryClient = useQueryClient();
+
+  // Get user ID for API calls
+  const userId = auth?.state?.user?.id || 'anonymous';
+
+  // Load saved workflows from API
+  const { data: savedWorkflowsData } = useQuery({
+    queryKey: ['orchestration-workflows', userId],
+    queryFn: async () => {
+      try {
+        const response = await apiRequest(`/api/orchestration/workflows/${userId}`);
+        return response?.workflows || [];
+      } catch (error) {
+        console.warn('Failed to load saved workflows:', error);
+        return [];
+      }
+    },
+    staleTime: 30000, // 30 seconds
+    enabled: !!userId
+  });
+
+  // Merge saved workflows with predefined on load
+  useEffect(() => {
+    if (savedWorkflowsData && savedWorkflowsData.length > 0) {
+      const savedCustom = savedWorkflowsData
+        .filter((w: any) => w.workflowType === 'custom')
+        .map((w: any) => ({
+          id: w.id,
+          name: w.workflowName,
+          steps: typeof w.steps === 'string' ? JSON.parse(w.steps) : (w.steps || []),
+          profession: profession,
+          isRunning: false
+        }));
+      
+      // Merge predefined + saved (avoid duplicates by id)
+      const predefined = predefinedWorkflows[profession] || [];
+      const existingIds = new Set(predefined.map(w => w.id));
+      const uniqueSaved = savedCustom.filter((w: CustomWorkflow) => !existingIds.has(w.id));
+      setWorkflows([...predefined, ...uniqueSaved]);
+    }
+  }, [savedWorkflowsData, profession]);
+
+  // Mutation to save workflow to API
+  const saveWorkflowMutation = useMutation({
+    mutationFn: async (workflow: CustomWorkflow) => {
+      return apiRequest(`/api/orchestration/workflows/${userId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: workflow.id,
+          name: workflow.name,
+          workflowName: workflow.name,
+          workflowType: 'custom',
+          steps: workflow.steps,
+          profession: workflow.profession,
+          projectId: 'workflow-builder'
+        })
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['orchestration-workflows', userId] });
+      setSuccessMessage('Arbeidsflyt lagret!');
+      setTimeout(() => setSuccessMessage(null), 3000);
+    },
+    onError: () => {
+      setErrorMessage('Kunne ikke lagre arbeidsflyt');
+      setTimeout(() => setErrorMessage(null), 3000);
+    }
+  });
+
+  // Mutation to delete workflow from API
+  const deleteWorkflowMutation = useMutation({
+    mutationFn: async (workflowId: string) => {
+      return apiRequest(`/api/orchestration/workflows/${userId}/${workflowId}`, {
+        method: 'DELETE'
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['orchestration-workflows', userId] });
+      setSuccessMessage('Arbeidsflyt slettet!');
+      setTimeout(() => setSuccessMessage(null), 3000);
+    },
+    onError: () => {
+      setErrorMessage('Kunne ikke slette arbeidsflyt');
+      setTimeout(() => setErrorMessage(null), 3000);
+    }
+  });
+
+  // Register component with integration system
+  useEffect(() => {
+    // Register component with the registry
+    componentRegistry.registerComponent({
+      id: 'smart-workflow-builder',
+      name: 'Smart Workflow Builder',
+      type: 'workflow',
+      category: 'automation',
+      capabilities: ['workflow-execution', 'workflow-creation', 'action-broadcast'],
+      profession
+    });
+
+    // Register communication channel
+    communication.registerComponent('smart-workflow-builder', 'workflow', [
+      'workflow-execution', 
+      'workflow-creation'
+    ]);
+
+    // Set up dataFlow nodes
+    dataFlow.registerNode({
+      type: 'source',
+      componentId: 'smart-workflow-builder',
+      dataKey: 'workflows',
+    });
+
+    dataFlow.registerNode({
+      type: 'source',
+      componentId: 'smart-workflow-builder',
+      dataKey: 'running-workflows',
+    });
+
+    // Listen for workflow trigger requests from other components
+    const unsubscribe = communication.onMessage((message: any) => {
+      if (message.type === 'workflow:trigger' && message.data?.workflowId) {
+        executeWorkflow(message.data.workflowId);
+      }
+    });
+
+    return () => {
+      componentRegistry.unregisterComponent('smart-workflow-builder');
+      dataFlow.unregisterNode('smart-workflow-builder:workflows');
+      dataFlow.unregisterNode('smart-workflow-builder:running-workflows');
+      unsubscribe?.();
+    };
+  }, [profession, workflows, runningWorkflows, componentRegistry, communication, dataFlow]);
+
+  // Broadcast workflow state changes
+  const broadcastWorkflowUpdate = useCallback((type: string, data: any) => {
+    communication.sendBroadcast('workflow:update', {
+      type,
+      ...data,
+      profession,
+      timestamp: Date.now()
+    });
+    dataFlow.syncData('smart-workflow-builder:workflows', workflows);
+  }, [communication, dataFlow, profession, workflows]);
 
   // Filter actions by profession
   const availableActions = allActions.filter(action => 
@@ -355,7 +520,7 @@ const SmartWorkflowBuilder: React.FC<SmartWorkflowBuilderProps> = ({
     setCurrentWorkflow(currentWorkflow.filter(step => step.id !== stepId));
 };
 
-  const saveWorkflow = () => {
+  const saveWorkflow = async () => {
     if (currentWorkflow.length > 0 && workflowName.trim()) {
       const newWorkflow: CustomWorkflow = {
         id: `workflow-${Date.now()}`,
@@ -363,23 +528,41 @@ const SmartWorkflowBuilder: React.FC<SmartWorkflowBuilderProps> = ({
         steps: currentWorkflow,
         profession,
         isRunning: false
-};
+      };
+      
+      // Save to local state
       setWorkflows([...workflows, newWorkflow]);
+      
+      // Persist to database via API
+      try {
+        await saveWorkflowMutation.mutateAsync(newWorkflow);
+      } catch (error) {
+        console.warn('Failed to persist workflow to database:', error);
+      }
+      
       setCurrentWorkflow([]);
-      setWorkflowName(', ');
+      setWorkflowName('');
       setIsBuilding(false);
       setShowSaveDialog(false);
-}
-};
+    }
+  };
 
   const executeWorkflow = async (workflowId: string) => {
     const workflow = workflows.find((w) => w.id === workflowId);
     if (!workflow) return;
 
     setRunningWorkflows((prev) => new Set(prev).add(workflowId));
+    
+    // Broadcast workflow start
+    broadcastWorkflowUpdate('started', {
+      workflowId,
+      workflowName: workflow.name,
+      totalSteps: workflow.steps.length
+    });
 
     // Execute each step sequentially
-    for (const step of workflow.steps) {
+    for (let i = 0; i < workflow.steps.length; i++) {
+      const step = workflow.steps[i];
       try {
         const authHeaders = await auth.getAuthHeader();
         const response = await apiRequest('/api/workflow/execute', {
@@ -395,11 +578,27 @@ const SmartWorkflowBuilder: React.FC<SmartWorkflowBuilderProps> = ({
 
         const result = await response.json();
         console.log(`✅ Workflow step completed: ${step.action.name}`, result);
+        
+        // Broadcast step completion
+        broadcastWorkflowUpdate('step-completed', {
+          workflowId,
+          stepIndex: i,
+          stepName: step.action.name,
+          result
+        });
 
         // Small delay between steps
         await new Promise((resolve) => setTimeout(resolve, 500));
       } catch (error) {
         console.error(`❌ Workflow step failed: ${step.action.name}`, error);
+        
+        // Broadcast step failure
+        broadcastWorkflowUpdate('step-failed', {
+          workflowId,
+          stepIndex: i,
+          stepName: step.action.name,
+          error: String(error)
+        });
       }
     }
 
@@ -408,9 +607,15 @@ const SmartWorkflowBuilder: React.FC<SmartWorkflowBuilderProps> = ({
       updated.delete(workflowId);
       return updated;
     });
+    
+    // Broadcast workflow completion
+    broadcastWorkflowUpdate('completed', {
+      workflowId,
+      workflowName: workflow.name
+    });
   };
 
-  const deleteWorkflow = (workflowId: string) => {
+  const deleteWorkflow = async (workflowId: string) => {
     const workflowToDelete = workflows.find(w => w.id === workflowId);
     if (workflowToDelete) {
       // Add to archive with deletion timestamp
@@ -418,18 +623,24 @@ const SmartWorkflowBuilder: React.FC<SmartWorkflowBuilderProps> = ({
         ...workflowToDelete,
         archivedAt: new Date().toISOString(),
         archivedReason: 'Bruker slettet'
-};
+      };
       setArchivedWorkflows([...archivedWorkflows, archivedWorkflow]);
       setWorkflows(workflows.filter(w => w.id !== workflowId));
-}
-};
+      
+      // Delete from database
+      try {
+        await deleteWorkflowMutation.mutateAsync(workflowId);
+      } catch (error) {
+        console.warn('Failed to delete workflow from database:', error);
+      }
+    }
+  };
 
   const restoreWorkflow = (workflowId: string) => {
     const workflowToRestore = archivedWorkflows.find(w => w.id === workflowId);
     if (workflowToRestore) {
       // Remove archive properties and restore
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const { archivedAt, archivedReason, ...restoredWorkflow } = workflowToRestore;
+      const { archivedAt: _archivedAt, archivedReason: _archivedReason, ...restoredWorkflow } = workflowToRestore;
       setWorkflows([...workflows, restoredWorkflow]);
       setArchivedWorkflows(archivedWorkflows.filter(w => w.id !== workflowId));
     }
@@ -441,36 +652,293 @@ const SmartWorkflowBuilder: React.FC<SmartWorkflowBuilderProps> = ({
 
   return (
     <Box sx={{ p:  3, maxHeight: '80vh', overflow: 'auto'}}>
+      {/* Success/Error Alerts */}
+      {successMessage && (
+        <Alert 
+          severity="success" 
+          onClose={() => setSuccessMessage(null)}
+          sx={{ mb: 2 }}
+        >
+          {successMessage}
+        </Alert>
+      )}
+      {errorMessage && (
+        <Alert 
+          severity="error" 
+          onClose={() => setErrorMessage(null)}
+          sx={{ mb: 2 }}
+        >
+          {errorMessage}
+        </Alert>
+      )}
+
       <Typography variant="h4" gutterBottom sx={{  display: 'flex', alignItems: 'center', gap:  2  }}>
-        <AutoAwesome sx={{ color: '#32cd32'}} />
+        {professionIcon || <AutoAwesome sx={{ color: '#32cd32'}} />}
         Smart Arbeidsflyt
+        {dynamicProfessionData && (
+          <Chip 
+            label={dynamicProfessionData.displayName} 
+            size="small" 
+            sx={{ 
+              backgroundColor: dynamicProfessionData.iconColor + '20',
+              color: dynamicProfessionData.iconColor,
+              fontWeight: 600
+            }} 
+          />
+        )}
       </Typography>
       
       <Typography variant="subtitle1" color="text.secondary" sx={{ mb:  2 }}>
-        Automatiser hele fotografprosessen med ett klikk
+        Automatiser hele {dynamicProfessionData?.displayName?.toLowerCase() || 'din'}-prosessen med ett klikk
+        {professionProjectTypes && professionProjectTypes.length > 0 && (
+          <Tooltip title={`Støttede prosjekttyper: ${professionProjectTypes.map(pt => pt.label).join(', ')}`}>
+            <Chip 
+              label={`${professionProjectTypes.length} prosjekttyper tilgjengelig`}
+              size="small"
+              sx={{ ml: 2, cursor: 'help' }}
+              icon={<CheckCircle />}
+            />
+          </Tooltip>
+        )}
+        {professionConfigsData?.professionConfigs && Object.keys(professionConfigsData.professionConfigs).length > 0 && (
+          <Tooltip title={`${Object.keys(professionConfigsData.professionConfigs).length} profesjoner konfigurert i systemet`}>
+            <Chip 
+              label="Multi-profesjon støtte"
+              size="small"
+              color="success"
+              sx={{ ml: 1, cursor: 'help' }}
+            />
+          </Tooltip>
+        )}
       </Typography>
 
       {/* Archive/Active Tabs */}
       <Box sx={{ borderBottom: 1, borderColor: 'divider', mb:  3 }}>
         <Tabs value={activeTab} onChange={(_, newValue) => setActiveTab(newValue)} aria-label="workflow tabs">
-          <Tab label={`Aktive Workflows (${workflows.length})`} value="active" />
-          <Tab label={`Arkiv (${archivedWorkflows.length})`} value="archived" />
+          <Tab 
+            label={
+              <Badge badgeContent={workflows.length} color="primary" max={99}>
+                <Box sx={{ px: 1 }}>Aktive Workflows</Box>
+              </Badge>
+            } 
+            value="active" 
+          />
+          <Tab 
+            label={
+              <Badge badgeContent={archivedWorkflows.length} color="secondary" max={99}>
+                <Box sx={{ px: 1 }}>Arkiv</Box>
+              </Badge>
+            } 
+            value="archived" 
+          />
         </Tabs>
       </Box>
 
       {/* Feature explanation for photographers */}
       {profession === 'photographer' && (
-        <Alert severity="info" sx={{ mb: 3 }}>
-          <Typography variant="body2" sx={{ mb: 1 }}>
-            <strong>🚀 Komplett Fotografprosess: </strong> Last opp bilder → Velg prosjektmappe → CreatorHub Photo Enhancer → Automatisk culling → Opprett showcase → Send e-post til klient
-          </Typography>
-          <Typography variant="body2">
-            <strong>Tidsbesparelse:</strong> Fra 3-4 timer manuelt arbeid til 15 minutter automatisk prosessering!
-          </Typography>
-        </Alert>
+        <Box sx={{ mb: 3 }}>
+          <Paper sx={{
+            p: 3,
+            background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.05) 0%, rgba(16, 185, 129, 0.05) 100%)',
+            backdropFilter: 'blur(10px)',
+            border: '1px solid rgba(99, 102, 241, 0.15)',
+            borderRadius: 3,
+            position: 'relative',
+            overflow: 'hidden',
+            '&:before': {
+              content: '""',
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              height: '3px',
+              background: 'linear-gradient(90deg, #6366F1 0%, #10B981 100%)',
+            }
+          }}>
+            {/* Header */}
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
+              <Box sx={{
+                width: 48,
+                height: 48,
+                borderRadius: 2,
+                background: 'linear-gradient(135deg, #6366F1 0%, #10B981 100%)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxShadow: '0 4px 12px rgba(99, 102, 241, 0.3)'
+              }}>
+                <AutoAwesome sx={{ fontSize: 28, color: 'white' }} />
+              </Box>
+              <Box>
+                <Typography variant="h6" sx={{ 
+                  fontWeight: 700,
+                  mb: 0.5,
+                  background: 'linear-gradient(135deg, #6366F1 0%, #10B981 100%)',
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent',
+                  backgroundClip: 'text'
+                }}>
+                  Komplett Fotografprosess
+                </Typography>
+                <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 500 }}>
+                  AI-drevet automatisering for profesjonelle fotografer
+                </Typography>
+              </Box>
+            </Box>
+
+            {/* Workflow Steps */}
+            <Box sx={{ mb: 3 }}>
+              <Grid container spacing={1.5}>
+                {[
+                  { icon: <Upload />, label: 'Last opp bilder', color: '#1976d2' },
+                  { icon: <Folder />, label: 'Velg prosjektmappe', color: '#1976d2' },
+                  { icon: <AutoAwesome />, label: 'Photo Enhancer', color: '#ff6d00' },
+                  { icon: <Analytics />, label: 'Auto culling', color: '#9c27b0' },
+                  { icon: <PhotoCamera />, label: 'Opprett showcase', color: '#d32f2f' },
+                  { icon: <Share />, label: 'Send til klient', color: '#388e3c' }
+                ].map((step, index) => (
+                  <Grid size={{ xs: 12, sm: 6, md: 4 }} key={index}>
+                    <Box sx={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 1.5,
+                      p: 1.5,
+                      borderRadius: 2,
+                      background: `${step.color}08`,
+                      border: `1px solid ${alpha(step.color, 0.2)}`,
+                      transition: 'all 0.3s ease',
+                      '&:hover': {
+                        background: `${step.color}15`,
+                        borderColor: alpha(step.color, 0.4),
+                        transform: 'translateX(4px)'
+                      }
+                    }}>
+                      <Box sx={{
+                        width: 32,
+                        height: 32,
+                        borderRadius: 1.5,
+                        background: `${step.color}15`,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: step.color
+                      }}>
+                        {React.cloneElement(step.icon, { sx: { fontSize: 18 } })}
+                      </Box>
+                      <Typography variant="body2" sx={{ 
+                        fontWeight: 600,
+                        color: step.color,
+                        fontSize: '0.85rem'
+                      }}>
+                        {step.label}
+                      </Typography>
+                    </Box>
+                  </Grid>
+                ))}
+              </Grid>
+            </Box>
+
+            {/* Stats/Benefits */}
+            <Box sx={{
+              display: 'flex',
+              gap: 2,
+              flexWrap: 'wrap',
+              p: 2,
+              borderRadius: 2,
+              background: 'linear-gradient(135deg, rgba(76, 175, 80, 0.08) 0%, rgba(16, 185, 129, 0.08) 100%)',
+              border: '1px solid rgba(76, 175, 80, 0.2)'
+            }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flex: 1, minWidth: 200 }}>
+                <Box sx={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: '50%',
+                  background: 'linear-gradient(135deg, #4caf50 0%, #10B981 100%)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  boxShadow: '0 4px 12px rgba(76, 175, 80, 0.3)'
+                }}>
+                  <Speed sx={{ fontSize: 20, color: 'white' }} />
+                </Box>
+                <Box>
+                  <Typography variant="h5" sx={{ fontWeight: 700, color: '#4caf50', lineHeight: 1 }}>
+                    75%
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 500 }}>
+                    Raskere prosessering
+                  </Typography>
+                </Box>
+              </Box>
+
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flex: 1, minWidth: 200 }}>
+                <Box sx={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: '50%',
+                  background: 'linear-gradient(135deg, #2196f3 0%, #6366F1 100%)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  boxShadow: '0 4px 12px rgba(33, 150, 243, 0.3)'
+                }}>
+                  <TrendingUp sx={{ fontSize: 20, color: 'white' }} />
+                </Box>
+                <Box>
+                  <Typography variant="h5" sx={{ fontWeight: 700, color: '#2196f3', lineHeight: 1 }}>
+                    3-4t → 15min
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 500 }}>
+                    Tidsbesparelse
+                  </Typography>
+                </Box>
+              </Box>
+
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flex: 1, minWidth: 200 }}>
+                <Box sx={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: '50%',
+                  background: 'linear-gradient(135deg, #ff9800 0%, #F59E0B 100%)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  boxShadow: '0 4px 12px rgba(255, 152, 0, 0.3)'
+                }}>
+                  <CheckCircle sx={{ fontSize: 20, color: 'white' }} />
+                </Box>
+                <Box>
+                  <Typography variant="h5" sx={{ fontWeight: 700, color: '#ff9800', lineHeight: 1 }}>
+                    100%
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 500 }}>
+                    Automatisert
+                  </Typography>
+                </Box>
+              </Box>
+            </Box>
+          </Paper>
+        </Box>
       )}
 
       {/* Action Buttons */}
+      <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Typography variant="subtitle1" sx={{ fontWeight: 600, color: theming.colors.primary }}>
+          Handlinger for {dynamicProfessionData?.displayName || profession}
+        </Typography>
+        {currentProfessionConfig && currentProfessionConfig.defaultHourlyRate && (
+          <Tooltip title={`Standard timesats: ${currentProfessionConfig.defaultHourlyRate} NOK/t`}>
+            <Chip 
+              label={`${currentProfessionConfig.defaultHourlyRate} NOK/t`} 
+              size="small" 
+              color="info"
+              icon={<Analytics />}
+              sx={{ cursor: 'help' }}
+            />
+          </Tooltip>
+        )}
+      </Box>
+      
       <Grid container spacing={3}>
         {Object.entries(actionsByCategory).map(([category, actions]) => (
           <Grid size={{ xs: 12, md: 6 }} key={category}>
@@ -560,84 +1028,286 @@ const SmartWorkflowBuilder: React.FC<SmartWorkflowBuilderProps> = ({
 
       {/* Active Workflows Tab */}
       {activeTab === 'active' && (
-        <Card sx={{ mt: 3, ...theming.getThemedCardSx() }}>
-          <CardContent>
-            <Typography variant="h6" sx={{ mb: 2, color: theming.colors.primary }}>
-              Aktive Workflows ({workflows.length})
-            </Typography>
+        <Box sx={{ mt: 3 }}>
+          {workflows.length === 0 ? (
+            <Paper sx={{ 
+              p: 6,
+              textAlign: 'center',
+              background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.03) 0%, rgba(16, 185, 129, 0.03) 100%)',
+              backdropFilter: 'blur(10px)',
+              border: '2px dashed rgba(99, 102, 241, 0.2)',
+              borderRadius: 4,
+              transition: 'all 0.3s ease'
+            }}>
+              <AutoAwesome sx={{ 
+                fontSize: 64,
+                color: '#6366F1',
+                mb: 2,
+                opacity: 0.6,
+                animation: 'pulse 2s ease-in-out infinite',
+                '@keyframes pulse': {
+                  '0%, 100%': { transform: 'scale(1)', opacity: 0.6 },
+                  '50%': { transform: 'scale(1.1)', opacity: 0.8 }
+                }
+              }} />
+              <Typography variant="h6" sx={{ 
+                mb: 1,
+                fontWeight: 600,
+                background: 'linear-gradient(135deg, #6366F1 0%, #10B981 100%)',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                backgroundClip: 'text'
+              }}>
+                Ingen aktive workflows
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                Bygg din egen workflow eller bruk forhåndsdefinerte maler
+              </Typography>
+              <Button
+                variant="outlined"
+                startIcon={<Add />}
+                onClick={() => setIsBuilding(true)}
+                sx={{
+                  borderColor: '#6366F1',
+                  color: '#6366F1',
+                  '&:hover': {
+                    borderColor: '#6366F1',
+                    backgroundColor: 'rgba(99, 102, 241, 0.08)'
+                  }
+                }}
+              >
+                Opprett første workflow
+              </Button>
+            </Paper>
+          ) : (
+            <Grid container spacing={2}>
+              {workflows.map((workflow, _workflowIndex) => (
+                <Grid size={{ xs: 12, lg: 6 }} key={workflow.id}>
+                  <Card sx={{ 
+                    background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0.95) 100%)',
+                    backdropFilter: 'blur(20px)',
+                    WebkitBackdropFilter: 'blur(20px)',
+                    border: '1px solid rgba(99, 102, 241, 0.15)',
+                    borderRadius: 3,
+                    overflow: 'hidden',
+                    position: 'relative',
+                    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                    '&:hover': {
+                      transform: 'translateY(-4px)',
+                      boxShadow: `0 12px 40px ${alpha('#6366F1', 0.15)}`,
+                      borderColor: 'rgba(99, 102, 241, 0.3)'
+                    },
+                    '&:before': {
+                      content: '""',
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      height: '4px',
+                      background: `linear-gradient(90deg, ${workflow.steps[0]?.action.color || '#6366F1'} 0%, ${workflow.steps[workflow.steps.length - 1]?.action.color || '#10B981'} 100%)`,
+                    }
+                  }}>
+                    <CardContent sx={{ p: 3 }}>
+                      {/* Header */}
+                      <Box sx={{ 
+                        display: 'flex', 
+                        justifyContent: 'space-between', 
+                        alignItems: 'flex-start',
+                        mb: 2.5
+                      }}>
+                        <Box sx={{ flex: 1, mr: 2 }}>
+                          <Typography variant="h6" sx={{ 
+                            fontWeight: 700,
+                            fontSize: '1.1rem',
+                            mb: 0.5,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 1
+                          }}>
+                            {workflow.name}
+                          </Typography>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
+                            <Chip
+                              size="small"
+                              label={`${workflow.steps.length} steg`}
+                              sx={{
+                                height: 24,
+                                fontSize: '0.75rem',
+                                fontWeight: 600,
+                                background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(16, 185, 129, 0.1) 100%)',
+                                border: '1px solid rgba(99, 102, 241, 0.2)',
+                                color: '#6366F1'
+                              }}
+                            />
+                            {runningWorkflows.has(workflow.id) && (
+                              <Chip
+                                size="small"
+                                label="Kjører nå"
+                                icon={<PlayArrow sx={{ fontSize: '0.9rem' }} />}
+                                sx={{
+                                  height: 24,
+                                  fontSize: '0.75rem',
+                                  fontWeight: 600,
+                                  background: 'linear-gradient(135deg, rgba(76, 175, 80, 0.15) 0%, rgba(76, 175, 80, 0.1) 100%)',
+                                  border: '1px solid rgba(76, 175, 80, 0.3)',
+                                  color: '#4caf50',
+                                  animation: 'pulse 1.5s ease-in-out infinite'
+                                }}
+                              />
+                            )}
+                          </Box>
+                        </Box>
 
-            {workflows.length === 0 ? (
-              <Paper sx={{ p: 3, textAlign: 'center', backgroundColor: 'grey.50' }}>
-                <AutoAwesome sx={{ fontSize: 48, color: 'grey.400', mb: 2 }} />
-                <Typography variant="h6" color="text.secondary" sx={{ color: theming.colors.primary }}>
-                  Ingen aktive workflows
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Bygg din egen workflow eller bruk forhåndsdefinerte maler
-                </Typography>
-              </Paper>
-            ) : (
-              workflows.map((workflow) => (
-                <Paper key={workflow.id} sx={{ p: 2, mb: 2 }}>
-                  <Stack direction="row" justifyContent="space-between" alignItems="center">
-                    <Box>
-                      <Typography variant="subtitle1" fontWeight="bold">
-                        {workflow.name}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        {workflow.steps.length} steg
-                      </Typography>
-                    </Box>
+                        <Stack direction="row" spacing={1}>
+                          <Tooltip title={runningWorkflows.has(workflow.id) ? 'Workflow kjører...' : 'Start workflow'}>
+                            <Box>
+                              <Button
+                                variant="contained"
+                                size="small"
+                                startIcon={<PlayArrow />}
+                                onClick={() => executeWorkflow(workflow.id)}
+                                disabled={runningWorkflows.has(workflow.id)}
+                                sx={{
+                                  minWidth: 'auto',
+                                  px: 2,
+                                  background: runningWorkflows.has(workflow.id) 
+                                    ? 'linear-gradient(135deg, rgba(99, 102, 241, 0.6) 0%, rgba(16, 185, 129, 0.6) 100%)'
+                                    : 'linear-gradient(135deg, #6366F1 0%, #10B981 100%)',
+                                  boxShadow: runningWorkflows.has(workflow.id) ? 'none' : '0 4px 12px rgba(99, 102, 241, 0.3)',
+                                  '&:hover': {
+                                    background: 'linear-gradient(135deg, #5558E3 0%, #0EA472 100%)',
+                                    boxShadow: '0 6px 20px rgba(99, 102, 241, 0.4)',
+                                  },
+                                  '&:disabled': {
+                                    background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.6) 0%, rgba(16, 185, 129, 0.6) 100%)',
+                                    color: 'white'
+                                  }
+                                }}
+                              >
+                                {runningWorkflows.has(workflow.id) ? 'Kjører' : 'Start'}
+                              </Button>
+                            </Box>
+                          </Tooltip>
 
-                    <Stack direction="row" spacing={1}>
-                      <Badge
-                        badgeContent={workflow.steps.length}
-                        color="primary"
-                        invisible={!runningWorkflows.has(workflow.id)}
-                      >
-                        <Button
-                          variant="contained"
-                          startIcon={runningWorkflows.has(workflow.id) ? theming.getThemedIcon('stop') : theming.getThemedIcon('play')}
-                          onClick={() => executeWorkflow(workflow.id)}
-                          disabled={runningWorkflows.has(workflow.id)}
-                          size="small"
-                          sx={theming.getThemedButtonSx()}
-                        >
-                          {runningWorkflows.has(workflow.id) ? 'Kjører...' : 'Start'}
-                        </Button>
-                      </Badge>
+                          <Tooltip title="Arkiver workflow">
+                            <IconButton
+                              size="small"
+                              onClick={() => deleteWorkflow(workflow.id)}
+                              sx={{
+                                color: '#F59E0B',
+                                bgcolor: 'rgba(245, 158, 11, 0.1)',
+                                border: '1px solid rgba(245, 158, 11, 0.2)',
+                                '&:hover': {
+                                  bgcolor: 'rgba(245, 158, 11, 0.2)',
+                                  borderColor: 'rgba(245, 158, 11, 0.3)'
+                                }
+                              }}
+                            >
+                              <Archive sx={{ fontSize: '1.1rem' }} />
+                            </IconButton>
+                          </Tooltip>
+                        </Stack>
+                      </Box>
 
-                      <Tooltip title="Arkiver workflow">
-                        <IconButton
-                          size="small"
-                          color="warning"
-                          onClick={() => deleteWorkflow(workflow.id)}
-                        >
-                          <Archive />
-                        </IconButton>
-                      </Tooltip>
-                    </Stack>
-                  </Stack>
+                      {/* Workflow Steps */}
+                      <Box sx={{ 
+                        position: 'relative',
+                        pl: 2,
+                        '&:before': {
+                          content: '""',
+                          position: 'absolute',
+                          left: 0,
+                          top: 8,
+                          bottom: 8,
+                          width: '2px',
+                          background: 'linear-gradient(180deg, rgba(99, 102, 241, 0.3) 0%, rgba(16, 185, 129, 0.3) 100%)',
+                          borderRadius: 1
+                        }
+                      }}>
+                        {workflow.steps.map((step, index) => (
+                          <Box
+                            key={step.id}
+                            sx={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 1.5,
+                              mb: index < workflow.steps.length - 1 ? 1.5 : 0,
+                              position: 'relative'
+                            }}
+                          >
+                            {/* Step number indicator */}
+                            <Box
+                              sx={{
+                                position: 'absolute',
+                                left: -18,
+                                width: 20,
+                                height: 20,
+                                borderRadius: '50%',
+                                background: `linear-gradient(135deg, ${step.action.color} 0%, ${alpha(step.action.color, 0.7)} 100%)`,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                fontSize: '0.65rem',
+                                fontWeight: 700,
+                                color: 'white',
+                                boxShadow: `0 2px 8px ${alpha(step.action.color, 0.3)}`,
+                                zIndex: 1
+                              }}
+                            >
+                              {index + 1}
+                            </Box>
 
-                  <Stack direction="row" spacing={0.5} flexWrap="wrap" sx={{ mt: 1 }}>
-                    {workflow.steps.map((step, index) => (
-                      <Chip
-                        key={step.id}
-                        size="small"
-                        icon={step.action.icon}
-                        label={`${index + 1}. ${step.action.name}`}
-                        sx={{
-                          backgroundColor: `${step.action.color}10`,
-                          color: step.action.color
-                        }}
-                      />
-                    ))}
-                  </Stack>
-                </Paper>
-              ))
-            )}
-          </CardContent>
-        </Card>
+                            {/* Step content */}
+                            <Chip
+                              icon={step.action.icon}
+                              label={step.action.name}
+                              size="small"
+                              sx={{
+                                flex: 1,
+                                height: 32,
+                                justifyContent: 'flex-start',
+                                backgroundColor: `${step.action.color}08`,
+                                border: `1px solid ${alpha(step.action.color, 0.2)}`,
+                                color: step.action.color,
+                                fontWeight: 500,
+                                fontSize: '0.8rem',
+                                '& .MuiChip-icon': {
+                                  color: step.action.color,
+                                  fontSize: '1rem'
+                                },
+                                '&:hover': {
+                                  backgroundColor: `${step.action.color}15`,
+                                  borderColor: alpha(step.action.color, 0.4)
+                                }
+                              }}
+                            />
+                          </Box>
+                        ))}
+                      </Box>
+
+                      {/* Progress bar for running workflows */}
+                      {runningWorkflows.has(workflow.id) && (
+                        <Box sx={{ mt: 2 }}>
+                          <LinearProgress 
+                            sx={{
+                              height: 6,
+                              borderRadius: 3,
+                              backgroundColor: 'rgba(99, 102, 241, 0.1)',
+                              '& .MuiLinearProgress-bar': {
+                                background: 'linear-gradient(90deg, #6366F1 0%, #10B981 100%)',
+                                borderRadius: 3
+                              }
+                            }}
+                          />
+                        </Box>
+                      )}
+                    </CardContent>
+                  </Card>
+                </Grid>
+              ))}
+            </Grid>
+          )}
+        </Box>
       )}
 
       {/* Archived Workflows Tab */}

@@ -161,7 +161,7 @@ export function ClientSessionModal({ open, onClose }: ClientSessionModalProps) {
             </Typography>
           </Box>
           
-          <Typography variant="body1" sx={{ fontWeight: 50}}>
+          <Typography variant="body1" sx={{ fontWeight: 500}}>
             {getQuestionMessage()}
           </Typography>
         </Paper>

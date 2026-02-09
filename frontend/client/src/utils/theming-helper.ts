@@ -122,14 +122,14 @@ function hashToColor(input: string): string {
 function toTitleCase(id: string): string {
   return id
     .replace(/[_\-]+/g, ' ')
-    .replace(/\s+/g, ', ')
+    .replace(/\s+/g, ' ')
     .trim()
     .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 function pickIconForProfession(id: string): React.ComponentType<any> {
   const p = id.toLowerCase();
-  if (p.includes('photo, ') || p.includes('fotograf')) return PhotoCamera;
+  if (p.includes('photo') || p.includes('fotograf')) return PhotoCamera;
   if (p.includes('video') || p.includes('film')) return VideoLibrary;
   if (p.includes('music') || p.includes('audio')) return LibraryMusic;
   if (p.includes('vendor') || p.includes('shop') || p.includes('business')) return Business;

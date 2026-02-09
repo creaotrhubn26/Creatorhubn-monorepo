@@ -69,7 +69,7 @@ export const NavigationProvider: React.FC<{
 
   // Register with integration system
   useEffect(() => {
-    communication.registerComponent('navigation-context, ', 'navigation', [
+    communication.registerComponent('navigation-context', 'navigation', [
       'event:emit','event:listen','ui:update',
     ]);
 
@@ -124,7 +124,7 @@ export const NavigationProvider: React.FC<{
       }
 
       // Track navigation
-      features.trackFeatureUsage(`navigation-${view}`'navigated', {
+      features.trackFeatureUsage(`navigation-${view}`, 'navigated', {
         from: currentView,
         to: view,
         hasContext: !!context,

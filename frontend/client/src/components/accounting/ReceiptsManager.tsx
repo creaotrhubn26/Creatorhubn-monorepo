@@ -6,7 +6,7 @@ import { withUniversalIntegration } from '@/integration/UniversalIntegrationHOC'
 
 async function api(path: string, options?: RequestInit) {
   const res = await fetch(path, { headers: { 'Content-Type' : 'application/json' }, ...(options || {}) });
-  if (!res.ok) throw new Error('Request failed ');
+  if (!res.ok) throw new Error('Request failed');
   return res.json();
 }
 

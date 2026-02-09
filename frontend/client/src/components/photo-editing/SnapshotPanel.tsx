@@ -14,6 +14,7 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
+  DialogContentText,
   DialogActions,
   IconButton,
   Grid,
@@ -76,6 +77,9 @@ export default function SnapshotPanel({
   const [snapshotType, setSnapshotType] = useState<'manual' | 'auto' | 'checkpoint'>('manual');
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [selectedSnapshot, setSelectedSnapshot] = useState<Snapshot | null>(null);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [renameDialogOpen, setRenameDialogOpen] = useState(false);
+  const [newSnapshotName, setNewSnapshotName] = useState('');
 
   const handleCreateSnapshot = useCallback(async () => {
     if (!snapshotName.trim()) return;
@@ -97,21 +101,33 @@ export default function SnapshotPanel({
   }, []);
 
   const handleDeleteSnapshot = useCallback(async () => {
-    if (selectedSnapshot && window.confirm(`Delete snapshot "${selectedSnapshot.name}"?`)) {
+    if (selectedSnapshot) {
+      setConfirmDeleteOpen(true);
+    }
+  }, [selectedSnapshot]);
+
+  const executeDeleteSnapshot = useCallback(async () => {
+    if (selectedSnapshot) {
       await onSnapshotDelete?.(selectedSnapshot.id);
       handleMenuClose();
     }
+    setConfirmDeleteOpen(false);
   }, [selectedSnapshot, onSnapshotDelete, handleMenuClose]);
 
   const handleRenameSnapshot = useCallback(async () => {
     if (!selectedSnapshot) return;
-    
-    const newName = window.prompt('Enter new name: ', selectedSnapshot.name);
-    if (newName && newName.trim() && newName !== selectedSnapshot.name) {
-      await onSnapshotRename?.(selectedSnapshot.id, newName.trim());
-    }
+    setNewSnapshotName(selectedSnapshot.name);
+    setRenameDialogOpen(true);
     handleMenuClose();
-  }, [selectedSnapshot, onSnapshotRename, handleMenuClose]);
+  }, [selectedSnapshot, handleMenuClose]);
+
+  const executeRenameSnapshot = useCallback(async () => {
+    if (selectedSnapshot && newSnapshotName.trim() && newSnapshotName !== selectedSnapshot.name) {
+      await onSnapshotRename?.(selectedSnapshot.id, newSnapshotName.trim());
+    }
+    setRenameDialogOpen(false);
+    setNewSnapshotName('');
+  }, [selectedSnapshot, newSnapshotName, onSnapshotRename]);
 
   const sortedSnapshots = [...snapshots].sort((a, b) => 
     new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
@@ -275,6 +291,58 @@ export default function SnapshotPanel({
               disabled={!snapshotName.trim()}
             >
               Create
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Confirm Delete Dialog */}
+        <Dialog
+          open={confirmDeleteOpen}
+          onClose={() => setConfirmDeleteOpen(false)}
+        >
+          <DialogTitle>Delete Snapshot</DialogTitle>
+          <DialogContent>
+            <DialogContentText>
+              Delete snapshot "{selectedSnapshot?.name}"? This cannot be undone.
+            </DialogContentText>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setConfirmDeleteOpen(false)}>Cancel</Button>
+            <Button onClick={executeDeleteSnapshot} color="error" variant="contained">
+              Delete
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Rename Snapshot Dialog */}
+        <Dialog
+          open={renameDialogOpen}
+          onClose={() => setRenameDialogOpen(false)}
+        >
+          <DialogTitle>Rename Snapshot</DialogTitle>
+          <DialogContent>
+            <TextField
+              autoFocus
+              margin="dense"
+              label="New Name"
+              fullWidth
+              value={newSnapshotName}
+              onChange={(e) => setNewSnapshotName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && newSnapshotName.trim()) {
+                  executeRenameSnapshot();
+                }
+              }}
+            />
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setRenameDialogOpen(false)}>Cancel</Button>
+            <Button 
+              onClick={executeRenameSnapshot} 
+              variant="contained"
+              disabled={!newSnapshotName.trim()}
+            >
+              Rename
             </Button>
           </DialogActions>
         </Dialog>

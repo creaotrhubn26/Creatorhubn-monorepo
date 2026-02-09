@@ -1,157 +1,258 @@
-import React, { useEffect, useState } from 'react';
-import { Box, Typography, IconButton, Tooltip, Dialog, DialogTitle, DialogContent, DialogActions, Button } from '@mui/material';
-import { Notifications, NotificationsActive } from '@mui/icons-material';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  Box,
+  Typography,
+  IconButton,
+  Tooltip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Button,
+  Chip,
+  Grid,
+  Card,
+  CardContent,
+  Stack,
+  CircularProgress
+} from '@mui/material';
+import { Notifications, NotificationsActive, Refresh } from '@mui/icons-material';
+import { useQuery } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
-
-// Import dynamic profession system
-import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
-import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
-import getProfessionIcon from '@/utils/profession-icons';
 import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
 import { useAuth } from '@/hooks/useAuth';
-import { useEnhancedMasterIntegration } from "@/integration/EnhancedMasterIntegrationProvider';
-import { useTheming } from '../../utils/theming-helper';";
+import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
+import { useTheming } from '../../utils/theming-helper';
+import { usePushNotifications } from '../../hooks/usePushNotifications';
+import { PushNotificationSettings } from '../shared/PushNotificationSettings';
 
 interface AnalyticsDashboardProps {
   profession?: string;
 }
 
+interface AnalyticsSummary {
+  totalProjects: number;
+  activeProjects: number;
+  completedProjects: number;
+  totalRevenue: number;
+  totalClients: number;
+  averageProjectValue: number;
+  lastUpdated: string;
+}
+
 export default function AnalyticsDashboard({ profession }: AnalyticsDashboardProps = {}) {
-  // Master integration system for "everything interacts with everything"
-  const { integration, communication, dataFlow, componentRegistry, features } = useEnhancedMasterIntegration();
-  
-  // Theming system - use dynamic profession instead of hardcoded value
-  const theming = useTheming(userProfession);
-  
-  // Comprehensive Feature System for Analytics Dashboard
-  const analyticsDashboardAccess = features.checkFeatureAccess('analytics-dashboard');
-  const analyticsAccess = features.checkFeatureAccess('analytics,');
-  const reportingAccess = features.checkFeatureAccess('reporting');
-  const businessIntelligenceAccess = features.checkFeatureAccess('business-intelligence');
-  const dataVisualizationAccess = features.checkFeatureAccess('data-visualization');
-  const metricsTrackingAccess = features.checkFeatureAccess('metrics-tracking');
-  const performanceMonitoringAccess = features.checkFeatureAccess('performance-monitoring');
-  const userEngagementAccess = features.checkFeatureAccess('user-engagement');
-  
-  const queryClient = useQueryClient();
+  const { communication, dataFlow, componentRegistry, features, analytics } =
+    useEnhancedMasterIntegration();
+
   const { user } = useAuth();
   const userProfession = profession || user?.profession || 'photographer';
+  const userId = user?.id || user?.sub || '';
+
+  const theming = useTheming(userProfession);
   const [pushSettingsOpen, setPushSettingsOpen] = useState(false);
-  
-  // Push notifications
-  const userId = user?.id || user?.sub;
+
   const { pushEnabled, isSupported } = usePushNotifications(userId);
-  
-  // Use dynamic profession system
   const { professionConfigs, isLoading: professionsLoading } = useDynamicProfessions();
   const professionConfig = professionConfigs?.[userProfession];
 
-  // Register component with MasterIntegrationProvider
+  const featureStates = useMemo(
+    () => [
+      { key: 'analytics-dashboard', label: 'Dashboard', enabled: features.checkFeatureAccess('analytics-dashboard') },
+      { key: 'analytics', label: 'Analytics', enabled: features.checkFeatureAccess('analytics') },
+      { key: 'reporting', label: 'Rapportering', enabled: features.checkFeatureAccess('reporting') },
+      { key: 'business-intelligence', label: 'BI', enabled: features.checkFeatureAccess('business-intelligence') },
+      { key: 'data-visualization', label: 'Visualisering', enabled: features.checkFeatureAccess('data-visualization') },
+      { key: 'metrics-tracking', label: 'Metrikk', enabled: features.checkFeatureAccess('metrics-tracking') },
+      { key: 'performance-monitoring', label: 'Ytelse', enabled: features.checkFeatureAccess('performance-monitoring') },
+      { key: 'user-engagement', label: 'Engasjement', enabled: features.checkFeatureAccess('user-engagement') }
+    ],
+    [features]
+  );
+
+  const {
+    data: summary,
+    isLoading,
+    refetch
+  } = useQuery<AnalyticsSummary>({
+    queryKey: ['/api/analytics/summary', { profession: userProfession, userId }],
+    queryFn: () =>
+      apiRequest(
+        `/api/analytics/summary?profession=${encodeURIComponent(userProfession)}&userId=${encodeURIComponent(
+          userId
+        )}`
+      ),
+    enabled: Boolean(userId)
+  });
+
   useEffect(() => {
-    communication.registerComponent('analytics-dashboard', 'dashboard', [
-      'data: read', 'data: write', 'event: emit', 'event: listen', 'ui: update', 'analytics: track', 'metrics: manage', 'reporting: manage'
+    const metadataId = 'analytics-dashboard';
+    const nodeIds: string[] = [];
+
+    communication.registerComponent(metadataId, 'dashboard', [
+      'data:read',
+      'data:write',
+      'event:emit',
+      'event:listen',
+      'ui:update',
+      'analytics:track',
+      'metrics:manage',
+      'reporting:manage'
     ]);
 
-    // Track feature usage
-    features.trackFeatureUsage('analytics-dashboard', 'opened', {
-      timestamp: Date.now(),
-      component: 'AnalyticsDashboard',
-      profession: userProfession
-});
+    componentRegistry.registerComponent({
+      id: metadataId,
+      name: 'Analytics Dashboard',
+      type: 'dashboard',
+      category: 'analytics',
+      profession: userProfession,
+      capabilities: ['data:analyze', 'metrics:track', 'reporting:export'],
+      dependencies: [],
+      props: ['profession'],
+      events: ['data:sync'],
+      dataKeys: ['analytics-summary']
+    });
 
-    // Register data flow nodes
-    dataFlow.registerNode({
-      type: 'source',
-      componentId: 'analytics-dashboard',
-      dataKey: 'analytics-dashboard:metrics',
-      transform: (data: any) => ({ ...data, lastUpdated: Date.now(),})
-  });
+    nodeIds.push(
+      dataFlow.registerNode({
+        type: 'source',
+        componentId: metadataId,
+        dataKey: 'analytics-summary',
+        transform: (data) => ({ ...data, lastUpdated: new Date().toISOString() })
+      })
+    );
 
-    dataFlow.registerNode({
-      type: 'source',
-      componentId: 'analytics-dashboard',
-      dataKey: 'analytics-dashboard:reports',
-      transform: (data: any) => ({ ...data, lastUpdated: Date.now(),})
-  });
+    analytics.trackEvent('analytics-dashboard.opened', {
+      profession: userProfession,
+      userId
+    });
 
     return () => {
-      communication.unregisterComponent('analytics-dashboard');
-  };
-}, [communication, dataFlow]);
+      communication.unregisterComponent(metadataId);
+      componentRegistry.unregisterComponent(metadataId);
+      nodeIds.forEach((id) => dataFlow.unregisterNode(id));
+    };
+  }, [analytics, communication, componentRegistry, dataFlow, userId, userProfession]);
 
-  // Listen to global events
   useEffect(() => {
-    const unsubscribe = communication.onMessage((message: any) => {
-      if (message.type === 'data:sync' && message.data.dataKey === 'analytics-dashboard:metrics') {
-        // Handle metrics sync
-        console.log('Analytics metrics synced, :', message.data.data);
+    if (summary) {
+      dataFlow.syncData('analytics-summary', summary);
     }
-  });
-    return unsubscribe;
-}, [communication]);
-  
-  // Database connection for AnalyticsDashboard with profession context
-  const { data: dashboardData = [], isLoading } = useQuery({
-    queryKey: ['/api/dashboard', 'user-data', userProfession],
-    queryFn: () => apiRequest(`/api/dashboard/user-data?profession=${userProfession}`),
-    retry: false,
-});
+  }, [dataFlow, summary]);
 
-  // Mutation for updating dashboard data
-  const updateAnalyticsDashboard = useMutation({
-    mutationFn: async (data: any) => 
-      apiRequest('/api/dashboard/update', {
-        method: 'POS',
-        body: JSON.stringify(data)
-  }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/dashboard', ],});
-  }
-});
+  useEffect(() => {
+    const unsubscribe = communication.onMessage((message) => {
+      if (message.type === 'data:sync' && message.data?.dataKey === 'analytics-summary') {
+        analytics.trackEvent('analytics-dashboard.synced', {
+          profession: userProfession,
+          userId
+        });
+      }
+    });
+
+    return unsubscribe;
+  }, [analytics, communication, userId, userProfession]);
+
+  const featureAnalytics = features.getFeatureAnalytics();
+  const featureCoverage = featureAnalytics.totalFeatures
+    ? Math.round(featureAnalytics.featureAdoptionRate * 100)
+    : 0;
 
   return (
-    <Box sx={{ p:  2 }}>
+    <Box sx={{ p: 2 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
         <Typography variant="h6" sx={{ color: theming.colors.primary }}>
-          {professionConfig ? 
-            `${professionConfig.displayName} - Analyse Dashboard` : 
-            'Analyse Dashboard'
-        }
+          {professionConfig
+            ? `${professionConfig.displayName} - Analyse Dashboard`
+            : 'Analyse Dashboard'}
         </Typography>
-        {isSupported && (
-          <Tooltip title="Push-varsler innstillinger">
-            <IconButton onClick={() => setPushSettingsOpen(true)} color={pushEnabled ? 'primary' : 'default'}>
-              {pushEnabled ? <NotificationsActive /> : <Notifications />}
+        <Stack direction="row" spacing={1} alignItems="center">
+          <Tooltip title="Oppdater oversikt">
+            <IconButton onClick={() => refetch()} color="primary">
+              <Refresh />
             </IconButton>
           </Tooltip>
-        )}
+          {isSupported && (
+            <Tooltip title="Push-varsler innstillinger">
+              <IconButton
+                onClick={() => setPushSettingsOpen(true)}
+                color={pushEnabled ? 'primary' : 'default'}
+              >
+                {pushEnabled ? <NotificationsActive /> : <Notifications />}
+              </IconButton>
+            </Tooltip>
+          )}
+        </Stack>
       </Box>
+
       {professionConfig && (
-        <Typography variant="body2" color="text.secondary" sx={{ mt:  1 }}>
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
           Ytelsesanalyse og statistikk for {professionConfig.displayName.toLowerCase()}
         </Typography>
       )}
-      
-      {/* Feature Analytics Display */}
-      <Box sx={{ 
-        display: 'flex', 
-        alignItems: 'center', 
-        gap: 1, mt: 2 }}>
+
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 2 }}>
         <Typography variant="caption" color="text.secondary">
-          Features: {features.getFeatureAnalytics().enabledFeatures}/{features.getFeatureAnalytics().totalFeatures}
+          Features: {featureAnalytics.enabledFeatures}/{featureAnalytics.totalFeatures}
         </Typography>
-        <Chip 
-          label={`${Math.round(features.getFeatureAnalytics().featureAdoptionRate * 100)}%`}
+        <Chip
+          label={`${featureCoverage}%`}
           size="small"
           variant="outlined"
-          sx={{ fontSize: '10px', height: 18}}
+          sx={{ fontSize: '10px', height: 18 }}
         />
       </Box>
-      {isLoading && <Typography>Laster data...</Typography>}
-      {professionsLoading && <Typography>Laster profesjonsdata...</Typography>}
 
-      {/* Push Notification Settings Dialog */}
+      {isLoading && (
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 2 }}>
+          <CircularProgress size={16} />
+          <Typography variant="body2">Laster dashboard-data...</Typography>
+        </Box>
+      )}
+      {professionsLoading && <Typography variant="body2">Laster profesjonsdata...</Typography>}
+
+      {summary && (
+        <Grid container spacing={2} sx={{ mt: 2 }}>
+          {[
+            { label: 'Prosjekter', value: summary.totalProjects },
+            { label: 'Aktive', value: summary.activeProjects },
+            { label: 'Fullfort', value: summary.completedProjects },
+            { label: 'Omsetning', value: summary.totalRevenue.toLocaleString('nb-NO') },
+            { label: 'Klienter', value: summary.totalClients },
+            { label: 'Snittverdi', value: summary.averageProjectValue.toLocaleString('nb-NO') }
+          ].map((metric) => (
+            <Grid item xs={12} sm={6} md={4} key={metric.label}>
+              <Card variant="outlined">
+                <CardContent>
+                  <Typography variant="caption" color="text.secondary">
+                    {metric.label}
+                  </Typography>
+                  <Typography variant="h6" sx={{ mt: 0.5 }}>
+                    {metric.value}
+                  </Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+          ))}
+        </Grid>
+      )}
+
+      <Box sx={{ mt: 3 }}>
+        <Typography variant="subtitle2" gutterBottom>
+          Funksjonsdekning
+        </Typography>
+        <Stack direction="row" spacing={1} flexWrap="wrap" rowGap={1}>
+          {featureStates.map((feature) => (
+            <Chip
+              key={feature.key}
+              label={feature.label}
+              color={feature.enabled ? 'success' : 'default'}
+              variant={feature.enabled ? 'filled' : 'outlined'}
+              size="small"
+            />
+          ))}
+        </Stack>
+      </Box>
+
       {isSupported && (
         <Dialog open={pushSettingsOpen} onClose={() => setPushSettingsOpen(false)} maxWidth="sm" fullWidth>
           <DialogTitle>Push-varsler innstillinger</DialogTitle>

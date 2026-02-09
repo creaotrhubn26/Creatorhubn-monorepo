@@ -68,7 +68,7 @@ export default function AutomaticChapterGenerator({
   const { user } = useAuth();
   
   // Theming system
-  const theming = useTheming('photographer, ');
+  const theming = useTheming('photographer');
   const queryClient = useQueryClient();
   
   const [isGenerating, setIsGenerating] = useState(false);

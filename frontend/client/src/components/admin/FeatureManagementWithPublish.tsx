@@ -462,7 +462,7 @@ export default function FeatureManagementWithPublish() {
                   {environmentDiff?.diff?.map((item, index) => (
                     <TableRow key={index}>
                       <TableCell>
-                        <Typography variant="body2" sx={{ fontWeight: 50}}>
+                        <Typography variant="body2" sx={{ fontWeight: 500}}>
                           {item.featureName}
                         </Typography>
                       </TableCell>

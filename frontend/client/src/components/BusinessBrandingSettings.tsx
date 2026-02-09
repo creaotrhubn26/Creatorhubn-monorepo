@@ -1,26 +1,30 @@
 import { useTheming } from '../utils/theming-helper';
 import * as React from 'react';
 import { useState, useEffect, useCallback } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Box,
   Paper,
   Typography,
   TextField,
   Button,
-  Grid,
+  Grid2,
   Avatar,
   Alert,
   CircularProgress,
   Card,
   CardContent,
-  CardActions,
   Divider,
-  Chip
+  Chip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Snackbar
 } from '@mui/material';
 import {
   CloudUpload as UploadIcon,
   Business as BusinessIcon,
-  Palette as PaletteIcon,
   Preview as PreviewIcon,
   Delete as DeleteIcon
 } from '@mui/icons-material';
@@ -46,25 +50,16 @@ interface BusinessInfo {
 
 interface BusinessBrandingSettingsProps {
   userId: string;
-  // Integration props for universal connectivity
-  onSettingsUpdate?: (settings: any) => void;
-  onProjectUpdate?: (project: any) => void;
-  selectedProject?: any;
-  onProjectSelect?: (project: any) => void; 
 }
 
 const BusinessBrandingSettings: React.FC<BusinessBrandingSettingsProps> = ({ 
-  userId, 
-  onSettingsUpdate,
-  onProjectUpdate,
-  selectedProject,
-  onProjectSelect
+  userId
 }) => {
   // Get user and profession context
   const { user } = useAuth();
   
   // Theming system
-  const theming = useTheming('photographer, ');
+  const theming = useTheming('photographer');
   const userProfession = user?.profession || 'photographer';
   
   // Use dynamic profession system
@@ -72,10 +67,12 @@ const BusinessBrandingSettings: React.FC<BusinessBrandingSettingsProps> = ({
   const professionConfig = professionConfigs?.[userProfession];
 
   const [businessInfo, setBusinessInfo] = useState<BusinessInfo>({
-    brandingColor: professionConfig?.color || '#ff8c00'
+    brandingColor: professionConfig?.iconColor || '#ff8c00'
 });
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [confirmDeleteLogo, setConfirmDeleteLogo] = useState(false);
+  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'info' | 'warning' | 'error' }>({ open: false, message: '', severity: 'info' });
 
   const queryClient = useQueryClient();
 
@@ -103,13 +100,13 @@ const BusinessBrandingSettings: React.FC<BusinessBrandingSettingsProps> = ({
       // Validate file type
       const allowedTypes = ['image/jpeg','image/png','image/svg+xml','image/webp'];
       if (!allowedTypes.includes(file.type)) {
-        alert('Kun JPEG, PNG, SVG og WebP filer er tillatt');
+        setSnackbar({ open: true, message: 'Kun JPEG, PNG, SVG og WebP filer er tillatt', severity: 'error' });
         return;
     }
 
       // Validate file size (5MB)
       if (file.size > 5 * 1024 * 1024) {
-        alert('Filen må være mindre enn 5MB');
+        setSnackbar({ open: true, message: 'Filen må være mindre enn 5MB', severity: 'error' });
         return;
     }
 
@@ -129,7 +126,7 @@ const BusinessBrandingSettings: React.FC<BusinessBrandingSettingsProps> = ({
       formData.append('userId', userId);
 
       const response = await fetch('/api/branding/upload-logo', {
-        method: 'POS',
+        method: 'POST',
         body: formData
   });
 
@@ -153,7 +150,7 @@ const BusinessBrandingSettings: React.FC<BusinessBrandingSettingsProps> = ({
   const businessInfoMutation = useMutation({
     mutationFn: async (info: BusinessInfo) => {
       return apiRequest(`/api/branding/business-info/${userId}`, {
-        method: 'PU',
+        method: 'PUT',
         body: JSON.stringify({ ...info, profession: userProfession }),
         headers: {
           'Content-Type' : 'application/json'
@@ -221,10 +218,13 @@ const BusinessBrandingSettings: React.FC<BusinessBrandingSettingsProps> = ({
 };
 
   const handleDeleteLogo = () => {
-    if (window.confirm('Er du sikker på at du vil slette logoen?')) {
-      deleteLogoMutation.mutate();
-  }
-};
+    setConfirmDeleteLogo(true);
+  };
+
+  const executeDeleteLogo = () => {
+    deleteLogoMutation.mutate();
+    setConfirmDeleteLogo(false);
+  };
 
   if (isLoading) {
     return (
@@ -246,9 +246,9 @@ const BusinessBrandingSettings: React.FC<BusinessBrandingSettingsProps> = ({
       </Typography>
       {professionsLoading && <Typography>Laster profesjonsdata...</Typography>}
 
-      <Grid container spacing={4}>
+      <Grid2 container spacing={4}>
         {/* Logo Upload Section */}
-        <Grid size={{ xs: 12, md: 6 }}>
+        <Grid2 size={{ xs: 12, md: 6 }}>
           <Paper sx={{ p: 3, height: 'fit-content', ...theming.getThemedCardSx() }}>
             <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', color: theming.colors.primary }}>
               <UploadIcon sx={{ mr: 1 }} />
@@ -319,18 +319,18 @@ const BusinessBrandingSettings: React.FC<BusinessBrandingSettingsProps> = ({
               Tillatte formater: JPG, PNG, SVG, WebP (maks 5MB)
             </Typography>
           </Paper>
-        </Grid>
+        </Grid2>
 
         {/* Business Information Section */}
-        <Grid size={{ xs: 12, md: 6 }}>
+        <Grid2 size={{ xs: 12, md: 6 }}>
           <Paper sx={{ p: 3,...theming.getThemedCardSx() }}>
             <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', color: theming.colors.primary }}>
               <BusinessIcon sx={{ mr: 1 }} />
               Bedriftsinformasjon
             </Typography>
 
-            <Grid container spacing={2}>
-              <Grid size={{ xs: 12 }}>
+            <Grid2 container spacing={2}>
+              <Grid2 size={{ xs: 12 }}>
                 <TextField
                   fullWidth
                   label="Bedriftsnavn"
@@ -338,9 +338,9 @@ const BusinessBrandingSettings: React.FC<BusinessBrandingSettingsProps> = ({
                   onChange={handleInputChange('businessName')}
                   required
                 />
-              </Grid>
+              </Grid2>
 
-              <Grid size={{ xs: 12 }}>
+              <Grid2 size={{ xs: 12 }}>
                 <TextField
                   fullWidth
                   label="Tagline"
@@ -348,9 +348,9 @@ const BusinessBrandingSettings: React.FC<BusinessBrandingSettingsProps> = ({
                   onChange={handleInputChange('tagline')}
                   placeholder="f.eks. 'Profesjonell fotografering for spesielle øyeblikk', "
                 />
-              </Grid>
+              </Grid2>
 
-              <Grid size={{ xs: 12 }}>
+              <Grid2 size={{ xs: 12 }}>
                 <TextField
                   fullWidth
                   label="Bedriftsbeskrivelse"
@@ -361,9 +361,9 @@ const BusinessBrandingSettings: React.FC<BusinessBrandingSettingsProps> = ({
                   placeholder="Beskriv din virksomhet og tjenester..."
                   helperText="Denne beskrivelsen kan brukes i kontrakter og på din profil"
                 />
-              </Grid>
+              </Grid2>
 
-              <Grid size={{ xs:  12, sm:  6 }}>
+              <Grid2 size={{ xs:  12, sm:  6 }}>
                 <TextField
                   fullWidth
                   label="E-post"
@@ -372,9 +372,9 @@ const BusinessBrandingSettings: React.FC<BusinessBrandingSettingsProps> = ({
                   onChange={handleInputChange('email')}
                   required
                 />
-              </Grid>
+              </Grid2>
 
-              <Grid size={{ xs:  12, sm:  6 }}>
+              <Grid2 size={{ xs:  12, sm:  6 }}>
                 <TextField
                   fullWidth
                   label="Telefonnummer"
@@ -382,9 +382,9 @@ const BusinessBrandingSettings: React.FC<BusinessBrandingSettingsProps> = ({
                   onChange={handleInputChange('phone')}
                   required
                 />
-              </Grid>
+              </Grid2>
 
-              <Grid size={{ xs: 12 }}>
+              <Grid2 size={{ xs: 12 }}>
                 <TextField
                   fullWidth
                   label="Forretningsadresse"
@@ -393,27 +393,27 @@ const BusinessBrandingSettings: React.FC<BusinessBrandingSettingsProps> = ({
                   multiline
                   rows={2}
                 />
-              </Grid>
+              </Grid2>
 
-              <Grid size={{ xs:  12, sm:  6 }}>
+              <Grid2 size={{ xs:  12, sm:  6 }}>
                 <TextField
                   fullWidth
                   label="Organisasjonsnummer"
                   value={businessInfo.organizationNumber || ', '}
                   onChange={handleInputChange('organizationNumber')}
                 />
-              </Grid>
+              </Grid2>
 
-              <Grid size={{ xs:  12, sm:  6 }}>
+              <Grid2 size={{ xs:  12, sm:  6 }}>
                 <TextField
                   fullWidth
                   label="MVA-nummer"
                   value={businessInfo.vatNumber || ', '}
                   onChange={handleInputChange('vatNumber')}
                 />
-              </Grid>
+              </Grid2>
 
-              <Grid size={{ xs: 12 }}>
+              <Grid2 size={{ xs: 12 }}>
                 <TextField
                   fullWidth
                   label="Nettside"
@@ -422,9 +422,9 @@ const BusinessBrandingSettings: React.FC<BusinessBrandingSettingsProps> = ({
                   onChange={handleInputChange('website')}
                   placeholder="https: //www.dinside.no"
                 />
-              </Grid>
+              </Grid2>
 
-              <Grid size={{ xs: 12, sm:  6 }}>
+              <Grid2 size={{ xs: 12, sm:  6 }}>
                 <TextField
                   fullWidth
                   label="Merkevare-farge"
@@ -432,9 +432,9 @@ const BusinessBrandingSettings: React.FC<BusinessBrandingSettingsProps> = ({
                   value={businessInfo.brandingColor || '#ff8c00'}
                   onChange={handleInputChange('brandingColor')}
                 />
-              </Grid>
+              </Grid2>
 
-              <Grid size={{ xs:  12, sm:  6 }}>
+              <Grid2 size={{ xs:  12, sm:  6 }}>
                 <Box sx={{ pt:  2 }}>
                   <Chip 
                     label={businessInfo.brandingColor || '#ff8c00'}
@@ -444,8 +444,8 @@ const BusinessBrandingSettings: React.FC<BusinessBrandingSettingsProps> = ({
                 }}
                   />
                 </Box>
-              </Grid>
-            </Grid>
+              </Grid2>
+            </Grid2>
 
             <Box sx={{ mt: 3, display: 'flex', justifyContent: 'space-between' }}>
               <Button variant="contained"
@@ -456,10 +456,10 @@ const BusinessBrandingSettings: React.FC<BusinessBrandingSettingsProps> = ({
               </Button>
             </Box>
           </Paper>
-        </Grid>
+        </Grid2>
 
         {/* Preview Section */}
-        <Grid size={{ xs: 12 }}>
+        <Grid2 size={{ xs: 12 }}>
           <Card sx={theming.getThemedCardSx()}>
             <CardContent sx={theming.getThemedCardSx()}>
               <Typography variant="h6" gutterBottom sx={{  display: 'flex', alignItems: 'center' }}>
@@ -475,8 +475,8 @@ const BusinessBrandingSettings: React.FC<BusinessBrandingSettingsProps> = ({
                 borderRadius:  2,
                 border: `2px solid ${businessInfo.brandingColor || '#ff8c00'}20`
             }}>
-                <Grid container spacing={3} alignItems="center">
-                  <Grid item>
+                <Grid2 container spacing={3} alignItems="center">
+                  <Grid2>
                     {previewUrl ? (
                       <img 
                         src={previewUrl}
@@ -495,9 +495,9 @@ const BusinessBrandingSettings: React.FC<BusinessBrandingSettingsProps> = ({
                         {businessInfo.businessName?.[0] || 'B'}
                       </Avatar>
                     )}
-                  </Grid>
+                  </Grid2>
                   
-                  <Grid item xs>
+                  <Grid2 sx={{ flex: 1 }}>
                     <Typography variant="h5" sx={{ fontWeight: 'bold', color: theming.colors.primary }}>
                       {businessInfo.businessName || 'Ditt Bedriftsnavn'}
                     </Typography>
@@ -517,8 +517,8 @@ const BusinessBrandingSettings: React.FC<BusinessBrandingSettingsProps> = ({
                         </Typography>
                       )}
                     </Box>
-                  </Grid>
-                </Grid>
+                  </Grid2>
+                </Grid2>
               </Box>
 
               <Alert severity="info" sx={{ mt:  2 }}>
@@ -526,8 +526,8 @@ const BusinessBrandingSettings: React.FC<BusinessBrandingSettingsProps> = ({
               </Alert>
             </CardContent>
           </Card>
-        </Grid>
-      </Grid>
+        </Grid2>
+      </Grid2>
 
       {/* Success/Error Messages */}
       {logoUploadMutation.isError && (
@@ -553,6 +553,34 @@ const BusinessBrandingSettings: React.FC<BusinessBrandingSettingsProps> = ({
           Bedriftsinformasjon lagret!
         </Alert>
       )}
+
+      {/* Confirm Delete Logo Dialog */}
+      <Dialog open={confirmDeleteLogo} onClose={() => setConfirmDeleteLogo(false)}>
+        <DialogTitle>Bekreft sletting</DialogTitle>
+        <DialogContent>
+          <Typography>Er du sikker på at du vil slette logoen? Denne handlingen kan ikke angres.</Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmDeleteLogo(false)}>Avbryt</Button>
+          <Button onClick={executeDeleteLogo} color="error" variant="contained">Slett</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Snackbar for notifications */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={4000}
+        onClose={() => setSnackbar(prev => ({ ...prev, open: false }))}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert
+          onClose={() => setSnackbar(prev => ({ ...prev, open: false }))}
+          severity={snackbar.severity}
+          sx={{ width: '100%' }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 };

@@ -107,7 +107,7 @@ export default function UniversalCRMDashboard({
     ]);
 
     // Track feature usage
-    features.trackFeatureUsage('universal-crm, ','opened', {
+    features.trackFeatureUsage('universal-crm', 'opened', {
       timestamp: Date.now(),
       component: 'UniversalCRMDashboard',
       profession: currentProfession,

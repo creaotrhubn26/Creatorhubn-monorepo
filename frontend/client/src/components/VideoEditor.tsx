@@ -169,7 +169,7 @@ export default function VideoEditor() {
   const queryClient = useQueryClient();
   
   // Theming system
-  const theming = useTheming('photographer, ');
+  const theming = useTheming('photographer');
 
   // Database connection for VideoEditor
   const { data: videoData = [], isLoading } = useQuery({

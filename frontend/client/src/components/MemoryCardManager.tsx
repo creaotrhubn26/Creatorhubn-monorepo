@@ -58,7 +58,7 @@ export default function MemoryCardManager() {
   const queryClient = useQueryClient();
   
   // Theming system
-  const theming = useTheming('photographer, ');
+  const theming = useTheming('photographer');
   
   // External Data Service integration for travel cost calculations
   const { 

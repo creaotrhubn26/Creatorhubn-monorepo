@@ -255,7 +255,7 @@ export const logPrototypeInteraction = (action: string, context: any) => {
 /**
  * Validate location context for completeness
  */
-export const validateLocationContext = (context: LocationContext): { isValid: boolean; missingFields: string[, ],} => {
+export const validateLocationContext = (context: LocationContext): { isValid: boolean; missingFields: string[] } => {
   const requiredFields: (keyof LocationContext)[] = [
     'profession','dashboardType','currentTab','currentSection','pageUrl','userAgent', 'timestamp',
   ];
@@ -269,7 +269,7 @@ export const validateLocationContext = (context: LocationContext): { isValid: bo
 }
   
   return {
-    isValid: missingFields.length ===, 0,
+    isValid: missingFields.length === 0,
     missingFields,
 };
 };

@@ -8,8 +8,7 @@ export function getProjectTypeNextSteps(
   projectType: string,
   profession: string
 ): string {
-  const baseSteps: Record<string 
- string[]> = {
+  const baseSteps: Record<string, string[]> = {
     wedding: [
       'Gjennomgå bryllupstimeline og planlegg fotograferingssekvenser','Send velkomstmelding til brudepar med forberedelsesinfo','Pakk utstyr og sjekk batterier/minnekort','Besøk lokasjon(er) for rekognosering hvis mulig','Bekreft møtetider og kontaktinfo med brudepar',
     ],
@@ -33,8 +32,7 @@ export function getProjectTypeNextSteps(
     ],
 };
 
-  const professionSpecific: Record<string 
- string[]> = {
+  const professionSpecific: Record<string, string[]> = {
     photographer: [
       'Sjekk kamerainnstillinger og objektiver','Forbered minnekort og backup-løsninger','Lad batterier og sjekk reserveutstyr',
     ],
@@ -67,8 +65,7 @@ export function getProjectTypeInitialDescription(
   eventDate: string,
   location?: string
 ): string {
-  const templates: Record<string 
- string> = {
+  const templates: Record<string, string> = {
     wedding: `Bryllupsprosjekt for ${clientName} planlagt ${eventDate}. Dette blir en minneverdig dag som krever grundig planlegging og profesjonell gjennomføring.`,
     portrait: `Portrettfotografering for ${clientName} ${eventDate}. Fokus på naturlige og flatterende bilder som viser personlighet.`,
     commercial: `Kommersielt prosjekt for ${clientName} med opptak ${eventDate}. Profesjonell levering som oppfyller kommersielle standarder.`,
@@ -89,9 +86,7 @@ export function getInitialWorklogCategory(
   projectType: string,
   profession: string
 ): string {
-  const categoryMap: Record<string 
- Record<string 
- string>> = {
+  const categoryMap: Record<string, Record<string, string>> = {
     photographer: {
       wedding: 'planning',
       portrait: 'planning',
@@ -118,5 +113,5 @@ export function getInitialWorklogCategory(
   },
 };
 
-  return categoryMap[profession]?.[projectType] ??'planning';
+  return categoryMap[profession]?.[projectType] ?? 'planning';
 }

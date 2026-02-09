@@ -121,7 +121,7 @@ export const SWOTKanbanBoard: React.FC<SWOTKanbanBoardProps> = ({
     setFormData({
       type: 'opportunity',
       title: '',
-      description: ', ',
+      description: '',
       impact: 'medium',
       probability: 50,
       urgency: 'medium',

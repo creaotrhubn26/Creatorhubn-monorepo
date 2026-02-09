@@ -125,7 +125,7 @@ export default function CommunityManagementDashboard() {
           <Card sx={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white' }}>
             <CardContent>
               <Typography variant="h6">Total Groups</Typography>
-              <Typography variant="h3" sx={{ fontWeight: 70, my: 1 }}>
+              <Typography variant="h3" sx={{ fontWeight: 700, my: 1 }}>
                 4
               </Typography>
               <Typography variant="body2">Active profession groups</Typography>
@@ -137,7 +137,7 @@ export default function CommunityManagementDashboard() {
           <Card sx={{ background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)', color: 'white' }}>
             <CardContent>
               <Typography variant="h6">Total Channels</Typography>
-              <Typography variant="h3" sx={{ fontWeight: 70, my: 1 }}>
+              <Typography variant="h3" sx={{ fontWeight: 700, my: 1 }}>
                 12
               </Typography>
               <Typography variant="body2">Across all groups</Typography>
@@ -149,7 +149,7 @@ export default function CommunityManagementDashboard() {
           <Card sx={{ background: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)', color: 'white' }}>
             <CardContent>
               <Typography variant="h6">Active Members</Typography>
-              <Typography variant="h3" sx={{ fontWeight: 70, my: 1 }}>
+              <Typography variant="h3" sx={{ fontWeight: 700, my: 1 }}>
                 156
               </Typography>
               <Typography variant="body2">Community members</Typography>
@@ -161,7 +161,7 @@ export default function CommunityManagementDashboard() {
           <Card sx={{ background: 'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)', color: 'white' }}>
             <CardContent>
               <Typography variant="h6">Pending Patterns</Typography>
-              <Typography variant="h3" sx={{ fontWeight: 70, my: 1 }}>
+              <Typography variant="h3" sx={{ fontWeight: 700, my: 1 }}>
                 8
               </Typography>
               <Typography variant="body2">Awaiting promotion</Typography>

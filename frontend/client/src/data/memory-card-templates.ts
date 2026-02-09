@@ -24,7 +24,7 @@ export interface MemoryCardTemplate {
   createdBy: string;
   lastModified: string;
   version: string;
-  tags: string[], ;, 
+  tags: string[];
 }
 
 export interface ContextualBenefit {
@@ -35,14 +35,14 @@ export interface ContextualBenefit {
   impact: 'low' | 'medium' | 'high' | 'critical';
   icon: string;
   examples: string[];
-  technicalDetails?: string, ;, 
+  technicalDetails?: string;
 }
 
 export interface TemplateEditWarning {
   type: 'global_change' | 'cost_impact' | 'compatibility' | 'workflow';
   message: string;
   affectedProjects: number;
-  severity: 'info' | 'warning' | 'error', ;, 
+  severity: 'info' | 'warning' | 'error';
 }
 
 // Contextual Benefits Database
@@ -53,7 +53,7 @@ export const CONTEXTUAL_BENEFITS: Record<string, ContextualBenefit> = {
     description: 'Fast read/write speeds ensure smooth continuous shooting and 4K video recording without dropped frames.',
     category: 'performance',
     impact: 'high',
-    icon: ', ⚡ ',
+    icon: 'lightning',
     examples: [
       'Continuous burst photography at 20+ fps','4K video recording without buffer issues','Faster file transfer to computer','Reduced waiting time between shots'
     ],
@@ -65,7 +65,7 @@ export const CONTEXTUAL_BENEFITS: Record<string, ContextualBenefit> = {
     description: 'Professional-grade cards have built-in error correction and wear leveling to protect your valuable footage.',
     category: 'reliability',
     impact: 'critical',
-    icon: '🛡, ️, ',
+    icon: 'shield',
     examples: [
       'Built-in error correction prevents data corruption','Wear leveling extends card lifespan','Temperature resistance for extreme conditions','Shock and vibration protection'
     ],
@@ -77,7 +77,7 @@ export const CONTEXTUAL_BENEFITS: Record<string, ContextualBenefit> = {
     description: 'Proper card selection streamlines your post-production workflow and reduces time spent on file management.',
     category: 'workflow',
     impact: 'high',
-    icon: '⚙, ️, ',
+    icon: 'settings',
     examples: [
       'Faster file transfers to editing workstation','Reduced backup time with high-capacity cards','Better organization with multiple cards per day','Less time spent swapping cards during shoots'
     ],
@@ -89,7 +89,7 @@ export const CONTEXTUAL_BENEFITS: Record<string, ContextualBenefit> = {
     description: 'Right-sized cards prevent over-spending while ensuring you have adequate storage for your project needs.',
     category: 'cost',
     impact: 'medium',
-    icon: '�, �, ',
+    icon: 'coin',
     examples: [
       'Avoid buying oversized cards for simple projects','Prevent data loss costs from insufficient storage','Reduce rental costs with proper planning','Optimize card utilization across projects'
     ],
@@ -101,7 +101,7 @@ export const CONTEXTUAL_BENEFITS: Record<string, ContextualBenefit> = {
     description: 'Using appropriate cards demonstrates professionalism and ensures compatibility with client expectations.',
     category: 'professional',
     impact: 'high',
-    icon: ', ⭐, ',
+    icon: 'star',
     examples: [
       'Meets industry standards for professional work','Ensures compatibility with professional equipment','Demonstrates attention to detail to clients','Reduces risk of equipment compatibility issues'
     ],
@@ -113,7 +113,7 @@ export const CONTEXTUAL_BENEFITS: Record<string, ContextualBenefit> = {
     description: 'Multiple cards provide redundancy and safety for critical events where data loss is not acceptable.',
     category: 'safety',
     impact: 'critical',
-    icon: '�, �, ',
+    icon: 'backup',
     examples: [
       'Redundant storage prevents total data loss','Immediate backup during long events','Separate cards for different parts of event','Easy recovery if one card fails'
     ],
@@ -384,14 +384,14 @@ export class MemoryCardTemplateManager {
       (template.profession === profession || template.profession === 'both') &&
       template.projectType === projectType
     ) || null;
-,}
+  }
 
   /**
    * Get template by ID
    */
   static getTemplateById(id: string): MemoryCardTemplate | null {
     return MEMORY_CARD_TEMPLATES.find(template => template.id === id) || null;
-,}
+  }
 
   /**
    * Get contextual benefits for template
@@ -399,7 +399,7 @@ export class MemoryCardTemplateManager {
   static getContextualBenefits(templateId: string): ContextualBenefit[] {
     const template = this.getTemplateById(templateId);
     return template?.contextualBenefits || [];
-,}
+  }
 
   /**
    * Check if template edit will affect other projects
@@ -415,9 +415,9 @@ export class MemoryCardTemplateManager {
       warnings.push({
         type: 'global_change',
         message: 'This change will affect all projects using this template',
-        affectedProjects:  ,  0// Would be calculated from database
+        affectedProjects: 0, // Would be calculated from database
         severity: 'warning'
-    ,});
+      });
   }
 
     // Check for cost impact
@@ -427,7 +427,7 @@ export class MemoryCardTemplateManager {
         message: `Budget change from ${template.budget} to ${changes.budget} will affect project costs`,
         affectedProjects:  0,
         severity: 'info'
-    ,});
+      });
   }
 
     // Check for compatibility issues
@@ -437,7 +437,7 @@ export class MemoryCardTemplateManager {
         message: 'Memory card changes may affect camera compatibility',
         affectedProjects:  0,
         severity: 'warning'
-    ,});
+      });
   }
 
     return warnings;
@@ -455,7 +455,7 @@ export class MemoryCardTemplateManager {
     const template = this.getTemplateById(templateId);
     
     if (!template) {
-      return { success: false, warnings: [, ],};
+      return { success: false, warnings: [] };
   }
 
     if (!template.isEditable) {
@@ -474,7 +474,7 @@ export class MemoryCardTemplateManager {
       ...changes,
       lastModified: new Date().toISOString(),
       version: this.incrementVersion(template.version)
-  ,};
+    };
 
     return { success: true, warnings, template: updatedTemplate };
 }
@@ -485,7 +485,7 @@ export class MemoryCardTemplateManager {
   private static incrementVersion(version: string): string {
     const parts = version.split('.');
     const patch = parseInt(parts[2]) + 1;
-    return `${parts[]}.${parts[1]}.${patch}`;
+    return `${parts[0]}.${parts[1]}.${patch}`;
 }
 
   /**
@@ -500,20 +500,20 @@ export class MemoryCardTemplateManager {
    */
   static getTemplatesByCategory(category: string): MemoryCardTemplate[] {
     return MEMORY_CARD_TEMPLATES.filter(template => template.category === category);
-,}
+  }
 }
 
 // Export utility functions
 export const getTemplatesByProfession = (profession: 'photographer' | 'videographer' | 'both') => {
   return MEMORY_CARD_TEMPLATES.filter(template => 
     template.profession === profession || template.profession ==='both'
-  ), ;, 
+  );
 };
 
 export const getTemplatesByProjectType = (projectType: string) => {
-  return MEMORY_CARD_TEMPLATES.filter(template => template.projectType === projectType), ;, 
+  return MEMORY_CARD_TEMPLATES.filter(template => template.projectType === projectType);
 };
 
 export const getContextualBenefitById = (id: string): ContextualBenefit | null => {
-  return CONTEXTUAL_BENEFITS[id] || null, ;, 
+  return CONTEXTUAL_BENEFITS[id] || null;
 };

@@ -283,10 +283,10 @@ class ComponentValidator {
   }
 
     const result: ValidationResult = {
-      isValid: errors.length ===, 0,
+      isValid: errors.length === 0,
       errors,
       warnings
-  };
+    };
 
     // Cache result
     this.validationCache.set(cacheKey, result);
@@ -310,10 +310,10 @@ class ComponentValidator {
           rule,
           message: `Required prop '${propName}' is undefined`,
           severity: 'error'
-    });
+        });
+      }
+      return { isValid: errors.length === 0, errors, warnings };
     }
-      return { isValid: errors.length ===,  0errors, warnings };
-  }
 
     // Check type
     const typeCheck = this.checkType(value, rule.type);
@@ -326,7 +326,7 @@ class ComponentValidator {
         severity: 'error'
   });
       return { isValid: false, errors, warnings };
-  }
+    }
 
     // Check string-specific rules
     if (rule.type === 'string' && typeof value === 'string') {
@@ -432,8 +432,8 @@ class ComponentValidator {
     }
   }
 
-    return { isValid: errors.length ===,  0errors, warnings };
-}
+    return { isValid: errors.length === 0, errors, warnings };
+  }
 
   /**
    * Check if value matches expected type
@@ -441,25 +441,25 @@ class ComponentValidator {
   private checkType(value: any, expectedType: string): { isValid: boolean; message?: string } {
     switch (expectedType) {
       case 'string':
-        return { isValid: typeof value === 'string',};
+        return { isValid: typeof value === 'string' };
       case 'number':
-        return { isValid: typeof value === 'number' && !isNaN(value, ),};
+        return { isValid: typeof value === 'number' && !Number.isNaN(value) };
       case 'boolean':
-        return { isValid: typeof value === 'boolean',};
+        return { isValid: typeof value === 'boolean' };
       case 'array':
-        return { isValid: Array.isArray(value, ),};
+        return { isValid: Array.isArray(value) };
       case 'object':
-        return { isValid: typeof value === 'object' && value !== null && !Array.isArray(value, ),};
+        return { isValid: typeof value === 'object' && value !== null && !Array.isArray(value) };
       case 'function':
-        return { isValid: typeof value === 'function',};
+        return { isValid: typeof value === 'function' };
       case 'element':
-        return { isValid: React.isValidElement(value, ),};
+        return { isValid: React.isValidElement(value) };
       case 'node':
-        return { isValid: this.isReactNode(value, ),};
-      default: return { isValid: true };
+        return { isValid: this.isReactNode(value) };
+      default:
+        return { isValid: true };
+    }
   }
-}
-
   /**
    * Check if value is a valid React node
    */
@@ -472,7 +472,7 @@ class ComponentValidator {
       React.isValidElement(value) ||
       Array.isArray(value)
     );
-}
+  }
 
   /**
    * Create validation HOC
@@ -481,53 +481,57 @@ class ComponentValidator {
     componentName: string,
     validationRules: PropValidation
   ) {
+    this.registerValidationRules(componentName, validationRules);
+
     return (WrappedComponent: React.ComponentType<T>) => {
       const ValidatedComponent = (props: T) => {
         if (this.config.enableRuntimeValidation) {
           const validation = this.validateProps(componentName, props);
-          
+
           if (!validation.isValid) {
             if (this.config.logLevel === 'error' || this.config.logLevel === 'warn') {
               console.error(`Validation errors for ${componentName}:`, validation.errors);
+            }
           }
-        }
-          
+
           if (validation.warnings.length > 0) {
-            if (this.config.logLevel === 'warn' || this.config.logLevel === 'info' || this.config.logLevel ==='debug') {
+            if (this.config.logLevel === 'warn' || this.config.logLevel === 'info' || this.config.logLevel === 'debug') {
               console.warn(`Validation warnings for ${componentName}:`, validation.warnings);
+            }
           }
         }
-      }
-        
+
         return React.createElement(WrappedComponent, props);
-    };
-      
+      };
+
       ValidatedComponent.displayName = `Validated(${componentName})`;
       return ValidatedComponent;
-  };
-}
+    };
+  }
 
   /**
    * Create prop validation hook
    */
   createValidationHook(componentName: string, validationRules: PropValidation) {
+    this.registerValidationRules(componentName, validationRules);
+
     return (props: Record<string, any>) => {
       const [validation, setValidation] = React.useState<ValidationResult>({
         isValid: true,
-        errors:  [],
+        errors: [],
         warnings: []
-  });
+      });
 
       React.useEffect(() => {
         if (this.config.enableRuntimeValidation) {
           const result = this.validateProps(componentName, props);
           setValidation(result);
-      }
-    }, [props]);
+        }
+      }, [componentName, props]);
 
       return validation;
-  };
-}
+    };
+  }
 
   /**
    * Get validation statistics
@@ -540,33 +544,33 @@ class ComponentValidator {
     totalWarnings: number;
     mostCommonErrors: Array<{ error: string; count: number }>;
     mostCommonWarnings: Array<{ warning: string; count: number }>;
-} {
+  } {
     const allResults = Array.from(this.validationCache.values());
-    
+
     const totalValidations = allResults.length;
-    const successfulValidations = allResults.filter(r => r.isValid).length;
+    const successfulValidations = allResults.filter((result) => result.isValid).length;
     const failedValidations = totalValidations - successfulValidations;
-    
-    const allErrors = allResults.flatMap(r => r.errors);
-    const allWarnings = allResults.flatMap(r => r.warnings);
-    
+
+    const allErrors = allResults.flatMap((result) => result.errors);
+    const allWarnings = allResults.flatMap((result) => result.warnings);
+
     const errorCounts = new Map<string, number>();
-    allErrors.forEach(error => {
+    allErrors.forEach((error) => {
       const key = error.message;
       errorCounts.set(key, (errorCounts.get(key) || 0) + 1);
-  });
-    
+    });
+
     const warningCounts = new Map<string, number>();
-    allWarnings.forEach(warning => {
+    allWarnings.forEach((warning) => {
       const key = warning.message;
       warningCounts.set(key, (warningCounts.get(key) || 0) + 1);
-  });
-    
+    });
+
     const mostCommonErrors = Array.from(errorCounts.entries())
       .map(([error, count]) => ({ error, count }))
       .sort((a, b) => b.count - a.count)
       .slice(0, 10);
-    
+
     const mostCommonWarnings = Array.from(warningCounts.entries())
       .map(([warning, count]) => ({ warning, count }))
       .sort((a, b) => b.count - a.count)
@@ -580,29 +584,29 @@ class ComponentValidator {
       totalWarnings: allWarnings.length,
       mostCommonErrors,
       mostCommonWarnings
-  };
-}
+    };
+  }
 
   /**
    * Clear validation cache
    */
   clearCache(): void {
     this.validationCache.clear();
-}
+  }
 
   /**
    * Update configuration
    */
   updateConfig(newConfig: Partial<ComponentValidationConfig>): void {
     this.config = { ...this.config, ...newConfig };
-}
+  }
 
   /**
    * Get configuration
    */
   getConfig(): ComponentValidationConfig {
     return { ...this.config };
-}
+  }
 
   /**
    * Cleanup
@@ -612,7 +616,7 @@ class ComponentValidator {
     this.deprecatedProps.clear();
     this.performanceWarnings.clear();
     this.validationCache.clear();
-}
+  }
 }
 
 // Create singleton instance

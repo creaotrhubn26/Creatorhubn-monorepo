@@ -183,32 +183,10 @@ export const useCanvasOptimization = (options: UseCanvasOptimizationOptions ={})
     if (canvasRef.current) {
       const ctx = canvasRef.current.getContext('2d');
       if (ctx) {
-        ctx.clearRect(0canvasRef.current.width, canvasRef.current.height);
+        ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
     }
   }
 }, []);
-
-import { useEffect, useRef } from "react";
-
-export function useCanvasOptimization(canvas?: HTMLCanvasElement | null) {
-  const rafId = useRef<number | null>(null);
-  const isClient = typeof window !=="undefined";
-
-  useEffect(() => {
-    if (!isClient || !canvas) return;
-
-    const optimize = () => {
-      // … your draw logic here
-      rafId.current = window.requestAnimationFrame(optimize);
-    };
-    rafId.current = window.requestAnimationFrame(optimize);
-
-    return () => {
-      if (rafId.current != null) cancelAnimationFrame(rafId.current);
-      rafId.current = null;
-    };
-  }, [isClient, canvas]);
-}
 
   // Reset metrics
   const resetMetrics = useCallback(() => {

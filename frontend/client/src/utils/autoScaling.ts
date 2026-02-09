@@ -358,32 +358,32 @@ class AutoScalingSystem {
 
     // Audio files
     this.fileScalingProfiles.set('audio', {
-      fileSize: 10 * 1024 * 104, // 10MB
+      fileSize: 10 * 1024 * 1024, // 10MB
       fileType: 'audio',
       processingTime: 500,
       resourceRequirements: {
         cpu: 60,
-        memory: 1 * 1024 * 1024 * 104, // 1GB
+        memory: 1 * 1024 * 1024 * 1024, // 1GB
         storage: 200 * 1024 * 1024 // 200MB
-  },
+      },
       scalingFactor: 2.0,
       optimizationLevel: 'medium'
-});
+    });
 
     // Document files
     this.fileScalingProfiles.set('document', {
-      fileSize: 2 * 1024 * 104, // 2MB
+      fileSize: 2 * 1024 * 1024, // 2MB
       fileType: 'document',
       processingTime: 100,
       resourceRequirements: {
         cpu: 30,
-        memory: 256 * 1024 * 104, // 256MB
+        memory: 256 * 1024 * 1024, // 256MB
         storage: 50 * 1024 * 1024 // 50MB
-  },
+      },
       scalingFactor: 1.2,
       optimizationLevel: 'low'
-});
-}
+    });
+  }
 
   private initializeOperationScalingProfiles(): void {
     // Image processing operations
@@ -393,16 +393,19 @@ class AutoScalingSystem {
       resourceIntensity:  7,
       estimatedDuration: 500,
       scalingRequirements: {
-        instances:, 2,
+        instances: 2,
         resources: [
-          this.resourceProfiles.get('cpu', ), !,
+          this.resourceProfiles.get('cpu')!,
           this.resourceProfiles.get('memory')!
         ]
-    },
+      },
       optimizationSuggestions: [
-        'Use GPU acceleration for image processing', 'Implement image compression before processing','Use streaming for large images','Cache processed results'
+        'Use GPU acceleration for image processing',
+        'Implement image compression before processing',
+        'Use streaming for large images',
+        'Cache processed results'
       ]
-  });
+    });
 
     // Video processing operations
     this.operationScalingProfiles.set('video_processing', {
@@ -411,17 +414,20 @@ class AutoScalingSystem {
       resourceIntensity:  9,
       estimatedDuration: 3000,
       scalingRequirements: {
-        instances:, 4,
+        instances: 4,
         resources: [
-          this.resourceProfiles.get('cpu', ), !,
+          this.resourceProfiles.get('cpu')!,
           this.resourceProfiles.get('memory')!,
           this.resourceProfiles.get('storage')!
         ]
-    },
+      },
       optimizationSuggestions: [
-        'Use hardware-accelerated video encoding','Implement video streaming and chunking','Use distributed processing for large videos','Implement video compression and optimization'
+        'Use hardware-accelerated video encoding',
+        'Implement video streaming and chunking',
+        'Use distributed processing for large videos',
+        'Implement video compression and optimization'
       ]
-  });
+    });
 
     // AI/ML operations
     this.operationScalingProfiles.set('ai_ml', {
@@ -430,18 +436,21 @@ class AutoScalingSystem {
       resourceIntensity:  8,
       estimatedDuration: 1500,
       scalingRequirements: {
-        instances:, 3,
+        instances: 3,
         resources: [
-          this.resourceProfiles.get('cpu', ), !,
+          this.resourceProfiles.get('cpu')!,
           this.resourceProfiles.get('memory')!,
           this.resourceProfiles.get('gpu')!
         ]
-    },
+      },
       optimizationSuggestions: [
-        'Use GPU acceleration for ML operations','Implement model quantization','Use batch processing for efficiency', 'Cache model predictions'
+        'Use GPU acceleration for ML operations',
+        'Implement model quantization',
+        'Use batch processing for efficiency',
+        'Cache model predictions'
       ]
-  });
-}
+    });
+  }
 
   private startMonitoring(): void {
     if (!this.config.enablePerformanceMonitoring) return;
@@ -553,7 +562,7 @@ class AutoScalingSystem {
   private evaluateScalingPolicies(metrics: ScalingMetrics): ScalingDecision {
     const policies = Array.from(this.scalingPolicies.values())
       .filter(policy => policy.enabled)
-      .sort(, (b) => a.priority - b.priority);
+      .sort((a, b) => a.priority - b.priority);
 
     for (const policy of policies) {
       if (this.isPolicyTriggered(policy, metrics)) {

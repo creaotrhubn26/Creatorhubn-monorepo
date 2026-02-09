@@ -361,7 +361,7 @@ const ShowcasePortal: React.FC<ShowcasePortalProps> = ({
             <Box>
               <Typography variant="h3"
                 sx={{ 
-                  fontWeight: 7,
+                  fontWeight: 700,
                   mb:  2,
                   color: isDark ? '#fff', : '#00' }}>
                 {currentProfile.name}

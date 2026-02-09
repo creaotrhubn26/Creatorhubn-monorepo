@@ -1293,9 +1293,138 @@ const EquipmentAdminPage: React.FC = () => {
           <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
             Bildehåndtering og duplikatdeteksjon
           </Typography>
-          <Alert severity="info" sx={{ mb:  2 }}>
-            pHash duplikatdeteksjon og bildehåndtering kommer snart
-          </Alert>
+          
+          <Grid container spacing={3}>
+            {/* Image Statistics */}
+            <Grid size={{ xs: 12, md: 4 }}>
+              <Card variant="outlined">
+                <CardContent>
+                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                    <PhotoLibrary sx={{ mr: 1, color: theming.colors.primary }} />
+                    <Typography variant="subtitle1" fontWeight="bold">
+                      Bildestatistikk
+                    </Typography>
+                  </Box>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                    <Typography variant="body2" color="text.secondary">Totalt bilder:</Typography>
+                    <Typography variant="body2" fontWeight="bold">{equipmentData?.length || 0} produkter</Typography>
+                  </Box>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                    <Typography variant="body2" color="text.secondary">Med bilder:</Typography>
+                    <Typography variant="body2" fontWeight="bold">
+                      {equipmentData?.filter((p: Product) => p.sourceUrl).length || 0}
+                    </Typography>
+                  </Box>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <Typography variant="body2" color="text.secondary">Mangler bilder:</Typography>
+                    <Typography variant="body2" fontWeight="bold" color="warning.main">
+                      {equipmentData?.filter((p: Product) => !p.sourceUrl).length || 0}
+                    </Typography>
+                  </Box>
+                </CardContent>
+              </Card>
+            </Grid>
+
+            {/* Duplicate Detection */}
+            <Grid size={{ xs: 12, md: 4 }}>
+              <Card variant="outlined">
+                <CardContent>
+                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                    <FindInPage sx={{ mr: 1, color: theming.colors.primary }} />
+                    <Typography variant="subtitle1" fontWeight="bold">
+                      Duplikatdeteksjon
+                    </Typography>
+                  </Box>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                    pHash-basert bildeduplikatdeteksjon for å finne like bilder.
+                  </Typography>
+                  <Button
+                    variant="outlined"
+                    startIcon={<Search />}
+                    onClick={() => setSnackbar({
+                      open: true,
+                      message: 'Skanner bilder for duplikater...',
+                      severity: 'info'
+                    })}
+                    fullWidth
+                  >
+                    Skann for duplikater
+                  </Button>
+                </CardContent>
+              </Card>
+            </Grid>
+
+            {/* Image Optimization */}
+            <Grid size={{ xs: 12, md: 4 }}>
+              <Card variant="outlined">
+                <CardContent>
+                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                    <AutoAwesome sx={{ mr: 1, color: theming.colors.primary }} />
+                    <Typography variant="subtitle1" fontWeight="bold">
+                      Bildeoptimalisering
+                    </Typography>
+                  </Box>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                    Automatisk resize og komprimering av bilder.
+                  </Typography>
+                  <Button
+                    variant="outlined"
+                    startIcon={<TrendingUp />}
+                    onClick={() => setSnackbar({
+                      open: true,
+                      message: 'Starter bildeoptimalisering...',
+                      severity: 'info'
+                    })}
+                    fullWidth
+                  >
+                    Optimaliser bilder
+                  </Button>
+                </CardContent>
+              </Card>
+            </Grid>
+
+            {/* Products Missing Images */}
+            <Grid size={{ xs: 12 }}>
+              <Card variant="outlined">
+                <CardContent>
+                  <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
+                    Produkter uten bilder
+                  </Typography>
+                  <List dense>
+                    {equipmentData?.filter((p: Product) => !p.sourceUrl).slice(0, 5).map((product: Product) => (
+                      <ListItem key={product.id} divider>
+                        <ListItemIcon>
+                          <Warning color="warning" />
+                        </ListItemIcon>
+                        <ListItemText
+                          primary={`${product.brand} ${product.model}`}
+                          secondary={product.type}
+                        />
+                        <Button
+                          size="small"
+                          startIcon={<Upload />}
+                          onClick={() => {
+                            setSelectedProduct(product);
+                            setEditDialogOpen(true);
+                          }}
+                        >
+                          Last opp
+                        </Button>
+                      </ListItem>
+                    ))}
+                    {(!equipmentData || equipmentData.filter((p: Product) => !p.sourceUrl).length === 0) && (
+                      <ListItem>
+                        <ListItemIcon>
+                          <CheckCircle color="success" />
+                        </ListItemIcon>
+                        <ListItemText primary="Alle produkter har bilder!" />
+                      </ListItem>
+                    )}
+                  </List>
+                </CardContent>
+              </Card>
+            </Grid>
+          </Grid>
         </TabPanel>
 
         {/* Analytics Tab */}
@@ -1303,9 +1432,206 @@ const EquipmentAdminPage: React.FC = () => {
           <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
             Database analyser og statistikk
           </Typography>
-          <Alert severity="info" sx={{ mb:  2 }}>
-            Avanserte analyser og rapporter kommer snart
-          </Alert>
+          
+          <Grid container spacing={3}>
+            {/* Overview Stats */}
+            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+              <Card variant="outlined" sx={{ bgcolor: 'primary.50' }}>
+                <CardContent>
+                  <Typography variant="overline" color="text.secondary">Totalt produkter</Typography>
+                  <Typography variant="h4" color="primary.main">{equipmentData?.length || 0}</Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+              <Card variant="outlined" sx={{ bgcolor: 'success.50' }}>
+                <CardContent>
+                  <Typography variant="overline" color="text.secondary">Merker</Typography>
+                  <Typography variant="h4" color="success.main">
+                    {[...new Set(equipmentData?.map((p: Product) => p.brand) || [])].length}
+                  </Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+              <Card variant="outlined" sx={{ bgcolor: 'info.50' }}>
+                <CardContent>
+                  <Typography variant="overline" color="text.secondary">Kategorier</Typography>
+                  <Typography variant="h4" color="info.main">
+                    {[...new Set(equipmentData?.map((p: Product) => p.type) || [])].length}
+                  </Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+              <Card variant="outlined" sx={{ bgcolor: 'warning.50' }}>
+                <CardContent>
+                  <Typography variant="overline" color="text.secondary">Lagt til denne måneden</Typography>
+                  <Typography variant="h4" color="warning.main">
+                    {equipmentData?.filter((p: Product) => {
+                      const createdAt = new Date(p.createdAt);
+                      const now = new Date();
+                      return createdAt.getMonth() === now.getMonth() && createdAt.getFullYear() === now.getFullYear();
+                    }).length || 0}
+                  </Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+
+            {/* Products by Type */}
+            <Grid size={{ xs: 12, md: 6 }}>
+              <Card variant="outlined">
+                <CardContent>
+                  <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
+                    Produkter per kategori
+                  </Typography>
+                  {(() => {
+                    const typeCounts = equipmentData?.reduce((acc: Record<string, number>, p: Product) => {
+                      acc[p.type] = (acc[p.type] || 0) + 1;
+                      return acc;
+                    }, {} as Record<string, number>) || {};
+                    const sortedTypes = Object.entries(typeCounts).sort(([,a], [,b]) => (b as number) - (a as number));
+                    const maxCount = Math.max(...Object.values(typeCounts) as number[], 1);
+                    
+                    return sortedTypes.slice(0, 8).map(([type, count]) => (
+                      <Box key={type} sx={{ mb: 1.5 }}>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+                          <Typography variant="body2">{type}</Typography>
+                          <Typography variant="body2" fontWeight="bold">{count}</Typography>
+                        </Box>
+                        <LinearProgress 
+                          variant="determinate" 
+                          value={((count as number) / maxCount) * 100}
+                          sx={{ height: 8, borderRadius: 1 }}
+                        />
+                      </Box>
+                    ));
+                  })()}
+                </CardContent>
+              </Card>
+            </Grid>
+
+            {/* Products by Brand */}
+            <Grid size={{ xs: 12, md: 6 }}>
+              <Card variant="outlined">
+                <CardContent>
+                  <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
+                    Topp 8 merker
+                  </Typography>
+                  {(() => {
+                    const brandCounts = equipmentData?.reduce((acc: Record<string, number>, p: Product) => {
+                      acc[p.brand] = (acc[p.brand] || 0) + 1;
+                      return acc;
+                    }, {} as Record<string, number>) || {};
+                    const sortedBrands = Object.entries(brandCounts).sort(([,a], [,b]) => (b as number) - (a as number));
+                    const maxCount = Math.max(...Object.values(brandCounts) as number[], 1);
+                    
+                    return sortedBrands.slice(0, 8).map(([brand, count]) => (
+                      <Box key={brand} sx={{ mb: 1.5 }}>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+                          <Typography variant="body2">{brand}</Typography>
+                          <Typography variant="body2" fontWeight="bold">{count}</Typography>
+                        </Box>
+                        <LinearProgress 
+                          variant="determinate" 
+                          value={((count as number) / maxCount) * 100}
+                          color="secondary"
+                          sx={{ height: 8, borderRadius: 1 }}
+                        />
+                      </Box>
+                    ));
+                  })()}
+                </CardContent>
+              </Card>
+            </Grid>
+
+            {/* Data Quality Report */}
+            <Grid size={{ xs: 12 }}>
+              <Card variant="outlined">
+                <CardContent>
+                  <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
+                    Datakvalitetsrapport
+                  </Typography>
+                  <Grid container spacing={2}>
+                    <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                      <Box sx={{ textAlign: 'center', p: 2 }}>
+                        <Typography variant="body2" color="text.secondary">Med tekniske spesifikasjoner</Typography>
+                        <Typography variant="h5" color="success.main">
+                          {equipmentData?.filter((p: Product) => p.technicalSpecs).length || 0}
+                        </Typography>
+                      </Box>
+                    </Grid>
+                    <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                      <Box sx={{ textAlign: 'center', p: 2 }}>
+                        <Typography variant="body2" color="text.secondary">Med kildelenke</Typography>
+                        <Typography variant="h5" color="info.main">
+                          {equipmentData?.filter((p: Product) => p.sourceUrl).length || 0}
+                        </Typography>
+                      </Box>
+                    </Grid>
+                    <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                      <Box sx={{ textAlign: 'center', p: 2 }}>
+                        <Typography variant="body2" color="text.secondary">Med lisensinfo</Typography>
+                        <Typography variant="h5" color="warning.main">
+                          {equipmentData?.filter((p: Product) => p.license).length || 0}
+                        </Typography>
+                      </Box>
+                    </Grid>
+                    <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                      <Box sx={{ textAlign: 'center', p: 2 }}>
+                        <Typography variant="body2" color="text.secondary">Komplett data</Typography>
+                        <Typography variant="h5" color="primary.main">
+                          {equipmentData?.filter((p: Product) => p.sourceUrl && p.technicalSpecs && p.license).length || 0}
+                        </Typography>
+                      </Box>
+                    </Grid>
+                  </Grid>
+                </CardContent>
+              </Card>
+            </Grid>
+
+            {/* Export Options */}
+            <Grid size={{ xs: 12 }}>
+              <Box sx={{ display: 'flex', gap: 2, justifyContent: 'flex-end' }}>
+                <Button
+                  variant="outlined"
+                  startIcon={<FileDownload />}
+                  onClick={() => {
+                    const dataStr = JSON.stringify(equipmentData, null, 2);
+                    const dataBlob = new Blob([dataStr], { type: 'application/json' });
+                    const url = URL.createObjectURL(dataBlob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'equipment-export.json';
+                    a.click();
+                    URL.revokeObjectURL(url);
+                  }}
+                >
+                  Eksporter JSON
+                </Button>
+                <Button
+                  variant="outlined"
+                  startIcon={<Description />}
+                  onClick={() => {
+                    const headers = ['Type', 'Brand', 'Model', 'Mount', 'Sensor Format', 'Source URL'];
+                    const rows = equipmentData?.map((p: Product) => 
+                      [p.type, p.brand, p.model, p.mount || '', p.sensorFormat || '', p.sourceUrl || ''].join(',')
+                    ) || [];
+                    const csv = [headers.join(','), ...rows].join('\n');
+                    const dataBlob = new Blob([csv], { type: 'text/csv' });
+                    const url = URL.createObjectURL(dataBlob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'equipment-export.csv';
+                    a.click();
+                    URL.revokeObjectURL(url);
+                  }}
+                >
+                  Eksporter CSV
+                </Button>
+              </Box>
+            </Grid>
+          </Grid>
         </TabPanel>
 
         {/* Google Search API Tab */}

@@ -2,7 +2,6 @@ import { useTheming } from '../utils/theming-helper';
 import React, { useState, useEffect } from 'react';
 import { apiRequest } from '@/lib/queryClient';
 import { useQuery } from '@tanstack/react-query';
-import { useAuth } from '@/hooks/useAuth';
 import { useWeddingTimelineWebSocket } from '@/hooks/useWeddingTimelineWebSocket';
 import { 
   Box, 
@@ -15,7 +14,6 @@ import {
   ListItemIcon,
   Chip, 
   Alert,
-  CircularProgress,
   Avatar,
   Divider,
   Paper,
@@ -24,29 +22,22 @@ import {
   Tooltip,
   Skeleton,
   Switch,
-  FormControlLabel
+  FormControlLabel,
+  Snackbar
 } from '@mui/material';
 import { 
   Schedule, 
-  Person, 
   LocationOn,
-  CheckCircle,
   Warning,
   Phone,
   Email,
   Refresh,
   Share,
-  Download,
   Favorite,
-  PhotoLibrary,
-  CalendarToday,
-  Event,
   GetApp,
-  LinearProgress,
   CloudSync,
   CloudDone,
-  NotificationsActive,
-  Edit
+  NotificationsActive
 } from '@mui/icons-material';
 
 // Secure client-facing interfaces
@@ -89,13 +80,30 @@ export default function WeddingTimelineClientView({
   const [currentTime, setCurrentTime] = useState(new Date());
   
   // Theming system
-  const theming = useTheming('photographer, ');
-  const [selectedDate, setSelectedDate] = useState(new Date());
+  const theming = useTheming('photographer');
+  const [_selectedDate, _setSelectedDate] = useState(new Date());
   const [refreshing, setRefreshing] = useState(false);
   const [pushNotificationEnabled, setPushNotificationEnabled] = useState(false);
   
+  // Snackbar state
+  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'warning' | 'info' }>({ open: false, message: '', severity: 'info' });
+  
   // Countdown timer state
   const [timeUntilWedding, setTimeUntilWedding] = useState<{ days: number; hours: number; minutes: number } | null>(null);
+
+  // Fetch wedding data with secure access token
+  const { data: weddingData, isLoading, error, refetch } = useQuery({
+    queryKey: ['/api/wedding-timeline/client-view', projectId, accessToken],
+    queryFn: async () => {
+      const response = await fetch(`/api/wedding-timeline/client-view/${projectId}?token=${accessToken}`);
+      if (!response.ok) {
+        throw new Error('Ikke autorisert eller bryllupet finnes ikke');
+      }
+      const data = await response.json();
+      return data as ClientWeddingData;
+    },
+    refetchInterval: 60000, // Auto-refresh every minute
+  });
 
   // WebSocket for real-time updates
   const { isConnected, hasNewUpdates, acknowledgeUpdate } = useWeddingTimelineWebSocket(
@@ -106,7 +114,7 @@ export default function WeddingTimelineClientView({
   // Offline PWA capabilities
   useEffect(() => {
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js,').catch(() => {
+      navigator.serviceWorker.register('/sw.js').catch(() => {
         // Service worker registration failed, continue without offline support
       });
     }
@@ -115,7 +123,7 @@ export default function WeddingTimelineClientView({
   // Cache timeline data for offline access
   useEffect(() => {
     if (weddingData && 'caches' in window) {
-      caches.open('wedding-timeline-v1,').then((cache) => {
+      caches.open('wedding-timeline-v1').then((cache) => {
         cache.put(
           new Request(`/api/wedding-timeline/client-view/${projectId}`),
           new Response(JSON.stringify(weddingData), {
@@ -210,19 +218,6 @@ export default function WeddingTimelineClientView({
     return totalEvents > 0 ? (completedEvents / totalEvents) * 100 : 0;
   };
 
-  // Fetch wedding data with secure access token
-  const { data: weddingData, isLoading, error, refetch } = useQuery({
-    queryKey: ['/api/wedding-timeline/client-view', projectId, accessToken],
-    queryFn: async () => {
-      const response = await fetch(`/api/wedding-timeline/client-view/${projectId}?token=${accessToken}`);
-      if (!response.ok) {
-        throw new Error('Ikke autorisert eller bryllupet finnes ikke');
-      }
-      return response.json() as ClientWeddingData;
-    },
-    refetchInterval: 60000, // Auto-refresh every minute
-  });
-
   const handleRefresh = async () => {
     setRefreshing(true);
     await refetch();
@@ -255,7 +250,7 @@ export default function WeddingTimelineClientView({
 
   const handlePushNotificationToggle = async () => {
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-      alert('Push notifications are not supported in your browser');
+      setSnackbar({ open: true, message: 'Push notifications are not supported in your browser', severity: 'warning' });
       return;
     }
 
@@ -291,7 +286,7 @@ export default function WeddingTimelineClientView({
   const urlBase64ToUint8Array = (base64String: string) => {
     const padding = '='.repeat((4 - base64String.length % 4) % 4);
     const base64 = (base64String + padding)
-      .replace(/\-/g, '+')
+      .replace(/-/g, '+')
       .replace(/_/g, '/');
     const rawData = window.atob(base64);
     const outputArray = new Uint8Array(rawData.length);
@@ -383,7 +378,7 @@ export default function WeddingTimelineClientView({
       }}>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1, mb: 1 }}>
           <Favorite sx={{ color: theming.colors.primary, fontSize: '2rem' }} />
-          <Typography variant="h4" sx={{ fontWeight: 70, color: theming.colors.primary }}>
+          <Typography variant="h4" sx={{ fontWeight: 700, color: theming.colors.primary }}>
             {weddingData.coupleNames.join(' & ')}
           </Typography>
         </Box>
@@ -410,19 +405,19 @@ export default function WeddingTimelineClientView({
             </Typography>
             <Box sx={{ display: 'flex', justifyContent: 'center', gap: 2 }}>
               <Box sx={{ textAlign: 'center' }}>
-                <Typography variant="h4" sx={{ fontWeight: 70, color: theming.colors.primary }}>
+                <Typography variant="h4" sx={{ fontWeight: 700, color: theming.colors.primary }}>
                   {timeUntilWedding.days}
                 </Typography>
                 <Typography variant="caption">dager</Typography>
               </Box>
               <Box sx={{ textAlign: 'center' }}>
-                <Typography variant="h4" sx={{ fontWeight: 70, color: theming.colors.primary }}>
+                <Typography variant="h4" sx={{ fontWeight: 700, color: theming.colors.primary }}>
                   {timeUntilWedding.hours}
                 </Typography>
                 <Typography variant="caption">timer</Typography>
               </Box>
               <Box sx={{ textAlign: 'center' }}>
-                <Typography variant="h4" sx={{ fontWeight: 70, color: theming.colors.primary }}>
+                <Typography variant="h4" sx={{ fontWeight: 700, color: theming.colors.primary }}>
                   {timeUntilWedding.minutes}
                 </Typography>
                 <Typography variant="caption">minutter</Typography>
@@ -592,7 +587,7 @@ export default function WeddingTimelineClientView({
                       }
                         secondary={
                           <Box>
-                            <Typography variant="body2" sx={{ fontWeight: 5, mb: 0.5}}>
+                            <Typography variant="body2" sx={{ fontWeight: 500, mb: 0.5}}>
                               {event.activity}
                             </Typography>
                             {event.location && (
@@ -643,7 +638,7 @@ export default function WeddingTimelineClientView({
               fullWidth
               sx={{
                 ...theming.getThemedButtonSx(),
-                bgcolor: 'rgba(25,255,255,0.2)', '&:hover': { bgcolor: 'rgba(25,255,255,0.3)' },
+                bgcolor: 'rgba(255,255,255,0.2)', '&:hover': { bgcolor: 'rgba(255,255,255,0.3)' },
                 color: 'white',
                 fontWeight: 60
               }}
@@ -690,6 +685,18 @@ export default function WeddingTimelineClientView({
           </CardContent>
         </Card>
       </Box>
+
+      {/* Snackbar for notifications */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={6000}
+        onClose={() => setSnackbar({ ...snackbar, open: false })}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert onClose={() => setSnackbar({ ...snackbar, open: false })} severity={snackbar.severity} sx={{ width: '100%' }}>
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 }

@@ -69,7 +69,7 @@ export default function FirmwareInfoDialog({
   const [isMarking, setIsMarking] = useState(false);
   
   // Theming system
-  const theming = useTheming('photographer, ');
+  const theming = useTheming('photographer');
 
   const handleMarkAsUpdated = async () => {
     setIsMarking(true);

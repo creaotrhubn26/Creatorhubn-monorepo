@@ -115,7 +115,7 @@ export default function AdvancedChatProtocols() {
   const queryClient = useQueryClient();
   
   // Theming system
-  const theming = useTheming('photographer, ');
+  const theming = useTheming('photographer');
 
   // ⚠️ XMPP Connection State
   const [xmppConnection, setXmppConnection] = useState<XMPPConnection>({

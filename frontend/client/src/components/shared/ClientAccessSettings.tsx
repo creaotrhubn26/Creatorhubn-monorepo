@@ -136,7 +136,7 @@ const ClientAccessSettings: React.FC<ClientAccessSettingsProps> = ({
             <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
               <DownloadIcon sx={{ fontSize:  18, color: 'text.secondary'}} />
               <Box>
-                <Typography variant="body2" sx={{ fontWeight: 50}}>
+                <Typography variant="body2" sx={{ fontWeight: 500}}>
                   Tillat nedlasting
                 </Typography>
                 <Typography variant="caption" sx={{ color: 'text.secondary'}}>
@@ -166,7 +166,7 @@ const ClientAccessSettings: React.FC<ClientAccessSettingsProps> = ({
             <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
               <MouseIcon sx={{ fontSize:  18, color: 'text.secondary'}} />
               <Box>
-                <Typography variant="body2" sx={{ fontWeight: 50}}>
+                <Typography variant="body2" sx={{ fontWeight: 500}}>
                   Tillat høyreklikk
                 </Typography>
                 <Typography variant="caption" sx={{ color: 'text.secondary'}}>
@@ -196,7 +196,7 @@ const ClientAccessSettings: React.FC<ClientAccessSettingsProps> = ({
             <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
               <SaveIcon sx={{ fontSize:  18, color: 'text.secondary'}} />
               <Box>
-                <Typography variant="body2" sx={{ fontWeight: 50}}>
+                <Typography variant="body2" sx={{ fontWeight: 500}}>
                   Tillat bildekopiering
                 </Typography>
                 <Typography variant="caption" sx={{ color: 'text.secondary'}}>
@@ -226,7 +226,7 @@ const ClientAccessSettings: React.FC<ClientAccessSettingsProps> = ({
             <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
               <CheckCircleIcon sx={{ fontSize:  18, color: 'text.secondary'}} />
               <Box>
-                <Typography variant="body2" sx={{ fontWeight: 50}}>
+                <Typography variant="body2" sx={{ fontWeight: 500}}>
                   Krev godkjenning
                 </Typography>
                 <Typography variant="caption" sx={{ color: 'text.secondary'}}>

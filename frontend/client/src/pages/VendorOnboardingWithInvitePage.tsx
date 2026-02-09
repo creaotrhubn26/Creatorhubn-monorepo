@@ -60,7 +60,7 @@ const VendorOnboardingWithInvitePage: React.FC = () => {
           color: 'white',
       }}
        sx={theming.getThemedCardSx()}>
-        <Typography variant="h3" sx={{  fontWeight: 7, mb:  2  }}>
+        <Typography variant="h3" sx={{ fontWeight: 700, mb: 2 }}>
           🎯 Vendor Onboarding med Landing-Mobile Integrasjon
         </Typography>
         <Typography variant="h6" sx={{ opacity: 0.7, mb: 2, color: theming.colors.primary }}>
@@ -70,9 +70,10 @@ const VendorOnboardingWithInvitePage: React.FC = () => {
         <Alert
           severity="info"
           sx={{
-            mt:  2,
-            bgcolor: 'rgba(25,255,255,0.1)',
-            color: 'white','& .MuiAlert-icon': { color: 'white',},
+            mt: 2,
+            bgcolor: 'rgba(255, 255, 255, 0.1)',
+            color: 'white',
+            '& .MuiAlert-icon': { color: 'white' },
         }}
         >
           <Typography variant="body2">
@@ -152,7 +153,7 @@ const VendorOnboardingWithInvitePage: React.FC = () => {
                   <Chip
                     label={inviteRequest.inviteRequest.vendorType}
                     color="primary"
-                    sx={{ fontWeight: 600}
+                    sx={{ fontWeight: 600 }}
                   />
                 </Grid>
 
@@ -164,8 +165,8 @@ const VendorOnboardingWithInvitePage: React.FC = () => {
                     label={inviteRequest.inviteRequest.status}
                     color={
                       inviteRequest.inviteRequest.status === 'approved' ? 'success' : 'warning'
-                  }
-                    sx={{ fontWeight: 600}
+                    }
+                    sx={{ fontWeight: 600 }}
                   />
                 </Grid>
               </Grid>

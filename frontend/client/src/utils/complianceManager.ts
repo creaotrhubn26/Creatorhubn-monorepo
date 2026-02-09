@@ -19,11 +19,11 @@ export interface ComplianceConfig {
   enableRemediation: boolean;
   gdprConfig: GDPRConfig;
   accessibilityConfig: AccessibilityConfig;
-  securityConfig: SecurityConfig
+  securityConfig: SecurityConfig;
 }
 
 export interface GDPRConfig {
-  dataProcessingBasis: 'consent, ' | 'contract' | 'legal' | 'vital' | 'public' | 'legitimate';
+  dataProcessingBasis: 'consent' | 'contract' | 'legal' | 'vital' | 'public' | 'legitimate';
   consentExpiryDays: number;
   dataRetentionDays: number;
   enableDataMinimization: boolean;
@@ -38,7 +38,7 @@ export interface GDPRConfig {
   enableSCCs: boolean; // Standard Contractual Clauses
   privacyNoticeVersion: string;
   cookiePolicyVersion: string;
-  termsOfServiceVersion: string
+  termsOfServiceVersion: string;
 }
 
 export interface AccessibilityConfig {
@@ -58,7 +58,7 @@ export interface AccessibilityConfig {
   minColorContrast: number;
   minTouchTargetSize: number;
   maxAnimationDuration: number;
-  enableReducedMotion: boolean
+  enableReducedMotion: boolean;
 }
 
 export interface SecurityConfig {
@@ -78,7 +78,7 @@ export interface SecurityConfig {
   enableVulnerabilityScanning: boolean;
   enablePenetrationTesting: boolean;
   enableSecurityAuditing: boolean;
-  enableComplianceMonitoring: boolean
+  enableComplianceMonitoring: boolean;
 }
 
 export interface ComplianceViolation {
@@ -118,7 +118,7 @@ export interface ComplianceCheck {
     warningChecks: number;
     successRate: number;
     averageResolutionTime: number;
-};
+  };
 }
 
 export interface ConsentRecord {
@@ -283,7 +283,7 @@ class ComplianceManager {
     // GDPR Checks
     if (this.config.enableGDPR) {
       this.addComplianceCheck({
-        id: 'gdpr_consent_management, ',
+        id: 'gdpr_consent_management',
         name: 'Consent Management',
         type: 'continuous',
         category: 'gdpr',
@@ -291,19 +291,21 @@ class ComplianceManager {
         enabled: true,
         frequency: 'real_time',
         status: 'pending',
-        violations:  [],
+        violations: [],
         remediationActions: [
-          'Implement consent banner', 'Set up consent tracking','Configure consent preferences'
+          'Implement consent banner',
+          'Set up consent tracking',
+          'Configure consent preferences'
         ],
         metrics: {
-          totalChecks:, 0,
-          passedChecks:  0,
-          failedChecks:  0,
-          warningChecks:  0,
-          successRate:  0,
+          totalChecks: 0,
+          passedChecks: 0,
+          failedChecks: 0,
+          warningChecks: 0,
+          successRate: 0,
           averageResolutionTime: 0
-  }
-  });
+        }
+      });
 
       this.addComplianceCheck({
         id: 'gdpr_data_minimization',
@@ -314,19 +316,21 @@ class ComplianceManager {
         enabled: true,
         frequency: 'daily',
         status: 'pending',
-        violations:  [],
+        violations: [],
         remediationActions: [
-          'Review data collection practices','Implement data minimization','Update privacy notices'
+          'Review data collection practices',
+          'Implement data minimization',
+          'Update privacy notices'
         ],
         metrics: {
-          totalChecks:, 0,
-          passedChecks:  0,
-          failedChecks:  0,
-          warningChecks:  0,
-          successRate:  0,
+          totalChecks: 0,
+          passedChecks: 0,
+          failedChecks: 0,
+          warningChecks: 0,
+          successRate: 0,
           averageResolutionTime: 0
-  }
-  });
+        }
+      });
 
       this.addComplianceCheck({
         id: 'gdpr_right_to_be_forgotten',
@@ -337,20 +341,22 @@ class ComplianceManager {
         enabled: true,
         frequency: 'daily',
         status: 'pending',
-        violations:  [],
+        violations: [],
         remediationActions: [
-          'Implement data deletion procedures','Set up user request portal','Configure automated data removal'
+          'Implement data deletion procedures',
+          'Set up user request portal',
+          'Configure automated data removal'
         ],
         metrics: {
-          totalChecks:, 0,
-          passedChecks:  0,
-          failedChecks:  0,
-          warningChecks:  0,
-          successRate:  0,
+          totalChecks: 0,
+          passedChecks: 0,
+          failedChecks: 0,
+          warningChecks: 0,
+          successRate: 0,
           averageResolutionTime: 0
-  }
-  });
-}
+        }
+      });
+    }
 
     // Accessibility Checks
     if (this.config.enableAccessibility) {
@@ -363,19 +369,22 @@ class ComplianceManager {
         enabled: true,
         frequency: 'daily',
         status: 'pending',
-        violations:  [],
+        violations: [],
         remediationActions: [
-          'Fix color contrast issues','Add alt text to images','Implement keyboard navigation','Add focus indicators'
+          'Fix color contrast issues',
+          'Add alt text to images',
+          'Implement keyboard navigation',
+          'Add focus indicators'
         ],
         metrics: {
-          totalChecks:, 0,
-          passedChecks:  0,
-          failedChecks:  0,
-          warningChecks:  0,
-          successRate:  0,
+          totalChecks: 0,
+          passedChecks: 0,
+          failedChecks: 0,
+          warningChecks: 0,
+          successRate: 0,
           averageResolutionTime: 0
-  }
-  });
+        }
+      });
 
       this.addComplianceCheck({
         id: 'accessibility_keyboard_navigation',
@@ -386,19 +395,22 @@ class ComplianceManager {
         enabled: true,
         frequency: 'real_time',
         status: 'pending',
-        violations:  [],
+        violations: [],
         remediationActions: [
-          'Add tabindex attributes','Implement keyboard event handlers','Test tab order','Add skip links'
+          'Add tabindex attributes',
+          'Implement keyboard event handlers',
+          'Test tab order',
+          'Add skip links'
         ],
         metrics: {
-          totalChecks:, 0,
-          passedChecks:  0,
-          failedChecks:  0,
-          warningChecks:  0,
+          totalChecks: 0,
+          passedChecks: 0,
+          failedChecks: 0,
+          warningChecks: 0,
           averageResolutionTime: 0
-  }
-  });
-}
+        }
+      });
+    }
 
     // Security Checks
     if (this.config.enableSecurity) {
@@ -411,19 +423,22 @@ class ComplianceManager {
         enabled: true,
         frequency: 'daily',
         status: 'pending',
-        violations:  [],
+        violations: [],
         remediationActions: [
-          'Implement encryption at rest','Ensure HTTPS for all communications','Encrypt sensitive data fields','Use secure key management'
+          'Implement encryption at rest',
+          'Ensure HTTPS for all communications',
+          'Encrypt sensitive data fields',
+          'Use secure key management'
         ],
         metrics: {
-          totalChecks:, 0,
-          passedChecks:  0,
-          failedChecks:  0,
-          warningChecks:  0,
-          successRate:  0,
+          totalChecks: 0,
+          passedChecks: 0,
+          failedChecks: 0,
+          warningChecks: 0,
+          successRate: 0,
           averageResolutionTime: 0
-  }
-  });
+        }
+      });
 
       this.addComplianceCheck({
         id: 'security_access_control',
@@ -434,41 +449,44 @@ class ComplianceManager {
         enabled: true,
         frequency: 'daily',
         status: 'pending',
-        violations:  [],
+        violations: [],
         remediationActions: [
-          'Implement RBA','Add multi-factor authentication','Configure least privilege access','Monitor access logs'
+          'Implement RBAC',
+          'Add multi-factor authentication',
+          'Configure least privilege access',
+          'Monitor access logs'
         ],
         metrics: {
-          totalChecks:, 0,
-          passedChecks:  0,
-          failedChecks:  0,
-          warningChecks:  0,
-          successRate:  0,
+          totalChecks: 0,
+          passedChecks: 0,
+          failedChecks: 0,
+          warningChecks: 0,
+          successRate: 0,
           averageResolutionTime: 0
+        }
+      });
+    }
   }
-  });
-}
-}
 
   private addComplianceCheck(check: Omit<ComplianceCheck, 'id'>): void {
     const fullCheck: ComplianceCheck = {
       id: this.generateId(),
       ...check
-};
+    };
     this.checks.set(fullCheck.id, fullCheck);
-}
+  }
 
   private startComplianceMonitoring(): void {
     if (this.config.enableAutomatedChecks) {
       this.checkTimer = setInterval(() => {
         this.runComplianceChecks();
-  }, 60000); // Run checks every minute
-}
+      }, 60000); // Run checks every minute
+    }
 
     this.monitoringTimer = setInterval(() => {
       this.monitorComplianceStatus();
-}, 300000); // Monitor every 5 minutes
-}
+    }, 300000); // Monitor every 5 minutes
+  }
 
   private async runComplianceChecks(): Promise<void> {
     for (const [id, check] of this.checks) {
@@ -479,7 +497,7 @@ class ComplianceManager {
         await this.executeCheck(check);
         check.lastRun = Date.now();
         check.nextRun = this.calculateNextRun(check.frequency);
-  } catch (error) {
+      } catch (error) {
         console.error(`Compliance check failed: ${check.name}`, error);
         this.addViolation({
           id: this.generateId(),
@@ -488,17 +506,20 @@ class ComplianceManager {
           description: `Compliance check failed: ${check.name}`,
           detectedAt: Date.now(),
           status: 'open',
-          affectedComponents: ['compliance_system,', ],
-          remediationSteps: ['Investigate check failure','Fix underlying issue','Re-run check'],
+          affectedComponents: ['compliance_system'],
+          remediationSteps: ['Investigate check failure', 'Fix underlying issue', 'Re-run check'],
           complianceStandard: check.category,
-          riskLevel:  8,
+          riskLevel: 8,
           impact: 'High',
-          likelihood:  3,
-          metadata: { checkId: , iderror: error instanceof Error ? error.message : 'Unknown error, ',}
-    });
+          likelihood: 3,
+          metadata: {
+            checkId: check.id,
+            error: error instanceof Error ? error.message : 'Unknown error'
+          }
+        });
+      }
+    }
   }
-}
-}
 
   private async executeCheck(check: ComplianceCheck): Promise<void> {
     // Simulate check execution
@@ -507,9 +528,9 @@ class ComplianceManager {
 
     if (random < 0.1) {
       status = 'fail';
-} else if (random < 0.3) {
+        } else if (random < 0.3) {
       status = 'warning';
-}
+        }
 
     check.status = status;
 
@@ -517,11 +538,11 @@ class ComplianceManager {
     check.metrics.totalChecks++;
     if (status === 'pass') {
       check.metrics.passedChecks++;
-} else if (status === 'fail') {
+        } else if (status === 'fail') {
       check.metrics.failedChecks++;
-} else {
+        } else {
       check.metrics.warningChecks++;
-}
+        }
 
     check.metrics.successRate = check.metrics.passedChecks / check.metrics.totalChecks;
 
@@ -529,7 +550,7 @@ class ComplianceManager {
     if (status === 'fail') {
       this.addViolation({
         id: this.generateId(),
-        type: check.category as any,
+        type: check.category,
         severity: 'high',
         description: `Compliance check failed: ${check.name}`,
         detectedAt: Date.now(),
@@ -537,15 +558,15 @@ class ComplianceManager {
         affectedComponents: [check.category],
         remediationSteps: check.remediationActions,
         complianceStandard: check.category,
-        riskLevel:  8,
+        riskLevel: 8,
         impact: 'High',
-        likelihood:  5,
+        likelihood: 5,
         metadata: { checkId: check.id }
-  });
-} else if (status === 'warning') {
+      });
+    } else if (status === 'warning') {
       this.addViolation({
         id: this.generateId(),
-        type: check.category as any,
+        type: check.category,
         severity: 'medium',
         description: `Compliance warning: ${check.name}`,
         detectedAt: Date.now(),
@@ -553,13 +574,13 @@ class ComplianceManager {
         affectedComponents: [check.category],
         remediationSteps: check.remediationActions,
         complianceStandard: check.category,
-        riskLevel:  5,
+        riskLevel: 5,
         impact: 'Medium',
-        likelihood:  3,
+        likelihood: 3,
         metadata: { checkId: check.id }
-  });
-}
-}
+      });
+    }
+  }
 
   private calculateNextRun(frequency: string): number {
     const now = Date.now();
@@ -789,14 +810,14 @@ class ComplianceManager {
     for (const img of images) {
       if (!img.getAttribute('alt')) {
         return false;
-  }
-}
+      }
+    }
     return true;
-}
+  }
 
   private isUsingHTTPS(): boolean {
-    return window.location.protocol === 'https: ';
-}
+    return window.location.protocol === 'https:';
+  }
 
   private isUsingStrongEncryption(): boolean {
     // Simplified encryption check
@@ -804,21 +825,21 @@ class ComplianceManager {
 }
 
   private addViolation(violation: ComplianceViolation): void {
-    this.violations.set(violation., idviolation);
+    this.violations.set(violation.id, violation);
     
     // Notify stakeholders
     this.notifyViolation(violation);
     
     // Log violation
     console.warn('Compliance violation detected:', violation);
-}
+  }
 
   private notifyViolation(violation: ComplianceViolation): void {
     // Send notification to compliance team
     if (this.config.enableRemediation) {
       console.log(`Compliance violation notification: ${violation.description}`);
-}
-}
+    }
+  }
 
   private loadExistingData(): void {
     if (typeof window === 'undefined') return;
@@ -830,54 +851,54 @@ class ComplianceManager {
         this.violations = new Map(data.violations || []);
         this.consentRecords = new Map(data.consentRecords || []);
         this.dataSubjectRequests = new Map(data.dataSubjectRequests || []);
-  }
-} catch (error) {
+      }
+    } catch (error) {
       console.error('Failed to load existing compliance data:', error);
-}
-}
+    }
+  }
 
   private saveData(): void {
     if (typeof window === 'undefined') return;
 
     try {
       const data = {
-        violations: Array.from(this.violations.entries(, ), ),
-        consentRecords: Array.from(this.consentRecords.entries(, ), ),
-        dataSubjectRequests: Array.from(this.dataSubjectRequests.entries(, ), ),
+        violations: Array.from(this.violations.entries()),
+        consentRecords: Array.from(this.consentRecords.entries()),
+        dataSubjectRequests: Array.from(this.dataSubjectRequests.entries()),
         timestamp: Date.now()
-};
+      };
       
       localStorage.setItem('compliance_data', JSON.stringify(data));
-} catch (error) {
+    } catch (error) {
       console.error('Failed to save compliance data:', error);
-}
-}
+    }
+  }
 
   private generateId(): string {
     return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-}
+  }
 
   public addConsentRecord(record: Omit<ConsentRecord, 'id'>): void {
     const fullRecord: ConsentRecord = {
       id: this.generateId(),
       ...record
-};
+    };
     this.consentRecords.set(fullRecord.id, fullRecord);
     this.saveData();
-}
+  }
 
   public addDataSubjectRequest(request: Omit<DataSubjectRequest, 'id'>): void {
     const fullRequest: DataSubjectRequest = {
       id: this.generateId(),
       ...request
-};
+    };
     this.dataSubjectRequests.set(fullRequest.id, fullRequest);
     this.saveData();
-}
+  }
 
   public getViolations(): ComplianceViolation[] {
     return Array.from(this.violations.values());
-}
+  }
 
   public getChecks(): ComplianceCheck[] {
     return Array.from(this.checks.values());

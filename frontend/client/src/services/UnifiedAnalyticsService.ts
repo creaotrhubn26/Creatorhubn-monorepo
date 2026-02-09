@@ -143,7 +143,7 @@ export const useUnifiedAnalytics = () => {
 
   const trackShowcaseInteraction = useCallback(
     (action: string, itemId: string, metadata?: Record<string, any>) => {
-      trackEvent('showcase_interaction', action'universal-showcase', {
+      trackEvent('showcase_interaction', action, 'universal-showcase', {
         itemId,
         ...metadata,
       });

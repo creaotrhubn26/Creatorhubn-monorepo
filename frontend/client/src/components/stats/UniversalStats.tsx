@@ -207,7 +207,7 @@ export default function UniversalStats({ profession, userId }: StatsProps) {
                   )}
                 </Box>
 
-                <Typography variant="h4" sx={{  fontWeight: 7, color: stat.color, mb:  1  }}>
+                <Typography variant="h4" sx={{  fontWeight: 700, color: stat.color, mb:  1  }}>
                   {formatValue(stat.value, stat.format)}
                 </Typography>
 

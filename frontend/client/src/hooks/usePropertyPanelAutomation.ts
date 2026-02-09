@@ -59,14 +59,14 @@ export function usePropertyPanelAutomation() {
     modern: {
       fontFamily: "'Inter', sans-serif",
       fontSize: '16px',
-      fontWeight: 400',
+      fontWeight: 400,
       borderRadius: '12px',
       boxShadow: '0 4px 20px rgba(0,0,0,0.1)',
     },
     minimal: {
       fontFamily: "'Roboto', sans-serif",
       fontSize: '14px',
-      fontWeight: 300',
+      fontWeight: 300,
       borderRadius: '4px',
       boxShadow: 'none',
       border: '1px solid #e0e0e0',
@@ -74,7 +74,7 @@ export function usePropertyPanelAutomation() {
     bold: {
       fontFamily: "'Montserrat', sans-serif",
       fontSize: '18px',
-      fontWeight: 700',
+      fontWeight: 700,
       borderRadius: '8px',
       boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
       textTransform: 'uppercase',
@@ -82,7 +82,7 @@ export function usePropertyPanelAutomation() {
     elegant: {
       fontFamily: "'Playfair Display', serif",
       fontSize: '16px',
-      fontWeight: 400',
+      fontWeight: 400,
       borderRadius: '0px',
       boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
     },

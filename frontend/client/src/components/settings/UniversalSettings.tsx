@@ -589,7 +589,7 @@ export default function UniversalSettings({
                 <Grid size={{ xs:  6 }}>
                   <Box sx={{ textAlign: 'center', p:  1 }}>
                     <CheckCircle sx={{ fontSize:  32, color: 'success.main', mb: 0.5}} />
-                    <Typography variant="body2" sx={{ fontWeight: 50}}>
+                    <Typography variant="body2" sx={{ fontWeight: 500}}>
                       PostgreSQL
                     </Typography>
                     <Typography variant="caption" color="text.secondary">
@@ -601,7 +601,7 @@ export default function UniversalSettings({
                 <Grid size={{ xs:  6 }}>
                   <Box sx={{ textAlign: 'center', p:  1 }}>
                     <CheckCircle sx={{ fontSize:  32, color: 'success.main', mb: 0.5}} />
-                    <Typography variant="body2" sx={{ fontWeight: 50}}>
+                    <Typography variant="body2" sx={{ fontWeight: 500}}>
                       Google AI
                     </Typography>
                     <Typography variant="caption" color="text.secondary">
@@ -617,7 +617,7 @@ export default function UniversalSettings({
                     ) : (
                       <Warning sx={{ fontSize:  32, color: 'warning.main', mb: 0.5}} />
                     )}
-                    <Typography variant="body2" sx={{ fontWeight: 50}}>
+                    <Typography variant="body2" sx={{ fontWeight: 500}}>
                       Auto-Monitor
                     </Typography>
                     <Typography variant="caption" color="text.secondary">
@@ -629,7 +629,7 @@ export default function UniversalSettings({
                 <Grid size={{ xs:  6 }}>
                   <Box sx={{ textAlign: 'center', p:  1 }}>
                     <CheckCircle sx={{ fontSize:  32, color: 'success.main', mb: 0.5}} />
-                    <Typography variant="body2" sx={{ fontWeight: 50}}>
+                    <Typography variant="body2" sx={{ fontWeight: 500}}>
                       Google Drive
                     </Typography>
                     <Typography variant="caption" color="text.secondary">
@@ -641,7 +641,7 @@ export default function UniversalSettings({
 
               {projectStats && (
                 <Alert severity="info" sx={{ mt:  2 }}>
-                  <Typography variant="body2" sx={{ fontWeight: 50}}>
+                  <Typography variant="body2" sx={{ fontWeight: 500}}>
                     Systemstatistikk: </Typography>
                   <Typography variant="caption">
                     • {projectStats.totalProjects} totale prosjekter

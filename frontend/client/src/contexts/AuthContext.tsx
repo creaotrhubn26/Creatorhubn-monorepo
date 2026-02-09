@@ -22,19 +22,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   // Check if user is already authenticated on mount
   useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        const currentUser = await googleSSOService.getCurrentUser();
-        setUser(currentUser);
-      } catch (error) {
-        console.error('Failed to check auth status: ', error);
-        setUser(null);
-      } finally {
-        setIsLoading(false);
+    try {
+      const storedUser = localStorage.getItem('creatorhub_auth_user');
+      const storedToken = localStorage.getItem('creatorhub_auth_token');
+      if (storedUser && storedToken) {
+        setUser(JSON.parse(storedUser) as GoogleUser);
       }
-    };
-
-    checkAuth();
+    } catch { /* ignore */ }
+    setIsLoading(false);
   }, []);
 
   const signInWithGoogle = async () => {

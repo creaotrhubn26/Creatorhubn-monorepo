@@ -1,9 +1,4 @@
-/**
- * Version History Panel
- * Git-like version control for audio projects
- */
-
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -46,7 +41,7 @@ interface AudioVersion {
   name: string;
   description: string;
   audioUrl: string;
-  settings: any;
+  settings: Record<string, unknown>;
   createdAt: Date;
   createdBy: string;
 }
@@ -67,7 +62,6 @@ const VersionHistoryPanel: React.FC<VersionHistoryPanelProps> = ({
   const [selectedVersions, setSelectedVersions] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  // Load versions
   useEffect(() => {
     if (open && projectId) {
       loadVersions();
@@ -82,16 +76,19 @@ const VersionHistoryPanel: React.FC<VersionHistoryPanelProps> = ({
       const response = await fetch(`/api/audio/versions/${projectId}`, {
         credentials: 'include'
       });
-
       const data = await response.json();
 
       if (data.success) {
-        setVersions(data.versions);
+        const mapped = (data.versions || []).map((version: any) => ({
+          ...version,
+          createdAt: new Date(version.createdAt)
+        }));
+        setVersions(mapped);
       } else {
         setError(data.error || 'Failed to load versions');
       }
-    } catch (err: any) {
-      setError(err.message || 'Failed to load versions');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load versions');
     } finally {
       setLoading(false);
     }
@@ -99,7 +96,7 @@ const VersionHistoryPanel: React.FC<VersionHistoryPanelProps> = ({
 
   const handleSaveVersion = async () => {
     if (!versionName.trim()) {
-      setError('Versjonsnavn er påkrevd');
+      setError('Versjonsnavn er paakrevd');
       return;
     }
 
@@ -109,43 +106,41 @@ const VersionHistoryPanel: React.FC<VersionHistoryPanelProps> = ({
     try {
       const response = await fetch('/api/audio/versions', {
         method: 'POST',
-        headers: { 'Content-Type' : 'application/json' },
+        headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
           projectId,
           name: versionName,
           description: versionDescription,
           audioUrl: currentAudioUrl,
-          settings: {} // Include current mixer settings
+          settings: {}
         })
       });
 
       const data = await response.json();
 
       if (data.success) {
-        setVersionName(', ');
-        setVersionDescription(', ');
+        setVersionName('');
+        setVersionDescription('');
         loadVersions();
       } else {
         setError(data.error || 'Failed to save version');
       }
-    } catch (err: any) {
-      setError(err.message || 'Failed to save version');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save version');
     } finally {
       setSavingVersion(false);
     }
   };
 
-  const handleRestoreVersion = async (version: AudioVersion) => {
-    if (!confirm(`Gjenopprett versjon "${version.name}"? Dette vil erstatte gjeldende miks.`)) {
-      return;
+  const handleRestoreVersion = (version: AudioVersion) => {
+    if (window.confirm(`Gjenopprett versjon "${version.name}"?`)) {
+      onVersionRestore(version);
     }
-
-    onVersionRestore(version);
   };
 
   const handleDeleteVersion = async (versionId: string) => {
-    if (!confirm('Er du sikker på at du vil slette denne versjonen?')) {
+    if (!window.confirm('Er du sikker pa at du vil slette denne versjonen?')) {
       return;
     }
 
@@ -162,27 +157,27 @@ const VersionHistoryPanel: React.FC<VersionHistoryPanelProps> = ({
       } else {
         setError(data.error || 'Failed to delete version');
       }
-    } catch (err: any) {
-      setError(err.message || 'Failed to delete version');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete version');
     }
   };
 
   const handleCompare = () => {
-    const selected = versions.filter(v => selectedVersions.includes(v.id));
+    const selected = versions.filter((version) => selectedVersions.includes(version.id));
     if (selected.length >= 2) {
       onCompareVersions(selected);
     }
   };
 
   const toggleVersionSelection = (versionId: string) => {
-    setSelectedVersions(prev => {
+    setSelectedVersions((prev) => {
       if (prev.includes(versionId)) {
-        return prev.filter(id => id !== versionId);
-      } else if (prev.length < 2) {
-        return [...prev, versionId];
-      } else {
-        return [prev[1], versionId];
+        return prev.filter((id) => id !== versionId);
       }
+      if (prev.length < 2) {
+        return [...prev, versionId];
+      }
+      return [prev[1], versionId];
     });
   };
 
@@ -196,7 +191,6 @@ const VersionHistoryPanel: React.FC<VersionHistoryPanelProps> = ({
       </DialogTitle>
 
       <DialogContent>
-        {/* Save New Version */}
         <Box mb={3} p={2} sx={{ bgcolor: '#f5f5f5', borderRadius: 1 }}>
           <Typography variant="subtitle2" gutterBottom>
             Lagre ny versjon
@@ -236,7 +230,6 @@ const VersionHistoryPanel: React.FC<VersionHistoryPanelProps> = ({
           </Alert>
         )}
 
-        {/* Version List */}
         <Typography variant="subtitle2" gutterBottom>
           Tidligere versjoner ({versions.length})
         </Typography>
@@ -253,36 +246,26 @@ const VersionHistoryPanel: React.FC<VersionHistoryPanelProps> = ({
           </Button>
         )}
 
+        {loading && <Typography variant="body2">Laster versjoner...</Typography>}
+
         <List>
           {versions.map((version) => (
             <ListItem
               key={version.id}
-              sx={{
-                border: '1px solid #ddd',
-                borderRadius: 1,
-                mb: 1,
-                bgcolor: selectedVersions.includes(version.id) ? '#e3f2fd' : 'white'
-              }}
+              sx={{ border: '1px solid #eee', borderRadius: 1, mb: 1 }}
               secondaryAction={
                 <Box>
-                  <IconButton
-                    edge="end"
-                    onClick={() => handleRestoreVersion(version)}
-                    title="Gjenopprett"
-                  >
+                  <IconButton onClick={() => toggleVersionSelection(version.id)}>
+                    <CompareArrows color={selectedVersions.includes(version.id) ? 'primary' : 'inherit'} />
+                  </IconButton>
+                  <IconButton onClick={() => handleRestoreVersion(version)}>
                     <Restore />
                   </IconButton>
-                  <IconButton
-                    edge="end"
-                    onClick={() => handleDeleteVersion(version.id)}
-                    title="Slett"
-                  >
+                  <IconButton onClick={() => handleDeleteVersion(version.id)}>
                     <Delete />
                   </IconButton>
                 </Box>
               }
-              onClick={() => toggleVersionSelection(version.id)}
-              sx={{ cursor: 'pointer' }}
             >
               <ListItemIcon>
                 <AudioFile />
@@ -294,26 +277,11 @@ const VersionHistoryPanel: React.FC<VersionHistoryPanelProps> = ({
                     <Chip label={`v${version.versionNumber}`} size="small" />
                   </Box>
                 }
-                secondary={
-                  <>
-                    <Typography variant="body2" color="text.secondary">
-                      {version.description}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      {new Date(version.createdAt).toLocaleString('no-NO')}
-                    </Typography>
-                  </>
-                }
+                secondary={`${version.description || 'Ingen beskrivelse'} • ${version.createdAt.toLocaleString('no-NO')}`}
               />
             </ListItem>
           ))}
         </List>
-
-        {versions.length === 0 && !loading && (
-          <Typography variant="body2" color="text.secondary" textAlign="center" py={4}>
-            Ingen versjoner lagret ennå
-          </Typography>
-        )}
       </DialogContent>
 
       <DialogActions>
@@ -324,4 +292,3 @@ const VersionHistoryPanel: React.FC<VersionHistoryPanelProps> = ({
 };
 
 export default VersionHistoryPanel;
-

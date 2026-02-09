@@ -29,12 +29,12 @@ import {
   Alert,
 } from '@mui/material';
 import {
-  LibraryMusicNote,
+  LibraryMusic,
   CloudDone,
-  PlayArrowArrow,
+  PlayArrow,
   Pause,
   Stop,
-  VolumeUpUp,
+  VolumeUp,
   Equalizer,
   Album,
   Mic,
@@ -69,7 +69,9 @@ interface Track {
   lastBackup?: string;
   collaborators: string[];
   notes: string;
-  stemFiles: number
+  stemFiles: number;
+  projectId?: string;
+  projectName?: string;
 }
 
 interface SongFlowProject {
@@ -80,80 +82,243 @@ interface SongFlowProject {
   status: 'active' | 'completed' | 'on-hold';
   deadline?: string;
   googleWorkspaceSync: boolean;
-  lastSync?: string
+  lastSync?: string;
 }
 
 export default function SongFlowPlatform() {
   const queryClient = useQueryClient();
-  
-  // Theming system
-  const theming = useTheming('photographer, ');
+  const [, setLocation] = useLocation();
 
-  // Fetch Song Flow projects with real database integration
-  const { data: projects, isLoading } = useQuery({
-    queryKey: ['/api/songflow-projects,', ],
-    enabled: true,
-});
-
-  // Create new track mutation
-  const createTrackMutation = useMutation({
-    mutationFn: async (trackData: any) => {
-      return apiRequest('/api/songflow-tracks', {
-        method: 'POS',
-        body: JSON.stringify({
-          ...trackData,
-          googleDriveBackup: true, // Always enable for music producers
-          createdAt: new Date(),
-          status: 'recording' }),
-    });
-  },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/songflow-projects', ],});
-      setShowNewTrackDialog(false);
-      setNewTrack({ title: '', artist: ',', genre: 'pop', bpm: 10, key: 'C' });
-      setShowBackupStatus(true);
-  },
-});
+  // Profession context
+  const { professionConfigs } = useDynamicProfessions();
+  const { professionConfigs: apiProfessionConfigs } = useProfessionConfigs();
+  const professionAdapter = useProfessionAdapter();
+  const { getProjectTypes, getDefaultHourlyRate } = professionAdapter;
+  const professionKey = apiProfessionConfigs?.music_producer
+    ? 'music_producer'
+    : professionConfigs?.music_producer
+    ? 'music_producer'
+    : 'photographer';
+  const professionDisplayName =
+    apiProfessionConfigs?.[professionKey]?.displayName ||
+    professionConfigs?.[professionKey]?.displayName ||
+    'Musikkprodusent';
+  const professionIcon = getProfessionIcon(professionKey);
+  const theming = useTheming(professionKey);
 
   const [activeTab, setActiveTab] = useState(0);
   const [showNewTrackDialog, setShowNewTrackDialog] = useState(false);
   const [showBackupStatus, setShowBackupStatus] = useState(false);
+  const [backupMessage, setBackupMessage] = useState('');
+  const [backupSeverity, setBackupSeverity] = useState<'success' | 'error'>('success');
+  const [playingTrackId, setPlayingTrackId] = useState<string | null>(null);
+  const [playbackState, setPlaybackState] = useState<'playing' | 'paused' | 'stopped'>('stopped');
+  const [collaboratorsInput, setCollaboratorsInput] = useState('');
+
+  const cloudDoneIcon = theming.getThemedIcon('cloudDone') || <CloudDone />;
+  const addIcon = theming.getThemedIcon('add') || <Add />;
+  const libraryIcon = theming.getThemedIcon('libraryMusic') || <LibraryMusic />;
+  const personIcon = theming.getThemedIcon('person') || <Person />;
+  const playIcon = theming.getThemedIcon('play') || <PlayArrow />;
+  const volumeIcon = theming.getThemedIcon('volumeUp') || <VolumeUp />;
+  const projectTypes = getProjectTypes();
+  const defaultHourlyRate = getDefaultHourlyRate();
+
+  // Fetch Song Flow projects with real database integration
+  const { data: projects = [], isLoading: projectsLoading } = useQuery<SongFlowProject[]>({
+    queryKey: ['/api/songflow-projects'],
+    queryFn: () => apiRequest('/api/songflow-projects'),
+    enabled: true,
+  });
+
+  // Create new track mutation
+  const createTrackMutation = useMutation({
+    mutationFn: async (trackData: Omit<Track, 'id' | 'duration' | 'googleDriveBackup' | 'lastBackup'>) =>
+      apiRequest('/api/songflow-tracks', {
+        method: 'POST',
+        body: {
+          ...trackData,
+          googleDriveBackup: true,
+          createdAt: new Date().toISOString(),
+          status: 'recording',
+          duration: 0,
+          stemFiles: trackData.stemFiles ?? 0,
+          collaborators: trackData.collaborators ?? [],
+          notes: trackData.notes ?? ''
+        }
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/songflow-projects'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/songflow-tracks'] });
+      setShowNewTrackDialog(false);
+      setNewTrack({
+        title: '',
+        artist: '',
+        genre: 'pop',
+        bpm: 120,
+        key: 'C',
+        notes: '',
+        stemFiles: 0,
+        collaborators: [],
+        projectId: ''
+      });
+      setCollaboratorsInput('');
+      setBackupSeverity('success');
+      setBackupMessage('Spor opprettet og automatisk sikkerhetskopiert til Google Drive.');
+      setShowBackupStatus(true);
+    },
+  });
+
   const [newTrack, setNewTrack] = useState({
-    title: ', ',
-    artist: ', ',
+    title: '',
+    artist: '',
     genre: 'pop',
-    bpm: 10,
-    key: ', ',
-});
+    bpm: 120,
+    key: 'C',
+    notes: '',
+    stemFiles: 0,
+    collaborators: [] as string[],
+    projectId: ''
+  });
 
   // Google Drive backup mutation
   const backupToGoogleDrive = useMutation({
-    mutationFn: async (trackId: string) => {
-      return apiRequest(`/api/songflow-tracks/${trackd}/backup`, {
-        method: 'POS',
-        body: JSON.stringify({
+    mutationFn: async (trackId: string) =>
+      apiRequest(`/api/songflow-tracks/${trackId}/backup`, {
+        method: 'POST',
+        body: {
           backupType: 'google-drive',
           includeStems: true,
           includeMixes: true,
+        },
       }),
-    });
-  },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/songflow-projects', ],});
-  },
-});
+      queryClient.invalidateQueries({ queryKey: ['/api/songflow-projects'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/songflow-tracks'] });
+      setBackupSeverity('success');
+      setBackupMessage('Backup gjennomfort for valgt spor.');
+      setShowBackupStatus(true);
+    },
+    onError: () => {
+      setBackupSeverity('error');
+      setBackupMessage('Backup feilet. Prov igjen.');
+      setShowBackupStatus(true);
+    }
+  });
 
   const handleCreateTrack = () => {
     if (!newTrack.title || !newTrack.artist) return;
-    createTrackMutation.mutate(newTrack);
-};
+    const collaborators = collaboratorsInput
+      .split(',')
+      .map((name) => name.trim())
+      .filter(Boolean);
+    createTrackMutation.mutate({
+      ...newTrack,
+      collaborators,
+    });
+  };
+
+  const handleManualBackup = async () => {
+    if (tracksData.length === 0) {
+      setBackupSeverity('error');
+      setBackupMessage('Ingen spor tilgjengelig for manuell backup.');
+      setShowBackupStatus(true);
+      return;
+    }
+
+    try {
+      await Promise.all(
+        tracksData.map((track) =>
+          apiRequest(`/api/songflow-tracks/${track.id}/backup`, {
+            method: 'POST',
+            body: {
+              backupType: 'google-drive',
+              includeStems: true,
+              includeMixes: true,
+            },
+          })
+        )
+      );
+      setBackupSeverity('success');
+      setBackupMessage('Manuell backup gjennomfort for alle spor.');
+      setShowBackupStatus(true);
+    } catch (error) {
+      console.error('Manual backup failed:', error);
+      setBackupSeverity('error');
+      setBackupMessage('Manuell backup feilet. Prov igjen.');
+      setShowBackupStatus(true);
+    } finally {
+      queryClient.invalidateQueries({ queryKey: ['/api/songflow-projects'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/songflow-tracks'] });
+    }
+  };
+
+  const handleProjectBackup = async (project: SongFlowProject) => {
+    if (project.tracks.length === 0) {
+      setBackupSeverity('error');
+      setBackupMessage('Prosjektet har ingen spor a sikkerhetskopiere.');
+      setShowBackupStatus(true);
+      return;
+    }
+
+    try {
+      await Promise.all(
+        project.tracks.map((track) =>
+          apiRequest(`/api/songflow-tracks/${track.id}/backup`, {
+            method: 'POST',
+            body: {
+              backupType: 'google-drive',
+              includeStems: true,
+              includeMixes: true,
+            },
+          })
+        )
+      );
+      setBackupSeverity('success');
+      setBackupMessage(`Backup gjennomfort for prosjektet ${project.name}.`);
+      setShowBackupStatus(true);
+    } catch (error) {
+      console.error('Project backup failed:', error);
+      setBackupSeverity('error');
+      setBackupMessage(`Backup feilet for prosjektet ${project.name}. Prov igjen.`);
+      setShowBackupStatus(true);
+    } finally {
+      queryClient.invalidateQueries({ queryKey: ['/api/songflow-projects'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/songflow-tracks'] });
+    }
+  };
+
+  const handlePlaybackToggle = (trackId: string) => {
+    if (playingTrackId === trackId) {
+      if (playbackState === 'playing') {
+        setPlaybackState('paused');
+      } else {
+        setPlaybackState('playing');
+      }
+    } else {
+      setPlayingTrackId(trackId);
+      setPlaybackState('playing');
+    }
+  };
+
+  const handleStopPlayback = () => {
+    setPlaybackState('stopped');
+    setPlayingTrackId(null);
+  };
 
   // Database connection for tracks
-  const { data: tracksData = [], isLoading: tracksLoading } = useQuery({
-    queryKey: ['/api/songflow-tracks', ],
-    queryFn: () => apiRequest('/api/songflow-tracks', ),
+  const { data: tracksData = [], isLoading: tracksLoading } = useQuery<Track[]>({
+    queryKey: ['/api/songflow-tracks'],
+    queryFn: () => apiRequest('/api/songflow-tracks'),
     retry: false,
-});
+  });
+  const hasRecordingTracks = tracksData.some((track) => track.status === 'recording');
+
+  useEffect(() => {
+    if (!showBackupStatus) return;
+    const timeout = setTimeout(() => setShowBackupStatus(false), 4000);
+    return () => clearTimeout(timeout);
+  }, [showBackupStatus]);
 
   const TabPanel = ({
     children,
@@ -180,23 +345,35 @@ export default function SongFlowPlatform() {
         <Box>
           <Typography variant="h4"
             sx={{ 
-              fontWeight: 60
-             , display: 'flex',
+              fontWeight: 600,
+              display: 'flex',
               alignItems: 'center',
               gap:  2 }}>
-            <LibraryMusic color="primary" />
+            {professionIcon || libraryIcon}
             Song Flow Platform
           </Typography>
           <Typography variant="subtitle1" color="text.secondary">
-            Avansert musikkproduksjon med Google services integrasjon
+            {professionDisplayName} • Avansert musikkproduksjon med Google services integrasjon
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            Standard timesats: {defaultHourlyRate} kr/time • {projectTypes.length} prosjekttyper tilgjengelig
           </Typography>
         </Box>
         <Box sx={{ display: 'flex', gap:  2 }}>
-          <Button variant="outlined" startIcon={theming.getThemedIcon('cloudDone')} color="success">
+          <Button
+            variant="outlined"
+            startIcon={cloudDoneIcon}
+            color="success"
+            onClick={handleManualBackup}
+            disabled={tracksLoading || tracksData.length === 0}
+          >
             Google Drive Sync
           </Button>
+          <Button variant="outlined" startIcon={<AccountBalance />} onClick={() => setLocation('/dashboard')}>
+            Split Sheets
+          </Button>
           <Button variant="contained"
-            startIcon={theming.getThemedIcon('add')}
+            startIcon={addIcon}
             onClick={() => setShowNewTrackDialog(true)}
           >
             Nytt Spor
@@ -223,15 +400,21 @@ export default function SongFlowPlatform() {
       {/* Tabs */}
       <Box sx={{ borderBottom: 1, borderColor: 'divider', mb:  3 }}>
         <Tabs value={activeTab} onChange={(e, newValue) => setActiveTab(newValue)}>
-          <Tab label="Aktive Spor" icon={theming.getThemedIcon('libraryMusic')}} />
+          <Tab label="Aktive Spor" icon={libraryIcon} />
           <Tab label="Prosjekter" icon={<Album />} />
-          <Tab label="Google Services" icon={theming.getThemedIcon('cloudDone')}} />
-          <Tab label="Samarbeid" icon={theming.getThemedIcon('person')}} />
+          <Tab label="Google Services" icon={cloudDoneIcon} />
+          <Tab label="Samarbeid" icon={personIcon} />
         </Tabs>
       </Box>
 
       {/* Active Tracks Tab */}
       <TabPanel value={activeTab} index={0}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+          <Mic color={hasRecordingTracks ? 'error' : 'disabled'} />
+          <Typography variant="body2" color="text.secondary">
+            {hasRecordingTracks ? 'Opptak i gang' : 'Ingen aktive opptak'}
+          </Typography>
+        </Box>
         <Grid container spacing={3}>
           {tracksLoading ? (
             <Grid item xs={12}>
@@ -251,8 +434,12 @@ export default function SongFlowPlatform() {
                     <Grid container spacing={2} alignItems="center">
                       <Grid item xs={12} md={4}>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
-                          <IconButton sx={{ color: 'white' }}>
-                            {theming.getThemedIcon('play')}
+                          <IconButton sx={{ color: 'white' }} onClick={() => handlePlaybackToggle(track.id)}>
+                            {playingTrackId === track.id && playbackState === 'playing' ? (
+                              <Pause />
+                            ) : (
+                              playIcon
+                            )}
                           </IconButton>
                           <Box>
                             <Typography variant="h6" sx={{  fontWeight: 600}}>
@@ -296,8 +483,10 @@ export default function SongFlowPlatform() {
                         <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
                           <CloudDone sx={{ color: 'lightgreen' }} />
                           <Typography variant="caption">
-                            Google Drive backup: {', '}
-                            {new Date(track.lastBackup!).toLocaleString('nb-NO')}
+                            Google Drive backup:{' '}
+                            {track.lastBackup
+                              ? new Date(track.lastBackup).toLocaleString('nb-NO')
+                              : 'Ikke sikkerhetskopiert'}
                           </Typography>
                         </Box>
                         <Typography variant="caption" sx={{ opacity: 0.8}}>
@@ -313,13 +502,13 @@ export default function SongFlowPlatform() {
                             startIcon={<AccountBalance />}
                             onClick={async () => {
                               try {
-                                const response = await apiRequest(`/api/split-sheets/from-songflow/${track.id}`, {
+                                await apiRequest(`/api/split-sheets/from-songflow/${track.id}`, {
                                   method: 'POST',
-                                  body: JSON.stringify({
+                                  body: {
                                     projectId: track.projectId,
                                     title: `Split Sheet - ${track.title}`,
                                     description: `Auto-opprettet fra SongFlow, track: ${track.title}`
-                                  })
+                                  }
                                 });
                                 alert('Split Sheet opprettet!');
                                 // Navigate to split sheets tab or show the created sheet
@@ -345,11 +534,14 @@ export default function SongFlowPlatform() {
                             >
                               <Backup />
                             </IconButton>
-                            <IconButton size="small" sx={{ color: 'white' }}>
-                              <Equalizer />
+                            <IconButton size="small" sx={{ color: 'white' }} onClick={() => handlePlaybackToggle(track.id)}>
+                              {playbackState === 'paused' && playingTrackId === track.id ? playIcon : <Equalizer />}
                             </IconButton>
                             <IconButton size="small" sx={{ color: 'white' }}>
-                              {theming.getThemedIcon('volumeUp')}
+                              {volumeIcon}
+                            </IconButton>
+                            <IconButton size="small" sx={{ color: 'white' }} onClick={handleStopPlayback}>
+                              <Stop />
                             </IconButton>
                           </Box>
                         </Box>
@@ -393,17 +585,100 @@ export default function SongFlowPlatform() {
         <Typography variant="h6" sx={{  mb:  2  }}>
           Musikkprosjekter
         </Typography>
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 2 }}>
+          {projectTypes.map((projectType) => (
+            <Chip
+              key={projectType.value}
+              label={
+                projectType.defaultHours
+                  ? `${projectType.label} (${projectType.defaultHours}t)`
+                  : projectType.label
+              }
+              size="small"
+              sx={{ bgcolor: 'rgba(25,255,255,0.2)', color: 'white' }}
+            />
+          ))}
+        </Box>
         <Grid container spacing={2}>
-          <Grid item xs={12} md={6}>
-            <MuiCard>
-              <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h6" sx={{ color: theming.colors.primary }}>Album: "Northern Lights"</Typography>
-                <Typography color="text.secondary">12 spor • Deadline: 15. september</Typography>
-                <LinearProgress variant="determinate" value={5} sx={{ mt:  2 }} />
-                <Typography variant="caption">75% fullført</Typography>
-              </CardContent>
-            </MuiCard>
-          </Grid>
+          {projectsLoading ? (
+            <Grid item xs={12}>
+              <MuiCard>
+                <CardContent sx={theming.getThemedCardSx()}>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                    Laster prosjekter...
+                  </Typography>
+                  <LinearProgress />
+                </CardContent>
+              </MuiCard>
+            </Grid>
+          ) : projects.length > 0 ? (
+            projects.map((project) => (
+              <Grid item xs={12} md={6} key={project.id}>
+                <MuiCard>
+                  <CardContent sx={theming.getThemedCardSx()}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <Box>
+                        <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+                          {project.name}
+                        </Typography>
+                        <Typography color="text.secondary">
+                          {project.tracks.length} spor • Status: {project.status}
+                        </Typography>
+                      </Box>
+                      <ListItemSecondaryAction>
+                        <IconButton
+                          size="small"
+                          onClick={() => handleProjectBackup(project)}
+                          disabled={project.tracks.length === 0}
+                        >
+                          <Backup />
+                        </IconButton>
+                        <IconButton size="small" onClick={() => setShowNewTrackDialog(true)}>
+                          <Add />
+                        </IconButton>
+                      </ListItemSecondaryAction>
+                    </Box>
+                    <LinearProgress
+                      variant="determinate"
+                      value={project.status === 'completed' ? 100 : project.status === 'on-hold' ? 40 : 70}
+                      sx={{ mt: 2 }}
+                    />
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1 }}>
+                      <Typography variant="caption">
+                        Artist: {project.artist}
+                      </Typography>
+                      <Typography variant="caption">
+                        {project.deadline
+                          ? `Deadline: ${new Date(project.deadline).toLocaleDateString('nb-NO')}`
+                          : 'Ingen deadline'}
+                      </Typography>
+                    </Box>
+                    {project.lastSync && (
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
+                        <AccessTime fontSize="small" color="action" />
+                        <Typography variant="caption">
+                          Sist synket: {new Date(project.lastSync).toLocaleString('nb-NO')}
+                        </Typography>
+                      </Box>
+                    )}
+                  </CardContent>
+                </MuiCard>
+              </Grid>
+            ))
+          ) : (
+            <Grid item xs={12}>
+              <MuiCard>
+                <CardContent sx={theming.getThemedCardSx()}>
+                  <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+                    Ingen prosjekter tilgjengelig
+                  </Typography>
+                  <Typography color="text.secondary">
+                    Prosjektene dine vises her nar de er opprettet.
+                  </Typography>
+                </CardContent>
+              </MuiCard>
+            </Grid>
+          )}
         </Grid>
       </TabPanel>
 
@@ -457,15 +732,12 @@ export default function SongFlowPlatform() {
                   Backup Status
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mb:  2 }}>
-                  Siste backup: {new Date().toLocaleString(', ')}
+                  Siste backup: {new Date().toLocaleString('nb-NO')}
                 </Typography>
                 <Button variant="contained"
                   startIcon={<Backup />}
                   fullWidth
-                  onClick={() => {
-                    // Trigger manual backup
-                    setShowBackupStatus(true);
-                }}
+                  onClick={handleManualBackup}
                 >
                   Start Manuell Backup
                 </Button>
@@ -525,6 +797,23 @@ export default function SongFlowPlatform() {
                 onChange={(e) => setNewTrack({ ...newTrack, artist: e.target.value })}
               />
             </Grid>
+            <Grid item xs={12}>
+              <FormControl fullWidth>
+                <InputLabel>Prosjekt</InputLabel>
+                <Select
+                  label="Prosjekt"
+                  value={newTrack.projectId}
+                  onChange={(e) => setNewTrack({ ...newTrack, projectId: e.target.value })}
+                >
+                  <MenuItem value="">Ingen</MenuItem>
+                  {projects.map((project) => (
+                    <MenuItem key={project.id} value={project.id}>
+                      {project.name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
             <Grid item xs={6} >
               <FormControl fullWidth>
                 <InputLabel>Genre</InputLabel>
@@ -546,7 +835,7 @@ export default function SongFlowPlatform() {
                 type="number"
                 fullWidth
                 value={newTrack.bpm}
-                onChange={(e) => setNewTrack({ ...newTrack, bpm: parseInt(e.target.value, ),})}
+                onChange={(e) => setNewTrack({ ...newTrack, bpm: parseInt(e.target.value, 10) })}
               />
             </Grid>
             <Grid item xs={3} >
@@ -571,11 +860,40 @@ export default function SongFlowPlatform() {
                 </Select>
               </FormControl>
             </Grid>
+            <Grid item xs={3}>
+              <TextField
+                label="Stemfiler"
+                type="number"
+                fullWidth
+                value={newTrack.stemFiles}
+                onChange={(e) => setNewTrack({ ...newTrack, stemFiles: Number(e.target.value) })}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                label="Medskapere (kommaseparert)"
+                fullWidth
+                value={collaboratorsInput}
+                onChange={(e) => setCollaboratorsInput(e.target.value)}
+                helperText="Eksempel: Kari Nordmann, Ola Nordmann"
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                label="Notater"
+                fullWidth
+                multiline
+                minRows={3}
+                value={newTrack.notes}
+                onChange={(e) => setNewTrack({ ...newTrack, notes: e.target.value })}
+              />
+            </Grid>
           </Grid>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setShowNewTrackDialog(false)}>Avbryt</Button>
           <Button variant="contained"
+            startIcon={<Save />}
             onClick={handleCreateTrack}
             disabled={createTrackMutation.isPending || !newTrack.title || !newTrack.artist}
            sx={theming.getThemedButtonSx()}>
@@ -588,14 +906,16 @@ export default function SongFlowPlatform() {
       {showBackupStatus && (
         <Box sx={{ position: 'fixed', bottom:  20, right:  20, zIndex: 150}}>
           <Alert
-            severity="success"
+            severity={backupSeverity}
             onClose={() => setShowBackupStatus(false)}
             sx={{
-              bgcolor: 'rgba(6, 175, 80, 0.9)',
+              bgcolor: backupSeverity === 'success'
+                ? 'rgba(6, 175, 80, 0.9)'
+                : 'rgba(185, 28, 28, 0.9)',
               color: 'white',
               boxShadow:'0 4px 12px rgba(0,0,0,0.3)' }}
           >
-            🎵 Spor opprettet og automatisk sikkerhetskopiert til Google Drive!
+            {backupMessage}
           </Alert>
         </Box>
       )}

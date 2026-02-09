@@ -105,11 +105,11 @@ const GoogleTasksIntegration: React.FC<GoogleTasksIntegrationProps> = ({
   const { integration, communication, dataFlow, componentRegistry, auth } = useEnhancedMasterIntegration();
 
   // Theming system
-  const theming = useTheming('photographer,');
+  const theming = useTheming('photographer');
 
   // Register component with MasterIntegrationProvider
   React.useEffect(() => {
-    componentRegistry.registerComponent('GoogleTasksIntegration, ', {
+    componentRegistry.registerComponent('GoogleTasksIntegration', {
       type: 'google-service',
       capabilities: ['task-management','task-list-management','task-sync','project-integration'],
       dataFlow: {

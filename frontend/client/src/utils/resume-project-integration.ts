@@ -26,7 +26,7 @@ export async function addCompletedProjectToResumes(
 ): Promise<void> {
   try {
     // Get all active resumes for the user
-    const resumes = await apiRequest('/api/resumes, ', {
+    const resumes = await apiRequest('/api/resumes', {
       headers: { 'x-user-id': projectData.userId },
     });
 

@@ -81,7 +81,7 @@ export default function RoyaltiesManagementDashboard() {
   const queryClient = useQueryClient();
   
   // Theming system
-  const theming = useTheming('photographer, ');
+  const theming = useTheming('photographer');
   const [tabValue, setTabValue] = useState(0);
   const [showAddRoyaltyDialog, setShowAddRoyaltyDialog] = useState(false);
   const [showTonoGramoInfoDialog, setShowTonoGramoInfoDialog] = useState(false);

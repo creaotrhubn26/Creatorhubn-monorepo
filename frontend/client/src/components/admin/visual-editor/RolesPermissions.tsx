@@ -483,7 +483,7 @@ export const RolesPermissions: React.FC<RolesPermissionsProps> = ({
     const newRole: Role = {
       id: `role_${Date.now()}`,
       name: roleData.name || 'New Role',
-      description: roleData.description as any ||'',
+      description: roleData.description || '',
       level: roleData.level || 1,
       permissions: roleData.permissions || [],
       users:  [],
@@ -648,7 +648,7 @@ export const RolesPermissions: React.FC<RolesPermissionsProps> = ({
             }
               secondary={
                 <Box>
-                  <Typography variant="body2">{role.description as any}</Typography>
+                  <Typography variant="body2">{role.description}</Typography>
                   <Box sx={{ display: 'flex', gap: 1, mt: 0.5}}>
                     <Chip size="small" label={`${role.permissions.length} permissions`} />
                     <Chip size="small" label={`${role.users.length} users`} />
@@ -765,7 +765,7 @@ export const RolesPermissions: React.FC<RolesPermissionsProps> = ({
                 <ListItem key={permission.id}>
                   <ListItemText
                     primary={permission.name}
-                    secondary={permission.description as any}
+                    secondary={permission.description}
                   />
                   <ListItemSecondaryAction>
                     <Chip size="small" label={permission.action} variant="outlined" />
@@ -843,7 +843,7 @@ export const RolesPermissions: React.FC<RolesPermissionsProps> = ({
                 multiline
                 rows={3}
                 label="Description"
-                value={editingRole.description as any ||''}
+                value={editingRole.description || ''}
                 onChange={(e) => setEditingRole(prev => ({ ...prev, description: e.target.value }))}
               />
               <FormControl fullWidth>

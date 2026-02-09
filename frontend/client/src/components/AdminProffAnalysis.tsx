@@ -80,7 +80,7 @@ export const AdminProffAnalysis: React.FC<AdminProffAnalysisProps> = ({
   const [loading, setLoading] = useState(false);
   
   // Theming system
-  const theming = useTheming('photographer, ');
+  const theming = useTheming('photographer');
   const [analysisData, setAnalysisData] = useState<ProffAnalysisData | null>(null);
   const [error, setError] = useState<string | null>(null);
 

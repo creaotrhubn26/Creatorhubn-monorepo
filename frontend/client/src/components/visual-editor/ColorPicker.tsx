@@ -37,7 +37,7 @@ interface ColorPickerProps {
   selectedElement: any;
   brandColors: any;
   onColorChange: (color: string, property: string) => void;
-  onClose: () => void
+  onClose: () => void;
 }
 
 export function ColorPicker({
@@ -46,7 +46,7 @@ export function ColorPicker({
   onColorChange,
   onClose,
 }: ColorPickerProps) {
-  const [activeTab, setActiveTab] = useState(false);
+  const [activeTab, setActiveTab] = useState(0);
   
   // Theming system
   const theming = useTheming('photographer');
@@ -133,8 +133,11 @@ export function ColorPicker({
 
   // Validerer farge mot merkevare-retningslinjer
   const validateBrandCompliance = (color: string) => {
+    const normalizedColor = color.toLowerCase();
     const isApprovedColor = Object.values(extendedBrandColors).some((colorGroup) =>
-      Object.values(colorGroup).includes(color.toLowerCase(, ), ),
+      Object.values(colorGroup).some(
+        (value) => String(value).toLowerCase() === normalizedColor
+      )
     );
 
     return {
@@ -143,8 +146,8 @@ export function ColorPicker({
         ? 'Fargen følger merkevare-retningslinjene'
         : 'Fargen følger ikke merkevare-retningslinjene',
       alternatives: isApprovedColor ? [] : getSimilarBrandColors(color),
+    };
   };
-};
 
   // Finn lignende merkevare-farger
   const getSimilarBrandColors = (targetColor: string) => {
@@ -154,19 +157,19 @@ export function ColorPicker({
       extendedBrandColors.secondary[500],
       extendedBrandColors.success[500],
     ];
-};
+  };
 
   // Konverter hex til rgba med opacity
   const hexToRgba = (hex: string, opacity: number) => {
-    const result = /^#?([a-f\d], {, 2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
     if (result) {
       const r = parseInt(result[1], 16);
       const g = parseInt(result[2], 16);
       const b = parseInt(result[3], 16);
       return `rgba(${r}, ${g}, ${b}, ${opacity / 100})`;
-  }
+    }
     return hex;
-};
+  };
 
   // Håndter farge-endring
   const handleColorSelection = (color: string, property: string = 'backgroundColor') => {
@@ -175,11 +178,11 @@ export function ColorPicker({
 
     if (validation.isCompliant) {
       onColorChange(finalColor, property);
-  } else {
+    } else {
       // Vis alternativ-dialog
       console.warn('Ikke-kompatibel farge valgt: ', color);
-  }
-};
+    }
+  };
 
   return (
     <Box sx={{ width: '100%'}}>
@@ -197,10 +200,10 @@ export function ColorPicker({
         <Tab icon={<AutoAwesomeIcon />} label="Smart" />
       </Tabs>
 
-      {/* Tab 1: Merkevare-farger , *, /}
+      {/* Tab 1: Merkevare-farger */}
       {activeTab === 0 && (
         <Box>
-          <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 600}>
+          <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 600 }}>
             <ColorLensIcon sx={{ mr: 1, fontSize: 16}} />
             Merkevare-godkjente farger
           </Typography>
@@ -222,15 +225,17 @@ export function ColorPicker({
                         backgroundColor: color,
                         cursor: 'pointer',
                         border: customColor === color ? '3px solid' : '1px solid',
-                        borderColor: customColor === color ? 'secondary.main' : 'divider', '&:hover': {
-                          transform: 'scale(1.1, )',
+                        borderColor: customColor === color ? 'secondary.main' : 'divider',
+                        '&:hover': {
+                          transform: 'scale(1.1)',
                           zIndex: 1,
-                      },
-                        transition: 'all 0.2'}}
+                        },
+                        transition: 'all 0.2s',
+                      }}
                       onClick={() => {
                         setCustomColor(color);
                         handleColorSelection(color);
-                    }}
+                      }}
                     />
                   </Tooltip>
                 </Grid>
@@ -255,15 +260,17 @@ export function ColorPicker({
                         backgroundColor: color,
                         cursor: 'pointer',
                         border: customColor === color ? '3px solid' : '1px solid',
-                        borderColor: customColor === color ? 'secondary.main' : 'divider','&:hover': {
-                          transform: 'scale(1.1, )',
+                        borderColor: customColor === color ? 'secondary.main' : 'divider',
+                        '&:hover': {
+                          transform: 'scale(1.1)',
                           zIndex: 1,
-                      },
-                        transition: 'all 0.2'}}
+                        },
+                        transition: 'all 0.2s',
+                      }}
                       onClick={() => {
                         setCustomColor(color);
                         handleColorSelection(color);
-                    }}
+                      }}
                     />
                   </Tooltip>
                 </Grid>
@@ -290,17 +297,19 @@ export function ColorPicker({
                           ? '3px solid'
                           : '1px solid',
                       borderColor: customColor === extendedBrandColors[colorType][500]
-                          ? 'secondary.main'
-                          : 'divider','&:hover': {
-                        transform: 'scale(1.1, )',
+                        ? 'secondary.main'
+                        : 'divider',
+                      '&:hover': {
+                        transform: 'scale(1.1)',
                         zIndex: 1,
-                    },
-                      transition: 'all 0.2'}}
+                      },
+                      transition: 'all 0.2s',
+                    }}
                     onClick={() => {
                       const color = extendedBrandColors[colorType][500];
                       setCustomColor(color);
                       handleColorSelection(color);
-                  }}
+                    }}
                   />
                 </Tooltip>
               ))}
@@ -309,10 +318,10 @@ export function ColorPicker({
         </Box>
       )}
 
-      {/* Tab 2: Gradienter , *, /}
+      {/* Tab 2: Gradienter */}
       {activeTab === 1 && (
         <Box>
-          <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 600}>
+          <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 600 }}>
             <GradientIcon sx={{ mr: 1, fontSize: 16}} />
             Merkevare-gradienter
           </Typography>
@@ -329,12 +338,14 @@ export function ColorPicker({
                     background: gradient,
                     cursor: 'pointer',
                     border: '1px solid',
-                    borderColor: 'divider','&:hover': {
-                      transform: 'scale(1.05, )',
+                    borderColor: 'divider',
+                    '&:hover': {
+                      transform: 'scale(1.05)',
                       zIndex: 1,
-                  },
-                    transition: 'all 0.2'}}
-                  onClick={() => handleColorSelection(gradient'background')}
+                    },
+                    transition: 'all 0.2s',
+                  }}
+                  onClick={() => handleColorSelection(gradient, 'background')}
                 />
               </Grid>
             ))}
@@ -342,10 +353,10 @@ export function ColorPicker({
         </Box>
       )}
 
-      {/* Tab 3: Effekter , *, /}
+      {/* Tab 3: Effekter */}
       {activeTab === 2 && (
         <Box>
-          <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 600}>
+          <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 600 }}>
             <OpacityIcon sx={{ mr: 1, fontSize: 16}} />
             Farge-effekter
           </Typography>
@@ -354,7 +365,7 @@ export function ColorPicker({
             {/* Opacity */}
             <Box>
               <Typography variant="caption" color="text.secondary" gutterBottom display="block">
-                <OpacityIcon sx={{ mr: 0, .fontSize: 14}} />
+                <OpacityIcon sx={{ mr: 0, fontSize: 14 }} />
                 Gjennomsiktighet ({opacity}%)
               </Typography>
               <Slider
@@ -370,7 +381,7 @@ export function ColorPicker({
             {/* Brightness */}
             <Box>
               <Typography variant="caption" color="text.secondary" gutterBottom display="block">
-                <Brightness6Icon sx={{ mr: 0, .fontSize: 14}} />
+                <Brightness6Icon sx={{ mr: 0, fontSize: 14 }} />
                 Lysstyrke ({brightness}%)
               </Typography>
               <Slider
@@ -386,7 +397,7 @@ export function ColorPicker({
             {/* Contrast */}
             <Box>
               <Typography variant="caption" color="text.secondary" gutterBottom display="block">
-                <ContrastIcon sx={{ mr: 0, .fontSize: 14}} />
+                <ContrastIcon sx={{ mr: 0, fontSize: 14 }} />
                 Kontrast ({contrast}%)
               </Typography>
               <Slider
@@ -421,10 +432,10 @@ export function ColorPicker({
         </Box>
       )}
 
-      {/* Tab 4: Smart anbefalinger , *, /}
+      {/* Tab 4: Smart anbefalinger */}
       {activeTab === 3 && (
         <Box>
-          <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 600}>
+          <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 600 }}>
             <AutoAwesomeIcon sx={{ mr: 1, fontSize: 16}} />
             Smarte anbefalinger
           </Typography>
@@ -458,10 +469,12 @@ export function ColorPicker({
                   sx={{
                     justifyContent: 'flex-start',
                     borderColor: suggestion.color,
-                    color: suggestion.color, '&:hover': {
+                    color: suggestion.color,
+                    '&:hover': {
                       backgroundColor: `${suggestion.color}20`,
                       borderColor: suggestion.color,
-                  }}}
+                    },
+                  }}
                 >
                   {suggestion.label}
                 </Button>
@@ -495,11 +508,13 @@ export function ColorPicker({
                               width:  24,
                               height:  24,
                               backgroundColor: altColor,
-                              cursor: 'pointer', '&:hover': { transform: 'scale(1.2)',}}}
+                              cursor: 'pointer',
+                              '&:hover': { transform: 'scale(1.2)' },
+                            }}
                             onClick={() => {
                               setCustomColor(altColor);
                               handleColorSelection(altColor);
-                          }}
+                            }}
                           />
                         </Tooltip>
                       ))}

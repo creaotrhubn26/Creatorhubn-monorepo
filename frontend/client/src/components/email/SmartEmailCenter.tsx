@@ -211,7 +211,7 @@ const SmartEmailCenter: React.FC<SmartEmailCenterProps> = ({
 
   // Track feature usage
   useEffect(() => {
-    features.trackFeatureUsage('smart-email-center, ','opened', {
+    features.trackFeatureUsage('smart-email-center', 'opened', {
       timestamp: Date.now(),
       component: 'SmartEmailCenter',
       profession: profession,

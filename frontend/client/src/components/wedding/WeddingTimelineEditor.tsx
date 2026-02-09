@@ -41,6 +41,7 @@ import {
   Tooltip,
   Badge,
 } from '@mui/material';
+import type { ChipProps } from '@mui/material';
 import {
   Add,
   Edit,
@@ -347,7 +348,7 @@ export default function WeddingTimelineEditor({
     }
   };
 
-  const getPriorityColor = (priority: string) => {
+  const getPriorityColor = (priority: string): ChipProps['color'] => {
     switch (priority) {
       case 'high': return 'error';
       case 'medium': return 'warning';
@@ -460,8 +461,8 @@ export default function WeddingTimelineEditor({
           ) : (
             <Timeline position="right">
               {events
-                .sort((a: any, b: unknown) => a.time.localeCompare(b.time)
-                .map((event: any, index: number) => (
+                .sort((a: TimelineEvent, b: TimelineEvent) => a.time.localeCompare(b.time))
+                .map((event: TimelineEvent, index: number) => (
                   <TimelineItem key={event.id}>
                     <TimelineOppositeContent color="text.secondary" sx={{ flex: 0.2 }}>
                       <Typography variant="h6" sx={{ fontWeight: 600}}>
@@ -514,7 +515,7 @@ export default function WeddingTimelineEditor({
                               <Chip
                                 label={event.priority}
                                 size="small"
-                                color={getPriorityColor(event.priority) as any}
+                                color={getPriorityColor(event.priority)}
                               />
                             </Box>
                           </Box>
@@ -673,7 +674,12 @@ export default function WeddingTimelineEditor({
                 <InputLabel>Event type</InputLabel>
                 <Select
                   value={newEvent.eventType}
-                  onChange={(e) => setNewEvent({ ...newEvent, eventType: e.target.value as any })}}
+                  onChange={(e) =>
+                    setNewEvent({
+                      ...newEvent,
+                      eventType: e.target.value as TimelineEvent['eventType']
+                    })
+                  }
                   label="Event type"
                 >
                   <MenuItem value="ceremony">Seremoni</MenuItem>
@@ -691,7 +697,12 @@ export default function WeddingTimelineEditor({
                 type="number"
                 label="Varighet (min)"
                 value={newEvent.duration}
-                onChange={(e) => setNewEvent({ ...newEvent, duration: parseInt(e.target.value) })}}
+                onChange={(e) =>
+                  setNewEvent({
+                    ...newEvent,
+                    duration: Number.parseInt(e.target.value, 10) || 0
+                  })
+                }
               />
             </Grid>
             <Grid item xs={12} md={3}>
@@ -699,7 +710,12 @@ export default function WeddingTimelineEditor({
                 <InputLabel>Prioritet</InputLabel>
                 <Select
                   value={newEvent.priority}
-                  onChange={(e) => setNewEvent({ ...newEvent, priority: e.target.value as any })}}
+                  onChange={(e) =>
+                    setNewEvent({
+                      ...newEvent,
+                      priority: e.target.value as TimelineEvent['priority']
+                    })
+                  }
                   label="Prioritet"
                 >
                   <MenuItem value="high">Høy</MenuItem>
@@ -713,7 +729,7 @@ export default function WeddingTimelineEditor({
                 fullWidth
                 label="Lokasjon"
                 value={newEvent.location}
-                onChange={(e) => setNewEvent({ ...newEvent, location: e.target.value })}}
+                onChange={(e) => setNewEvent({ ...newEvent, location: e.target.value })}
               />
             </Grid>
             <Grid item xs={12}>
@@ -723,7 +739,7 @@ export default function WeddingTimelineEditor({
                 rows={3}
                 label="Beskrivelse"
                 value={newEvent.description}
-                onChange={(e) => setNewEvent({ ...newEvent, description: e.target.value })}}
+                onChange={(e) => setNewEvent({ ...newEvent, description: e.target.value })}
               />
             </Grid>
             <Grid item xs={12}>
@@ -731,9 +747,9 @@ export default function WeddingTimelineEditor({
                 control={
                   <Switch
                     checked={newEvent.hasSpeech}
-                    onChange={(e) => setNewEvent({ ...newEvent, hasSpeech: e.target.checked })}}
+                    onChange={(e) => setNewEvent({ ...newEvent, hasSpeech: e.target.checked })}
                   />
-                }}
+                }
                 label="Inkluderer tale/innslag"
               />
             </Grid>
@@ -745,7 +761,7 @@ export default function WeddingTimelineEditor({
                   rows={2}
                   label="Tale detaljer"
                   value={newEvent.speechDetails}
-                  onChange={(e) => setNewEvent({ ...newEvent, speechDetails: e.target.value })}}
+                  onChange={(e) => setNewEvent({ ...newEvent, speechDetails: e.target.value })}
                   placeholder="Hvem holder talen, tema, etc."
                 />
               </Grid>
@@ -791,7 +807,7 @@ export default function WeddingTimelineEditor({
                 fullWidth
                 label="Event tittel *"
                 value={newSuggestion.eventTitle}
-                onChange={(e) => setNewSuggestion({ ...newSuggestion, eventTitle: e.target.value })}}
+                onChange={(e) => setNewSuggestion({ ...newSuggestion, eventTitle: e.target.value })}
               />
             </Grid>
             <Grid item xs={12} md={8}>
@@ -802,7 +818,7 @@ export default function WeddingTimelineEditor({
                 value={newSuggestion.suggestedTime}
                 onChange={(e) =>
                   setNewSuggestion({ ...newSuggestion, suggestedTime: e.target.value })
-                }}
+                }
                 InputLabelProps={{ shrink: true }} />
             </Grid>
             <Grid item xs={12} md={4}>
@@ -811,8 +827,11 @@ export default function WeddingTimelineEditor({
                 <Select
                   value={newSuggestion.priority}
                   onChange={(e) =>
-                    setNewSuggestion({ ...newSuggestion, priority: e.target.value as any })
-                  }}
+                    setNewSuggestion({
+                      ...newSuggestion,
+                      priority: e.target.value as TimelineSuggestion['priority']
+                    })
+                  }
                   label="Prioritet"
                 >
                   <MenuItem value="high">Høy</MenuItem>
@@ -828,7 +847,7 @@ export default function WeddingTimelineEditor({
                 rows={4}
                 label="Begrunnelse *"
                 value={newSuggestion.reason}
-                onChange={(e) => setNewSuggestion({ ...newSuggestion, reason: e.target.value })}}
+                onChange={(e) => setNewSuggestion({ ...newSuggestion, reason: e.target.value })}
                 placeholder="Forklar hvorfor du foreslår denne endringen..."
               />
             </Grid>
@@ -842,8 +861,8 @@ export default function WeddingTimelineEditor({
             onClick={handleSendSuggestion}
             disabled={
               !newSuggestion.eventTitle || !newSuggestion.suggestedTime || !newSuggestion.reason
-            }}
-            sx={{ bgcolor: '#FF9800','&:hover': { bgcolor: '#F57C00' } }}
+            }
+            sx={{ bgcolor: '#FF9800', '&:hover': { bgcolor: '#F57C00' } }}
 
           >
             Send Forslag

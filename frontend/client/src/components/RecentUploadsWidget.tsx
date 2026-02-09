@@ -244,7 +244,7 @@ export default function RecentUploadsWidget({
 
                   <ListItemText
                     primary={
-                      <Typography variant="body2" sx={{ fontWeight: 50}}>
+                      <Typography variant="body2" sx={{ fontWeight: 500}}>
                         {file.fileName.length > 25
                           ? `${file.fileName.substring(0, 25)}...`
                           : file.fileName}
@@ -271,7 +271,7 @@ export default function RecentUploadsWidget({
                           {formatTimeAgo(file.uploadDate)}
                         </Typography>
                         {file.needsAction && (
-                          <Typography variant="caption" sx={{ color: '#FF9800', fontWeight: 50}}>
+                          <Typography variant="caption" sx={{ color: '#FF9800', fontWeight: 500}}>
                             Foreslår: {file.suggestedFolder}
                           </Typography>
                         )}

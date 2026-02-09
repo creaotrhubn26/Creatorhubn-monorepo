@@ -100,7 +100,7 @@ const UniversalIntegrationDashboard: React.FC = () => {
 	  const { integration, communication, dataFlow, debugging } = useEnhancedMasterIntegration();
   
   // Theming system
-  const theming = useTheming('prototype_tester, ');
+  const theming = useTheming('prototype_tester');
   
   const [selectedTab, setSelectedTab] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');

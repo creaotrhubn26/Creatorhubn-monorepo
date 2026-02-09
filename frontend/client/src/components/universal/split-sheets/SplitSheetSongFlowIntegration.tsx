@@ -26,7 +26,8 @@ import {
   ListItemText,
   ListItemSecondaryAction,
   Divider,
-  Tooltip
+  Tooltip,
+  Snackbar
 } from '@mui/material';
 import {
   Link as LinkIcon,
@@ -50,6 +51,8 @@ export default function SplitSheetSongFlowIntegration({
   const [showLinkDialog, setShowLinkDialog] = useState(false);
   const [songflowTrackId, setSongflowTrackId] = useState('');
   const [songflowProjectId, setSongflowProjectId] = useState('');
+  const [confirmUnlink, setConfirmUnlink] = useState<SplitSheetSongFlowLink | null>(null);
+  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'info' | 'warning' | 'error' }>({ open: false, message: '', severity: 'info' });
 
   // Fetch existing links
   const { data: linksData } = useQuery({
@@ -99,7 +102,7 @@ export default function SplitSheetSongFlowIntegration({
 
   const handleLink = () => {
     if (!songflowTrackId && !songflowProjectId) {
-      alert('Vennligst oppgi enten SongFlow track ID eller project ID');
+      setSnackbar({ open: true, message: 'Vennligst oppgi enten SongFlow track ID eller project ID', severity: 'warning' });
       return;
     }
     linkMutation.mutate({
@@ -109,12 +112,16 @@ export default function SplitSheetSongFlowIntegration({
   };
 
   const handleUnlink = (link: SplitSheetSongFlowLink) => {
-    if (window.confirm('Er du sikker på at du vil fjerne koblingen til SongFlow?')) {
-      unlinkMutation.mutate({
-        songflow_track_id: link.songflow_track_id || undefined,
-        songflow_project_id: link.songflow_project_id || undefined
-      });
-    }
+    setConfirmUnlink(link);
+  };
+
+  const executeUnlink = () => {
+    if (!confirmUnlink) return;
+    unlinkMutation.mutate({
+      songflow_track_id: confirmUnlink.songflow_track_id || undefined,
+      songflow_project_id: confirmUnlink.songflow_project_id || undefined
+    });
+    setConfirmUnlink(null);
   };
 
   return (
@@ -258,6 +265,36 @@ export default function SplitSheetSongFlowIntegration({
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Confirm Unlink Dialog */}
+      <Dialog open={!!confirmUnlink} onClose={() => setConfirmUnlink(null)}>
+        <DialogTitle>Bekreft frakobling</DialogTitle>
+        <DialogContent>
+          <Typography>
+            Er du sikker på at du vil fjerne koblingen til SongFlow? Du kan koble til igjen senere.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmUnlink(null)}>Avbryt</Button>
+          <Button onClick={executeUnlink} color="error" variant="contained">Fjern kobling</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Snackbar for notifications */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={4000}
+        onClose={() => setSnackbar(prev => ({ ...prev, open: false }))}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert
+          onClose={() => setSnackbar(prev => ({ ...prev, open: false }))}
+          severity={snackbar.severity}
+          sx={{ width: '100%' }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 }

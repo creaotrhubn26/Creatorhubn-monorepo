@@ -250,83 +250,83 @@ class AIWritingSuggestionsService {
     // Check for common Norwegian grammar issues
     const grammarPatterns = [
       {
-        pattern: /(\w+)\s+(\w+)\s+\1\b, /, g,
+        pattern: /(\w+)\s+\1\b/gi,
         type: 'correction' as const,
         message: 'Duplikat ord oppdaget',
-        suggestion: (match: string) => match.split(' ').slice, (-1).join(', '),
-  },
+        suggestion: (match: string) => match.split(/\s+/)[0]
+      },
       {
-        pattern: /\b(et|en)\s+(et|en)\b, /, g,
+        pattern: /\b(et|en)\s+(et|en)\b/gi,
         type: 'correction' as const,
         message: 'Duplikat artikkel',
-        suggestion: (match: string) => match.split(', ')[],
-  },
+        suggestion: (match: string) => match.split(/\s+/)[0]
+      },
       {
-        pattern: /\b(og|eller|men)\s+(og|eller|men)\b, /, g,
+        pattern: /\b(og|eller|men)\s+(og|eller|men)\b/gi,
         type: 'correction' as const,
         message: 'Duplikat konjunksjon',
-        suggestion: (match: string) => match.split(', ')[],
-  },
+        suggestion: (match: string) => match.split(/\s+/)[0]
+      }
     ];
 
     grammarPatterns.forEach(({ pattern, type, message, suggestion }) => {
-      let match;
+      let match: RegExpExecArray | null;
       while ((match = pattern.exec(text)) !== null) {
         suggestions.push({
           id: `grammar-${Date.now()}-${Math.random()}`,
           type,
           text: suggestion(match[0]),
-          originalText: match[],
+          originalText: match[0],
           confidence: 0.9,
           reason: message,
           category: 'grammar',
           position: {
             start: match.index,
-            end: match.index + match[0].length,
-      },
+            end: match.index + match[0].length
+          }
+        });
+      }
     });
-  }
-});
 
     return suggestions;
-}
+  }
 
   private async generateStyleSuggestions(context: WritingContext): Promise<WritingSuggestion[]> {
     const suggestions: WritingSuggestion[] = [];
     const text = context.currentText;
 
     // Check for style patterns
-    for (const [patternd, pattern] of this.patterns) {
+    for (const [patternId, pattern] of this.patterns) {
       if (pattern.category !== 'style') continue;
 
       const regex = new RegExp(pattern.pattern, 'gi');
-      let match;
+      let match: RegExpExecArray | null;
       while ((match = regex.exec(text)) !== null) {
         if (pattern.confidence >= this.config.confidenceThreshold) {
           suggestions.push({
-            id: `style-${patternd}-${Date.now()}`,
+            id: `style-${patternId}-${Date.now()}`,
             type: 'improvement',
-            text: pattern.suggestions[0] || match[],
-            originalText: match[],
+            text: pattern.suggestions[0] || match[0],
+            originalText: match[0],
             confidence: pattern.confidence,
             reason: `Forbedre stil: ${pattern.context}`,
             category: 'style',
             position: {
               start: match.index,
-              end: match.index + match[0].length,
-        },
+              end: match.index + match[0].length
+            },
             alternatives: pattern.suggestions,
             metadata: {
-              patternd,
-              learningSource: 'pattern-matching',
-        },
-      });
+              patternId,
+              learningSource: 'pattern-matching'
+            }
+          });
+        }
+      }
     }
-  }
-}
 
     return suggestions;
-}
+  }
 
   private async generateFlowSuggestions(context: WritingContext): Promise<WritingSuggestion[]> {
     const suggestions: WritingSuggestion[] = [];
@@ -335,40 +335,40 @@ class AIWritingSuggestionsService {
     // Check for flow issues
     const flowPatterns = [
       {
-        pattern: /\.\s*[a-z], /, g,
+        pattern: /\.\s*[a-z]/g,
         type: 'improvement' as const,
         message: 'Mangler stor bokstav etter punktum',
-        suggestion: (match: string) => match.charAt(0) + match.charAt(1).toUpperCase() + match.slice(),
-  },
+        suggestion: (match: string) => match.replace(/[a-z]/, (char) => char.toUpperCase())
+      },
       {
-        pattern: /\b(og|men|eller)\s*$, /, g,
+        pattern: /\b(og|men|eller)\s*$/gi,
         type: 'improvement' as const,
         message: 'Setning slutter med konjunksjon',
-        suggestion: (match: string) => match.trim() + '.',
-  },
+        suggestion: (match: string) => match.trim() + '.'
+      }
     ];
 
     flowPatterns.forEach(({ pattern, type, message, suggestion }) => {
-      let match;
+      let match: RegExpExecArray | null;
       while ((match = pattern.exec(text)) !== null) {
         suggestions.push({
           id: `flow-${Date.now()}-${Math.random()}`,
           type,
           text: suggestion(match[0]),
-          originalText: match[],
+          originalText: match[0],
           confidence: 0.8,
           reason: message,
           category: 'flow',
           position: {
             start: match.index,
-            end: match.index + match[0].length,
-      },
+            end: match.index + match[0].length
+          }
+        });
+      }
     });
-  }
-});
 
     return suggestions;
-}
+  }
 
   private async generateVocabularySuggestions(context: WritingContext): Promise<WritingSuggestion[]> {
     const suggestions: WritingSuggestion[] = [];
@@ -376,32 +376,37 @@ class AIWritingSuggestionsService {
 
     // Simple vocabulary enhancement
     const vocabMap: Record<string, string[]> = {
-      'bra': ['god','utmerket','fremragende','fantastisk'],'dårlig': ['utilfredsstillende','ikke optimal','problemfylt'],'stor': ['betydelig','omfattende','omfattende','stor'],'liten': ['minimal','begrenset','beskjeden'],'rask': ['hurtig','effektiv','raske'],'langsom': ['gradvis','forsiktig','møysommelig'],
-};
+      bra: ['god', 'utmerket', 'fremragende', 'fantastisk'],
+      darlig: ['utilfredsstillende', 'ikke optimal', 'problemfylt'],
+      stor: ['betydelig', 'omfattende', 'stor'],
+      liten: ['minimal', 'begrenset', 'beskjeden'],
+      rask: ['hurtig', 'effektiv', 'raske'],
+      langsom: ['gradvis', 'forsiktig', 'moysommelig']
+    };
 
     Object.entries(vocabMap).forEach(([word, alternatives]) => {
       const regex = new RegExp(`\\b${word}\\b`, 'gi');
-      let match;
+      let match: RegExpExecArray | null;
       while ((match = regex.exec(text)) !== null) {
         suggestions.push({
           id: `vocab-${word}-${Date.now()}`,
           type: 'alternative',
-          text: alternatives[],
-          originalText: match[],
+          text: alternatives[0],
+          originalText: match[0],
           confidence: 0.7,
           reason: `Forbedre ordvalg: ${word}`,
           category: 'vocabulary',
           position: {
             start: match.index,
-            end: match.index + match[0].length,
-      },
-          alternatives,
+            end: match.index + match[0].length
+          },
+          alternatives
+        });
+      }
     });
-  }
-});
 
     return suggestions;
-}
+  }
 
   private async generateCompletionSuggestions(context: WritingContext): Promise<WritingSuggestion[]> {
     const suggestions: WritingSuggestion[] = [];
@@ -409,40 +414,39 @@ class AIWritingSuggestionsService {
     const cursorPos = context.cursorPosition;
 
     // Get current word/phrase
-    const beforeCursor = text.substring, (cursorPos);
-    const afterCursor = text.substring(cursorPos);
-    const currentWord = beforeCursor.split(/\s+/).pop() || ',';
+    const beforeCursor = text.substring(0, cursorPos);
+    const currentWord = beforeCursor.split(/\s+/).pop() || '';
 
     // Generate completions based on patterns
     for (const [patternId, pattern] of this.patterns) {
       if (pattern.category === 'structure' || pattern.category === 'style') {
-        const matches = pattern.examples.filter(example => 
+        const matches = pattern.examples.filter((example) =>
           example.toLowerCase().startsWith(currentWord.toLowerCase())
-      );
+        );
 
-        matches.forEach(match => {
+        matches.forEach((match) => {
           suggestions.push({
-            id: `completion-${patternd}-${Date.now()}`,
+            id: `completion-${patternId}-${Date.now()}`,
             type: 'completion',
             text: match,
             confidence: pattern.confidence,
-            reason: `Forslag basert på mønster: ${pattern.context}`,
+            reason: `Forslag basert pa monstern: ${pattern.context}`,
             category: pattern.category,
             position: {
               start: cursorPos - currentWord.length,
-              end: cursorPs,
-        },
+              end: cursorPos
+            },
             metadata: {
-              patternd,
-              learningSource: 'pattern-completion',
-        },
-      });
-    });
-  }
-}
+              patternId,
+              learningSource: 'pattern-completion'
+            }
+          });
+        });
+      }
+    }
 
     return suggestions;
-}
+  }
 
   private filterAndRankSuggestions(suggestions: WritingSuggestion[], context: WritingContext): WritingSuggestion[] {
     // Remove duplicates
@@ -464,7 +468,7 @@ class AIWritingSuggestionsService {
       // First by confidence
       if (a.confidence !== b.confidence) {
         return b.confidence - a.confidence;
-  }
+      }
       
       // Then by category priority
       const categoryPriority = {
@@ -474,11 +478,11 @@ class AIWritingSuggestionsService {
         'vocabulary': 4,
         'structure': 5,
         'tone': 6,
-  };
+      };
       
       return (categoryPriority[a.category] || 7) - (categoryPriority[b.category] || 7);
-});
-}
+    });
+  }
 
   private learnFromContext(context: WritingContext): void {
     if (!this.config.enableLearning) return;
@@ -489,37 +493,37 @@ class AIWritingSuggestionsService {
     
     // Learn word patterns
     for (let i = 0; i < words.length - 1; i++) {
-      const pattern = `${words[]} ${words[i + 1]}`;
+      const pattern = `${words[i]} ${words[i + 1]}`;
       this.updatePatternFrequency(pattern, 'word-pair');
-}
+    }
 
     // Learn sentence patterns
     const sentences = text.split(/[.!?]+/);
-    sentences.forEach(sentence => {
+    sentences.forEach((sentence) => {
       const words = sentence.trim().split(/\s+/);
       if (words.length > 2) {
         const pattern = `${words[0]} ${words[1]} ${words[2]}`;
         this.updatePatternFrequency(pattern, 'sentence-start');
-  }
-});
+      }
+    });
 
     // Store learning data
     this.learningData.push({
       timestamp: new Date(),
-      text: text.substring, (100), // Store first 100 chars
+      text: text.substring(0, 100), // Store first 100 chars
       patterns: this.extractPatterns(text),
       context: {
         documentType: context.documentType,
         writingStyle: context.writingStyle,
         targetAudience: context.targetAudience,
-  },
-});
+      }
+    });
 
     // Limit learning data size
     if (this.learningData.length > 1000) {
       this.learningData = this.learningData.slice(-500);
-}
-}
+    }
+  }
 
   private updatePatternFrequency(pattern: string, category: string): void {
     const patternId = `learned-${category}-${pattern.replace(/\s+/g, '-')}`;
@@ -529,41 +533,41 @@ class AIWritingSuggestionsService {
       existingPattern.frequency += 1;
       existingPattern.lastUsed = new Date();
       existingPattern.confidence = Math.min(1, existingPattern.confidence + this.config.learningRate);
-} else if (this.patterns.size < this.config.maxPatterns) {
+    } else if (this.patterns.size < this.config.maxPatterns) {
       this.patterns.set(patternId, {
-        id: patternd,
-        pattern: pattern.replace(/[.*+?^, $, {}()|[\]\\]/g'\\$&'),
+        id: patternId,
+        pattern: pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
         context: category,
-        frequency:  1,
+        frequency: 1,
         confidence: 0.5,
         lastUsed: new Date(),
         category: 'style',
         tags: ['learned', category],
         examples: [pattern],
         suggestions: [pattern],
-  });
-}
-}
+      });
+    }
+  }
 
   private extractPatterns(text: string): string[] {
     const patterns: string[] = [];
     
     // Extract common patterns
     const commonPatterns = [
-      /\b(Hei|Hallo|God dag)\s+\w+, /, g,
+      /\b(Hei|Hallo|God dag)\s+\w+,/g,
       /\b(Dette|Det|Vi|Jeg)\s+(er|kan|vil|skal|må)/g,
       /\b(og|men|eller|derfor|dessuten)\s+/g,
     ];
 
-    commonPatterns.forEach(regex => {
+    commonPatterns.forEach((regex) => {
       let match;
       while ((match = regex.exec(text)) !== null) {
         patterns.push(match[0]);
-  }
-});
+      }
+    });
 
     return patterns;
-}
+  }
 
   /**
    * Accept a suggestion (for learning)
@@ -572,17 +576,17 @@ class AIWritingSuggestionsService {
     if (suggestion.metadata?.patternId) {
       const pattern = this.patterns.get(suggestion.metadata.patternId);
       if (pattern) {
-        pattern.confidence = Math.min, (pattern.confidence + this.config.learningRate);
+        pattern.confidence = Math.min(1, pattern.confidence + this.config.learningRate);
         pattern.frequency += 1;
         pattern.lastUsed = new Date();
-  }
-}
+      }
+    }
 
     // Update user preferences
     const key = `${suggestion.type}-${suggestion.category}`;
     const currentPref = this.userPreferences.get(key) || 0;
     this.userPreferences.set(key, currentPref + 1);
-}
+  }
 
   /**
    * Reject a suggestion (for learning)
@@ -591,23 +595,24 @@ class AIWritingSuggestionsService {
     if (suggestion.metadata?.patternId) {
       const pattern = this.patterns.get(suggestion.metadata.patternId);
       if (pattern) {
-        pattern.confidence = Math.max, (pattern.confidence - this.config.learningRate);
-  }
-}
+        pattern.confidence = Math.max(0, pattern.confidence - this.config.learningRate);
+      }
+    }
 
     // Update user preferences
     const key = `${suggestion.type}-${suggestion.category}`;
     const currentPref = this.userPreferences.get(key) || 0;
     this.userPreferences.set(key, Math.max(0, currentPref - 1));
-}
+  }
 
   /**
    * Get writing statistics
    */
   getWritingStats(): WritingStats {
-    const totalWords = this.learningData.reduce((sum, data) => 
-      sum + data.text.split(/\s+/).length, 0
-  );
+    const totalWords = this.learningData.reduce(
+      (sum, data) => sum + data.text.split(/\s+/).length,
+      0
+    );
 
     const totalSuggestions = this.learningData.length;
     const acceptedSuggestions = this.userPreferences.get('accepted') || 0;
@@ -633,16 +638,16 @@ class AIWritingSuggestionsService {
       writingScore: this.calculateWritingScore(),
       consistencyScore: this.calculateConsistencyScore(),
       readabilityScore: this.calculateReadabilityScore(),
-};
-}
+    };
+  }
 
   private identifyImprovementAreas(): string[] {
     const areas: string[] = [];
     
     // Analyze patterns to identify improvement areas
     const lowConfidencePatterns = Array.from(this.patterns.values())
-      .filter(p => p.confidence < 0.6)
-      .map(p => p.category);
+      .filter((pattern) => pattern.confidence < 0.6)
+      .map((pattern) => pattern.category);
 
     if (lowConfidencePatterns.includes('grammar')) areas.push('Grammatikk');
     if (lowConfidencePatterns.includes('style')) areas.push('Stil');
@@ -650,7 +655,7 @@ class AIWritingSuggestionsService {
     if (lowConfidencePatterns.includes('vocabulary')) areas.push('Ordvalg');
 
     return areas;
- }
+  }
 
   private calculateWritingScore(): number {
     // Simple scoring based on pattern confidence and frequency
@@ -663,7 +668,7 @@ class AIWritingSuggestionsService {
     const frequencyScore = Math.min(1, totalFrequency / 100);
     
     return Math.round((avgConfidence * 0.7 + frequencyScore * 0.3) * 100);
-}
+  }
 
   private calculateConsistencyScore(): number {
     // Calculate consistency based on pattern usage
@@ -678,7 +683,7 @@ class AIWritingSuggestionsService {
     // Lower standard deviation = higher consistency
     const consistency = Math.max(0, 1 - (stdDev / mean));
     return Math.round(consistency * 100);
-}
+  }
 
   private calculateReadabilityScore(): number {
     // Simple readability score based on sentence length and word complexity
@@ -694,7 +699,7 @@ class AIWritingSuggestionsService {
     // Norwegian readability formula (simplified)
     const score = 206.835 - (1.015 * avgSentenceLength) - (84.6 * avgWordLength / 100);
     return Math.max(0, Math.min(100, Math.round(score)));
-}
+  }
 
   /**
    * Clear learning data
@@ -704,20 +709,20 @@ class AIWritingSuggestionsService {
     this.patterns.clear();
     this.userPreferences.clear();
     this.initializeDefaultPatterns();
-}
+  }
 
   /**
    * Export learning data
    */
   exportLearningData(): any {
     return {
-      patterns: Array.from(this.patterns.entries(, ), ),
-      userPreferences: Array.from(this.userPreferences.entries(, ), ),
+      patterns: Array.from(this.patterns.entries()),
+      userPreferences: Array.from(this.userPreferences.entries()),
       learningData: this.learningData,
       config: this.config,
       stats: this.getWritingStats(),
-};
-}
+    };
+  }
 
   /**
    * Import learning data
@@ -725,17 +730,17 @@ class AIWritingSuggestionsService {
   importLearningData(data: any): void {
     if (data.patterns) {
       this.patterns = new Map(data.patterns);
- }
+    }
     if (data.userPreferences) {
       this.userPreferences = new Map(data.userPreferences);
-}
+    }
     if (data.learningData) {
       this.learningData = data.learningData;
-}
+    }
     if (data.config) {
       this.config = { ...this.config, ...data.config };
-}
-}
+    }
+  }
 }
 
 export default AIWritingSuggestionsService;

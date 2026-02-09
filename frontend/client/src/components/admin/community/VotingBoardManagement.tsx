@@ -19,6 +19,7 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
+  DialogContentText,
   DialogActions,
   Card,
   CardContent,
@@ -176,6 +177,7 @@ export default function VotingBoardManagement({ groupId }: VotingBoardManagement
   
   const [itemStatus, setItemStatus] = useState('');
   const [adminResponse, setAdminResponse] = useState('');
+  const [confirmDeleteBoardId, setConfirmDeleteBoardId] = useState<string | null>(null);
 
   // ============================================
   // DATA FETCHING
@@ -289,18 +291,21 @@ export default function VotingBoardManagement({ groupId }: VotingBoardManagement
   };
 
   const handleDeleteBoard = async (boardId: string) => {
-    if (!confirm('Er du sikker på at du vil slette dette stemmebrettet? Alle forslag og stemmer vil bli slettet.')) {
-      return;
-    }
+    setConfirmDeleteBoardId(boardId);
+  };
+
+  const executeDeleteBoard = async () => {
+    if (!confirmDeleteBoardId) return;
 
     try {
-      await apiRequest(`/api/community/voting/boards/${boardId}`, {
+      await apiRequest(`/api/community/voting/boards/${confirmDeleteBoardId}`, {
         method: 'DELETE',
       });
       fetchBoards();
     } catch (error) {
       console.error('Error deleting board:', error);
     }
+    setConfirmDeleteBoardId(null);
   };
 
   const handleRespondToItem = async () => {
@@ -713,6 +718,25 @@ export default function VotingBoardManagement({ groupId }: VotingBoardManagement
             sx={{ bgcolor: '#FF8C00','&:hover': { bgcolor:'#e67e00' } }}
           >
             Lagre svar
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Confirm Delete Board Dialog */}
+      <Dialog
+        open={!!confirmDeleteBoardId}
+        onClose={() => setConfirmDeleteBoardId(null)}
+      >
+        <DialogTitle>Slett Stemmebrett</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Er du sikker på at du vil slette dette stemmebrettet? Alle forslag og stemmer vil bli slettet.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmDeleteBoardId(null)}>Avbryt</Button>
+          <Button onClick={executeDeleteBoard} color="error" variant="contained">
+            Slett
           </Button>
         </DialogActions>
       </Dialog>

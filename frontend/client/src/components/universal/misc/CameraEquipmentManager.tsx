@@ -74,7 +74,7 @@ export default function CameraEquipmentManager({ profession }: CameraEquipmentMa
   const { integration, communication, dataFlow, componentRegistry, auth } = useEnhancedMasterIntegration();
   
   // Theming system
-  const theming = useTheming('photographer, ');
+  const theming = useTheming('photographer');
   
   // Google Drive Storage Integration State
   const [googleDriveSyncStatus, setGoogleDriveSyncStatus] = useState<'idle' | 'syncing' | 'success' | 'error'>('idle');

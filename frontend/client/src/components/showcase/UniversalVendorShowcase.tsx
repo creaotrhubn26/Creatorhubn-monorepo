@@ -607,7 +607,7 @@ export default function UniversalVendorShowcase({
             </Avatar>
             <Box>
               <Typography variant="h4" sx={{
-                fontWeight: 70,
+                fontWeight: 700,
                 color: theming.colors.primary,
                 display: 'flex',
                 alignItems: 'center',
@@ -687,7 +687,7 @@ export default function UniversalVendorShowcase({
               ...theming.getThemedCardSx()
             }}>
               <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h4" sx={{ fontWeight: 70, color: theming.colors.primary }}>
+                <Typography variant="h4" sx={{ fontWeight: 700, color: theming.colors.primary }}>
                   {showcaseStats.totalProducts || 0}
                 </Typography>
                 <Typography variant="body2" sx={{ color: 'text.secondary' }}>
@@ -705,7 +705,7 @@ export default function UniversalVendorShowcase({
               ...theming.getThemedCardSx()
             }}>
               <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h4" sx={{ fontWeight: 70, color: theming.colors.primary }}>
+                <Typography variant="h4" sx={{ fontWeight: 700, color: theming.colors.primary }}>
                   {showcaseStats.totalDownloads || 0}
                 </Typography>
                 <Typography variant="body2" sx={{ color: 'text.secondary' }}>
@@ -723,7 +723,7 @@ export default function UniversalVendorShowcase({
               ...theming.getThemedCardSx()
             }}>
               <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h4" sx={{ fontWeight: 70, color: theming.colors.primary }}>
+                <Typography variant="h4" sx={{ fontWeight: 700, color: theming.colors.primary }}>
                   {showcaseStats.averageRating?.toFixed(1) || '0.0'}
                 </Typography>
                 <Typography variant="body2" sx={{ color: 'text.secondary' }}>
@@ -741,7 +741,7 @@ export default function UniversalVendorShowcase({
               ...theming.getThemedCardSx()
             }}>
               <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h4" sx={{ fontWeight: 70, color: theming.colors.primary }}>
+                <Typography variant="h4" sx={{ fontWeight: 700, color: theming.colors.primary }}>
                   {showcaseStats.featuredProducts || 0}
                 </Typography>
                 <Typography variant="body2" sx={{ color: 'text.secondary' }}>
@@ -1006,7 +1006,7 @@ export default function UniversalVendorShowcase({
 
                     {/* Price and Actions */}
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <Typography variant="h6" sx={{ fontWeight: 70, color: theming.colors.primary }}>
+                      <Typography variant="h6" sx={{ fontWeight: 700, color: theming.colors.primary }}>
                         {product.price === 0 ? 'Gratis' : `${product.price} ${product.currency}`}
                       </Typography>
 
@@ -1080,7 +1080,7 @@ export default function UniversalVendorShowcase({
                   <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
                     Pris
                   </Typography>
-                  <Typography variant="h5" sx={{ fontWeight: 70, color: theming.colors.primary }}>
+                  <Typography variant="h5" sx={{ fontWeight: 700, color: theming.colors.primary }}>
                     {selectedProduct.price === 0 ? 'Gratis' : `${selectedProduct.price} ${selectedProduct.currency}`}
                   </Typography>
                 </Grid>

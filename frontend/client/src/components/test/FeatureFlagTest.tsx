@@ -166,7 +166,7 @@ export default function FeatureFlagTest({ userId = 'test-user' }: FeatureFlagTes
                       size="small"
                       sx={{ mr: 2, minWidth: 50}}
                     />
-                    <Typography variant="body2" sx={{ fontWeight: 50}}>{feature.name}</Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 500}}>{feature.name}</Typography>
                   </Box>
                   
                   {/* Comprehensive Feature System Details */}

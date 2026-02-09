@@ -163,7 +163,7 @@ export default function SplitSheetPaymentHistory({
               <Typography variant="body2" color="text.secondary" gutterBottom>
                 Totalt utestående
               </Typography>
-              <Typography variant="h5" sx={{ fontWeight: 70, color: PAYMENT_COLORS.pending }}>
+              <Typography variant="h5" sx={{ fontWeight: 700, color: PAYMENT_COLORS.pending }}>
                 {formatCurrency(totalPending)}
               </Typography>
             </CardContent>
@@ -175,7 +175,7 @@ export default function SplitSheetPaymentHistory({
               <Typography variant="body2" color="text.secondary" gutterBottom>
                 Totalt betalt
               </Typography>
-              <Typography variant="h5" sx={{ fontWeight: 70, color: PAYMENT_COLORS.paid }}>
+              <Typography variant="h5" sx={{ fontWeight: 700, color: PAYMENT_COLORS.paid }}>
                 {formatCurrency(totalPaid)}
               </Typography>
             </CardContent>

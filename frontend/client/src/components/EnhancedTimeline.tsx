@@ -149,7 +149,7 @@ export default function EnhancedTimeline({
   const [showSettings, setShowSettings] = useState(false);
   
   // Theming system
-  const theming = useTheming('photographer, ');
+  const theming = useTheming('photographer');
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [isMuted, setIsMuted] = useState(false);
   const [isLooping, setIsLooping] = useState(false);

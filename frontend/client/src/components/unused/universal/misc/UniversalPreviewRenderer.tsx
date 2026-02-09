@@ -73,7 +73,7 @@ export default function UniversalPreviewRenderer({
   const { user } = useAuth();
   
   // Theming system
-  const theming = useTheming('photographer, ');
+  const theming = useTheming('photographer');
   const queryClient = useQueryClient();
   
   const [isPlaying, setIsPlaying] = useState(false);

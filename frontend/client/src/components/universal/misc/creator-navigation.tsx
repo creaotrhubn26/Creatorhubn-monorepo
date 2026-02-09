@@ -14,7 +14,7 @@ export default function
     <Box sx={{ py:  8, background: 'linear-gradient(135deg, #f8fafc 0%, #ffffff 100%)' }}>
       <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '50vh'}}>
         <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', mb:  6 }}>
-          <h2 style={{ fontSize: '2.5rem', fontWeight: 7, color: '#1e2930', marginBottom: '1rem'}}>
+          <h2 style={{ fontSize: '2.5rem', fontWeight: 700, color: '#1e2930', marginBottom: '1rem'}}>
             For Wedding Professionals
           </h2>
           <p style={{ fontSize: '1.125rem', color: '#647480', maxWidth: '32rem', margin: '0 auto'}}>
@@ -33,7 +33,7 @@ export default function
               <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mb:  2 }}>
                 <PhotoCamera sx={{ fontSize:  32, color: '#2563eb', mb:  1 }} />
               </Box>
-              <h3 style={{ fontSize: '1.5rem', fontWeight: 7, textAlign: 'center', marginBottom: '1rem'}}>Photographers</h3>
+              <h3 style={{ fontSize: '1.5rem', fontWeight: 700, textAlign: 'center', marginBottom: '1rem'}}>Photographers</h3>
               <p style={{ color: '#374150', textAlign: 'center', marginBottom: '1.5rem'}}>
                 Manage your photos, share with clients, and book more weddings
               </p>
@@ -74,7 +74,7 @@ export default function
               <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mb:  2 }}>
                 <Videocam sx={{ fontSize:  32, color: '#f59e00', mb:  1 }} />
               </Box>
-              <h3 style={{ fontSize: '1.5rem', fontWeight: 7, textAlign: 'center', marginBottom: '1rem'}}>Videographers</h3>
+              <h3 style={{ fontSize: '1.5rem', fontWeight: 700, textAlign: 'center', marginBottom: '1rem'}}>Videographers</h3>
               <p style={{ color: '#374150', textAlign: 'center', marginBottom: '1.5rem'}}>
                 Create amazing wedding videos and share them easily with couples
               </p>
@@ -115,7 +115,7 @@ export default function
               <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mb:  2 }}>
                 <Headset sx={{ fontSize:  32, color: '#ea5800', mb:  1 }} />
               </Box>
-              <h3 style={{ fontSize: '1.5rem', fontWeight: 7, textAlign: 'center', marginBottom: '1rem'}}>Music Producers</h3>
+              <h3 style={{ fontSize: '1.5rem', fontWeight: 700, textAlign: 'center', marginBottom: '1rem'}}>Music Producers</h3>
               <p style={{ color: '#374150', textAlign: 'center', marginBottom: '1.5rem'}}>
                 Create perfect wedding music and work together with other professionals
               </p>

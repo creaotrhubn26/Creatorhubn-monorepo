@@ -77,7 +77,8 @@ interface CustomerInquiryCenterProps {
   onFileDownload?: (file: any) => void;
   selectedProject?: any;
   onProjectSelect?: (project: any) => void;
-  selectedClient?: any
+  selectedClient?: any;
+  onCreateProjectFromSubmission?: (data: any) => void;
 }
 
 interface EmailMessage {
@@ -120,7 +121,8 @@ export default function CustomerInquiryCenter({
   onFileDownload,
   selectedProject,
   onProjectSelect,
-  selectedClient
+  selectedClient,
+  onCreateProjectFromSubmission,
 }: CustomerInquiryCenterProps) {
   // Dynamic profession system hooks
   const { user } = useAuth();
@@ -207,7 +209,7 @@ Svar med profesjonell og vennlig tone.
 
   // Categorize inquiries with intelligent filtering  
   const customerInquiries = useMemo(() => {
-    return emails.filter((email: EmailMessage) => {
+    return (Array.isArray(emails) ? emails : []).filter((email: EmailMessage) => {
       // Mark as customer inquiry based on keywords and context
       const isInquiry = email.subject.toLowerCase().includes('forespørsel') ||
                        email.subject.toLowerCase().includes('booking') ||
@@ -253,22 +255,38 @@ Svar med profesjonell og vennlig tone.
 
 
   const handleCreateProject = (email: EmailMessage) => {
-    // Integration with project creation system
-    console.log('Creating project from inquiry, :', email);
-    // This would trigger the project creation modal with pre-filled customer data
-};
+    // Integration with project creation system — trigger ProjectCreationWithMemoryCards
+    const projectData = {
+      projectName: `${(email as any).projectType || 'Prosjekt'} - ${email.from?.name || 'Ukjent'}`,
+      clientName: email.from?.name || '',
+      clientEmail: email.from?.email || '',
+      clientPhone: (email as any).phone || '',
+      description: (email as any).body || email.subject || '',
+      projectType: (email as any).projectType || 'wedding',
+      budget: (email as any).budget || null,
+      eventDate: (email as any).eventDate || '',
+      location: (email as any).location || '',
+      submissionId: email.id,
+    };
+    if (onCreateProjectFromSubmission) {
+      onCreateProjectFromSubmission(projectData);
+    } else {
+      console.log('Creating project from inquiry:', projectData);
+    }
+  };
 
   const handleToggleStar = (emailId: string) => {
     // Update star status locally and persist to backend
-    const updatedEmails = emails.map((email: any) => 
+    const emailsArray = Array.isArray(emails) ? emails : [];
+    const updatedEmails = emailsArray.map((email: any) => 
       email.id === emailId ? { ...email, isStarred: !email.isStarred } : email
     );
     
     // Would trigger API call to update email star status
     apiRequest('/api/emails/star', {
-      method: 'PATC',
-      body: JSON.stringify({ emaild, starred: !emails.find((e: any) => e.id === emailId)?.isStarred })
-  }).catch(err => console.log('Star toggle pending backend implementation, '));
+      method: 'PATCH',
+      body: JSON.stringify({ emailId, starred: !emailsArray.find((e: any) => e.id === emailId)?.isStarred })
+  }).catch(err => console.log('Star toggle pending'));
     
     console.log('Toggling star for email:', emailId);
 };
@@ -295,7 +313,7 @@ Svar med profesjonell og vennlig tone.
       ,  ...theming.getThemedCardSx() }}>
             <CardContent sx={{ p: 2, textAlign: 'center',  ...theming.getThemedCardSx() }}>
               <InboxIcon sx={{ color: customBranding?.color || '#ff8c00', fontSize:  28, mb:  1 }} />
-              <Typography variant="h4" sx={{  color: customBranding?.color || '#ff8c00', fontWeight: 70 }}>
+              <Typography variant="h4" sx={{  color: customBranding?.color || '#ff8c00', fontWeight: 700 }}>
                 {stats.newInquiries}
               </Typography>
               <Typography variant="body2" color="text.secondary">
@@ -313,7 +331,7 @@ Svar med profesjonell og vennlig tone.
       ,  ...theming.getThemedCardSx() }}>
             <CardContent sx={{ p: 2, textAlign: 'center',  ...theming.getThemedCardSx() }}>
               <ReplyIcon sx={{ color: '#4caf50', fontSize:  28, mb:  1 }} />
-              <Typography variant="h4" sx={{  color: '#4caf50', fontWeight: 70 }}>
+              <Typography variant="h4" sx={{  color: '#4caf50', fontWeight: 700 }}>
                 {stats.repliedInquiries}
               </Typography>
               <Typography variant="body2" color="text.secondary">
@@ -332,7 +350,7 @@ Svar med profesjonell og vennlig tone.
       ,  ...theming.getThemedCardSx() }}>
             <CardContent sx={{ p: 2, textAlign: 'center',  ...theming.getThemedCardSx() }}>
               <AssignmentIcon sx={{ color: '#2196f0', fontSize:  28, mb:  1 }} />
-              <Typography variant="h4" sx={{  color: '#2196f0', fontWeight: 70 }}>
+              <Typography variant="h4" sx={{  color: '#2196f0', fontWeight: 700 }}>
                 {submissions.length}
               </Typography>
               <Typography variant="body2" color="text.secondary">
@@ -350,7 +368,7 @@ Svar med profesjonell og vennlig tone.
       ,  ...theming.getThemedCardSx() }}>
             <CardContent sx={{ p: 2, textAlign: 'center',  ...theming.getThemedCardSx() }}>
               <TrendingUpIcon sx={{ color: '#ff9800', fontSize:  28, mb:  1 }} />
-              <Typography variant="h4" sx={{  color: '#ff9800', fontWeight: 70 }}>
+              <Typography variant="h4" sx={{  color: '#ff9800', fontWeight: 700 }}>
                 {stats.highPriority}
               </Typography>
               <Typography variant="body2" color="text.secondary">
@@ -546,7 +564,7 @@ Svar med profesjonell og vennlig tone.
         {selectedTab === 1 && (
           <Box sx={{ maxHeight: 40, overflow: 'auto'}}>
             <List dense>
-              {emails.map((email: any) => (
+              {(Array.isArray(emails) ? emails : []).map((email: any) => (
                 <ListItem key={email.d} sx={{ mb: 1, border: '1px solid #e0e0e0', borderRadius:  1 }}>
                   <ListItemIcon>
                     <EmailIcon />

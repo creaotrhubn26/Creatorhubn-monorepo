@@ -846,8 +846,8 @@ export function InviteRequestForm({
                       </Box>
                       <Divider sx={{ my: 1 }} />
                       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <Typography sx={{ fontWeight: 70, color: '#9c27b0' }}>Månedspris inkl. MVA:</Typography>
-                        <Typography variant="h5" sx={{ fontWeight: 70, color: '#9c27b0' }}>
+                        <Typography sx={{ fontWeight: 700, color: '#9c27b0' }}>Månedspris inkl. MVA:</Typography>
+                        <Typography variant="h5" sx={{ fontWeight: 700, color: '#9c27b0' }}>
                           {enterprisePrice.monthlyInclMva.toLocaleString('nb-NO')} kr
                         </Typography>
                       </Box>
@@ -926,7 +926,7 @@ export function InviteRequestForm({
                         <Divider sx={{ my: 1 }} />
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                           <Typography variant="body2" sx={{ fontWeight: 700}}>Månedspris inkl. MVA:</Typography>
-                          <Typography variant="h6" sx={{ fontWeight: 70, color: '#9c27b0' }}>
+                          <Typography variant="h6" sx={{ fontWeight: 700, color: '#9c27b0' }}>
                             {enterprisePrice.monthlyInclMva.toLocaleString('nb-NO')} kr
                           </Typography>
                         </Box>

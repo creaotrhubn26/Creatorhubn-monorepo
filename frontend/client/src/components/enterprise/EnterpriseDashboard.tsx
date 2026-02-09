@@ -329,17 +329,93 @@ const UsersRolesPanel: React.FC<{ permissions: any }> = ({ permissions }) => (
   </Box>
 );
 
-const ContentAssetsPanel: React.FC = () => (
-  <Box>
-    <Typography variant="h5" sx={{  mb: 3  }}>
-      Innhold & Assets
-    </Typography>
-    <Alert severity="info" sx={{ mb:  3 }}>
-      Digital Asset Management system kommer snart. Her vil du kunne organisere og administrere alt
-      ditt kreative innhold.
-    </Alert>
-  </Box>
-);
+const ContentAssetsPanel: React.FC = () => {
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [assets, setAssets] = useState([
+    { id: '1', name: 'Bryllup_2024_cover.jpg', type: 'image', size: '4.2 MB', tags: ['bryllup', 'featured'], date: '2024-12-01' },
+    { id: '2', name: 'Familie_portrett.jpg', type: 'image', size: '3.8 MB', tags: ['familie', 'portrett'], date: '2024-11-28' },
+    { id: '3', name: 'Promo_video.mp4', type: 'video', size: '128 MB', tags: ['promo', 'marketing'], date: '2024-11-15' },
+    { id: '4', name: 'Logo_dark.svg', type: 'vector', size: '24 KB', tags: ['branding', 'logo'], date: '2024-10-01' },
+  ]);
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  
+  const allTags = [...new Set(assets.flatMap(a => a.tags))];
+  const filteredAssets = selectedTags.length > 0 
+    ? assets.filter(a => a.tags.some(t => selectedTags.includes(t)))
+    : assets;
+  
+  return (
+    <Box>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+        <Typography variant="h5">Innhold & Assets</Typography>
+        <Button variant="contained" startIcon={<CategoryIcon />} color="primary">
+          Last opp filer
+        </Button>
+      </Box>
+      
+      <Grid container spacing={3}>
+        {/* Sidebar with filters */}
+        <Grid item xs={12} md={3}>
+          <Card sx={theming.getThemedCardSx()}>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>Filtrer etter tags</Typography>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                {allTags.map(tag => (
+                  <Chip
+                    key={tag}
+                    label={tag}
+                    onClick={() => setSelectedTags(prev => 
+                      prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]
+                    )}
+                    color={selectedTags.includes(tag) ? 'primary' : 'default'}
+                    size="small"
+                  />
+                ))}
+              </Box>
+              
+              <Typography variant="h6" sx={{ mt: 3, mb: 1 }}>Lagringsbruk</Typography>
+              <LinearProgress variant="determinate" value={35} sx={{ mb: 1 }} />
+              <Typography variant="body2" color="text.secondary">
+                3.5 GB av 10 GB brukt
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+        
+        {/* Asset grid */}
+        <Grid item xs={12} md={9}>
+          <Grid container spacing={2}>
+            {filteredAssets.map(asset => (
+              <Grid item xs={12} sm={6} md={4} key={asset.id}>
+                <Card sx={{ ...theming.getThemedCardSx(), cursor: 'pointer', '&:hover': { boxShadow: 4 } }}>
+                  <Box sx={{ 
+                    height: 140, 
+                    bgcolor: asset.type === 'image' ? 'grey.200' : asset.type === 'video' ? 'primary.light' : 'secondary.light',
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'center' 
+                  }}>
+                    <CategoryIcon sx={{ fontSize: 48, opacity: 0.5 }} />
+                  </Box>
+                  <CardContent>
+                    <Typography variant="subtitle2" noWrap>{asset.name}</Typography>
+                    <Typography variant="caption" color="text.secondary">{asset.size} • {asset.date}</Typography>
+                    <Box sx={{ mt: 1, display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                      {asset.tags.map(tag => (
+                        <Chip key={tag} label={tag} size="small" variant="outlined" />
+                      ))}
+                    </Box>
+                  </CardContent>
+                </Card>
+              </Grid>
+            ))}
+          </Grid>
+        </Grid>
+      </Grid>
+    </Box>
+  );
+};
 
 const CustomersProjectsPanel: React.FC = () => {
   const { data: customers, isLoading: customersLoading } = useQuery({
@@ -423,50 +499,78 @@ const CustomersProjectsPanel: React.FC = () => {
   );
 };
 
-const FinancePanel: React.FC<{ subscription: any }> = ({ subscription }) => (
-  <Box>
-    <Typography variant="h5" sx={{  mb:  3  }}>
-      Økonomi & Fakturering
-    </Typography>
-    <Grid container spacing={3}>
-      <Grid item xs={12} md={6}>
-        <Card sx={theming.getThemedCardSx()}>
-          <CardContent sx={theming.getThemedCardSx()}>
-            <Typography variant="h6" sx={{  mb:  2  }}>
-              Ditt Abonnement
-            </Typography>
-            {subscription?.subscription ? (
-              <Box>
-                <Typography variant="body1">
-                  Plan: {subscription.subscription.plan?.displayName}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Status: {subscription.subscription.status}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Neste fornyelse: {', '}
-                  {new Date(subscription.subscription.currentPeriodEnd).toLocaleDateString('no-NO')}
-                </Typography>
+const FinancePanel: React.FC<{ subscription: any }> = ({ subscription }) => {
+  // Mock invoice data
+  const invoices = [
+    { id: 'INV-2024-001', date: '2024-12-01', amount: 599, status: 'paid', description: 'Pro Plan - Desember 2024' },
+    { id: 'INV-2024-002', date: '2024-11-01', amount: 599, status: 'paid', description: 'Pro Plan - November 2024' },
+    { id: 'INV-2024-003', date: '2024-10-01', amount: 599, status: 'paid', description: 'Pro Plan - Oktober 2024' },
+    { id: 'INV-2024-004', date: '2024-09-01', amount: 299, status: 'paid', description: 'Starter Plan - September 2024' },
+  ];
+  
+  return (
+    <Box>
+      <Typography variant="h5" sx={{ mb: 3 }}>
+        Økonomi & Fakturering
+      </Typography>
+      <Grid container spacing={3}>
+        <Grid item xs={12} md={6}>
+          <Card sx={theming.getThemedCardSx()}>
+            <CardContent sx={theming.getThemedCardSx()}>
+              <Typography variant="h6" sx={{ mb: 2 }}>
+                Ditt Abonnement
+              </Typography>
+              {subscription?.subscription ? (
+                <Box>
+                  <Typography variant="body1">
+                    Plan: {subscription.subscription.plan?.displayName}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Status: {subscription.subscription.status}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Neste fornyelse:{' '}
+                    {new Date(subscription.subscription.currentPeriodEnd).toLocaleDateString('no-NO')}
+                  </Typography>
+                </Box>
+              ) : (
+                <Typography color="text.secondary">Ingen aktive abonnementer</Typography>
+              )}
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} md={6}>
+          <Card sx={theming.getThemedCardSx()}>
+            <CardContent sx={theming.getThemedCardSx()}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Typography variant="h6">Fakturahistorikk</Typography>
+                <Button size="small" variant="outlined">Eksporter alle</Button>
               </Box>
-            ) : (
-              <Typography color="text.secondary">Ingen aktive abonnementer</Typography>
-            )}
-          </CardContent>
-        </Card>
+              <List dense>
+                {invoices.map(invoice => (
+                  <ListItem key={invoice.id} sx={{ borderBottom: '1px solid', borderColor: 'divider' }}>
+                    <ListItemText 
+                      primary={invoice.description}
+                      secondary={`${invoice.id} • ${new Date(invoice.date).toLocaleDateString('no-NO')}`}
+                    />
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Typography variant="body2" fontWeight={600}>{invoice.amount} kr</Typography>
+                      <Chip 
+                        label={invoice.status === 'paid' ? 'Betalt' : 'Venter'} 
+                        color={invoice.status === 'paid' ? 'success' : 'warning'} 
+                        size="small" 
+                      />
+                    </Box>
+                  </ListItem>
+                ))}
+              </List>
+            </CardContent>
+          </Card>
+        </Grid>
       </Grid>
-      <Grid item xs={12} md={6}>
-        <Card sx={theming.getThemedCardSx()}>
-          <CardContent sx={theming.getThemedCardSx()}>
-            <Typography variant="h6" sx={{  mb:  2  }}>
-              Fakturaer
-            </Typography>
-            <Typography color="text.secondary">Fakturahistorikk kommer snart</Typography>
-          </CardContent>
-        </Card>
-      </Grid>
-    </Grid>
-  </Box>
-);
+    </Box>
+  );
+};
 
 const IntegrationsPanel: React.FC = () => (
   <Box>
@@ -546,36 +650,240 @@ const SecurityPrivacyPanel: React.FC = () => (
   </Box>
 );
 
-const AutomationsPanel: React.FC = () => (
-  <Box>
-    <Typography variant="h5" sx={{  mb: 3  }}>
-      Automations
-    </Typography>
-    <Alert severity="info">Automatiseringsregler og arbeidsflyter kommer snart.</Alert>
-  </Box>
-);
-
-const ReportsPanel: React.FC<{ analytics: any }> = ({ analytics }) => (
-  <Box>
-    <Typography variant="h5" sx={{  mb:  3  }}>
-      Rapporter & Analyse
-    </Typography>
-    <Grid container spacing={3}>
-      <Grid item xs={12}>
-        <Card sx={theming.getThemedCardSx()}>
-          <CardContent sx={theming.getThemedCardSx()}>
-            <Typography variant="h6" sx={{  mb:  2  }}>
-              Forretningsanalyse
-            </Typography>
-            <Typography color="text.secondary">
-              Detaljerte rapporter og analyse kommer snart. Her vil du få komplett innsikt i din
-              virksomhet.
-            </Typography>
-          </CardContent>
-        </Card>
+const AutomationsPanel: React.FC = () => {
+  const [automations, setAutomations] = useState([
+    { id: '1', name: 'Ny kunde velkomst', trigger: 'Ny kunde opprettet', action: 'Send velkomst-epost', status: 'active', runs: 45 },
+    { id: '2', name: 'Prosjekt ferdig', trigger: 'Prosjekt status = Ferdig', action: 'Send faktura + Be om anmeldelse', status: 'active', runs: 23 },
+    { id: '3', name: 'Faktura påminnelse', trigger: '7 dager etter fakturadato', action: 'Send betalingspåminnelse', status: 'paused', runs: 12 },
+    { id: '4', name: 'Fødselsdagshilsen', trigger: 'Kundens fødselsdag', action: 'Send gratulasjonskort', status: 'active', runs: 8 },
+  ]);
+  
+  const templates = [
+    { name: 'Lead nurturing', description: 'Automatisk oppfølging av leads over 14 dager', icon: <PeopleIcon /> },
+    { name: 'Prosjekt oppdateringer', description: 'Send statusoppdateringer til kunder', icon: <AssessmentIcon /> },
+    { name: 'Anmeldelse-forespørsel', description: 'Be om anmeldelse etter levert prosjekt', icon: <CategoryIcon /> },
+  ];
+  
+  return (
+    <Box>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+        <Typography variant="h5">Automatiseringer</Typography>
+        <Button variant="contained" startIcon={<AutorenewIcon />} color="primary">
+          Ny automatisering
+        </Button>
+      </Box>
+      
+      <Grid container spacing={3}>
+        {/* Active Automations */}
+        <Grid item xs={12} md={8}>
+          <Card sx={theming.getThemedCardSx()}>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>Aktive automatiseringer</Typography>
+              <List>
+                {automations.map(auto => (
+                  <ListItem key={auto.id} sx={{ borderBottom: '1px solid', borderColor: 'divider' }}>
+                    <ListItemIcon>
+                      <AutorenewIcon color={auto.status === 'active' ? 'primary' : 'disabled'} />
+                    </ListItemIcon>
+                    <ListItemText 
+                      primary={auto.name}
+                      secondary={`Trigger: ${auto.trigger} → ${auto.action}`}
+                    />
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                      <Typography variant="caption" color="text.secondary">{auto.runs} kjøringer</Typography>
+                      <Chip 
+                        label={auto.status === 'active' ? 'Aktiv' : 'Pauset'} 
+                        color={auto.status === 'active' ? 'success' : 'default'} 
+                        size="small" 
+                      />
+                    </Box>
+                  </ListItem>
+                ))}
+              </List>
+            </CardContent>
+          </Card>
+        </Grid>
+        
+        {/* Templates */}
+        <Grid item xs={12} md={4}>
+          <Card sx={theming.getThemedCardSx()}>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>Maler</Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Kom raskt i gang med ferdiglagde automatiseringer
+              </Typography>
+              {templates.map((template, idx) => (
+                <Card key={idx} sx={{ mb: 1, cursor: 'pointer', '&:hover': { bgcolor: 'action.hover' } }}>
+                  <CardContent sx={{ display: 'flex', alignItems: 'center', gap: 2, py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                    {template.icon}
+                    <Box>
+                      <Typography variant="subtitle2">{template.name}</Typography>
+                      <Typography variant="caption" color="text.secondary">{template.description}</Typography>
+                    </Box>
+                  </CardContent>
+                </Card>
+              ))}
+            </CardContent>
+          </Card>
+        </Grid>
       </Grid>
-    </Grid>
-  </Box>
-);
+    </Box>
+  );
+};
+
+const ReportsPanel: React.FC<{ analytics: any }> = ({ analytics }) => {
+  const [timeRange, setTimeRange] = useState('30d');
+  
+  // Mock analytics data
+  const reportData = {
+    revenue: { current: 45800, previous: 38200, change: 19.9 },
+    projects: { current: 12, previous: 9, change: 33.3 },
+    clients: { current: 8, previous: 6, change: 33.3 },
+    avgProjectValue: { current: 3817, previous: 4244, change: -10.1 },
+  };
+  
+  const monthlyRevenue = [
+    { month: 'Jan', revenue: 32000 },
+    { month: 'Feb', revenue: 28500 },
+    { month: 'Mar', revenue: 41000 },
+    { month: 'Apr', revenue: 38000 },
+    { month: 'Mai', revenue: 45000 },
+    { month: 'Jun', revenue: 52000 },
+  ];
+  
+  const topServices = [
+    { name: 'Bryllupsfotografering', revenue: 28000, percentage: 61 },
+    { name: 'Portretter', revenue: 9500, percentage: 21 },
+    { name: 'Events', revenue: 5300, percentage: 12 },
+    { name: 'Produktfoto', revenue: 3000, percentage: 6 },
+  ];
+  
+  return (
+    <Box>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+        <Typography variant="h5">Rapporter & Analyse</Typography>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          {['7d', '30d', '90d', '1y'].map(range => (
+            <Chip
+              key={range}
+              label={range === '7d' ? '7 dager' : range === '30d' ? '30 dager' : range === '90d' ? '90 dager' : '1 år'}
+              onClick={() => setTimeRange(range)}
+              color={timeRange === range ? 'primary' : 'default'}
+              size="small"
+            />
+          ))}
+        </Box>
+      </Box>
+      
+      <Grid container spacing={3}>
+        {/* KPI Cards */}
+        <Grid item xs={12} sm={6} md={3}>
+          <Card sx={theming.getThemedCardSx()}>
+            <CardContent>
+              <Typography variant="overline" color="text.secondary">Omsetning</Typography>
+              <Typography variant="h4">{reportData.revenue.current.toLocaleString('nb-NO')} kr</Typography>
+              <Chip 
+                label={`${reportData.revenue.change > 0 ? '+' : ''}${reportData.revenue.change}%`}
+                color={reportData.revenue.change > 0 ? 'success' : 'error'}
+                size="small"
+                sx={{ mt: 1 }}
+              />
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <Card sx={theming.getThemedCardSx()}>
+            <CardContent>
+              <Typography variant="overline" color="text.secondary">Prosjekter</Typography>
+              <Typography variant="h4">{reportData.projects.current}</Typography>
+              <Chip 
+                label={`${reportData.projects.change > 0 ? '+' : ''}${reportData.projects.change}%`}
+                color={reportData.projects.change > 0 ? 'success' : 'error'}
+                size="small"
+                sx={{ mt: 1 }}
+              />
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <Card sx={theming.getThemedCardSx()}>
+            <CardContent>
+              <Typography variant="overline" color="text.secondary">Nye kunder</Typography>
+              <Typography variant="h4">{reportData.clients.current}</Typography>
+              <Chip 
+                label={`${reportData.clients.change > 0 ? '+' : ''}${reportData.clients.change}%`}
+                color={reportData.clients.change > 0 ? 'success' : 'error'}
+                size="small"
+                sx={{ mt: 1 }}
+              />
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <Card sx={theming.getThemedCardSx()}>
+            <CardContent>
+              <Typography variant="overline" color="text.secondary">Snitt prosjektverdi</Typography>
+              <Typography variant="h4">{reportData.avgProjectValue.current.toLocaleString('nb-NO')} kr</Typography>
+              <Chip 
+                label={`${reportData.avgProjectValue.change > 0 ? '+' : ''}${reportData.avgProjectValue.change}%`}
+                color={reportData.avgProjectValue.change > 0 ? 'success' : 'error'}
+                size="small"
+                sx={{ mt: 1 }}
+              />
+            </CardContent>
+          </Card>
+        </Grid>
+        
+        {/* Revenue Chart Placeholder */}
+        <Grid item xs={12} md={8}>
+          <Card sx={theming.getThemedCardSx()}>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>Omsetning over tid</Typography>
+              <Box sx={{ display: 'flex', alignItems: 'flex-end', gap: 1, height: 200, pt: 2 }}>
+                {monthlyRevenue.map((item, idx) => (
+                  <Box key={idx} sx={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                    <Box 
+                      sx={{ 
+                        width: '100%', 
+                        bgcolor: 'primary.main', 
+                        borderRadius: 1,
+                        height: `${(item.revenue / 60000) * 160}px`,
+                        minHeight: 20,
+                        transition: 'height 0.3s'
+                      }} 
+                    />
+                    <Typography variant="caption" sx={{ mt: 1 }}>{item.month}</Typography>
+                  </Box>
+                ))}
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+        
+        {/* Top Services */}
+        <Grid item xs={12} md={4}>
+          <Card sx={theming.getThemedCardSx()}>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>Topp tjenester</Typography>
+              {topServices.map((service, idx) => (
+                <Box key={idx} sx={{ mb: 2 }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+                    <Typography variant="body2">{service.name}</Typography>
+                    <Typography variant="body2" fontWeight={600}>{service.revenue.toLocaleString('nb-NO')} kr</Typography>
+                  </Box>
+                  <LinearProgress 
+                    variant="determinate" 
+                    value={service.percentage} 
+                    sx={{ height: 8, borderRadius: 1 }}
+                  />
+                </Box>
+              ))}
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
+    </Box>
+  );
+};
 
 export default EnterpriseDashboard;

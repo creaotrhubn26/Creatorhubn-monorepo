@@ -325,7 +325,7 @@ export default function InviteManagementDashboard() {
             '& .MuiTab-root': {
               minHeight: 56,
               textTransform: 'none',
-              fontWeight: 50,
+              fontWeight: 500,
             }
           }}
         >

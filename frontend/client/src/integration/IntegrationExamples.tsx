@@ -17,7 +17,7 @@ export const ExampleComponentWithHook: React.FC = () => {
   const { visualEditor, auth, analytics, performance } = useEnhancedMasterIntegration();
   
   // Theming system
-  const theming = useTheming('prototype_tester, ');
+  const theming = useTheming('prototype_tester');
   
   const handleClick = () => {
     // Use visual editor for toast notifications
@@ -165,7 +165,7 @@ export const ExampleComponentWithIntegratedHook: React.FC = () => {
 // Example 4: Using HOC
 interface ExampleHOCProps {
   title: string;
-  onAction?: () => void, ;, 
+  onAction?: () => void;
 }
 
 const ExampleComponentForHOC: React.FC<ExampleHOCProps> = ({
@@ -191,9 +191,9 @@ const ExampleComponentForHOC: React.FC<ExampleHOCProps> = ({
   return (
     <div>
       <h3>{title}</h3>
-      <p>Component ID: {componentd}</p>
+      <p>Component ID: {componentId}</p>
       <p>Type: {componentType}</p>
-      <p>Authenticated: {isAuthenticated ? 'Yes' : 'N'}</p>
+      <p>Authenticated: {isAuthenticated ? 'Yes' : 'No'}</p>
       <button onClick={handleAction}>Action</button>
     </div>
   );
@@ -445,6 +445,8 @@ export const ExampleWithToastTemplates: React.FC = () => {
 
   const [selectedTemplate, setSelectedTemplate] = React.useState<string>(', ');
   const [customTemplateName, setCustomTemplateName] = React.useState(', ');
+  const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false);
+  const [deleteTemplateId, setDeleteTemplateId] = React.useState<string | null>(null);
 
   const allTemplates = getAllToastTemplates();
 
@@ -516,15 +518,22 @@ export const ExampleWithToastTemplates: React.FC = () => {
 };
 
   const handleDeleteTemplate = (templateId: string) => {
-    if (confirm('Are you sure you want to delete this template?')) {
-      deleteToastTemplate(templateId);
-      if (selectedTemplate === templateId) {
+    setDeleteTemplateId(templateId);
+    setDeleteDialogOpen(true);
+  };
+
+  const confirmDeleteTemplate = () => {
+    if (deleteTemplateId) {
+      deleteToastTemplate(deleteTemplateId);
+      if (selectedTemplate === deleteTemplateId) {
         setSelectedTemplate(', ');
-    }
+      }
       showToast('Template deleted!, ','warning');
-      analytics.trackEvent('toast_template_deleted', { templateId });
-  }
-};
+      analytics.trackEvent('toast_template_deleted', { templateId: deleteTemplateId });
+    }
+    setDeleteDialogOpen(false);
+    setDeleteTemplateId(null);
+  };
 
   return (
     <div>
@@ -590,9 +599,9 @@ export const ExampleWithToastTemplates: React.FC = () => {
                       padding: '2px 6px',
                       borderRadius: '3px',
                       fontSize: '10px',
-                      backgroundColor: '#9c27b',
+                      backgroundColor: '#9c27b0',
                       color: 'white'
-                  ,}}
+                    }}
                   >
                     {template.config.actions.buttons?.length || 0} actions
                   </span>
@@ -605,7 +614,7 @@ export const ExampleWithToastTemplates: React.FC = () => {
 
       <div>
         <h4>All Templates</h4>
-        <div style={{ maxHeight: '300px', overflowY: 'auto,',}}>
+        <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
           {allTemplates.map((template) => (
             <div
               key={template.id}
@@ -618,11 +627,11 @@ export const ExampleWithToastTemplates: React.FC = () => {
                 borderRadius: '4px',
                 marginBottom: '5px',
                 backgroundColor: selectedTemplate === template.id ? '#e3f2fd' : 'white'
-            ,}}
+              }}
             >
-              <div style={{ flex:  1 }}>
+              <div style={{ flex: 1 }}>
                 <h5 style={{ margin:  0 }}>{template.name}</h5>
-                <p style={{ margin:  ,  0fontSize: '12px', color: '#666',}}>{template.description}</p>
+                <p style={{ margin: 0, fontSize: '12px', color: '#666' }}>{template.description}</p>
                 <div style={{ display: 'flex', gap: '5px', marginTop: '5px',}}>
                   <span
                     style={{
@@ -631,9 +640,9 @@ export const ExampleWithToastTemplates: React.FC = () => {
                       fontSize: '10px',
                       backgroundColor: template.config.type === 'success' ? '#4caf50' :
                                      template.config.type === 'error' ? '#f44336' :
-                                     template.config.type === 'warning' ? '#ff9800' : '#2196f',
+                                     template.config.type === 'warning' ? '#ff9800' : '#2196f3',
                       color: 'white'
-                  ,}}
+                    }}
                   >
                     {template.config.type}
                   </span>
@@ -643,9 +652,9 @@ export const ExampleWithToastTemplates: React.FC = () => {
                         padding: '2px 6px',
                         borderRadius: '3px',
                         fontSize: '10px',
-                        backgroundColor: '#2196f',
+                        backgroundColor: '#2196f3',
                         color: 'white'
-                    ,}}
+                      }}
                     >
                       Academy
                     </span>
@@ -656,9 +665,9 @@ export const ExampleWithToastTemplates: React.FC = () => {
                         padding: '2px 6px',
                         borderRadius: '3px',
                         fontSize: '10px',
-                        backgroundColor: '#ff980',
+                        backgroundColor: '#ff9800',
                         color: 'white'
-                    ,}}
+                      }}
                     >
                       Custom
                     </span>
@@ -682,7 +691,7 @@ export const ExampleWithToastTemplates: React.FC = () => {
                     </button>
                     <button
                       onClick={() => handleDeleteTemplate(template.id)}
-                      style={{ padding: '5px 10px', fontSize: '12px', backgroundColor: '#f4433', color: 'white', border:'none',}}
+                      style={{ padding: '5px 10px', fontSize: '12px', backgroundColor: '#f44336', color: 'white', border: 'none' }}
                     >
                       Delete
                     </button>

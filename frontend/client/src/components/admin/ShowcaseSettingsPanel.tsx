@@ -1536,7 +1536,7 @@ export function ShowcaseSettingsPanel({ profession = 'photographer,' }: Showcase
                           borderRadius:  1,
                           fontSize: settings.watermarkSize === 'small' ? '0.7rem' : 
                                    settings.watermarkSize === 'medium' ? '0.9rem' : '1.1rem',
-                          fontWeight: 5,
+                          fontWeight: 500,
                           backdropFilter: 'blur(4px)',
                           zIndex: 2}}>
                           {settings.watermark === 'text' ? settings.watermarkText :

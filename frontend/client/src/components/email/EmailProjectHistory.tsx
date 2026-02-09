@@ -1,8 +1,7 @@
 import { useTheming } from '../../utils/theming-helper';
-import React from 'react';
+import React, { useCallback } from 'react';
 import { apiRequest } from '@/lib/queryClient';
 import { useQuery } from '@tanstack/react-query';
-import { useAuth } from '@/hooks/useAuth';
 import {
   Box,
   Typography,
@@ -20,9 +19,7 @@ import {
 import {
   Email as EmailIcon,
   Send as SendIcon,
-  CheckCircle as CheckCircleIcon,
   Schedule as ScheduleIcon,
-  Star as StarIcon,
   Visibility as VisibilityIcon,
   Mouse as MouseIcon,
   TrendingUp as TrendingUpIcon
@@ -33,17 +30,68 @@ interface EmailProjectHistoryProps {
   showAll?: boolean;
   projectId?: string;
   // Integration props
-  onMeetingCreate?: (meeting: any) => void;
-  onProjectUpdate?: (project: any) => void;
-  onWorklogCreate?: (worklog: any) => void;
-  selectedProject?: any;
-  onProjectSelect?: (project: any) => void;
-  userId?: string
+  onMeetingCreate?: (meeting: EmailMeeting) => void;
+  onProjectUpdate?: (project: EmailProjectUpdate) => void;
+  onWorklogCreate?: (worklog: EmailWorklog) => void;
+  selectedProject?: EmailProjectSelection | null;
+  onProjectSelect?: (project: EmailProjectSelection | null) => void;
+  userId?: string;
 }
 
-export default function
-  // Theming system
-  const theming = useTheming('photographer'); EmailProjectHistory({ 
+type StatusColor = 'default' | 'primary' | 'secondary' | 'error' | 'info' | 'success' | 'warning';
+
+interface EmailProjectSelection {
+  id: string;
+  name?: string;
+}
+
+interface EmailMeeting {
+  id: string;
+  title: string;
+  agenda?: string;
+  scheduledFor: string;
+  projectId?: string;
+  userId?: string;
+}
+
+interface EmailWorklog {
+  id: string;
+  title: string;
+  description?: string;
+  createdAt: string;
+  projectId?: string;
+  userId?: string;
+}
+
+interface EmailProjectUpdate {
+  id?: string;
+  status?: string;
+  note?: string;
+  updatedAt: string;
+}
+
+interface EmailActivityItem {
+  trackingId?: string;
+  subject: string;
+  status?: string;
+  opened?: boolean;
+  clicks?: number;
+  emailType?: string;
+  sentAt?: string;
+  openedAt?: string | null;
+}
+
+interface EmailActivityResponse {
+  recentActivity: EmailActivityItem[];
+  totalEmails?: number;
+  deliveryStats?: {
+    opened?: number;
+    clicked?: number;
+  };
+  engagementRate?: number;
+}
+
+export default function EmailProjectHistory({
   profession, 
   showAll = true, 
   projectId,
@@ -54,21 +102,88 @@ export default function
   onProjectSelect,
   userId
 }: EmailProjectHistoryProps) {
+  // Theming system
+  const theming = useTheming(profession || 'photographer');
+
+  const effectiveProjectId = projectId || selectedProject?.id || '';
+
+  const createEventId = useCallback((prefix: string) => {
+    if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+      return `${prefix}-${crypto.randomUUID()}`;
+    }
+    return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  }, []);
+
   // Get recent email activity with tracking data
-  const { data: emailActivity, isLoading } = useQuery({
-    queryKey: ['/api/projects', projectId'email-activity'],
-    queryFn: () => {
-      if (!projectId) return { recentActivity: [] };
-      return fetch(`/api/projects/${projectId}/email-activity`).then(res => res.json());
+  const { data: emailActivity, isLoading } = useQuery<EmailActivityResponse>({
+    queryKey: ['/api/projects', effectiveProjectId, 'email-activity', profession, userId],
+    queryFn: async () => {
+      if (!effectiveProjectId) {
+        return { recentActivity: [], totalEmails: 0, deliveryStats: { opened: 0, clicked: 0 }, engagementRate: 0 };
+      }
+      return apiRequest(`/api/projects/${effectiveProjectId}/email-activity`);
     },
     staleTime: 30 * 1000, // 30 seconds for real-time feel
-    enabled: !!projectId
+    enabled: !!effectiveProjectId
 });
 
   const recentEmails = emailActivity?.recentActivity || [];
+  const latestEmail = recentEmails[0];
+
+  const handleCreateMeeting = useCallback(() => {
+    if (!onMeetingCreate || !latestEmail) return;
+
+    onMeetingCreate({
+      id: createEventId('meeting'),
+      title: `Oppfolging: ${latestEmail.subject}`,
+      agenda: 'Gjennomga siste e-postdialog og neste steg.',
+      scheduledFor: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      projectId: effectiveProjectId || undefined,
+      userId
+    });
+
+    if (effectiveProjectId && onProjectUpdate) {
+      onProjectUpdate({
+        id: effectiveProjectId,
+        status: 'email_followup_scheduled',
+        note: `Oppfolging booket etter e-post: ${latestEmail.subject}`,
+        updatedAt: new Date().toISOString()
+      });
+    }
+  }, [createEventId, effectiveProjectId, latestEmail, onMeetingCreate, onProjectUpdate, userId]);
+
+  const handleCreateWorklog = useCallback(() => {
+    if (!onWorklogCreate || !latestEmail) return;
+
+    const openedText = latestEmail.opened ? 'Aapnet' : 'Ikke aapnet';
+    const clicksText = latestEmail.clicks ? `${latestEmail.clicks} klikk` : 'Ingen klikk';
+
+    onWorklogCreate({
+      id: createEventId('worklog'),
+      title: `E-post logg: ${latestEmail.subject}`,
+      description: `Status: ${latestEmail.status || 'ukjent'} • ${openedText} • ${clicksText}`,
+      createdAt: new Date().toISOString(),
+      projectId: effectiveProjectId || undefined,
+      userId
+    });
+
+    if (effectiveProjectId && onProjectUpdate) {
+      onProjectUpdate({
+        id: effectiveProjectId,
+        status: 'email_activity_logged',
+        note: `E-postaktivitet logget for: ${latestEmail.subject}`,
+        updatedAt: new Date().toISOString()
+      });
+    }
+  }, [createEventId, effectiveProjectId, latestEmail, onProjectUpdate, onWorklogCreate, userId]);
+
+  const handleUseSelectedProject = useCallback(() => {
+    if (!selectedProject || !onProjectSelect) return;
+    onProjectSelect(selectedProject);
+  }, [onProjectSelect, selectedProject]);
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('no-N', {
+    return new Date(dateString).toLocaleDateString('no-NO', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
@@ -77,7 +192,7 @@ export default function
 });
 };
 
-  const getStatusColor = (email: any) => {
+  const getStatusColor = (email: EmailActivityItem): StatusColor => {
     if (email.status === 'failed') return 'error';
     if (email.clicks > 0) return 'success'; // Engaged
     if (email.opened) return 'primary'; // Opened
@@ -85,14 +200,20 @@ export default function
     return 'default';
 };
 
-  const getStatusIcon = (email: any) => {
+  const getAvatarBg = (email: EmailActivityItem, theme: any) => {
+    const statusColor = getStatusColor(email);
+    if (statusColor === 'default') return theme.palette.grey[100];
+    return theme.palette[statusColor]?.main || theme.palette.grey[100];
+  };
+
+  const getStatusIcon = (email: EmailActivityItem) => {
     if (email.clicks > 0) return <MouseIcon />; // Has clicks
     if (email.opened) return <VisibilityIcon />; // Opened but no clicks
     if (email.status === 'sent') return <SendIcon />; // Sent
     return <ScheduleIcon />;
 };
 
-  const getStatusText = (email: any) => {
+  const getStatusText = (email: EmailActivityItem) => {
     if (email.clicks > 0) return `Engasjert (${email.clicks} klikk)`;
     if (email.opened) return 'Åpnet';
     if (email.status === 'sent') return 'Sendt';
@@ -163,6 +284,25 @@ export default function
                 icon={<TrendingUpIcon />}
               />
             </Stack>
+            {(onMeetingCreate || onWorklogCreate || (selectedProject && onProjectSelect)) && (
+              <Stack direction="row" spacing={2} sx={{ flexWrap: 'wrap' }}>
+                {selectedProject && onProjectSelect && (
+                  <Button variant="outlined" onClick={handleUseSelectedProject}>
+                    Bruk valgt prosjekt
+                  </Button>
+                )}
+                {onMeetingCreate && latestEmail && (
+                  <Button variant="contained" onClick={handleCreateMeeting}>
+                    Planlegg oppfolging
+                  </Button>
+                )}
+                {onWorklogCreate && latestEmail && (
+                  <Button variant="outlined" onClick={handleCreateWorklog}>
+                    Logg aktivitet
+                  </Button>
+                )}
+              </Stack>
+            )}
           </CardContent>
         </Card>
       )}
@@ -177,11 +317,11 @@ export default function
           </Typography>
 
           <List dense>
-            {displayEmails.map((email: any, index: number) => (
+            {displayEmails.map((email, index) => (
               <ListItem key={email.trackingId || index} sx={{ px:  0 }}>
                 <ListItemIcon>
                   <Avatar sx={{ 
-                    bgcolor: theme => theme.palette[getStatusColor(email)]?.main || theme.palette.grey[50],
+                    bgcolor: theme => getAvatarBg(email, theme),
                     width:  40, 
                     height: 40 }}>
                     {getStatusIcon(email)}
@@ -216,14 +356,14 @@ export default function
                   secondary={
                     <Stack spacing={0.5}>
                       <Typography variant="caption">
-                        Type: {email.emailType?.replace(', _', ', ') ||'Generell'}
+                        Type: {email.emailType?.replace(/_/g, ' ') || 'Generell'}
                       </Typography>
                       <Typography variant="caption" color="text.secondary">
-                        Sendt: {formatDate(email.sentA)}
+                        Sendt: {email.sentAt ? formatDate(email.sentAt) : 'Ukjent'}
                       </Typography>
                       {email.openedAt && (
                         <Typography variant="caption" color="primary">
-                          Åpnet: {formatDate(email.openedA)}
+                          Åpnet: {formatDate(email.openedAt)}
                         </Typography>
                       )}
                     </Stack>
@@ -233,7 +373,7 @@ export default function
                   <Chip
                     size="small"
                     label={getStatusText(email)}
-                    color={getStatusColor(email) as any}
+                    color={getStatusColor(email)}
                     variant="outlined"
                   />
                   {email.trackingId && (

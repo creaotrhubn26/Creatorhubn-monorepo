@@ -340,7 +340,7 @@ class MemoryOptimizer {
       const growth = recentStats[recentStats.length - 1].used - recentStats[0].used;
       
       if (growth > this.config.leakDetectionThreshold) {
-        this.reportMemoryLeak('memory_growth', growth 'Memory usage growing rapidly');
+        this.reportMemoryLeak('memory_growth', growth, 'Memory usage growing rapidly');
     }
   }
 

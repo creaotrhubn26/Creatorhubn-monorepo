@@ -4,7 +4,6 @@ import {
   Card as MuiCard,
   CardContent,
   CardHeader,
-  CardTitle,
   Typography,
   Box,
   List,
@@ -33,11 +32,12 @@ import {
   Sync,
   CloudDone,
   Schedule,
-  Wedding,
+  Favorite,
 } from '@mui/icons-material';
 import { useQuery } from '@tanstack/react-query';
 import { format, parseISO } from 'date-fns';
 import { nb } from 'date-fns/locale';
+import { apiRequest } from '@/lib/queryClient';
 
 interface MeetingNotesIntegrationProps {
   weddingTimelineId: string;
@@ -76,11 +76,22 @@ export function MeetingNotesIntegration({
   const [showDetailDialog, setShowDetailDialog] = useState(false);
   
   // Theming system
-  const theming = useTheming('photographer, ');
+  const theming = useTheming('photographer');
 
   // Fetch meeting notes for the project
-  const { data: meetingNotes, isLoading } = useQuery({
-    queryKey: ['/api/project,', projectId'meeting-notes'],
+  const { data: meetingNotes, isLoading } = useQuery<{ data: MeetingNote[] }>({
+    queryKey: ['/api/project', projectId, 'meeting-notes', weddingTimelineId],
+    queryFn: () =>
+      apiRequest(
+        `/api/project/${projectId}/meeting-notes?timelineId=${encodeURIComponent(
+          weddingTimelineId
+        )}`
+      ),
+    onSuccess: () => {
+      if (onMeetingNotesUpdate) {
+        onMeetingNotesUpdate();
+      }
+    },
 });
 
   const handleViewDetails = (note: MeetingNote) => {
@@ -104,9 +115,14 @@ export function MeetingNotesIntegration({
 }
 };
 
+  const getSafeIcon = (iconName: string, fallback: React.ReactElement) => {
+    const icon = theming.getThemedIcon(iconName);
+    return React.isValidElement(icon) ? icon : fallback;
+  };
+
   const formatMeetingDate = (dateString: string) => {
     try {
-      return format(parseISO(dateString)'dd. MMM yyyy', { locale: nb });
+      return format(parseISO(dateString), 'dd. MMM yyyy', { locale: nb });
   } catch {
       return dateString;
   }
@@ -144,7 +160,7 @@ export function MeetingNotesIntegration({
           {meetingNotes?.data && meetingNotes.data.length > 0 ? (
             <List>
               {meetingNotes.data.map((note: MeetingNote, index: number) => (
-                <React.Fragment key={note.d}>
+                <React.Fragment key={note.id}>
                   <ListItem>
                     <ListItemIcon>{getMeetingTypeIcon(note.meetingType)}</ListItemIcon>
                     <ListItemText
@@ -155,7 +171,7 @@ export function MeetingNotesIntegration({
                           </Typography>
                           {note.weddingTimelineIntegration?.enabled && (
                             <Chip
-                              icon={theming.getThemedIcon('sync')}}
+                              icon={getSafeIcon('sync', <Sync fontSize="small" />)}
                               label="Synkronisert"
                               size="small"
                               color="success"
@@ -167,7 +183,7 @@ export function MeetingNotesIntegration({
                       secondary={
                         <Box mt={1}>
                           <Typography variant="body2" color="text.secondary" gutterBottom>
-                            Deltakere: {note.attendees?.join('') || 'Ikke spesifisert'}
+                            Deltakere: {note.attendees?.join(', ') || 'Ikke spesifisert'}
                           </Typography>
 
                           {/* Key points preview */}
@@ -177,12 +193,12 @@ export function MeetingNotesIntegration({
                                 <Typography variant="caption" color="primary" fontWeight="bold">
                                   Hovedpunkter: </Typography>
                                 <List dense>
-                                  {note.structuredNotes.keyPoints.slice, (3).map((point, idx) => (
+                                  {note.structuredNotes.keyPoints.slice(0, 3).map((point, idx) => (
                                     <ListItem key={idx} sx={{ py: 0, pl: 2 }}>
                                       <ListItemText
                                         primary={`• ${point}`}
                                         primaryTypographyProps={{
-                                          variant: 'body',
+                                          variant: 'body2',
                                           color: 'text.secondary' }}
                                       />
                                     </ListItem>
@@ -207,8 +223,7 @@ export function MeetingNotesIntegration({
                             note.structuredNotes.timeline.length > 0 && (
                               <Box mt={1}>
                                 <Typography variant="caption" color="secondary" fontWeight="bold">
-                                  Tidslinjeaktiviteter: {note.structuredNotes.timeline.length}{', '}
-                                  hendelser
+                                  Tidslinjeaktiviteter: {note.structuredNotes.timeline.length} hendelser
                                 </Typography>
                               </Box>
                             )}
@@ -220,15 +235,24 @@ export function MeetingNotesIntegration({
                             alignItems="center"
                           >
                             <Typography variant="caption" color="text.disabled">
-                              Sist oppdatert: {formatMeetingDate(note.updatedA)}
+                              Sist oppdatert: {formatMeetingDate(note.updatedAt)}
                             </Typography>
-                            <Button
-                              size="small"
-                              onClick={() => handleViewDetails(note)}
-                              startIcon={theming.getThemedIcon('info')}
-                            >
-                              Se detaljer
-                            </Button>
+                            <Box display="flex" alignItems="center" gap={1}>
+                              <IconButton
+                                size="small"
+                                onClick={() => handleViewDetails(note)}
+                                aria-label="Se detaljer"
+                              >
+                                <Info fontSize="small" />
+                              </IconButton>
+                              <Button
+                                size="small"
+                                onClick={() => handleViewDetails(note)}
+                                startIcon={<Info fontSize="small" />}
+                              >
+                                Se detaljer
+                              </Button>
+                            </Box>
                           </Box>
                         </Box>
                     }
@@ -264,8 +288,7 @@ export function MeetingNotesIntegration({
             {selectedNote && getMeetingTypeIcon(selectedNote.meetingType)}
             <Box>
               <Typography variant="h6" sx={{ color: theming.colors.primary }}>
-                {selectedNote?.meetingType} -{', '}
-                {selectedNote && formatMeetingDate(selectedNote.meetingDate)}
+                {selectedNote?.meetingType} - {selectedNote && formatMeetingDate(selectedNote.meetingDate)}
               </Typography>
               <Typography variant="body2" color="text.secondary">
                 Deltakere: {selectedNote?.attendees?.join(', ') || 'Ikke spesifisert'}
@@ -303,7 +326,7 @@ export function MeetingNotesIntegration({
                 {selectedNote.structuredNotes?.keyPoints &&
                   selectedNote.structuredNotes.keyPoints.length > 0 && (
                     <Accordion defaultExpanded>
-                      <AccordionSummary expandIcon={theming.getThemedIcon('expandMore')>
+                      <AccordionSummary expandIcon={<ExpandMore />}>
                         <Typography variant="subtitle1">
                           Hovedpunkter ({selectedNote.structuredNotes.keyPoints.length})
                         </Typography>
@@ -324,7 +347,7 @@ export function MeetingNotesIntegration({
                 {selectedNote.structuredNotes?.clientRequests &&
                   selectedNote.structuredNotes.clientRequests.length > 0 && (
                     <Accordion>
-                      <AccordionSummary expandIcon={theming.getThemedIcon('expandMore')>
+                      <AccordionSummary expandIcon={<ExpandMore />}>
                         <Typography variant="subtitle1">
                           Klientønsker ({selectedNote.structuredNotes.clientRequests.length})
                         </Typography>
@@ -334,7 +357,7 @@ export function MeetingNotesIntegration({
                           {selectedNote.structuredNotes.clientRequests.map((request, idx) => (
                             <ListItem key={idx}>
                               <ListItemIcon>
-                                <Wedding color="secondary" />
+                                <Favorite color="secondary" />
                               </ListItemIcon>
                               <ListItemText primary={request} />
                             </ListItem>
@@ -348,7 +371,7 @@ export function MeetingNotesIntegration({
                 {selectedNote.structuredNotes?.timeline &&
                   selectedNote.structuredNotes.timeline.length > 0 && (
                     <Accordion>
-                      <AccordionSummary expandIcon={theming.getThemedIcon('expandMore')>
+                      <AccordionSummary expandIcon={<ExpandMore />}>
                         <Typography variant="subtitle1">
                           Tidslinjeaktiviteter ({selectedNote.structuredNotes.timeline.length})
                         </Typography>
@@ -362,7 +385,7 @@ export function MeetingNotesIntegration({
                               </ListItemIcon>
                               <ListItemText
                                 primary={event.event}
-                                secondary={`${event.date} ${event.notes ? `• ${event.notes}` : ', '}`}
+                                secondary={`${event.date}${event.notes ? ` • ${event.notes}` : ''}`}
                               />
                             </ListItem>
                           ))}
@@ -375,7 +398,7 @@ export function MeetingNotesIntegration({
                 {selectedNote.structuredNotes?.actionItems &&
                   selectedNote.structuredNotes.actionItems.length > 0 && (
                     <Accordion>
-                      <AccordionSummary expandIcon={theming.getThemedIcon('expandMore')>
+                      <AccordionSummary expandIcon={<ExpandMore />}>
                         <Typography variant="subtitle1">
                           Handlingspunkter ({selectedNote.structuredNotes.actionItems.length})
                         </Typography>
@@ -385,11 +408,11 @@ export function MeetingNotesIntegration({
                           {selectedNote.structuredNotes.actionItems.map((action, idx) => (
                             <ListItem key={idx}>
                               <ListItemIcon>
-                                {theming.getThemedIcon('assignment')}
+                                <Assignment color="primary" />
                               </ListItemIcon>
                               <ListItemText
                                 primary={action.task}
-                                secondary={`Ansvarlig: ${action.assignedo} • Frist: ${action.dueDate}`}
+                                secondary={`Ansvarlig: ${action.assignedTo} • Frist: ${action.dueDate}`}
                               />
                             </ListItem>
                           ))}
@@ -416,14 +439,15 @@ export function MeetingNotesIntegration({
                         <Typography variant="body2">
                           Status: {''}
                           {selectedNote.weddingTimelineIntegration.enabled
-                            ? 'Aktivert': 'Deaktivert'}
+                            ? 'Aktivert'
+                            : 'Deaktivert'}
                         </Typography>
                       </Box>
                       {selectedNote.weddingTimelineIntegration.syncedSections?.length > 0 && (
                         <Box mb={1}>
                           <Typography variant="body2" gutterBottom>
                             Synkroniserte seksjoner: </Typography>
-                          <Box display="flex" gap=, {, 1} flexWrap="wrap">
+                          <Box display="flex" gap={1} flexWrap="wrap">
                             {selectedNote.weddingTimelineIntegration.syncedSections.map(
                               (section, idx) => (
                                 <Chip
@@ -440,8 +464,8 @@ export function MeetingNotesIntegration({
                       )}
                       {selectedNote.weddingTimelineIntegration.lastSync && (
                         <Typography variant="caption" color="text.secondary">
-                          Sist synkronisert: {''}
-                          {formatMeetingDate(selectedNote.weddingTimelineIntegration.lastSync)}
+                          <Schedule fontSize="inherit" sx={{ mr: 0.5 }} />
+                          Sist synkronisert: {formatMeetingDate(selectedNote.weddingTimelineIntegration.lastSync)}
                         </Typography>
                       )}
                     </CardContent>

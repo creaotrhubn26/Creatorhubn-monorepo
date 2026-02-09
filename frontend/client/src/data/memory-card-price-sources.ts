@@ -14,7 +14,7 @@ export interface PriceSource {
   updateFrequency: 'real-time' | 'hourly' | 'daily' | 'weekly';
   coverage: string[];
   description: string;
-  logo?: string, ;, 
+  logo?: string;
 }
 
 export interface PriceData {
@@ -27,7 +27,7 @@ export interface PriceData {
   availability: 'in-stock' | 'limited' | 'out-of-stock';
   url?: string;
   shipping?: number;
-  totalPrice?: number, ;, 
+  totalPrice?: number;
 }
 
 export interface PriceComparison {
@@ -38,7 +38,7 @@ export interface PriceComparison {
   lowestPrice: PriceData;
   highestPrice: PriceData;
   priceRange: number;
-  currency: string, ;, 
+  currency: string;
 }
 
 // Price Sources Database
@@ -47,36 +47,36 @@ export const PRICE_SOURCES: PriceSource[] = [
   {
     id: 'komplett-no',
     name: 'Komplett.no',
-    country: 'N',
-    currency: 'NO',
+    country: 'NO',
+    currency: 'NOK',
     website: 'https://www.komplett.no',
     reliability: 'high',
     updateFrequency: 'daily',
-    coverage: ['S','SDHC','SDXC','CF','XQD','CFexpress','microSD'],
+    coverage: ['SD', 'SDHC', 'SDXC', 'CF', 'XQD', 'CFexpress', 'microSD'],
     description: 'Norway\'s largest electronics retailer with comprehensive memory card selection'
-,},
+  },
   {
     id: 'elkjop-no',
-    name: 'Elkjø',
-    country: 'N',
-    currency: 'NO',
+    name: 'Elkjop',
+    country: 'NO',
+    currency: 'NOK',
     website: 'https://www.elkjop.no',
     reliability: 'high',
     updateFrequency: 'daily',
-    coverage: ['S','SDHC','SDXC','CF','microSD'],
+    coverage: ['SD', 'SDHC', 'SDXC', 'CF', 'microSD'],
     description: 'Major Norwegian electronics chain with competitive pricing'
-,},
+  },
   {
     id: 'power-no',
     name: 'Power',
-    country: 'N',
-    currency: 'NO',
+    country: 'NO',
+    currency: 'NOK',
     website: 'https://www.power.no',
     reliability: 'high',
     updateFrequency: 'daily',
-    coverage: ['S','SDHC','SDXC','CF','microSD'],
+    coverage: ['SD', 'SDHC', 'SDXC', 'CF', 'microSD'],
     description: 'Norwegian electronics retailer with good memory card selection'
-,},
+  },
   {
     id: 'foto-video-no',
     name: 'Foto & Video',
@@ -415,10 +415,10 @@ export class MemoryCardPriceAPI {
       const price = Math.round(basePrice * (1 + variation));
       
       trends.push({
-        date: date.toISOString().split('T')[],
+        date: date.toISOString().split('T')[0],
         price,
         currency: 'NOK'
-    ,});
+      });
   }
 
     return trends;
@@ -436,10 +436,10 @@ export class MemoryCardPriceAPI {
     
     // Fetch prices for common configurations
     const configurations = [
-      { cardType: 'SDXC UHS-I', capacity: '128GB,',},
-      { cardType: 'SDXC UHS-I', capacity: '256GB,',},
-      { cardType: 'CFexpress Type ', capacity: '256GB,',},
-      { cardType: 'CFexpress Type ', capacity: '512GB',}
+      { cardType: 'SDXC UHS-I', capacity: '128GB' },
+      { cardType: 'SDXC UHS-I', capacity: '256GB' },
+      { cardType: 'CFexpress Type B', capacity: '256GB' },
+      { cardType: 'CFexpress Type B', capacity: '512GB' }
     ];
 
     for (const config of configurations) {
@@ -465,21 +465,21 @@ export class PriceSourceManager {
    */
   static getSourcesByCountry(country: string): PriceSource[] {
     return PRICE_SOURCES.filter(source => source.country === country);
-,}
+  }
 
   /**
    * Get sources by reliability
    */
   static getSourcesByReliability(reliability: 'high' | 'medium' | 'low'): PriceSource[] {
     return PRICE_SOURCES.filter(source => source.reliability === reliability);
-,}
+  }
 
   /**
    * Get sources that support specific card type
    */
   static getSourcesForCardType(cardType: string): PriceSource[] {
     return PRICE_SOURCES.filter(source => source.coverage.includes(cardType));
-,}
+  }
 
   /**
    * Get all Norwegian sources
@@ -500,15 +500,15 @@ export class PriceSourceManager {
 
 // Export utility functions
 export const getPriceSourcesByCountry = (country: string) => {
-  return PRICE_SOURCES.filter(source => source.country === country), ;, 
+  return PRICE_SOURCES.filter(source => source.country === country);
 };
 
 export const getPriceSourcesByReliability = (reliability: string) => {
-  return PRICE_SOURCES.filter(source => source.reliability === reliability), ;, 
+  return PRICE_SOURCES.filter(source => source.reliability === reliability);
 };
 
 export const getPriceSourceById = (id: string) => {
-  return PRICE_SOURCES.find(source => source.id === id), ;, 
+  return PRICE_SOURCES.find(source => source.id === id);
 };
 
 

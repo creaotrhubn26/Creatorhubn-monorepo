@@ -67,7 +67,7 @@ const DEMO_STEPS = [
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         color: 'white',
         fontSize: '10px',
-        fontWeight: 7,
+        fontWeight: 700,
         fontFamily: 'Arial, sans-serif'
     }}>
         Lr
@@ -158,7 +158,7 @@ export const LightroomInteractiveDemo: React.FC<LightroomInteractiveDemoProps> =
                   opacity: 0.9 }}
               />
               <Box>
-                <Typography variant="h6" sx={{  color: customBranding.color, fontWeight: 7, mb:  1  }}>
+                <Typography variant="h6" sx={{  color: customBranding.color, fontWeight: 700, mb:  1  }}>
                   🎬 Interaktiv Demo: Slik fungerer integrasjonen
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
@@ -275,7 +275,7 @@ export const LightroomInteractiveDemo: React.FC<LightroomInteractiveDemoProps> =
           {/* Performance Metrics */}
           <Box sx={{ mt:  3, display: 'flex', justifyContent: 'space-around', textAlign: 'center'}}>
             <Box>
-              <Typography variant="h4" sx={{  color: customBranding.color, fontWeight: 70 }}>
+              <Typography variant="h4" sx={{  color: customBranding.color, fontWeight: 700 }}>
                 2 min
               </Typography>
               <Typography variant="caption" color="text.secondary">
@@ -283,7 +283,7 @@ export const LightroomInteractiveDemo: React.FC<LightroomInteractiveDemoProps> =
               </Typography>
             </Box>
             <Box>
-              <Typography variant="h4" sx={{  color: customBranding.color, fontWeight: 70 }}>
+              <Typography variant="h4" sx={{  color: customBranding.color, fontWeight: 700 }}>
                 100%
               </Typography>
               <Typography variant="caption" color="text.secondary">
@@ -291,7 +291,7 @@ export const LightroomInteractiveDemo: React.FC<LightroomInteractiveDemoProps> =
               </Typography>
             </Box>
             <Box>
-              <Typography variant="h4" sx={{  color: customBranding.color, fontWeight: 70 }}>
+              <Typography variant="h4" sx={{  color: customBranding.color, fontWeight: 700 }}>
                 SEO
               </Typography>
               <Typography variant="caption" color="text.secondary">
@@ -299,7 +299,7 @@ export const LightroomInteractiveDemo: React.FC<LightroomInteractiveDemoProps> =
               </Typography>
             </Box>
             <Box>
-              <Typography variant="h4" sx={{  color: customBranding.color, fontWeight: 70 }}>
+              <Typography variant="h4" sx={{  color: customBranding.color, fontWeight: 700 }}>
                 GDPR
               </Typography>
               <Typography variant="caption" color="text.secondary">
@@ -419,7 +419,7 @@ export const LightroomInteractiveDemo: React.FC<LightroomInteractiveDemoProps> =
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     color: 'white',
                     fontSize: '10px',
-                    fontWeight: 7,
+                    fontWeight: 700,
                     fontFamily: 'Arial, sans-serif'
                 }}>
                     Lr
@@ -437,7 +437,7 @@ export const LightroomInteractiveDemo: React.FC<LightroomInteractiveDemoProps> =
                     display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                     color: 'white',
                     fontSize: '8px',
-                    fontWeight: 7,
+                    fontWeight: 700,
                     fontFamily: 'Arial, sans-serif'
                 }}>
                     Lr
@@ -528,7 +528,7 @@ export const LightroomInteractiveDemo: React.FC<LightroomInteractiveDemoProps> =
                     display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                     color: 'white',
                     fontSize: '7px',
-                    fontWeight: 7,
+                    fontWeight: 700,
                     fontFamily: 'Arial, sans-serif'
                 }}>
                     Lr
@@ -563,7 +563,7 @@ export const LightroomInteractiveDemo: React.FC<LightroomInteractiveDemoProps> =
                   display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                   color: 'white',
                   fontSize: '7px',
-                  fontWeight: 7,
+                  fontWeight: 700,
                   fontFamily: 'Arial, sans-serif'
               }}>
                   Lr

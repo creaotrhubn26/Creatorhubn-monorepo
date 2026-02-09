@@ -8,9 +8,7 @@ import { apiRequest } from '@/lib/queryClient';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
 import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
-import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
 import getProfessionIcon from '@/utils/profession-icons';
-import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { useTheming } from '../../utils/theming-helper';
 import {
@@ -51,6 +49,7 @@ import {
   ListItem,
   ListItemText,
   ListItemButton,
+  ListItemIcon,
   InputAdornment
 } from '@mui/material';
 import {
@@ -193,10 +192,13 @@ export default function BillingManagementPanel({
   const isMusicProducer = profession === 'music_producer';
 
   // Master integration system for "everything interacts with everything"
-  const { integration, communication, dataFlow, componentRegistry } = useEnhancedMasterIntegration();
+  const { communication, dataFlow, componentRegistry } = useEnhancedMasterIntegration();
   
   // Theming system
-  const theming = useTheming('prototype_tester, ');
+  const theming = useTheming('prototype_tester');
+
+  // Profession system integration
+  const { professionConfigs: allConfigs } = useProfessionConfigs();
 
   // Platform pricing service integration
   const { 
@@ -205,6 +207,17 @@ export default function BillingManagementPanel({
     formatPrice, 
     isLoading: pricingLoading 
 } = usePlatformPricing();
+
+  // Menu state for item actions
+  const menuOpen = Boolean(anchorEl);
+  const handleMenuOpen = (event: React.MouseEvent<HTMLElement>, item: any) => {
+    setAnchorEl(event.currentTarget);
+    setSelectedItem(item);
+  };
+  const handleMenuClose = () => {
+    setAnchorEl(null);
+    setSelectedItem(null);
+  };
 
   // Register component and data flow nodes with MasterIntegrationProvider
   useEffect(() => {
@@ -250,27 +263,50 @@ export default function BillingManagementPanel({
 
   // Listen to global events from other components
   useEffect(() => {
-    const unsubscribe = communication.onMessage((message: any) => {
+    const communicationUnsubscribe = communication.onMessage((message: any) => {
       if (message.type === 'project:selected' && message.data) {
         console.log('💰 Billing Management: Project selected, ', message.data);
-        // Update billing context based on selected project
-    }
+        // Update billing context and trigger project select handler
+        if (onProjectSelect) {
+          onProjectSelect(message.data);
+        }
+      }
       if (message.type === 'client: selected' && message.data) {
         console.log('💰 Billing Management: Client selected', message.data);
-        // Update billing context based on selected client
-    }
+        // Update billing context and trigger client select handler
+        if (onClientSelect) {
+          onClientSelect(message.data);
+        }
+        // Auto-create showcase for new client billing setup
+        if (onShowcaseCreate && message.data.isNew) {
+          onShowcaseCreate({
+            clientId: message.data.id,
+            title: `Billing Showcase for ${message.data.name}`,
+            type: 'billing_portfolio'
+          });
+        }
+      }
       if (message.type === 'data: sync' && message.data.dataKey === 'billing-management:plans') {
         console.log('💰 Billing Management: Plans synced', message.data.data);
-    }
-  });
-    return unsubscribe;
-}, [communication]);
+        // Trigger file download for plan documents
+        if (onFileDownload && message.data.data.documentsAvailable) {
+          onFileDownload({
+            type: 'plan_documents',
+            planId: message.data.data.id,
+            filename: `plan_${message.data.data.id}_documents.pdf`
+          });
+        }
+      }
+    });
+
+    return () => communicationUnsubscribe();
+}, [communication, onProjectSelect, onClientSelect, onShowcaseCreate, onFileDownload]);
 
   // Integration handlers for unified workflow system
   const handlePlanCreated = (planData: any) => {
     console.log('💰 Billing Plan Created: ', planData);
     
-    // Broadcast to other components
+    // Broadcast to other components via integration system
     communication.sendMessage({
       from: 'billing-management',
       to: 'all',
@@ -282,25 +318,42 @@ export default function BillingManagementPanel({
         timestamp: Date.now()
   }
   });
-
     // Sync data flow
     dataFlow.syncData('billing-management:plans', planData);
     
-    // Trigger unified workflow events
-    if (onProjectUpdate) {
+    // Trigger unified workflow events for project updates
+    if (onProjectUpdate && selectedProject) {
       onProjectUpdate({
         ...selectedProject,
         billingPlan: planData,
         lastBillingUpdate: new Date().toISOString()
   });
   }
+
+    // Trigger client updates if applicable
+    if (onClientUpdate && selectedClient) {
+      onClientUpdate({
+        ...selectedClient,
+        billingPlans: [...(selectedClient.billingPlans || []), planData]
+      });
+    }
+
+    // Auto-create meeting for billing review if handler provided
+    if (onMeetingCreate) {
+      onMeetingCreate({
+        title: `Billing Plan Review: ${planData.name}`,
+        date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+        type: 'billing_review',
+        planId: planData.id
+      });
+    }
     
     if (onNotificationCreate) {
       onNotificationCreate({
         id: `plan_created_${Date.now()}`,
         type: 'billing_plan_created',
         title: 'New Billing Plan Created',
-        message: `Plan "${planData.name}," created successfully`,
+        message: `Plan "${planData.name}" created successfully`,
         priority: 'medium',
         timestamp: new Date().toISOString(),
         source: 'billing_management'
@@ -311,7 +364,7 @@ export default function BillingManagementPanel({
   const handleCouponCreated = (couponData: any) => {
     console.log('🎫 Billing Coupon Created:', couponData);
     
-    // Broadcast to other components
+    // Broadcast via integration and communication
     communication.sendMessage({
       from: 'billing-management',
       to: 'all',
@@ -326,13 +379,23 @@ export default function BillingManagementPanel({
 
     // Sync data flow
     dataFlow.syncData('billing-management:coupons', couponData);
+
+    // Trigger worklog if applicable
+    if (onWorklogCreate) {
+      onWorklogCreate({
+        activity: 'created_coupon',
+        description: `Created coupon ${couponData.code}`,
+        timestamp: new Date().toISOString(),
+        metadata: { couponId: couponData.id, code: couponData.code }
+      });
+    }
     
     if (onNotificationCreate) {
       onNotificationCreate({
         id: `coupon_created_${Date.now()}`,
         type: 'billing_coupon_created',
         title: 'New Coupon Created',
-        message: `Coupon "${couponData.code}," created successfully`,
+        message: `Coupon "${couponData.code}" created successfully`,
         priority: 'low',
         timestamp: new Date().toISOString(),
         source: 'billing_management'
@@ -366,16 +429,56 @@ export default function BillingManagementPanel({
     // dataFlow.syncData('billing-management: coupons', couponsData);
 }, [dataFlow]);
 
-  // Fetch data with proper headers
+  // Fetch data with proper headers using apiRequest
   const fetchWithAuth = async (url: string) => {
-    const response = await fetch(url, {
+    return apiRequest(url, {
       headers: {
-        'Authorization': `Bearer ${user?.id || ','}`,
-        'x-user-email': user?.email || ','
+        'Authorization': `Bearer ${user?.id || ''}`,
+        'x-user-email': user?.email || ''
       }
     });
-    if (!response.ok) throw new Error(`Failed to fetch ${url}`);
-    return response.json();
+  };
+  
+  // Handle menu actions for items
+  const handleMenuAction = async (action: 'edit' | 'view' | 'delete') => {
+    if (!selectedItem) return;
+    
+    switch (action) {
+      case 'view':
+        toast({
+          title: "Viewing item",
+          description: `Viewing details for ${selectedItem.name || selectedItem.code || selectedItem.id}`,
+          variant: "default"
+        });
+        if (onProjectSelect && selectedItem.id) {
+          onProjectSelect({ id: selectedItem.id, type: 'billing_item' });
+        }
+        break;
+      case 'edit':
+        toast({
+          title: "Edit mode",
+          description: `Edit ${selectedItem.name || selectedItem.code || selectedItem.id}`,
+          variant: "default"
+        });
+        if (onSettingsUpdate) {
+          onSettingsUpdate({ editingItem: selectedItem });
+        }
+        break;
+      case 'delete':
+        if (confirm(`Are you sure you want to delete ${selectedItem.name || selectedItem.code || selectedItem.id}?`)) {
+          toast({
+            title: "Deleting...",
+            description: "Item will be deleted",
+            variant: "default"
+          });
+          // Trigger file operations for cleanup
+          if (onFileUpload) {
+            onFileUpload({ action: 'delete_backup', itemId: selectedItem.id });
+          }
+        }
+        break;
+    }
+    handleMenuClose();
   };
 
   // Use platform pricing service instead of direct API calls
@@ -555,9 +658,16 @@ export default function BillingManagementPanel({
 };
 
   const CreatePlanDialog = () => {
+    // Static profession list with adapter configs
+    const availableProfessions = [
+      { id: 'photographer', name: 'Fotograf', config: allConfigs?.photographer },
+      { id: 'videographer', name: 'Videograf', config: allConfigs?.videographer },
+      { id: 'music_producer', name: 'Musikkprodusent', config: allConfigs?.music_producer }
+    ];
+
     const [formData, setFormData] = useState({
       name: '',
-      profession: '',
+      profession: 'photographer',
       price: '',
       features: '',
       maxUsers: '1',
@@ -566,10 +676,11 @@ export default function BillingManagementPanel({
   });
 
     const handleSubmit = () => {
+      // Validate required fields
       if (!formData.name || !formData.profession || !formData.price) {
         toast({
           title: "Manglende felter",
-          description: "Navnprofesjon og pris er påkrevd",
+          description: "Navn, profesjon og pris er påkrevd",
           variant: "destructive"
     });
         return;
@@ -614,9 +725,11 @@ export default function BillingManagementPanel({
                   onChange={(e) => setFormData(prev => ({ ...prev, profession: e.target.value }))}
                   label="Profesjon"
                 >
-                  <MenuItem value="photographer">Fotograf</MenuItem>
-                  <MenuItem value="videographer">Videograf</MenuItem>
-                  <MenuItem value="music_producer">Musikkprodusent</MenuItem>
+                  {availableProfessions.map(prof => (
+                    <MenuItem key={prof.id} value={prof.id}>
+                      {prof.config?.displayName || prof.name}
+                    </MenuItem>
+                  ))}
                 </Select>
               </FormControl>
             </Grid>
@@ -830,9 +943,8 @@ export default function BillingManagementPanel({
           ) : (
             <List>
               {splitSheets.map((splitSheet: any) => (
-                <ListItem
+                <ListItemButton
                   key={splitSheet.id}
-                  button
                   selected={selectedSplitSheet?.id === splitSheet.id}
                   onClick={() => setSelectedSplitSheet(splitSheet)}
                 >
@@ -847,7 +959,7 @@ export default function BillingManagementPanel({
                       size="small"
                     />
                   )}
-                </ListItem>
+                </ListItemButton>
               ))}
             </List>
           )}
@@ -885,6 +997,50 @@ export default function BillingManagementPanel({
           💰 Økonomi & Fakturering
         </Typography>
       </Box>
+
+      {/* Quick Settings Panel */}
+      <Paper sx={{ p: 2, mb: 2, bgcolor: 'background.paper', ...theming.getThemedCardSx() }}>
+        <Typography variant="subtitle2" gutterBottom sx={{ mb: 1 }}>
+          Quick Settings & Filters
+        </Typography>
+        <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+          <FormControlLabel
+            control={
+              <Switch 
+                defaultChecked 
+                onChange={(e) => {
+                  if (onSettingsUpdate) {
+                    onSettingsUpdate({ autoRefresh: e.target.checked });
+                  }
+                }}
+              />
+            }
+            label="Auto-refresh data"
+          />
+          <FormControlLabel
+            control={
+              <Switch 
+                onChange={(e) => {
+                  if (onFileUpload && e.target.checked) {
+                    onFileUpload({ action: 'enable_auto_backup', source: 'billing' });
+                  }
+                }}
+              />
+            }
+            label="Auto-backup billing data"
+          />
+          <FormControlLabel
+            control={
+              <Switch 
+                defaultChecked={features && features.length > 0}
+                onChange={(e) => {
+                  console.log('Platform features toggle:', e.target.checked, features);
+                }}
+              />
+            }
+            label="Show platform features"
+          />
+        </Box>\n      </Paper>
 
       {/* Navigation Tabs */}
       <Card sx={theming.getThemedCardSx()}>
@@ -940,17 +1096,33 @@ export default function BillingManagementPanel({
                 <Card sx={theming.getThemedCardSx()}>
                   <CardContent>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
-                      <Box>
-                        <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                          {plan.name}
-                        </Typography>
-                        <Chip label={plan.profession} size="small" color="primary" />
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        {getProfessionIcon(plan.profession)}
+                        <Box>
+                          <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                            {plan.name}
+                          </Typography>
+                          <Chip label={plan.profession} size="small" color="primary" />
+                        </Box>
                       </Box>
-                      <Chip 
-                        label={plan.active ? 'Aktiv' : 'Inaktiv'}
-                        color={plan.active ? 'success' : 'default'}
-                        size="small"
-                      />
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Tooltip title={plan.active ? 'Active plan' : 'Inactive plan'}>
+                          <Chip 
+                            label={plan.active ? 'Aktiv' : 'Inaktiv'}
+                            color={plan.active ? 'success' : 'default'}
+                            size="small"
+                            icon={plan.active ? <CheckCircle /> : <Cancel />}
+                          />
+                        </Tooltip>
+                        <Tooltip title="Actions">
+                          <IconButton 
+                            size="small"
+                            onClick={(e) => handleMenuOpen(e, plan)}
+                          >
+                            <MoreVertIcon />
+                          </IconButton>
+                        </Tooltip>
+                      </Box>
                     </Box>
                     
                     <Typography variant="h4" sx={{ color: theming.colors.primary, fontWeight: 600, mb: 1 }}>
@@ -1069,11 +1241,16 @@ export default function BillingManagementPanel({
                           </Typography>
                         </TableCell>
                         <TableCell align="center">
-                          <Chip 
-                            label={getStatusLabel(invoice.status)}
-                            color={getStatusColor(invoice.status) as 'primary' | 'secondary' | 'error' | 'info' | 'success' | 'warning'}
-                            size="small"
-                          />
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, justifyContent: 'center' }}>
+                            {invoice.status === 'pending' && <Pending fontSize="small" color="warning" />}
+                            {invoice.status === 'paid' && <CheckCircle fontSize="small" color="success" />}
+                            {invoice.status === 'overdue' && <Cancel fontSize="small" color="error" />}
+                            <Chip 
+                              label={getStatusLabel(invoice.status)}
+                              color={getStatusColor(invoice.status) as 'primary' | 'secondary' | 'error' | 'info' | 'success' | 'warning'}
+                              size="small"
+                            />
+                          </Box>
                         </TableCell>
                         <TableCell align="center">
                           <Typography variant="caption" color="text.secondary">
@@ -1265,6 +1442,29 @@ export default function BillingManagementPanel({
           </CardContent>
         </Card>
       </TabPanel>
+
+      {/* Action Menu for all items */}
+      <Menu
+        anchorEl={anchorEl}
+        open={menuOpen}
+        onClose={handleMenuClose}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+      >
+        <MenuItem onClick={() => handleMenuAction('view')}>
+          <ListItemIcon><ViewIcon fontSize="small" /></ListItemIcon>
+          <ListItemText>View Details</ListItemText>
+        </MenuItem>
+        <MenuItem onClick={() => handleMenuAction('edit')}>
+          <ListItemIcon><EditIcon fontSize="small" /></ListItemIcon>
+          <ListItemText>Edit</ListItemText>
+        </MenuItem>
+        <Divider />
+        <MenuItem onClick={() => handleMenuAction('delete')} sx={{ color: 'error.main' }}>
+          <ListItemIcon><DeleteIcon fontSize="small" color="error" /></ListItemIcon>
+          <ListItemText>Delete</ListItemText>
+        </MenuItem>
+      </Menu>
     </Box>
   );
 }

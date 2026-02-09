@@ -56,7 +56,7 @@ export const GoogleSignInButton: React.FC<GoogleSignInButtonProps> = ({
         border: '1px solid #dadce0',
         borderRadius: '4px',
         fontSize: '14px',
-        fontWeight: 50,
+        fontWeight: 500,
         color: '#3c4043',
         cursor: disabled || isLoading ? 'not-allowed' : 'pointer',
         transition: 'all 0.2s',

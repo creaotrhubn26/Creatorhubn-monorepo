@@ -45,7 +45,7 @@ export const PerformanceMonitorDashboard: React.FC = () => {
   const performanceStatus = getPerformanceStatus();
   const recommendations = getOptimizationRecommendations();
 
-  const getStatusColor = (status: string) => {
+  const getStatusColor = (status: string): 'success' | 'info' | 'warning' | 'error' => {
     switch (status) {
       case 'excellent': return 'success';
       case 'good': return 'info';
@@ -72,7 +72,7 @@ export const PerformanceMonitorDashboard: React.FC = () => {
         </Typography>
         <Chip 
           label={performanceStatus.toUpperCase()} 
-          color={getStatusColor(performanceStatus) as any}
+          color={getStatusColor(performanceStatus)}
           icon={getStatusIcon(performanceStatus)}
         />
       </Box>

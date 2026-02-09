@@ -71,7 +71,7 @@ export default function SpotifyMusicProducerDashboard() {
   const queryClient = useQueryClient();
   
   // Theming system
-  const theming = useTheming('photographer, ');
+  const theming = useTheming('photographer');
   const [tabValue, setTabValue] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearchDialog, setShowSearchDialog] = useState(false);
@@ -599,7 +599,7 @@ export default function SpotifyMusicProducerDashboard() {
                         gap:  2,
                         mb:  1}}
                     >
-                      <Typography variant="body2" sx={{ minWidth: '80px', fontWeight: 50}}>
+                      <Typography variant="body2" sx={{ minWidth: '80px', fontWeight: 500}}>
                         {city.name}
                       </Typography>
                       <Box
@@ -632,7 +632,7 @@ export default function SpotifyMusicProducerDashboard() {
                             gap:  2,
                             mb:  1}}
                         >
-                          <Typography variant="body2" sx={{ minWidth: '80px', fontWeight: 50}}>
+                          <Typography variant="body2" sx={{ minWidth: '80px', fontWeight: 500}}>
                             {city}
                           </Typography>
                           <Box
@@ -789,7 +789,7 @@ export default function SpotifyMusicProducerDashboard() {
                             gap:  2,
                             mb: 1.5}}
                         >
-                          <Typography variant="body2" sx={{ minWidth: '70px', fontWeight: 50}}>
+                          <Typography variant="body2" sx={{ minWidth: '70px', fontWeight: 500}}>
                             {dayName}
                           </Typography>
                           <Box
@@ -923,7 +923,7 @@ export default function SpotifyMusicProducerDashboard() {
                           ? `${(streamingForecasts.data.expected_streams_30_days / 1000).toFixed(1)}K`
                           : '15.2K'}
                       </Typography>
-                      <Typography variant="body1" sx={{ fontWeight: 50}}>
+                      <Typography variant="body1" sx={{ fontWeight: 500}}>
                         Forventet streams
                       </Typography>
                       <Typography variant="body2" color="text.secondary">
@@ -944,7 +944,7 @@ export default function SpotifyMusicProducerDashboard() {
                           ? `${(streamingForecasts.data.expected_new_listeners / 1000).toFixed(1)}K`
                           : '2.8K'}
                       </Typography>
-                      <Typography variant="body1" sx={{ fontWeight: 50}}>
+                      <Typography variant="body1" sx={{ fontWeight: 500}}>
                         Nye lyttere
                       </Typography>
                       <Typography variant="body2" color="text.secondary">
@@ -965,7 +965,7 @@ export default function SpotifyMusicProducerDashboard() {
                           ? `${streamingForecasts.data.success_probability}%`
                           : '68%'}
                       </Typography>
-                      <Typography variant="body1" sx={{ fontWeight: 50}}>
+                      <Typography variant="body1" sx={{ fontWeight: 500}}>
                         Suksess-rate
                       </Typography>
                       <Typography variant="body2" color="text.secondary">

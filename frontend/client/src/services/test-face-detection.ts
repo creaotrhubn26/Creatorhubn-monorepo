@@ -134,7 +134,7 @@ export async function testDirectFaceAnalysis(
             throw new Error('Could not create blob');
           }
           
-          const file = new File([blob] 'test_frame.jpg', { type: 'image/jpeg' });
+          const file = new File([blob], 'test_frame.jpg', { type: 'image/jpeg' });
           console.log('✅ Frame extracted, analyzing with FaceXFormer...');
           
           // Analyze with FaceXFormer
@@ -166,7 +166,7 @@ export async function testDirectFaceAnalysis(
           
           URL.revokeObjectURL(video.src);
           resolve();
-        }'image/jpeg', 0.9);
+        }, 'image/jpeg', 0.9);
       } catch (error: any) {
         URL.revokeObjectURL(video.src);
         reject(error);

@@ -97,7 +97,7 @@ export default function FileManagementTestPanel({ onNotificationCreate }: FileMa
   const { integration, communication, dataFlow, componentRegistry, analytics, lifecycle, performance } = useEnhancedMasterIntegration();
   
   // Theming system
-  const theming = useTheming('prototype_tester, ');
+  const theming = useTheming('prototype_tester');
   
   const [activeTab, setActiveTab] = useState(0);
   const [profession, setProfession] = useState<'photographer' | 'videographer' | 'music_producer' | 'designer'>('photographer');

@@ -147,18 +147,19 @@ export default function SubscriptionSelectionPage() {
           elevation={0}
           sx={{
             background: 'linear-gradient(135deg, #4caf5015 0%, #4caf5005 100%)',
-            border: '1px solid #4caf503',
-            borderRadius:  3,
-            p:  4,
-            mb:  4,
-        }}
-         sx={theming.getThemedCardSx()}>
+            border: '1px solid #4caf50',
+            borderRadius: 3,
+            p: 4,
+            mb: 4,
+            ...theming.getThemedCardSx()
+          }}
+        >
           <Stack direction="row" alignItems="center" spacing={3}>
             <Box sx={{ flex:  1 }}>
-              <Typography variant="h4" sx={{ fontWeight: 7, color: '#4caf5', mb:  1 }} sx={{ ...{}, color: theming.colors.primary }}>
+              <Typography variant="h4" sx={{ fontWeight: 700, color: theming.colors.primary, mb: 1 }}>
                 Betaling fullført! 🎉
               </Typography>
-              <Typography variant="h6" color="text.secondary" sx={{ ...{}, color: theming.colors.primary }}>
+              <Typography variant="h6" color="text.secondary" sx={{ color: theming.colors.primary }}>
                 Din abonnementsplan er aktivert
               </Typography>
             </Box>
@@ -179,7 +180,7 @@ export default function SubscriptionSelectionPage() {
           >
             Tilbake til hjem
           </Button>
-          <Alert severity="info" sx={{ mt:  ,  2maxWidth: 60, mx: 'auto',}}>
+          <Alert severity="info" sx={{ mt: 2, maxWidth: 600, mx: 'auto' }}>
             <Typography variant="body2">
               Du vil motta en e-post når din konto er godkjent av CreatorHub Norge. 
               Deretter kan du logge inn og fullføre onboarding.
@@ -197,15 +198,16 @@ export default function SubscriptionSelectionPage() {
         elevation={0}
         sx={{
           background: 'linear-gradient(135deg, #ff8c0015 0%, #ff8c0005 100%)',
-          border: '1px solid #ff8c003',
-          borderRadius:  3,
-          p:  4,
-          mb:  4,
-      }}
-       sx={theming.getThemedCardSx()}>
+          border: '1px solid #ff8c00',
+          borderRadius: 3,
+          p: 4,
+          mb: 4,
+          ...theming.getThemedCardSx()
+        }}
+      >
         <Stack direction="row" alignItems="center" spacing={3}>
           <Box sx={{ flex:  1 }}>
-            <Typography variant="h4" sx={{ fontWeight: 7, color: '#ff8c0', mb:  1 }} sx={{ ...{}, color: theming.colors.primary }}>
+            <Typography variant="h4" sx={{ fontWeight: 700, color: theming.colors.primary, mb: 1 }}>
               Velg din abonnementsplan
             </Typography>
             <Typography variant="h6" color="text.secondary" sx={{ ...{}, color: theming.colors.primary }}>

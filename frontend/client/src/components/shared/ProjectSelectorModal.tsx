@@ -225,7 +225,7 @@ export function ProjectSelectorModal({
                   <MenuItem key={project.id} value={project.id}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, width: '100%'}}>
                       <Box sx={{ flexGrow:  1 }}>
-                        <Typography variant="body1" sx={{ fontWeight: 50}}>
+                        <Typography variant="body1" sx={{ fontWeight: 500}}>
                           {project.title}
                         </Typography>
                         <Typography variant="body2" color="text.secondary">

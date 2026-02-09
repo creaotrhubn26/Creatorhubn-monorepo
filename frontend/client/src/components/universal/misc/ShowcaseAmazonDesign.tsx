@@ -183,7 +183,7 @@ export default function ShowcaseAmazonDesign({
                       {React.cloneElement(professionIcon, { sx: { fontSize: 28 } })}
                     </Box>
                   )}
-                  <Typography variant="h5" sx={{ fontWeight: 40, color: theming.colors.primary }}>
+                  <Typography variant="h5" sx={{ fontWeight: 400, color: theming.colors.primary }}>
                     {showcaseItem.title}
                   </Typography>
                 </Box>
@@ -309,7 +309,7 @@ export default function ShowcaseAmazonDesign({
                     sx={{
                       bgcolor: '#FF9900',
                       color: 'black',
-                      fontWeight: 40,
+                      fontWeight: 400,
                       textTransform: 'none',
                       '&:hover': { bgcolor: '#FF8C00' },
                       ...theming.getThemedButtonSx()}}
@@ -323,7 +323,7 @@ export default function ShowcaseAmazonDesign({
                     sx={{
                       bgcolor: '#FFA410',
                       color: 'black',
-                      fontWeight: 40,
+                      fontWeight: 400,
                       textTransform: 'none', '&:hover': { bgcolor: '#FF9300' },
                       ...theming.getThemedButtonSx()}}
                   >

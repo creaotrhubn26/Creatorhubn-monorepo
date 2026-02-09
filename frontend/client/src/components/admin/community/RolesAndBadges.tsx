@@ -22,6 +22,7 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
+  DialogContentText,
   DialogActions,
   TextField,
   MenuItem,
@@ -168,6 +169,10 @@ export default function RolesAndBadges() {
     requirement_metric: 'posts_count',
     is_active: true,
   });
+
+  // Confirm delete states
+  const [confirmDeleteRoleId, setConfirmDeleteRoleId] = useState<string | null>(null);
+  const [confirmDeleteBadgeId, setConfirmDeleteBadgeId] = useState<string | null>(null);
 
   // Load from localStorage on mount (fallback persistence)
   const loadFromStorage = useCallback(() => {
@@ -431,7 +436,13 @@ export default function RolesAndBadges() {
   };
 
   const handleDeleteRole = async (roleId: string) => {
-    if (!window.confirm('Are you sure you want to delete this role?')) return;
+    setConfirmDeleteRoleId(roleId);
+  };
+
+  const executeDeleteRole = async () => {
+    if (!confirmDeleteRoleId) return;
+    const roleId = confirmDeleteRoleId;
+    setConfirmDeleteRoleId(null);
 
     setSaving(true);
     try {
@@ -536,7 +547,13 @@ export default function RolesAndBadges() {
   };
 
   const handleDeleteBadge = async (badgeId: string) => {
-    if (!window.confirm('Are you sure you want to delete this badge?')) return;
+    setConfirmDeleteBadgeId(badgeId);
+  };
+
+  const executeDeleteBadge = async () => {
+    if (!confirmDeleteBadgeId) return;
+    const badgeId = confirmDeleteBadgeId;
+    setConfirmDeleteBadgeId(null);
 
     setSaving(true);
     try {
@@ -977,6 +994,44 @@ export default function RolesAndBadges() {
             sx={{ bgcolor: '#FF8C00', '&:hover': { bgcolor: '#e67e00' } }}
           >
             {saving ? 'Saving...' : (editingBadge ? 'Update Badge' : 'Create Badge')}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Confirm Delete Role Dialog */}
+      <Dialog
+        open={!!confirmDeleteRoleId}
+        onClose={() => setConfirmDeleteRoleId(null)}
+      >
+        <DialogTitle>Delete Role</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Are you sure you want to delete this role? This action cannot be undone.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmDeleteRoleId(null)}>Cancel</Button>
+          <Button onClick={executeDeleteRole} color="error" variant="contained">
+            Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Confirm Delete Badge Dialog */}
+      <Dialog
+        open={!!confirmDeleteBadgeId}
+        onClose={() => setConfirmDeleteBadgeId(null)}
+      >
+        <DialogTitle>Delete Badge</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Are you sure you want to delete this badge? This action cannot be undone.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmDeleteBadgeId(null)}>Cancel</Button>
+          <Button onClick={executeDeleteBadge} color="error" variant="contained">
+            Delete
           </Button>
         </DialogActions>
       </Dialog>

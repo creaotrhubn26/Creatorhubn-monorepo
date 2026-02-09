@@ -15,7 +15,8 @@ import {
   ListItemText,
   Divider,
   Alert,
-  LinearProgress
+  LinearProgress,
+  Snackbar
 } from '@mui/material';
 import { useDemoMode, useDemoModeData } from '@/contexts/DemoModeContext';
 import {
@@ -47,12 +48,13 @@ const CameraSelectionTest: React.FC = () => {
   const { isDemoMode } = useDemoMode();
   
   // Theming system
-  const theming = useTheming('photographer, ');
+  const theming = useTheming('photographer');
+  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'info' | 'warning' | 'error' }>({ open: false, message: '', severity: 'info' });
   const [cameras, setCameras] = useState<CameraModel[]>([]);
   const [filteredCameras, setFilteredCameras] = useState<CameraModel[]>([]);
   const [selectedCamera, setSelectedCamera] = useState<CameraModel | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [brandFilter, setBrandFilter] = useState<string>(',');
+  const [brandFilter, setBrandFilter] = useState<string>('');
   const [loading, setLoading] = useState(true);
 
   // Get demo data when in demo mode
@@ -68,7 +70,7 @@ const CameraSelectionTest: React.FC = () => {
       // Load real data from API
       const loadCameras = async () => {
         try {
-          const response = await fetch('/api/cameras,');
+          const response = await fetch('/api/cameras');
           if (response.ok) {
             const data = await response.json();
             setCameras(data);
@@ -115,8 +117,8 @@ const CameraSelectionTest: React.FC = () => {
 
   const checkFirmwareUpdate = async (camera: CameraModel) => {
     // I virkeligheten ville dette sjekke mot produsent API
-    alert(`Sjekker firmware oppdateringer for ${camera.brand} ${camera.model}...`);
-};
+    setSnackbar({ open: true, message: `Sjekking firmware oppdateringer for ${camera.brand} ${camera.model}...`, severity: 'info' });
+  };
 
   if (loading) {
     return (
@@ -125,7 +127,7 @@ const CameraSelectionTest: React.FC = () => {
         <Typography sx={{ mt:  2 }}>Laster kamera database...</Typography>
       </Box>
     );
-}
+  }
 
   return (
     <Box sx={{ p:  3 }}>
@@ -156,16 +158,16 @@ const CameraSelectionTest: React.FC = () => {
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     InputProps={{
-                      startAdornment: theming.getThemedIcon(', ')
+                      startAdornment: theming.getThemedIcon(<Search />)
                   }}
                   />
                 </Grid>
                 
                 <Grid size={{ xs: 12 }} md={6}>
                   <Autocomplete
-                    options={[', ', ...brands]}
+                    options={['', ...brands]}
                     value={brandFilter}
-                    onChange={(_, value) => setBrandFilter(value || ', ')}
+                    onChange={(_, value) => setBrandFilter(value || '')}
                     renderInput={(params) => (
                       <TextField
                         {...params}
@@ -326,6 +328,22 @@ const CameraSelectionTest: React.FC = () => {
           )}
         </Grid>
       </Grid>
+
+      {/* Snackbar for firmware check notification */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={4000}
+        onClose={() => setSnackbar(prev => ({ ...prev, open: false }))}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert
+          onClose={() => setSnackbar(prev => ({ ...prev, open: false }))}
+          severity={snackbar.severity}
+          sx={{ width: '100%' }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 };

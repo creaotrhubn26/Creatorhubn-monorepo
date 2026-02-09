@@ -636,7 +636,7 @@ module.exports = {
               jsx: 'preserve',
               incremental: true,
             },
-            include: ['next-env.d.ts','**/*.ts''**/*.tsx'],
+            include: ['next-env.d.ts', '**/*.ts', '**/*.tsx'],
             exclude: ['node_modules'],
           },
           null,

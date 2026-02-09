@@ -33,6 +33,7 @@ import {
   Divider,
   Tooltip,
   Badge,
+  Snackbar,
 } from '@mui/material';
 import {
   CloudDownload as CloudDownloadIcon,
@@ -108,6 +109,7 @@ export default function GoogleDriveDocsBridge({
     lastSync: 0
   });
   const [isSyncing, setIsSyncing] = useState(false);
+  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string }>({ open: false, message: '' });
   
   // 🔐 Feature Access
   const userProfile = auth.getUserProfile();
@@ -298,7 +300,7 @@ export default function GoogleDriveDocsBridge({
   // 🔗 Link Drive file to current note
   const linkToNote = useCallback((file: DriveFile) => {
     if (!currentNoteId) {
-      alert('Please select a note first');
+      setSnackbar({ open: true, message: 'Please select a note first' });
       return;
     }
     
@@ -515,6 +517,22 @@ export default function GoogleDriveDocsBridge({
           <Button onClick={() => setOpenImportDialog(false)}>Close</Button>
         </DialogActions>
       </Dialog>
+
+      {/* Snackbar Notifications */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={4000}
+        onClose={() => setSnackbar({ open: false, message: '' })}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert
+          onClose={() => setSnackbar({ open: false, message: '' })}
+          severity="warning"
+          sx={{ width: '100%' }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Paper>
   );
 }

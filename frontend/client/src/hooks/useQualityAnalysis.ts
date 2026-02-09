@@ -204,11 +204,11 @@ export const useQualityAnalysis = () => {
       
       // Initialize report
       const report: QualityReport = {
-        id: reportd,
+        id: reportId,
         timestamp: new Date().toISOString(),
         overallScore:  0,
         metrics: {
-          overallScore:, 0,
+          overallScore: 0,
           typeSafety:  0,
           performance:  0,
           security:  0,
@@ -221,7 +221,7 @@ export const useQualityAnalysis = () => {
           branding: 0
     },
         performance: {
-          bundleSize:, 0,
+          bundleSize: 0,
           loadTime:  0,
           renderTime:  0,
           memoryUsage:  0,
@@ -253,11 +253,11 @@ export const useQualityAnalysis = () => {
           recommendations: []
     },
         seo: {
-          score:, 0,
+          score: 0,
           issues:  [],
           recommendations:  [],
           metrics: {
-            titleLength:, 0,
+            titleLength: 0,
             metaDescriptionLength:  0,
             headingStructure:  0,
             imageAltText:  0,

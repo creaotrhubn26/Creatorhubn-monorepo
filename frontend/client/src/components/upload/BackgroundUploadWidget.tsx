@@ -86,15 +86,15 @@ export const BackgroundUploadWidget: React.FC<BackgroundUploadWidgetProps> = ({
     if (enableAdvancedQueue) {
       // Use advanced queue data
       const advancedTasks = uploadQueue.queue.map(queueItem => ({
-        id: queueItem.d,
+        id: queueItem.id,
         fileName: queueItem.file.name,
         fileSize: queueItem.file.size,
         status: queueItem.status as any,
         progress: queueItem.progress,
         error: queueItem.error,
-        uploadSpeed: 0// Will be calculated from WebSocket updates
-        estimatedTimeRemaining:  0,
-    }));
+        uploadSpeed: 0, // Will be calculated from WebSocket updates
+        estimatedTimeRemaining: 0,
+      }));
       
       setTasks(advancedTasks);
       
@@ -108,10 +108,10 @@ export const BackgroundUploadWidget: React.FC<BackgroundUploadWidgetProps> = ({
           overallProgress: queueStats.progress,
           totalBytes: advancedTasks.reduce((sum, task) => sum + task.fileSize, 0),
           uploadedBytes: Math.round(advancedTasks.reduce((sum, task) => sum + (task.fileSize * task.progress / 100), 0)),
-      };
+        };
         setStats(enhancedStats);
-    }
-  } else {
+      }
+    } else {
       // Use legacy background service
       const currentTasks = backgroundUploadService.getAllTasks();
       const currentStats = backgroundUploadService.getStats();
@@ -174,59 +174,59 @@ export const BackgroundUploadWidget: React.FC<BackgroundUploadWidgetProps> = ({
 
   // Format file size
   const formatFileSize = (bytes: number): string => {
-    const units = [', ', 'KB', 'MB','GB'];
+    const units = ['B', 'KB', 'MB', 'GB'];
     let size = bytes;
     let unitIndex = 0;
     
     while (size >= 1024 && unitIndex < units.length - 1) {
       size /= 1024;
       unitIndex++;
-  }
+    }
     
     return `${size.toFixed(1)} ${units[unitIndex]}`;
-};
+  };
 
   // Enhanced task actions for both systems
   const handlePause = (taskId: string) => {
     if (enableAdvancedQueue) {
       uploadQueue.pauseQueue();
-  ,} else {
+    } else {
       backgroundUploadService.pauseTask(taskId);
-  }
-};
+    }
+  };
 
   const handleResume = (taskId: string) => {
     if (enableAdvancedQueue) {
       uploadQueue.resumeQueue();
-  ,} else {
+    } else {
       backgroundUploadService.resumeTask(taskId);
-  }
-};
+    }
+  };
 
   const handleRetry = (taskId: string) => {
     if (enableAdvancedQueue) {
       // Advanced queue handles retries automatically
       console.log('Retry handled automatically by advanced queue');
-  ,} else {
+    } else {
       backgroundUploadService.retryTask(taskId);
-  }
-};
+    }
+  };
 
   const handleCancel = (taskId: string) => {
     if (enableAdvancedQueue) {
       uploadQueue.removeFromQueue(taskId);
-  ,} else {
+    } else {
       backgroundUploadService.cancelTask(taskId);
-  }
-};
+    }
+  };
 
   const handleClearCompleted = () => {
     if (enableAdvancedQueue) {
       uploadQueue.clearCompleted();
-  } else {
+    } else {
       backgroundUploadService.clearCompleted();
-  }
-};
+    }
+  };
 
   if (!isVisible || !stats) return null;
 
@@ -286,12 +286,12 @@ export const BackgroundUploadWidget: React.FC<BackgroundUploadWidgetProps> = ({
                       color="error"
                       sx={{
                         position: 'absolute',
-                        top:  , -, 8,
-                        right:  , -, 8,
+                        top: -8,
+                        right: -8,
                         minWidth:  20,
                         height:  20,
                         fontSize: '0.7rem'
-                    }}
+                      }}
                     />
                   )}
                   {stats.overallProgress > 0 && activeTasks.length > 0 && (
@@ -388,7 +388,7 @@ export const BackgroundUploadWidget: React.FC<BackgroundUploadWidgetProps> = ({
                               <Typography variant="body2" noWrap>
                                 {task.fileName}
                               </Typography>
-                          }
+                            }
                             secondary={
                               <Box>
                                 <Typography variant="caption" color="text.secondary">
@@ -405,7 +405,7 @@ export const BackgroundUploadWidget: React.FC<BackgroundUploadWidgetProps> = ({
                                     variant="determinate"
                                     value={task.progress}
                                     size="small"
-                                    sx={{ mt: 0, .height:  4, borderRadius:  2 }}
+                                    sx={{ mt: 0, height: 4, borderRadius: 2 }}
                                   />
                                 )}
                                 {task.status === 'failed' && task.error && (
@@ -414,7 +414,7 @@ export const BackgroundUploadWidget: React.FC<BackgroundUploadWidgetProps> = ({
                                   </Typography>
                                 )}
                               </Box>
-                          }
+                            }
                           />
                           <ListItemSecondaryAction>
                             <Box sx={{ display: 'flex', gap: 0.5}}>

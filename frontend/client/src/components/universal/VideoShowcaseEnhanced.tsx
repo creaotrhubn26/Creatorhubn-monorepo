@@ -116,7 +116,7 @@ const VideoShowcaseEnhanced: React.FC<VideoShowcaseEnhancedProps> = ({
   const [isPlaying, setIsPlaying] = useState(false);
   
   // Theming system
-  const theming = useTheming('photographer, ');
+  const theming = useTheming('photographer');
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(1);

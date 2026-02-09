@@ -212,7 +212,7 @@ export default function EmailActivityIndicator({
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flex:  1 }}>
               {getStatusIcon(email.status, email.opened, email.deliveryStatus)}
               <Box sx={{ flex: 1, minWidth:  0 }}>
-                <Typography variant="body2" sx={{ fontWeight: 5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}}>
+                <Typography variant="body2" sx={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}}>
                   {email.subject}
                 </Typography>
                 <Typography variant="caption" color="text.secondary">

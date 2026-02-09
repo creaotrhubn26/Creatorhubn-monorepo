@@ -337,10 +337,12 @@ export const MobileGestures: React.FC<MobileGesturesProps> = ({
           bottom: 16,
           right: 16,
           bgcolor: `${accentColor}30`,
-          color: accentColor'&:hover': {
-            bgcolor: `${accentColor}50`
+          color: accentColor,
+          '&:hover': {
+            bgcolor: `${accentColor}50`,
           },
-          zIndex: 130}}
+          zIndex: 130,
+        }}
       >
         <TouchApp />
       </Fab>

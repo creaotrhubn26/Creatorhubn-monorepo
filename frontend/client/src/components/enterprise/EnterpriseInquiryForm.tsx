@@ -382,7 +382,7 @@ export function EnterpriseInquiryForm({
 
             {/* Price incl. MVA (main price) */}
             <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1, mb: 0.5 }}>
-              <Typography variant="h5" sx={{ fontWeight: 70, color: '#9c27b0' }}>
+              <Typography variant="h5" sx={{ fontWeight: 700, color: '#9c27b0' }}>
                 {estimatedPrice.monthly.toLocaleString('nb-NO')} kr
               </Typography>
               <Typography variant="body2" color="text.secondary">

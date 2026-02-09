@@ -159,10 +159,46 @@ export const ShowcaseProvider: React.FC<{ children: ReactNode }> = ({ children }
       'data:read', 'data:write','event:emit', 'event:listen',
     ]);
 
+    // Register dataFlow nodes for bi-directional data flow
+    dataFlow.registerNode({
+      type: 'source',
+      componentId: 'showcase-context',
+      dataKey: 'showcase-settings',
+    });
+
+    dataFlow.registerNode({
+      type: 'source',
+      componentId: 'showcase-context',
+      dataKey: 'showcase-selected-project',
+    });
+
+    dataFlow.registerNode({
+      type: 'source',
+      componentId: 'showcase-context',
+      dataKey: 'showcase-selected-client',
+    });
+
+    dataFlow.registerNode({
+      type: 'source',
+      componentId: 'showcase-context',
+      dataKey: 'showcase-items',
+    });
+
+    dataFlow.registerNode({
+      type: 'source',
+      componentId: 'showcase-context',
+      dataKey: 'showcase-favorites',
+    });
+
     return () => {
       communication.unregisterComponent('showcase-context');
+      dataFlow.unregisterNode('showcase-settings');
+      dataFlow.unregisterNode('showcase-selected-project');
+      dataFlow.unregisterNode('showcase-selected-client');
+      dataFlow.unregisterNode('showcase-items');
+      dataFlow.unregisterNode('showcase-favorites');
     };
-  }, [communication]);
+  }, [communication, dataFlow]);
 
   // Listen for project selection events from UniversalDashboard
   useEffect(() => {

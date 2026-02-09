@@ -338,8 +338,31 @@ export const ClientActivityPanel: React.FC<ClientActivityPanelProps> = ({
 
     const transformed: ClientActivity[] = [];
 
+    // Helper to safely convert API response to array
+    const toArray = (data: any): any[] => {
+      if (Array.isArray(data)) return data;
+      if (data?.data && Array.isArray(data.data)) return data.data;
+      if (data?.projects && Array.isArray(data.projects)) return data.projects;
+      if (data?.sessions && Array.isArray(data.sessions)) return data.sessions;
+      if (data?.comments && Array.isArray(data.comments)) return data.comments;
+      if (data?.downloads && Array.isArray(data.downloads)) return data.downloads;
+      if (data?.submissions && Array.isArray(data.submissions)) return data.submissions;
+      if (data?.events && Array.isArray(data.events)) return data.events;
+      if (data?.changes && Array.isArray(data.changes)) return data.changes;
+      return [];
+    };
+
+    // Safely convert all data to arrays
+    const projects = toArray(projectsData);
+    const sessions = toArray(proofingSessions);
+    const comments = toArray(commentsData);
+    const downloads = toArray(downloadsData);
+    const submissions = toArray(submissionsData);
+    const timelineEvents = toArray(timelineEventsData);
+    const timelineChanges = toArray(timelineChangesData);
+
     // 1. DEADLINES from projects (database: projects table)
-    projectsData.forEach((project: any) => {
+    projects.forEach((project: any) => {
       if (project.eventDate) {
         const deadline = new Date(project.eventDate);
         const hoursUntil = (deadline.getTime() - Date.now()) / (1000 * 60 * 60);
@@ -368,7 +391,7 @@ export const ClientActivityPanel: React.FC<ClientActivityPanelProps> = ({
     });
 
     // 2. CLIENT SELECTIONS from proofing sessions (database: clientProofingSessions)
-    proofingSessions.forEach((session: any) => {
+    sessions.forEach((session: any) => {
       if (session.status === 'awaiting_feedback' || session.status === 'completed') {
         const approvedCount = session.approvedImages?.length || 0;
         
@@ -388,7 +411,7 @@ export const ClientActivityPanel: React.FC<ClientActivityPanelProps> = ({
     });
 
     // 3. CLIENT COMMENTS from database (clientImageComments + showcaseComments)
-    commentsData.forEach((comment: any) => {
+    comments.forEach((comment: any) => {
       transformed.push({
         id: `comment-${comment.id}`,
         type: 'comment',
@@ -402,7 +425,7 @@ export const ClientActivityPanel: React.FC<ClientActivityPanelProps> = ({
     });
 
     // 4. DOWNLOADS from database (images table with downloadCount)
-    downloadsData.forEach((download: any) => {
+    downloads.forEach((download: any) => {
       if (download.downloadCount > 0) {
         transformed.push({
           id: `download-${download.id}`,
@@ -420,7 +443,7 @@ export const ClientActivityPanel: React.FC<ClientActivityPanelProps> = ({
     });
 
     // 5. SUBMISSIONS from database (clientSubmissions + submissions tables)
-    submissionsData.forEach((submission: any) => {
+    submissions.forEach((submission: any) => {
       transformed.push({
         id: `submission-${submission.id}`,
         type: 'submission',
@@ -436,7 +459,7 @@ export const ClientActivityPanel: React.FC<ClientActivityPanelProps> = ({
     });
 
     // 6. TIMELINE EVENTS from database (upcoming ceremony, meetings, photo sessions)
-    timelineEventsData.forEach((event: any) => {
+    timelineEvents.forEach((event: any) => {
       const eventDateTime = event.eventTime 
         ? new Date(`${event.eventDate}T${event.eventTime}`)
         : new Date(event.eventDate);
@@ -469,7 +492,7 @@ export const ClientActivityPanel: React.FC<ClientActivityPanelProps> = ({
     });
 
     // 7. TIMELINE CHANGES from database (client-requested changes to wedding timeline)
-    timelineChangesData.forEach((change: any) => {
+    timelineChanges.forEach((change: any) => {
       transformed.push({
         id: `timeline-change-${change.id}`,
         type: 'timeline_change',
@@ -642,91 +665,169 @@ export const ClientActivityPanel: React.FC<ClientActivityPanelProps> = ({
   }
 
   return (
-    <Paper sx={{ 
-      bgcolor: 'rgba(2, 5, 5,255,255,0.03)', 
-      border: '1px solid rgba(2, 5, 5,255,255,0.1)',
-      borderRadius: 2,
-      overflow: 'hidden'
+    <Box sx={{ 
+      background: 'linear-gradient(135deg, rgba(15, 15, 35, 0.95) 0%, rgba(25, 25, 45, 0.9) 100%)',
+      backdropFilter: 'blur(20px)',
+      borderRadius: 3,
+      overflow: 'hidden',
+      boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
+      border: '1px solid rgba(255, 255, 255, 0.1)'
     }}>
-      {/* Header */}
+      {/* Enhanced Header with Gradient */}
       <Box sx={{ 
-        p: 2, 
-        bgcolor: `${accentColor}10`, 
-        borderBottom: `2px solid ${accentColor}40`,
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center'
+        p: 3,
+        background: `linear-gradient(135deg, ${accentColor}30 0%, ${accentColor}15 100%)`,
+        borderBottom: `2px solid ${accentColor}60`,
+        position: 'relative',
+        overflow: 'hidden',
+        '&::before': {
+          content: '""',
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: `radial-gradient(circle at top right, ${accentColor}20 0%, transparent 70%)`,
+          pointerEvents: 'none'
+        }
       }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          {professionIcon && (
-            <Box sx={{ color: professionColor, display: 'flex', alignItems: 'center' }}>
-              {professionIcon}
+        <Box sx={{ 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'center',
+          position: 'relative',
+          zIndex: 1
+        }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+            {professionIcon && (
+              <Box sx={{ 
+                color: professionColor, 
+                display: 'flex', 
+                alignItems: 'center',
+                bgcolor: `${professionColor}20`,
+                p: 1,
+                borderRadius: 2,
+                border: `1px solid ${professionColor}40`
+              }}>
+                {professionIcon}
+              </Box>
+            )}
+            <Box sx={{
+              bgcolor: `${accentColor}30`,
+              p: 1,
+              borderRadius: 2,
+              display: 'flex',
+              alignItems: 'center',
+              border: `1px solid ${accentColor}50`
+            }}>
+              <Notifications sx={{ color: accentColor, fontSize: 24 }} />
             </Box>
-          )}
-          <Notifications sx={{ color: accentColor }} />
-          <Typography variant="subtitle1" fontWeight="600" sx={{ color: 'white' }}>
-            {enhancedProfessionConfig?.displayName || professionConfig?.displayName
-              ? `${enhancedProfessionConfig?.displayName || professionConfig.displayName} - Client Activity`
-              : 'Client Activity'}
-          </Typography>
-        </Box>
-        <Stack direction="row" spacing={1}>
-          {isSupported && (
-            <Tooltip title="Push-varsler innstillinger">
-              <IconButton
+            <Typography variant="h6" fontWeight="700" sx={{ 
+              color: 'white',
+              textShadow: '0 2px 8px rgba(0,0,0,0.3)'
+            }}>
+              {enhancedProfessionConfig?.displayName || professionConfig?.displayName
+                ? `${enhancedProfessionConfig?.displayName || professionConfig.displayName} Aktivitet`
+                : 'Klientaktivitet'}
+            </Typography>
+          </Box>
+          <Stack direction="row" spacing={1.5} alignItems="center">
+            {isSupported && (
+              <Tooltip title="Innstillinger for push-varsler">
+                <IconButton
+                  size="small"
+                  onClick={() => setPushSettingsOpen(true)}
+                  sx={{ 
+                    color: pushEnabled ? accentColor : 'rgba(255,255,255,0.6)',
+                    bgcolor: pushEnabled ? `${accentColor}20` : 'rgba(255,255,255,0.05)',
+                    border: `1px solid ${pushEnabled ? accentColor + '40' : 'rgba(255,255,255,0.1)'}`,
+                    '&:hover': {
+                      bgcolor: pushEnabled ? `${accentColor}30` : 'rgba(255,255,255,0.1)',
+                      transform: 'scale(1.05)'
+                    },
+                    transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
+                  }}
+                >
+                  <Notifications fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            )}
+            {timelineChanges.length > 0 && (
+              <Chip 
+                label={`${timelineChanges.length} ${timelineChanges.length === 1 ? 'endring' : 'endringer'}`}
                 size="small"
-                onClick={() => setPushSettingsOpen(true)}
-                sx={{ color: pushEnabled ? accentColor : 'rgba(255,255,255,0.7)' }}
+                icon={<Warning fontSize="small" />}
+                sx={{ 
+                  bgcolor: '#FF4081',
+                  color: 'white',
+                  fontWeight: 700,
+                  fontSize: '0.75rem',
+                  height: 28,
+                  boxShadow: '0 4px 12px rgba(255, 64, 129, 0.4)',
+                  animation: 'pulse 2s infinite',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  '@keyframes pulse': {
+                    '0%, 100%': { 
+                      boxShadow: '0 4px 12px rgba(255, 64, 129, 0.4)',
+                      transform: 'scale(1)'
+                    },
+                    '50%': { 
+                      boxShadow: '0 4px 20px rgba(255, 64, 129, 0.6)',
+                      transform: 'scale(1.02)'
+                    }
+                  }
+                }}
+              />
+            )}
+            {urgentTimelineEvents > 0 && (
+              <Chip 
+                label={`${urgentTimelineEvents} kommende`}
+                size="small"
+                icon={<Schedule fontSize="small" />}
+                sx={{ 
+                  bgcolor: '#9C27B0',
+                  color: 'white',
+                  fontWeight: 700,
+                  fontSize: '0.75rem',
+                  height: 28,
+                  boxShadow: '0 4px 12px rgba(156, 39, 176, 0.4)',
+                  border: '1px solid rgba(255, 255, 255, 0.2)'
+                }}
+              />
+            )}
+            {urgentDeadlines > 0 && (
+              <Chip 
+                label={`${urgentDeadlines} haster`}
+                size="small"
+                icon={<Warning fontSize="small" />}
+                sx={{ 
+                  bgcolor: '#E74C3C',
+                  color: 'white',
+                  fontWeight: 700,
+                  fontSize: '0.75rem',
+                  height: 28,
+                  boxShadow: '0 4px 12px rgba(231, 76, 60, 0.4)',
+                  animation: 'pulse 2s infinite',
+                  border: '1px solid rgba(255, 255, 255, 0.2)'
+                }}
+              />
+            )}
+            {totalComments > 0 && (
+              <Badge 
+                badgeContent={totalComments} 
+                color="error"
+                sx={{
+                  '& .MuiBadge-badge': {
+                    boxShadow: '0 2px 8px rgba(244, 67, 54, 0.5)',
+                    fontWeight: 700
+                  }
+                }}
               >
-                <Notifications />
-              </IconButton>
-            </Tooltip>
-          )}
-          {timelineChanges.length > 0 && (
-            <Chip 
-              label={`${timelineChanges.length} timeline changes`}
-              size="small"
-              icon={<Warning fontSize="small" />}
-              sx={{ 
-                bgcolor: '#FF4081',
-                color: 'white',
-                fontWeight: 600,
-                animation: 'pulse 2s infinite'
-              }}
-            />
-          )}
-          {urgentTimelineEvents > 0 && (
-            <Chip 
-              label={`${urgentTimelineEvents} events soon!`}
-              size="small"
-              icon={<Schedule fontSize="small" />}
-              sx={{ 
-                bgcolor: '#9C27B0',
-                color: 'white',
-                fontWeight: 600,
-                animation: 'pulse 2s infinite'
-              }}
-            />
-          )}
-          {urgentDeadlines > 0 && (
-            <Chip 
-              label={`${urgentDeadlines} urgent`}
-              size="small"
-              icon={<Warning fontSize="small" />}
-              sx={{ 
-                bgcolor: '#E74C3C',
-                color: 'white',
-                fontWeight: 600,
-                animation: 'pulse 2s infinite'
-              }}
-            />
-          )}
-          {totalComments > 0 && (
-            <Badge badgeContent={totalComments} color="error">
-              <Comment sx={{ color: 'rgba(2, 5, 5,255,255,0.7)' }} />
-            </Badge>
-          )}
-        </Stack>
+                <Comment sx={{ color: 'rgba(255, 255, 255, 0.7)' }} />
+              </Badge>
+            )}
+          </Stack>
+        </Box>
       </Box>
 
       {/* TIMELINE CHANGES Section - CLIENT REQUESTS (HIGHEST PRIORITY) */}
@@ -735,21 +836,35 @@ export const ClientActivityPanel: React.FC<ClientActivityPanelProps> = ({
           <Box>
             <Box 
               sx={{ 
-                p: 1.5, 
-                bgcolor: 'rgba(2, 5, 5, 64, 129, 0.12)',
+                p: 2,
+                background: 'linear-gradient(135deg, rgba(255, 64, 129, 0.15) 0%, rgba(255, 64, 129, 0.08) 100%)',
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
                 cursor: 'pointer',
-                border: '1px solid rgba(2, 5, 5, 64, 129, 0.4)', '&:hover': {
-                  bgcolor: 'rgba(2, 5, 5, 64, 129, 0.18)'
+                borderLeft: '4px solid #FF4081',
+                backdropFilter: 'blur(10px)',
+                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                '&:hover': {
+                  background: 'linear-gradient(135deg, rgba(255, 64, 129, 0.25) 0%, rgba(255, 64, 129, 0.15) 100%)',
+                  transform: 'translateX(4px)',
+                  boxShadow: '0 4px 16px rgba(255, 64, 129, 0.3)'
                 }
               }}
               onClick={() => toggleSection('timeline_changes')}
-	            >
-	              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flex: 1 }}>
-	                <Typography variant="subtitle2" fontWeight="600" sx={{ color: 'white' }}>
-                  Client Timeline Requests
+            >
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flex: 1 }}>
+                <Box sx={{
+                  bgcolor: '#FF408130',
+                  p: 1,
+                  borderRadius: 2,
+                  display: 'flex',
+                  border: '1px solid #FF408150'
+                }}>
+                  <Warning sx={{ color: '#FF4081', fontSize: 22 }} />
+                </Box>
+                <Typography variant="subtitle2" fontWeight="700" sx={{ color: 'white', fontSize: '0.95rem' }}>
+                  Klientens tidslinjeforespørsler
                 </Typography>
                 <Chip 
                   label={timelineChanges.length}
@@ -757,21 +872,26 @@ export const ClientActivityPanel: React.FC<ClientActivityPanelProps> = ({
                   sx={{ 
                     bgcolor: '#FF4081',
                     color: 'white',
-                    height: 20,
-                    fontSize: '0.7rem',
-                    fontWeight: 70,
-                    animation: 'pulse 2s infinite'
+                    height: 24,
+                    fontSize: '0.75rem',
+                    fontWeight: 700,
+                    minWidth: 24,
+                    boxShadow: '0 2px 8px rgba(255, 64, 129, 0.4)',
+                    border: '1px solid rgba(255, 255, 255, 0.2)'
                   }}
                 />
                 <Chip 
-                  label="REVIEW NEEDED"
+                  label="GJENNOMGANG NØDVENDIG"
                   size="small"
                   sx={{ 
                     bgcolor: '#F44336',
                     color: 'white',
-                    height: 18,
-                    fontSize: '0.6rem',
-                    fontWeight: 700}}
+                    height: 20,
+                    fontSize: '0.65rem',
+                    fontWeight: 700,
+                    px: 1,
+                    boxShadow: '0 2px 6px rgba(244, 67, 54, 0.3)'
+                  }}
                 />
                 {onAcceptTimelineChanges && timelineChanges.length > 0 && (
                   <Button
@@ -786,124 +906,243 @@ export const ClientActivityPanel: React.FC<ClientActivityPanelProps> = ({
                       ml: 'auto',
                       bgcolor: '#4CAF50',
                       color: 'white',
-                      fontSize: '0.65rem',
-                      height: 24,
-	                      px: 1.5, '&:hover': {
-	                        bgcolor: '#45a049',
-	                      }}}
+                      fontSize: '0.7rem',
+                      height: 32,
+                      px: 2,
+                      fontWeight: 700,
+                      boxShadow: '0 4px 12px rgba(76, 175, 80, 0.4)',
+                      border: '1px solid rgba(255, 255, 255, 0.2)',
+                      transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                      '&:hover': {
+                        bgcolor: '#45a049',
+                        transform: 'translateY(-2px)',
+                        boxShadow: '0 6px 16px rgba(76, 175, 80, 0.5)'
+                      },
+                      '&:active': {
+                        transform: 'translateY(0)'
+                      }
+                    }}
                   >
-                    {acceptingChanges ? 'Processing...' : 'Accept All & Add to Worklog'}
+                    {acceptingChanges ? 'Behandler...' : 'Godta alle og legg til i arbeidslogg'}
                   </Button>
                 )}
               </Box>
-              <IconButton size="small" sx={{ color: 'white' }}>
-                {expandedSections.has('timeline_changes') ? <ExpandLess /> : <ExpandMore />}
+              <IconButton 
+                size="small" 
+                sx={{ 
+                  color: 'white',
+                  transition: 'transform 0.2s',
+                  transform: expandedSections.has('timeline_changes') ? 'rotate(180deg)' : 'rotate(0deg)'
+                }}
+              >
+                <ExpandMore />
               </IconButton>
             </Box>
 
             <Collapse in={expandedSections.has('timeline_changes')}>
               <List dense sx={{ p: 0 }}>
-                {timelineChanges.map((activity) => (
+                {timelineChanges.map((activity, index) => (
                   <ListItem 
                     key={activity.id}
                     sx={{ 
-                      px: 2,
-                      py: 2,
-                      borderBottom: '1px solid rgba(2, 5, 5,255,255,0.05)',
-                      bgcolor: 'rgba(2, 5, 5, 64, 129, 0.08)','&:hover': {
-                        bgcolor: 'rgba(2, 5, 5, 64, 129, 0.18)',
-                        cursor: 'pointer'
+                      px: 3,
+                      py: 2.5,
+                      borderBottom: index < timelineChanges.length - 1 ? '1px solid rgba(255, 255, 255, 0.05)' : 'none',
+                      background: 'rgba(255, 64, 129, 0.05)',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                      '&:hover': {
+                        background: 'rgba(255, 64, 129, 0.15)',
+                        transform: 'translateX(8px)',
+                        boxShadow: 'inset 4px 0 0 #FF4081'
                       }
                     }}
                     onClick={() => onActivityClick?.(activity)}
                   >
                     <ListItemAvatar>
                       <Avatar sx={{ 
-                        bgcolor: '#FF408130',
+                        bgcolor: '#FF408120',
                         color: '#FF4081',
-                        width: 40,
-                        height: 40,
-                        border: '2px solid #FF4081'
+                        width: 48,
+                        height: 48,
+                        border: '2px solid #FF4081',
+                        boxShadow: '0 4px 12px rgba(255, 64, 129, 0.3)'
                       }}>
-                        <Warning />
+                        <Warning fontSize="medium" />
                       </Avatar>
                     </ListItemAvatar>
                     <ListItemText
                       primary={
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-                          <Typography variant="body2" fontWeight="600" sx={{ color: 'white' }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                          <Typography variant="body2" fontWeight="700" sx={{ color: 'white', fontSize: '0.95rem' }}>
                             {activity.clientName}
                           </Typography>
                           <Chip 
-                            label="CLIENT REQUEST" 
+                            label="KLIENTFORESPØRSEL" 
                             size="small" 
                             sx={{ 
-                              height: 16, 
-                              fontSize: '0.6rem', 
+                              height: 18, 
+                              fontSize: '0.65rem', 
                               bgcolor: '#FF4081', 
                               color: 'white',
-                              fontWeight: 700}} 
+                              fontWeight: 700,
+                              px: 1
+                            }} 
                           />
                         </Box>
                       }
                       secondary={
                         <Box>
-                          <Typography variant="caption" display="block" sx={{ color: 'rgba(2, 5, 5,255,255,0.9)', fontWeight: 600}}>
+                          <Typography variant="body2" display="block" sx={{ 
+                            color: 'rgba(255, 255, 255, 0.95)', 
+                            fontWeight: 600,
+                            mb: 1
+                          }}>
                             {activity.itemName}
                           </Typography>
-	                          {activity.changeType && (
-	                            <Chip 
-	                              label={activity.changeType.replace('_',', ')}
+                          {activity.changeType && (
+                            <Chip 
+                              label={activity.changeType.replace('_', ' ').toUpperCase()}
                               size="small"
                               sx={{ 
-                                height: 16, 
-                                fontSize: '0.6rem', 
-                                bgcolor: 'rgba(2, 5, 5,255,255,0.2)',
+                                height: 20, 
+                                fontSize: '0.65rem', 
+                                bgcolor: 'rgba(255, 255, 255, 0.1)',
                                 color: 'white',
                                 mt: 0.5,
-                                mr: 1 }}
+                                mr: 1,
+                                fontWeight: 600,
+                                border: '1px solid rgba(255, 255, 255, 0.2)'
+                              }}
                             />
                           )}
                           {activity.originalValue && activity.requestedValue && (
-                            <Typography variant="caption" display="block" sx={{ color: 'rgba(2, 5, 5,255,255,0.7)', mt: 0.5 }}>
-                              {activity.originalValue} → {activity.requestedValue}
-                            </Typography>
+                            <Box sx={{ 
+                              mt: 1.5,
+                              p: 1.5,
+                              borderRadius: 2,
+                              bgcolor: 'rgba(0, 0, 0, 0.2)',
+                              border: '1px solid rgba(255, 255, 255, 0.1)'
+                            }}>
+                              <Typography variant="caption" display="block" sx={{ 
+                                color: 'rgba(255, 255, 255, 0.6)',
+                                fontSize: '0.7rem',
+                                mb: 0.5
+                              }}>
+                                ORIGINAL
+                              </Typography>
+                              <Typography variant="body2" sx={{ 
+                                color: 'rgba(255, 255, 255, 0.8)',
+                                fontWeight: 600,
+                                mb: 1
+                              }}>
+                                {activity.originalValue}
+                              </Typography>
+                              <Box sx={{ 
+                                display: 'flex', 
+                                alignItems: 'center', 
+                                gap: 1,
+                                my: 1
+                              }}>
+                                <Box sx={{ 
+                                  flex: 1, 
+                                  height: '2px', 
+                                  bgcolor: '#FF4081' 
+                                }} />
+                                <Typography sx={{ 
+                                  color: '#FF4081',
+                                  fontSize: '0.75rem',
+                                  fontWeight: 700
+                                }}>
+                                  FORESPURT ENDRING
+                                </Typography>
+                                <Box sx={{ 
+                                  flex: 1, 
+                                  height: '2px', 
+                                  bgcolor: '#FF4081' 
+                                }} />
+                              </Box>
+                              <Typography variant="caption" display="block" sx={{ 
+                                color: 'rgba(255, 255, 255, 0.6)',
+                                fontSize: '0.7rem',
+                                mb: 0.5
+                              }}>
+                                NY VERDI
+                              </Typography>
+                              <Typography variant="body2" sx={{ 
+                                color: '#4CAF50',
+                                fontWeight: 700,
+                                fontSize: '0.95rem'
+                              }}>
+                                {activity.requestedValue}
+                              </Typography>
+                            </Box>
                           )}
                           {activity.message && (
-                            <Typography variant="caption" display="block" sx={{ 
-                              color: 'rgba(2, 5, 5,255,255,0.8)', 
-                              fontStyle: 'italic',
-                              mt: 0.5,
-                              bgcolor: 'rgba(2, 5, 5,255,255,0.05)',
-                              p: 0.5,
-                              borderRadius: 0.5 }}>
-                              💬 "{activity.message}"
-                            </Typography>
+                            <Box sx={{ 
+                              mt: 1.5,
+                              p: 1.5,
+                              bgcolor: 'rgba(255, 255, 255, 0.05)',
+                              borderRadius: 2,
+                              borderLeft: '3px solid #FF4081'
+                            }}>
+                              <Typography variant="caption" sx={{ 
+                                color: 'rgba(255, 255, 255, 0.6)',
+                                display: 'block',
+                                mb: 0.5,
+                                fontSize: '0.7rem',
+                                fontWeight: 600
+                              }}>
+                                💬 KLIENTMELDING
+                              </Typography>
+                              <Typography variant="body2" sx={{ 
+                                color: 'rgba(255, 255, 255, 0.9)', 
+                                fontStyle: 'italic',
+                                lineHeight: 1.5
+                              }}>
+                                "{activity.message}"
+                              </Typography>
+                            </Box>
                           )}
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
-                            <Typography variant="caption" sx={{ color: 'rgba(2, 5, 5,255,255,0.5)' }}>
-                              {formatTimestamp(activity.timestamp)}
+                          <Box sx={{ 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            gap: 1.5, 
+                            mt: 2,
+                            pt: 1.5,
+                            borderTop: '1px solid rgba(255, 255, 255, 0.1)'
+                          }}>
+                            <Typography variant="caption" sx={{ 
+                              color: 'rgba(255, 255, 255, 0.5)',
+                              fontSize: '0.7rem'
+                            }}>
+                              🕐 {formatTimestamp(activity.timestamp)}
                             </Typography>
                             <Button
                               size="small"
                               variant="outlined"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                // Navigate to wedding timeline to review change
                                 onActivityClick?.(activity);
                               }}
                               sx={{
                                 ml: 'auto',
                                 borderColor: '#FF4081',
                                 color: '#FF4081',
-                                fontSize: '0.65rem',
-                                height: 22,
-	                                px: 1, '&:hover': {
-	                                  borderColor: '#FF4081',
-	                                  bgcolor: 'rgba(2, 5, 5, 64, 129, 0.1)',
-	                                }}}
+                                fontSize: '0.7rem',
+                                height: 28,
+                                px: 2,
+                                fontWeight: 700,
+                                transition: 'all 0.2s',
+                                '&:hover': {
+                                  borderColor: '#FF4081',
+                                  bgcolor: 'rgba(255, 64, 129, 0.15)',
+                                  transform: 'translateY(-2px)',
+                                  boxShadow: '0 4px 12px rgba(255, 64, 129, 0.3)'
+                                }
+                              }}
                             >
-                              Review Change
+                              Gjennomgå endring →
                             </Button>
                           </Box>
                         </Box>
@@ -923,158 +1162,273 @@ export const ClientActivityPanel: React.FC<ClientActivityPanelProps> = ({
       <Box>
         <Box 
           sx={{ 
-            p: 1.5, 
-            bgcolor: submissions.length > 0 ? 'rgba(2, 5, 5, 152, 0, 0.08)' : 'rgba(2, 5, 5,255,255,0.03)',
+            p: 2,
+            background: submissions.length > 0 
+              ? 'linear-gradient(135deg, rgba(255, 152, 0, 0.15) 0%, rgba(255, 152, 0, 0.08) 100%)'
+              : 'linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.02) 100%)',
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
             cursor: 'pointer',
-            border: submissions.length > 0 ? '1px solid rgba(2, 5, 5, 152, 0, 0.3)' : 'none','&:hover': {
-              bgcolor: 'rgba(2, 5, 5, 152, 0, 0.12)'
+            borderLeft: submissions.length > 0 ? '4px solid #FF9800' : '4px solid transparent',
+            backdropFilter: 'blur(10px)',
+            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+            '&:hover': {
+              background: submissions.length > 0
+                ? 'linear-gradient(135deg, rgba(255, 152, 0, 0.25) 0%, rgba(255, 152, 0, 0.15) 100%)'
+                : 'linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.04) 100%)',
+              transform: 'translateX(4px)',
+              boxShadow: submissions.length > 0 ? '0 4px 16px rgba(255, 152, 0, 0.2)' : 'none'
             }
           }}
           onClick={() => toggleSection('submissions')}
         >
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Person sx={{ color: '#FF9800', fontSize: 22 }} />
-            <Typography variant="subtitle2" fontWeight="600" sx={{ color: 'white' }}>
-              New Submissions
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+            <Box sx={{
+              bgcolor: '#FF980030',
+              p: 1,
+              borderRadius: 2,
+              display: 'flex',
+              border: '1px solid #FF980050'
+            }}>
+              <Person sx={{ color: '#FF9800', fontSize: 22 }} />
+            </Box>
+            <Typography variant="subtitle2" fontWeight="700" sx={{ color: 'white', fontSize: '0.95rem' }}>
+              Nye innsendinger
             </Typography>
             {submissions.length > 0 && (
               <>
-	                <Chip 
-	                  label={submissions.length}
-	                  size="small"
-	                  sx={{ 
-	                    bgcolor: '#FF9800',
-	                    color: 'white',
-	                    height: 20,
-	                    fontSize: '0.7rem',
-	                    fontWeight: 70,
-	                    animation: 'pulse 2s infinite'
-	                  }}
-	                />
                 <Chip 
-                  label="ACTION REQUIRED"
+                  label={submissions.length}
+                  size="small"
+                  sx={{ 
+                    bgcolor: '#FF9800',
+                    color: 'white',
+                    height: 24,
+                    fontSize: '0.75rem',
+                    fontWeight: 700,
+                    minWidth: 24,
+                    boxShadow: '0 2px 8px rgba(255, 152, 0, 0.4)',
+                    border: '1px solid rgba(255, 255, 255, 0.2)',
+                    animation: 'pulse 2s infinite'
+                  }}
+                />
+                <Chip 
+                  label="HANDLING KREVES"
                   size="small"
                   sx={{ 
                     bgcolor: '#F44336',
                     color: 'white',
-                    height: 18,
-                    fontSize: '0.6rem',
-                    fontWeight: 700}}
+                    height: 20,
+                    fontSize: '0.65rem',
+                    fontWeight: 700,
+                    px: 1,
+                    boxShadow: '0 2px 6px rgba(244, 67, 54, 0.3)'
+                  }}
                 />
               </>
             )}
           </Box>
-          <IconButton size="small" sx={{ color: 'white' }}>
-            {expandedSections.has('submissions') ? <ExpandLess /> : <ExpandMore />}
+          <IconButton 
+            size="small" 
+            sx={{ 
+              color: 'white',
+              transition: 'transform 0.2s',
+              transform: expandedSections.has('submissions') ? 'rotate(180deg)' : 'rotate(0deg)'
+            }}
+          >
+            <ExpandMore />
           </IconButton>
         </Box>
 
         <Collapse in={expandedSections.has('submissions')}>
           <List dense sx={{ p: 0 }}>
             {submissions.length === 0 ? (
-              <ListItem>
-                <ListItemText 
-                  primary={
-                    <Typography variant="body2" sx={{ color: 'rgba(2, 5, 5,255,255,0.5)', fontStyle: 'italic' }}>
-                      No new submissions
-                    </Typography>
-                  }
-                />
+              <ListItem sx={{ 
+                py: 4,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}>
+                <Person sx={{ 
+                  fontSize: 48, 
+                  color: 'rgba(255, 255, 255, 0.2)',
+                  mb: 2
+                }} />
+                <Typography variant="body2" sx={{ 
+                  color: 'rgba(255, 255, 255, 0.5)', 
+                  fontStyle: 'italic',
+                  textAlign: 'center'
+                }}>
+                  Ingen nye innsendinger
+                </Typography>
+                <Typography variant="caption" sx={{ 
+                  color: 'rgba(255, 255, 255, 0.3)',
+                  textAlign: 'center',
+                  mt: 0.5
+                }}>
+                  Klientforespørsler vil vises her
+                </Typography>
               </ListItem>
             ) : (
-              submissions.map((activity) => (
+              submissions.map((activity, index) => (
                 <ListItem 
                   key={activity.id}
                   sx={{ 
-                    px: 2,
-                    py: 2,
-                    borderBottom: '1px solid rgba(2, 5, 5,255,255,0.05)',
-                    bgcolor: activity.submissionStatus === 'pending' ? 'rgba(2, 5, 5, 152, 0, 0.05)' : 'transparent','&:hover': {
-                      bgcolor: 'rgba(2, 5, 5, 152, 0, 0.15)'
+                    px: 3,
+                    py: 2.5,
+                    borderBottom: index < submissions.length - 1 ? '1px solid rgba(255, 255, 255, 0.05)' : 'none',
+                    background: activity.submissionStatus === 'pending' 
+                      ? 'rgba(255, 152, 0, 0.05)' 
+                      : 'transparent',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                    '&:hover': {
+                      background: 'rgba(255, 152, 0, 0.15)',
+                      transform: 'translateX(8px)',
+                      boxShadow: 'inset 4px 0 0 #FF9800'
                     }
                   }}
                 >
                   <ListItemAvatar>
                     <Avatar sx={{ 
-                      bgcolor: '#FF980030',
+                      bgcolor: '#FF980020',
                       color: '#FF9800',
-                      width: 40,
-                      height: 40,
-                      border: '2px solid #FF9800'
+                      width: 48,
+                      height: 48,
+                      border: '2px solid #FF9800',
+                      boxShadow: '0 4px 12px rgba(255, 152, 0, 0.3)'
                     }}>
-                      <Person />
+                      <Person fontSize="medium" />
                     </Avatar>
                   </ListItemAvatar>
                   <ListItemText
                     primary={
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-                        <Typography variant="body2" fontWeight="600" sx={{ color: 'white' }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                        <Typography variant="body2" fontWeight="700" sx={{ color: 'white', fontSize: '0.95rem' }}>
                           {activity.clientName}
                         </Typography>
                         {activity.submissionStatus === 'pending' && (
                           <Chip 
-                            label="NEW" 
+                            label="NY" 
                             size="small" 
                             sx={{ 
-                              height: 16, 
-                              fontSize: '0.6rem', 
+                              height: 18, 
+                              fontSize: '0.65rem', 
                               bgcolor: '#FF9800', 
                               color: 'white',
-                              fontWeight: 700}} 
+                              fontWeight: 700,
+                              px: 1,
+                              animation: 'pulse 1.5s infinite'
+                            }} 
                           />
                         )}
                       </Box>
                     }
                     secondary={
                       <Box>
-                        <Typography variant="caption" display="block" sx={{ color: 'rgba(2, 5, 5,255,255,0.8)', fontWeight: 500}}>
+                        <Typography variant="body2" display="block" sx={{ 
+                          color: 'rgba(255, 255, 255, 0.95)', 
+                          fontWeight: 600,
+                          mb: 1
+                        }}>
                           {activity.itemName}
                         </Typography>
-	                        {activity.submissionType && (
-	                          <Typography variant="caption" display="block" sx={{ color: 'rgba(2, 5, 5,255,255,0.6)' }}>
-	                            Type: {activity.submissionType.replace('_', ', ')}
-	                          </Typography>
-	                        )}
-                        {activity.message && (
+                        {activity.submissionType && (
+                          <Chip 
+                            label={activity.submissionType.replace('_', ' ').toUpperCase()}
+                            size="small"
+                            sx={{ 
+                              height: 20, 
+                              fontSize: '0.65rem',
+                              bgcolor: 'rgba(255, 255, 255, 0.1)',
+                              color: 'white',
+                              fontWeight: 600,
+                              border: '1px solid rgba(255, 255, 255, 0.2)',
+                              mb: 1
+                            }}
+                          />
+                        )}
+                        {activity.clientEmail && (
                           <Typography variant="caption" display="block" sx={{ 
-                            color: 'rgba(2, 5, 5,255,255,0.7)', 
-                            fontStyle: 'italic',
-                            mt: 0.5,
-                            maxWidth: '300px',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap'
+                            color: 'rgba(255, 255, 255, 0.6)',
+                            mb: 1
                           }}>
-                            "{activity.message}"
+                            ✉️ {activity.clientEmail}
                           </Typography>
                         )}
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
-                          <Typography variant="caption" sx={{ color: 'rgba(2, 5, 5,255,255,0.5)' }}>
-                            {formatTimestamp(activity.timestamp)}
+                        {activity.message && (
+                          <Box sx={{ 
+                            mt: 1.5,
+                            p: 1.5,
+                            bgcolor: 'rgba(255, 255, 255, 0.05)',
+                            borderRadius: 2,
+                            borderLeft: '3px solid #FF9800'
+                          }}>
+                            <Typography variant="caption" sx={{ 
+                              color: 'rgba(255, 255, 255, 0.6)',
+                              display: 'block',
+                              mb: 0.5,
+                              fontSize: '0.7rem',
+                              fontWeight: 600
+                            }}>
+                              💬 MELDING
+                            </Typography>
+                            <Typography variant="body2" sx={{ 
+                              color: 'rgba(255, 255, 255, 0.9)', 
+                              fontStyle: 'italic',
+                              lineHeight: 1.5
+                            }}>
+                              "{activity.message}"
+                            </Typography>
+                          </Box>
+                        )}
+                        <Box sx={{ 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          gap: 1.5, 
+                          mt: 2,
+                          pt: 1.5,
+                          borderTop: '1px solid rgba(255, 255, 255, 0.1)'
+                        }}>
+                          <Typography variant="caption" sx={{ 
+                            color: 'rgba(255, 255, 255, 0.5)',
+                            fontSize: '0.7rem'
+                          }}>
+                            🕐 {formatTimestamp(activity.timestamp)}
                           </Typography>
                           {activity.submissionStatus === 'pending' && onCreateProjectFromSubmission && (
                             <Button
                               size="small"
                               variant="contained"
-                              startIcon={<PhotoCamera />}
+                              startIcon={<PhotoCamera fontSize="small" />}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 handleCreateProjectFromSubmission(activity);
                               }}
-	                              sx={{
-	                                ml: 'auto',
-	                                bgcolor: accentColor,
-	                                color: 'white',
-	                                fontSize: '0.7rem',
-	                                height: 24,
-	                                px: 1.5, '&:hover': {
-	                                  bgcolor: `${accentColor}dd`,
-	                                }}}
+                              sx={{
+                                ml: 'auto',
+                                bgcolor: accentColor,
+                                color: 'white',
+                                fontSize: '0.7rem',
+                                height: 32,
+                                px: 2,
+                                fontWeight: 700,
+                                boxShadow: `0 4px 12px ${accentColor}60`,
+                                border: '1px solid rgba(255, 255, 255, 0.2)',
+                                transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                                '&:hover': {
+                                  bgcolor: `${accentColor}dd`,
+                                  transform: 'translateY(-2px)',
+                                  boxShadow: `0 6px 16px ${accentColor}80`
+                                },
+                                '&:active': {
+                                  transform: 'translateY(0)'
+                                }
+                              }}
                             >
-                              Create Project
+                              Opprett prosjekt →
                             </Button>
                           )}
                         </Box>
@@ -1122,7 +1476,7 @@ export const ClientActivityPanel: React.FC<ClientActivityPanelProps> = ({
                       color: urgentTimelineEvents > 0 ? 'white' : '#9C27B0',
                       height: 20,
                       fontSize: '0.7rem',
-                      fontWeight: 70,
+                      fontWeight: 700,
                       animation: urgentTimelineEvents > 0 ? 'pulse 2s infinite' : 'none'
                     }}
                   />
@@ -1174,14 +1528,14 @@ export const ClientActivityPanel: React.FC<ClientActivityPanelProps> = ({
                             </Typography>
                             {hoursUntil < 2 && (
                               <Chip 
-                                label="SOON!" 
+                                label="SNART!" 
                                 size="small" 
                                 sx={{ 
                                   height: 16, 
                                   fontSize: '0.6rem', 
                                   bgcolor: '#9C27B0', 
                                   color: 'white',
-                                  fontWeight: 70,
+                                  fontWeight: 700,
                                   animation: 'pulse 2s infinite'
                                 }} 
                               />
@@ -1225,9 +1579,9 @@ export const ClientActivityPanel: React.FC<ClientActivityPanelProps> = ({
                                 />
                               )}
                               <Typography variant="caption" sx={{ color: 'rgba(2, 5, 5,255,255,0.5)', ml: 'auto' }}>
-                                {hoursUntil < 1 ? 'Less than 1 hour!' :
-                                 hoursUntil < 24 ? `In ${Math.round(hoursUntil)} hours` :
-                                 `In ${Math.round(hoursUntil / 24)} days`}
+                                {hoursUntil < 1 ? 'Mindre enn 1 time!' :
+                                 hoursUntil < 24 ? `Om ${Math.round(hoursUntil)} timer` :
+                                 `Om ${Math.round(hoursUntil / 24)} dager`}
                               </Typography>
                             </Box>
                           </Box>
@@ -1262,7 +1616,7 @@ export const ClientActivityPanel: React.FC<ClientActivityPanelProps> = ({
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <Schedule sx={{ color: '#E74C3C', fontSize: 20 }} />
             <Typography variant="subtitle2" fontWeight="600" sx={{ color: 'white' }}>
-              Deadlines
+              Frister
             </Typography>
             {deadlines.length > 0 && (
               <Chip 
@@ -1289,7 +1643,7 @@ export const ClientActivityPanel: React.FC<ClientActivityPanelProps> = ({
                 <ListItemText 
                   primary={
                     <Typography variant="body2" sx={{ color: 'rgba(2, 5, 5,255,255,0.5)', fontStyle: 'italic' }}>
-                      No upcoming deadlines
+                      Ingen kommende frister
                     </Typography>
                   }
                 />
@@ -1342,12 +1696,12 @@ export const ClientActivityPanel: React.FC<ClientActivityPanelProps> = ({
                           </Typography>
                           {activity.count !== undefined && (
                             <Typography variant="caption" sx={{ color: 'rgba(2, 5, 5,255,255,0.6)', display: 'block' }}>
-                              {activity.count} items selected
+                              {activity.count} elementer valgt
                             </Typography>
                           )}
                           <Box sx={{ display: 'flex', gap: 1, mt: 0.5 }}>
                             <Chip
-                              label={activity.deadline ? deadlineCountdown(activity.deadline) : 'No deadline'}
+                              label={activity.deadline ? deadlineCountdown(activity.deadline) : 'Ingen frist'}
                               size="small"
                               sx={{
                                 bgcolor: urgencyColor,
@@ -1358,14 +1712,14 @@ export const ClientActivityPanel: React.FC<ClientActivityPanelProps> = ({
                             />
                             {isOverdue && (
                               <Chip
-                                label="OVERDUE"
+                                label="FORFALT"
                                 size="small"
                                 sx={{
                                   bgcolor: '#E74C3C',
                                   color: 'white',
                                   height: 18,
                                   fontSize: '0.65rem',
-                                  fontWeight: 70,
+                                  fontWeight: 700,
                                   animation: 'pulse 2s infinite'
                                 }}
                               />
@@ -1402,7 +1756,7 @@ export const ClientActivityPanel: React.FC<ClientActivityPanelProps> = ({
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <Comment sx={{ color: '#9C27B0', fontSize: 20 }} />
             <Typography variant="subtitle2" fontWeight="600" sx={{ color: 'white' }}>
-              Client Comments
+              Klientkommentarer
             </Typography>
             {comments.length > 0 && (
               <Badge badgeContent={comments.length} color="error" />
@@ -1420,7 +1774,7 @@ export const ClientActivityPanel: React.FC<ClientActivityPanelProps> = ({
                 <ListItemText 
                   primary={
                     <Typography variant="body2" sx={{ color: 'rgba(2, 5, 5,255,255,0.5)', fontStyle: 'italic' }}>
-                      No new comments
+                      Ingen nye kommentarer
                     </Typography>
                   }
                 />
@@ -1463,7 +1817,7 @@ export const ClientActivityPanel: React.FC<ClientActivityPanelProps> = ({
                     secondary={
                       <Box>
                         <Typography variant="caption" sx={{ color: 'rgba(2, 5, 5,255,255,0.6)', display: 'block', mb: 0.5 }}>
-                          on: {activity.itemName}
+                          på: {activity.itemName}
                         </Typography>
                         <Typography 
                           variant="body2" 
@@ -1508,7 +1862,7 @@ export const ClientActivityPanel: React.FC<ClientActivityPanelProps> = ({
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <Download sx={{ color: '#2196F3', fontSize: 20 }} />
             <Typography variant="subtitle2" fontWeight="600" sx={{ color: 'white' }}>
-              Downloads
+              Nedlastinger
             </Typography>
             {totalDownloads > 0 && (
               <Chip 
@@ -1535,7 +1889,7 @@ export const ClientActivityPanel: React.FC<ClientActivityPanelProps> = ({
                 <ListItemText 
                   primary={
                     <Typography variant="body2" sx={{ color: 'rgba(2, 5, 5,255,255,0.5)', fontStyle: 'italic' }}>
-                      No downloads yet
+                      Ingen nedlastinger ennå
                     </Typography>
                   }
                 />
@@ -1576,7 +1930,7 @@ export const ClientActivityPanel: React.FC<ClientActivityPanelProps> = ({
                         </Typography>
                         {activity.count && activity.count > 1 && (
                           <Chip 
-                            label={`+${activity.count - 1} more`}
+                            label={`+${activity.count - 1} flere`}
                             size="small"
                             sx={{ height: 16, fontSize: '0.65rem' }}
                           />
@@ -1615,7 +1969,7 @@ export const ClientActivityPanel: React.FC<ClientActivityPanelProps> = ({
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <Favorite sx={{ color: '#FF4081', fontSize: 20 }} />
             <Typography variant="subtitle2" fontWeight="600" sx={{ color: 'white' }}>
-              Client Selections
+              Klientvalg
             </Typography>
             {selections.length > 0 && (
               <Chip 
@@ -1642,7 +1996,7 @@ export const ClientActivityPanel: React.FC<ClientActivityPanelProps> = ({
                 <ListItemText 
                   primary={
                     <Typography variant="body2" sx={{ color: 'rgba(2, 5, 5,255,255,0.5)', fontStyle: 'italic' }}>
-                      No selections yet
+                      Ingen valg ennå
                     </Typography>
                   }
                 />
@@ -1688,7 +2042,7 @@ export const ClientActivityPanel: React.FC<ClientActivityPanelProps> = ({
                     secondary={
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                         <Typography variant="caption" sx={{ color: 'rgba(2, 5, 5,255,255,0.6)' }}>
-                          {activity.count} items from {activity.itemName}
+                          {activity.count} elementer fra {activity.itemName}
                         </Typography>
                         <Typography variant="caption" sx={{ color: 'rgba(2, 5, 5,255,255,0.5)', ml: 'auto' }}>
                           {timeAgo(activity.timestamp)}
@@ -1703,27 +2057,52 @@ export const ClientActivityPanel: React.FC<ClientActivityPanelProps> = ({
         </Collapse>
       </Box>
 
-      {/* Summary Footer */}
+      {/* Enhanced Summary Footer */}
       <Box sx={{ 
-        p: 2, 
-        bgcolor: 'rgba(2, 5, 5,255,255,0.02)',
-        borderTop: '1px solid rgba(2, 5, 5,255,255,0.1)',
+        p: 3,
+        background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.02) 100%)',
+        backdropFilter: 'blur(10px)',
+        borderTop: '1px solid rgba(255, 255, 255, 0.1)',
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center'
       }}>
-        <Typography variant="caption" sx={{ color: 'rgba(2, 5, 5,255,255,0.6)' }}>
-          Last updated: {new Date().toLocaleTimeString()}
-        </Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+          <AccessTime sx={{ fontSize: 16, color: 'rgba(255, 255, 255, 0.4)' }} />
+          <Typography variant="caption" sx={{ 
+            color: 'rgba(255, 255, 255, 0.6)',
+            fontSize: '0.75rem'
+          }}>
+            Sist oppdatert: {new Date().toLocaleTimeString('nb-NO', { 
+              hour: '2-digit', 
+              minute: '2-digit' 
+            })}
+          </Typography>
+        </Box>
         <Button 
-          size="small" 
-          sx={{ color: accentColor, fontSize:'0.75rem' }}
+          size="small"
+          startIcon={<TrendingUp fontSize="small" />}
+          sx={{ 
+            color: accentColor,
+            fontSize: '0.75rem',
+            fontWeight: 700,
+            px: 2,
+            height: 32,
+            bgcolor: `${accentColor}15`,
+            border: `1px solid ${accentColor}40`,
+            transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+            '&:hover': {
+              bgcolor: `${accentColor}25`,
+              transform: 'translateY(-2px)',
+              boxShadow: `0 4px 12px ${accentColor}40`
+            }
+          }}
           onClick={() => {
             // Refresh data - React Query will handle loading states
             window.location.reload();
           }}
         >
-          Refresh
+          Oppdater data
         </Button>
       </Box>
 
@@ -1733,9 +2112,11 @@ export const ClientActivityPanel: React.FC<ClientActivityPanelProps> = ({
           @keyframes pulse {
             0%, 100% {
               opacity: 1;
+              transform: scale(1);
             }
             50% {
-              opacity: 0.7;
+              opacity: 0.8;
+              transform: scale(0.98);
             }
           }
         `}
@@ -1743,19 +2124,53 @@ export const ClientActivityPanel: React.FC<ClientActivityPanelProps> = ({
 
       {/* Push Notification Settings Dialog */}
       {isSupported && (
-        <Dialog open={pushSettingsOpen} onClose={() => setPushSettingsOpen(false)} maxWidth="sm" fullWidth>
-          <DialogTitle>Push-varsler innstillinger</DialogTitle>
-          <DialogContent>
-            <Box sx={{ mt: 2 }}>
-              <PushNotificationSettings userId={userId} showDescription={false} />
+        <Dialog 
+          open={pushSettingsOpen} 
+          onClose={() => setPushSettingsOpen(false)} 
+          maxWidth="sm" 
+          fullWidth
+          PaperProps={{
+            sx: {
+              background: 'linear-gradient(135deg, rgba(15, 15, 35, 0.95) 0%, rgba(25, 25, 45, 0.9) 100%)',
+              backdropFilter: 'blur(20px)',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
+              boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)'
+            }
+          }}
+        >
+          <DialogTitle sx={{ 
+            borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+            color: 'white',
+            fontWeight: 700
+          }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+              <Notifications sx={{ color: accentColor }} />
+              Push-varsler innstillinger
             </Box>
+          </DialogTitle>
+          <DialogContent sx={{ mt: 2 }}>
+            <PushNotificationSettings userId={userId} showDescription={false} />
           </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setPushSettingsOpen(false)}>Lukk</Button>
+          <DialogActions sx={{ 
+            borderTop: '1px solid rgba(255, 255, 255, 0.1)',
+            p: 2
+          }}>
+            <Button 
+              onClick={() => setPushSettingsOpen(false)}
+              sx={{
+                color: 'white',
+                bgcolor: 'rgba(255, 255, 255, 0.1)',
+                '&:hover': {
+                  bgcolor: 'rgba(255, 255, 255, 0.2)'
+                }
+              }}
+            >
+              Lukk
+            </Button>
           </DialogActions>
         </Dialog>
       )}
-    </Paper>
+    </Box>
   );
 };
 

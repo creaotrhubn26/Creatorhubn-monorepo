@@ -62,7 +62,7 @@ export const DashboardIntegrationPanel: React.FC<DashboardIntegrationPanelProps>
   const { analytics, lifecycle, performance, debugging } = useEnhancedMasterIntegration();
   
   // Theming system
-  const theming = useTheming('prototype_tester, ');
+  const theming = useTheming('prototype_tester');
   
   const [activeTab, setActiveTab] = useState(0);
 
@@ -332,7 +332,7 @@ export const DashboardIntegrationPanel: React.FC<DashboardIntegrationPanelProps>
                   <Button
                     variant="contained"
                     size="small"
-                    onClick={() => handleCloudSync(service as any)}
+                    onClick={() => handleCloudSync(service as 'google-drive' | 'onedrive' | 'dropbox')}
                     sx={{ mt: 1, ...theming.getThemedButtonSx() }}
                   >
                     Sync

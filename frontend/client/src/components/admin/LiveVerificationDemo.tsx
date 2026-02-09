@@ -58,7 +58,7 @@ interface LiveDemoState {
 
 export default function LiveVerificationDemo() {
   // Theming system
-  const theming = useTheming('prototype_tester, ');
+  const theming = useTheming('prototype_tester');
 
   const [demoState, setDemoState] = useState<LiveDemoState>({
     isRunning: false,

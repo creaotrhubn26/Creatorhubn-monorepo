@@ -82,7 +82,7 @@ export default function UniversalCommunication({
   sessionId,
 }: UniversalCommunicationProps) {
   // Enhanced Master Integration
-  const { features } = useEnhancedMasterIntegration();
+  const { features, communication, dataFlow, componentRegistry } = useEnhancedMasterIntegration();
   
   // Theming system - use dynamic profession (userType) instead of hardcoded value
   const theming = useTheming(userType);
@@ -113,6 +113,51 @@ export default function UniversalCommunication({
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
+
+  // Register component with integration system
+  useEffect(() => {
+    componentRegistry.register('universal-communication', {
+      capabilities: ['messaging', 'real-time', 'notifications'],
+      dataNodes: ['conversations', 'active-chat', 'unread-count'],
+      componentCategory: 'communication'
+    });
+
+    communication.registerComponent('universal-communication', {
+      capabilities: ['messaging', 'real-time'],
+      features: { 
+        hasChat: true,
+        userType,
+        userId
+      }
+    });
+
+    // Set up dataFlow nodes
+    dataFlow.registerNode({
+      nodeId: 'universal-communication:conversations',
+      type: 'source',
+      data: conversations
+    });
+
+    dataFlow.registerNode({
+      nodeId: 'universal-communication:unread',
+      type: 'source',
+      data: conversations.reduce((sum, c) => sum + c.unreadCount, 0)
+    });
+
+    // Listen for messages from other components
+    const unsubscribe = communication.onMessage('communication:open-chat', (message: any) => {
+      if (message.data?.conversationId) {
+        setSelectedConversation(message.data.conversationId);
+      }
+    });
+
+    return () => {
+      componentRegistry.unregister('universal-communication');
+      dataFlow.unregisterNode('universal-communication:conversations');
+      dataFlow.unregisterNode('universal-communication:unread');
+      unsubscribe?.();
+    };
+  }, [userId, userType, conversations, componentRegistry, communication, dataFlow]);
 
   // WebSocket connection
   useEffect(() => {

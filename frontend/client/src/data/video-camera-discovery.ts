@@ -19,7 +19,7 @@ export interface VideoCameraDiscoveryResult {
   source: string;
   timestamp: string;
   success: boolean;
-  error?: string, ;, 
+  error?: string;
 }
 
 export class VideoCameraDiscoveryService {
@@ -31,7 +31,7 @@ export class VideoCameraDiscoveryService {
       lastChecked: '',
       checkInterval:  12,
       priority: 9
-  ,},
+    },
     {
       name: 'B&H Video AP',
       url: 'https://api.bhphotovideo.com/video-cameras',
@@ -39,7 +39,7 @@ export class VideoCameraDiscoveryService {
       lastChecked: '',
       checkInterval:  24,
       priority: 8
-  ,},
+    },
     {
       name: 'RED Digital Cinema',
       url: 'https://api.red.com/cameras',
@@ -47,7 +47,7 @@ export class VideoCameraDiscoveryService {
       lastChecked: '',
       checkInterval:  48,
       priority: 10
-  ,},
+    },
     {
       name: 'ARRI Professional',
       url: 'https://api.arri.com/cameras',
@@ -55,7 +55,7 @@ export class VideoCameraDiscoveryService {
       lastChecked: '',
       checkInterval:  72,
       priority: 10
-  ,},
+    },
     {
       name: 'Sony Professional',
       url: 'https://api.sony.com/professional/cameras',
@@ -63,7 +63,7 @@ export class VideoCameraDiscoveryService {
       lastChecked: '',
       checkInterval:  24,
       priority: 9
-  ,},
+    },
     {
       name: 'Canon Professional',
       url: 'https://api.canon.com/cinema-cameras',
@@ -71,7 +71,7 @@ export class VideoCameraDiscoveryService {
       lastChecked: '',
       checkInterval:  24,
       priority: 9
-  ,},
+    },
     {
       name: 'Blackmagic Design',
       url: 'https://api.blackmagicdesign.com/cameras',
@@ -79,7 +79,7 @@ export class VideoCameraDiscoveryService {
       lastChecked: '',
       checkInterval:  36,
       priority: 8
-  ,},
+    },
     {
       name: 'Panasonic Professional',
       url: 'https://api.panasonic.com/professional/cameras',
@@ -87,7 +87,7 @@ export class VideoCameraDiscoveryService {
       lastChecked: '',
       checkInterval:  24,
       priority: 8
-  ,},
+    },
     {
       name: 'Video Production News RS',
       url: 'https://videoproductionnews.com/rss',
@@ -95,7 +95,7 @@ export class VideoCameraDiscoveryService {
       lastChecked: '',
       checkInterval:  6,
       priority: 6
-  ,},
+    },
     {
       name: 'Newsshooter RS',
       url: 'https://newsshooter.com/feed',
@@ -111,7 +111,7 @@ export class VideoCameraDiscoveryService {
 
   constructor() {
     this.startAutoDiscovery();
-,}
+  }
 
   /**
    * Start automatic camera discovery
@@ -152,7 +152,7 @@ export class VideoCameraDiscoveryService {
           timestamp: now,
           success: false,
           error: error instanceof Error ? error.message : 'Unknown error'
-      ,});
+        });
     }
   }
 
@@ -170,7 +170,7 @@ export class VideoCameraDiscoveryService {
     const hoursSinceLastCheck = (currentTime.getTime() - lastChecked.getTime()) / (1000 * 60 * 60);
     
     return hoursSinceLastCheck >= source.checkInterval;
-,}
+  }
 
   /**
    * Fetch cameras from a specific source
@@ -186,7 +186,7 @@ export class VideoCameraDiscoveryService {
         source: source.name,
         timestamp: new Date().toISOString(),
         success: true
-    ,};
+      };
   } catch (error) {
       return {
         cameras:  [],
@@ -194,7 +194,7 @@ export class VideoCameraDiscoveryService {
         timestamp: new Date().toISOString(),
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error'
-    ,};
+      };
   }
 }
 
@@ -389,7 +389,7 @@ export class VideoCameraDiscoveryService {
   getCamerasByLogFormat(logFormat: string): Camera[] {
     const cameras = this.getCamerasWithIndicators();
     return cameras.filter(camera => camera.logFormats.includes(logFormat));
-,}
+  }
 
   /**
    * Get cameras by brand
@@ -397,14 +397,14 @@ export class VideoCameraDiscoveryService {
   getCamerasByBrand(brand: string): Camera[] {
     const cameras = this.getCamerasWithIndicators();
     return cameras.filter(camera => camera.brand.toLowerCase() === brand.toLowerCase());
-,}
+  }
 
   /**
    * Subscribe to camera updates
    */
   onCameraUpdate(callback: (cameras: Camera[]) => void) {
     this.updateCallbacks.push(callback);
-,}
+  }
 
   /**
    * Unsubscribe from camera updates

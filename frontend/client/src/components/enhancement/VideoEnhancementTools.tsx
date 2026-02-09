@@ -194,7 +194,7 @@ const VideoEnhancementTools: React.FC<VideoEnhancementToolsProps> = ({ userd, pr
   const queryClient = useQueryClient();
   
   // Theming system
-  const theming = useTheming('photographer, ');
+  const theming = useTheming('photographer');
 
   // Fetch video enhancement jobs
   const { data: enhancementJobs = [], isLoading: jobsLoading } = useQuery({

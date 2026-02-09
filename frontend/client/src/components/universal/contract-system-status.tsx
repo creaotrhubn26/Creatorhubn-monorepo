@@ -188,16 +188,6 @@ export default function ContractSystemStatus({
           </Grid>
         </Grid>
 
-        <Box sx={{ mt:  3, p: 2, backgroundColor: '#f5f5f0', borderRadius:  1 }}>
-          <Typography variant="body2" sx={{ fontWeight: 600, mb:  1 }}>
-            🔗 Tverrfaglig Integrasjon: </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Kontraktsystemet fungerer "tvers på alle dashbordene og koblet til profesjonsadapteren" - 
-            samme grunnleggende system med automatisk tilpasning til fotografer, videographere, 
-            musikprodusenter og leverandører.
-          </Typography>
-        </Box>
-
         {contractSystemStatus && (
           <Box sx={{ mt:  2 }}>
             <Typography variant="caption" color="text.secondary">

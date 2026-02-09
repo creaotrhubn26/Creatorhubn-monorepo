@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { apiRequest } from '@/lib/queryClient';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
-import { useEnhancedMasterIntegration } from "@/integration/EnhancedMasterIntegrationProvider';
-import { useTheming } from '../../utils/theming-helper';";
+import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
+import { useTheming } from '../../utils/theming-helper';
 import {
   Box,
   Card,
@@ -64,7 +64,7 @@ interface YouTubeIntegrationProps {
 }
 
 export const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({
-  projectd,
+  projectId,
   onVideoUploaded,
   onPlaylistCreated,
 }) => {
@@ -84,7 +84,7 @@ export const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({
 
   // Upload form state
   const [uploadForm, setUploadForm] = useState({
-    title: ',',
+    title: '',
     description: '',
     tags: [] as string[],
     status: 'private' as 'private' | 'unlisted' | 'public',
@@ -105,7 +105,7 @@ export const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({
   React.useEffect(() => {
     componentRegistry.registerComponent('YouTubeIntegration', {
       type: 'google-service',
-      capabilities: ['video-upload','playlist-management''analytics','project-integration'],
+      capabilities: ['video-upload', 'playlist-management', 'analytics', 'project-integration'],
       dataFlow: {
         sources: ['videos','playlists','upload-status','connection-status'],
         destinations: ['admin-dashboard','user-interface','project-showcase'],
@@ -178,9 +178,9 @@ export const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({
     try {
       const response = await fetch('/api/youtube/status', {
         headers: {
-          ...auth, 'x-project-id': projectId
-      }
-    });
+          'x-project-id': projectId
+        }
+      });
       const data = await response.json();
       setIsConnected(data.connected);
   } catch (error) {
@@ -192,11 +192,12 @@ export const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({
   const connectToYouTube = async () => {
     try {
       const response = await fetch('/api/youtube/connect', {
-        method: 'POS',
+        method: 'POST',
         headers: {
-          ...auth, 'Content-Type' : 'application/json','x-project-id': projectId,
-      },
-    });
+          'Content-Type': 'application/json',
+          'x-project-id': projectId
+        }
+      });
       
       if (response.ok) {
         const data = await response.json();
@@ -300,10 +301,11 @@ export const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({
   const createPlaylist = async () => {
     try {
       const response = await fetch('/api/youtube/playlists', {
-        method: 'POS',
+        method: 'POST',
         headers: {
-          ...auth'Content-Type' : 'application/json','x-project-id': projectId,
-      },
+          'Content-Type': 'application/json',
+          'x-project-id': projectId
+        },
         body: JSON.stringify({
           ...playlistForm,
           title: playlistForm.title || `Prosjekt ${projectId}`,

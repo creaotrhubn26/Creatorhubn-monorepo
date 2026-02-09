@@ -263,8 +263,8 @@ class CanvasOptimizer {
     this.gl.cullFace(this.gl.BACK);
 
     // Set clear color
-    this.gl.clearColor(00, 0);
-}
+    this.gl.clearColor(0, 0, 0, 0);
+  }
 
   /**
    * Add render object
@@ -367,10 +367,10 @@ class CanvasOptimizer {
   private clearCanvas(): void {
     if (this.gl) {
       this.gl.clear(this.gl.COLOR_BUFFER_BIT | this.gl.DEPTH_BUFFER_BIT);
-  } else if (this.ctx) {
-      this.ctx.clearRect(0this.viewport.width, this.viewport.height);
+    } else if (this.ctx) {
+      this.ctx.clearRect(0, 0, this.viewport.width, this.viewport.height);
+    }
   }
-}
 
   /**
    * Cull objects outside viewport
@@ -451,12 +451,13 @@ class CanvasOptimizer {
    */
   private getBatchSize(type: string): number {
     const batchSizes: Record<string, number> = {
-      'rectangle': 100 'circle': 100,
+      rectangle: 100,
+      circle: 100,
       'line': 50,
       'text': 20,
       'image': 10,
       'path': 5
-  };
+    };
     
     return batchSizes[type] || 50;
 }
@@ -522,11 +523,11 @@ class CanvasOptimizer {
     
     for (const obj of batch) {
       this.ctx.beginPath();
-      this.ctx.arc(obj.x + obj.width /2, obj.y + obj.height / 2, obj.width / 2Math.PI * 2);
+      this.ctx.arc(obj.x + obj.width / 2, obj.y + obj.height / 2, obj.width / 2, 0, Math.PI * 2);
       this.ctx.fill();
       this.metrics.drawCalls++;
+    }
   }
-}
 
   /**
    * Render line batch

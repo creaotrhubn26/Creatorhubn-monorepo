@@ -370,7 +370,7 @@ const ShowcaseCard = React.memo(({
             borderRadius: 1,
             fontSize: showcaseSettings.watermarkSize === 'small' ? '0.7rem' : 
                      showcaseSettings.watermarkSize === 'medium' ? '0.9rem' : '1.1rem',
-            fontWeight: 50,
+            fontWeight: 500,
             backdropFilter: 'blur(4px)',
             zIndex: 2,
             transition: 'all 0.3s ease-in-out'
@@ -408,7 +408,7 @@ const ShowcaseCard = React.memo(({
               bgcolor: 'rgba(6, 175, 80, 0.9)',
               color: '#fff',
               fontSize: '0.7rem',
-              fontWeight: 50,
+              fontWeight: 500,
               height: 20, '& .MuiChip-icon': {
                 color: '#fff',
               }}}

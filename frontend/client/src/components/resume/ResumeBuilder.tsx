@@ -4,13 +4,26 @@
  * Features: AI assistance, ATS optimization, Norwegian job tracking, project integration
  */
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { useAuth } from '@/hooks/useAuth';
-import { useAutoSave } from '@/hooks/useAutosave';
+import { useAutoSave } from '@/hooks/useAutoSave';
+import { useLinkedIn } from '@/hooks/useLinkedIn';
+import { linkedInToResumeData } from '@/utils/linkedin-data-extractor';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
 import CreatorHubMarketplace from './ResumeBuilderMarketplace';
+import {
+  TermsAndConditionsDialog,
+  PrivacyPolicyDialog,
+  CookieConsentDialog,
+  DataManagementDialog,
+} from './LegalCompliance';
+import { HelpGuideDialog, HelpButton, ContextualHelp } from './HelpGuide';
+import { GDPRUtils, AccessibilityUtils, WCAGChecklist } from '@/utils/wcag-gdpr-compliance';
+import type { AutoSaveData } from '@/utils/autoSaveManager';
+import { Document, HeadingLevel, Packer, Paragraph, TextRun } from 'docx';
+import '../../types/google';
 import {
   Box,
   Container,
@@ -44,30 +57,22 @@ import {
   Badge,
   Stack,
   Divider,
-  Avatar,
   List,
   ListItem,
   ListItemText,
   ListItemIcon,
-  ListItemSecondaryAction,
-  Fab,
-  Menu,
-  MenuItem as MenuItemComponent,
   Switch,
   FormControlLabel,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
   CircularProgress,
   Autocomplete,
+  Snackbar,
+  Link,
 } from '@mui/material';
 import {
   Add as AddIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
   Download as DownloadIcon,
-  Visibility as PreviewIcon,
-  Assessment as AnalyzeIcon,
   AutoAwesome as AIIcon,
   AutoAwesome,
   Spellcheck,
@@ -76,38 +81,26 @@ import {
   Work as WorkIcon,
   School as EducationIcon,
   Star as SkillIcon,
-  EmojiEvents as CertificationIcon,
-  Folder as ProjectIcon,
-  Public as PublicIcon,
-  Lock as PrivateIcon,
   Save as SaveIcon,
-  Share as ShareIcon,
   ContentCopy as CopyIcon,
-  Refresh as RefreshIcon,
-  ArrowBack as BackIcon,
-  ArrowForward as ForwardIcon,
-  ExpandMore as ExpandMoreIcon,
   TrendingUp as TrendingUpIcon,
   Description as TemplateIcon,
-  Settings as SettingsIcon,
   CloudUpload as UploadIcon,
-  Link as LinkIcon,
-  BusinessCenter as BusinessIcon,
-  Email as EmailIcon,
-  Phone as PhoneIcon,
-  LocationOn as LocationIcon,
-  Language as WebsiteIcon,
+  History as HistoryIcon,
   LinkedIn as LinkedInIcon,
-  GitHub as GitHubIcon,
   Folder as FolderIcon,
   PictureAsPdf as PdfIcon,
   Image as ImageIcon,
   VideoFile as VideoIcon,
   InsertDriveFile as FileIcon,
   Error as ErrorIcon,
-  History as HistoryIcon,
   Restore as RestoreIcon,
   Publish as PublishIcon,
+  Alarm as AlarmIcon,
+  GpsFixed as GpsFixedIcon,
+  Cancel as CancelIcon,
+  ErrorOutline as ErrorOutlineIcon,
+  CheckCircleOutline as CheckCircleOutlineIcon,
 } from '@mui/icons-material';
 
 // ============================================================================
@@ -253,9 +246,19 @@ interface JobApplication {
   location?: string;
   jobUrl?: string;
   source?: string;
+  applicantType?: 'internship' | 'trainee' | 'full-time' | 'part-time' | 'contract' | 'freelance' | 'temporary';
   status: 'saved' | 'applied' | 'interviewing' | 'offer' | 'rejected' | 'accepted' | 'withdrawn';
   appliedDate?: string;
+  deadline?: string;
+  interviewDate?: string;
+  interviewPreparation?: {
+    commonQuestions?: string[];
+    questionsToAsk?: string[];
+    keyPoints?: string[];
+    completed?: boolean;
+  };
   notes?: string;
+  coverLetter?: string;
   priority: 'low' | 'medium' | 'high';
   tags: string[];
 }
@@ -290,11 +293,11 @@ export default function ResumeBuilder() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const { auth, features, analytics } = useEnhancedMasterIntegration();
+  const linkedIn = useLinkedIn();
 
   // Feature access checks
-  const resumeBuilderAccess = features.checkFeatureAccess('resume-builder, ');
-  const googleDriveAccess = features.checkFeatureAccess('google-drive-integration,');
-  const portfolioAccess = features.checkFeatureAccess('portfolio-management,');
+  const googleDriveAccess = features?.checkFeatureAccess('google-drive-integration');
+  const portfolioAccess = features?.checkFeatureAccess('portfolio-management');
 
   // State Management
   const [activeStep, setActiveStep] = useState(0);
@@ -305,6 +308,15 @@ export default function ResumeBuilder() {
   const [showProjectImportDialog, setShowProjectImportDialog] = useState(false);
   const [tabValue, setTabValue] = useState(0);
   const [aiJobDescription, setAiJobDescription] = useState('');
+  const [showSkillDialog, setShowSkillDialog] = useState(false);
+  const [skillFormData, setSkillFormData] = useState<{ name: string; category: string; proficiencyLevel: number }>({
+    name: '',
+    category: '',
+    proficiencyLevel: 3,
+  });
+  const [resumeSearch, setResumeSearch] = useState('');
+  const [resumeStatusFilter, setResumeStatusFilter] = useState<'all' | Resume['status']>('all');
+  const [resumeSort, setResumeSort] = useState<'updated' | 'created' | 'title'>('updated');
   
   // Portfolio state
   const [portfolioItems, setPortfolioItems] = useState<PortfolioItem[]>([]);
@@ -319,54 +331,318 @@ export default function ResumeBuilder() {
     isPublic: true,
   });
 
+  // Education state
+  const [showEducationDialog, setShowEducationDialog] = useState(false);
+  const [editingEducationItem, setEditingEducationItem] = useState<ResumeEducation | null>(null);
+  const [educationFormData, setEducationFormData] = useState<Partial<ResumeEducation>>({
+    degree: '',
+    fieldOfStudy: '',
+    institution: '',
+    location: '',
+    startDate: '',
+    endDate: '',
+    isCurrent: false,
+    grade: '',
+    description: '',
+    achievements: [],
+    displayOrder: 1,
+    isVisible: true,
+  });
+
+  // Vitnemalsportalen state
+  const [showVitnemalsportalenDialog, setShowVitnemalsportalenDialog] = useState(false);
+  const [vitnemalsportalenInstructions, setVitnemalsportalenInstructions] = useState(true);
+
+  // Certification state
+  const [showCertificationDialog, setShowCertificationDialog] = useState(false);
+  const [editingCertificationItem, setEditingCertificationItem] = useState<ResumeCertification | null>(null);
+  const [certificationFormData, setCertificationFormData] = useState<Partial<ResumeCertification>>({
+    name: '',
+    issuer: '',
+    issueDate: '',
+    expiryDate: '',
+    credentialId: '',
+    credentialUrl: '',
+    description: '',
+    displayOrder: 1,
+    isVisible: true,
+  });
+
+  // Job application tracking state
+  const [jobApplications, setJobApplications] = useState<JobApplication[]>([]);
+  const [showJobDialog, setShowJobDialog] = useState(false);
+  const [editingJobApplication, setEditingJobApplication] = useState<JobApplication | null>(null);
+  const [jobFormData, setJobFormData] = useState<Partial<JobApplication>>({
+    jobTitle: '',
+    company: '',
+    location: '',
+    jobUrl: '',
+    source: '',
+    status: 'saved',
+    appliedDate: '',
+    deadline: '',
+    interviewDate: '',
+    notes: '',
+    coverLetter: '',
+    priority: 'medium',
+    tags: [],
+  });
+  const [jobSearch, setJobSearch] = useState('');
+  const [jobStatusFilter, setJobStatusFilter] = useState<'all' | JobApplication['status']>('all');
+
+  // Legal & GDPR Compliance state
+  const [showTermsDialog, setShowTermsDialog] = useState(!GDPRUtils.hasAcceptedTerms());
+  const [showPrivacyDialog, setShowPrivacyDialog] = useState(false);
+  const [showCookieConsent, setShowCookieConsent] = useState(!GDPRUtils.getConsent().essential);
+  const [showDataManagement, setShowDataManagement] = useState(false);
+
+  // Help & Guidance state
+  const [showHelpDialog, setShowHelpDialog] = useState(false);
+
+  // AI generation fields
+  const [aiJobTitle, setAiJobTitle] = useState('');
+  const [aiCompany, setAiCompany] = useState('');
+  const [aiSkills, setAiSkills] = useState<string[]>([]);
+  const [aiExperience, setAiExperience] = useState('');
+
   // Draft and versioning state
   const [isDraft, setIsDraft] = useState(true);
   const [currentVersion, setCurrentVersion] = useState(1);
   const [versionHistory, setVersionHistory] = useState<any[]>([]);
   const [showVersionDialog, setShowVersionDialog] = useState(false);
   const [autoSaveStatus, setAutoSaveStatus] = useState<'saved' | 'saving' | 'error' | 'pending'>('saved');
+  const [confirmDeleteResumeId, setConfirmDeleteResumeId] = useState<string | null>(null);
+  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'info' | 'warning' | 'error' }>({ open: false, message: '', severity: 'info' });
+  const [initializingResume, setInitializingResume] = useState(false);
+  const [initializationMessage, setInitializationMessage] = useState('');
+  const initializationRef = useRef(false);
+  const [initializationStep, setInitializationStep] = useState(0);
+  const initializationSteps = useMemo(
+    () => [
+      'Starter og sjekker tilgang',
+      'Samler brukerinfo',
+      'Oppretter CV',
+      'Henter prosjekter',
+      'Finpusser profilen',
+      'Klar til bruk',
+    ],
+    [],
+  );
+  const motivationalMessages = useMemo(
+    () => [
+      'Du er nesten i gang',
+      'Vi bygger en CV som skiller seg ut',
+      'Snart klar for neste mulighet',
+      'Litt magi pågår i bakgrunnen',
+    ],
+    [],
+  );
 
-  // Auto-save integration
-  const autoSave = useAutoSave({
+  const resumeTemplates = useMemo<ResumeTemplate[]>(
+    () => [
+      {
+        id: 'modern-ats',
+        name: 'Modern ATS',
+        description: 'ATS-optimalisert layout med klar hierarki',
+        category: 'professional',
+        atsScore: 92,
+        isAtsOptimized: true,
+        layout: 'single-column',
+        previewImage: undefined,
+        isPremium: false,
+      },
+      {
+        id: 'two-column-executive',
+        name: 'Executive Split',
+        description: 'To-kolonners oppsett for ledere',
+        category: 'executive',
+        atsScore: 85,
+        isAtsOptimized: true,
+        layout: 'two-column',
+        previewImage: undefined,
+        isPremium: true,
+      },
+      {
+        id: 'modern-creative',
+        name: 'Creative Modern',
+        description: 'Kreativ layout med tydelige seksjoner',
+        category: 'creative',
+        atsScore: 78,
+        isAtsOptimized: false,
+        layout: 'modern-split',
+        previewImage: undefined,
+        isPremium: false,
+      },
+      {
+        id: 'clean-minimal',
+        name: 'Clean Minimal',
+        description: 'Minimalistisk og elegant utseende',
+        category: 'minimal',
+        atsScore: 88,
+        isAtsOptimized: true,
+        layout: 'single-column',
+        previewImage: undefined,
+        isPremium: false,
+      },
+    ],
+    [],
+  );
+
+  const filteredJobApplications = useMemo(() => {
+    const normalizedSearch = jobSearch.trim().toLowerCase();
+    return jobApplications.filter((job) => {
+      const matchesSearch = !normalizedSearch
+        || job.jobTitle.toLowerCase().includes(normalizedSearch)
+        || job.company.toLowerCase().includes(normalizedSearch)
+        || job.tags.join(' ').toLowerCase().includes(normalizedSearch);
+      const matchesStatus = jobStatusFilter === 'all' || job.status === jobStatusFilter;
+      return matchesSearch && matchesStatus;
+    });
+  }, [jobApplications, jobSearch, jobStatusFilter]);
+
+  const atsTips = useMemo(() => {
+    if (!selectedResume) return [] as string[];
+    const tips: string[] = [];
+    if (!selectedResume.personalInfo?.summary) {
+      tips.push('Legg til et profesjonelt sammendrag for bedre ATS-score.');
+    }
+    if (!selectedResume.experiences?.length) {
+      tips.push('Legg til arbeidserfaring for å styrke CV-en.');
+    }
+    if (!selectedResume.skills?.length) {
+      tips.push('Oppgi relevante ferdigheter for å forbedre keyword-match.');
+    }
+    if (!selectedResume.education?.length) {
+      tips.push('Legg til utdanning for en komplett profil.');
+    }
+    if (!selectedResume.certifications?.length) {
+      tips.push('Legg til sertifiseringer for ekstra kredibilitet.');
+    }
+    return tips;
+  }, [selectedResume]);
+
+  const publicResumeUrl = useMemo(() => {
+    if (!selectedResume) return '';
+    if (selectedResume.publicUrl) return selectedResume.publicUrl;
+    if (typeof window === 'undefined') return '';
+    return `${window.location.origin}/resume/${selectedResume.slug}`;
+  }, [selectedResume]);
+
+  const handleAutoSaveDataSaved = useCallback((data: AutoSaveData) => {
+    setAutoSaveStatus('saved');
+    analytics.trackEvent('resume_autosaved', {
+      userId: user?.id,
+      resumeId: selectedResume?.id,
+      dataType: data.type,
+    });
+    console.log('[SUCCESS] Resume auto-saved: ', data);
+  }, [analytics, user?.id, selectedResume?.id]);
+
+  const handleAutoSaveDataQueued = useCallback(() => {
+    setAutoSaveStatus('pending');
+  }, []);
+
+  const handleAutoSaveError = useCallback((error: string) => {
+    setAutoSaveStatus('error');
+    console.error('[ERROR] Auto-save error: ', error);
+  }, []);
+
+  const handleAutoSaveInitialized = useCallback(() => {
+    console.log('[INFO] Auto-save initialized for Resume Builder');
+  }, []);
+
+  const autoSaveOptions = useMemo(() => ({
     config: {
-      enabled: true,
-      debounceMs: 2000, // Auto-save after 2 seconds of inactivity
-      retryAttempts: 3,
-      retryDelayMs: 1000,
+      enableAutoSave: true,
+      debounceDelay: 2000,
+      maxRetries: 3,
+      retryDelay: 1000,
     },
-    onDataSaved: (data) => {
-      setAutoSaveStatus('saved');
-      analytics.trackEvent('resume_autosaved', {
-        userId: user?.id,
-        resumeId: selectedResume?.id,
-        dataType: data.type,
-      });
-      console.log('✅ Resume auto-saved: ', data);
-    },
-    onDataQueued: () => {
-      setAutoSaveStatus('pending');
-    },
-    onError: (error) => {
-      setAutoSaveStatus('error');
-      console.error('❌ Auto-save error: ', error);
-    },
-    onInitialized: () => {
-      console.log('🔄 Auto-save initialized for Resume Builder');
-    },
-  });
+    onDataSaved: handleAutoSaveDataSaved,
+    onDataQueued: handleAutoSaveDataQueued,
+    onError: handleAutoSaveError,
+    onInitialized: handleAutoSaveInitialized,
+  }), [
+    handleAutoSaveDataSaved,
+    handleAutoSaveDataQueued,
+    handleAutoSaveError,
+    handleAutoSaveInitialized,
+  ]);
+
+  const {
+    save: autoSaveSave,
+    forceSave: autoSaveForceSave,
+    restoreFromBackup: autoSaveRestoreFromBackup,
+  } = useAutoSave(autoSaveOptions);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    const storageKey = `resume_job_applications_${user.id}`;
+    const stored = localStorage.getItem(storageKey);
+    if (stored) {
+      try {
+        setJobApplications(JSON.parse(stored));
+      } catch (error) {
+        console.warn('Unable to parse job applications from storage:', error);
+      }
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    const storageKey = `resume_job_applications_${user.id}`;
+    localStorage.setItem(storageKey, JSON.stringify(jobApplications));
+  }, [jobApplications, user?.id]);
+
+  // Handle EMREX callback with ELMO data from vitnemalsportalen
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const elmoData = urlParams.get('elmo') || urlParams.get('data');
+    
+    if (elmoData) {
+      try {
+        // Decode if base64 encoded
+        let xmlData = elmoData;
+        try {
+          xmlData = atob(elmoData);
+        } catch (_decodeError) {
+          // Not base64, use as is
+        }
+        
+        // Parse and import the ELMO XML data
+        handleVitnemalsportalenDataImport(xmlData);
+        
+        // Clean URL
+        window.history.replaceState({}, document.title, window.location.pathname);
+        
+        setSnackbar({
+          open: true,
+          message: 'Utdanningsdata mottatt fra Vitnemålsportalen!',
+          severity: 'success'
+        });
+      } catch (error) {
+        console.error('Failed to process EMREX callback:', error);
+        setSnackbar({
+          open: true,
+          message: 'Kunne ikke motta data fra Vitnemålsportalen',
+          severity: 'error'
+        });
+      }
+    }
+  }, []);
 
   // Google Drive integration functions
   const handleGoogleDriveFilePicker = useCallback(async () => {
     // Check feature access
     if (!googleDriveAccess.hasAccess) {
       console.warn('Google Drive integration not available:', googleDriveAccess.reason);
-      alert('Google Drive-integrasjon er ikke tilgjengelig: ' + googleDriveAccess.reason);
+      setSnackbar({ open: true, message: 'Google Drive-integrasjon er ikke tilgjengelig: ' + googleDriveAccess.reason, severity: 'warning' });
       return;
     }
 
     try {
       // Track feature usage
-      features.trackFeatureUsage('google-drive-integration, ','file_picker_opened');
+      features.trackFeatureUsage('google-drive-integration', 'file_picker_opened');
       analytics.trackEvent('google_drive_picker_opened', { userId: user?.id });
 
       if (!auth.state.isAuthenticated) {
@@ -374,18 +650,17 @@ export default function ResumeBuilder() {
         return;
       }
 
-      const authHeader = await auth.getAuthHeader();
       const googleClient = await auth.getAuthenticatedClient(['https://www.googleapis.com/auth/drive.readonly']);
       
       // Initialize Google Drive API picker
       if (window.google && window.google.picker) {
-        const picker = new window.google.picker.PickerBuilder()
-          .addView(window.google.picker.ViewId.DOCS)
-          .addView(window.google.picker.ViewId.SPREADSHEETS)
-          .addView(window.google.picker.ViewId.PRESENTATIONS)
-          .addView(window.google.picker.ViewId.PDFS)
-          .addView(window.google.picker.ViewId.IMAGES)
-          .addView(window.google.picker.ViewId.VIDEOS)
+        const picker = new (window as any).google.picker.PickerBuilder()
+          .addView((window as any).google.picker.ViewId.DOCS)
+          .addView((window as any).google.picker.ViewId.SPREADSHEETS)
+          .addView((window as any).google.picker.ViewId.PRESENTATIONS)
+          .addView((window as any).google.picker.ViewId.PDFS)
+          .addView((window as any).google.picker.ViewId.IMAGES)
+          .addView((window as any).google.picker.ViewId.VIDEOS)
           .setOAuthToken(googleClient.getToken().access_token)
           .setDeveloperKey(process.env.NEXT_PUBLIC_GOOGLE_API_KEY)
           .setCallback(handleGoogleDriveFilesSelected)
@@ -411,7 +686,7 @@ export default function ResumeBuilder() {
   }, [auth]);
 
   const handleGoogleDriveFilesSelected = useCallback((data: any) => {
-    if (data.action === window.google.picker.Action.PICKED) {
+    if (data.action === (window as any).google.picker.Action.PICKED) {
       const files = data.docs;
       const newLinks: GoogleDriveLink[] = files.map((file: any) => ({
         id: file.id,
@@ -449,6 +724,136 @@ export default function ResumeBuilder() {
       ...prev,
       googleDriveLinks: [...(prev.googleDriveLinks || []), link]
     }));
+  }, []);
+
+  const handleImportFromFinnNo = useCallback(async () => {
+    const url = jobFormData.jobUrl;
+    if (!url || !url.includes('finn.no')) {
+      setSnackbar({ open: true, message: 'Vennligst lim inn en gyldig finn.no jobb-URL', severity: 'warning' });
+      return;
+    }
+
+    // Parse finn.no URL to extract job details
+    try {
+      const urlObj = new URL(url);
+      const pathParts = urlObj.pathname.split('/').filter(p => p);
+      
+      // Extract finn code (job ID) from URL
+      // finn.no format: /job/ad/447237578 or /job/full-time/ad.html?finnkode=123456
+      let finnCode = '';
+      let jobTitle = jobFormData.jobTitle;
+      
+      // Check if it's the newer format /job/ad/{id}
+      if (pathParts[0] === 'job' && pathParts[1] === 'ad' && pathParts[2]) {
+        finnCode = pathParts[2];
+      } else {
+        // Check for finnkode parameter in older format
+        const finnCodeParam = urlObj.searchParams.get('finnkode');
+        if (finnCodeParam) {
+          finnCode = finnCodeParam;
+        }
+      }
+
+      // Attempt to fetch job details from finn.no
+      try {
+        const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+        const response = await fetch(proxyUrl);
+        const html = await response.text();
+        
+        // Parse HTML to extract job title and company
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+        
+        // Try to find job title (finn.no uses h1 for job titles)
+        const titleElement = doc.querySelector('h1');
+        if (titleElement && !jobTitle) {
+          jobTitle = titleElement.textContent?.trim() || '';
+        }
+        
+        // Try to find company name
+        const companyElement = doc.querySelector('[data-testid="company-name"]') || 
+                               doc.querySelector('.company-name') ||
+                               doc.querySelector('a[href*="/company/"]');
+        const company = companyElement?.textContent?.trim() || jobFormData.company;
+        
+        // Try to find location
+        const locationElement = doc.querySelector('[data-testid="location"]') ||
+                                doc.querySelector('.location');
+        const location = locationElement?.textContent?.trim() || jobFormData.location;
+
+        // Extract job description for AI analysis
+        const descriptionElement = doc.querySelector('[data-testid="job-description"]') ||
+                                   doc.querySelector('.job-description') ||
+                                   doc.querySelector('article') ||
+                                   doc.querySelector('.description');
+        const jobDescription = descriptionElement?.textContent?.trim() || '';
+
+        // Extract requirements/qualifications
+        const requirementsElement = doc.querySelector('[data-testid="requirements"]') ||
+                                    doc.querySelector('.requirements') ||
+                                    doc.querySelector('.qualifications');
+        const requirements = requirementsElement?.textContent?.trim() || '';
+
+        // Extract deadline
+        const deadlineElement = doc.querySelector('[data-testid="application-deadline"]') ||
+                               doc.querySelector('.deadline') ||
+                               doc.querySelector('.application-due');
+        let deadline = deadlineElement?.textContent?.trim() || '';
+        
+        // Try to parse Norwegian deadline formats
+        const deadlineMatch = html.match(/søknadsfrist[:\s]+([\d./-]+)|frist[:\s]+([\d./-]+)|siste dag[:\s]+([\d./-]+)/i);
+        if (deadlineMatch) {
+          deadline = deadlineMatch[1] || deadlineMatch[2] || deadlineMatch[3] || deadline;
+        }
+
+        const fullJobDescription = `${jobDescription}\n\n${requirements}`.trim();
+
+        setJobFormData((prev) => ({
+          ...prev,
+          jobTitle: jobTitle || prev.jobTitle || `Jobb fra finn.no ${finnCode ? `(${finnCode})` : ''}`,
+          company: company || prev.company,
+          location: location || prev.location,
+          source: 'finn.no',
+          deadline: deadline || prev.deadline,
+          notes: prev.notes ? `${prev.notes}\n\nFinn-kode: ${finnCode}\n\nJobb-beskrivelse:\n${fullJobDescription.substring(0, 500)}...` : 
+                             `Finn-kode: ${finnCode}\n\nJobb-beskrivelse:\n${fullJobDescription.substring(0, 500)}...`,
+        }));
+
+        // Store full job description for AI analysis
+        if (fullJobDescription) {
+          localStorage.setItem(`finn_job_${finnCode}`, JSON.stringify({
+            finnCode,
+            jobTitle: jobTitle || '',
+            company: company || '',
+            description: fullJobDescription,
+            url,
+            importedAt: new Date().toISOString(),
+          }));
+        }
+
+        setSnackbar({ 
+          open: true, 
+          message: 'Jobb importert fra finn.no! Bruk AI-knappen for å tilpasse CV og søknadsbrev.', 
+          severity: 'success' 
+        });
+      } catch (_fetchError) {
+        // If fetch fails, just set basic info
+        setJobFormData((prev) => ({
+          ...prev,
+          jobTitle: jobTitle || prev.jobTitle || `Jobb fra finn.no ${finnCode ? `(${finnCode})` : ''}`,
+          source: 'finn.no',
+          notes: prev.notes ? `${prev.notes}\n\nFinn-kode: ${finnCode}` : `Finn-kode: ${finnCode}`,
+        }));
+
+        setSnackbar({ open: true, message: 'URL lagret. Kunne ikke hente detaljer automatisk - vennligst fyll ut manuelt.', severity: 'info' });
+      }
+    } catch (_error) {
+      setSnackbar({ open: true, message: 'Kunne ikke parse finn.no URL. Vennligst sjekk URL og prøv igjen.', severity: 'error' });
+    }
+  }, [jobFormData.jobUrl, jobFormData.jobTitle, jobFormData.company, jobFormData.location]);
+
+  const handleImportFromVitnemalsportalen = useCallback(() => {
+    setShowVitnemalsportalenDialog(true);
   }, []);
 
   const getFileTypeFromMimeType = (mimeType: string): GoogleDriveLink['type'] => {
@@ -510,6 +915,21 @@ export default function ResumeBuilder() {
     setShowPortfolioDialog(true);
   }, []);
 
+  const normalizePortfolioItem = useCallback((data: Partial<PortfolioItem>, overrides: Partial<PortfolioItem> = {}): PortfolioItem => {
+    return {
+      id: data.id ?? overrides.id ?? `portfolio_${Date.now()}`,
+      resumeId: data.resumeId ?? overrides.resumeId,
+      title: data.title || '',
+      description: data.description || '',
+      category: (data.category || 'project') as PortfolioItem['category'],
+      technologies: data.technologies || [],
+      googleDriveLinks: data.googleDriveLinks || [],
+      isPublic: data.isPublic ?? true,
+      createdAt: data.createdAt ?? overrides.createdAt,
+      updatedAt: data.updatedAt ?? overrides.updatedAt,
+    };
+  }, []);
+
   const handleSavePortfolioItem = useCallback(async () => {
     try {
       // Track portfolio item save
@@ -532,19 +952,19 @@ export default function ResumeBuilder() {
         // Update existing item
         const updatedItems = portfolioItems.map(item =>
           item.id === editingPortfolioItem.id
-            ? { ...portfolioFormData, id: editingPortfolioItem.id, updatedAt: new Date().toISOString() }
+            ? normalizePortfolioItem(
+                { ...portfolioFormData, id: editingPortfolioItem.id },
+                { resumeId: item.resumeId, createdAt: item.createdAt, updatedAt: new Date().toISOString() }
+              )
             : item
         );
         setPortfolioItems(updatedItems);
       } else {
         // Add new item
-        const newItem: PortfolioItem = {
-          ...portfolioFormData,
-          id: `portfolio_${Date.now()}`,
-          resumeId: selectedResume?.id,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        } as PortfolioItem;
+        const newItem = normalizePortfolioItem(
+          { ...portfolioFormData, resumeId: selectedResume?.id },
+          { createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }
+        );
         setPortfolioItems(prev => [...prev, newItem]);
       }
       
@@ -561,7 +981,7 @@ export default function ResumeBuilder() {
     } catch (error) {
       console.error('Error saving portfolio item:', error);
     }
-  }, [editingPortfolioItem, portfolioFormData, portfolioItems, selectedResume, features, analytics, user]);
+  }, [editingPortfolioItem, portfolioFormData, portfolioItems, selectedResume, features, analytics, user, normalizePortfolioItem]);
 
   const handleDeletePortfolioItem = useCallback((itemId: string) => {
     setPortfolioItems(prev => prev.filter(item => item.id !== itemId));
@@ -573,6 +993,7 @@ export default function ResumeBuilder() {
     });
   }, [analytics, user]);
 
+
   // ============================================================================
   // DRAFT & VERSIONING FUNCTIONS
   // ============================================================================
@@ -583,7 +1004,7 @@ export default function ResumeBuilder() {
       setAutoSaveStatus('pending');
       
       // Queue auto-save with debouncing
-      autoSave.save('resume_draft', {
+      autoSaveSave('resume_draft', {
         resume: selectedResume,
         portfolioItems,
         isDraft,
@@ -594,7 +1015,7 @@ export default function ResumeBuilder() {
         timestamp: Date.now(),
       });
     }
-  }, [selectedResume, portfolioItems, isDraft, currentVersion, user, autoSave]);
+  }, [selectedResume, portfolioItems, isDraft, currentVersion, user, autoSaveSave]);
 
   // Save as draft
   const handleSaveAsDraft = useCallback(async () => {
@@ -604,7 +1025,7 @@ export default function ResumeBuilder() {
       setAutoSaveStatus('saving');
       
       // Force immediate save
-      await autoSave.forceSave();
+      await autoSaveForceSave();
       
       // Update draft status
       setIsDraft(true);
@@ -618,12 +1039,12 @@ export default function ResumeBuilder() {
       });
       
       setAutoSaveStatus('saved');
-      console.log('✅ Draft saved successfully');
+      console.log('[SUCCESS] Draft saved successfully');
     } catch (error) {
       setAutoSaveStatus('error');
-      console.error('❌ Error saving draft:', error);
+      console.error('[ERROR] Error saving draft:', error);
     }
-  }, [selectedResume, currentVersion, autoSave, features, analytics, user]);
+  }, [selectedResume, currentVersion, autoSaveForceSave, features, analytics, user]);
 
   // Publish resume (exit draft mode)
   const handlePublishResume = useCallback(async () => {
@@ -633,7 +1054,7 @@ export default function ResumeBuilder() {
       setAutoSaveStatus('saving');
       
       // Force save before publishing
-      await autoSave.forceSave();
+      await autoSaveForceSave();
       
       // Create new version
       const newVersion = {
@@ -658,12 +1079,12 @@ export default function ResumeBuilder() {
       });
       
       setAutoSaveStatus('saved');
-      console.log('✅ Resume published successfully - Version', currentVersion);
+      console.log('[SUCCESS] Resume published successfully - Version', currentVersion);
     } catch (error) {
       setAutoSaveStatus('error');
-      console.error('❌ Error publishing resume:', error);
+      console.error('[ERROR] Error publishing resume:', error);
     }
-  }, [selectedResume, currentVersion, portfolioItems, autoSave, features, analytics, user]);
+  }, [selectedResume, currentVersion, portfolioItems, autoSaveForceSave, features, analytics, user]);
 
   // Restore from version
   const handleRestoreVersion = useCallback((version: any) => {
@@ -685,12 +1106,12 @@ export default function ResumeBuilder() {
     });
     
     setShowVersionDialog(false);
-    console.log('✅ Version restored:', version.versionNumber);
+    console.log('[SUCCESS] Version restored:', version.versionNumber);
   }, [features, analytics, user]);
 
   // Restore from auto-save backup
   const handleRestoreFromBackup = useCallback(() => {
-    const restored = autoSave.restoreFromBackup();
+    const restored = autoSaveRestoreFromBackup();
     
     if (restored) {
       // Track backup restoration
@@ -699,13 +1120,13 @@ export default function ResumeBuilder() {
         userId: user?.id,
       });
       
-      console.log('✅ Backup restored successfully');
+      console.log('[SUCCESS] Backup restored successfully');
       alert('Tidligere lagret versjon er gjenopprettet!');
     } else {
-      console.warn('⚠️ No backup available to restore');
+      console.warn('[WARN] No backup available to restore');
       alert('Ingen backup tilgjengelig');
     }
-  }, [autoSave, features, analytics, user]);
+  }, [autoSaveRestoreFromBackup, features, analytics, user]);
 
   const handleRemoveGoogleDriveLink = useCallback((linkId: string) => {
     setPortfolioFormData(prev => ({
@@ -727,9 +1148,88 @@ export default function ResumeBuilder() {
   const [aiTargetField, setAiTargetField] = useState<string>('');
 
   // LinkedIn Import State
+  interface LinkedInProfile {
+    id?: string;
+    firstName?: string;
+    lastName?: string;
+    email?: string;
+    profileImageUrl?: string;
+    headline?: string;
+    summary?: string;
+    location?: string;
+    profileUrl?: string;
+  }
+
+  interface LinkedInExperience {
+    id?: string;
+    title?: string;
+    company?: string;
+    location?: string;
+    description?: string;
+    startDate?: string;
+    endDate?: string;
+  }
+
+  interface LinkedInEducation {
+    id?: string;
+    schoolName?: string;
+    degreeType?: string;
+    fieldOfStudy?: string;
+    startDate?: string;
+    endDate?: string;
+    description?: string;
+  }
+
+  interface LinkedInSkill {
+    name?: string;
+  }
+
+  type LinkedInDate = { year: number; month?: number };
+  type LinkedInLocation = { country?: { code: string }; city?: string };
+
+  const formatLinkedInDate = (date?: LinkedInDate): string | undefined => {
+    if (!date?.year) return undefined;
+    if (date.month) {
+      return `${date.year}-${String(date.month).padStart(2, '0')}`;
+    }
+    return `${date.year}`;
+  };
+
+  const formatLinkedInLocation = (location?: LinkedInLocation): string | undefined => {
+    if (!location) return undefined;
+    const parts = [location.city, location.country?.code].filter(Boolean);
+    return parts.length ? parts.join(', ') : undefined;
+  };
+
+  interface LinkedInCertification {
+    id?: string;
+    name?: string;
+    title?: string;
+    issuer?: string;
+    issuingOrganization?: string;
+    authority?: string;
+    issueDate?: string;
+    startDate?: string;
+    expiryDate?: string;
+    expirationDate?: string;
+    endDate?: string;
+    credentialId?: string;
+    licenseNumber?: string;
+    credentialUrl?: string;
+    url?: string;
+  }
+
+  interface LinkedInData {
+    profile?: LinkedInProfile;
+    experience?: LinkedInExperience[];
+    education?: LinkedInEducation[];
+    skills?: LinkedInSkill[];
+    certifications?: LinkedInCertification[];
+  }
+
   const [linkedInDialog, setLinkedInDialog] = useState(false);
   const [linkedInImportMode, setLinkedInImportMode] = useState<'preview' | 'select'>('select');
-  const [linkedInData, setLinkedInData] = useState<any>(null);
+  const [linkedInData, setLinkedInData] = useState<LinkedInData | null>(null);
   const [linkedInSelectedData, setLinkedInSelectedData] = useState({
     personalInfo: true,
     workExperience: true,
@@ -755,6 +1255,10 @@ export default function ResumeBuilder() {
     setAiInputText(initialText);
     setAiOutputText('');
     setAiTargetField(targetField);
+    setAiJobTitle('');
+    setAiCompany('');
+    setAiSkills([]);
+    setAiExperience('');
     setAiToolDialog(true);
 
     // Track feature usage
@@ -860,7 +1364,7 @@ export default function ResumeBuilder() {
         headers: { 'x-user-id': user?.id || ',' },
         body: JSON.stringify({
           jobTitle,
-          skills: skills.join(''),
+          skills: skills.join(', '),
           experience,
         }),
       });
@@ -891,7 +1395,7 @@ export default function ResumeBuilder() {
         body: JSON.stringify({
           jobTitle,
           company,
-          skills: skills.join(''),
+          skills: skills.join(', '),
         }),
       });
 
@@ -910,22 +1414,6 @@ export default function ResumeBuilder() {
       setAiIsProcessing(false);
     }
   }, [user, features, analytics]);
-
-  // Apply AI result to target field
-  const handleApplyAiResult = useCallback(() => {
-    if (!aiOutputText || !selectedResume) return;
-
-    // Apply to specific field based on aiTargetField
-    // This will be implemented based on which field the AI tool was opened from
-    
-    analytics.trackEvent('ai_result_applied', {
-      userId: user?.id,
-      toolType: aiToolType,
-      targetField: aiTargetField,
-    });
-
-    setAiToolDialog(false);
-  }, [aiOutputText, selectedResume, aiTargetField, aiToolType, analytics, user]);
 
   // ============================================================================
   // LINKEDIN IMPORT FUNCTIONS
@@ -950,15 +1438,55 @@ export default function ResumeBuilder() {
     try {
       // Sync LinkedIn profile
       const profile = await linkedIn.syncProfile();
-      setLinkedInData(profile);
-      setLinkedInImportMode('select');
-      setLinkedInDialog(true);
-      
-      analytics.trackEvent('linkedin_profile_synced', {
-        userId: user?.id,
-        hasExperience: !!profile.experience?.length,
-        hasEducation: !!profile.education?.length,
-      });
+      if (profile) {
+        const normalizedProfile: LinkedInProfile = {
+          id: profile.id,
+          firstName: profile.firstName,
+          lastName: profile.lastName,
+          profileImageUrl: profile.profilePicture,
+          headline: profile.headline,
+          summary: profile.summary,
+          location: formatLinkedInLocation(profile.location)
+        };
+
+        const normalizedExperience: LinkedInExperience[] = (linkedIn.state.experience || []).map((exp) => ({
+          id: exp.id,
+          title: exp.title,
+          company: exp.companyName,
+          location: exp.location,
+          description: exp.description,
+          startDate: formatLinkedInDate(exp.startDate),
+          endDate: formatLinkedInDate(exp.endDate)
+        }));
+
+        const normalizedEducation: LinkedInEducation[] = (linkedIn.state.education || []).map((edu) => ({
+          id: edu.id,
+          schoolName: edu.schoolName,
+          degreeType: edu.degreeType,
+          fieldOfStudy: edu.fieldOfStudy,
+          startDate: formatLinkedInDate(edu.startDate),
+          endDate: formatLinkedInDate(edu.endDate)
+        }));
+
+        const normalizedSkills: LinkedInSkill[] = (linkedIn.state.skills || []).map((skill) => ({
+          name: skill.name
+        }));
+
+        setLinkedInData({
+          profile: normalizedProfile,
+          experience: normalizedExperience,
+          education: normalizedEducation,
+          skills: normalizedSkills,
+        });
+        setLinkedInImportMode('select');
+        setLinkedInDialog(true);
+        
+        analytics?.trackEvent?.('linkedin_profile_synced', {
+          userId: user?.id,
+          hasExperience: !!(linkedIn.state.experience?.length),
+          hasEducation: !!(linkedIn.state.education?.length),
+        });
+      }
     } catch (error) {
       console.error('LinkedIn sync error:', error);
     }
@@ -967,51 +1495,191 @@ export default function ResumeBuilder() {
   const handleLinkedInImport = useCallback(() => {
     if (!linkedInData || !selectedResume) return;
 
-    // Import LinkedIn data utilities
-    const { linkedInToResumeData, mergeLinkedInData } = require('@/utils/linkedin-data-extractor');
-    
-    // Convert LinkedIn data to resume format
-    const linkedInResumeData = linkedInToResumeData(linkedInData);
-    
-    // Filter selected data
-    const filteredData = {
-      personalInfo: linkedInSelectedData.personalInfo ? linkedInResumeData.personalInfo : selectedResume.personalInfo,
-      workExperience: linkedInSelectedData.workExperience 
-        ? [...(selectedResume.workExperience || []), ...linkedInResumeData.workExperience]
-        : selectedResume.workExperience,
-      education: linkedInSelectedData.education
-        ? [...(selectedResume.education || []), ...linkedInResumeData.education]
-        : selectedResume.education,
-      skills: linkedInSelectedData.skills
-        ? [...(selectedResume.skills || []), ...linkedInResumeData.skills]
-        : selectedResume.skills,
-      certifications: linkedInSelectedData.certifications
-        ? [...(selectedResume.certifications || []), ...linkedInResumeData.certifications]
-        : selectedResume.certifications,
-    };
+    try {
+      // Convert LinkedIn data to resume format with proper typing
+      const linkedInResumeData = linkedInToResumeData({
+        id: linkedInData.profile?.id || 'linkedin-user',
+        firstName: linkedInData.profile?.firstName || '',
+        lastName: linkedInData.profile?.lastName || '',
+        email: linkedInData.profile?.email,
+        profilePicture: linkedInData.profile?.profileImageUrl,
+        headline: linkedInData.profile?.headline,
+        summary: linkedInData.profile?.summary,
+        location: linkedInData.profile?.location,
+        experience: (linkedInData.experience || []).map((exp: any) => ({
+          id: exp.id || '',
+          title: exp.title || '',
+          company: exp.company || '',
+          location: exp.location,
+          description: exp.description,
+          startDate: exp.startDate,
+          endDate: exp.endDate,
+          isCurrent: !exp.endDate,
+        })),
+        education: (linkedInData.education || []).map((edu: any) => ({
+          id: edu.id || '',
+          school: edu.schoolName || '',
+          degree: edu.degreeType,
+          fieldOfStudy: edu.fieldOfStudy,
+          startDate: edu.startDate,
+          endDate: edu.endDate,
+          description: edu.description,
+        })),
+        skills: (linkedInData.skills || []).map((skill: any) => skill.name || ''),
+        languages: [],
+        certifications: (linkedInData.certifications || []).map((cert: any) => ({
+          id: cert.id || `cert-${Date.now()}-${Math.random()}`,
+          name: cert.name || cert.title || '',
+          issuingOrganization: cert.issuer || cert.issuingOrganization || cert.authority || '',
+          issueDate: cert.issueDate || cert.startDate || '',
+          expirationDate: cert.expiryDate || cert.expirationDate || cert.endDate || '',
+          credentialId: cert.credentialId || cert.licenseNumber || '',
+          credentialUrl: cert.credentialUrl || cert.url || '',
+        })),
+        lastSynced: Date.now(),
+      });
 
-    // Merge with existing resume
-    const mergedResume = {
-      ...selectedResume,
-      ...filteredData,
-    };
+      // Merge with existing resume - update personalInfo if selected
+      const mergedPersonalInfo = linkedInSelectedData.personalInfo
+        ? {
+            ...selectedResume.personalInfo,
+            fullName: `${linkedInResumeData.personalInfo.firstName} ${linkedInResumeData.personalInfo.lastName}`.trim(),
+            email: linkedInResumeData.personalInfo.email || selectedResume.personalInfo.email,
+            location: linkedInResumeData.personalInfo.location || selectedResume.personalInfo.location,
+            summary: linkedInResumeData.personalInfo.summary || selectedResume.personalInfo.summary,
+            linkedin: linkedInData.profile?.profileUrl || selectedResume.personalInfo.linkedin,
+            profilePhoto: linkedInResumeData.personalInfo.profilePicture || selectedResume.personalInfo.profilePhoto,
+          }
+        : selectedResume.personalInfo;
 
-    setSelectedResume(mergedResume);
-    setLinkedInDialog(false);
-    setLinkedInData(null);
-    
-    analytics.trackEvent('linkedin_data_imported', {
-      userId: user?.id,
-      importedSections: Object.keys(linkedInSelectedData).filter(k => linkedInSelectedData[k as keyof typeof linkedInSelectedData]),
-    });
+      // Merge experiences (append new if selected)
+      const mergedExperiences = linkedInSelectedData.workExperience
+        ? [
+            ...(selectedResume.experiences || []),
+            ...(linkedInResumeData.workExperience || []).map((exp: any, index: number) => ({
+              id: `linkedin-exp-${Date.now()}-${Math.random()}`,
+              resumeId: selectedResume.id,
+              jobTitle: exp.position || exp.title || exp.jobTitle || 'Stilling',
+              company: exp.company || 'Ukjent',
+              location: exp.location,
+              startDate: exp.startDate,
+              endDate: exp.endDate,
+              isCurrent: Boolean(exp.isCurrent ?? !exp.endDate),
+              description: exp.description,
+              achievements: [],
+              skills: [],
+              projectId: undefined,
+              autoGenerated: true,
+              displayOrder: (selectedResume.experiences?.length || 0) + index + 1,
+              isVisible: true,
+            })),
+          ]
+        : selectedResume.experiences;
 
-    // Track feature usage
-    features.trackFeatureUsage('linkedin-auto-sync','data_imported');
+      // Merge education (append new if selected)
+      const mergedEducation = linkedInSelectedData.education
+        ? [
+            ...(selectedResume.education || []),
+            ...(linkedInResumeData.education || []).map((edu: any, index: number) => ({
+              id: `linkedin-edu-${Date.now()}-${Math.random()}`,
+              resumeId: selectedResume.id,
+              degree: edu.degree || 'Ukjent grad',
+              fieldOfStudy: edu.fieldOfStudy,
+              institution: edu.school || edu.institution || 'Ukjent institusjon',
+              location: edu.location,
+              startDate: edu.startDate,
+              endDate: edu.endDate,
+              isCurrent: Boolean(!edu.endDate),
+              grade: edu.grade,
+              description: edu.description,
+              achievements: [],
+              displayOrder: (selectedResume.education?.length || 0) + index + 1,
+              isVisible: true,
+            })),
+          ]
+        : selectedResume.education;
+
+      // Merge skills (append new if selected, avoid duplicates)
+      const mergedSkills = [...(selectedResume.skills || [])];
+      if (linkedInSelectedData.skills) {
+        const existingSkillNames = new Set(
+          (selectedResume.skills || []).map((s: any) => s.name?.toLowerCase())
+        );
+        const newSkills = (linkedInResumeData.skills || [])
+          .filter((skill: string) => !existingSkillNames.has(skill.toLowerCase()))
+          .map((skill: string, index: number) => ({
+            id: `linkedin-skill-${Date.now()}-${Math.random()}`,
+            resumeId: selectedResume.id,
+            name: skill,
+            category: undefined,
+            proficiencyLevel: 3,
+            yearsOfExperience: undefined,
+            isEndorsed: false,
+            displayOrder: (selectedResume.skills?.length || 0) + index + 1,
+            isVisible: true,
+          }));
+        mergedSkills.push(...newSkills);
+      }
+
+      // Merge certifications (append new if selected)
+      const mergedCertifications = linkedInSelectedData.certifications
+        ? [
+            ...(selectedResume.certifications || []),
+            ...(linkedInResumeData.certifications || []).map((cert: any, index: number) => ({
+              id: `linkedin-cert-${Date.now()}-${Math.random()}`,
+              resumeId: selectedResume.id,
+              name: cert.name,
+              issuer: cert.issuer,
+              issueDate: cert.issueDate,
+              expiryDate: cert.expirationDate || cert.expiryDate,
+              credentialId: cert.credentialId,
+              credentialUrl: cert.credentialUrl,
+              description: cert.description,
+              displayOrder: (selectedResume.certifications?.length || 0) + index + 1,
+              isVisible: true,
+            })),
+          ]
+        : selectedResume.certifications;
+
+      // Create merged resume
+      const mergedResume: Resume = {
+        ...selectedResume,
+        personalInfo: mergedPersonalInfo,
+        experiences: mergedExperiences,
+        education: mergedEducation,
+        skills: mergedSkills,
+        certifications: mergedCertifications,
+        updatedAt: new Date().toISOString(),
+      };
+
+      setSelectedResume(mergedResume);
+      setLinkedInDialog(false);
+      setLinkedInData(null);
+
+      analytics?.trackEvent?.('linkedin_data_imported', {
+        userId: user?.id,
+        importedSections: Object.keys(linkedInSelectedData).filter(
+          (k) => linkedInSelectedData[k as keyof typeof linkedInSelectedData]
+        ),
+      });
+
+      // Track feature usage
+      features?.trackFeatureUsage?.('linkedin-auto-sync', 'data_imported');
+    } catch (error) {
+      console.error('Error importing LinkedIn data:', error);
+      // Optionally show error notification here
+    }
   }, [linkedInData, selectedResume, linkedInSelectedData, analytics, user, features]);
 
   const handleLinkedInPreview = useCallback(() => {
+    if (!linkedInData) return;
     setLinkedInImportMode('preview');
-  }, []);
+    // Track preview action
+    analytics?.trackEvent?.('linkedin_preview_clicked', {
+      userId: user?.id,
+      dataType: 'import_preview'
+    });
+  }, [linkedInData, analytics, user]);
 
   const handleLinkedInBackToSelect = useCallback(() => {
     setLinkedInImportMode('select');
@@ -1021,10 +1689,26 @@ export default function ResumeBuilder() {
   const { data: resumes = [], isLoading: resumesLoading } = useQuery({
     queryKey: ['resumes', user?.id],
     queryFn: async () => {
-      const response = await apiRequest('/api/resumes', {
-        headers: { 'x-user-id': user?.id || ',' },
-      });
-      return response as Resume[];
+      try {
+        const response = await apiRequest('/api/resumes', {
+          headers: { 'x-user-id': user?.id || ',' },
+        });
+        
+        // Handle different response formats
+        if (Array.isArray(response)) {
+          return response as Resume[];
+        } else if (response?.data && Array.isArray(response.data)) {
+          return response.data as Resume[];
+        } else if (response?.resumes && Array.isArray(response.resumes)) {
+          return response.resumes as Resume[];
+        } else {
+          console.warn('Unexpected resumes response format:', response);
+          return [];
+        }
+      } catch (error) {
+        console.error('Error fetching resumes:', error);
+        return [];
+      }
     },
     enabled: !!user?.id,
   });
@@ -1034,9 +1718,33 @@ export default function ResumeBuilder() {
     queryKey: ['resume-templates'],
     queryFn: async () => {
       const response = await apiRequest('/api/resume-templates');
+      // Track template fetch
+      analytics?.trackEvent?.('resume_templates_loaded', {
+        userId: user?.id,
+        templateCount: Array.isArray(response) ? response.length : 0
+      });
       return response as ResumeTemplate[];
     },
   });
+
+  const filteredResumes = useMemo(() => {
+    const list = Array.isArray(resumes) ? resumes : [];
+    const normalizedSearch = resumeSearch.trim().toLowerCase();
+    const filtered = list.filter((resume) => {
+      const matchesSearch = !normalizedSearch
+        || resume.title.toLowerCase().includes(normalizedSearch)
+        || resume.personalInfo?.professionalTitle?.toLowerCase().includes(normalizedSearch)
+        || resume.personalInfo?.fullName?.toLowerCase().includes(normalizedSearch);
+      const matchesStatus = resumeStatusFilter === 'all' || resume.status === resumeStatusFilter;
+      return matchesSearch && matchesStatus;
+    });
+
+    return filtered.sort((a, b) => {
+      if (resumeSort === 'title') return a.title.localeCompare(b.title);
+      if (resumeSort === 'created') return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+    });
+  }, [resumes, resumeSearch, resumeStatusFilter, resumeSort]);
 
   // Create resume mutation
   const createResumeMutation = useMutation({
@@ -1086,6 +1794,53 @@ export default function ResumeBuilder() {
     },
   });
 
+  // Job Application Mutations - Database Persistence
+  const createJobApplicationMutation = useMutation({
+    mutationFn: async (data: Partial<JobApplication>) => {
+      const response = await apiRequest('/api/job-applications', {
+        method: 'POST',
+        headers: {
+          'x-user-id': user?.id || '',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data),
+      });
+      return response;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['job-applications'] });
+    },
+  });
+
+  const updateJobApplicationMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: Partial<JobApplication> }) => {
+      const response = await apiRequest(`/api/job-applications/${id}`, {
+        method: 'PUT',
+        headers: {
+          'x-user-id': user?.id || '',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data),
+      });
+      return response;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['job-applications'] });
+    },
+  });
+
+  const deleteJobApplicationMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest(`/api/job-applications/${id}`, {
+        method: 'DELETE',
+        headers: { 'x-user-id': user?.id || '' },
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['job-applications'] });
+    },
+  });
+
   // Import projects mutation
   const importProjectsMutation = useMutation({
     mutationFn: async (resumeId: string) => {
@@ -1102,6 +1857,109 @@ export default function ResumeBuilder() {
       setShowProjectImportDialog(false);
     },
   });
+
+  useEffect(() => {
+    if (!user?.id || resumesLoading || initializationRef.current) return;
+
+    initializationRef.current = true;
+
+    const initializeResume = async () => {
+      setInitializingResume(true);
+      setInitializationStep(1);
+      setInitializationMessage('Samler brukerinfo...');
+
+      try {
+        const userProfile = await apiRequest(`/api/users/${user.id}`);
+
+        let resumeToUse: Resume | null = selectedResume;
+
+        if (!resumes.length) {
+          setInitializationStep(2);
+          setInitializationMessage('Oppretter CV...');
+          const createdResume = await createResumeMutation.mutateAsync({
+            title: 'Ny CV',
+            personalInfo: {
+              fullName:
+                [userProfile?.firstName, userProfile?.lastName].filter(Boolean).join(' ') ||
+                userProfile?.name ||
+                user?.email ||
+                'Ditt navn',
+              email: userProfile?.email || user?.email || '',
+              phone: userProfile?.phone || '',
+              location: userProfile?.address || '',
+              linkedin: userProfile?.linkedin || '',
+              website: userProfile?.website || '',
+              professionalTitle: userProfile?.title || '',
+              summary: userProfile?.bio || '',
+            },
+            templateId: 'modern-ats',
+            status: 'draft',
+            language: 'no',
+          });
+
+          resumeToUse = createdResume || null;
+          if (resumeToUse) {
+            setSelectedResume(resumeToUse);
+          }
+        } else if (!selectedResume) {
+          resumeToUse = resumes[0];
+          setSelectedResume(resumes[0]);
+        }
+
+        const resumeId = resumeToUse?.id || selectedResume?.id;
+
+        if (resumeId) {
+          setInitializationStep(3);
+          setInitializationMessage('Henter prosjekter...');
+          await importProjectsMutation.mutateAsync(resumeId);
+
+          if (userProfile) {
+            setInitializationStep(4);
+            setInitializationMessage('Oppdaterer profil...');
+            await updateResumeMutation.mutateAsync({
+              id: resumeId,
+              data: {
+                personalInfo: {
+                  ...(resumeToUse?.personalInfo || {}),
+                  fullName:
+                    [userProfile?.firstName, userProfile?.lastName].filter(Boolean).join(' ') ||
+                    userProfile?.name ||
+                    resumeToUse?.personalInfo?.fullName ||
+                    user?.email ||
+                    'Ditt navn',
+                  email: userProfile?.email || resumeToUse?.personalInfo?.email || user?.email || '',
+                  phone: userProfile?.phone || resumeToUse?.personalInfo?.phone || '',
+                  location: userProfile?.address || resumeToUse?.personalInfo?.location || '',
+                  linkedin: userProfile?.linkedin || resumeToUse?.personalInfo?.linkedin || '',
+                  website: userProfile?.website || resumeToUse?.personalInfo?.website || '',
+                  professionalTitle:
+                    userProfile?.title || resumeToUse?.personalInfo?.professionalTitle || '',
+                  summary: userProfile?.bio || resumeToUse?.personalInfo?.summary || '',
+                },
+              },
+            });
+          }
+        }
+      } catch (error) {
+        console.error('Resume initialization failed:', error);
+      } finally {
+        setInitializationStep(5);
+        setInitializationMessage('');
+        setInitializingResume(false);
+      }
+    };
+
+    initializeResume();
+  }, [
+    user?.id,
+    resumes,
+    resumesLoading,
+    selectedResume,
+    createResumeMutation,
+    updateResumeMutation,
+    importProjectsMutation,
+    user?.email,
+  ]);
 
   // AI analysis mutation
   const aiAnalyzeMutation = useMutation({
@@ -1152,6 +2010,191 @@ export default function ResumeBuilder() {
     },
   });
 
+  const downloadBlob = useCallback((blob: Blob, filename: string) => {
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+  }, []);
+
+  const buildPlainTextResume = useCallback((resume: Resume, portfolios: PortfolioItem[]) => {
+    const lines: string[] = [];
+    lines.push(resume.personalInfo?.fullName || '');
+    if (resume.personalInfo?.professionalTitle) lines.push(resume.personalInfo.professionalTitle);
+    if (resume.personalInfo?.email) lines.push(`E-post: ${resume.personalInfo.email}`);
+    if (resume.personalInfo?.phone) lines.push(`Telefon: ${resume.personalInfo.phone}`);
+    if (resume.personalInfo?.location) lines.push(`Sted: ${resume.personalInfo.location}`);
+    lines.push('');
+    if (resume.personalInfo?.summary) {
+      lines.push('Sammendrag');
+      lines.push(resume.personalInfo.summary);
+      lines.push('');
+    }
+    if (resume.experiences?.length) {
+      lines.push('Arbeidserfaring');
+      resume.experiences.forEach((exp) => {
+        lines.push(`${exp.jobTitle} - ${exp.company}`);
+        lines.push(`${exp.startDate} - ${exp.isCurrent ? 'Nå' : exp.endDate || ''}`);
+        if (exp.description) lines.push(exp.description);
+        if (exp.achievements?.length) lines.push(`Prestasjoner: ${exp.achievements.join('; ')}`);
+        lines.push('');
+      });
+    }
+    if (resume.education?.length) {
+      lines.push('Utdanning');
+      resume.education.forEach((edu) => {
+        lines.push(`${edu.degree} - ${edu.institution}`);
+        lines.push(`${edu.startDate} - ${edu.isCurrent ? 'Nå' : edu.endDate || ''}`);
+        if (edu.fieldOfStudy) lines.push(`Studieretning: ${edu.fieldOfStudy}`);
+        if (edu.description) lines.push(edu.description);
+        lines.push('');
+      });
+    }
+    if (resume.skills?.length) {
+      lines.push('Ferdigheter');
+      lines.push(resume.skills.map((skill) => skill.name).join(', '));
+      lines.push('');
+    }
+    if (resume.certifications?.length) {
+      lines.push('Sertifiseringer');
+      resume.certifications.forEach((cert) => {
+        lines.push(`${cert.name} - ${cert.issuer} (${cert.issueDate})`);
+      });
+      lines.push('');
+    }
+    if (portfolios.length) {
+      lines.push('Portefølje');
+      portfolios.forEach((item) => {
+        lines.push(`${item.title} (${item.category})`);
+        lines.push(item.description);
+        lines.push('');
+      });
+    }
+    return lines.join('\n');
+  }, []);
+
+  const buildHtmlResume = useCallback((resume: Resume, portfolios: PortfolioItem[]) => {
+    const skills = resume.skills?.map((skill) => `<li>${skill.name}</li>`).join('') || '';
+    const experiences = resume.experiences?.map((exp) => `
+      <div class="section-item">
+        <h3>${exp.jobTitle} - ${exp.company}</h3>
+        <p>${exp.startDate} - ${exp.isCurrent ? 'Nå' : exp.endDate || ''}</p>
+        ${exp.description ? `<p>${exp.description}</p>` : ''}
+      </div>
+    `).join('') || '';
+    const education = resume.education?.map((edu) => `
+      <div class="section-item">
+        <h3>${edu.degree} - ${edu.institution}</h3>
+        <p>${edu.startDate} - ${edu.isCurrent ? 'Nå' : edu.endDate || ''}</p>
+        ${edu.fieldOfStudy ? `<p>${edu.fieldOfStudy}</p>` : ''}
+      </div>
+    `).join('') || '';
+    const certifications = resume.certifications?.map((cert) => `
+      <div class="section-item">
+        <h3>${cert.name}</h3>
+        <p>${cert.issuer} • ${cert.issueDate}</p>
+      </div>
+    `).join('') || '';
+    const portfolio = portfolios.map((item) => `
+      <div class="section-item">
+        <h3>${item.title}</h3>
+        <p>${item.description}</p>
+      </div>
+    `).join('');
+
+    return `<!doctype html>
+      <html lang="no">
+      <head>
+        <meta charset="utf-8" />
+        <title>${resume.title}</title>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.5; color: #0f172a; }
+          h1 { font-size: 28px; margin-bottom: 4px; }
+          h2 { font-size: 18px; margin-top: 24px; }
+          .section-item { margin-bottom: 12px; }
+        </style>
+      </head>
+      <body>
+        <h1>${resume.personalInfo?.fullName || ''}</h1>
+        <p>${resume.personalInfo?.professionalTitle || ''}</p>
+        <p>${resume.personalInfo?.email || ''} ${resume.personalInfo?.phone ? `• ${resume.personalInfo.phone}` : ''}</p>
+        ${resume.personalInfo?.summary ? `<h2>Sammendrag</h2><p>${resume.personalInfo.summary}</p>` : ''}
+        ${experiences ? `<h2>Arbeidserfaring</h2>${experiences}` : ''}
+        ${education ? `<h2>Utdanning</h2>${education}` : ''}
+        ${skills ? `<h2>Ferdigheter</h2><ul>${skills}</ul>` : ''}
+        ${certifications ? `<h2>Sertifiseringer</h2>${certifications}` : ''}
+        ${portfolio ? `<h2>Portefølje</h2>${portfolio}` : ''}
+      </body>
+      </html>`;
+  }, []);
+
+  const buildDocxResume = useCallback(async (resume: Resume, portfolios: PortfolioItem[]) => {
+    const doc = new Document({
+      sections: [
+        {
+          children: [
+            new Paragraph({
+              text: resume.personalInfo?.fullName || resume.title,
+              heading: HeadingLevel.HEADING_1,
+            }),
+            resume.personalInfo?.professionalTitle
+              ? new Paragraph({ text: resume.personalInfo.professionalTitle })
+              : new Paragraph({ text: '' }),
+            new Paragraph({ text: resume.personalInfo?.email || '' }),
+            ...(resume.personalInfo?.summary
+              ? [
+                  new Paragraph({ text: 'Sammendrag', heading: HeadingLevel.HEADING_2 }),
+                  new Paragraph({ text: resume.personalInfo.summary }),
+                ]
+              : []),
+            ...(resume.experiences?.length
+              ? [new Paragraph({ text: 'Arbeidserfaring', heading: HeadingLevel.HEADING_2 })]
+              : []),
+            ...(resume.experiences || []).flatMap((exp) => [
+              new Paragraph({
+                children: [new TextRun({ text: `${exp.jobTitle} - ${exp.company}`, bold: true })],
+              }),
+              new Paragraph({ text: `${exp.startDate} - ${exp.isCurrent ? 'Nå' : exp.endDate || ''}` }),
+              ...(exp.description ? [new Paragraph({ text: exp.description })] : []),
+            ]),
+            ...(resume.education?.length
+              ? [new Paragraph({ text: 'Utdanning', heading: HeadingLevel.HEADING_2 })]
+              : []),
+            ...(resume.education || []).flatMap((edu) => [
+              new Paragraph({
+                children: [new TextRun({ text: `${edu.degree} - ${edu.institution}`, bold: true })],
+              }),
+              new Paragraph({ text: `${edu.startDate} - ${edu.isCurrent ? 'Nå' : edu.endDate || ''}` }),
+            ]),
+            ...(resume.skills?.length
+              ? [
+                  new Paragraph({ text: 'Ferdigheter', heading: HeadingLevel.HEADING_2 }),
+                  new Paragraph({ text: resume.skills.map((skill) => skill.name).join(', ') }),
+                ]
+              : []),
+            ...(resume.certifications?.length
+              ? [new Paragraph({ text: 'Sertifiseringer', heading: HeadingLevel.HEADING_2 })]
+              : []),
+            ...(resume.certifications || []).map(
+              (cert) => new Paragraph({ text: `${cert.name} - ${cert.issuer} (${cert.issueDate})` })
+            ),
+            ...(portfolios.length
+              ? [new Paragraph({ text: 'Portefølje', heading: HeadingLevel.HEADING_2 })]
+              : []),
+            ...portfolios.map((item) => new Paragraph({ text: `${item.title}: ${item.description}` })),
+          ],
+        },
+      ],
+    });
+
+    const blob = await Packer.toBlob(doc);
+    return blob;
+  }, []);
+
   // ============================================================================
   // HANDLERS
   // ============================================================================
@@ -1183,11 +2226,841 @@ export default function ResumeBuilder() {
     }
   }, [selectedResume, updateResumeMutation]);
 
-  const handleDeleteResume = useCallback((id: string) => {
-    if (window.confirm('Er du sikker på at du vil slette denne CV-en?')) {
-      deleteResumeMutation.mutate(id);
+  const handleApplyAiResult = useCallback(() => {
+    if (!aiOutputText || !selectedResume) return;
+
+    if (aiTargetField === 'summary') {
+      const updated = {
+        personalInfo: {
+          ...selectedResume.personalInfo,
+          summary: aiOutputText,
+        },
+      };
+      setSelectedResume({ ...selectedResume, ...updated });
+      handleUpdateResume(updated);
     }
-  }, [deleteResumeMutation]);
+
+    if (aiTargetField === 'job-application-cover-letter') {
+      setJobFormData((prev) => ({ ...prev, coverLetter: aiOutputText }));
+    }
+
+    analytics.trackEvent('ai_result_applied', {
+      userId: user?.id,
+      toolType: aiToolType,
+      targetField: aiTargetField,
+    });
+
+    setAiToolDialog(false);
+  }, [aiOutputText, selectedResume, aiTargetField, aiToolType, analytics, user, handleUpdateResume]);
+
+  const handleOpenSkillDialog = useCallback(() => {
+    setSkillFormData({ name: '', category: '', proficiencyLevel: 3 });
+    setShowSkillDialog(true);
+  }, []);
+
+  const handleCloseSkillDialog = useCallback(() => {
+    setShowSkillDialog(false);
+  }, []);
+
+  const handleAddSkill = useCallback(() => {
+    if (!selectedResume) return;
+
+    const name = skillFormData.name.trim();
+    if (!name) {
+      setSnackbar({ open: true, message: 'Skriv inn et ferdighetsnavn.', severity: 'warning' });
+      return;
+    }
+
+    const newSkill: ResumeSkill = {
+      id: `skill-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      resumeId: selectedResume.id,
+      name,
+      category: skillFormData.category || undefined,
+      proficiencyLevel: skillFormData.proficiencyLevel,
+      isEndorsed: false,
+      displayOrder: (selectedResume.skills?.length || 0) + 1,
+      isVisible: true,
+    };
+
+    const updatedSkills = [...(selectedResume.skills || []), newSkill];
+    setSelectedResume({ ...selectedResume, skills: updatedSkills });
+    handleUpdateResume({ skills: updatedSkills });
+    setShowSkillDialog(false);
+  }, [selectedResume, skillFormData, handleUpdateResume]);
+
+  const handleDeleteSkill = useCallback((skillId: string) => {
+    if (!selectedResume) return;
+    const updatedSkills = (selectedResume.skills || []).filter((skill) => skill.id !== skillId);
+    setSelectedResume({ ...selectedResume, skills: updatedSkills });
+    handleUpdateResume({ skills: updatedSkills });
+  }, [selectedResume, handleUpdateResume]);
+
+  const handleOpenEducationDialog = useCallback(() => {
+    setEditingEducationItem(null);
+    setEducationFormData({
+      degree: '',
+      fieldOfStudy: '',
+      institution: '',
+      location: '',
+      startDate: '',
+      endDate: '',
+      isCurrent: false,
+      grade: '',
+      description: '',
+      achievements: [],
+      displayOrder: (selectedResume?.education?.length || 0) + 1,
+      isVisible: true,
+    });
+    setShowEducationDialog(true);
+  }, [selectedResume]);
+
+  const handleEditEducationItem = useCallback((item: ResumeEducation) => {
+    setEditingEducationItem(item);
+    setEducationFormData(item);
+    setShowEducationDialog(true);
+  }, []);
+
+  const handleSaveEducation = useCallback(() => {
+    if (!selectedResume) return;
+    const newItem: ResumeEducation = {
+      id: editingEducationItem?.id || `edu-${Date.now()}`,
+      resumeId: selectedResume.id,
+      degree: educationFormData.degree || '',
+      fieldOfStudy: educationFormData.fieldOfStudy || undefined,
+      institution: educationFormData.institution || '',
+      location: educationFormData.location || undefined,
+      startDate: educationFormData.startDate || '',
+      endDate: educationFormData.isCurrent ? undefined : educationFormData.endDate || undefined,
+      isCurrent: Boolean(educationFormData.isCurrent),
+      grade: educationFormData.grade || undefined,
+      description: educationFormData.description || undefined,
+      achievements: educationFormData.achievements || [],
+      displayOrder: educationFormData.displayOrder || (selectedResume.education?.length || 0) + 1,
+      isVisible: educationFormData.isVisible ?? true,
+    };
+
+    const updatedEducation = editingEducationItem
+      ? (selectedResume.education || []).map((edu) => (edu.id === editingEducationItem.id ? newItem : edu))
+      : [...(selectedResume.education || []), newItem];
+
+    setSelectedResume({ ...selectedResume, education: updatedEducation });
+    handleUpdateResume({ education: updatedEducation });
+    setShowEducationDialog(false);
+    setEditingEducationItem(null);
+  }, [selectedResume, educationFormData, editingEducationItem, handleUpdateResume]);
+
+  const handleDeleteEducation = useCallback((educationId: string) => {
+    if (!selectedResume) return;
+    const updatedEducation = (selectedResume.education || []).filter((edu) => edu.id !== educationId);
+    setSelectedResume({ ...selectedResume, education: updatedEducation });
+    handleUpdateResume({ education: updatedEducation });
+  }, [selectedResume, handleUpdateResume]);
+
+  const handleVitnemalsportalenDataImport = useCallback((inputData: string) => {
+    if (!selectedResume) {
+      setSnackbar({ 
+        open: true, 
+        message: 'Vennligst opprett eller velg en CV først', 
+        severity: 'warning' 
+      });
+      return;
+    }
+
+    try {
+      let educationItems: any[] = [];
+
+      // Check if input is XML or JSON
+      const trimmedData = inputData.trim();
+      if (trimmedData.startsWith('<') || trimmedData.includes('<?xml')) {
+        // Parse XML from vitnemalsportalen (EMREX format)
+        const parser = new DOMParser();
+        const xmlDoc = parser.parseFromString(inputData, 'text/xml');
+        
+        // Check for parsing errors
+        const parserError = xmlDoc.querySelector('parsererror');
+        if (parserError) {
+          throw new Error('Ugyldig XML-format');
+        }
+
+        // EMREX uses ELMO (European Learner Mobility) format
+        // Try to find learningOpportunity, course, or education elements
+        const educationElements = xmlDoc.querySelectorAll(
+          'learningOpportunity, learningOpportunitySpecification, course, ' +
+          'utdanning, education, vitnemal, diploma, qualification'
+        );
+        
+        educationItems = Array.from(educationElements).map(elem => {
+          // EMREX/ELMO format uses title, institution, etc.
+          const title = elem.querySelector('title, grad, degree, type, name')?.textContent?.trim() || '';
+          const issuer = elem.querySelector('issuer, institution, institusjon, skole, school, provider')?.textContent?.trim() || '';
+          const field = elem.querySelector('subject, studieretning, fieldOfStudy, fagområde, field')?.textContent?.trim() || '';
+          
+          // Dates in EMREX can be in different formats
+          const start = elem.querySelector('startDate, startdato, start, fra, from, issued')?.textContent?.trim() || '';
+          const end = elem.querySelector('endDate, sluttdato, end, til, to, completed')?.textContent?.trim() || '';
+          
+          // Grades in EMREX
+          const gradeElement = elem.querySelector('grade, karakter, snitt, average, result, resultLabel');
+          const grade = gradeElement?.textContent?.trim() || '';
+          
+          // Location
+          const location = elem.querySelector('location, sted, place, city, country')?.textContent?.trim() || '';
+          
+          // Description or additional info
+          const description = elem.querySelector('description, beskrivelse, learningOutcome, comment')?.textContent?.trim() || '';
+          
+          return {
+            degree: title,
+            institution: issuer,
+            fieldOfStudy: field,
+            startDate: start,
+            endDate: end,
+            grade: grade,
+            location: location,
+            description: description,
+          };
+        });
+
+        if (educationItems.length === 0) {
+          throw new Error('Ingen utdanningsdata funnet i XML. Vennligst sjekk at du har limt inn EMREX-data eller vitnemålsportalen XML-eksport.');
+        }
+      } else {
+        // Parse JSON
+        const data = JSON.parse(inputData);
+        educationItems = Array.isArray(data) ? data : [data];
+      }
+      
+      const newEducationItems: ResumeEducation[] = educationItems.map((item: any, index: number) => ({
+        id: `edu_${Date.now()}_${index}`,
+        resumeId: selectedResume.id || '',
+        degree: item.degree || item.grad || item.utdanning || '',
+        institution: item.institution || item.institusjon || item.skole || '',
+        fieldOfStudy: item.fieldOfStudy || item.studieretning || item.fagområde || '',
+        startDate: item.startDate || item.startdato || '',
+        endDate: item.endDate || item.sluttdato || '',
+        grade: item.grade || item.karakter || item.snitt || '',
+        location: item.location || item.sted || '',
+        description: item.description || item.beskrivelse || '',
+        achievements: [],
+        displayOrder: (selectedResume.education?.length || 0) + index + 1,
+        isVisible: true,
+        isCurrent: false,
+      }));
+
+      handleUpdateResume({
+        ...selectedResume,
+        education: [...(selectedResume.education || []), ...newEducationItems],
+      });
+
+      setSnackbar({ 
+        open: true, 
+        message: `Importert ${educationItems.length} utdanning(er) fra vitnemalsportalen.no!`, 
+        severity: 'success' 
+      });
+      setShowVitnemalsportalenDialog(false);
+      setVitnemalsportalenInstructions(true);
+    } catch (error) {
+      setSnackbar({ 
+        open: true, 
+        message: `Kunne ikke parse data: ${error instanceof Error ? error.message : 'Vennligst sjekk formatet og prøv igjen.'}`, 
+        severity: 'error' 
+      });
+    }
+  }, [selectedResume, handleUpdateResume]);
+
+  const handleOpenCertificationDialog = useCallback(() => {
+    setEditingCertificationItem(null);
+    setCertificationFormData({
+      name: '',
+      issuer: '',
+      issueDate: '',
+      expiryDate: '',
+      credentialId: '',
+      credentialUrl: '',
+      description: '',
+      displayOrder: (selectedResume?.certifications?.length || 0) + 1,
+      isVisible: true,
+    });
+    setShowCertificationDialog(true);
+  }, [selectedResume]);
+
+  const handleEditCertificationItem = useCallback((item: ResumeCertification) => {
+    setEditingCertificationItem(item);
+    setCertificationFormData(item);
+    setShowCertificationDialog(true);
+  }, []);
+
+  const handleSaveCertification = useCallback(() => {
+    if (!selectedResume) return;
+    const newItem: ResumeCertification = {
+      id: editingCertificationItem?.id || `cert-${Date.now()}`,
+      resumeId: selectedResume.id,
+      name: certificationFormData.name || '',
+      issuer: certificationFormData.issuer || '',
+      issueDate: certificationFormData.issueDate || '',
+      expiryDate: certificationFormData.expiryDate || undefined,
+      credentialId: certificationFormData.credentialId || undefined,
+      credentialUrl: certificationFormData.credentialUrl || undefined,
+      description: certificationFormData.description || undefined,
+      displayOrder: certificationFormData.displayOrder || (selectedResume.certifications?.length || 0) + 1,
+      isVisible: certificationFormData.isVisible ?? true,
+    };
+
+    const updatedCertifications = editingCertificationItem
+      ? (selectedResume.certifications || []).map((cert) => (cert.id === editingCertificationItem.id ? newItem : cert))
+      : [...(selectedResume.certifications || []), newItem];
+
+    setSelectedResume({ ...selectedResume, certifications: updatedCertifications });
+    handleUpdateResume({ certifications: updatedCertifications });
+    setShowCertificationDialog(false);
+    setEditingCertificationItem(null);
+  }, [selectedResume, certificationFormData, editingCertificationItem, handleUpdateResume]);
+
+  const handleDeleteCertification = useCallback((certificationId: string) => {
+    if (!selectedResume) return;
+    const updatedCertifications = (selectedResume.certifications || []).filter((cert) => cert.id !== certificationId);
+    setSelectedResume({ ...selectedResume, certifications: updatedCertifications });
+    handleUpdateResume({ certifications: updatedCertifications });
+  }, [selectedResume, handleUpdateResume]);
+
+  const handleOpenJobDialog = useCallback(() => {
+    setEditingJobApplication(null);
+    setJobFormData({
+      jobTitle: '',
+      company: '',
+      location: '',
+      jobUrl: '',
+      source: '',
+      status: 'saved',
+      appliedDate: '',
+      interviewDate: '',
+      notes: '',
+      coverLetter: '',
+      priority: 'medium',
+      tags: [],
+      resumeId: selectedResume?.id,
+      userId: user?.id || '',
+    });
+    setShowJobDialog(true);
+  }, [selectedResume, user?.id]);
+
+  const handleEditJobApplication = useCallback((job: JobApplication) => {
+    setEditingJobApplication(job);
+    setJobFormData(job);
+    setShowJobDialog(true);
+  }, []);
+
+  const handleSaveJobApplication = useCallback(() => {
+    if (!user?.id) return;
+    const newItem: JobApplication = {
+      id: editingJobApplication?.id || `job-${Date.now()}`,
+      userId: user.id,
+      resumeId: jobFormData.resumeId,
+      jobTitle: jobFormData.jobTitle || '',
+      company: jobFormData.company || '',
+      location: jobFormData.location || undefined,
+      jobUrl: jobFormData.jobUrl || undefined,
+      source: jobFormData.source || undefined,
+      status: jobFormData.status || 'saved',
+      appliedDate: jobFormData.appliedDate || undefined,
+      deadline: jobFormData.deadline || undefined,
+      interviewDate: jobFormData.interviewDate || undefined,
+      interviewPreparation: jobFormData.interviewPreparation || undefined,
+      notes: jobFormData.notes || undefined,
+      coverLetter: jobFormData.coverLetter || undefined,
+      priority: jobFormData.priority || 'medium',
+      tags: jobFormData.tags || [],
+    };
+
+    const updatedJobs = editingJobApplication
+      ? jobApplications.map((job) => (job.id === editingJobApplication.id ? newItem : job))
+      : [newItem, ...jobApplications];
+
+    setJobApplications(updatedJobs);
+    
+    // Save to database
+    if (editingJobApplication) {
+      updateJobApplicationMutation.mutate({ id: newItem.id, data: newItem });
+    } else {
+      createJobApplicationMutation.mutate(newItem);
+    }
+    
+    setShowJobDialog(false);
+    setEditingJobApplication(null);
+  }, [user?.id, jobFormData, editingJobApplication, jobApplications, createJobApplicationMutation, updateJobApplicationMutation]);
+
+  const handleDeleteJobApplication = useCallback((jobId: string) => {
+    setJobApplications((prev) => prev.filter((job) => job.id !== jobId));
+    deleteJobApplicationMutation.mutate(jobId);
+  }, [deleteJobApplicationMutation]);
+
+  const handleAnalyzeJobForResume = useCallback(async () => {
+    if (!jobFormData.notes) {
+      setSnackbar({ open: true, message: 'Ingen jobbeskrivelse funnet. Importer jobb fra finn.no først.', severity: 'warning' });
+      return;
+    }
+
+    if (!selectedResume) {
+      setSnackbar({ open: true, message: 'Velg eller opprett en CV først for å analysere jobben.', severity: 'warning' });
+      return;
+    }
+
+    // Extract finn-code from notes to get full description
+    const finnCodeMatch = jobFormData.notes.match(/Finn-kode:\s*(\d+)/);
+    const finnCode = finnCodeMatch ? finnCodeMatch[1] : null;
+    
+    let jobData: any = null;
+    if (finnCode) {
+      const stored = localStorage.getItem(`finn_job_${finnCode}`);
+      if (stored) {
+        jobData = JSON.parse(stored);
+      }
+    }
+
+    const jobDescription = jobData?.description || jobFormData.notes || '';
+    
+    if (!jobDescription || jobDescription.length < 50) {
+      setSnackbar({ open: true, message: 'Jobbeskrivelsen er for kort for analyse. Importer jobb på nytt.', severity: 'warning' });
+      return;
+    }
+
+    // Get user's actual CV data
+    const userSkills = selectedResume.skills || [];
+    const userExperience = selectedResume.experiences || [];
+    const userEducation = selectedResume.education || [];
+    const userCertifications = selectedResume.certifications || [];
+    const userProjects = selectedResume.projects || [];
+
+    // Extract key information from job description
+    const jobKeywords: string[] = [];
+    const suggestions: string[] = [];
+    const matchedSkills: string[] = [];
+    const missingSkills: string[] = [];
+    
+    // Common technical skills keywords
+    const technicalSkills = [
+      'javascript', 'typescript', 'python', 'java', 'c#', 'php', 'ruby', 'go', 'rust',
+      'react', 'angular', 'vue', 'svelte', 'next.js', 'node.js', 'express', 'django',
+      'sql', 'postgresql', 'mysql', 'mongodb', 'redis', 'docker', 'kubernetes',
+      'aws', 'azure', 'gcp', 'git', 'ci/cd', 'jenkins', 'terraform',
+      'agile', 'scrum', 'kanban', 'jira', 'confluence'
+    ];
+
+    const lowerDesc = jobDescription.toLowerCase();
+    const userSkillsLower = userSkills.map(s => s.name?.toLowerCase() || '');
+
+    // Find required skills in job description
+    technicalSkills.forEach(skill => {
+      if (lowerDesc.includes(skill.toLowerCase())) {
+        jobKeywords.push(skill);
+        
+        // Check if user has this skill
+        const hasSkill = userSkillsLower.some(userSkill => 
+          userSkill.includes(skill.toLowerCase()) || skill.toLowerCase().includes(userSkill)
+        );
+        
+        if (hasSkill) {
+          matchedSkills.push(skill);
+        } else {
+          missingSkills.push(skill);
+        }
+      }
+    });
+
+    // Calculate match score
+    const matchScore = jobKeywords.length > 0 
+      ? Math.round((matchedSkills.length / jobKeywords.length) * 100)
+      : 0;
+
+    suggestions.push(`CV-MATCH: ${matchScore}% (${matchedSkills.length}/${jobKeywords.length} ferdigheter matcher)`);
+    suggestions.push('');
+
+    // Skills analysis
+    if (matchedSkills.length > 0) {
+      suggestions.push(`[MATCH] DU HAR DISSE FERDIGHETENE (fremhev disse!):`);
+      matchedSkills.slice(0, 8).forEach((skill: string) => {
+        const userSkill = userSkills.find((s) => 
+          s.name?.toLowerCase().includes(skill.toLowerCase()) || 
+          skill.toLowerCase().includes(s.name?.toLowerCase() || '')
+        );
+        if (userSkill && userSkill.proficiencyLevel) {
+          suggestions.push(`   • ${skill.toUpperCase()} (${userSkill.proficiencyLevel}/5 nivå) - BEKREFT DETTE I CV`);
+        } else {
+          suggestions.push(`   • ${skill.toUpperCase()} - BEKREFT DETTE I CV`);
+        }
+      });
+      suggestions.push('');
+    }
+
+    if (missingSkills.length > 0) {
+      suggestions.push(`[WARN] MANGLER DISSE FERDIGHETENE:`);
+      missingSkills.slice(0, 6).forEach((skill: string) => {
+        // Check if they have related experience in projects
+        const relatedProject = userProjects.find((project) =>
+          project.description?.toLowerCase().includes(skill.toLowerCase())
+        );
+        const relatedExp = userExperience.find((experience) =>
+          experience.description?.toLowerCase().includes(skill.toLowerCase())
+          || (experience.achievements || []).some((achievement) => achievement.toLowerCase().includes(skill.toLowerCase()))
+        );
+        
+        if (relatedProject || relatedExp) {
+          suggestions.push(`   • ${skill.toUpperCase()} - Brukt i ${relatedProject ? 'prosjekt' : 'arbeid'}, fremhev dette!`);
+        } else {
+          suggestions.push(`   • ${skill.toUpperCase()} - Vurder å nevne lignende erfaring`);
+        }
+      });
+      suggestions.push('');
+    }
+
+    // Experience analysis
+    const experienceYearsMatch = jobDescription.match(/(\d+)\+?\s*(år|years?).*erfaring/i);
+    if (experienceYearsMatch) {
+      const requiredYears = parseInt(experienceYearsMatch[1]);
+      const userYears = userExperience.reduce((total: number, exp: ResumeExperience) => {
+        if (exp.startDate) {
+          const start = new Date(exp.startDate);
+          const end = exp.isCurrent ? new Date() : (exp.endDate ? new Date(exp.endDate) : new Date());
+          return total + (end.getFullYear() - start.getFullYear());
+        }
+        return total;
+      }, 0);
+      
+      if (userYears >= requiredYears) {
+        suggestions.push(`[MATCH] ERFARING: Du har ${userYears} år (krever ${requiredYears}) - FREMHEV DETTE!`);
+      } else {
+        suggestions.push(`[WARN] ERFARING: Krever ${requiredYears} år, du har ${userYears} - fremhev relevante prosjekter`);
+      }
+      suggestions.push('');
+    }
+
+    // Education analysis
+    if (lowerDesc.includes('bachelor') || lowerDesc.includes('master') || lowerDesc.includes('utdanning')) {
+      const hasBachelor = userEducation.some(edu => 
+        edu.degree?.toLowerCase().includes('bachelor')
+      );
+      const hasMaster = userEducation.some(edu => 
+        edu.degree?.toLowerCase().includes('master')
+      );
+      
+      if (lowerDesc.includes('master') && hasMaster) {
+        suggestions.push(`[MATCH] UTDANNING: Du har Master - FREMHEV DETTE TYDELIG!`);
+      } else if (lowerDesc.includes('bachelor') && hasBachelor) {
+        suggestions.push(`[MATCH] UTDANNING: Du har Bachelor - FREMHEV DETTE TYDELIG!`);
+      } else if (lowerDesc.includes('bachelor') || lowerDesc.includes('master')) {
+        suggestions.push(`[WARN] UTDANNING: Jobb krever utdanning - ${userEducation.length > 0 ? 'fremhev din utdanning' : 'legg til utdanning'}`);
+      }
+      suggestions.push('');
+    }
+
+    // Certifications analysis
+    if (lowerDesc.includes('sertifisering') || lowerDesc.includes('sertifikat')) {
+      if (userCertifications.length > 0) {
+        suggestions.push(`[MATCH] SERTIFISERINGER: Du har ${userCertifications.length} sertifisering(er):`);
+        userCertifications.slice(0, 3).forEach((cert) => {
+          suggestions.push(`   • ${cert.name} - ${cert.issuer || 'Fremhev dette!'}`);
+        });
+      } else {
+        suggestions.push(`[WARN] SERTIFISERINGER: Jobb nevner sertifiseringer - vurder å legge til relevante`);
+      }
+      suggestions.push('');
+    }
+
+    // Specific recommendations
+    suggestions.push(`[ACTION] ANBEFALTE HANDLINGER:`);
+    
+    if (matchScore >= 70) {
+      suggestions.push(`   1. Din CV matcher godt! Bruk "Generer CV med AI" og bekreft alle matchede ferdigheter`);
+      suggestions.push(`   2. Skriv søknadsbrev som fremhever dine ${matchedSkills.slice(0, 3).join(', ')} ferdigheter`);
+    } else if (matchScore >= 40) {
+      suggestions.push(`   1. Moderat match - fokuser på ${matchedSkills.slice(0, 3).join(', ')} i CV`);
+      suggestions.push(`   2. For manglende ferdigheter, vis overførbar erfaring fra lignende teknologier`);
+      suggestions.push(`   3. Fremhev prosjekter som viser læreevne og tilpasningsdyktighet`);
+    } else {
+      suggestions.push(`   1. Lav match - vurder om dette er riktig stilling`);
+      suggestions.push(`   2. Hvis du søker, fokuser på overførbare ferdigheter og motivasjon`);
+      suggestions.push(`   3. Fremhev evne til å lære nye teknologier raskt`);
+    }
+
+    suggestions.push('');
+    suggestions.push(`ATS NØKKELORD: ${jobKeywords.slice(0, 12).join(', ')}`);
+    
+    setSnackbar({ 
+      open: true, 
+      message: `Analyse fullført! ${matchScore}% match med ${matchedSkills.length} matchede ferdigheter. Se notater.`, 
+      severity: matchScore >= 60 ? 'success' : 'info'
+    });
+
+    // Add personalized analysis to notes
+    setJobFormData(prev => ({
+      ...prev,
+      notes: `${prev.notes}\n\n--- PERSONLIG AI-ANALYSE (basert på din CV) ---\n${suggestions.join('\n')}`
+    }));
+
+  }, [jobFormData, selectedResume]);
+
+  const handlePrepareForInterview = useCallback(async () => {
+    if (!jobFormData.interviewDate) {
+      setSnackbar({ open: true, message: 'Legg til intervjudato først for å generere forberedelse.', severity: 'warning' });
+      return;
+    }
+
+    if (!selectedResume) {
+      setSnackbar({ open: true, message: 'Velg en CV for å generere personlig intervjuforberedelse.', severity: 'warning' });
+      return;
+    }
+
+    // Get job description from localStorage if available
+    const finnCodeMatch = jobFormData.notes?.match(/Finn-kode:\s*(\d+)/);
+    const finnCode = finnCodeMatch ? finnCodeMatch[1] : null;
+    
+    let jobData: any = null;
+    if (finnCode) {
+      const stored = localStorage.getItem(`finn_job_${finnCode}`);
+      if (stored) {
+        jobData = JSON.parse(stored);
+      }
+    }
+
+    const jobDescription = jobData?.description || jobFormData.notes || '';
+    const jobTitle = jobFormData.jobTitle || '';
+    const company = jobFormData.company || '';
+
+    // Generate common interview questions based on job
+    const commonQuestions: string[] = [
+      `Fortell meg om deg selv og hvorfor du er interessert i ${jobTitle}-stillingen?`,
+      `Hva vet du om ${company} og hvorfor vil du jobbe her?`,
+      `Hva er dine største styrker og svakheter?`,
+      `Hvor ser du deg selv om 5 år?`,
+      'Fortell om en utfordrende situasjon og hvordan du løste den.',
+    ];
+
+    // Add role-specific questions based on keywords
+    const lowerDesc = jobDescription.toLowerCase();
+    const lowerTitle = jobTitle.toLowerCase();
+    
+    if (lowerDesc.includes('react') || lowerDesc.includes('frontend') || lowerTitle.includes('frontend')) {
+      commonQuestions.push(
+        'Hvordan håndterer du state management i React-applikasjoner?',
+        'Forklar forskjellen mellom controlled og uncontrolled components.',
+        'Hvordan optimaliserer du ytelsen til en React-applikasjon?'
+      );
+    }
+
+    if (lowerDesc.includes('backend') || lowerDesc.includes('api') || lowerTitle.includes('backend')) {
+      commonQuestions.push(
+        'Hvordan designer du RESTful APIs?',
+        'Forklar hvordan du håndterer database-transaksjoner og feilhåndtering.',
+        'Hvordan sikrer du API-sikkerhet og autentisering?'
+      );
+    }
+
+    if (lowerDesc.includes('teamarbeid') || lowerDesc.includes('team') || lowerDesc.includes('agile')) {
+      commonQuestions.push(
+        'Hvordan jobber du i team? Gi et eksempel.',
+        'Hvordan håndterer du konflikter i et team?',
+        'Har du erfaring med Agile/Scrum metodikk?'
+      );
+    }
+
+    if (lowerDesc.includes('leder') || lowerDesc.includes('ledelse') || lowerTitle.includes('lead')) {
+      commonQuestions.push(
+        'Hvordan motiverer du et team?',
+        'Fortell om en gang du måtte ta en vanskelig beslutning som leder.',
+        'Hvordan håndterer du underytende teammedlemmer?'
+      );
+    }
+
+    // Questions to ask the employer
+    const questionsToAsk: string[] = [
+      `Hvordan ser en typisk arbeidsdag ut for en ${jobTitle}?`,
+      'Hvordan er teamstrukturen og hvem kommer jeg til å jobbe tett med?',
+      'Hvilke verktøy og teknologier bruker teamet daglig?',
+      'Hvordan ser karriereutvikling og vekstmuligheter ut i selskapet?',
+      'Hva er de største utfordringene teamet står overfor akkurat nå?',
+      'Hvordan måler dere suksess i denne rollen?',
+    ];
+
+    // Key points to emphasize based on CV match
+    const userSkills = selectedResume.skills || [];
+    const userExperience = selectedResume.experiences || [];
+    
+    const keyPoints: string[] = [
+      `Fremhev din erfaring med: ${userSkills.slice(0, 5).map(s => s.name).join(', ')}`,
+    ];
+
+    if (userExperience.length > 0) {
+      const recentExp = userExperience[0];
+      keyPoints.push(`[TIP] Snakk om din rolle som ${recentExp.jobTitle} hos ${recentExp.company}`);
+    }
+
+    if (lowerDesc) {
+      keyPoints.push('[TIP] Referer tilbake til jobbeskrivelsen og vis hvordan din erfaring matcher');
+    }
+
+    keyPoints.push(
+      '[TIP] Vær konkret - bruk STAR-metoden (Situasjon, Oppgave, Aksjon, Resultat)',
+      '[TIP] Vis entusiasme for rollen og selskapet',
+      '[TIP] Still gjennomtenkte spørsmål - vis at du har researcet selskapet',
+      '[TIP] Forbered eksempler fra tidligere erfaring som demonstrerer nøkkelkompetanser'
+    );
+
+    // Calculate days until interview
+    const interviewDate = new Date(jobFormData.interviewDate);
+    const today = new Date();
+    const daysUntil = Math.ceil((interviewDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+
+    let urgencyMessage = '';
+    if (daysUntil === 0) {
+      urgencyMessage = '[URGENT] INTERVJUET ER I DAG! Siste gjennomgang:';
+    } else if (daysUntil === 1) {
+      urgencyMessage = '[URGENT] INTERVJUET ER I MORGEN! Gjennomgå dette i dag:';
+    } else if (daysUntil <= 3) {
+      urgencyMessage = `[SOON] ${daysUntil} dager til intervju. Start forberedelsen nå:`;
+    } else {
+      urgencyMessage = `${daysUntil} dager til intervju. God tid til forberedelse:`;
+    }
+
+    // Update job with preparation data
+    setJobFormData(prev => ({
+      ...prev,
+      interviewPreparation: {
+        commonQuestions,
+        questionsToAsk,
+        keyPoints,
+        completed: false,
+      },
+      notes: `${prev.notes}\n\n--- INTERVJUFORBEREDELSE ---\n${urgencyMessage}\n\nIntervjudato: ${jobFormData.interviewDate}\n\nVANLIGE SPØRSMÅL DU KAN FÅ:\n${commonQuestions.map((q, i) => `${i + 1}. ${q}`).join('\n')}\n\nSPØRSMÅL DU BØR STILLE:\n${questionsToAsk.map((q, i) => `${i + 1}. ${q}`).join('\n')}\n\nNØKKELPUNKTER Å FREMHEVE:\n${keyPoints.join('\n')}\n\nSJEKKLISTE:\n[ ] Research selskapet og nylige nyheter\n[ ] Gjennomgå jobbeskrivelsen\n[ ] Forbered STAR-eksempler\n[ ] Forbered svar på vanlige spørsmål\n[ ] Forbered spørsmål til intervjueren\n[ ] Test teknisk utstyr (hvis virtuelt)\n[ ] Planlegg antrekk og reise (hvis fysisk)`
+    }));
+
+    setSnackbar({ 
+      open: true, 
+      message: `Intervjuforberedelse generert! ${commonQuestions.length} øvingsspørsmål klar. Se notater.`, 
+      severity: 'success' 
+    });
+
+  }, [jobFormData, selectedResume]);
+
+  const handleUpdateJobStatus = useCallback((jobId: string, status: JobApplication['status']) => {
+    const job = jobApplications.find(j => j.id === jobId);
+    if (job) {
+      const updatedJob = { ...job, status };
+      setJobApplications((prev) => prev.map((job) => (job.id === jobId ? updatedJob : job)));
+      updateJobApplicationMutation.mutate({ id: jobId, data: { status } });
+    }
+  }, [jobApplications, updateJobApplicationMutation]);
+
+  const handleSelectTemplate = useCallback((template: ResumeTemplate) => {
+    if (!selectedResume) return;
+    setSelectedResume({ ...selectedResume, templateId: template.id });
+    handleUpdateResume({ templateId: template.id });
+    setShowTemplateDialog(false);
+  }, [selectedResume, handleUpdateResume]);
+
+  const handleTogglePublicResume = useCallback((isPublic: boolean) => {
+    if (!selectedResume) return;
+    const url = isPublic ? publicResumeUrl : undefined;
+    setSelectedResume({ ...selectedResume, isPublic, publicUrl: url });
+    handleUpdateResume({ isPublic, publicUrl: url });
+  }, [selectedResume, handleUpdateResume, publicResumeUrl]);
+
+  const handleCopyPublicUrl = useCallback(() => {
+    if (!publicResumeUrl) return;
+    navigator.clipboard.writeText(publicResumeUrl);
+    setSnackbar({ open: true, message: 'Kobling kopiert til utklippstavle', severity: 'success' });
+  }, [publicResumeUrl]);
+
+  const handleDeleteResume = useCallback((id: string) => {
+    setConfirmDeleteResumeId(id);
+  }, []);
+
+  const executeDeleteResume = useCallback(() => {
+    if (!confirmDeleteResumeId) return;
+    deleteResumeMutation.mutate(confirmDeleteResumeId);
+    setConfirmDeleteResumeId(null);
+  }, [confirmDeleteResumeId, deleteResumeMutation]);
+
+  // GDPR & Legal Compliance Handlers
+  const handleAcceptTerms = useCallback(() => {
+    GDPRUtils.setConsent({
+      essential: true,
+      analytics: true,
+      marketing: false,
+      terms: true,
+    });
+    setShowTermsDialog(false);
+    setSnackbar({ open: true, message: 'Vilkår akseptert. Takk!', severity: 'success' });
+  }, []);
+
+  const handleCookieConsent = useCallback((analytics: boolean = false, marketing: boolean = false) => {
+    GDPRUtils.setConsent({
+      essential: true,
+      analytics,
+      marketing,
+      terms: GDPRUtils.hasAcceptedTerms(),
+    });
+    setShowCookieConsent(false);
+    AccessibilityUtils.announce('Cookie-innstillinger lagret.');
+  }, []);
+
+  const handleExportData = useCallback(async () => {
+    if (!user?.id) return;
+    try {
+      await GDPRUtils.exportUserData(user.id);
+      setSnackbar({
+        open: true,
+        message: 'Dataene dine har blitt eksportert og lastet ned.',
+        severity: 'success',
+      });
+      GDPRUtils.logDataProcessing(user.id, 'EXPORT_DATA', 'COMPLETE_PROFILE');
+    } catch (error) {
+      console.error('Data export error:', error);
+      setSnackbar({
+        open: true,
+        message: `Feil ved eksport av data: ${error instanceof Error ? error.message : 'Ukjent feil'}. Vennligst prøv igjen.`,
+        severity: 'error',
+      });
+    }
+  }, [user?.id]);
+
+  const handleDeleteAccount = useCallback(async () => {
+    if (!user?.id) return;
+    const password = prompt('Skriv inn ditt passord for å bekrefte sletting av konto:');
+    if (!password) return;
+
+    try {
+      await GDPRUtils.deleteUserAccount(user.id, password);
+      setSnackbar({
+        open: true,
+        message: 'Kontoen din har blitt permanent slettet.',
+        severity: 'success',
+      });
+      // Redirect to home page
+      window.location.href = '/';
+    } catch (error) {
+      console.error('Account deletion error:', error);
+      setSnackbar({
+        open: true,
+        message: `Feil ved sletting av konto: ${error instanceof Error ? error.message : 'Ukjent feil'}. Sjekk passordet og prøv igjen.`,
+        severity: 'error',
+      });
+    }
+  }, [user?.id]);
+
+  const handleRunAccessibilityAudit = useCallback(() => {
+    const auditResults = WCAGChecklist.runAudit();
+    const message = Object.entries(auditResults)
+      .map(([key, passed]) => `${key}: ${passed ? 'OK' : 'FEIL'}`)
+      .join('\n');
+
+    console.log('WCAG Accessibility Audit Results:', auditResults);
+    console.log('Detailed audit message:', message);
+    setSnackbar({
+      open: true,
+      message: `Tilgjengelighetskontroll fullført. Resultat:\n${message}`,
+      severity: auditResults.formLabels && auditResults.skipLink ? 'success' : 'warning',
+    });
+  }, []);
 
   const handleImportProjects = useCallback(() => {
     if (selectedResume) {
@@ -1204,14 +3077,40 @@ export default function ResumeBuilder() {
     }
   }, [selectedResume, aiJobDescription, aiAnalyzeMutation]);
 
-  const handleExport = useCallback((format: 'pdf' | 'docx' | 'txt' | 'json') => {
-    if (selectedResume) {
+  const handleExport = useCallback(async (format: 'pdf' | 'docx' | 'txt' | 'json' | 'html') => {
+    if (!selectedResume) return;
+
+    if (format === 'pdf') {
       exportResumeMutation.mutate({
         resumeId: selectedResume.id,
         format,
       });
+      return;
     }
-  }, [selectedResume, exportResumeMutation]);
+
+    if (format === 'json') {
+      const payload = JSON.stringify({ ...selectedResume, portfolioItems }, null, 2);
+      downloadBlob(new Blob([payload], { type: 'application/json' }), `resume-${selectedResume.id}.json`);
+      return;
+    }
+
+    if (format === 'txt') {
+      const content = buildPlainTextResume(selectedResume, portfolioItems);
+      downloadBlob(new Blob([content], { type: 'text/plain' }), `resume-${selectedResume.id}.txt`);
+      return;
+    }
+
+    if (format === 'html') {
+      const content = buildHtmlResume(selectedResume, portfolioItems);
+      downloadBlob(new Blob([content], { type: 'text/html' }), `resume-${selectedResume.id}.html`);
+      return;
+    }
+
+    if (format === 'docx') {
+      const docxBlob = await buildDocxResume(selectedResume, portfolioItems);
+      downloadBlob(docxBlob, `resume-${selectedResume.id}.docx`);
+    }
+  }, [selectedResume, exportResumeMutation, downloadBlob, buildPlainTextResume, buildHtmlResume, buildDocxResume, portfolioItems]);
 
   // ============================================================================
   // RENDER
@@ -1228,50 +3127,115 @@ export default function ResumeBuilder() {
   }
 
   return (
-    <Container maxWidth="xl" sx={{ mt: 4, mb: 4 }}>
+    <Container maxWidth="xl" sx={{ mt: 4, mb: 4 }} role="main" aria-label="CV-builder hovedinnhold">
+      {/* Terms & Conditions Dialog */}
+      <TermsAndConditionsDialog
+        open={showTermsDialog}
+        onClose={() => setShowTermsDialog(false)}
+        onAccept={handleAcceptTerms}
+      />
+
+      {/* Cookie Consent Dialog */}
+      <CookieConsentDialog
+        open={showCookieConsent}
+        onConsent={() => handleCookieConsent(true, false)}
+        onReject={() => handleCookieConsent(false, false)}
+      />
+
+      {/* Privacy Policy Dialog */}
+      <PrivacyPolicyDialog open={showPrivacyDialog} onClose={() => setShowPrivacyDialog(false)} />
+
+      {/* Data Management Dialog */}
+      <DataManagementDialog
+        open={showDataManagement}
+        onClose={() => setShowDataManagement(false)}
+        onExportData={handleExportData}
+        onDeleteData={handleDeleteAccount}
+      />
+
+      <Dialog open={initializingResume} maxWidth="sm" fullWidth>
+        <DialogTitle>Initierer CV</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ py: 2 }}>
+            <Stack spacing={1} alignItems="center">
+              <CircularProgress />
+              <Typography variant="body2" color="text.secondary">
+                {initializationMessage || 'Samler informasjon...'}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                {motivationalMessages[initializationStep % motivationalMessages.length]}
+              </Typography>
+            </Stack>
+
+            <Box>
+              <LinearProgress
+                variant="determinate"
+                value={Math.min((initializationStep / (initializationSteps.length - 1)) * 100, 100)}
+                sx={{ height: 8, borderRadius: 4 }}
+              />
+            </Box>
+
+            <Stepper activeStep={initializationStep} orientation="vertical">
+              {initializationSteps.map((label) => (
+                <Step key={label}>
+                  <StepLabel>{label}</StepLabel>
+                </Step>
+              ))}
+            </Stepper>
+          </Stack>
+        </DialogContent>
+      </Dialog>
+      <Box
+        sx={{
+          background: 'linear-gradient(180deg, #f8fafc 0%, #ffffff 80%)',
+          borderRadius: 4,
+          p: { xs: 2, md: 3 },
+          boxShadow: '0 12px 30px rgba(15, 23, 42, 0.06)',
+          border: '1px solid rgba(15, 23, 42, 0.08)',
+        }}
+      >
       {/* Header with Brand Kit */}
       <Box sx={{ mb: 4 }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2.5 }}>
             {/* CreatorHub ResumeBuilder Logo */}
             <Box
               sx={{
-                width: 56,
-                height: 56,
+                width: 52,
+                height: 52,
                 borderRadius: 2,
-                background: 'linear-gradient(135deg, #ff8c00 0%, #2563eb 100%)',
+                background: 'linear-gradient(145deg, #2563eb 0%, #1d4ed8 60%, #ff8c00 140%)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                boxShadow: '0 4px 12px rgba(37, 99, 235, 0.3)'}}
+                boxShadow: '0 8px 20px rgba(15, 23, 42, 0.15)'}}
             >
               <Typography
                 sx={{
                   fontFamily: 'Poppins, sans-serif',
                   fontSize: '24px',
-                  fontWeight: 70,
+                  fontWeight: 700,
                   color: '#fff',
-                  lineHeight: 1}}
+                  lineHeight: 1,
+                  letterSpacing: '0.5px'}}
               >
                 RB
               </Typography>
             </Box>
             
             <Box>
-              <Typography 
-                variant="h3" 
-                gutterBottom 
-                sx={{ 
-                  fontWeight: 70,
+              <Typography
+                variant="h3"
+                gutterBottom
+                sx={{
+                  fontWeight: 700,
                   fontFamily: 'Poppins, sans-serif',
-                  background: 'linear-gradient(135deg, #ff8c00 0%, #2563eb 100%)',
-                  WebkitBackgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent',
-                  backgroundClip: 'text'}}
+                  color: '#0f172a',
+                  letterSpacing: '-0.5px'}}
               >
                 CreatorHub ResumeBuilder
               </Typography>
-              <Typography variant="body1" color="text.secondary">
+              <Typography variant="body1" color="text.secondary" sx={{ maxWidth: 720 }}>
                 Lag profesjonelle CV-er med AI-assistanse, ATS-optimalisering og automatisk prosjekt-import
               </Typography>
             </Box>
@@ -1367,9 +3331,10 @@ export default function ResumeBuilder() {
             sx={{
               fontFamily: 'Poppins, sans-serif',
               fontWeight: 600,
+              letterSpacing: '0.2px',
               mb: 2}}
           >
-            🎯 CreatorHub Marketplace
+            CreatorHub Marketplace
           </Typography>
           <Grid container spacing={3}>
             <Grid item xs={12} md={6}>
@@ -1439,15 +3404,73 @@ export default function ResumeBuilder() {
       )}
 
       {/* Stepper */}
-      <Stepper activeStep={activeStep} orientation="vertical" sx={{ mb: 4 }}>
+      <Stepper
+        activeStep={activeStep}
+        orientation="vertical"
+        sx={{
+          mb: 4,
+          p: { xs: 1.5, md: 2 },
+          borderRadius: 3,
+          border: '1px solid',
+          borderColor: 'divider',
+          bgcolor: 'rgba(255, 255, 255, 0.85)',
+        }}
+      >
         <Step>
           <StepLabel>Velg eller lag CV</StepLabel>
           <StepContent>
             <Grid container spacing={3}>
+              <Grid item xs={12}>
+                <Paper
+                  sx={{
+                    p: 2,
+                    borderRadius: 3,
+                    bgcolor: '#ffffff',
+                    border: '1px solid',
+                    borderColor: 'divider',
+                    boxShadow: '0 6px 18px rgba(15, 23, 42, 0.05)',
+                  }}
+                >
+                  <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+                    <TextField
+                      label="Søk CV"
+                      value={resumeSearch}
+                      onChange={(e) => setResumeSearch(e.target.value)}
+                      placeholder="Søk på navn eller tittel"
+                      fullWidth
+                    />
+                    <FormControl sx={{ minWidth: 180 }}>
+                      <InputLabel>Status</InputLabel>
+                      <Select
+                        value={resumeStatusFilter}
+                        label="Status"
+                        onChange={(e) => setResumeStatusFilter(e.target.value as typeof resumeStatusFilter)}
+                      >
+                        <MenuItem value="all">Alle</MenuItem>
+                        <MenuItem value="draft">Utkast</MenuItem>
+                        <MenuItem value="active">Aktiv</MenuItem>
+                        <MenuItem value="archived">Arkivert</MenuItem>
+                      </Select>
+                    </FormControl>
+                    <FormControl sx={{ minWidth: 180 }}>
+                      <InputLabel>Sorter</InputLabel>
+                      <Select
+                        value={resumeSort}
+                        label="Sorter"
+                        onChange={(e) => setResumeSort(e.target.value as typeof resumeSort)}
+                      >
+                        <MenuItem value="updated">Sist oppdatert</MenuItem>
+                        <MenuItem value="created">Opprettet</MenuItem>
+                        <MenuItem value="title">Tittel</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Stack>
+                </Paper>
+              </Grid>
               {/* Create New Button */}
               <Grid item xs={12} md={4}>
-                <Card 
-                  sx={{ 
+                <Card
+                  sx={{
                     height: '100%',
                     display: 'flex',
                     flexDirection: 'column',
@@ -1456,12 +3479,16 @@ export default function ResumeBuilder() {
                     cursor: 'pointer',
                     border: '2px dashed',
                     borderColor: '#2563eb',
-                    bgcolor: 'rgba(37, 99, 235, 0.03)', '&:hover': {
-                      bgcolor: 'rgba(37, 99, 235, 0.08)',
+                    bgcolor: '#f8fafc',
+                    boxShadow: '0 10px 24px rgba(15, 23, 42, 0.06)',
+                    transition: 'transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease',
+                    '&:hover': {
+                      bgcolor: '#f1f5f9',
                       borderColor: '#ff8c00',
-                      transform: 'translateY(-2px)',
-                      transition: 'all 0.2s',
-                    }}}
+                      transform: 'translateY(-3px)',
+                      boxShadow: '0 14px 28px rgba(15, 23, 42, 0.08)',
+                    },
+                  }}
                   onClick={handleCreateResume}
                 >
                   <CardContent sx={{ textAlign: 'center', py: 6 }}>
@@ -1484,24 +3511,26 @@ export default function ResumeBuilder() {
 
               {/* LinkedIn Import Button */}
               <Grid item xs={12} md={4}>
-                <Card 
-                  sx={{ 
+                <Card
+                  sx={{
                     height: '100%',
                     display: 'flex',
                     flexDirection: 'column',
                     alignItems: 'center',
                     justifyContent: 'center',
                     cursor: 'pointer',
-                    border: '2px solid',
-                    borderColor: linkedIn.state.isAuthenticated ? '#2563eb' : '#ff8c00',
-                    bgcolor: linkedIn.state.isAuthenticated ? 'rgba(37, 99, 235, 0.05)' : 'rgba(255, 140, 0, 0.05)','&:hover': {
-                      bgcolor: linkedIn.state.isAuthenticated ? 'rgba(37, 99, 235, 0.1)' : 'rgba(255, 140, 0, 0.1)',
-                      transform: 'translateY(-4px)',
-                      transition: 'all 0.2s',
-                      boxShadow: linkedIn.state.isAuthenticated 
-                        ? '0 8px 24px rgba(37, 99, 235, 0.2)' 
-                        : '0 8px 24px rgba(255, 140, 0, 0.2)',
-                    }}}
+                    border: '1px solid',
+                    borderColor: linkedIn.state.isAuthenticated ? 'rgba(37, 99, 235, 0.35)' : 'rgba(255, 140, 0, 0.35)',
+                    bgcolor: '#ffffff',
+                    boxShadow: '0 10px 24px rgba(15, 23, 42, 0.06)',
+                    transition: 'transform 0.2s ease, box-shadow 0.2s ease',
+                    '&:hover': {
+                      transform: 'translateY(-3px)',
+                      boxShadow: linkedIn.state.isAuthenticated
+                        ? '0 14px 28px rgba(37, 99, 235, 0.18)'
+                        : '0 14px 28px rgba(255, 140, 0, 0.18)',
+                    },
+                  }}
                   onClick={handleLinkedInConnect}
                 >
                   <CardContent sx={{ textAlign: 'center', py: 6 }}>
@@ -1543,7 +3572,7 @@ export default function ResumeBuilder() {
               </Grid>
 
               {/* Existing Resumes */}
-              {resumes.map((resume) => (
+              {filteredResumes.map((resume) => (
                 <Grid item xs={12} md={4} key={resume.id}>
                   <Card 
                     sx={{ 
@@ -1611,7 +3640,7 @@ export default function ResumeBuilder() {
                     </CardContent>
 
                     <CardActions>
-                      <Button size="small" startIcon={<EditIcon />}>
+                      <Button size="small" startIcon={<EditIcon />} onClick={() => handleSelectResume(resume)}>
                         Rediger
                       </Button>
                       <IconButton 
@@ -1637,40 +3666,82 @@ export default function ResumeBuilder() {
             {selectedResume && (
               <Box>
                 {/* Action Buttons */}
-                <Stack direction="row" spacing={2} sx={{ mb: 3 }}>
-                  <Button
-                    variant="contained"
-                    startIcon={<UploadIcon />}
-                    onClick={() => setShowProjectImportDialog(true)}
-                  >
-                    Importer prosjekter
-                  </Button>
-                  <Button
-                    variant="contained"
-                    startIcon={<AIIcon />}
-                    onClick={() => setShowAIDialog(true)}
-                    color="secondary"
-                  >
-                    AI-analyse
-                  </Button>
-                  <Button
-                    variant="outlined"
-                    startIcon={<TemplateIcon />}
-                    onClick={() => setShowTemplateDialog(true)}
-                  >
-                    Bytt mal
-                  </Button>
-                  <Button
-                    variant="outlined"
-                    startIcon={<DownloadIcon />}
-                    onClick={() => setShowExportDialog(true)}
-                  >
-                    Eksporter
-                  </Button>
-                </Stack>
+                <Paper
+                  variant="outlined"
+                  sx={{
+                    p: 2,
+                    mb: 3,
+                    borderRadius: 3,
+                    bgcolor: 'rgba(255,255,255,0.75)',
+                    backdropFilter: 'blur(6px)',
+                  }}
+                >
+                  <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ flexWrap: 'wrap' }}>
+                    <Button
+                      variant="contained"
+                      startIcon={<UploadIcon />}
+                      onClick={() => setShowProjectImportDialog(true)}
+                    >
+                      Importer prosjekter
+                    </Button>
+                    <Button
+                      variant="contained"
+                      startIcon={<AIIcon />}
+                      onClick={() => setShowAIDialog(true)}
+                      color="secondary"
+                    >
+                      AI-analyse
+                    </Button>
+                    <Button
+                      variant="outlined"
+                      startIcon={<TemplateIcon />}
+                      onClick={() => setShowTemplateDialog(true)}
+                    >
+                      Bytt mal
+                    </Button>
+                    <Button
+                      variant="outlined"
+                      startIcon={<DownloadIcon />}
+                      onClick={() => setShowExportDialog(true)}
+                    >
+                      Eksporter
+                    </Button>
+                    <Button
+                      variant="outlined"
+                      startIcon={<HistoryIcon />}
+                      onClick={() => setShowVersionDialog(true)}
+                    >
+                      Versjoner
+                    </Button>
+                    <Button
+                      variant="outlined"
+                      startIcon={<SaveIcon />}
+                      onClick={handleSaveAsDraft}
+                    >
+                      Lagre utkast
+                    </Button>
+                    <Button
+                      variant="contained"
+                      startIcon={<CheckIcon />}
+                      onClick={handlePublishResume}
+                      color="success"
+                    >
+                      Publiser
+                    </Button>
+                  </Stack>
+                </Paper>
 
                 {/* Resume Editor Tabs */}
-                <Paper sx={{ mb: 3 }}>
+                <Paper
+                  sx={{
+                    mb: 3,
+                    borderRadius: 3,
+                    overflow: 'hidden',
+                    border: '1px solid',
+                    borderColor: 'divider',
+                    boxShadow: '0 10px 26px rgba(15, 23, 42, 0.08)',
+                  }}
+                >
                   <Tabs value={tabValue} onChange={(e, v) => setTabValue(v)}>
                     <Tab label="Personlig info" />
                     <Tab label="Arbeidserfaring" />
@@ -1682,13 +3753,20 @@ export default function ResumeBuilder() {
 
                   <Box sx={{ p: 3 }}>
                     {/* Personal Info Tab */}
-                    {tabValue === 0 && (
+                    {tabValue === 0 && selectedResume && (
                       <Grid container spacing={3}>
                         <Grid item xs={12} md={6}>
+                          <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+                            <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>Fullt navn</Typography>
+                            <ContextualHelp
+                              title="Fullt navn"
+                              content="Your full professional name as it appears on official documents"
+                              size="small"
+                            />
+                          </Stack>
                           <TextField
                             fullWidth
-                            label="Fullt navn"
-                            value={selectedResume.personalInfo.fullName}
+                            value={selectedResume.personalInfo?.fullName || ''}
                             onChange={(e) => handleUpdateResume({
                               personalInfo: {
                                 ...selectedResume.personalInfo,
@@ -1698,10 +3776,17 @@ export default function ResumeBuilder() {
                           />
                         </Grid>
                         <Grid item xs={12} md={6}>
+                          <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+                            <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>Profesjonell tittel</Typography>
+                            <ContextualHelp
+                              title="Professional Title"
+                              content="Your current job title or professional headline"
+                              size="small"
+                            />
+                          </Stack>
                           <TextField
                             fullWidth
-                            label="Profesjonell tittel"
-                            value={selectedResume.personalInfo.professionalTitle || ''}
+                            value={selectedResume?.personalInfo?.professionalTitle || ''}
                             onChange={(e) => handleUpdateResume({
                               personalInfo: {
                                 ...selectedResume.personalInfo,
@@ -1711,11 +3796,18 @@ export default function ResumeBuilder() {
                           />
                         </Grid>
                         <Grid item xs={12} md={6}>
+                          <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+                            <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>E-post</Typography>
+                            <ContextualHelp
+                              title="Professional Email"
+                              content="Professional email address. Employers will contact you here."
+                              size="small"
+                            />
+                          </Stack>
                           <TextField
                             fullWidth
-                            label="E-post"
                             type="email"
-                            value={selectedResume.personalInfo.email}
+                            value={selectedResume?.personalInfo?.email || ''}
                             onChange={(e) => handleUpdateResume({
                               personalInfo: {
                                 ...selectedResume.personalInfo,
@@ -1725,10 +3817,17 @@ export default function ResumeBuilder() {
                           />
                         </Grid>
                         <Grid item xs={12} md={6}>
+                          <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+                            <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>Telefon</Typography>
+                            <ContextualHelp
+                              title="Phone Number"
+                              content="Phone number where you can be reached. Include country code (+47 for Norway)"
+                              size="small"
+                            />
+                          </Stack>
                           <TextField
                             fullWidth
-                            label="Telefon"
-                            value={selectedResume.personalInfo.phone || ', '}
+                            value={selectedResume?.personalInfo?.phone || ''}
                             onChange={(e) => handleUpdateResume({
                               personalInfo: {
                                 ...selectedResume.personalInfo,
@@ -1745,7 +3844,7 @@ export default function ResumeBuilder() {
                                 <Tooltip title="AI Omskriving">
                                   <IconButton
                                     size="small"
-                                    onClick={() => openAiTool('paraphrase', selectedResume.personalInfo.summary || ', ','summary')}
+                                    onClick={() => openAiTool('paraphrase', selectedResume?.personalInfo?.summary || '','summary')}
                                     color="primary"
                                   >
                                     <AutoAwesome fontSize="small" />
@@ -1754,7 +3853,7 @@ export default function ResumeBuilder() {
                                 <Tooltip title="AI Grammatikksjekk">
                                   <IconButton
                                     size="small"
-                                    onClick={() => openAiTool('grammar', selectedResume.personalInfo.summary || ', ','summary')}
+                                    onClick={() => openAiTool('grammar', selectedResume?.personalInfo?.summary || '','summary')}
                                     color="primary"
                                   >
                                     <Spellcheck fontSize="small" />
@@ -1775,7 +3874,7 @@ export default function ResumeBuilder() {
                               fullWidth
                               multiline
                               rows={4}
-                              value={selectedResume.personalInfo.summary || ', '}
+                              value={selectedResume?.personalInfo?.summary || ''}
                               onChange={(e) => handleUpdateResume({
                                 personalInfo: {
                                   ...selectedResume.personalInfo,
@@ -1785,6 +3884,48 @@ export default function ResumeBuilder() {
                               placeholder="Skriv et kort sammendrag av din erfaring og kompetanse..."
                             />
                           </Stack>
+                        </Grid>
+                        <Grid item xs={12}>
+                          <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+                            <Stack spacing={2}>
+                              <FormControlLabel
+                                control={
+                                  <Switch
+                                    checked={selectedResume.isPublic}
+                                    onChange={(e) => handleTogglePublicResume(e.target.checked)}
+                                    color="primary"
+                                  />
+                                }
+                                label="Gjør CV offentlig"
+                              />
+                              {selectedResume.isPublic && (
+                                <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems="center">
+                                  <TextField
+                                    label="Offentlig lenke"
+                                    value={publicResumeUrl}
+                                    fullWidth
+                                    InputProps={{ readOnly: true }}
+                                  />
+                                  <Button variant="outlined" startIcon={<CopyIcon />} onClick={handleCopyPublicUrl}>
+                                    Kopier lenke
+                                  </Button>
+                                </Stack>
+                              )}
+                              <FormControl fullWidth>
+                                <InputLabel>Fargepalett</InputLabel>
+                                <Select
+                                  value={selectedResume.colorScheme || 'classic'}
+                                  label="Fargepalett"
+                                  onChange={(e) => handleUpdateResume({ colorScheme: e.target.value as string })}
+                                >
+                                  <MenuItem value="classic">Klassisk</MenuItem>
+                                  <MenuItem value="modern">Moderne</MenuItem>
+                                  <MenuItem value="sunset">Sunset</MenuItem>
+                                  <MenuItem value="ocean">Ocean</MenuItem>
+                                </Select>
+                              </FormControl>
+                            </Stack>
+                          </Paper>
                         </Grid>
                       </Grid>
                     )}
@@ -1819,6 +3960,53 @@ export default function ResumeBuilder() {
                       </Box>
                     )}
 
+                    {/* Education Tab */}
+                    {tabValue === 2 && (
+                      <Box>
+                        <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
+                          <Typography variant="h6">Utdanning</Typography>
+                          <Button startIcon={<AddIcon />} onClick={handleOpenEducationDialog}>
+                            Legg til utdanning
+                          </Button>
+                        </Stack>
+                        {selectedResume.education?.length === 0 && (
+                          <Alert severity="info" sx={{ mb: 2 }}>
+                            Ingen utdanning lagt til ennå.
+                          </Alert>
+                        )}
+                        {selectedResume.education?.map((edu) => (
+                          <Card key={edu.id} sx={{ mb: 2 }}>
+                            <CardContent>
+                              <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
+                                <Box>
+                                  <Typography variant="h6">{edu.degree}</Typography>
+                                  <Typography variant="body2" color="text.secondary">
+                                    {edu.institution}
+                                  </Typography>
+                                  <Typography variant="caption" color="text.secondary">
+                                    {edu.startDate} - {edu.isCurrent ? 'Nå' : edu.endDate || ''}
+                                  </Typography>
+                                </Box>
+                                <Stack direction="row" spacing={1}>
+                                  <Button size="small" onClick={() => handleEditEducationItem(edu)}>
+                                    Rediger
+                                  </Button>
+                                  <Button size="small" color="error" onClick={() => handleDeleteEducation(edu.id)}>
+                                    Slett
+                                  </Button>
+                                </Stack>
+                              </Stack>
+                              {edu.description && (
+                                <Typography variant="body2" sx={{ mt: 1 }}>
+                                  {edu.description}
+                                </Typography>
+                              )}
+                            </CardContent>
+                          </Card>
+                        ))}
+                      </Box>
+                    )}
+
                     {/* Skills Tab */}
                     {tabValue === 3 && (
                       <Box>
@@ -1830,17 +4018,64 @@ export default function ResumeBuilder() {
                             <Chip 
                               key={skill.id} 
                               label={skill.name}
-                              onDelete={() => {/* TODO: Delete skill */}}
+                              onDelete={() => handleDeleteSkill(skill.id)}
                             />
                           ))}
                         </Stack>
                         <Button 
                           startIcon={<AddIcon />} 
                           sx={{ mt: 2 }}
-                          onClick={() => {/* TODO: Add skill dialog */}}
+                          onClick={handleOpenSkillDialog}
                         >
                           Legg til ferdighet
                         </Button>
+                      </Box>
+                    )}
+
+                    {/* Certifications Tab */}
+                    {tabValue === 4 && (
+                      <Box>
+                        <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
+                          <Typography variant="h6">Sertifiseringer</Typography>
+                          <Button startIcon={<AddIcon />} onClick={handleOpenCertificationDialog}>
+                            Legg til sertifisering
+                          </Button>
+                        </Stack>
+                        {selectedResume.certifications?.length === 0 && (
+                          <Alert severity="info" sx={{ mb: 2 }}>
+                            Ingen sertifiseringer lagt til ennå.
+                          </Alert>
+                        )}
+                        {selectedResume.certifications?.map((cert) => (
+                          <Card key={cert.id} sx={{ mb: 2 }}>
+                            <CardContent>
+                              <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
+                                <Box>
+                                  <Typography variant="h6">{cert.name}</Typography>
+                                  <Typography variant="body2" color="text.secondary">
+                                    {cert.issuer}
+                                  </Typography>
+                                  <Typography variant="caption" color="text.secondary">
+                                    {cert.issueDate}
+                                  </Typography>
+                                </Box>
+                                <Stack direction="row" spacing={1}>
+                                  <Button size="small" onClick={() => handleEditCertificationItem(cert)}>
+                                    Rediger
+                                  </Button>
+                                  <Button size="small" color="error" onClick={() => handleDeleteCertification(cert.id)}>
+                                    Slett
+                                  </Button>
+                                </Stack>
+                              </Stack>
+                              {cert.description && (
+                                <Typography variant="body2" sx={{ mt: 1 }}>
+                                  {cert.description}
+                                </Typography>
+                              )}
+                            </CardContent>
+                          </Card>
+                        ))}
                       </Box>
                     )}
 
@@ -2011,8 +4246,37 @@ export default function ResumeBuilder() {
                       </Typography>
                     </Box>
                     <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                      {selectedResume.atsScore >= 80 ? '✅ Utmerket ATS-score!' : selectedResume.atsScore >= 60 ? '⚠️ God score, men kan forbedres' : '❌ Trenger forbedring'}
+                      {selectedResume.atsScore >= 80 ? (
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                          <CheckCircleOutlineIcon fontSize="small" color="success" />
+                          <span>Utmerket ATS-score!</span>
+                        </Box>
+                      ) : selectedResume.atsScore >= 60 ? (
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                          <WarningIcon fontSize="small" color="warning" />
+                          <span>God score, men kan forbedres</span>
+                        </Box>
+                      ) : (
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                          <ErrorOutlineIcon fontSize="small" color="error" />
+                          <span>Trenger forbedring</span>
+                        </Box>
+                      )}
                     </Typography>
+                    {atsTips.length > 0 && (
+                      <Box sx={{ mt: 2 }}>
+                        <Typography variant="subtitle2" gutterBottom>
+                          Forbedringsforslag
+                        </Typography>
+                        <Stack spacing={1}>
+                          {atsTips.map((tip) => (
+                            <Alert key={tip} severity="info" icon={<TrendingUpIcon />}>
+                              {tip}
+                            </Alert>
+                          ))}
+                        </Stack>
+                      </Box>
+                    )}
                   </CardContent>
                 </Card>
               </Box>
@@ -2023,11 +4287,896 @@ export default function ResumeBuilder() {
         <Step>
           <StepLabel>Publiser og søk jobber</StepLabel>
           <StepContent>
-            <Typography>Publiser CV-en din og start jobbsøking</Typography>
-            {/* TODO: Job application tracking */}
+            <Stack spacing={2}>
+              <Typography>Publiser CV-en din og start jobbsøking</Typography>
+              <Paper sx={{ p: 2, borderRadius: 2 }}>
+                <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems="center">
+                  <TextField
+                    label="Søk jobber"
+                    value={jobSearch}
+                    onChange={(e) => setJobSearch(e.target.value)}
+                    placeholder="Søk etter stilling, selskap eller tags"
+                    fullWidth
+                  />
+                  <FormControl sx={{ minWidth: 180 }}>
+                    <InputLabel>Status</InputLabel>
+                    <Select
+                      value={jobStatusFilter}
+                      label="Status"
+                      onChange={(e) => setJobStatusFilter(e.target.value as typeof jobStatusFilter)}
+                    >
+                      <MenuItem value="all">Alle</MenuItem>
+                      <MenuItem value="saved">Lagret</MenuItem>
+                      <MenuItem value="applied">Søkt</MenuItem>
+                      <MenuItem value="interviewing">Intervju</MenuItem>
+                      <MenuItem value="offer">Tilbud</MenuItem>
+                      <MenuItem value="accepted">Akseptert</MenuItem>
+                      <MenuItem value="rejected">Avslått</MenuItem>
+                      <MenuItem value="withdrawn">Trukket</MenuItem>
+                    </Select>
+                  </FormControl>
+                  <Button variant="contained" startIcon={<AddIcon />} onClick={handleOpenJobDialog}>
+                    Legg til søknad
+                  </Button>
+                </Stack>
+              </Paper>
+
+              {/* Urgent Deadlines Alert */}
+              {(() => {
+                const today = new Date();
+                const urgentJobs = jobApplications.filter(job => {
+                  if (!job.deadline || job.status === 'applied' || job.status === 'rejected' || job.status === 'withdrawn') return false;
+                  const deadline = new Date(job.deadline);
+                  const daysLeft = Math.ceil((deadline.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+                  return daysLeft <= 7 && daysLeft >= 0;
+                }).sort((a, b) => new Date(a.deadline!).getTime() - new Date(b.deadline!).getTime());
+
+                if (urgentJobs.length === 0) return null;
+
+                return (
+                  <Alert severity="warning" icon={<AlarmIcon />}>
+                    <Typography variant="subtitle2" gutterBottom>
+                      <strong>Haster! {urgentJobs.length} søknadsfrist{urgentJobs.length > 1 ? 'er' : ''} snart</strong>
+                    </Typography>
+                    <Stack spacing={1}>
+                      {urgentJobs.map(job => {
+                        const deadline = new Date(job.deadline!);
+                        const daysLeft = Math.ceil((deadline.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+                        return (
+                          <Box key={job.id} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <Chip 
+                              size="small" 
+                              label={daysLeft === 0 ? 'I DAG!' : daysLeft === 1 ? 'I MORGEN' : `${daysLeft} dager`}
+                              color={daysLeft <= 1 ? 'error' : daysLeft <= 3 ? 'warning' : 'default'}
+                            />
+                            <Typography variant="body2">
+                              <strong>{job.jobTitle}</strong> hos {job.company} - frist: {job.deadline}
+                            </Typography>
+                          </Box>
+                        );
+                      })}
+                    </Stack>
+                  </Alert>
+                );
+              })()}
+
+              {/* Upcoming Interviews Alert */}
+              {(() => {
+                const today = new Date();
+                const upcomingInterviews = jobApplications.filter(job => {
+                  if (!job.interviewDate) return false;
+                  const interviewDate = new Date(job.interviewDate);
+                  const daysUntil = Math.ceil((interviewDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+                  return daysUntil <= 7 && daysUntil >= 0;
+                }).sort((a, b) => new Date(a.interviewDate!).getTime() - new Date(b.interviewDate!).getTime());
+
+                if (upcomingInterviews.length === 0) return null;
+
+                return (
+                  <Alert severity="info" icon={<GpsFixedIcon />}>
+                    <Typography variant="subtitle2" gutterBottom>
+                      <strong>Kommende intervjuer - {upcomingInterviews.length} planlagt</strong>
+                    </Typography>
+                    <Stack spacing={1}>
+                      {upcomingInterviews.map(job => {
+                        const interviewDate = new Date(job.interviewDate!);
+                        const daysUntil = Math.ceil((interviewDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+                        const isPrepared = job.interviewPreparation?.completed;
+                        return (
+                          <Box key={job.id} sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                            <Chip 
+                              size="small" 
+                              label={daysUntil === 0 ? 'I DAG!' : daysUntil === 1 ? 'I MORGEN' : `${daysUntil} dager`}
+                              color={daysUntil === 0 ? 'error' : daysUntil <= 2 ? 'warning' : 'info'}
+                            />
+                            <Typography variant="body2">
+                              <strong>{job.jobTitle}</strong> hos {job.company}
+                            </Typography>
+                            {!isPrepared && (
+                              <Chip 
+                                size="small" 
+                                label="Ikke forberedt" 
+                                color="warning" 
+                                variant="outlined"
+                              />
+                            )}
+                          </Box>
+                        );
+                      })}
+                    </Stack>
+                  </Alert>
+                );
+              })()}
+
+              {filteredJobApplications.length === 0 ? (
+                <Alert severity="info">Ingen jobbsøknader registrert ennå.</Alert>
+              ) : (
+                <Grid container spacing={2}>
+                  {filteredJobApplications.map((job) => (
+                    <Grid item xs={12} md={6} key={job.id}>
+                      <Card>
+                        <CardContent>
+                          <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
+                            <Box>
+                              <Typography variant="h6">{job.jobTitle}</Typography>
+                              <Typography variant="body2" color="text.secondary">
+                                {job.company} {job.location ? `• ${job.location}` : ''}
+                              </Typography>
+                              {job.source && (
+                                <Typography variant="caption" color="text.secondary">
+                                  Kilde: {job.source}
+                                </Typography>
+                              )}
+                            </Box>
+                            <Chip label={job.status} color={job.status === 'applied' ? 'primary' : 'default'} />
+                          </Stack>
+                          <Stack direction="row" spacing={1} sx={{ mt: 1 }} flexWrap="wrap">
+                            <Chip size="small" label={`Prioritet: ${job.priority}`} />
+                            {job.applicantType && (
+                              <Chip 
+                                size="small" 
+                                label={
+                                  job.applicantType === 'internship' ? 'Praksis/Internship' :
+                                  job.applicantType === 'trainee' ? 'Trainee' :
+                                  job.applicantType === 'full-time' ? 'Heltid' :
+                                  job.applicantType === 'part-time' ? 'Deltid' :
+                                  job.applicantType === 'contract' ? 'Kontrakt' :
+                                  job.applicantType === 'freelance' ? 'Frilans' :
+                                  'Midlertidig'
+                                }
+                                color="info"
+                              />
+                            )}
+                            {job.appliedDate && <Chip size="small" label={`Søkt: ${job.appliedDate}`} />}
+                            {job.deadline && (() => {
+                              const deadline = new Date(job.deadline);
+                              const today = new Date();
+                              const daysLeft = Math.ceil((deadline.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+                              const isPastDeadline = daysLeft < 0;
+                              const isUrgent = daysLeft <= 3 && daysLeft >= 0;
+                              const isSoon = daysLeft <= 7 && daysLeft > 3;
+                              
+                              return (
+                                <Chip 
+                                  size="small" 
+                                  icon={isPastDeadline ? <CancelIcon /> : <AlarmIcon />}
+                                  label={isPastDeadline ? `Frist passert (${job.deadline})` : `Frist: ${job.deadline} (${daysLeft}d)`}
+                                  color={isPastDeadline ? 'error' : isUrgent ? 'error' : isSoon ? 'warning' : 'default'}
+                                  variant={isUrgent || isPastDeadline ? 'filled' : 'outlined'}
+                                />
+                              );
+                            })()}
+                            {job.interviewDate && (() => {
+                              const interviewDate = new Date(job.interviewDate);
+                              const today = new Date();
+                              const daysUntil = Math.ceil((interviewDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+                              const isPast = daysUntil < 0;
+                              const isToday = daysUntil === 0;
+                              const isTomorrow = daysUntil === 1;
+                              const isUrgent = daysUntil <= 3 && daysUntil >= 0;
+                              
+                              return (
+                                <Chip 
+                                  size="small" 
+                                  icon={<GpsFixedIcon />}
+                                  label={
+                                    isPast ? `Intervju fullført` :
+                                    isToday ? `INTERVJU I DAG!` :
+                                    isTomorrow ? `INTERVJU I MORGEN` :
+                                    `Intervju om ${daysUntil}d${!job.interviewPreparation?.completed ? ' - Forbered!' : ''}`
+                                  }
+                                  color={isToday ? 'error' : isUrgent ? 'warning' : 'success'}
+                                  variant={isToday || isTomorrow ? 'filled' : 'outlined'}
+                                />
+                              );
+                            })()}
+                          </Stack>
+                          {job.tags?.length > 0 && (
+                            <Stack direction="row" spacing={0.5} sx={{ mt: 1 }} flexWrap="wrap">
+                              {job.tags.map((tag) => (
+                                <Chip key={tag} size="small" label={tag} />
+                              ))}
+                            </Stack>
+                          )}
+                          {job.notes && (
+                            <Typography variant="body2" sx={{ mt: 1 }}>
+                              {job.notes}
+                            </Typography>
+                          )}
+                          {job.coverLetter && (
+                            <Typography variant="body2" sx={{ mt: 1 }} color="text.secondary">
+                              Søknadsbrev lagret
+                            </Typography>
+                          )}
+                        </CardContent>
+                        <CardActions sx={{ justifyContent: 'space-between' }}>
+                          <FormControl size="small" sx={{ minWidth: 160 }}>
+                            <InputLabel>Oppdater status</InputLabel>
+                            <Select
+                              value={job.status}
+                              label="Oppdater status"
+                              onChange={(e) => handleUpdateJobStatus(job.id, e.target.value as JobApplication['status'])}
+                            >
+                              <MenuItem value="saved">Lagret</MenuItem>
+                              <MenuItem value="applied">Søkt</MenuItem>
+                              <MenuItem value="interviewing">Intervju</MenuItem>
+                              <MenuItem value="offer">Tilbud</MenuItem>
+                              <MenuItem value="accepted">Akseptert</MenuItem>
+                              <MenuItem value="rejected">Avslått</MenuItem>
+                              <MenuItem value="withdrawn">Trukket</MenuItem>
+                            </Select>
+                          </FormControl>
+                          <Stack direction="row" spacing={1}>
+                            <Button size="small" onClick={() => handleEditJobApplication(job)}>
+                              Rediger
+                            </Button>
+                            <Button size="small" color="error" onClick={() => handleDeleteJobApplication(job.id)}>
+                              Slett
+                            </Button>
+                          </Stack>
+                        </CardActions>
+                      </Card>
+                    </Grid>
+                  ))}
+                </Grid>
+              )}
+            </Stack>
           </StepContent>
         </Step>
       </Stepper>
+
+      {/* Add Skill Dialog */}
+      <Dialog open={showSkillDialog} onClose={handleCloseSkillDialog} maxWidth="sm" fullWidth>
+        <DialogTitle>Legg til ferdighet</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <TextField
+              label="Ferdighet"
+              fullWidth
+              value={skillFormData.name}
+              onChange={(e) => setSkillFormData((prev) => ({ ...prev, name: e.target.value }))}
+              placeholder="F.eks. React, Figma, Prosjektledelse"
+            />
+            <TextField
+              label="Kategori (valgfritt)"
+              fullWidth
+              value={skillFormData.category}
+              onChange={(e) => setSkillFormData((prev) => ({ ...prev, category: e.target.value }))}
+              placeholder="F.eks. Frontend, Design, Ledelse"
+            />
+            <FormControl fullWidth>
+              <InputLabel id="skill-proficiency-label">Nivå</InputLabel>
+              <Select
+                labelId="skill-proficiency-label"
+                label="Nivå"
+                value={skillFormData.proficiencyLevel}
+                onChange={(e) => setSkillFormData((prev) => ({ ...prev, proficiencyLevel: Number(e.target.value) }))}
+              >
+                <MenuItem value={1}>Nybegynner</MenuItem>
+                <MenuItem value={2}>Grunnleggende</MenuItem>
+                <MenuItem value={3}>God</MenuItem>
+                <MenuItem value={4}>Avansert</MenuItem>
+                <MenuItem value={5}>Ekspert</MenuItem>
+              </Select>
+            </FormControl>
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseSkillDialog}>Avbryt</Button>
+          <Button variant="contained" onClick={handleAddSkill} startIcon={<AddIcon />}>
+            Legg til
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Education Dialog */}
+      <Dialog open={showEducationDialog} onClose={() => setShowEducationDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>{editingEducationItem ? 'Rediger utdanning' : 'Legg til utdanning'}</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            {!editingEducationItem && (
+              <Button
+                variant="outlined"
+                fullWidth
+                onClick={() => {
+                  setShowEducationDialog(false);
+                  handleImportFromVitnemalsportalen();
+                }}
+                sx={{ 
+                  borderColor: '#1976d2', 
+                  color: '#1976d2',
+                  '&:hover': { 
+                    borderColor: '#1565c0', 
+                    backgroundColor: 'rgba(25, 118, 210, 0.04)' 
+                  } 
+                }}
+              >
+                📜 Importer fra vitnemalsportalen.no
+              </Button>
+            )}
+            <TextField
+              label="Grad"
+              fullWidth
+              value={educationFormData.degree}
+              onChange={(e) => setEducationFormData((prev) => ({ ...prev, degree: e.target.value }))}
+            />
+            <TextField
+              label="Institusjon"
+              fullWidth
+              value={educationFormData.institution}
+              onChange={(e) => setEducationFormData((prev) => ({ ...prev, institution: e.target.value }))}
+            />
+            <TextField
+              label="Studieretning"
+              fullWidth
+              value={educationFormData.fieldOfStudy}
+              onChange={(e) => setEducationFormData((prev) => ({ ...prev, fieldOfStudy: e.target.value }))}
+            />
+            <TextField
+              label="Sted"
+              fullWidth
+              value={educationFormData.location}
+              onChange={(e) => setEducationFormData((prev) => ({ ...prev, location: e.target.value }))}
+            />
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+              <TextField
+                label="Startdato"
+                type="date"
+                fullWidth
+                InputLabelProps={{ shrink: true }}
+                value={educationFormData.startDate}
+                onChange={(e) => setEducationFormData((prev) => ({ ...prev, startDate: e.target.value }))}
+              />
+              <TextField
+                label="Sluttdato"
+                type="date"
+                fullWidth
+                InputLabelProps={{ shrink: true }}
+                value={educationFormData.endDate}
+                onChange={(e) => setEducationFormData((prev) => ({ ...prev, endDate: e.target.value }))}
+                disabled={Boolean(educationFormData.isCurrent)}
+              />
+            </Stack>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={Boolean(educationFormData.isCurrent)}
+                  onChange={(e) => setEducationFormData((prev) => ({ ...prev, isCurrent: e.target.checked }))}
+                />
+              }
+              label="Pågående utdanning"
+            />
+            <TextField
+              label="Karakter / snitt"
+              fullWidth
+              value={educationFormData.grade}
+              onChange={(e) => setEducationFormData((prev) => ({ ...prev, grade: e.target.value }))}
+            />
+            <TextField
+              label="Beskrivelse"
+              fullWidth
+              multiline
+              rows={3}
+              value={educationFormData.description}
+              onChange={(e) => setEducationFormData((prev) => ({ ...prev, description: e.target.value }))}
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowEducationDialog(false)}>Avbryt</Button>
+          <Button variant="contained" onClick={handleSaveEducation}>
+            Lagre
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Certification Dialog */}
+      <Dialog open={showCertificationDialog} onClose={() => setShowCertificationDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>{editingCertificationItem ? 'Rediger sertifisering' : 'Legg til sertifisering'}</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <TextField
+              label="Sertifisering"
+              fullWidth
+              value={certificationFormData.name}
+              onChange={(e) => setCertificationFormData((prev) => ({ ...prev, name: e.target.value }))}
+            />
+            <TextField
+              label="Utsteder"
+              fullWidth
+              value={certificationFormData.issuer}
+              onChange={(e) => setCertificationFormData((prev) => ({ ...prev, issuer: e.target.value }))}
+            />
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+              <TextField
+                label="Utstedt"
+                type="date"
+                fullWidth
+                InputLabelProps={{ shrink: true }}
+                value={certificationFormData.issueDate}
+                onChange={(e) => setCertificationFormData((prev) => ({ ...prev, issueDate: e.target.value }))}
+              />
+              <TextField
+                label="Utløpsdato"
+                type="date"
+                fullWidth
+                InputLabelProps={{ shrink: true }}
+                value={certificationFormData.expiryDate}
+                onChange={(e) => setCertificationFormData((prev) => ({ ...prev, expiryDate: e.target.value }))}
+              />
+            </Stack>
+            <TextField
+              label="Credential ID"
+              fullWidth
+              value={certificationFormData.credentialId}
+              onChange={(e) => setCertificationFormData((prev) => ({ ...prev, credentialId: e.target.value }))}
+            />
+            <TextField
+              label="Credential URL"
+              fullWidth
+              value={certificationFormData.credentialUrl}
+              onChange={(e) => setCertificationFormData((prev) => ({ ...prev, credentialUrl: e.target.value }))}
+            />
+            <TextField
+              label="Beskrivelse"
+              fullWidth
+              multiline
+              rows={3}
+              value={certificationFormData.description}
+              onChange={(e) => setCertificationFormData((prev) => ({ ...prev, description: e.target.value }))}
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowCertificationDialog(false)}>Avbryt</Button>
+          <Button variant="contained" onClick={handleSaveCertification}>
+            Lagre
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Vitnemalsportalen Import Dialog */}
+      <Dialog open={showVitnemalsportalenDialog} onClose={() => setShowVitnemalsportalenDialog(false)} maxWidth="md" fullWidth>
+        <DialogTitle>Importer fra vitnemalsportalen.no</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            {vitnemalsportalenInstructions ? (
+              <>
+                <Alert severity="success">
+                  <Typography variant="subtitle2" gutterBottom>
+                    Enkel import fra Vitnemålsportalen
+                  </Typography>
+                  <Typography variant="body2">
+                    Hent dine vitnemål og utdanningsresultater direkte fra vitnemalsportalen.no med ett klikk.
+                  </Typography>
+                </Alert>
+                
+                <Button
+                  variant="contained"
+                  size="large"
+                  fullWidth
+                  onClick={() => {
+                    // Initiate EMREX flow to vitnemalsportalen.no
+                    const returnUrl = `${window.location.origin}/resume/emrex-callback`;
+                    const emrexUrl = `https://vip-test.uio.no/vp/login?returnUrl=${encodeURIComponent(returnUrl)}`;
+                    window.location.href = emrexUrl;
+                  }}
+                  sx={{
+                    background: 'linear-gradient(135deg, #1976d2 0%, #2196f3 100%)',
+                    py: 2,
+                    fontSize: '1.1rem',
+                    '&:hover': {
+                      background: 'linear-gradient(135deg, #1565c0 0%, #1976d2 100%)',
+                    }
+                  }}
+                >
+                  🎓 Hent fra Vitnemålsportalen
+                </Button>
+                
+                <Divider>eller</Divider>
+                
+                <Alert severity="info">
+                  <Typography variant="subtitle2" gutterBottom>
+                    Manuell import (valgfritt):
+                  </Typography>
+                  <ol style={{ margin: 0, paddingLeft: '20px' }}>
+                    <li>Gå til <Link href="https://www.vitnemalsportalen.no" target="_blank" rel="noopener">vitnemalsportalen.no</Link></li>
+                    <li>Logg inn med BankID eller Feide</li>
+                    <li>Eksporter dine vitnemål (XML eller JSON)</li>
+                    <li>Lim inn dataene nedenfor</li>
+                  </ol>
+                </Alert>
+                
+                <Box>
+                  <Typography variant="subtitle2" gutterBottom>
+                    Eksempel på JSON-format:
+                  </Typography>
+                  <TextField
+                    fullWidth
+                    multiline
+                    rows={8}
+                    disabled
+                    value={`[
+  {
+    "degree": "Bachelor i informatikk",
+    "institution": "Universitetet i Oslo",
+    "fieldOfStudy": "Informatikk",
+    "startDate": "2020-08",
+    "endDate": "2023-06",
+    "grade": "A (4.5)",
+    "location": "Oslo"
+  }
+]`}
+                    sx={{ fontFamily: 'monospace', fontSize: '0.85rem' }}
+                  />
+                </Box>
+                <Button
+                  variant="contained"
+                  onClick={() => setVitnemalsportalenInstructions(false)}
+                >
+                  Fortsett til import
+                </Button>
+              </>
+            ) : (
+              <>
+                <Alert severity="info">
+                  <Typography variant="body2">
+                    Lim inn dine utdanningsdata fra vitnemalsportalen.no:
+                  </Typography>
+                </Alert>
+                <TextField
+                  fullWidth
+                  multiline
+                  rows={12}
+                  placeholder={`Eksempel:
+[
+  {
+    "degree": "Bachelor i informatikk",
+    "institution": "Universitetet i Oslo",
+    "fieldOfStudy": "Informatikk",
+    "startDate": "2020-08",
+    "endDate": "2023-06",
+    "grade": "A"
+  }
+]`}
+                  onChange={(e) => {
+                    try {
+                      const jsonData = JSON.parse(e.target.value);
+                      // Store parsed vitnemalsportalen data for import
+                      setLinkedInData((prev: LinkedInData | null) => ({
+                        ...prev,
+                        profile: prev?.profile || {},
+                        experience: prev?.experience || [],
+                        education: Array.isArray(jsonData) ? jsonData : prev?.education || [],
+                        skills: prev?.skills || []
+                      }));
+                      setSnackbar({
+                        open: true,
+                        message: `Vitnemålsdataene lastet inn: ${Array.isArray(jsonData) ? jsonData.length : 1} element(er)`,
+                        severity: 'success'
+                      });
+                    } catch (parseError) {
+                      console.error('Failed to parse vitnemalsportalen JSON:', parseError);
+                      setSnackbar({
+                        open: true,
+                        message: 'Ugyldig JSON-format. Kontroller dataene og prøv igjen.',
+                        severity: 'error'
+                      });
+                    }
+                  }}
+                  id="vitnemalsportalen-data-input"
+                />
+              </>
+            )}
+          </Stack>
+        </DialogContent>
+      </Dialog>
+
+      {/* Job Application Dialog */}
+      <Dialog open={showJobDialog} onClose={() => setShowJobDialog(false)} maxWidth="md" fullWidth>
+        <DialogTitle>{editingJobApplication ? 'Rediger jobbsøknad' : 'Legg til jobbsøknad'}</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+              <TextField
+                label="Stilling"
+                fullWidth
+                value={jobFormData.jobTitle}
+                onChange={(e) =>
+                  setJobFormData((prev: Partial<JobApplication>) => ({
+                    ...prev,
+                    jobTitle: e.target.value
+                  }))
+                }
+              />
+              <TextField
+                label="Selskap"
+                fullWidth
+                value={jobFormData.company}
+                onChange={(e) =>
+                  setJobFormData((prev: Partial<JobApplication>) => ({
+                    ...prev,
+                    company: e.target.value
+                  }))
+                }
+              />
+            </Stack>
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+              <TextField
+                label="Sted"
+                fullWidth
+                value={jobFormData.location}
+                onChange={(e) => setJobFormData((prev) => ({ ...prev, location: e.target.value }))}
+              />
+              <TextField
+                label="Jobb-URL (f.eks. fra finn.no)"
+                fullWidth
+                value={jobFormData.jobUrl}
+                onChange={(e) => setJobFormData((prev) => ({ ...prev, jobUrl: e.target.value }))}
+                helperText={jobFormData.jobUrl?.includes('finn.no') ? 'finn.no URL oppdaget' : ''}
+              />
+            </Stack>
+            {jobFormData.jobUrl?.includes('finn.no') && (
+              <Button
+                variant="outlined"
+                onClick={handleImportFromFinnNo}
+                fullWidth
+                sx={{ borderColor: '#06befb', color: '#06befb', '&:hover': { borderColor: '#0596c7', backgroundColor: 'rgba(6, 190, 251, 0.04)' } }}
+              >
+                Importer detaljer fra finn.no
+              </Button>
+            )}
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+              <FormControl fullWidth>
+                <InputLabel>Type søker</InputLabel>
+                <Select
+                  value={jobFormData.applicantType || ''}
+                  label="Type søker"
+                  onChange={(e) => setJobFormData((prev) => ({ ...prev, applicantType: e.target.value as JobApplication['applicantType'] }))}
+                >
+                  <MenuItem value="">Ikke angitt</MenuItem>
+                  <MenuItem value="internship">Praksis/Internship</MenuItem>
+                  <MenuItem value="trainee">Trainee</MenuItem>
+                  <MenuItem value="full-time">Heltid</MenuItem>
+                  <MenuItem value="part-time">Deltid</MenuItem>
+                  <MenuItem value="contract">Kontrakt</MenuItem>
+                  <MenuItem value="freelance">Frilans</MenuItem>
+                  <MenuItem value="temporary">Midlertidig</MenuItem>
+                </Select>
+              </FormControl>
+              <TextField
+                label="Kilde"
+                fullWidth
+                value={jobFormData.source || ''}
+                onChange={(e) => setJobFormData((prev) => ({ ...prev, source: e.target.value }))}
+                placeholder="f.eks. finn.no, LinkedIn, etc."
+              />
+            </Stack>
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+              <FormControl fullWidth>
+                <InputLabel>Status</InputLabel>
+                <Select
+                  value={jobFormData.status || 'saved'}
+                  label="Status"
+                  onChange={(e) => setJobFormData((prev) => ({ ...prev, status: e.target.value as JobApplication['status'] }))}
+                >
+                  <MenuItem value="saved">Lagret</MenuItem>
+                  <MenuItem value="applied">Søkt</MenuItem>
+                  <MenuItem value="interviewing">Intervju</MenuItem>
+                  <MenuItem value="offer">Tilbud</MenuItem>
+                  <MenuItem value="accepted">Akseptert</MenuItem>
+                  <MenuItem value="rejected">Avslått</MenuItem>
+                  <MenuItem value="withdrawn">Trukket</MenuItem>
+                </Select>
+              </FormControl>
+              <FormControl fullWidth>
+                <InputLabel>Prioritet</InputLabel>
+                <Select
+                  value={jobFormData.priority || 'medium'}
+                  label="Prioritet"
+                  onChange={(e) => setJobFormData((prev) => ({ ...prev, priority: e.target.value as JobApplication['priority'] }))}
+                >
+                  <MenuItem value="low">Lav</MenuItem>
+                  <MenuItem value="medium">Medium</MenuItem>
+                  <MenuItem value="high">Høy</MenuItem>
+                </Select>
+              </FormControl>
+            </Stack>
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+              <TextField
+                label="Søkt dato"
+                type="date"
+                fullWidth
+                InputLabelProps={{ shrink: true }}
+                value={jobFormData.appliedDate}
+                onChange={(e) => setJobFormData((prev) => ({ ...prev, appliedDate: e.target.value }))}
+              />
+              <TextField
+                label="Søknadsfrist"
+                type="date"
+                fullWidth
+                InputLabelProps={{ shrink: true }}
+                value={jobFormData.deadline}
+                onChange={(e) => setJobFormData((prev) => ({ ...prev, deadline: e.target.value }))}
+                helperText={jobFormData.deadline && new Date(jobFormData.deadline) < new Date() ? "Frist passert" : ""}
+              />
+            </Stack>
+            {(jobFormData.status === 'interviewing' || jobFormData.interviewDate) && (
+              <TextField
+                label="Intervjudato"
+                type="datetime-local"
+                fullWidth
+                InputLabelProps={{ shrink: true }}
+                value={jobFormData.interviewDate}
+                onChange={(e) => setJobFormData((prev) => ({ ...prev, interviewDate: e.target.value }))}
+                helperText="Sett intervjudato for å få forberedelsesverktøy"
+              />
+            )}
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+              <FormControl fullWidth>
+                <InputLabel>Velg CV</InputLabel>
+                <Select
+                  value={jobFormData.resumeId || ''}
+                  label="Velg CV"
+                  onChange={(e) => setJobFormData((prev) => ({ ...prev, resumeId: e.target.value as string }))}
+                >
+                  <MenuItem value="">Ingen</MenuItem>
+                  {Array.isArray(resumes) && resumes.map((resume) => (
+                    <MenuItem key={resume.id} value={resume.id}>
+                      {resume.title}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Stack>
+            <Autocomplete
+              multiple
+              freeSolo
+              options={[]}
+              value={jobFormData.tags || []}
+              onChange={(_, value) => setJobFormData((prev) => ({ ...prev, tags: value as string[] }))}
+              renderInput={(params) => (
+                <TextField {...params} label="Tags" placeholder="Legg til tags" />
+              )}
+            />
+            <TextField
+              label="Notater"
+              fullWidth
+              multiline
+              rows={3}
+              value={jobFormData.notes}
+              onChange={(e) => setJobFormData((prev) => ({ ...prev, notes: e.target.value }))}
+            />
+            <TextField
+              label="Søknadsbrev"
+              fullWidth
+              multiline
+              rows={4}
+              value={jobFormData.coverLetter}
+              onChange={(e) => setJobFormData((prev) => ({ ...prev, coverLetter: e.target.value }))}
+            />
+            <Button
+              variant="outlined"
+              startIcon={<AIIcon />}
+              onClick={() => openAiTool('generate-cover-letter', '', 'job-application-cover-letter')}
+            >
+              Generer søknadsbrev med AI
+            </Button>
+            <Button
+              variant="contained"
+              color="secondary"
+              startIcon={<AIIcon />}
+              onClick={handleAnalyzeJobForResume}
+              disabled={!jobFormData.notes || !jobFormData.notes.includes('Finn-kode')}
+            >
+              Analyser jobb & få AI-forslag
+            </Button>
+            {jobFormData.interviewDate && (
+              <Button
+                variant="contained"
+                color="success"
+                startIcon={<GpsFixedIcon />}
+                onClick={handlePrepareForInterview}
+              >
+                Forbered intervju
+              </Button>
+            )}
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowJobDialog(false)}>Avbryt</Button>
+          <Button variant="contained" onClick={handleSaveJobApplication}>
+            Lagre
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Template Dialog */}
+      <Dialog open={showTemplateDialog} onClose={() => setShowTemplateDialog(false)} maxWidth="md" fullWidth>
+        <DialogTitle>Velg CV-mal</DialogTitle>
+        <DialogContent>
+          {templatesLoading && (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+              <CircularProgress />
+            </Box>
+          )}
+          <Grid container spacing={2} sx={{ mt: 1 }}>
+            {(templates.length > 0 ? templates : resumeTemplates).map((template) => (
+              <Grid item xs={12} md={6} key={template.id}>
+                <Card variant="outlined">
+                  <CardContent>
+                    <Typography variant="h6">{template.name}</Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {template.description}
+                    </Typography>
+                    <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
+                      <Chip label={template.layout} size="small" />
+                      <Chip label={`ATS ${template.atsScore}%`} size="small" color="success" />
+                      {template.isPremium && <Chip label="Premium" size="small" color="warning" />}
+                    </Stack>
+                  </CardContent>
+                  <CardActions>
+                    <Button variant="contained" onClick={() => handleSelectTemplate(template)}>
+                      Velg mal
+                    </Button>
+                  </CardActions>
+                </Card>
+              </Grid>
+            ))}
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowTemplateDialog(false)}>Lukk</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Version History Dialog */}
+      <Dialog open={showVersionDialog} onClose={() => setShowVersionDialog(false)} maxWidth="md" fullWidth>
+        <DialogTitle>Versjonshistorikk</DialogTitle>
+        <DialogContent>
+          {versionHistory.length === 0 ? (
+            <Alert severity="info">Ingen publiserte versjoner ennå.</Alert>
+          ) : (
+            <List>
+              {versionHistory.map((version) => (
+                <ListItem key={version.id} divider>
+                  <ListItemText
+                    primary={`Versjon ${version.versionNumber}`}
+                    secondary={new Date(version.createdAt).toLocaleString('no-NO')}
+                  />
+                  <Button variant="outlined" onClick={() => handleRestoreVersion(version)}>
+                    Gjenopprett
+                  </Button>
+                </ListItem>
+              ))}
+            </List>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleRestoreFromBackup}>Gjenopprett backup</Button>
+          <Button onClick={() => setShowVersionDialog(false)}>Lukk</Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Project Import Dialog */}
       <Dialog 
@@ -2131,15 +5280,39 @@ export default function ResumeBuilder() {
               
               {linkedIn.state.isAuthenticated && linkedIn.state.profile && (
                 <Box sx={{ mb: 3, p: 2, bgcolor: 'background.paper', borderRadius: 1, border: '1px solid', borderColor: 'divider' }}>
-                  <Typography variant="subtitle2" gutterBottom>LinkedIn-profil</Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    {linkedIn.state.profile.firstName} {linkedIn.state.profile.lastName}
-                  </Typography>
-                  {linkedIn.state.profile.headline && (
-                    <Typography variant="body2" color="text.secondary">
-                      {linkedIn.state.profile.headline}
-                    </Typography>
-                  )}
+                  <Stack direction="row" spacing={2} alignItems="flex-start">
+                    <Box flex={1}>
+                      <Typography variant="subtitle2" gutterBottom>LinkedIn-profil</Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        {linkedIn.state.profile.firstName} {linkedIn.state.profile.lastName}
+                      </Typography>
+                      {linkedIn.state.profile.headline && (
+                        <Typography variant="body2" color="text.secondary">
+                          {linkedIn.state.profile.headline}
+                        </Typography>
+                      )}
+                    </Box>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={handleLinkedInSync}
+                      startIcon={<AutoAwesome />}
+                      sx={{
+                        fontFamily: 'Poppins, sans-serif',
+                        fontWeight: 500,
+                        textTransform: 'none',
+                        borderColor: '#2563eb',
+                        color: '#2563eb',
+                        '&:hover': {
+                          borderColor: '#ff8c00',
+                          color: '#ff8c00',
+                          bgcolor: 'rgba(255, 140, 0, 0.05)'
+                        }
+                      }}
+                    >
+                      Synkroniser
+                    </Button>
+                  </Stack>
                 </Box>
               )}
 
@@ -2242,7 +5415,7 @@ export default function ResumeBuilder() {
                 <Box sx={{ mb: 2 }}>
                   <Typography variant="subtitle2" gutterBottom>Personlig informasjon</Typography>
                   <Typography variant="body2" color="text.secondary">
-                    ✓ Importert
+                    Importert
                   </Typography>
                 </Box>
               )}
@@ -2252,7 +5425,7 @@ export default function ResumeBuilder() {
                   <Typography variant="subtitle2" gutterBottom>Arbeidserfaring</Typography>
                   {linkedInData.experience.slice(0, 3).map((exp: any, idx: number) => (
                     <Typography key={idx} variant="body2" color="text.secondary">
-                      ✓ {exp.title} at {exp.company}
+                      {exp.title} at {exp.company}
                     </Typography>
                   ))}
                   {linkedInData.experience.length > 3 && (
@@ -2266,9 +5439,9 @@ export default function ResumeBuilder() {
               {linkedInSelectedData.education && linkedInData?.education && (
                 <Box sx={{ mb: 2 }}>
                   <Typography variant="subtitle2" gutterBottom>Utdanning</Typography>
-                  {linkedInData.education.map((edu: any, idx: number) => (
+                  {linkedInData.education.map((edu, idx) => (
                     <Typography key={idx} variant="body2" color="text.secondary">
-                      ✓ {edu.school} - {edu.degree || edu.fieldOfStudy}
+                      {edu.schoolName || 'Ukjent institusjon'} - {edu.degreeType || edu.fieldOfStudy}
                     </Typography>
                   ))}
                 </Box>
@@ -2278,9 +5451,12 @@ export default function ResumeBuilder() {
                 <Box sx={{ mb: 2 }}>
                   <Typography variant="subtitle2" gutterBottom>Ferdigheter</Typography>
                   <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                    {linkedInData.skills.slice(0, 10).map((skill: string, idx: number) => (
-                      <Chip key={idx} label={skill} size="small" />
-                    ))}
+                    {linkedInData.skills
+                      .filter((skill) => Boolean(skill.name))
+                      .slice(0, 10)
+                      .map((skill, idx) => (
+                        <Chip key={idx} label={skill.name} size="small" />
+                      ))}
                     {linkedInData.skills.length > 10 && (
                       <Typography variant="caption" color="text.secondary" sx={{ alignSelf: 'center', ml: 1 }}>
                         + {linkedInData.skills.length - 10} flere
@@ -2300,6 +5476,17 @@ export default function ResumeBuilder() {
                 setLinkedInData(null);
               }}>
                 Avbryt
+              </Button>
+              <Button
+                onClick={handleLinkedInPreview}
+                disabled={!Object.values(linkedInSelectedData).some(v => v)}
+                sx={{
+                  fontFamily: 'Poppins, sans-serif',
+                  fontWeight: 500,
+                  '&:disabled': { color: '#ccc' }
+                }}
+              >
+                Forhåndsvis
               </Button>
               <Button 
                 variant="contained" 
@@ -2374,6 +5561,30 @@ export default function ResumeBuilder() {
               startIcon={<DownloadIcon />}
             >
               PDF (Anbefalt)
+            </Button>
+            <Button 
+              variant="outlined" 
+              fullWidth 
+              onClick={() => handleExport('docx')}
+              startIcon={<DownloadIcon />}
+            >
+              DOCX (Word)
+            </Button>
+            <Button 
+              variant="outlined" 
+              fullWidth 
+              onClick={() => handleExport('txt')}
+              startIcon={<DownloadIcon />}
+            >
+              TXT (Enkel tekst)
+            </Button>
+            <Button 
+              variant="outlined" 
+              fullWidth 
+              onClick={() => handleExport('html')}
+              startIcon={<DownloadIcon />}
+            >
+              HTML
             </Button>
             <Button 
               variant="outlined" 
@@ -2466,7 +5677,7 @@ export default function ResumeBuilder() {
                 <Typography variant="h6">Google Drive-filer</Typography>
                 <Button
                   variant="outlined"
-                  startIcon={<CloudUploadIcon />}
+                  startIcon={<UploadIcon />}
                   onClick={handleGoogleDriveFilePicker}
                   disabled={!auth.state.isAuthenticated}
                 >
@@ -2587,15 +5798,77 @@ export default function ResumeBuilder() {
             )}
 
             {/* Input Text */}
-            <TextField
-              label="Input-tekst"
-              multiline
-              rows={6}
-              value={aiInputText}
-              onChange={(e) => setAiInputText(e.target.value)}
-              placeholder="Skriv inn eller lim inn tekst her..."
-              fullWidth
-            />
+            {(aiToolType === 'paraphrase' || aiToolType === 'grammar' || aiToolType === 'summarize') && (
+              <TextField
+                label="Input-tekst"
+                multiline
+                rows={6}
+                value={aiInputText}
+                onChange={(e) => setAiInputText(e.target.value)}
+                placeholder="Skriv inn eller lim inn tekst her..."
+                fullWidth
+              />
+            )}
+
+            {aiToolType === 'generate-resume' && (
+              <Stack spacing={2}>
+                <TextField
+                  label="Jobbtittel"
+                  value={aiJobTitle}
+                  onChange={(e) => setAiJobTitle(e.target.value)}
+                  placeholder="F.eks. Produktdesigner"
+                  fullWidth
+                />
+                <Autocomplete
+                  multiple
+                  freeSolo
+                  options={[]}
+                  value={aiSkills}
+                  onChange={(_, value) => setAiSkills(value as string[])}
+                  renderInput={(params) => (
+                    <TextField {...params} label="Ferdigheter" placeholder="Legg til ferdigheter" />
+                  )}
+                />
+                <TextField
+                  label="Erfaring"
+                  multiline
+                  rows={5}
+                  value={aiExperience}
+                  onChange={(e) => setAiExperience(e.target.value)}
+                  placeholder="Skriv en kort beskrivelse av erfaringen din..."
+                  fullWidth
+                />
+              </Stack>
+            )}
+
+            {aiToolType === 'generate-cover-letter' && (
+              <Stack spacing={2}>
+                <TextField
+                  label="Jobbtittel"
+                  value={aiJobTitle}
+                  onChange={(e) => setAiJobTitle(e.target.value)}
+                  placeholder="F.eks. Frontend-utvikler"
+                  fullWidth
+                />
+                <TextField
+                  label="Selskap"
+                  value={aiCompany}
+                  onChange={(e) => setAiCompany(e.target.value)}
+                  placeholder="F.eks. CreatorHub"
+                  fullWidth
+                />
+                <Autocomplete
+                  multiple
+                  freeSolo
+                  options={[]}
+                  value={aiSkills}
+                  onChange={(_, value) => setAiSkills(value as string[])}
+                  renderInput={(params) => (
+                    <TextField {...params} label="Ferdigheter" placeholder="Legg til ferdigheter" />
+                  )}
+                />
+              </Stack>
+            )}
 
             {/* Process Button */}
             <Button
@@ -2605,8 +5878,15 @@ export default function ResumeBuilder() {
                 if (aiToolType === 'paraphrase') handleAiParaphrase();
                 else if (aiToolType === 'grammar') handleAiGrammar();
                 else if (aiToolType === 'summarize') handleAiSummarize();
+                else if (aiToolType === 'generate-resume') handleAiGenerateResume(aiJobTitle, aiSkills, aiExperience);
+                else if (aiToolType === 'generate-cover-letter') handleAiGenerateCoverLetter(aiJobTitle, aiCompany, aiSkills);
               }}
-              disabled={!aiInputText.trim() || aiIsProcessing}
+              disabled={
+                aiIsProcessing ||
+                ((aiToolType === 'paraphrase' || aiToolType === 'grammar' || aiToolType === 'summarize') && !aiInputText.trim()) ||
+                (aiToolType === 'generate-resume' && (!aiJobTitle.trim() || !aiExperience.trim())) ||
+                (aiToolType === 'generate-cover-letter' && (!aiJobTitle.trim() || !aiCompany.trim()))
+              }
               fullWidth
             >
               {aiIsProcessing ? 'Behandler...' : 'Generer med AI'}
@@ -2628,7 +5908,7 @@ export default function ResumeBuilder() {
                       <Tooltip title="Kopier til utklippstavle">
                         <IconButton onClick={() => {
                           navigator.clipboard.writeText(aiOutputText);
-                          alert('Kopiert til utklippstavle!');
+                          setSnackbar({ open: true, message: 'Kopiert til utklippstavle!', severity: 'success' });
                         }}>
                           <CopyIcon />
                         </IconButton>
@@ -2654,6 +5934,91 @@ export default function ResumeBuilder() {
           )}
         </DialogActions>
       </Dialog>
+
+      {/* Confirm Delete Resume Dialog */}
+      <Dialog open={!!confirmDeleteResumeId} onClose={() => setConfirmDeleteResumeId(null)}>
+        <DialogTitle>Bekreft sletting</DialogTitle>
+        <DialogContent>
+          <Typography>Er du sikker på at du vil slette denne CV-en? Denne handlingen kan ikke angres.</Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmDeleteResumeId(null)}>Avbryt</Button>
+          <Button onClick={executeDeleteResume} color="error" variant="contained">Slett</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Snackbar for notifications */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={4000}
+        onClose={() => setSnackbar(prev => ({ ...prev, open: false }))}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert
+          onClose={() => setSnackbar(prev => ({ ...prev, open: false }))}
+          severity={snackbar.severity}
+          sx={{ width: '100%' }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
+
+      {/* Accessibility & Compliance Footer */}
+      <Box
+        sx={{
+          mt: 8,
+          pt: 4,
+          borderTop: '1px solid',
+          borderColor: 'divider',
+          textAlign: 'center',
+        }}
+        role="contentinfo"
+        aria-label="Personvern og tilgjengelighet"
+      >
+        <Stack direction="row" spacing={3} justifyContent="center" sx={{ flexWrap: 'wrap' }}>
+          <Button
+            size="small"
+            onClick={() => setShowPrivacyDialog(true)}
+            aria-label="Åpne personvernerklæring"
+          >
+            Personvern
+          </Button>
+          <Button
+            size="small"
+            onClick={() => setShowTermsDialog(true)}
+            aria-label="Åpne vilkår for bruk"
+          >
+            Vilkår
+          </Button>
+          <Button
+            size="small"
+            onClick={() => setShowDataManagement(true)}
+            aria-label="Administrer dine data"
+          >
+            Dine Data (GDPR)
+          </Button>
+          <Button
+            size="small"
+            onClick={() => setShowCookieConsent(true)}
+            aria-label="Endre cookie-innstillinger"
+          >
+            Cookies
+          </Button>
+          <Button
+            size="small"
+            onClick={handleRunAccessibilityAudit}
+            aria-label="Kjør tilgjengelighetskontroll"
+          >
+            Tilgjengelighet
+          </Button>
+        </Stack>
+
+      </Box>
+
+      {/* Help & Guidance */}
+      <HelpGuideDialog open={showHelpDialog} onClose={() => setShowHelpDialog(false)} />
+      <HelpButton onClick={() => setShowHelpDialog(true)} />
+      </Box>
     </Container>
   );
 }

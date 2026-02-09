@@ -74,7 +74,7 @@ export default function TemplatePreviewCard({
   const { user } = useAuth();
   
   // Theming system
-  const theming = useTheming('photographer, ');
+  const theming = useTheming('photographer');
   const queryClient = useQueryClient();
   
   const [showPreview, setShowPreview] = useState(false);

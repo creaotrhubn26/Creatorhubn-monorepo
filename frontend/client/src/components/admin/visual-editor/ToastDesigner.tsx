@@ -31,6 +31,7 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
+  DialogContentText,
   DialogActions,
   Alert,
   Badge,
@@ -41,7 +42,8 @@ import {
   Tab,
   Tabs,
   useTheme,
-  alpha
+  alpha,
+  Snackbar,
 } from '@mui/material';
 import {
   TabPanel,
@@ -217,6 +219,8 @@ export default function ToastDesigner() {
  any[]>>({});
   const [selectedTemplates, setSelectedTemplates] = useState<string[]>([]);
   const [showBulkDialog, setShowBulkDialog] = useState(false);
+  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'info' }>({ open: false, message: '', severity: 'success' });
+  const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; type: 'restore' | 'bulkDelete'; count?: number }>({ open: false, type: 'restore' });
 
   // Auto-save integration
   const {
@@ -2677,7 +2681,7 @@ export default function ToastDesigner() {
         configKeys: Object.keys(toastConfig)
       });
 
-      alert('Template saved successfully!');
+      setSnackbar({ open: true, message: 'Template saved successfully!', severity: 'success' });
     }
   }, [toastConfig, analytics, debugging]);
 
@@ -2731,7 +2735,7 @@ export default function ToastDesigner() {
               configKeys: Object.keys(config)
             });
 
-            alert('Config imported successfully!');
+            setSnackbar({ open: true, message: 'Config imported successfully!', severity: 'success' });
           } catch (error) {
             analytics.trackEvent('toast_config_import_failed', {
               fileName: file.name,
@@ -2744,7 +2748,7 @@ export default function ToastDesigner() {
               error: error instanceof Error ? error.message : 'Unknown error'
             });
 
-            alert('Invalid config file!');
+            setSnackbar({ open: true, message: 'Invalid config file!', severity: 'error' });
           }
         };
         reader.readAsText(file);
@@ -2960,16 +2964,7 @@ icon={<Save sx={{ fontSize: 14, animation: `${pulse} 1s infinite` }} />}
                     variant="outlined"
                     size="small"
                     startIcon={<Restore />}
-                    onClick={() => {
-                      if (confirm('Restore from last backup? This will overwrite current changes.')) {
-                        const restored = restoreFromBackup();
-                        if (restored) {
-                          alert('Restored from backup!');
-                        } else {
-                          alert('No backup available');
-                        }
-                      }
-                    }}
+                    onClick={() => setConfirmDialog({ open: true, type: 'restore' })}
                   >
                     Restore
                   </Button>
@@ -3678,7 +3673,7 @@ icon={<Save sx={{ fontSize: 14, animation: `${pulse} 1s infinite` }} />}
                             }).catch(() => {});
                             localStorage.setItem(`showcaseToastTemplate_${template.id}`, JSON.stringify(template.config));
                           });
-                          alert(`Applied ${showcaseTemplates.length} showcase templates!`);
+                          setSnackbar({ open: true, message: `Applied ${showcaseTemplates.length} showcase templates!`, severity: 'success' });
                       }}
                         fullWidth
                       >
@@ -4063,10 +4058,8 @@ icon={<Save sx={{ fontSize: 14, animation: `${pulse} 1s infinite` }} />}
                   color="error"
                   startIcon={<Delete />}
                   onClick={() => {
-                    if (selectedTemplates.length > 0 && confirm(`Delete ${selectedTemplates.length} templates?`)) {
-                      bulkDelete(selectedTemplates);
-                      setSelectedTemplates([]);
-                      setShowBulkDialog(false);
+                    if (selectedTemplates.length > 0) {
+                      setConfirmDialog({ open: true, type: 'bulkDelete', count: selectedTemplates.length });
                     }
                   }}
                   disabled={selectedTemplates.length === 0}
@@ -4116,6 +4109,66 @@ icon={<Save sx={{ fontSize: 14, animation: `${pulse} 1s infinite` }} />}
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Confirm Dialog */}
+      <Dialog
+        open={confirmDialog.open}
+        onClose={() => setConfirmDialog({ open: false, type: 'restore' })}
+      >
+        <DialogTitle>
+          {confirmDialog.type === 'restore' ? 'Restore from Backup' : 'Delete Templates'}
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            {confirmDialog.type === 'restore'
+              ? 'Restore from last backup? This will overwrite current changes.'
+              : `Delete ${confirmDialog.count} templates? This cannot be undone.`}
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmDialog({ open: false, type: 'restore' })}>
+            Cancel
+          </Button>
+          <Button
+            onClick={() => {
+              if (confirmDialog.type === 'restore') {
+                const restored = restoreFromBackup();
+                if (restored) {
+                  setSnackbar({ open: true, message: 'Restored from backup!', severity: 'success' });
+                } else {
+                  setSnackbar({ open: true, message: 'No backup available', severity: 'error' });
+                }
+              } else if (confirmDialog.type === 'bulkDelete') {
+                bulkDelete(selectedTemplates);
+                setSelectedTemplates([]);
+                setShowBulkDialog(false);
+                setSnackbar({ open: true, message: `Deleted ${confirmDialog.count} templates`, severity: 'success' });
+              }
+              setConfirmDialog({ open: false, type: 'restore' });
+            }}
+            color={confirmDialog.type === 'bulkDelete' ? 'error' : 'primary'}
+            variant="contained"
+          >
+            {confirmDialog.type === 'restore' ? 'Restore' : 'Delete'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Snackbar Notifications */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={5000}
+        onClose={() => setSnackbar({ ...snackbar, open: false })}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert
+          onClose={() => setSnackbar({ ...snackbar, open: false })}
+          severity={snackbar.severity}
+          sx={{ width: '100%' }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 }

@@ -115,7 +115,7 @@ export default function StoryArcGenerator({
 }: StoryArcGeneratorProps = {}) {
   
   // Theming system
-  const theming = useTheming('photographer, ');
+  const theming = useTheming('photographer');
   const queryClient = useQueryClient();
   
   // Database connection for StoryArcGenerator

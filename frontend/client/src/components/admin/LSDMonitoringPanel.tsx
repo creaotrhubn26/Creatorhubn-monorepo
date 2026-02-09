@@ -125,7 +125,7 @@ export function LSDMonitoringPanel(): JSX.Element {
   const user = auth.user;
 
   // Theming system
-  const theming = useTheming('prototype_tester, ');
+  const theming = useTheming('prototype_tester');
   const theme = useTheme();
   const queryClient = useQueryClient();
   const [autoRefresh, setAutoRefresh] = useState(true);

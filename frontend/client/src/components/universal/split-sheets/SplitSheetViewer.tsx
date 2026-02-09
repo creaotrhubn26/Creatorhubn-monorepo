@@ -168,7 +168,7 @@ export default function SplitSheetViewer({
       {/* Header Actions */}
       <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 3 }}>
         <Box>
-          <Typography variant="h5" sx={{ fontWeight: 70, mb: 0.5 }}>
+          <Typography variant="h5" sx={{ fontWeight: 700, mb: 0.5 }}>
             {fullSplitSheet.title}
           </Typography>
           <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 1 }}>

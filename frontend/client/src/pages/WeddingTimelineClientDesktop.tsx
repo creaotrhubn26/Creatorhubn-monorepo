@@ -115,7 +115,7 @@ function DesktopAccessCodeInput({ onSubmit }: { onSubmit: (code: string) => void
                     <Typography variant="h2"
                       sx={{
                         color: '#e65100',
-                        fontWeight: 80,
+                        fontWeight: 800,
                         mb: 0.5,
                         lineHeight: 1.2,
                     }}
@@ -125,7 +125,7 @@ function DesktopAccessCodeInput({ onSubmit }: { onSubmit: (code: string) => void
                     <Typography variant="h6"
                       sx={{
                         color: '#f57c00',
-                        fontWeight: 50,
+                        fontWeight: 500,
                     }}
                     >
                       Din store dag - i sanntid
@@ -137,7 +137,7 @@ function DesktopAccessCodeInput({ onSubmit }: { onSubmit: (code: string) => void
                   sx={{
                     mb: 4,
                     lineHeight: 1.4,
-                    fontWeight: 40,
+                    fontWeight: 400,
                     color: theming.colors.primary
                   }}>
                   Følg med på hver magiske øyeblikk av bryllupsdagen din med vår interaktive
@@ -200,7 +200,7 @@ function DesktopAccessCodeInput({ onSubmit }: { onSubmit: (code: string) => void
                 elevation={0}
                 sx={{
                   borderRadius: '24px',
-                  background: 'rgba(25,255,255,0.95)',
+                  background: 'rgba(255,255,255,0.95)',
                   backdropFilter: 'blur(20px)',
                   border: '1px solid rgba(25, 1240.2)',
                   boxShadow: '0 20px 60px rgba(25, 1240.15)',
@@ -212,7 +212,7 @@ function DesktopAccessCodeInput({ onSubmit }: { onSubmit: (code: string) => void
                 <Box sx={{ textAlign: 'center', mb: 4 }}>
                   <Typography variant="h4"
                     sx={{
-                      fontWeight: 70,
+                      fontWeight: 700,
                       mb: 2,
                       color: theming.colors.primary
                     }}>
@@ -362,7 +362,7 @@ function DesktopAccessCodeInput({ onSubmit }: { onSubmit: (code: string) => void
               sx={{
                 p:  2,
                 borderRadius: '12px',
-                background: 'rgba(25,255,255,0.95)',
+                background: 'rgba(255,255,255,0.95)',
                 backdropFilter: 'blur(10px)',
             }}
             >
@@ -464,7 +464,7 @@ export default function WeddingTimelineClientDesktop() {
               p:  6,
               textAlign: 'center',
               borderRadius: '24px',
-              background: 'rgba(25,255,255,0.95)',
+              background: 'rgba(255,255,255,0.95)',
               backdropFilter: 'blur(20px)',
               boxShadow: '0 20px 60px rgba(25, 1240.15)',
           }}

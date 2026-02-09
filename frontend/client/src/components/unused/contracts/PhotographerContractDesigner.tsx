@@ -3,7 +3,7 @@
 import { useTheming } from '../../../utils/theming-helper';
 import React, { useState } from 'react';
 import { getAuthHeader } from '@/lib/google/impersonation';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
 import {
   Box,
@@ -185,24 +185,24 @@ export default function UniversalContractDesigner({
     switch (profession) {
       case 'photographer':
         return [
-          { id: `${based}-1`, title: 'Fotograferingstjenester', content: 'Beskrivelse av fotograferingsarbeid, antall timer, og leveranser.', type: 'responsibilities', required: true },
-          { id: `${based}-2`, title: 'Prisstruktur og Betaling', content: 'Totalpris, betalingsplan og refunderingspolicy.', type: 'pricing', required: true },
-          { id: `${based}-3`, title: 'Leveringsfrister', content: 'Tidspunkter for levering av bearbeidede bilder og endelige produkter.', type: 'schedule', required: true },
-          { id: `${based}-4`, title: 'Opphavsrett og Bruksrettigheter', content: 'Rettighetsdefinisjon for bruk av bilder og krediteringsvilkår.', type: 'terms', required: true }
+          { id: `${baseId}-1`, title: 'Fotograferingstjenester', content: 'Beskrivelse av fotograferingsarbeid, antall timer, og leveranser.', type: 'responsibilities', required: true },
+          { id: `${baseId}-2`, title: 'Prisstruktur og Betaling', content: 'Totalpris, betalingsplan og refunderingspolicy.', type: 'pricing', required: true },
+          { id: `${baseId}-3`, title: 'Leveringsfrister', content: 'Tidspunkter for levering av bearbeidede bilder og endelige produkter.', type: 'schedule', required: true },
+          { id: `${baseId}-4`, title: 'Opphavsrett og Bruksrettigheter', content: 'Rettighetsdefinisjon for bruk av bilder og krediteringsvilkår.', type: 'terms', required: true }
         ];
       case 'videographer':
         return [
-          { id: `${based}-1`, title: 'Videoproduksjonstjenester', content: 'Beskrivelse av filming, redigering og leveranser.', type: 'responsibilities', required: true },
-          { id: `${based}-2`, title: 'Kostnader og Betalingsbetingelser', content: 'Prisstruktur, betalingsfrister og tilleggsgebyrer.', type: 'pricing', required: true },
-          { id: `${based}-3`, title: 'Produksjonsplan', content: 'Tidsplan for filming, post-produksjon og levering.', type: 'schedule', required: true },
-          { id: `${based}-4`, title: 'Lisenser og Distribusjon', content: 'Bruksrettigheter for video og distribusjonsvilkår.', type: 'terms', required: true }
+          { id: `${baseId}-1`, title: 'Videoproduksjonstjenester', content: 'Beskrivelse av filming, redigering og leveranser.', type: 'responsibilities', required: true },
+          { id: `${baseId}-2`, title: 'Kostnader og Betalingsbetingelser', content: 'Prisstruktur, betalingsfrister og tilleggsgebyrer.', type: 'pricing', required: true },
+          { id: `${baseId}-3`, title: 'Produksjonsplan', content: 'Tidsplan for filming, post-produksjon og levering.', type: 'schedule', required: true },
+          { id: `${baseId}-4`, title: 'Lisenser og Distribusjon', content: 'Bruksrettigheter for video og distribusjonsvilkår.', type: 'terms', required: true }
         ];
       case 'music_producer':
         return [
-          { id: `${based}-1`, title: 'Produksjonstjenester', content: 'Studio-arbeid, miksing, mastering og leveranser.', type: 'responsibilities', required: true },
-          { id: `${based}-2`, title: 'Honorar og Royalties', content: 'Produksjonshonorarer, royalty-andeler og betalingsvilkår.', type: 'pricing', required: true },
-          { id: `${based}-3`, title: 'Studioplan og Deadlines', content: 'Studiotime, leveringsfrister og milepæler.', type: 'schedule', required: true },
-          { id: `${based}-4`, title: 'Publiseringsrettigheter', content: 'Opphavsrett, krediteringsvilkår og distribusjon.', type: 'terms', required: true }
+          { id: `${baseId}-1`, title: 'Produksjonstjenester', content: 'Studio-arbeid, miksing, mastering og leveranser.', type: 'responsibilities', required: true },
+          { id: `${baseId}-2`, title: 'Honorar og Royalties', content: 'Produksjonshonorarer, royalty-andeler og betalingsvilkår.', type: 'pricing', required: true },
+          { id: `${baseId}-3`, title: 'Studioplan og Deadlines', content: 'Studiotime, leveringsfrister og milepæler.', type: 'schedule', required: true },
+          { id: `${baseId}-4`, title: 'Publiseringsrettigheter', content: 'Opphavsrett, krediteringsvilkår og distribusjon.', type: 'terms', required: true }
         ];
       default: return [];
 }
@@ -382,7 +382,7 @@ export default function UniversalContractDesigner({
   const progress = ((activeStep + 1) / steps.length) * 100;
 
   return (
-    <Box sx={{ maxWidth: 120, mx: 'auto', p:  3 }}>
+    <Box sx={{ maxWidth: 1200, mx: 'auto', p:  3 }}>
       {/* Header */}
       <Box sx={{ 
         display: 'flex', 
@@ -481,10 +481,10 @@ export default function UniversalContractDesigner({
                   onClick={() => window.location.reload()}
                 />
                 <Button variant="contained" 
-                  sx={{ 
+                  sx={{
+                    ...theming.getThemedButtonSx(),
                     bgcolor: '#00bcd0', '&:hover': { bgcolor: '#00acc1' }
-                }}
-                 sx={theming.getThemedButtonSx()}>
+                  }}>
                   FULLFØR FLYT
                 </Button>
               </Box>
@@ -564,8 +564,10 @@ export default function UniversalContractDesigner({
                   <Button variant="contained" 
                     onClick={handleCreateContract}
                     disabled={createContractMutation.isPending}
-                    sx={{ mt:  2 }}
-                   sx={theming.getThemedButtonSx()}>
+                    sx={{
+                      ...theming.getThemedButtonSx(),
+                      mt: 2
+                    }}>
                     {createContractMutation.isPending ? 'Oppretter...' : 'Opprett Kontrakt'}
                   </Button>
                 </Box>
@@ -841,7 +843,7 @@ export default function UniversalContractDesigner({
                   <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
                     Original Tekst (Første 1000 tegn)
                   </Typography>
-                  <Paper sx={{ p: 2, bgcolor: '#f5f5f0', maxHeight: 40, overflow: 'auto' ,  ...theming.getThemedCardSx() }}>
+                  <Paper sx={{ p: 2, bgcolor: '#f5f5f0', maxHeight: 40, overflow: 'auto', ...theming.getThemedCardSx() }}>
                     <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.85rem' }}>
                       {importPreview.originalText.substring(0, 1000)}
                       {importPreview.originalText.length > 1000 && '...'}

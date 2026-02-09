@@ -37,7 +37,8 @@ import {
   MenuItem,
   FormControl,
   InputLabel,
-  CircularProgress
+  CircularProgress,
+  Snackbar,
 } from '@mui/material';
 import {
   CloudUpload as UploadIcon,
@@ -61,6 +62,7 @@ export const LogoManagementPanel: React.FC<LogoManagementPanelProps> = ({ open, 
   const branding = useCreatorHubBranding({ persist: true });
   const [activeTab, setActiveTab] = useState(0);
   const [alignment, setAlignment] = useState<'left' | 'center' | 'right'>(branding.logo?.alignment || 'left');
+  const [errorSnackbar, setErrorSnackbar] = useState<{ open: boolean; message: string }>({ open: false, message: '' });
   
   const primaryInputRef = useRef<HTMLInputElement>(null);
   const secondaryInputRef = useRef<HTMLInputElement>(null);
@@ -76,13 +78,13 @@ export const LogoManagementPanel: React.FC<LogoManagementPanelProps> = ({ open, 
 
     // Validate file type
     if (!file.type.startsWith('image/')) {
-      alert('Please upload an image file');
+      setErrorSnackbar({ open: true, message: 'Please upload an image file' });
       return;
     }
 
     // Validate file size (max 5MB)
     if (file.size > 5 * 1024 * 1024) {
-      alert('File size should be less than 5MB');
+      setErrorSnackbar({ open: true, message: 'File size should be less than 5MB' });
       return;
   }
 
@@ -410,7 +412,7 @@ export const LogoManagementPanel: React.FC<LogoManagementPanelProps> = ({ open, 
               onChange={(e) => {
                 const newAlignment = e.target.value as 'left' | 'center' | 'right';
                 setAlignment(newAlignment);
-                branding.updateLogoPlacement({ ...branding.logo?.placement } as any);
+                branding.updateLogoPlacement(branding.logo?.placement || {});
             }}
               label="Logo Alignment"
             >
@@ -590,6 +592,22 @@ export const LogoManagementPanel: React.FC<LogoManagementPanelProps> = ({ open, 
           You have unsaved changes. Save or publish to apply them.
         </Alert>
       )}
+
+      {/* Error Snackbar */}
+      <Snackbar
+        open={errorSnackbar.open}
+        autoHideDuration={5000}
+        onClose={() => setErrorSnackbar({ open: false, message: '' })}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert
+          onClose={() => setErrorSnackbar({ open: false, message: '' })}
+          severity="error"
+          sx={{ width: '100%' }}
+        >
+          {errorSnackbar.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 };

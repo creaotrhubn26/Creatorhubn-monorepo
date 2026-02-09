@@ -1,5 +1,5 @@
 import { useTheming } from '../../utils/theming-helper';
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Box,
@@ -23,7 +23,6 @@ import {
   LinearProgress,
   Tabs,
   Tab,
-  useTheme,
   Divider,
   Stack,
   Alert
@@ -39,6 +38,7 @@ import {
   Star,
   Sync,
   AddCircle,
+  Schedule,
   PhotoLibrary,
   Image as ImageIcon
 } from '@mui/icons-material';
@@ -55,19 +55,104 @@ interface VendorProductManagerProps {
   onProductCreated?: () => void;
   vendorType?: string;
   // Integration props for universal workflow connectivity
-  onMeetingCreate?: (meeting: any) => void;
-  onProjectUpdate?: (project: any) => void;
-  onWorklogCreate?: (worklog: any) => void;
-  onClientSelect?: (client: any) => void;
-  onClientUpdate?: (client: any) => void;
-  onShowcaseCreate?: (showcase: any) => void;
-  onFileUpload?: (file: any) => void;
-  onFileDownload?: (file: any) => void;
-  selectedProject?: any;
-  onProjectSelect?: (project: any) => void;
-  selectedClient?: any;
-  onSettingsUpdate?: (settings: any) => void;
-  onNotificationCreate?: (notification: any) => void
+  onMeetingCreate?: (meeting: VendorMeeting) => void;
+  onProjectUpdate?: (project: VendorProjectUpdate) => void;
+  onWorklogCreate?: (worklog: VendorWorklog) => void;
+  onClientSelect?: (client: VendorClientSelection | null) => void;
+  onClientUpdate?: (client: VendorClientUpdate) => void;
+  onShowcaseCreate?: (showcase: VendorShowcase) => void;
+  onFileUpload?: (file: VendorFileEvent) => void;
+  onFileDownload?: (file: VendorFileEvent) => void;
+  selectedProject?: VendorProjectSelection | null;
+  onProjectSelect?: (project: VendorProjectSelection | null) => void;
+  selectedClient?: VendorClientSelection | null;
+  onSettingsUpdate?: (settings: VendorSettingsUpdate) => void;
+  onNotificationCreate?: (notification: VendorNotification) => void
+}
+
+interface VendorNotification {
+  id: string;
+  title: string;
+  message: string;
+  severity: 'info' | 'success' | 'warning' | 'error';
+  createdAt: string;
+}
+
+interface VendorProjectSelection {
+  id: string;
+  name?: string;
+}
+
+interface VendorProjectUpdate {
+  id?: string;
+  vendorType: string;
+  productId?: string;
+  status?: string;
+  updatedAt: string;
+}
+
+interface VendorMeeting {
+  id: string;
+  title: string;
+  agenda?: string;
+  scheduledFor?: string;
+  relatedProductId?: string;
+  vendorType: string;
+}
+
+interface VendorWorklog {
+  id: string;
+  title: string;
+  description?: string;
+  productId?: string;
+  createdAt: string;
+}
+
+interface VendorClientSelection {
+  id: string;
+  name?: string;
+  email?: string;
+}
+
+interface VendorClientUpdate {
+  id: string;
+  note?: string;
+  updatedAt: string;
+}
+
+interface VendorShowcase {
+  id: string;
+  title: string;
+  productIds: string[];
+  createdAt: string;
+}
+
+interface VendorFileEvent {
+  id: string;
+  name: string;
+  size?: number;
+  url?: string;
+  productId?: string;
+  vendorType: string;
+  createdAt: string;
+}
+
+interface VendorSettingsUpdate {
+  key: string;
+  value: string | number | boolean | string[];
+  updatedAt: string;
+}
+
+interface ProductCategory {
+  id: string;
+  label: string;
+  color: string;
+}
+
+interface ProductAnalytics {
+  totalDownloads?: number;
+  totalRevenue?: number;
+  averageRating?: number;
 }
 
 interface Product {
@@ -90,35 +175,41 @@ interface Product {
   images?: string[]; // Multiple product images
 }
 
+interface ProductDraft {
+  name: string;
+  category: string;
+  version: string;
+  price: number;
+  description: string;
+  tags: string;
+  imageUrl: string;
+}
+
+interface UploadResult {
+  result?: {
+    url?: string;
+  };
+}
+
 export default function VendorProductManager({
   userId,
   initialMode = 'overview',
   onProductCreated,
   vendorType = 'print',
-  // Future integration props - prefixed with underscore to suppress unused warnings
-  onMeetingCreate: _onMeetingCreate,
-  onProjectUpdate: _onProjectUpdate,
-  onWorklogCreate: _onWorklogCreate,
-  onClientSelect: _onClientSelect,
-  onClientUpdate: _onClientUpdate,
-  onShowcaseCreate: _onShowcaseCreate,
-  onFileUpload: _onFileUpload,
-  onFileDownload: _onFileDownload,
-  selectedProject: _selectedProject,
-  onProjectSelect: _onProjectSelect,
-  selectedClient: _selectedClient,
-  onSettingsUpdate: _onSettingsUpdate,
-  onNotificationCreate: _onNotificationCreate
+  onMeetingCreate,
+  onProjectUpdate,
+  onWorklogCreate,
+  onClientSelect,
+  onClientUpdate,
+  onShowcaseCreate,
+  onFileUpload,
+  onFileDownload,
+  selectedProject,
+  onProjectSelect,
+  selectedClient,
+  onSettingsUpdate,
+  onNotificationCreate
 }: VendorProductManagerProps) {
-  // Suppress unused variable warnings for future integration props
-  void _onMeetingCreate; void _onProjectUpdate; void _onWorklogCreate;
-  void _onClientSelect; void _onClientUpdate; void _onShowcaseCreate;
-  void _onFileUpload; void _onFileDownload; void _selectedProject;
-  void _onProjectSelect; void _selectedClient; void _onSettingsUpdate;
-  void _onNotificationCreate;
-
-  useTheme(); // Used for MUI theme context
-  
   // Theming system
   const theming = useTheming('vendor');
   const queryClient = useQueryClient();
@@ -134,31 +225,53 @@ export default function VendorProductManager({
   // Get vendor type configuration
   const vendorConfig = getVendorTypeConfig(vendorType);
 
+  const createNotification = useCallback((title: string, message: string, severity: VendorNotification['severity']) => {
+    onNotificationCreate?.({
+      id: `vendor-product-notification-${Date.now()}`,
+      title,
+      message,
+      severity,
+      createdAt: new Date().toISOString(),
+    });
+  }, [onNotificationCreate]);
+
+  useEffect(() => {
+    if (selectedProject && onProjectSelect) {
+      onProjectSelect(selectedProject);
+    }
+  }, [onProjectSelect, selectedProject]);
+
+  useEffect(() => {
+    if (selectedClient && onClientSelect) {
+      onClientSelect(selectedClient);
+    }
+  }, [onClientSelect, selectedClient]);
+
   // Fetch dynamic categories from API (for bidirectional sync)
-  const { data: categoriesData, refetch: refetchCategories } = useQuery({
+  const { data: categoriesData, refetch: refetchCategories } = useQuery<{ categories: ProductCategory[] }>({
     queryKey: ['/api/vendor-types', vendorType, 'categories'],
     queryFn: () => apiRequest(`/api/vendor-types/${vendorType}/categories`),
     staleTime: 30000, // 30 seconds
   });
 
   // Use API categories if available, otherwise fall back to registry
-  const registryCategories = getProductCategories(vendorType);
-  const productCategories = categoriesData?.categories?.length > 0
+  const registryCategories = getProductCategories(vendorType) as ProductCategory[];
+  const productCategories: ProductCategory[] = categoriesData?.categories?.length > 0
     ? categoriesData.categories
     : registryCategories;
-  const categories = productCategories.map((cat: any) => cat.id);
+  const categories = productCategories.map((cat) => cat.id);
   const defaultCategory = categories[0] || 'produkter';
 
   // Helper to get category info by id
   const getCategoryInfo = (categoryId: string) => {
-    return productCategories.find((cat: any) => cat.id === categoryId) || { id: categoryId, label: categoryId, color: vendorConfig?.color || '#2196f3' };
+    return productCategories.find((cat) => cat.id === categoryId) || { id: categoryId, label: categoryId, color: vendorConfig?.color || '#2196f3' };
   };
 
   // State for custom category creation
   const [showCustomCategoryDialog, setShowCustomCategoryDialog] = useState(false);
-  const [customCategory, setCustomCategory] = useState({ id: '', label: ',', color: vendorConfig?.color || '#2196f3' });
+  const [customCategory, setCustomCategory] = useState({ id: '', label: '', color: vendorConfig?.color || '#2196f3' });
 
-  const [newProduct, setNewProduct] = useState({
+  const [newProduct, setNewProduct] = useState<ProductDraft>({
     name: '',
     category: defaultCategory,
     version: '1.0.0',
@@ -177,21 +290,26 @@ export default function VendorProductManager({
         body: JSON.stringify(category)
       });
     },
-    onSuccess: (data) => {
+    onSuccess: (data: { category?: ProductCategory }) => {
       // Update local categories and select the new one
       refetchCategories();
       if (data.category) {
         setNewProduct(prev => ({ ...prev, category: data.category.id }));
       }
       setShowCustomCategoryDialog(false);
-      setCustomCategory({ id: '', label: ',', color: vendorConfig?.color || '#2196f3' });
+      setCustomCategory({ id: '', label: '', color: vendorConfig?.color || '#2196f3' });
+      onSettingsUpdate?.({
+        key: 'vendor_categories',
+        value: data.category?.id ?? '',
+        updatedAt: new Date().toISOString()
+      });
     }
   });
 
   // Check if category ID already exists
   const categoryIdExists = (id: string): boolean => {
-    const normalizedId = id.toLowerCase().replace(/\s+/g, '_, ');
-    return categories.some((cat: { id: string }) => cat.id === normalizedId);
+    const normalizedId = id.toLowerCase().replace(/\s+/g, '_');
+    return categories.some((catId) => catId === normalizedId);
   };
 
   // Handle adding custom category
@@ -204,7 +322,7 @@ export default function VendorProductManager({
         // Category already exists - just select it and close dialog
         setNewProduct(prev => ({ ...prev, category: normalizedId }));
         setShowCustomCategoryDialog(false);
-        setCustomCategory({ id: '', label: ',', color: vendorConfig?.color || '#2196f3' });
+        setCustomCategory({ id: '', label: '', color: vendorConfig?.color || '#2196f3' });
         return;
       }
 
@@ -217,20 +335,20 @@ export default function VendorProductManager({
   };
 
   // Fetch vendor products - filtered by vendorType
-  const { data: products = [], isLoading } = useQuery({
+  const { data: products = [], isLoading } = useQuery<Product[]>({
     queryKey: ['/api/vendor/products', userId, vendorType],
     queryFn: () => apiRequest(`/api/vendor/products/${userId}?vendorType=${vendorType}`)
   });
 
   // Fetch product analytics
-  const { data: analytics } = useQuery({
+  const { data: analytics } = useQuery<ProductAnalytics>({
     queryKey: ['/api/vendor/analytics', userId],
     queryFn: () => apiRequest(`/api/vendor/analytics/${userId}`)
   });
 
   // Add/Update product mutation - includes vendorType
-  const productMutation = useMutation({
-    mutationFn: async (productData: any) => {
+  const productMutation = useMutation<Product, Error, Product>({
+    mutationFn: async (productData) => {
       if (editingProduct) {
         return apiRequest(`/api/vendor/products/${editingProduct.id}`, {
           headers: { 'Content-Type' : 'application/json' },
@@ -245,13 +363,51 @@ export default function VendorProductManager({
         });
       }
     },
-    onSuccess: () => {
+    onSuccess: (savedProduct) => {
       queryClient.invalidateQueries({ queryKey: ['/api/vendor/products', userId, vendorType] });
       setShowAddDialog(false);
       setEditingProduct(null);
       if (onProductCreated) {
         onProductCreated();
       }
+      const productId = savedProduct.id;
+      const now = new Date().toISOString();
+      onWorklogCreate?.({
+        id: `worklog-${productId}`,
+        title: editingProduct ? 'Oppdaterte produkt' : 'Opprettet produkt',
+        description: savedProduct.name,
+        productId,
+        createdAt: now
+      });
+      onProjectUpdate?.({
+        id: selectedProject?.id,
+        vendorType,
+        productId,
+        status: editingProduct ? 'product_updated' : 'product_created',
+        updatedAt: now
+      });
+      if (!editingProduct) {
+        onMeetingCreate?.({
+          id: `meeting-${productId}`,
+          title: `Produktgjennomgang: ${savedProduct.name}`,
+          agenda: 'Gjennomgang av produkt, priser og publisering.',
+          scheduledFor: new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString(),
+          relatedProductId: productId,
+          vendorType
+        });
+      }
+      if (selectedClient) {
+        onClientUpdate?.({
+          id: selectedClient.id,
+          note: `Produkt ${savedProduct.name} ${editingProduct ? 'oppdatert' : 'opprettet'}.`,
+          updatedAt: now
+        });
+      }
+      createNotification(
+        'Produkt lagret',
+        `${savedProduct.name} er ${editingProduct ? 'oppdatert' : 'opprettet'}.`,
+        'success'
+      );
       setNewProduct({
         name: '',
         category: defaultCategory,
@@ -312,7 +468,7 @@ export default function VendorProductManager({
       price: 0,
       description: '',
       tags: '',
-      imageUrl: ', '
+      imageUrl: ''
     });
     setShowAddDialog(true);
   };
@@ -325,16 +481,23 @@ export default function VendorProductManager({
       version: product.version,
       price: product.price,
       description: product.description,
-      tags: product.tags.join(''),
-      imageUrl: product.imageUrl || ', '
+      tags: product.tags.join(', '),
+      imageUrl: product.imageUrl || ''
     });
     setShowAddDialog(true);
   };
 
   const handleSaveProduct = () => {
-    const productData = {
+    const productData: Product = {
+      ...editingProduct,
       ...newProduct,
-      tags: newProduct.tags.split(', ').map(tag => tag.trim()).filter(tag => tag.length > 0)
+      vendor: editingProduct?.vendor || userId,
+      currency: editingProduct?.currency || 'NOK',
+      downloads: editingProduct?.downloads || 0,
+      rating: editingProduct?.rating || 0,
+      status: editingProduct?.status || 'pending',
+      id: editingProduct?.id || `product-${Date.now()}`,
+      tags: newProduct.tags.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0)
     };
     productMutation.mutate(productData);
   };
@@ -365,8 +528,16 @@ export default function VendorProductManager({
             category: 'product_file'
           }
         );
-
-        console.log(`📦 Started product file upload for ${product.name}:`, taskIds[0]);
+        const eventId = taskIds[0] || `upload-${Date.now()}`;
+        onFileUpload?.({
+          id: eventId,
+          name: file.name,
+          size: file.size,
+          productId: product.id,
+          vendorType,
+          createdAt: new Date().toISOString()
+        });
+        createNotification('Filopplasting startet', `Opplasting startet for ${product.name}.`, 'info');
       }
     };
     input.click();
@@ -380,14 +551,35 @@ export default function VendorProductManager({
           id: product.id,
           name: product.name,
           currentVersion: product.version,
-          updateUrl: product.downloadUrl || ', '
+          updateUrl: product.downloadUrl || ''
         }]
       );
-      console.log(`🔄 Started product sync for ${product.name}`);
+      onWorklogCreate?.({
+        id: `sync-${product.id}`,
+        title: 'Synkroniserte produkt',
+        description: product.name,
+        productId: product.id,
+        createdAt: new Date().toISOString()
+      });
+      createNotification('Synkronisering startet', `Synkroniserer ${product.name}.`, 'info');
   } catch (error) {
       console.error('Failed to sync product: ', error);
+      createNotification('Synkronisering feilet', `Kunne ikke synkronisere ${product.name}.`, 'error');
   }
 };
+
+  const handleDownloadProduct = (product: Product) => {
+    if (!product.downloadUrl) return;
+    onFileDownload?.({
+      id: `download-${product.id}`,
+      name: product.name,
+      url: product.downloadUrl,
+      productId: product.id,
+      vendorType,
+      createdAt: new Date().toISOString()
+    });
+    window.open(product.downloadUrl, '_blank');
+  };
 
   // Dynamic category colors from vendor type registry
   const getCategoryColor = (category: string): string => {
@@ -447,6 +639,12 @@ export default function VendorProductManager({
     return true;
   });
 
+  useEffect(() => {
+    if (initialMode === 'add') {
+      setShowAddDialog(true);
+    }
+  }, [initialMode]);
+
   if (isLoading) {
     return (
       <Box sx={{ p: 3 }}>
@@ -456,11 +654,6 @@ export default function VendorProductManager({
         </Typography>
       </Box>
     );
-  }
-
-  // If initial mode is 'add', skip the overview and show add dialog directly
-  if (initialMode === 'add' && !showAddDialog) {
-    setShowAddDialog(true);
   }
 
   return (
@@ -492,13 +685,67 @@ export default function VendorProductManager({
             </Button>
           </Box>
 
+          {(onMeetingCreate || onShowcaseCreate || onWorklogCreate) && (
+            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 3 }}>
+              {onMeetingCreate && (
+                <Button
+                  variant="outlined"
+                  startIcon={<Schedule aria-hidden="true" />}
+                  onClick={() =>
+                    onMeetingCreate({
+                      id: `meeting-general-${Date.now()}`,
+                      title: 'Produktstrategi',
+                      agenda: 'Planlegg produktlanseringer og prising.',
+                      scheduledFor: new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString(),
+                      vendorType
+                    })
+                  }
+                >
+                  Planlegg møte
+                </Button>
+              )}
+              {onWorklogCreate && (
+                <Button
+                  variant="outlined"
+                  startIcon={<Edit aria-hidden="true" />}
+                  onClick={() =>
+                    onWorklogCreate({
+                      id: `worklog-general-${Date.now()}`,
+                      title: 'Oppdaterte produktkatalog',
+                      description: 'Planlegging og prioritering av produktkatalog.',
+                      createdAt: new Date().toISOString()
+                    })
+                  }
+                >
+                  Logg arbeid
+                </Button>
+              )}
+              {onShowcaseCreate && (
+                <Button
+                  variant="outlined"
+                  startIcon={<Star aria-hidden="true" />}
+                  onClick={() =>
+                    onShowcaseCreate({
+                      id: `showcase-${Date.now()}`,
+                      title: 'Ny produktshowcase',
+                      productIds: products.slice(0, 3).map((product) => product.id),
+                      createdAt: new Date().toISOString()
+                    })
+                  }
+                >
+                  Lag showcase
+                </Button>
+              )}
+            </Box>
+          )}
+
           {/* Analytics Summary */}
           {analytics && (
             <Grid container spacing={3} sx={{ mb: 3 }}>
               <Grid item xs={12} sm={6} md={3}>
                 <Card sx={{ textAlign: 'center', border: '1px solid #3498db30' }}>
                   <CardContent>
-                    <Typography variant="h4" sx={{ fontWeight: 70, color: '#3498db' }}>
+                    <Typography variant="h4" sx={{ fontWeight: 700, color: '#3498db' }}>
                       {analytics.totalDownloads || 0}
                     </Typography>
                     <Typography variant="body2" sx={{ color: 'text.secondary' }}>
@@ -510,7 +757,7 @@ export default function VendorProductManager({
               <Grid item xs={12} sm={6} md={3}>
                 <Card sx={{ textAlign: 'center', border: '1px solid #27ae6030' }}>
                   <CardContent>
-                    <Typography variant="h4" sx={{ fontWeight: 70, color: '#27ae60' }}>
+                    <Typography variant="h4" sx={{ fontWeight: 700, color: '#27ae60' }}>
                       {analytics.totalRevenue || 0} NOK
                     </Typography>
                     <Typography variant="body2" sx={{ color: 'text.secondary' }}>
@@ -522,7 +769,7 @@ export default function VendorProductManager({
               <Grid item xs={12} sm={6} md={3}>
                 <Card sx={{ textAlign: 'center', border: '1px solid #e74c3c30' }}>
                   <CardContent>
-                    <Typography variant="h4" sx={{ fontWeight: 70, color: '#e74c3c' }}>
+                    <Typography variant="h4" sx={{ fontWeight: 700, color: '#e74c3c' }}>
                       {analytics.averageRating || 0}
                     </Typography>
                     <Typography variant="body2" sx={{ color: 'text.secondary' }}>
@@ -534,7 +781,7 @@ export default function VendorProductManager({
               <Grid item xs={12} sm={6} md={3}>
                 <Card sx={{ textAlign: 'center', border: '1px solid #9b59b630' }}>
                   <CardContent>
-                    <Typography variant="h4" sx={{ fontWeight: 70, color: '#9b59b6' }}>
+                    <Typography variant="h4" sx={{ fontWeight: 700, color: '#9b59b6' }}>
                       {products.length}
                     </Typography>
                     <Typography variant="body2" sx={{ color: 'text.secondary' }}>
@@ -590,7 +837,7 @@ export default function VendorProductManager({
                                 productName: product.name 
                               })}
                               onKeyDown={(e) => {
-                                if (e.key === 'Enter' || e.key === ', ') {
+                                if (e.key === 'Enter' || e.key === ' ') {
                                   e.preventDefault();
                                   setViewImageDialog({ 
                                     open: true, 
@@ -803,6 +1050,16 @@ export default function VendorProductManager({
                             <Sync fontSize="small" />
                           </IconButton>
 
+                          {product.downloadUrl && (
+                            <IconButton
+                              size="small"
+                              onClick={() => handleDownloadProduct(product)}
+                              sx={{ color: '#2c3e50' }}
+                            >
+                              <CloudDownload fontSize="small" />
+                            </IconButton>
+                          )}
+
                           <IconButton
                             size="small"
                             onClick={() => deleteMutation.mutate(product.id)}
@@ -854,7 +1111,7 @@ export default function VendorProductManager({
                     }}
                   />
                   <Button
-                    onClick={() => setNewProduct({ ...newProduct, imageUrl: ', ' })}
+                    onClick={() => setNewProduct({ ...newProduct, imageUrl: '' })}
                     size="small"
                     color="error"
                   >
@@ -867,11 +1124,11 @@ export default function VendorProductManager({
                 maxFiles={1}
                 maxFileSizeMB={10}
                 profession={vendorType === 'print' ? 'vendor' : 'photographer'}
-                onUploadComplete={((results: any[]) => {
+                onUploadComplete={(results?: UploadResult[]) => {
                   if (results && results.length > 0 && results[0].result?.url) {
                     setNewProduct({ ...newProduct, imageUrl: results[0].result.url });
                   }
-                }) as any}
+                }}
                 onUploadError={(error: string) => {
                   console.error('Bildeopplasting feilet:', error);
                 }}
@@ -901,7 +1158,7 @@ export default function VendorProductManager({
                     }
                   }}
                 >
-                  {productCategories.map((cat: any) => (
+                  {productCategories.map((cat) => (
                     <MenuItem key={cat.id} value={cat.id}>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                         <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: cat.color }} />
@@ -1059,7 +1316,7 @@ export default function VendorProductManager({
       {/* Image Viewer Dialog */}
       <Dialog
         open={viewImageDialog.open}
-        onClose={() => setViewImageDialog({ open: false, imageUrl: '', productName: ',' })}
+        onClose={() => setViewImageDialog({ open: false, imageUrl: '', productName: '' })}
         maxWidth="lg"
         fullWidth
         aria-labelledby="image-viewer-title"
@@ -1102,7 +1359,7 @@ export default function VendorProductManager({
         </DialogContent>
         <DialogActions>
           <Button 
-            onClick={() => setViewImageDialog({ open: false, imageUrl: '', productName: ',' })}
+            onClick={() => setViewImageDialog({ open: false, imageUrl: '', productName: '' })}
             sx={{
               minHeight: 48,
               '&:focus-visible': {

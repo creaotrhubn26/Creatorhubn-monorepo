@@ -1,6 +1,20 @@
 import { useTheming } from '../utils/theming-helper';
 import React, { useState } from 'react';
-import { Box, IconButton, Fab, Tooltip } from '@mui/material';
+import { 
+  Box, 
+  IconButton, 
+  Fab, 
+  Tooltip, 
+  Card as MuiCard,
+  CardContent,
+  Grid,
+  Avatar,
+  LinearProgress,
+  Chip,
+  Badge,
+  useTheme,
+  alpha
+} from '@mui/material';
 import {
   Settings as SettingsIcon,
   Edit as EditIcon,
@@ -8,14 +22,28 @@ import {
   VisibilityOff as VisibilityOffIcon,
   CloudSync as CloudSyncIcon,
   Dashboard as DashboardIcon,
+  PhotoLibrary as PhotoLibraryIcon,
+  VideoLibrary as VideoLibraryIcon,
+  AudioFile as AudioFileIcon,
+  TrendingUp as TrendingUpIcon,
+  People as PeopleIcon,
+  Favorite as FavoriteIcon,
+  Download as DownloadIcon,
+  Add as AddIcon,
+  CloudUpload as CloudUploadIcon,
+  FilterList as FilterListIcon,
+  ViewModule as ViewModuleIcon,
+  ViewList as ViewListIcon,
+  Share as ShareIcon,
 } from '@mui/icons-material';
 import UniversalShowcase from '../components/universal/UniversalShowcase';
 import { ShowcaseDriveManager } from '../components/showcase/ShowcaseDriveManager';
 import { CategoryManager } from '../components/showcase/CategoryManager';
-import { Dialog, DialogTitle, DialogContent, Typography, Tabs, Tab, Alert } from '@mui/material';
+import { Dialog, DialogTitle, DialogContent, Typography, Tabs, Tab, Alert, Button } from '@mui/material';
 import { useDynamicProfessions } from '../components/universal/hooks/useDynamicProfessions';
 import { useAuth } from '@/hooks/useAuth';
 import { CREATOR_HUB_BRANDING } from '../constants/CreatorHubBranding';
+import { ProjectProvider } from '../contexts/ProjectContext';
 
 // Import profession system hooks and utilities
 import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
@@ -79,37 +107,322 @@ export default function ShowcaseAdmin() {
   
   // Theming system - use dynamic profession
   const theming = useTheming(profession);
+  const muiTheme = useTheme();
 
   // User data - with dynamic profession support
   const userId = user?.id || user?.email || 'unknown-user';
   const accessToken = 'demo-access-token';
+  
+  // View mode state
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+
+  // Demo stats (would come from API in production)
+  const stats = {
+    totalItems: 24,
+    totalViews: 1842,
+    totalLikes: 156,
+    totalDownloads: 47,
+    photos: 18,
+    videos: 4,
+    audio: 2,
+  };
 
   const handleAdminTabChange = (event: React.SyntheticEvent, newValue: number) => {
     setAdminTabValue(newValue);
   };
 
+  // Stat card component
+  const StatCard = ({ 
+    icon, 
+    label, 
+    value, 
+    trend, 
+    color 
+  }: { 
+    icon: React.ReactNode; 
+    label: string; 
+    value: number | string; 
+    trend?: string;
+    color: string;
+  }) => (
+    <MuiCard
+      sx={{
+        background: `linear-gradient(135deg, ${alpha(color, 0.1)} 0%, ${alpha(color, 0.05)} 100%)`,
+        border: `1px solid ${alpha(color, 0.2)}`,
+        borderRadius: 3,
+        transition: 'all 0.3s ease',
+        '&:hover': {
+          transform: 'translateY(-4px)',
+          boxShadow: `0 8px 24px ${alpha(color, 0.2)}`,
+          borderColor: alpha(color, 0.4),
+        },
+      }}
+    >
+      <CardContent sx={{ p: 2.5 }}>
+        <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+          <Box>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5, fontWeight: 500 }}>
+              {label}
+            </Typography>
+            <Typography variant="h4" sx={{ fontWeight: 700, color }}>
+              {typeof value === 'number' ? value.toLocaleString() : value}
+            </Typography>
+            {trend && (
+              <Chip 
+                size="small" 
+                label={trend} 
+                sx={{ 
+                  mt: 1, 
+                  height: 22,
+                  fontSize: '0.7rem',
+                  bgcolor: alpha(color, 0.15),
+                  color,
+                  fontWeight: 600,
+                }}
+              />
+            )}
+          </Box>
+          <Avatar
+            sx={{
+              bgcolor: alpha(color, 0.15),
+              color,
+              width: 48,
+              height: 48,
+            }}
+          >
+            {icon}
+          </Avatar>
+        </Box>
+      </CardContent>
+    </MuiCard>
+  );
+
   return (
-    <Box sx={{ minHeight: '100vh', position: 'relative',}}>
-      {/* Main Showcase Display - samme design som showcase-sidene */}
-      <UniversalShowcase
-        profession={profession}
-        userId={userId}
-        isOwner={true}
-        compact={false}
-        maxItems={20}
-        adminMode={adminMode}
-      />
+    <ProjectProvider>
+      <Box sx={{ 
+        minHeight: '100vh', 
+        position: 'relative',
+        bgcolor: muiTheme.palette.mode === 'dark' ? '#0a0a0a' : '#fafafa',
+      }}>
+        
+        {/* Header Section */}
+        <Box
+          sx={{
+            background: `linear-gradient(135deg, ${alpha(theming.colors.primary, 0.08)} 0%, ${alpha(theming.colors.secondary, 0.05)} 100%)`,
+            borderBottom: `1px solid ${alpha(theming.colors.primary, 0.1)}`,
+            px: { xs: 2, md: 4 },
+            py: 3,
+          }}
+        >
+          <Box sx={{ maxWidth: 1400, mx: 'auto' }}>
+            {/* Title Row */}
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3, flexWrap: 'wrap', gap: 2 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                {professionIcon && (
+                  <Avatar
+                    sx={{
+                      bgcolor: alpha(professionColor, 0.15),
+                      color: professionColor,
+                      width: 56,
+                      height: 56,
+                    }}
+                  >
+                    {professionIcon}
+                  </Avatar>
+                )}
+                <Box>
+                  <Typography 
+                    variant="h4" 
+                    sx={{ 
+                      fontWeight: 700,
+                      background: `linear-gradient(135deg, ${theming.colors.primary} 0%, ${theming.colors.secondary} 100%)`,
+                      backgroundClip: 'text',
+                      WebkitBackgroundClip: 'text',
+                      WebkitTextFillColor: 'transparent',
+                    }}
+                  >
+                    Showcase Admin
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Administrer ditt portfolio og showcase
+                  </Typography>
+                </Box>
+              </Box>
+              
+              {/* Quick Actions */}
+              <Box sx={{ display: 'flex', gap: 1 }}>
+                <Button
+                  variant="outlined"
+                  startIcon={<CloudUploadIcon />}
+                  sx={{
+                    borderColor: alpha(theming.colors.primary, 0.3),
+                    color: theming.colors.primary,
+                    '&:hover': {
+                      borderColor: theming.colors.primary,
+                      bgcolor: alpha(theming.colors.primary, 0.08),
+                    },
+                  }}
+                >
+                  Last opp
+                </Button>
+                <Button
+                  variant="contained"
+                  startIcon={<AddIcon />}
+                  sx={{
+                    bgcolor: theming.colors.primary,
+                    '&:hover': {
+                      bgcolor: theming.colors.secondary,
+                    },
+                  }}
+                >
+                  Nytt prosjekt
+                </Button>
+              </Box>
+            </Box>
+
+            {/* Stats Row */}
+            <Grid container spacing={2}>
+              <Grid item xs={6} sm={4} md={2}>
+                <StatCard
+                  icon={<PhotoLibraryIcon />}
+                  label="Totalt"
+                  value={stats.totalItems}
+                  trend="+3 denne uken"
+                  color={theming.colors.primary}
+                />
+              </Grid>
+              <Grid item xs={6} sm={4} md={2}>
+                <StatCard
+                  icon={<TrendingUpIcon />}
+                  label="Visninger"
+                  value={stats.totalViews}
+                  trend="+12%"
+                  color={theming.colors.info || '#2196f3'}
+                />
+              </Grid>
+              <Grid item xs={6} sm={4} md={2}>
+                <StatCard
+                  icon={<FavoriteIcon />}
+                  label="Liker"
+                  value={stats.totalLikes}
+                  trend="+8%"
+                  color={theming.colors.error || '#f44336'}
+                />
+              </Grid>
+              <Grid item xs={6} sm={4} md={2}>
+                <StatCard
+                  icon={<DownloadIcon />}
+                  label="Nedlastinger"
+                  value={stats.totalDownloads}
+                  color={theming.colors.success || '#4caf50'}
+                />
+              </Grid>
+              <Grid item xs={6} sm={4} md={2}>
+                <StatCard
+                  icon={<VideoLibraryIcon />}
+                  label="Videoer"
+                  value={stats.videos}
+                  color="#9c27b0"
+                />
+              </Grid>
+              <Grid item xs={6} sm={4} md={2}>
+                <StatCard
+                  icon={<AudioFileIcon />}
+                  label="Lydklipp"
+                  value={stats.audio}
+                  color="#00bcd4"
+                />
+              </Grid>
+            </Grid>
+          </Box>
+        </Box>
+
+        {/* Filter Bar */}
+        <Box
+          sx={{
+            px: { xs: 2, md: 4 },
+            py: 2,
+            borderBottom: `1px solid ${alpha(theming.colors.primary, 0.08)}`,
+            bgcolor: muiTheme.palette.background.paper,
+          }}
+        >
+          <Box sx={{ maxWidth: 1400, mx: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2 }}>
+            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+              <Chip 
+                label="Alle" 
+                color="primary" 
+                variant="filled"
+                sx={{ fontWeight: 600 }}
+              />
+              <Chip label="Bilder" variant="outlined" onClick={() => {}} />
+              <Chip label="Videoer" variant="outlined" onClick={() => {}} />
+              <Chip label="Lyd" variant="outlined" onClick={() => {}} />
+              <Chip label="Favoritter" variant="outlined" icon={<FavoriteIcon />} onClick={() => {}} />
+            </Box>
+            
+            <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+              <Tooltip title="Filtrer">
+                <IconButton size="small">
+                  <FilterListIcon />
+                </IconButton>
+              </Tooltip>
+              <Box sx={{ 
+                display: 'flex', 
+                border: `1px solid ${alpha(theming.colors.primary, 0.2)}`,
+                borderRadius: 1,
+                overflow: 'hidden',
+              }}>
+                <IconButton 
+                  size="small"
+                  onClick={() => setViewMode('grid')}
+                  sx={{ 
+                    borderRadius: 0,
+                    bgcolor: viewMode === 'grid' ? alpha(theming.colors.primary, 0.1) : 'transparent',
+                    color: viewMode === 'grid' ? theming.colors.primary : 'text.secondary',
+                  }}
+                >
+                  <ViewModuleIcon />
+                </IconButton>
+                <IconButton 
+                  size="small"
+                  onClick={() => setViewMode('list')}
+                  sx={{ 
+                    borderRadius: 0,
+                    bgcolor: viewMode === 'list' ? alpha(theming.colors.primary, 0.1) : 'transparent',
+                    color: viewMode === 'list' ? theming.colors.primary : 'text.secondary',
+                  }}
+                >
+                  <ViewListIcon />
+                </IconButton>
+              </Box>
+            </Box>
+          </Box>
+        </Box>
+
+        {/* Main Showcase Display */}
+        <Box sx={{ px: { xs: 2, md: 4 }, py: 3 }}>
+          <Box sx={{ maxWidth: 1400, mx: 'auto' }}>
+            <UniversalShowcase
+              profession={profession}
+              userId={userId}
+              isOwner={true}
+              compact={false}
+              maxItems={20}
+              adminMode={adminMode}
+            />
+          </Box>
+        </Box>
 
       {/* Admin Controls - floating glassmorphic overlay */}
       <Box
         sx={{
           position: 'fixed',
-          top:  20,
-          right:  20,
+          top: 100,
+          right: 20,
           zIndex: 10,
           display: 'flex',
           flexDirection: 'column',
-          gap:  1,
+          gap: 1.5,
       }}
       >
         <Tooltip title={adminMode ? 'Avslutt admin-modus' : 'Aktiver admin-modus'} placement="left">
@@ -118,14 +431,17 @@ export default function ShowcaseAdmin() {
             onClick={() => setAdminMode(!adminMode)}
             sx={{
               background: adminMode
-                ? 'linear-gradient(45deg, #ff6b35, #ff8c00)'
-                : 'rgba(255, 255, 255, 0.9)',
+                ? `linear-gradient(135deg, ${theming.colors.primary}, ${theming.colors.secondary})`
+                : alpha(muiTheme.palette.background.paper, 0.95),
               backdropFilter: 'blur(10px)',
-              border: '1px solid rgba(255, 140, 0, 0.3)',
-              color: adminMode ? 'white' : '#ff8c00', '&:hover': {
-                background: 'linear-gradient(45deg, #ff6b35, #ff8c00)',
+              border: `1px solid ${alpha(theming.colors.primary, 0.3)}`,
+              color: adminMode ? 'white' : theming.colors.primary,
+              boxShadow: `0 4px 20px ${alpha(theming.colors.primary, 0.2)}`,
+              '&:hover': {
+                background: `linear-gradient(135deg, ${theming.colors.primary}, ${theming.colors.secondary})`,
                 color: 'white',
-                transform: 'scale(1.05)',
+                transform: 'scale(1.08)',
+                boxShadow: `0 6px 24px ${alpha(theming.colors.primary, 0.35)}`,
               },
               transition: 'all 0.3s ease',
             }}
@@ -140,14 +456,17 @@ export default function ShowcaseAdmin() {
             onClick={() => setPreviewMode(!previewMode)}
             sx={{
               background: previewMode
-                ? 'linear-gradient(45deg, #2196f3, #21cbf3)'
-                : 'rgba(255, 255, 255, 0.9)',
+                ? 'linear-gradient(135deg, #2196f3, #21cbf3)'
+                : alpha(muiTheme.palette.background.paper, 0.95),
               backdropFilter: 'blur(10px)',
               border: '1px solid rgba(33, 150, 243, 0.3)',
-              color: previewMode ? 'white' : '#2196f3','&:hover': {
-                background: 'linear-gradient(45deg, #2196f3, #21cbf3)',
+              color: previewMode ? 'white' : '#2196f3',
+              boxShadow: '0 4px 20px rgba(33, 150, 243, 0.15)',
+              '&:hover': {
+                background: 'linear-gradient(135deg, #2196f3, #21cbf3)',
                 color: 'white',
-                transform: 'scale(1.05)',
+                transform: 'scale(1.08)',
+                boxShadow: '0 6px 24px rgba(33, 150, 243, 0.3)',
               },
               transition: 'all 0.3s ease',
             }}
@@ -156,18 +475,41 @@ export default function ShowcaseAdmin() {
           </Fab>
         </Tooltip>
 
+        <Tooltip title="Del showcase" placement="left">
+          <Fab
+            size="medium"
+            sx={{
+              background: alpha(muiTheme.palette.background.paper, 0.95),
+              backdropFilter: 'blur(10px)',
+              border: `1px solid ${alpha('#4caf50', 0.3)}`,
+              color: '#4caf50',
+              boxShadow: '0 4px 20px rgba(76, 175, 80, 0.15)',
+              '&:hover': {
+                background: 'linear-gradient(135deg, #4caf50, #66bb6a)',
+                color: 'white',
+                transform: 'scale(1.08)',
+              },
+              transition: 'all 0.3s ease',
+            }}
+          >
+            <ShareIcon />
+          </Fab>
+        </Tooltip>
+
         <Tooltip title="Åpne admin-panel" placement="left">
           <Fab
             size="medium"
             onClick={() => setAdminDialog(true)}
             sx={{
-              background: 'rgba(255, 255, 255, 0.9)',
+              background: alpha(muiTheme.palette.background.paper, 0.95),
               backdropFilter: 'blur(10px)',
-              border: '1px solid rgba(255, 140, 0, 0.3)',
-              color: '#ff8c00', '&:hover': {
-                background: 'linear-gradient(45deg, #ff8c00, #ff6b35)',
+              border: `1px solid ${alpha(theming.colors.primary, 0.3)}`,
+              color: theming.colors.primary,
+              boxShadow: `0 4px 20px ${alpha(theming.colors.primary, 0.15)}`,
+              '&:hover': {
+                background: `linear-gradient(135deg, ${theming.colors.primary}, ${theming.colors.secondary})`,
                 color: 'white',
-                transform: 'scale(1.05)',
+                transform: 'scale(1.08)',
               },
               transition: 'all 0.3s ease',
             }}
@@ -182,25 +524,44 @@ export default function ShowcaseAdmin() {
         <Box
           sx={{
             position: 'fixed',
-            bottom:  20,
-            left:  20,
-            right:  20,
-            background: 'rgba(255, 140, 0, 0.95)',
-            backdropFilter: 'blur(10px)',
-            borderRadius:  2,
-            p:  2,
+            bottom: 20,
+            left: 20,
+            right: 20,
+            background: `linear-gradient(135deg, ${alpha(theming.colors.primary, 0.95)}, ${alpha(theming.colors.secondary, 0.9)})`,
+            backdropFilter: 'blur(12px)',
+            borderRadius: 3,
+            p: 2.5,
             zIndex: 10,
-            border: '1px solid rgba(25, 255, 255, 0.3)',
+            border: `1px solid ${alpha('#fff', 0.2)}`,
             color: 'white',
+            boxShadow: `0 8px 32px ${alpha(theming.colors.primary, 0.4)}`,
         }}
         >
-          <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-            🎨 Admin-modus aktivert
-          </Typography>
-          <Typography variant="body2">
-            Du er nå i administrasjonsmodus. Alle endringer gjøres i sanntid. Klikk på elementer for
-            å redigere, eller bruk admin-panelet for avanserte innstillinger.
-          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Avatar sx={{ bgcolor: 'rgba(255,255,255,0.2)' }}>
+              <EditIcon />
+            </Avatar>
+            <Box sx={{ flex: 1 }}>
+              <Typography variant="h6" gutterBottom sx={{ color: 'white', fontWeight: 600, mb: 0.5 }}>
+                Admin-modus aktivert
+              </Typography>
+              <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                Klikk på elementer for å redigere, dra for å omorganisere, eller bruk admin-panelet for avanserte innstillinger.
+              </Typography>
+            </Box>
+            <Button 
+              variant="outlined" 
+              size="small"
+              onClick={() => setAdminMode(false)}
+              sx={{ 
+                color: 'white', 
+                borderColor: 'rgba(255,255,255,0.5)',
+                '&:hover': { borderColor: 'white', bgcolor: 'rgba(255,255,255,0.1)' }
+              }}
+            >
+              Avslutt
+            </Button>
+          </Box>
         </Box>
       )}
 
@@ -213,71 +574,83 @@ export default function ShowcaseAdmin() {
         PaperProps={{
           sx: {
             minHeight: '80vh',
-            background: 'rgba(255, 255, 255, 0.95)',
+            background: muiTheme.palette.background.paper,
             backdropFilter: 'blur(10px)',
-            border: '1px solid rgba(255, 140, 0, 0.2)',
+            border: `1px solid ${alpha(theming.colors.primary, 0.15)}`,
+            borderRadius: 3,
         },
       }}
       >
         <DialogTitle
           sx={{
-            background: 'linear-gradient(135deg, rgba(255, 140, 0, 0.1) 0%, rgba(255, 107, 53, 0.1) 100%)',
-            borderBottom: '1px solid rgba(255, 140, 0, 0.2)',
+            background: `linear-gradient(135deg, ${alpha(theming.colors.primary, 0.08)} 0%, ${alpha(theming.colors.secondary, 0.05)} 100%)`,
+            borderBottom: `1px solid ${alpha(theming.colors.primary, 0.1)}`,
             display: 'flex',
             alignItems: 'center',
             gap: 2,
+            py: 2.5,
         }}
         >
           <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
               {professionIcon && (
-                <Box sx={{ color: professionColor, display: 'flex', alignItems: 'center' }}>
+                <Avatar
+                  sx={{ 
+                    bgcolor: alpha(professionColor, 0.15),
+                    color: professionColor,
+                    width: 44,
+                    height: 44,
+                  }}
+                >
                   {professionIcon}
-                </Box>
+                </Avatar>
               )}
-              <Typography variant="h5"
-                component="div"
-                sx={{ 
-                  background: 'linear-gradient(45deg, #ff8c00, #ff6b35)',
-                  backgroundClip: 'text',
-                  WebkitBackgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent',
-                  fontWeight: 'bold',
-                  color: theming.colors.primary,
-                }}>
-                {enhancedProfessionConfig?.displayName || professionConfig?.displayName
-                  ? `${enhancedProfessionConfig?.displayName || professionConfig.displayName} - Showcase Administration`
-                  : '🎨 Showcase Administration'}
-              </Typography>
+              <Box>
+                <Typography variant="h5"
+                  component="div"
+                  sx={{ 
+                    background: `linear-gradient(135deg, ${theming.colors.primary}, ${theming.colors.secondary})`,
+                    backgroundClip: 'text',
+                    WebkitBackgroundClip: 'text',
+                    WebkitTextFillColor: 'transparent',
+                    fontWeight: 700,
+                  }}>
+                  Showcase Administration
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Administrer kategorier, Drive-integrasjon og visningsinnstillinger
+                </Typography>
+              </Box>
             </Box>
-            <Typography variant="subtitle2" color="text.secondary" sx={{ mt: 0.5 }}>
-              Administrer showcase-kategorier, Drive-integrasjon og visningsinnstillinger
-            </Typography>
           </Box>
         </DialogTitle>
 
-        <DialogContent sx={{ p:  0 }}>
-          <Box sx={{ borderBottom: 1, borderColor: 'divider',}}>
+        <DialogContent sx={{ p: 0 }}>
+          <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
             <Tabs
               value={adminTabValue}
               onChange={handleAdminTabChange}
               sx={{
+                px: 2,
                 '& .MuiTab-root': {
                   textTransform: 'none',
                   fontSize: '0.95rem',
-                  fontWeight: 50,
+                  fontWeight: 500,
+                  minHeight: 56,
                 },
                 '& .Mui-selected': {
-                  color: '#ff8c00 !important',
+                  color: `${theming.colors.primary} !important`,
                 },
                 '& .MuiTabs-indicator': {
-                  backgroundColor: '#ff8c00',
+                  backgroundColor: theming.colors.primary,
+                  height: 3,
+                  borderRadius: '3px 3px 0 0',
                 },
             }}
             >
-              <Tab label="📚 Kategorier" />
-              <Tab label="🔗 Drive Integration" />
-              <Tab label="⚙️ Innstillinger" />
+              <Tab icon={theming.getThemedIcon('Category', { sx: { mr: 1 } })} iconPosition="start" label="Kategorier" />
+              <Tab icon={theming.getThemedIcon('CloudSync', { sx: { mr: 1 } })} iconPosition="start" label="Drive Integration" />
+              <Tab icon={theming.getThemedIcon('Settings', { sx: { mr: 1 } })} iconPosition="start" label="Innstillinger" />
             </Tabs>
           </Box>
 
@@ -295,23 +668,33 @@ export default function ShowcaseAdmin() {
 
           <AdminTabPanel value={adminTabValue} index={2}>
             <Box>
-              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                ⚙️ Avanserte innstillinger
+              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary, fontWeight: 600 }}>
+                {theming.getThemedIcon('Settings', { sx: { mr: 1, verticalAlign: 'middle' } })}
+                Avanserte innstillinger
               </Typography>
-              <Alert severity="info">
-                <Typography variant="body2">
-                  Avanserte innstillinger kommer snart. Her vil du kunne konfigurere: </Typography>
-                <Box component="ul" sx={{ mt: 1, mb: 0 }}>
+              <Alert 
+                severity="info"
+                sx={{
+                  borderRadius: 2,
+                  border: `1px solid ${alpha(theming.colors.info || '#2196f3', 0.2)}`,
+                }}
+              >
+                <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                  Avanserte innstillinger kommer snart
+                </Typography>
+                <Box component="ul" sx={{ mt: 1, mb: 0, pl: 2 }}>
                   <li>Custom CSS og styling</li>
-                  <li>SEO-innstillinger</li>
-                  <li>Tilgangskontraller</li>
-                  <li>Analytics og tracking</li>
+                  <li>SEO-innstillinger for bedre synlighet</li>
+                  <li>Tilgangskontroller og deling</li>
+                  <li>Analytics og besøksstatistikk</li>
+                  <li>Watermark og brandinghttps</li>
                 </Box>
               </Alert>
             </Box>
           </AdminTabPanel>
         </DialogContent>
       </Dialog>
-    </Box>
+      </Box>
+    </ProjectProvider>
   );
 }

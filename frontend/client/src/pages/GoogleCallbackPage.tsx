@@ -172,7 +172,7 @@ export const GoogleCallbackPage: React.FC = () => {
           style={{
             margin: '0 0 12px',
             fontSize: '20px',
-            fontWeight: 50,
+            fontWeight: 500,
             color: '#202124',
           }}>
           {status === 'processing' && 'Authenticating...'}

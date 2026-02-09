@@ -84,6 +84,23 @@ const questionTypes = [
   { value: 'scale', label: 'Scale (1-10)', icon: <ScaleIcon /> },
 ];
 
+const surveyPurposes: SurveyData['purpose'][] = [
+  'swot_analysis',
+  'customer_satisfaction',
+  'market_research',
+  'product_feedback'
+];
+
+const surveyStatuses: SurveyData['status'][] = ['draft', 'active', 'paused', 'closed'];
+
+const questionTypeValues: SurveyQuestion['type'][] = [
+  'text',
+  'rating',
+  'multiple_choice',
+  'checkbox',
+  'scale'
+];
+
 export const SurveyBuilder: React.FC<SurveyBuilderProps> = ({ open, onClose, onSave, initialData }) => {
   const theming = useTheming();
   const [tabValue, setTabValue] = useState(0);
@@ -242,7 +259,12 @@ export const SurveyBuilder: React.FC<SurveyBuilderProps> = ({ open, onClose, onS
                   <Select
                     labelId="purpose-label"
                     value={survey.purpose}
-                    onChange={(e) => setSurvey({ ...survey, purpose: e.target.value as any })}
+                    onChange={(e) => {
+                      const value = String(e.target.value);
+                      if (surveyPurposes.includes(value as SurveyData['purpose'])) {
+                        setSurvey({ ...survey, purpose: value as SurveyData['purpose'] });
+                      }
+                    }}
                     label="Formål"
                     inputProps={{ 'aria-label' : 'Velg formål' }}
                   >
@@ -258,7 +280,12 @@ export const SurveyBuilder: React.FC<SurveyBuilderProps> = ({ open, onClose, onS
                   <Select
                     labelId="status-label"
                     value={survey.status}
-                    onChange={(e) => setSurvey({ ...survey, status: e.target.value as any })}
+                    onChange={(e) => {
+                      const value = String(e.target.value);
+                      if (surveyStatuses.includes(value as SurveyData['status'])) {
+                        setSurvey({ ...survey, status: value as SurveyData['status'] });
+                      }
+                    }}
                     label="Status"
                     inputProps={{ 'aria-label' : 'Velg status' }}
                   >
@@ -286,7 +313,11 @@ export const SurveyBuilder: React.FC<SurveyBuilderProps> = ({ open, onClose, onS
                         key={type.value}
                         size="small"
                         startIcon={React.cloneElement(type.icon, { 'aria-hidden' : 'true' })}
-                        onClick={() => handleAddQuestion(type.value as any)}
+                        onClick={() => {
+                          if (questionTypeValues.includes(type.value as SurveyQuestion['type'])) {
+                            handleAddQuestion(type.value as SurveyQuestion['type']);
+                          }
+                        }}
                         aria-label={`Legg til ${type.label} spørsmål`}
                         sx={{
                           ml: 1, '&:focus-visible': {

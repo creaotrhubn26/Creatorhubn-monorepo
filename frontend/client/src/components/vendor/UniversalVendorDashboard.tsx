@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider'
@@ -53,7 +53,9 @@ import {
   People,
   Schedule,
   Settings,
-  Inventory
+  Inventory,
+  LocalShipping,
+  AutoAwesome
 } from '@mui/icons-material';
 import { motion } from 'framer-motion';
 import { apiRequest } from '@/lib/queryClient';
@@ -65,6 +67,12 @@ import VendorTasksWidget from './VendorTasksWidget';
 import VendorOrdersManager from './VendorOrdersManager';
 import VendorInventoryManager from './VendorInventoryManager';
 import VendorInsightsWidget from './VendorInsightsWidget';
+import VendorProductManager from './VendorProductManager';
+import VendorFinancialDashboard from './VendorFinancialDashboard';
+import VendorMessaging from './VendorMessaging';
+import VendorManagementTools from './VendorManagementTools';
+import VendorDeliveryManager from './VendorDeliveryManager';
+import VendorInspirationManager from './VendorInspirationManager';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { PushNotificationSettings } from '../shared/PushNotificationSettings';
 
@@ -87,6 +95,11 @@ interface UniversalVendorDashboardProps {
   selectedClient?: any;
   onSettingsUpdate?: (settings: any) => void;
   onNotificationCreate?: (notification: any) => void;
+}
+
+interface VendorProductSummary {
+  id: string;
+  category?: string;
 }
 
 // Dynamic vendor type configuration - now uses registry
@@ -158,7 +171,7 @@ export default function UniversalVendorDashboard({
 
   // Register component with MasterIntegrationProvider
   useEffect(() => {
-    communication.registerComponent('universal-vendor-dashboard,', 'dashboard', [
+    communication.registerComponent('universal-vendor-dashboard', 'dashboard', [
       'data:read','data:write','event:emit','event:listen','ui:update','vendor:manage','product:manage','order:manage','analytics:track','notification:manage','showcase:manage'
     ]);
 
@@ -216,6 +229,12 @@ export default function UniversalVendorDashboard({
     queryFn: () => apiRequest(`/api/vendor-dashboard/${vendorType}/${vendorName}/${userId}`)
 });
 
+  const { data: vendorProducts = [] } = useQuery<VendorProductSummary[]>({
+    queryKey: ['/api/vendor/products', userId, vendorType],
+    queryFn: () => apiRequest(`/api/vendor/products/${userId}?vendorType=${vendorType}`),
+    enabled: Boolean(userId)
+  });
+
   // Fetch vendor showcase stats
   const { data: showcaseStats } = useQuery({
     queryKey: ['/api/universal-vendor-showcase-stats', vendorType, vendorName],
@@ -228,10 +247,75 @@ export default function UniversalVendorDashboard({
     queryFn: () => apiRequest(`/api/vendor-onboarding/status/${vendorType}/${userId}`)
 });
 
-  const handleActionClick = (action: string) => {
-    console.log(`🎯 Vendor action: ${action} for ${vendorType} - ${vendorName}`);
-    // Implement specific actions based on vendor type
-};
+  const handleActionClick = useCallback((action: string) => {
+    switch (action) {
+      case 'manage_products':
+      case 'add_product':
+        setActiveTab(2);
+        return;
+      case 'manage_orders':
+      case 'view_orders':
+        setActiveTab(3);
+        return;
+      case 'manage_inventory':
+        setActiveTab(4);
+        return;
+      case 'view_analytics':
+        setActiveTab(5);
+        return;
+      case 'manage_settings':
+        setActiveTab(6);
+        return;
+      case 'manage_deliveries':
+      case 'view_deliveries':
+        setActiveTab(7);
+        return;
+      case 'manage_inspirations':
+      case 'view_inspirations':
+        setActiveTab(8);
+        return;
+      default:
+        console.log(`🎯 Vendor action: ${action} for ${vendorType} - ${vendorName}`);
+    }
+  }, [vendorName, vendorType]);
+
+  useEffect(() => {
+    if (dashboardData) {
+      dataFlow.syncData('universal-vendor-dashboard:stats', dashboardData);
+    }
+  }, [dashboardData, dataFlow]);
+
+  useEffect(() => {
+    if (vendorProducts.length > 0) {
+      dataFlow.syncData('universal-vendor-dashboard:products', vendorProducts);
+    }
+  }, [dataFlow, vendorProducts]);
+
+  useEffect(() => {
+    if (showcaseStats) {
+      dataFlow.syncData('universal-vendor-dashboard:showcases', showcaseStats);
+    }
+  }, [dataFlow, showcaseStats]);
+
+  const categoryStats = useMemo(() => {
+    const categories = vendorTypeConfig?.productCategories || [];
+    if (categories.length === 0) {
+      return [] as Array<{ id: string; label: string; color: string; count: number }>;
+    }
+
+    const counts = new Map<string, number>();
+    vendorProducts.forEach((product) => {
+      const category = product.category || 'unknown';
+      counts.set(category, (counts.get(category) || 0) + 1);
+    });
+
+    return categories.map((category) => ({
+      id: category.id,
+      label: category.label,
+      color: category.color || config.color,
+      count: counts.get(category.id) || 0
+    }));
+  }, [config.color, vendorProducts, vendorTypeConfig?.productCategories]);
 
   // Show onboarding if not completed
   if (!compact && onboardingStatus && !onboardingStatus.isComplete) {
@@ -316,7 +400,7 @@ export default function UniversalVendorDashboard({
           
           <Box sx={{ flex: 1 }}>
             <Typography variant="h3" sx={{ 
-              fontWeight: 70, 
+              fontWeight: 700, 
               color: config.color,
               mb: 1
           }}>
@@ -422,7 +506,7 @@ export default function UniversalVendorDashboard({
                   }}>
                       <Store />
                     </Avatar>
-                    <Typography variant="h4" sx={{ fontWeight: 70, color: config.color }}>
+                    <Typography variant="h4" sx={{ fontWeight: 700, color: config.color }}>
                       {showcaseStats?.totalProducts || 0}
                     </Typography>
                     <Typography variant="body2" sx={{ color: 'text.secondary' }}>
@@ -443,7 +527,7 @@ export default function UniversalVendorDashboard({
                   }}>
                       <Download />
                     </Avatar>
-                    <Typography variant="h4" sx={{ fontWeight: 70, color: config.color }}>
+                    <Typography variant="h4" sx={{ fontWeight: 700, color: config.color }}>
                       {showcaseStats?.totalDownloads || 0}
                     </Typography>
                     <Typography variant="body2" sx={{ color: 'text.secondary' }}>
@@ -464,7 +548,7 @@ export default function UniversalVendorDashboard({
                   }}>
                       <Star />
                     </Avatar>
-                    <Typography variant="h4" sx={{ fontWeight: 70, color: config.color }}>
+                    <Typography variant="h4" sx={{ fontWeight: 700, color: config.color }}>
                       {showcaseStats?.averageRating?.toFixed(1) || '0.0'}
                     </Typography>
                     <Typography variant="body2" sx={{ color: 'text.secondary' }}>
@@ -485,7 +569,7 @@ export default function UniversalVendorDashboard({
                   }}>
                       <TrendingUp />
                     </Avatar>
-                    <Typography variant="h4" sx={{ fontWeight: 70, color: config.color }}>
+                    <Typography variant="h4" sx={{ fontWeight: 700, color: config.color }}>
                       {showcaseStats?.featuredProducts || 0}
                     </Typography>
                     <Typography variant="body2" sx={{ color: 'text.secondary' }}>
@@ -506,26 +590,32 @@ export default function UniversalVendorDashboard({
                 Kategori Oversikt
               </Typography>
               
-              <List dense>
-                {config.quickStats.map((stat, index) => (
-                  <ListItem key={index} sx={{ px: 0 }}>
-                    <ListItemIcon sx={{ minWidth: 36 }}>
-                      <Avatar sx={{ 
-                        bgcolor: `${config.color}10`, 
-                        color: config.color,
-                        width: 32, 
-                        height: 32 
-                    }}>
-                        {stat.icon}
-                      </Avatar>
-                    </ListItemIcon>
-                    <ListItemText 
-                      primary={stat.label}
-                      secondary={`${Math.floor(Math.random() * 50 + 10)} produkter`} // Replace with real data
-                    />
-                  </ListItem>
-                ))}
-              </List>
+              {categoryStats.length === 0 ? (
+                <Typography variant="body2" color="text.secondary">
+                  Ingen kategorier tilgjengelig ennå.
+                </Typography>
+              ) : (
+                <List dense>
+                  {categoryStats.slice(0, 6).map((category) => (
+                    <ListItem key={category.id} sx={{ px: 0 }}>
+                      <ListItemIcon sx={{ minWidth: 36 }}>
+                        <Avatar sx={{ 
+                          bgcolor: `${category.color}15`, 
+                          color: category.color,
+                          width: 32, 
+                          height: 32 
+                        }}>
+                          <Category aria-hidden="true" />
+                        </Avatar>
+                      </ListItemIcon>
+                      <ListItemText
+                        primary={category.label}
+                        secondary={`${category.count} produkter`}
+                      />
+                    </ListItem>
+                  ))}
+                </List>
+              )}
             </CardContent>
           </Card>
         </Grid>
@@ -557,6 +647,8 @@ export default function UniversalVendorDashboard({
             <Tab label="Lager" icon={<Inventory aria-hidden="true" />} iconPosition="start" id="tab-4" aria-controls="tabpanel-4" />
             <Tab label="Statistikk" icon={<Assessment aria-hidden="true" />} iconPosition="start" id="tab-5" aria-controls="tabpanel-5" />
             <Tab label="Innstillinger" icon={<Settings aria-hidden="true" />} iconPosition="start" id="tab-6" aria-controls="tabpanel-6" />
+            <Tab label="Leveranser" icon={<LocalShipping aria-hidden="true" />} iconPosition="start" id="tab-7" aria-controls="tabpanel-7" />
+            <Tab label="Inspirasjon" icon={<AutoAwesome aria-hidden="true" />} iconPosition="start" id="tab-8" aria-controls="tabpanel-8" />
           </Tabs>
         </Box>
 
@@ -626,41 +718,24 @@ export default function UniversalVendorDashboard({
           {/* Tab 2: Products */}
           {activeTab === 2 && (
             <Box role="tabpanel" id="tabpanel-2" aria-labelledby="tab-2" hidden={activeTab !== 2}>
-            <Box sx={{ textAlign: 'center', py: 4 }}>
-              <Avatar sx={{ 
-                bgcolor: config.color, 
-                mx: 'auto', 
-                mb: 2,
-                width: 80,
-                height: 80,
-                fontSize: '2rem'
-            }}>
-                {config.icon}
-              </Avatar>
-              <Typography variant="h5" sx={{ fontWeight: 600, mb: 2, color: config.color }}>
-                Produktadministrasjon
-              </Typography>
-              <Typography variant="body1" sx={{ color: 'text.secondary', mb: 3 }}>
-                Administrer dine {config.name.toLowerCase()} produkter
-              </Typography>
-              <Button
-                variant="contained"
-                startIcon={<Add aria-hidden="true" />}
-                sx={{
-                  bgcolor: config.color,
-                  minHeight: 48,
-                  '&:hover': { bgcolor: alpha(config.color, 0.8) },
-                  '&:focus-visible': {
-                    outline: `3px solid ${config.color}`,
-                    outlineOffset: '2px'
-                  }
-              }}
-                onClick={() => handleActionClick('add_product')}
-                aria-label="Legg til nytt produkt"
-              >
-                Legg til nytt produkt
-              </Button>
-            </Box>
+              <VendorProductManager
+                userId={userId}
+                vendorType={vendorType}
+                onProductCreated={() => handleActionClick('manage_products')}
+                onMeetingCreate={onMeetingCreate}
+                onProjectUpdate={onProjectUpdate}
+                onWorklogCreate={onWorklogCreate}
+                onClientSelect={onClientSelect}
+                onClientUpdate={onClientUpdate}
+                onShowcaseCreate={onShowcaseCreate}
+                onFileUpload={onFileUpload}
+                onFileDownload={onFileDownload}
+                selectedProject={selectedProject}
+                onProjectSelect={onProjectSelect}
+                selectedClient={selectedClient}
+                onSettingsUpdate={onSettingsUpdate}
+                onNotificationCreate={onNotificationCreate}
+              />
             </Box>
           )}
 
@@ -689,48 +764,55 @@ export default function UniversalVendorDashboard({
           {/* Tab 5: Statistics */}
           {activeTab === 5 && (
             <Box role="tabpanel" id="tabpanel-5" aria-labelledby="tab-5" hidden={activeTab !== 5}>
-            <Box sx={{ textAlign: 'center', py: 4 }}>
-              <Avatar sx={{ 
-                bgcolor: config.color, 
-                mx: 'auto', 
-                mb: 2,
-                width: 80,
-                height: 80,
-                fontSize: '2rem'
-            }} aria-hidden="true">
-                <Analytics aria-hidden="true" />
-              </Avatar>
-              <Typography variant="h5" component="h2" sx={{ fontWeight: 600, mb: 2, color: config.color }}>
-                Detaljert Statistikk
-              </Typography>
-              <Typography variant="body1" sx={{ color: 'text.secondary' }}>
-                Avanserte analytics og rapporter kommer snart
-              </Typography>
-            </Box>
+              <VendorFinancialDashboard
+                vendorType={vendorType}
+                vendorName={vendorName}
+                userId={userId}
+              />
             </Box>
           )}
           
           {/* Tab 6: Settings */}
           {activeTab === 6 && (
             <Box role="tabpanel" id="tabpanel-6" aria-labelledby="tab-6" hidden={activeTab !== 6}>
-            <Box sx={{ textAlign: 'center', py: 4 }}>
-              <Avatar sx={{ 
-                bgcolor: config.color, 
-                mx: 'auto', 
-                mb: 2,
-                width: 80,
-                height: 80,
-                fontSize: '2rem'
-            }} aria-hidden="true">
-                <Edit aria-hidden="true" />
-              </Avatar>
-              <Typography variant="h5" component="h2" sx={{ fontWeight: 600, mb: 2, color: config.color }}>
-                Vendor Innstillinger
-              </Typography>
-              <Typography variant="body1" sx={{ color: 'text.secondary' }}>
-                Konfigurer dine vendor-spesifikke innstillinger
-              </Typography>
+              <Grid container spacing={3}>
+                <Grid item xs={12} md={7}>
+                  <VendorManagementTools
+                    vendorType={vendorType}
+                    vendorName={vendorName}
+                    userId={userId}
+                  />
+                </Grid>
+                <Grid item xs={12} md={5}>
+                  <VendorMessaging
+                    vendorType={vendorType}
+                    vendorName={vendorName}
+                    userId={userId}
+                  />
+                </Grid>
+              </Grid>
             </Box>
+          )}
+
+          {/* Tab 7: Leveranser */}
+          {activeTab === 7 && (
+            <Box role="tabpanel" id="tabpanel-7" aria-labelledby="tab-7" hidden={activeTab !== 7}>
+              <VendorDeliveryManager
+                vendorType={vendorType}
+                vendorName={vendorName}
+                userId={userId}
+              />
+            </Box>
+          )}
+
+          {/* Tab 8: Inspirasjon */}
+          {activeTab === 8 && (
+            <Box role="tabpanel" id="tabpanel-8" aria-labelledby="tab-8" hidden={activeTab !== 8}>
+              <VendorInspirationManager
+                vendorType={vendorType}
+                vendorName={vendorName}
+                userId={userId}
+              />
             </Box>
           )}
         </Box>

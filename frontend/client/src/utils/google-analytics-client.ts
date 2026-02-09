@@ -120,7 +120,7 @@ export async function getGA4ClientId(): Promise<string | null> {
     if (typeof window !== 'undefined' && window.gtag) {
       // Use the GA4 Measurement ID from environment (injected via import.meta.env)
       const measurementId = import.meta.env.VITE_GA_MEASUREMENT_ID || 'G-XXXXXXXXXX';
-      window.gtag('get', measurementId'client_id', (clientId: string) => {
+      window.gtag('get', measurementId, 'client_id', (clientId: string) => {
         resolve(clientId);
       });
     } else {
@@ -136,7 +136,7 @@ export async function getGA4SessionId(): Promise<string | null> {
   return new Promise((resolve) => {
     if (typeof window !== 'undefined' && window.gtag) {
       const measurementId = import.meta.env.VITE_GA_MEASUREMENT_ID || 'G-XXXXXXXXXX';
-      window.gtag('get', measurementId'session_id', (sessionId: string) => {
+      window.gtag('get', measurementId, 'session_id', (sessionId: string) => {
         resolve(sessionId);
       });
     } else {

@@ -28,6 +28,7 @@ import {
   SortAsc
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { QUERY_KEYS } from '@/lib/queryKeys';
 import { useToast } from '@/hooks/use-toast';
@@ -88,6 +89,7 @@ export default function UnifiedMediaLibrary({ onSelectFile }: { onSelectFile?: (
   const [sortBy, setSortBy] = useState<'recent' | 'name' | 'size' | 'usage'>('recent');
   const [previewFile, setPreviewFile] = useState<MediaFile | null>(null);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
+  const [deleteConfirmDialog, setDeleteConfirmDialog] = useState<{ open: boolean; fileId: string | null }>({ open: false, fileId: null });
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -209,9 +211,14 @@ export default function UnifiedMediaLibrary({ onSelectFile }: { onSelectFile?: (
   };
 
   const handleDelete = (fileId: string) => {
-    if (confirm('Are you sure you want to delete this file?')) {
-      deleteMutation.mutate(fileId);
+    setDeleteConfirmDialog({ open: true, fileId });
+  };
+
+  const confirmDelete = () => {
+    if (deleteConfirmDialog.fileId) {
+      deleteMutation.mutate(deleteConfirmDialog.fileId);
     }
+    setDeleteConfirmDialog({ open: false, fileId: null });
   };
 
   const handleUseFile = (file: MediaFile) => {
@@ -619,6 +626,29 @@ export default function UnifiedMediaLibrary({ onSelectFile }: { onSelectFile?: (
           </Tabs>
         </div>
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog
+        open={deleteConfirmDialog.open}
+        onOpenChange={(open) => !open && setDeleteConfirmDialog({ open: false, fileId: null })}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete File</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this file? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setDeleteConfirmDialog({ open: false, fileId: null })}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDelete} className="bg-red-600 hover:bg-red-700">
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

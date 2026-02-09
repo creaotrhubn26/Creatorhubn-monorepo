@@ -142,9 +142,9 @@ export default function CRMAssistant({
 
   // Real API integrations
   const { data: pricingData, isLoading: pricingLoading } = useQuery({
-    queryKey: ['/api/price-administration/packages', ],
-    queryFn: () => apiRequest('/api/price-administration/packages', ),
-    enabled: !!clientContext,
+    queryKey: ['/api/pricing/packages', user?.id],
+    queryFn: () => apiRequest(`/api/pricing/packages/${user?.id}`),
+    enabled: !!clientContext && !!user?.id,
 });
 
   const { data: availabilityData, isLoading: availabilityLoading } = useQuery({

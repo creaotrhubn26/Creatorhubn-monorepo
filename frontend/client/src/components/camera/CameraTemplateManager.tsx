@@ -100,7 +100,7 @@ export const CameraTemplateManagerComponent: React.FC<CameraTemplateManagerProps
   const cameraDiscovery = useCameraDiscovery();
   
   // Theming system
-  const theming = useTheming('photographer, ');
+  const theming = useTheming('photographer');
   const [activeTab, setActiveTab] = useState(0);
   const [templates, setTemplates] = useState<CameraTemplate[]>([]);
   const [categories, setCategories] = useState<CameraTemplateCategory[]>([]);
@@ -320,16 +320,20 @@ export const CameraTemplateManagerComponent: React.FC<CameraTemplateManagerProps
 };
 
   const handleDeleteTemplate = (templateId: string) => {
-    if (window.confirm('Are you sure you want to delete this template?')) {
-      const success = cameraTemplateManager.deleteTemplate(templateId);
-      if (success) {
-        setTemplates(prev => prev.filter(t => t.id !== templateId));
-        if (selectedTemplate?.id === templateId) {
-          setSelectedTemplate(null);
+    setConfirmDeleteId(templateId);
+  };
+
+  const executeDeleteTemplate = () => {
+    if (!confirmDeleteId) return;
+    const success = cameraTemplateManager.deleteTemplate(confirmDeleteId);
+    if (success) {
+      setTemplates(prev => prev.filter(t => t.id !== confirmDeleteId));
+      if (selectedTemplate?.id === confirmDeleteId) {
+        setSelectedTemplate(null);
       }
     }
-  }
-};
+    setConfirmDeleteId(null);
+  };
 
   const handleShareTemplate = (template: CameraTemplate) => {
     setSelectedTemplate(template);
@@ -919,6 +923,18 @@ export const CameraTemplateManagerComponent: React.FC<CameraTemplateManagerProps
           >
             {isLoading ? 'Importing...' : 'Import Templates'}
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Confirm Delete Dialog */}
+      <Dialog open={!!confirmDeleteId} onClose={() => setConfirmDeleteId(null)}>
+        <DialogTitle>Bekreft sletting</DialogTitle>
+        <DialogContent>
+          <Typography>Er du sikker på at du vil slette denne malen? Denne handlingen kan ikke angres.</Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmDeleteId(null)}>Avbryt</Button>
+          <Button onClick={executeDeleteTemplate} color="error" variant="contained">Slett</Button>
         </DialogActions>
       </Dialog>
     </Box>

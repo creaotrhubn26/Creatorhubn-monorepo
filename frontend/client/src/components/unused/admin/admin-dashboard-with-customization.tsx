@@ -100,7 +100,7 @@ export default function AdminDashboardWithCustomization() {
       }}>
             <CardContent sx={theming.getThemedCardSx()}>
               <Group sx={{ fontSize:  40, mb:  1 }} />
-              <Typography variant="h4" sx={{  fontWeight: 70 }}>
+              <Typography variant="h4" sx={{  fontWeight: 700 }}>
                 {stats.totalUsers}
               </Typography>
               <Typography variant="body2">
@@ -121,7 +121,7 @@ export default function AdminDashboardWithCustomization() {
       }}>
             <CardContent sx={theming.getThemedCardSx()}>
               <Store sx={{ fontSize:  40, mb:  1 }} />
-              <Typography variant="h4" sx={{  fontWeight: 70 }}>
+              <Typography variant="h4" sx={{  fontWeight: 700 }}>
                 {stats.totalVendors}
               </Typography>
               <Typography variant="body2">
@@ -139,7 +139,7 @@ export default function AdminDashboardWithCustomization() {
       }}>
             <CardContent sx={theming.getThemedCardSx()}>
               <TimelineIcon sx={{ fontSize:  40, mb:  1 }} />
-              <Typography variant="h4" sx={{  fontWeight: 70 }}>
+              <Typography variant="h4" sx={{  fontWeight: 700 }}>
                 {stats.systemUptime}
               </Typography>
               <Typography variant="body2">
@@ -157,7 +157,7 @@ export default function AdminDashboardWithCustomization() {
       }}>
             <CardContent sx={theming.getThemedCardSx()}>
               <SettingsOutlined sx={{ fontSize:  40, mb:  1 }} />
-              <Typography variant="h4" sx={{  fontWeight: 70 }}>
+              <Typography variant="h4" sx={{  fontWeight: 700 }}>
                 {stats.activeFeatures}
               </Typography>
               <Typography variant="body2">

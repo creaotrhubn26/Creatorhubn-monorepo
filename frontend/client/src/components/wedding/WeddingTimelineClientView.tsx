@@ -1,6 +1,6 @@
 import { useTheming } from '../../utils/theming-helper';
 import React, { useState, useEffect } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
 import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
 import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
@@ -732,7 +732,7 @@ export default function WeddingTimelineClientView({
       {/* Header */}
       <Box sx={{ mb:  4, textAlign: 'center'}}>
         <Typography variant="h3" sx={{  
-          fontWeight: 7,
+          fontWeight: 700,
           background: 'linear-gradient(135deg, #E91E63, #FF8C00)',
           backgroundClip: 'text',
           WebkitBackgroundClip: 'text',

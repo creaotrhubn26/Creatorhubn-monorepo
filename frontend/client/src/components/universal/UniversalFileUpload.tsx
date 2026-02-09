@@ -75,8 +75,6 @@ interface UniversalFileUploadProps {
   profession?: string;
   /** NEW: show storage line in Academy */
   showStorageInfo?: boolean;
-  /** NEW: signal upload completed (Academy expects this) */
-  onUploadComplete?: () => void;
   // END-ACADEMY-UPLOAD-EXT
   /** Optional: allow all types as union, incl. "all" for Academy */
   allowedTypes?: "all" | "images" | "videos" | string;
@@ -92,11 +90,9 @@ interface UniversalFileUploadProps {
   profession?: string;
   /** NEW: show storage line in Academy */
   showStorageInfo?: boolean;
-  /** NEW: signal upload completed (Academy expects this) */
-  onUploadComplete?: () => void;
   // END-ACADEMY-UPLOAD-EXT
   onFilesSelected?: (files: File[]) => void;
-  onUploadComplete?: (results: any[]) => void;
+  onUploadComplete?: (results?: any[]) => void;
   onUploadError?: (error: string, file?: File) => void;
   maxFiles?: number;
   maxFileSizeMB?: number;
@@ -195,7 +191,7 @@ export const UniversalFileUpload: React.FC<UniversalFileUploadProps> = ({
   const { integration, communication, dataFlow, componentRegistry, auth, features } = useEnhancedMasterIntegration();
   
   // Theming system
-  const theming = useTheming('photographer, ');
+  const theming = useTheming('photographer');
 
   // Comprehensive Feature System for Universal File Upload
   const universalFileUploadAccess = features.checkFeatureAccess('universal-file-upload,');
@@ -378,18 +374,18 @@ export const UniversalFileUpload: React.FC<UniversalFileUploadProps> = ({
 });
 
     // Listen for file upload events
-    const unsubscribeStart = communication.onMessageType('file-upload: start', (data: any) => {
+    const unsubscribeStart = communication.onMessageType('file-upload:start', (data: any) => {
       if (data.files) {
         handleFileSelect(data.files);
   }
   });
 
-    const unsubscribeClear = communication.onMessageType('file-upload: clear', () => {
+    const unsubscribeClear = communication.onMessageType('file-upload:clear', () => {
       setSelectedFiles([]);
       setValidationErrors([]);
   });
 
-    const unsubscribeValidate = communication.onMessageType('file-upload: validate', (data: any) => {
+    const unsubscribeValidate = communication.onMessageType('file-upload:validate', (data: any) => {
       if (data.files) {
         validateFiles(data.files).then(validation => {
           setSelectedFiles(validation.valid);
@@ -399,7 +395,7 @@ export const UniversalFileUpload: React.FC<UniversalFileUploadProps> = ({
   });
 
     // Track feature usage
-    features.trackFeatureUsage('universal-file-upload, ','opened', {
+    features.trackFeatureUsage('universal-file-upload', 'opened', {
       timestamp: Date.now(),
       component: 'UniversalFileUpload',
       profession: profession,

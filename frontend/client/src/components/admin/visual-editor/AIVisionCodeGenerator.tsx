@@ -315,7 +315,7 @@ export default function AIVisionCodeGenerator({
             <Select
               value={selectedModel}
               label="AI Model"
-              onChange={(e) => setSelectedModel(e.target.value as any)}
+              onChange={(e) => setSelectedModel(e.target.value as 'gpt-4-vision' | 'claude-4.5-sonnet' | 'gpt-5-nano')}
             >
               <MenuItem value="gpt-4-vision">
                 <Box display="flex" alignItems="center" gap={1}>

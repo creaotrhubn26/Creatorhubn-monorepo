@@ -124,16 +124,16 @@ export function CameraInfoHUD({ info, exposure, position = 'bottom' }: CameraInf
         <Typography 
           variant="body2" 
           sx={{ 
-            fontWeight: 70, 
+            fontWeight: 700, 
             fontSize: '1rem',
             color: isOverexposed ? '#ff4444' : isUnderexposed ? '#4444ff' : 'white'}}
         >
           {info.aperture}
         </Typography>
-        <Typography variant="body2" sx={{ fontWeight: 70, fontSize: '1rem' }}>
+        <Typography variant="body2" sx={{ fontWeight: 700, fontSize: '1rem' }}>
           {info.shutter}
         </Typography>
-        <Typography variant="body2" sx={{ fontWeight: 70, fontSize: '1rem' }}>
+        <Typography variant="body2" sx={{ fontWeight: 700, fontSize: '1rem' }}>
           {info.iso}
         </Typography>
         <Box sx={{ height: 20, width: 1, bgcolor: 'rgba(255,255,255,0.3)' }} />
@@ -307,7 +307,7 @@ export function ExposureWarning({ exposure }: ExposureWarningProps) {
         sx={{
           bgcolor: exposure.isOverexposed ? 'rgba(255,0,0,0.8)' : 'rgba(0,0,255,0.8)',
           color: 'white',
-          fontWeight: 70,
+          fontWeight: 700,
           animation: 'pulse 1s infinite','@keyframes pulse': {
             '0%, 100%': { opacity: 1 }, '50%': { opacity: 0.6 },
           }}}

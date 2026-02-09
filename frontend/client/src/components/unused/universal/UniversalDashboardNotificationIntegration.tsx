@@ -97,7 +97,7 @@ export default function UniversalDashboardNotificationIntegration({
   const queryClient = useQueryClient();
   
   // Theming system
-  const theming = useTheming('photographer, ');
+  const theming = useTheming('photographer');
   
   // Database connection for UniversalDashboardNotificationIntegration
   const { data: dashboardData = [], isLoading } = useQuery({

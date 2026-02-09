@@ -757,7 +757,7 @@ export function EnhancedGearTab({
               }}>
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
                 <Settings sx={{ color: config.color, mr: 1, fontSize: 24 }} />
-                <Typography variant="h6" sx={{ fontWeight: 70, color: theming.colors.primary }}>
+                <Typography variant="h6" sx={{ fontWeight: 700, color: theming.colors.primary }}>
                   {category}
                 </Typography>
               </Box>
@@ -803,7 +803,7 @@ export function EnhancedGearTab({
           <Grid item xs={6} md={3}>
             <Box sx={{ textAlign: 'center' }}>
               <Category sx={{ fontSize: 32, color: config.color, mb: 1 }} />
-              <Typography variant="h4" sx={{ fontWeight: 70, color: theming.colors.primary }}>
+              <Typography variant="h4" sx={{ fontWeight: 700, color: theming.colors.primary }}>
                 {config.categories.length}
               </Typography>
               <Typography variant="body2" color="text.secondary">
@@ -814,7 +814,7 @@ export function EnhancedGearTab({
           <Grid item xs={6} md={3}>
             <Box sx={{ textAlign: 'center' }}>
               <Business sx={{ fontSize: 32, color: config.color, mb: 1 }} />
-              <Typography variant="h4" sx={{ fontWeight: 70, color: theming.colors.primary }}>
+              <Typography variant="h4" sx={{ fontWeight: 700, color: theming.colors.primary }}>
                 {config.brands.length}+
               </Typography>
               <Typography variant="body2" color="text.secondary">
@@ -825,7 +825,7 @@ export function EnhancedGearTab({
           <Grid item xs={6} md={3}>
             <Box sx={{ textAlign: 'center' }}>
               <Schedule sx={{ fontSize: 32, color: config.color, mb: 1 }} />
-              <Typography variant="h4" sx={{ fontWeight: 70, color: theming.colors.primary }}>
+              <Typography variant="h4" sx={{ fontWeight: 700, color: theming.colors.primary }}>
                 24/7
               </Typography>
               <Typography variant="body2" color="text.secondary">
@@ -836,7 +836,7 @@ export function EnhancedGearTab({
           <Grid item xs={6} md={3}>
             <Box sx={{ textAlign: 'center' }}>
               <TrendingUp sx={{ fontSize: 32, color: config.color, mb: 1 }} />
-              <Typography variant="h4" sx={{ fontWeight: 70, color: theming.colors.primary }}>
+              <Typography variant="h4" sx={{ fontWeight: 700, color: theming.colors.primary }}>
                 Live
               </Typography>
               <Typography variant="body2" color="text.secondary">
@@ -1059,7 +1059,7 @@ export function EnhancedGearTab({
               }}>
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
                 <Memory sx={{ color: config.color, mr: 1, fontSize: 24 }} />
-                <Typography variant="h6" sx={{ fontWeight: 70, flexGrow: 1, color: theming.colors.primary }}>
+                <Typography variant="h6" sx={{ fontWeight: 700, flexGrow: 1, color: theming.colors.primary }}>
                   {item.model}
                 </Typography>
                 {item.hasUpdate && (
@@ -1667,7 +1667,7 @@ export function EnhancedGearTab({
                     {lens.currentPrice && (
                       <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1 }}>
                         <Typography variant="caption" color="text.secondary">Pris:</Typography>
-                        <Typography variant="body2" sx={{ fontWeight: 70, color: config.color }}>
+                        <Typography variant="body2" sx={{ fontWeight: 700, color: config.color }}>
                           {parseFloat(lens.currentPrice).toLocaleString('no-NO')} kr
                         </Typography>
                       </Box>
@@ -1854,7 +1854,7 @@ export function EnhancedGearTab({
         <Card elevation={2} sx={{ p: 3, height: '100%', borderRadius: 2, ...theming.getThemedCardSx() }}>
           <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
             <ShoppingCart sx={{ color: config.color, mr: 1, fontSize: 24 }} />
-            <Typography variant="h6" sx={{ fontWeight: 70, color: theming.colors.primary }}>
+            <Typography variant="h6" sx={{ fontWeight: 700, color: theming.colors.primary }}>
               Pristrender
             </Typography>
           </Box>
@@ -1878,7 +1878,7 @@ export function EnhancedGearTab({
         <Card elevation={2} sx={{ p: 3, height: '100%', borderRadius: 2, ...theming.getThemedCardSx() }}>
           <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
             <MonetizationOn sx={{ color: config.color, mr: 1, fontSize: 24 }} />
-            <Typography variant="h6" sx={{ fontWeight: 70, color: theming.colors.primary }}>
+            <Typography variant="h6" sx={{ fontWeight: 700, color: theming.colors.primary }}>
               Markedsplassering
             </Typography>
           </Box>
@@ -1902,7 +1902,7 @@ export function EnhancedGearTab({
         <Card elevation={2} sx={{ p: 3, height: '100%', borderRadius: 2, ...theming.getThemedCardSx() }}>
           <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
             <BugReport sx={{ color: config.color, mr: 1, fontSize: 24 }} />
-            <Typography variant="h6" sx={{ fontWeight: 70, color: theming.colors.primary }}>
+            <Typography variant="h6" sx={{ fontWeight: 700, color: theming.colors.primary }}>
               Kjente problemer
             </Typography>
           </Box>
@@ -1942,7 +1942,7 @@ export function EnhancedGearTab({
             })}
             <Box>
               <Typography variant="h4" sx={{ 
-                fontWeight: 70,
+                fontWeight: 700,
                 mb: 1,
                 color: theming.colors.primary
               }}>
@@ -2068,7 +2068,7 @@ export function EnhancedGearTab({
             <Box sx={{ display: 'flex', alignItems: 'center', width: '100%' }}>
               <Category sx={{ color: config.color, mr: 2, fontSize: 28 }} />
               <Box sx={{ flexGrow: 1 }}>
-                <Typography variant="h5" sx={{ fontWeight: 70, mb: 0.5, color: theming.colors.primary }}>
+                <Typography variant="h5" sx={{ fontWeight: 700, mb: 0.5, color: theming.colors.primary }}>
                   Profesjonell Utstyr Database
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
@@ -2117,7 +2117,7 @@ export function EnhancedGearTab({
             <Box sx={{ display: 'flex', alignItems: 'center', width: '100%' }}>
               <Article sx={{ color: config.color, mr: 2, fontSize: 28 }} />
               <Box sx={{ flexGrow: 1 }}>
-                <Typography variant="h5" sx={{ fontWeight: 70, mb: 0.5, color: theming.colors.primary }}>
+                <Typography variant="h5" sx={{ fontWeight: 700, mb: 0.5, color: theming.colors.primary }}>
                   Siste Utstyr Nyheter
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
@@ -2166,7 +2166,7 @@ export function EnhancedGearTab({
             <Box sx={{ display: 'flex', alignItems: 'center', width: '100%' }}>
               <Memory sx={{ color: config.color, mr: 2, fontSize: 28 }} />
               <Box sx={{ flexGrow: 1 }}>
-                <Typography variant="h5" sx={{ fontWeight: 70, mb: 0.5, color: theming.colors.primary }}>
+                <Typography variant="h5" sx={{ fontWeight: 700, mb: 0.5, color: theming.colors.primary }}>
                   Firmware Oppdateringer
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
@@ -2215,7 +2215,7 @@ export function EnhancedGearTab({
             <Box sx={{ display: 'flex', alignItems: 'center', width: '100%' }}>
               <TrendingUp sx={{ color: config.color, mr: 2, fontSize: 28 }} />
               <Box sx={{ flexGrow: 1 }}>
-                <Typography variant="h5" sx={{ fontWeight: 70, mb: 0.5, color: theming.colors.primary }}>
+                <Typography variant="h5" sx={{ fontWeight: 700, mb: 0.5, color: theming.colors.primary }}>
                   Markedsanalyse & Priser
                 </Typography>
                 <Typography variant="body2" color="text.secondary">

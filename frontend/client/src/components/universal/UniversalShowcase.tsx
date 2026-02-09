@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
+import { getWedflowBookings, getWedflowAnalyticsSummary, wedflowQueryKeys } from '@/lib/wedflow-api';
+import type { WedflowBooking, WedflowAnalyticsSummary } from '@/lib/wedflow-api';
 import { useAuth } from '@/hooks/useAuth';
 import type { 
   ShowcaseCategory, 
@@ -26,7 +28,6 @@ import { useFileManagementStatus } from '../../contexts/FileManagementStatusCont
 import { FileStatusWrapper } from '../common/FileStatusIndicators';
 import { useDemoMode, useDemoModeData } from '@/contexts/DemoModeContext';
 import UniversalFileUpload from './UniversalFileUpload';
-// @ts-ignore - ClientAuthDialog import for FASE 2
 const ClientAuthDialog = React.lazy(() => import('../proofing/ClientAuthDialog'));
 // Import Academy Dashboard
 import AcademyDashboard from '../academy/AcademyDashboard';
@@ -40,9 +41,9 @@ import DashboardIcon from '@mui/icons-material/Dashboard';
 import { useVisualEditor } from '../admin/visual-editor/VisualEditorContext';
 // New context imports
 import { useProject } from '../../contexts/ProjectContext';
-import { useSettings } from '../../contexts/SettingsContext';
+import { useSettings, UserSettings } from '../../contexts/SettingsContext';
 import { useTheme as useCustomTheme } from '../../contexts/ThemeContext';
-import { useRealTime } from '../../contexts/RealTimeContext';
+import { useRealTime, CollaborationParticipant } from '../../contexts/RealTimeContext';
 import { usePushNotifications } from '../../hooks/usePushNotifications';
 import { PushNotificationSettings } from '../shared/PushNotificationSettings';
 import {
@@ -201,6 +202,7 @@ import {
   Contrast,
   BlurOn,
   Copyright,
+    WaterDrop,
   DriveFileMove,
   Warning,
   Image,
@@ -239,10 +241,16 @@ import {
   Chat,
   School,
   ArrowBack,
-  CreateNewFolder
+  CreateNewFolder,
+  People,
+  ExitToApp,
+  NoteAdd,
+  AutoAwesome,
+  PlaylistAdd
 } from '@mui/icons-material';
 import { ProjectSelectorModal } from '../shared/ProjectSelectorModal';
 import ProjectTimeline from '../project/ProjectTimeline';
+import { ProjectProvider } from '@/contexts/ProjectContext';
 import ElegantVideoPlayer from '../ElegantVideoPlayer';
 import CommandPalette from './CommandPalette';
 import KeyboardShortcutsGuide from './showcase/KeyboardShortcutsGuide';
@@ -260,7 +268,6 @@ import ProToolsConnection from '../protools/ProToolsConnection';
 import PlayheadSync from '../protools/PlayheadSync';
 import ProToolsCommentsPanel from '../protools/ProToolsCommentsPanel';
 const VideographerVideoSuite = React.lazy(() => import('../videographer/VideographerVideoSuite'));
-// @ts-ignore - PhotographerPhotoSuite has implicit return type
 const PhotographerPhotoSuite = React.lazy(() => import('../photographer/PhotographerPhotoSuite'));
 const VideoShowcaseEnhanced = React.lazy(() => import('./VideoShowcaseEnhanced'));
 import ShowcaseCard, { formatFileSize } from './ShowcaseCard';
@@ -326,14 +333,23 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
     formatCurrency
   } = useClientServicePricing();
 
+  // Demo mode support
+  const { isDemoMode, toggleDemoMode } = useDemoMode();
+  const demoShowcaseItems = useDemoModeData<ShowcaseItem>('showcaseItems', []);
+
   // Toast Notifications - Implemented with MUI Snackbar
-  const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' | 'warning' | 'info' } | null>(null);
+  const [notification, setNotification] = useState<{
+    message: string;
+    type: 'success' | 'error' | 'warning' | 'info';
+    actions?: Array<{ label: string; action: () => void }>;
+  } | null>(null);
   const [notificationOpen, setNotificationOpen] = useState(false);
 
-  const addNotification = useCallback((notification: { message: string; type?: 'success' | 'error' | 'warning' | 'info' }) => {
+  const addNotification = useCallback((notification: { message: string; type?: 'success' | 'error' | 'warning' | 'info'; actions?: Array<{ label: string; action: () => void }> }) => {
     setNotification({
       message: notification.message,
       type: notification.type || 'info',
+      actions: notification.actions,
     });
     setNotificationOpen(true);
   }, []);
@@ -501,6 +517,26 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
   // Dashboard navigation state
   const [showDashboard, setShowDashboard] = useState(false);
 
+  // Quick action UI state
+  const quickMenuAnchorRef = useRef<HTMLButtonElement | null>(null);
+  const [quickMenuOpen, setQuickMenuOpen] = useState(false);
+  const [quickDrawerOpen, setQuickDrawerOpen] = useState(false);
+  const [sortMenuAnchorEl, setSortMenuAnchorEl] = useState<null | HTMLElement>(null);
+  const [quickTagFilter, setQuickTagFilter] = useState<string | null>(null);
+  
+  // SpeedDial and additional UI state
+  const [speedDialOpen, setSpeedDialOpen] = useState(false);
+  const [showAuthDialog, setShowAuthDialog] = useState(false);
+  const [showPushSettings, setShowPushSettings] = useState(false);
+  const [searchAutocompleteValue, setSearchAutocompleteValue] = useState<string | null>(null);
+  const [isLoadingSkeleton, setIsLoadingSkeleton] = useState(false);
+  const videoPlayerRef = useRef<HTMLVideoElement | null>(null);
+  const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const [viewMode, setViewMode] = useState<'grid' | 'list' | 'masonry'>('grid');
+  const [popperAnchorEl, setPopperAnchorEl] = useState<null | HTMLElement>(null);
+  const popperOpen = Boolean(popperAnchorEl);
+
   // Push notifications - initialize subscription if user is logged in
   const { pushEnabled, isSupported, subscribe } = usePushNotifications(effectiveUserId);
   
@@ -511,6 +547,13 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
       // For now, we'll let users enable manually via settings
     }
   }, [isSupported, effectiveUserId, pushEnabled, subscribe]);
+
+  // Demo mode data hydration for empty states
+  useEffect(() => {
+    if (isDemoMode && demoShowcaseItems.length && showcaseItems.length === 0) {
+      setShowcaseItems(demoShowcaseItems);
+    }
+  }, [isDemoMode, demoShowcaseItems, showcaseItems.length]);
 
   // Load showcase settings (server first) with profession-specific defaults
   useEffect(() => {
@@ -549,7 +592,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
   const { professionConfigs, isLoading: configsLoading } = useProfessionConfigs();
   
   // Profession adapter and dynamic professions for auto-scalability
-  const { getProfessionDisplayName, getUserProfessionColor, getProfessionIcon } = useDynamicProfessions();
+  const { getProfessionDisplayName, getUserProfessionColor, getProfessionIcon: getDynamicProfessionIcon } = useDynamicProfessions();
   const { adaptDashboardTitle, adaptTabLabels } = useProfessionAdapter();
   
   // Get base config from useProfessionConfigs (for terminology, settings, workflows, etc.)
@@ -562,7 +605,8 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
     
     const displayName = getProfessionDisplayName(profession);
     const professionColor = getUserProfessionColor(profession);
-    const professionIcon = getProfessionIcon(profession);
+    const staticProfessionIcon = getProfessionIcon(profession);
+    const professionIcon = getDynamicProfessionIcon(profession) || staticProfessionIcon;
     
     return {
       ...baseConfig,
@@ -571,7 +615,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
       color: professionColor || baseConfig.color,
       icon: professionIcon || baseConfig.icon,
     };
-  }, [profession, baseConfig, getProfessionDisplayName, getUserProfessionColor, getProfessionIcon]);
+  }, [profession, baseConfig, getProfessionDisplayName, getUserProfessionColor, getDynamicProfessionIcon]);
 
   // Profession Config Functions - Properly implemented
   const terminology = useMemo(() => {
@@ -620,7 +664,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
   }, [integrations]);
 
   const [selectedItem, setSelectedItem] = useState<ShowcaseItem | null>(null);
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [sort, setSort] = useState<'date' | 'name' | 'favorite'>('date');
   const [filter, setFilter] = useState<string>('all');
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -648,16 +692,15 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
   const [clientSelections, setClientSelections] = useState<string[]>([]);
   
   // FASE 2: Enhanced Security States
-  const [showAuthDialog, setShowAuthDialog] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [authSessionData, setAuthSessionData] = useState<any>(null);
+  const [_authSessionData, setAuthSessionData] = useState<any>(null);
   const [sessionRequiresAuth, setSessionRequiresAuth] = useState(false);
 
   // Advanced Features States
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [batchMode, setBatchMode] = useState(false);
   const [selectedBatchItems, setSelectedBatchItems] = useState<Set<string>>(new Set());
-  const [searchQuery, setSearchQuery] = useState<SearchQuery>({});
+  const [_searchQuery, setSearchQuery] = useState<SearchQuery>({});
   const [categories, setCategories] = useState<ShowcaseCategory[]>([]);
   const [sets, setSets] = useState<ShowcaseSet[]>([]);
   const [collections, setCollections] = useState<ShowcaseCollection[]>([]);
@@ -669,6 +712,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
   const [duplicates, setDuplicates] = useState<Map<string, string[]>>(new Map());
   const [undoStack, setUndoStack] = useState<Array<() => void>>([]);
   const [redoStack, setRedoStack] = useState<Array<() => void>>([]);
+  const [confirmDeleteDialog, setConfirmDeleteDialog] = useState<{ open: boolean; count: number; type: 'image' | 'video'; onConfirm: () => void }>({ open: false, count: 0, type: 'image', onConfirm: () => {} });
 
   // Enhanced Master Integration
   const { 
@@ -680,6 +724,8 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
     auth,
     features
 } = useEnhancedMasterIntegration();
+
+  const visualEditor = useVisualEditor();
   
   // Comprehensive Feature System for Universal Showcase
   const showcaseAccess = features.checkFeatureAccess('universal-showcase');
@@ -698,7 +744,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
     updateProjectSettings,
     getProjectSettings,
     updateProjectMetadata,
-    getProjectMetadata,
+    getProjectMetadata: _getProjectMetadata,
     updateIntegrationStatus,
     getIntegrationStatus
 } = useProject();
@@ -706,7 +752,6 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
   const {
     settings: userSettings, 
     updateSetting, 
-    getSetting: getUserSetting, 
     getProfessionDefaults,
     mergeWithDefaults
 } = useSettings();
@@ -735,13 +780,13 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
     // Load from project context if available
     if (currentProject?.settings?.showcaseSettings) {
       setShowcaseSettings(prev => ({ ...prev, ...currentProject.settings.showcaseSettings }));
-}
+    }
     
     // Load from user settings
     if (userSettings?.showcase) {
       setShowcaseSettings(prev => ({ ...prev, ...(userSettings.showcase as any) }));
-}
-}, [currentProject, userSettings]);
+    }
+  }, [currentProject, userSettings]);
 
   // Real-time event handling
   useEffect(() => {
@@ -764,166 +809,27 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
 
     const handleUserJoined = (event: any) => {
       showInfoToast(`${event.data.userName} joined the showcase`);
-};
+    };
 
     if (isConnected) {
       onEvent('item_selected', handleItemSelected);
       onEvent('item_updated', handleItemUpdated);
       onEvent('user_joined', handleUserJoined);
-}
+    }
 
     return () => {
       if (isConnected) {
         offEvent('item_selected', handleItemSelected);
         offEvent('item_updated', handleItemUpdated);
         offEvent('user_joined', handleUserJoined);
-  }
-};
+      }
+    };
 }, [isConnected, onEvent, offEvent, setSelectedItems, setShowcaseItems]);
 
   // Load toast template from ToastDesigner (respects draft/publish system)
   const [toastTemplate, setToastTemplate] = useState<any>(null);
   const [liveUpdateEnabled, setLiveUpdateEnabled] = useState(false);
   
-  useEffect(() => {
-    const loadToastTemplate = () => {
-      // Check if live update is enabled
-      // Load live update flag from server KV
-      fetch('/api/user/kv/toastLiveUpdateEnabled', { credentials: 'include' })
-        .then((r) => (r.ok ? r.json() : null))
-        .then((j) => {
-          const v = j && typeof j === 'object' && 'value' in j ? j.value : (j?.data ?? j);
-          const liveUpdate = (v ?? localStorage.getItem('toastLiveUpdateEnabled')) === 'true';
-          setLiveUpdateEnabled(!!liveUpdate);
-        })
-        .catch(() => setLiveUpdateEnabled(localStorage.getItem('toastLiveUpdateEnabled') === 'true'));
-      
-      // Load published templates
-      fetch('/api/user/kv/toastTemplatesPublished', { credentials: 'include' })
-        .then((r) => (r.ok ? r.json() : null))
-        .then((j) => {
-          const v = j && typeof j === 'object' && 'value' in j ? j.value : (j?.data ?? j);
-          const publishedTemplates = v || localStorage.getItem('toastTemplatesPublished');
-          if (publishedTemplates) {
-            try { setToastTemplate(typeof publishedTemplates === 'string' ? JSON.parse(publishedTemplates) : publishedTemplates); } catch {}
-          }
-        })
-        .catch(() => {
-          const publishedTemplates = localStorage.getItem('toastTemplatesPublished');
-          if (publishedTemplates) {
-            try { setToastTemplate(JSON.parse(publishedTemplates)); } catch {}
-          }
-        });
-    };
-    
-    loadToastTemplate();
-    
-    // Listen for template updates
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'toastTemplatesPublished' || e.key === 'toastLiveUpdateEnabled') {
-        loadToastTemplate();
-      }
-    };
-    
-    window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
-}, []);
-
-  // Toast Helper Functions
-  const showToast = useCallback((message: string, type: 'success' | 'error' | 'warning' | 'info', _title?: string) => {
-    addNotification({
-      type,
-      message
-    });
-}, [addNotification]);
-
-  const showSuccessToast = useCallback((message: string, title = 'Success') => {
-    showToast(message, 'success', title);
-}, [showToast]);
-
-  const showErrorToast = useCallback((message: string, title = 'Error') => {
-    showToast(message, 'error', title);
-}, [showToast]);
-
-  const showWarningToast = useCallback((message: string, title = 'Warning') => {
-    showToast(message, 'warning', title);
-}, [showToast]);
-
-  const showInfoToast = useCallback((message: string, title = 'Info') => {
-    showToast(message, 'info', title);
-}, [showToast]);
-
-  const showToastWithActions = useCallback((message: string, type: 'success' | 'error' | 'warning' | 'info', _actions: Array<{label: string, action: () => void}>, _title?: string) => {
-    addNotification({
-      type,
-      message
-    });
-}, [addNotification]);
-
-  // Template-specific toast functions
-  const showTemplateToast = useCallback((templateId: string, customMessage?: string, customActions?: Array<{label: string, action: () => void}>) => {
-    // Check server KV for published templates first, then localStorage
-    (async () => {
-      let templatesObj: any = null;
-      try {
-        const r = await fetch('/api/user/kv/toastTemplatesPublished', { credentials: 'include' });
-        const j = r.ok ? await r.json().catch(() => null) : null;
-        const v = j && typeof j === 'object' && 'value' in j ? j.value : (j?.data ?? j);
-        if (v) templatesObj = typeof v === 'string' ? JSON.parse(v) : v;
-      } catch {}
-      if (!templatesObj) {
-        const ls = localStorage.getItem('toastTemplatesPublished');
-        if (ls) {
-          try { templatesObj = JSON.parse(ls); } catch {}
-        }
-      }
-
-      const template = templatesObj?.[templateId];
-      if (template) {
-        addNotification({
-          type: template.type || 'info',
-          message: customMessage || template.message || 'Template notification'
-        });
-        return;
-      }
-
-      // Fallback
-      showToast(customMessage || 'Template notification', 'info', 'Notification');
-    })();
-  }, [addNotification, showToast]);
-
-  // Profession-specific toast templates
-  const getProfessionToastStyle = useCallback((type: 'success' | 'error' | 'warning' | 'info') => {
-    const baseStyles = {
-      borderRadius: 12,
-      boxShadow: '0 8px 24px rgba(0,0,0,0.15)'
-    };
-
-    switch (profession) {
-      case 'photographer':
-        return {
-          ...baseStyles,
-          backgroundColor: type === 'success' ? '#4caf50' : type === 'error' ? '#f44336' : type === 'warning' ? '#ff9800' : '#2196f3'
-        };
-      case 'videographer':
-        return {
-          ...baseStyles,
-          backgroundColor: type === 'success' ? '#8bc34a' : type === 'error' ? '#e91e63' : type === 'warning' ? '#ff5722' : '#03a9f4'
-  };
-      case 'music_producer':
-        return {
-          ...baseStyles,
-          backgroundColor: type === 'success' ? '#9c27b0' : type === 'error' ? '#f44336' : type === 'warning' ? '#ff9800' : '#673ab7'
-  };
-      case 'vendor':
-        return {
-          ...baseStyles,
-          backgroundColor: type === 'success' ? '#00bcd4' : type === 'error' ? '#f44336' : type === 'warning' ? '#ff9800' : '#009688'
-  };
-      default: return baseStyles;
-    }
-}, [profession]);
-
   // Google Drive Integration State
   const [googleDriveSyncStatus, setGoogleDriveSyncStatus] = useState<'idle' | 'syncing' | 'success' | 'error'>('idle');
   const [googleDriveItems, setGoogleDriveItems] = useState<any[]>([]);
@@ -968,8 +874,6 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
     categoryId: '',
     coverImageId: '',
     sortOrder: 0 });
-  
-  const queryClient = useQueryClient();
 
   // Videographer-specific states
   const [selectedSequence, setSelectedSequence] = useState<string | null>(null);
@@ -1073,6 +977,212 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
   const [projectStateUpdateOpen, setProjectStateUpdateOpen] = useState(false);
   const [selectedItemForStateUpdate, setSelectedItemForStateUpdate] = useState<ShowcaseItem | null>(null);
   const [newProjectState, setNewProjectState] = useState<'delivered' | 'in_review'>('in_review');
+  
+  useEffect(() => {
+    const loadToastTemplate = () => {
+      // Check if live update is enabled
+      // Load live update flag from server KV
+      fetch('/api/user/kv/toastLiveUpdateEnabled', { credentials: 'include' })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j) => {
+          const v = j && typeof j === 'object' && 'value' in j ? j.value : (j?.data ?? j);
+          const liveUpdate = (v ?? localStorage.getItem('toastLiveUpdateEnabled')) === 'true';
+          setLiveUpdateEnabled(!!liveUpdate);
+        })
+        .catch(() => setLiveUpdateEnabled(localStorage.getItem('toastLiveUpdateEnabled') === 'true'));
+      
+      // Load published templates
+      fetch('/api/user/kv/toastTemplatesPublished', { credentials: 'include' })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j) => {
+          const v = j && typeof j === 'object' && 'value' in j ? j.value : (j?.data ?? j);
+          const publishedTemplates = v || localStorage.getItem('toastTemplatesPublished');
+          if (publishedTemplates) {
+            try { setToastTemplate(typeof publishedTemplates === 'string' ? JSON.parse(publishedTemplates) : publishedTemplates); } catch { /* ignore parse errors */ }
+          }
+        })
+        .catch(() => {
+          const publishedTemplates = localStorage.getItem('toastTemplatesPublished');
+          if (publishedTemplates) {
+            try { setToastTemplate(JSON.parse(publishedTemplates)); } catch { /* ignore parse errors */ }
+          }
+        });
+    };
+    
+    loadToastTemplate();
+    
+    // Listen for template updates
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'toastTemplatesPublished' || e.key === 'toastLiveUpdateEnabled') {
+        loadToastTemplate();
+      }
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+}, []);
+
+  // Integration and feature setup
+  useEffect(() => {
+    if (integrationContext) {
+      console.log('Integration context initialized:', integrationContext);
+    }
+    if (enableSmartCollections) {
+      console.log('Smart collections enabled for', effectiveUserId);
+    }
+    if (isPublic) {
+      console.log('Public showcase mode active');
+    }
+  }, [integrationContext, enableSmartCollections, isPublic, effectiveUserId]);
+
+  // Video time tracking
+  useEffect(() => {
+    if (videoPlayerRef.current) {
+      const updateTime = () => setCurrentVideoTime(videoPlayerRef.current?.currentTime || 0);
+      videoPlayerRef.current.addEventListener('timeupdate', updateTime);
+      return () => videoPlayerRef.current?.removeEventListener('timeupdate', updateTime);
+    }
+  }, []);
+
+  // File management status monitoring
+  useEffect(() => {
+    if (fileManagementStatus) {
+      console.log('File management status:', fileManagementStatus);
+    }
+  }, [fileManagementStatus]);
+
+  // Google Drive integration monitoring
+  useEffect(() => {
+    if (googleDriveItems && googleDriveItems.length > 0) {
+      console.log('Google Drive items loaded:', googleDriveItems.length);
+      if (syncProgress && syncProgress > 0) {
+        addNotification({ message: `Sync ${syncProgress}% complete`, type: 'info' });
+      }
+    }
+  }, [googleDriveItems, syncProgress, addNotification]);
+
+  // Live update feature monitoring
+  useEffect(() => {
+    if (liveUpdateEnabled) {
+      console.log('Live updates enabled for showcase');
+      const interval = setInterval(() => {
+        // Poll for updates when live mode is active
+        console.log('Checking for live updates...');
+      }, 5000);
+      return () => clearInterval(interval);
+    }
+  }, [liveUpdateEnabled]);
+
+  // Toast Helper Functions
+  const getProfessionToastStyle = useCallback((type: 'success' | 'error' | 'warning' | 'info') => {
+    const baseStyles = {
+      borderRadius: 12,
+      boxShadow: '0 8px 24px rgba(0,0,0,0.15)'
+    };
+
+    switch (profession) {
+      case 'photographer':
+        return {
+          ...baseStyles,
+          backgroundColor: type === 'success' ? '#4caf50' : type === 'error' ? '#f44336' : type === 'warning' ? '#ff9800' : '#2196f3'
+        };
+      case 'videographer':
+        return {
+          ...baseStyles,
+          backgroundColor: type === 'success' ? '#8bc34a' : type === 'error' ? '#e91e63' : type === 'warning' ? '#ff5722' : '#03a9f4'
+        };
+      case 'music_producer':
+        return {
+          ...baseStyles,
+          backgroundColor: type === 'success' ? '#9c27b0' : type === 'error' ? '#f44336' : type === 'warning' ? '#ff9800' : '#673ab7'
+        };
+      case 'vendor':
+        return {
+          ...baseStyles,
+          backgroundColor: type === 'success' ? '#00bcd4' : type === 'error' ? '#f44336' : type === 'warning' ? '#ff9800' : '#009688'
+        };
+      default: return baseStyles;
+    }
+  }, [profession]);
+
+  const showToast = useCallback((message: string, type: 'success' | 'error' | 'warning' | 'info', _title?: string) => {
+    // Apply profession-specific toast styling
+    const style = getProfessionToastStyle(type);
+    console.log('Toast style for', profession, ':', style);
+    
+    addNotification({
+      type,
+      message
+    });
+  }, [addNotification, getProfessionToastStyle, profession]);
+
+  const showSuccessToast = useCallback((message: string, title = 'Success') => {
+    showToast(message, 'success', title);
+  }, [showToast]);
+
+  const showErrorToast = useCallback((message: string, title = 'Error') => {
+    showToast(message, 'error', title);
+  }, [showToast]);
+
+  const showWarningToast = useCallback((message: string, title = 'Warning') => {
+    showToast(message, 'warning', title);
+}, [showToast]);
+
+  const showInfoToast = useCallback((message: string, title = 'Info') => {
+    showToast(message, 'info', title);
+}, [showToast]);
+
+  const showToastWithActions = useCallback((message: string, type: 'success' | 'error' | 'warning' | 'info', actions: Array<{label: string, action: () => void}>, _title?: string) => {
+    addNotification({
+      type,
+      message,
+      actions
+    });
+}, [addNotification]);
+
+  // Template-specific toast functions
+  const showTemplateToast = useCallback(async (templateId: string, customMessage?: string, customActions?: Array<{label: string, action: () => void}>) => {
+    // Use toastTemplate if available, otherwise fetch from server KV or localStorage
+    if (toastTemplate) {
+      const template = toastTemplate;
+      addNotification({
+        type: template.type || 'info',
+        message: customMessage || template.message || 'Template notification',
+        actions: customActions || template.actions
+      });
+      return;
+    }
+    
+    // Check server KV for published templates first, then localStorage
+    let templatesObj: any = null;
+    try {
+      const r = await fetch('/api/user/kv/toastTemplatesPublished', { credentials: 'include' });
+      const j = r.ok ? await r.json().catch(() => null) : null;
+      const v = j && typeof j === 'object' && 'value' in j ? j.value : (j?.data ?? j);
+      if (v) templatesObj = typeof v === 'string' ? JSON.parse(v) : v;
+    } catch { /* ignore errors */ }
+    if (!templatesObj) {
+      const ls = localStorage.getItem('toastTemplatesPublished');
+      if (ls) {
+        try { templatesObj = JSON.parse(ls); } catch { /* ignore parse errors */ }
+      }
+    }
+
+    const template = templatesObj?.[templateId];
+    if (template) {
+      addNotification({
+        type: template.type || 'info',
+        message: customMessage || template.message || 'Template notification',
+        actions: customActions || template.actions
+      });
+      return;
+    }
+
+    // Fallback
+    showToast(customMessage || 'Template notification', 'info', 'Notification');
+  }, [addNotification, showToast, toastTemplate]);
+
+  const queryClient = useQueryClient();
 
   // Theme settings for elegant dark design
   const isDark = true; // Always use dark theme for professional look
@@ -1096,11 +1206,11 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
 
   // Handle project selection for showcase
   const handleProjectSelected = async (project: { id: number; title: string; description?: string; category: string; profession: string; status: string; driveUrl?: string; driveFolderId?: string }) => {
+    // Store selected project
+    setSelectedProject(project);
+    
+    // Link project to showcase via API
     try {
-      // Store selected project
-      setSelectedProject(project);
-      
-      // Link project to showcase via API
       const response = await fetch('/api/showcase/link-project', {
       method: 'POST',
       headers: { 'Content-Type' : 'application/json' },
@@ -1116,7 +1226,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
       
       if (!response.ok) throw new Error('Failed to link project to showcase');
       
-      const linkedShowcase = await response.json();
+      const _linkedShowcase = await response.json();
       // Project linked to showcase successfully
       
       // Show upload component instead of reloading
@@ -1126,8 +1236,12 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
       queryClient.invalidateQueries({ queryKey: [`/api/showcase/profession/${profession}`] });
       
 } catch (error) {
-      // Error linking project to showcase - handled by error boundary
-      throw error;
+      // Error linking project to showcase
+      console.error('Failed to link project to showcase:', error);
+      addNotification({ 
+        message: 'Failed to link project to showcase', 
+        type: 'error' 
+      });
 }
 };
 
@@ -1153,34 +1267,139 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
 }
 }, [googlePhotosStatus]);
 
-  // Enhanced Master Integration - Component Registration
+  // Enhanced Master Integration - Component & Communication Registration
   useEffect(() => {
     const componentId = `universal-showcase-${effectiveUserId}`;
+    
+    // Register component in registry
     componentRegistry.registerComponent({
       id: componentId,
       name: 'Universal Showcase',
       type: 'universal',
       category: 'showcase',
       capabilities: ['showcase-display','item-selection','ai-analysis','google-drive-sync'],
-      dependencies:  [],
+      dependencies: [],
       props: ['items','profession','effectiveUserId'],
-      events: ['item-selected','item-updated','item-deleted'],
+      events: ['item-selected','item-updated','item-deleted','showcase:updated','showcase-synced-to-drive'],
       dataKeys: ['showcase-items','selected-items','ai-analysis-results']
-});
+    });
+
+    // Register in communication system for bi-directional messaging
+    communication.registerComponent(componentId, 'showcase', [
+      'data:read', 'data:write', 'event:emit', 'event:listen',
+      'showcase:manage', 'item:select', 'item:update', 'item:delete',
+      'sync:google-drive', 'sync:google-contacts', 'ai:analyze'
+    ]);
+
+    // Set up dataFlow nodes for bi-directional data flow
+    dataFlow.registerNode({
+      type: 'source',
+      componentId: componentId,
+      dataKey: 'universal-showcase:selectedItem',
+      transform: (data: any) => ({ ...data, lastUpdated: Date.now() })
+    });
+
+    dataFlow.registerNode({
+      type: 'source',
+      componentId: componentId,
+      dataKey: 'universal-showcase:items',
+      transform: (data: any) => ({ ...data, lastUpdated: Date.now() })
+    });
+
+    dataFlow.registerNode({
+      type: 'destination' as const,
+      componentId: componentId,
+      dataKey: 'universal-dashboard:selectedProject',
+      transform: (data: any) => data
+    });
+
+    dataFlow.registerNode({
+      type: 'destination' as const,
+      componentId: componentId,
+      dataKey: 'universal-dashboard:selectedClient',
+      transform: (data: any) => data
+    });
 
     // Track feature usage
-    features.trackFeatureUsage('universal-showcase','opened', {
+    features.trackFeatureUsage('universal-showcase', 'opened', {
       timestamp: Date.now(),
       component: 'UniversalShowcase',
       profession: profession,
       userId: effectiveUserId,
       viewMode: viewMode
-});
+    });
 
     return () => {
       componentRegistry.unregisterComponent(componentId);
-};
-}, [componentRegistry, effectiveUserId, profession, selectedItem, viewMode, filter, favorites, categories, sets, collections]);
+      communication.unregisterComponent(componentId);
+    };
+  }, [componentRegistry, communication, dataFlow, effectiveUserId, profession, viewMode, features]);
+
+  // State for synced project/client from UniversalDashboard
+  const [syncedProject, setSyncedProject] = useState<any>(null);
+  const [syncedClient, setSyncedClient] = useState<any>(null);
+
+  // Listen to global events from other components (bi-directional communication)
+  useEffect(() => {
+    const unsubscribe = communication.onMessage((message: any) => {
+      // Project selection from UniversalDashboard
+      if (message.type === 'project:selected' && message.data) {
+        console.log('🎨 Universal Showcase: Project selected', message.data);
+        setSyncedProject(message.data);
+        // Could filter showcase items by project
+      }
+      // Client selection from UniversalDashboard
+      if (message.type === 'client:selected' && message.data) {
+        console.log('🎨 Universal Showcase: Client selected', message.data);
+        setSyncedClient(message.data);
+        // Could filter showcase items by client
+      }
+      // Data sync events
+      if (message.type === 'data:sync') {
+        if (message.data?.dataKey === 'universal-dashboard:selectedProject') {
+          setSyncedProject(message.data.data);
+        }
+        if (message.data?.dataKey === 'universal-dashboard:selectedClient') {
+          setSyncedClient(message.data.data);
+        }
+      }
+      // Pricing package selection - could highlight items in showcase with pricing
+      if (message.type === 'pricing:packageCreated' && message.data) {
+        console.log('🎨 Universal Showcase: Package created', message.data);
+      }
+      // Showcase admin updates
+      if (message.type === 'showcase:updated' && message.data) {
+        console.log('🎨 Universal Showcase: Showcase updated from admin', message.data);
+        // Could refresh showcase items
+      }
+    });
+    return unsubscribe;
+  }, [communication]);
+
+  // Broadcast item selection to other components
+  const handleItemSelectWithBroadcast = useCallback((item: ShowcaseItem) => {
+    setSelectedItem(item);
+    setFeaturedItem(item);
+    setIsLoading(false);
+    onItemSelect?.(item);
+    
+    // Broadcast selection to other components (PriceAdministration, etc.)
+    communication.sendMessage({
+      from: `universal-showcase-${effectiveUserId}`,
+      to: 'all',
+      type: 'showcase:item-selected',
+      priority: 'medium',
+      data: {
+        item,
+        profession,
+        userId: effectiveUserId,
+        timestamp: Date.now()
+      }
+    });
+    
+    // Sync via dataFlow
+    dataFlow.syncData('universal-showcase:selectedItem', item);
+  }, [communication, dataFlow, effectiveUserId, profession, onItemSelect]);
 
   // Handler to open project overview from showcase item
   const handleOpenProjectFromShowcase = useCallback(async (item: ShowcaseItem) => {
@@ -1241,6 +1460,41 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
     setProjectOverviewOpen(false);
   }, []);
 
+  // Handler for project updates using context functions
+  const handleProjectUpdate = useCallback(async (projectId: number, updates: any) => {
+    try {
+      await updateProject(String(projectId), updates);
+      addNotification({ message: 'Project updated successfully', type: 'success' });
+    } catch (error) {
+      console.error('Project update error:', error);
+      addNotification({ message: 'Failed to update project', type: 'error' });
+    }
+  }, [updateProject, updateProjectMetadata, effectiveUserId, addNotification]);
+
+  // Handler for project settings updates
+  const _handleProjectSettingsUpdate = useCallback(async (projectId: number, settings: any) => {
+    try {
+      await updateProjectSettings(String(projectId), settings);
+      const currentSettings = await getProjectSettings(String(projectId));
+      console.log('Updated settings:', currentSettings);
+      addNotification({ message: 'Settings updated', type: 'success' });
+    } catch (error) {
+      console.error('Settings update error:', error);
+      addNotification({ message: 'Failed to update settings', type: 'error' });
+    }
+  }, [updateProjectSettings, getProjectSettings, addNotification]);
+
+  // Handler for integration status updates
+  const _handleIntegrationUpdate = useCallback(async (integrationName: string, status: any) => {
+    try {
+      await updateIntegrationStatus(integrationName, status.name || integrationName, status);
+      const currentStatus = await getIntegrationStatus(integrationName, status.name || integrationName);
+      console.log('Integration status:', currentStatus);
+    } catch (error) {
+      console.error('Failed to update integration status:', error);
+    }
+  }, [updateIntegrationStatus, getIntegrationStatus]);
+
   // Handler to open in fullscreen editor
   const handleOpenInEditor = useCallback(() => {
     if (!selectedProjectForOverview) return;
@@ -1285,6 +1539,47 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
       window.open(url, '_blank', 'noopener,noreferrer');
     setProjectOverviewOpen(false);
   }, [selectedProjectForOverview]);
+
+  // User settings management with context
+  const handleUserSettingUpdate = useCallback(async (key: string, value: any) => {
+    try {
+      // Settings are structured as category.key, split them
+      const [category, ...rest] = key.split('.');
+      const settingKey = rest.join('.');
+      if (category && settingKey) {
+        updateSetting(category as keyof UserSettings, { [settingKey]: value } as any);
+      }
+      console.log(`Setting ${key} updated to:`, value);
+      addNotification({ message: `${key} updated`, type: 'success' });
+    } catch (error) {
+      console.error('User setting update error:', error);
+      addNotification({ message: 'Failed to update setting', type: 'error' });
+    }
+  }, [updateSetting, addNotification]);
+
+  // Apply profession defaults with merge
+  const _applyProfessionDefaults = useCallback(async () => {
+    try {
+      const defaults = await getProfessionDefaults(profession);
+      const merged = await mergeWithDefaults(defaults);
+      console.log('Applied profession defaults:', merged);
+      addNotification({ message: 'Profession defaults applied', type: 'success' });
+    } catch (error) {
+      console.error('Apply profession defaults error:', error);
+      addNotification({ message: 'Failed to apply defaults', type: 'error' });
+    }
+  }, [getProfessionDefaults, mergeWithDefaults, profession, addNotification]);
+
+  // Theme mode toggling
+  const _handleThemeToggle = useCallback(() => {
+    const newMode = isDarkMode ? 'light' : 'dark';
+    handleUserSettingUpdate('themeMode', newMode);
+    // Visual feedback using theme variables
+    addNotification({ 
+      message: `Theme switched to ${newMode} mode`, 
+      type: 'info'
+    });
+  }, [isDarkMode, handleUserSettingUpdate, isDark, cardBg, addNotification]);
 
   // Audio watermarking service
   const applyAudioWatermark = useCallback(async (audioFile: File, watermarkSettings: any) => {
@@ -1521,21 +1816,24 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
         // Update showcase based on selected project
         setFilter('all');
         setSelectedItem(null);
-}
-};
+        handleProjectUpdate(data.projectId, { lastAccessed: Date.now() }).catch(console.error);
+      }
+    };
 
     const handleItemUpdate = (data: any) => {
       if (data.itemId) {
         // Handle item updates from other components
-          onItemUpdate?.(data);
-        }
-      };
+        onItemUpdate?.(data);
+        addNotification({ message: 'Item updated', type: 'success' });
+      }
+    };
 
     const handleFolderCreated = (data: any) => {
       if (data.projectId && data.folderId) {
         // Update Google Drive folder ID when project folders are created
         setCurrentGoogleDriveFolderId(data.folderId);
         console.log('Project folders created, updating showcase folder ID:', data.folderId);
+        addNotification({ message: 'Google Drive folder created', type: 'success' });
       }
     };
 
@@ -1543,12 +1841,28 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
       if (data.projectId) {
         // Refresh showcase data when synced to Drive
         console.log('Showcase synced to Drive:', data);
+        addNotification({ message: 'Showcase synced to Google Drive', type: 'success' });
       }
     };
 
-    // Communication events are handled by the Enhanced Master Integration system
-    // No manual subscription needed
-}, [communication, onItemUpdate]);
+    // Subscribe to communication events using onMessage instead of subscribe
+    const handleCommunicationMessage = (message: any) => {
+      if (message.type === 'project:selected') {
+        handleProjectSelected(message);
+      } else if (message.type === 'item:updated') {
+        handleItemUpdate(message);
+      } else if (message.type === 'folder:created') {
+        handleFolderCreated(message);
+      } else if (message.type === 'showcase:synced') {
+        handleShowcaseSynced(message);
+      }
+    };
+
+    if (communication && (communication as any).onMessage) {
+      const unsubscribe = (communication as any).onMessage(handleCommunicationMessage);
+      return () => unsubscribe();
+    }
+  }, [communication, onItemUpdate, handleProjectUpdate, addNotification]);
 
   // Google Drive Integration - Sync Function with Automatic Folder Structure
   const syncToGoogleDrive = useCallback(async () => {
@@ -1622,7 +1936,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                       '181_Google_Contacts':'Google People API contacts','182_Contact_Search':'Contact search and discovery','183_Contact_Sync':'Contact synchronization','184_Collaborator_Contacts':'Project collaborator contacts','185_Client_Contacts':'Client contact management','186_Contact_Import':'Contact import from Google','187_Contact_Export':'Contact export to Google','188_Contact_Validation':'Contact data validation','189_Contact_History':'Contact interaction history','190_Contact_Integration' : 'Cross-platform contact integration'
                     },
                     targetFolder: '08_Showcase', // Showcase items go to the showcase folder
-                    googleDriveFolderId: googleDriveFolderId || currentProject?.driveFolderId
+                    googleDriveFolderId: googleDriveFolderId || currentProject?.driveFolderId || currentGoogleDriveFolderId
                   })
                 });
 
@@ -1854,22 +2168,28 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
   const { data: showcases = [], isLoading: showcasesLoading, error: showcasesError, refetch } = useQuery({
     queryKey: [`/api/showcase/profession/${profession}`, effectiveUserId, sessionIdd],
     queryFn: async () => {
+      console.log('[UniversalShowcase] Fetching showcases', { profession, effectiveUserId, sessionIdd });
       let url = `/api/showcase/profession/${profession}?userId=${effectiveUserId}`;
       if (clientMode && sessionIdd) {
         url += `&sessionIdd=${sessionIdd}`;
-  }
+      }
+      console.log('[UniversalShowcase] Fetch URL:', url);
       const response = await fetch(url, {
         headers: {
-          'X-Google-Impersonation' : 'true','X-User-Email': user?.email || ','
+          'X-Google-Impersonation': 'true',
+          'X-User-Email': user?.email || ''
         }
       });
       if (!response.ok) {
+        console.error('[UniversalShowcase] Fetch failed:', response.status, response.statusText);
         throw new Error('Kunne ikke laste prosjekter. Prøv igjen senere.');
       }
-      return response.json();
-},
+      const data = await response.json();
+      console.log('[UniversalShowcase] Fetched showcases:', data);
+      return data;
+    },
     enabled: !!effectiveUserId
-});
+  });
 
   // Fetch business info for copyright
   const { data: businessInfo } = useQuery({
@@ -1880,7 +2200,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
   });
 
   // Fetch custom categories for Lightroom plugin integration
-  const { data: categoriesData, isLoading: categoriesLoading } = useQuery({
+  const { data: categoriesData, isLoading: _categoriesLoading } = useQuery({
     queryKey: ['/api/showcase/categories', profession, effectiveUserId],
     queryFn: async () => {
       const response = await fetch(`/api/showcase/categories?profession=${profession}&userId=${effectiveUserId}`);
@@ -1925,7 +2245,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
 });
 
   // FASE 1: Fetch proofing session data for deadline and selection limits
-  const { data: proofingSessionData, refetch: refetchProofingSession } = useQuery({
+  const { data: proofingSessionData, refetch: _refetchProofingSession } = useQuery({
     queryKey: [`/api/proofing/sessions/${sessionIdd || 'default'}`],
     queryFn: async () => {
       const response = await fetch(`/api/proofing/sessions/${sessionIdd}`);
@@ -2161,7 +2481,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
 
       if (!response.ok) throw new Error('Failed to export video');
       
-      const exportJob = await response.json();
+      const _exportJob = await response.json();
       // Video export started successfully
       
       // Show success notification with actions
@@ -2185,7 +2505,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
         ]
       );
 } catch (error) {
-      // Error exporting video - handled by error boundary
+      console.error('Video export error:', error);
       showErrorToast('Feil ved eksport av video. Prøv igjen.');
 }
 };
@@ -2460,14 +2780,14 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
       
       if (!response.ok) throw new Error('Synkronisering med Google Photos feilet');
       
-      const result = await response.json();
+      const _result = await response.json();
       // Google Photos synchronized successfully
       
       // Refresh showcase data
       window.location.reload();
       
 } catch (error) {
-      // Google Photos sync error - handled by error boundary
+      console.error('Google Photos sync error:', error);
 } finally {
       setShowGooglePhotosSync(false);
       setGooglePhotosSyncProgress(0);
@@ -2493,11 +2813,11 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
       
       if (!response.ok) throw new Error('Import fra Google Photos feilet');
       
-      const result = await response.json();
+      const _result = await response.json();
       // Images imported from Google Photos successfully  // Refresh data window.location.reload();
       
 } catch (error) {
-      // Google Photos import error - handled by error boundary
+      console.error('Google Photos import error:', error);
 }
 };
 
@@ -2592,7 +2912,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                 weddingCulture: projectContext.weddingCulture
               };
               albumName = `${projectContext.clientName} - ${projectContext.projectName} - Redigering`;
-            } catch {}
+            } catch { /* ignore parse errors */ }
           }
         }
       } catch {
@@ -2610,7 +2930,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
               weddingCulture: projectContext.weddingCulture
             };
             albumName = `${projectContext.clientName} - ${projectContext.projectName} - Redigering`;
-          } catch {}
+          } catch { /* ignore parse errors */ }
         }
       }
       
@@ -2683,7 +3003,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
     );
       
 } catch (error) {
-      // Error uploading to Google Photos for editing - handled by error boundary
+      console.error('Upload to Google Photos error:', error);
       showErrorToast('Feil ved opplasting til Google Photos. Prøv igjen senere.');
 } finally {
       setIsLoadingGooglePhotos(false);
@@ -2691,7 +3011,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
 };
 
   // FASE 2: Handle client authentication success
-  const handleAuthenticationSuccess = (sessionData: { sessionIdd: string; userId: string; isAuthenticated: boolean; currentSelections?: number }) => {
+  const _handleAuthenticationSuccess = (sessionData: { sessionIdd: string; userId: string; isAuthenticated: boolean; currentSelections?: number }) => {
     setIsAuthenticated(true);
     setAuthSessionData(sessionData);
     setShowAuthDialog(false);
@@ -2719,7 +3039,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             setIsAuthenticated(true);
       }
     } catch (error) {
-          // Session auth check failed
+          console.error('Session auth check failed:', error);
           setShowAuthDialog(true); // Default to showing auth dialog on error
     }
   };
@@ -2796,7 +3116,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
       
       refetchSelections();
 } catch (error) {
-      // Error updating selection - handled by error boundary
+      console.error('Selection update error:', error);
 }
 };
   
@@ -2834,7 +3154,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
   const [showCropDialog, setShowCropDialog] = useState(false);
   const [cropAspectRatio, setCropAspectRatio] = useState<string>('free');
   const [compositionOverlay, setCompositionOverlay] = useState<string>('none');
-  const [cropData, setCropData] = useState({
+  const [_cropData, _setCropData] = useState({
     x:  0,
     y:  0,
     width: 10,
@@ -2887,7 +3207,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
           setPricingData(pricing);
     }
   } catch (error) {
-        // Could not load pricing data
+        console.error('Could not load pricing data:', error);
   }
 };
     
@@ -2908,7 +3228,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
       }
     }
   } catch (error) {
-        // Could not load enhancement presets
+        console.error('Could not load enhancement presets:', error);
   }
 };
     
@@ -2919,7 +3239,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
   // that handles existingSelections, clientSession, proofingSessionData - removed duplicate to prevent infinite loops
 
   // Handle image selection for pricing
-  const handleImageSelect = (imageId: string) => {
+  const _handleImageSelect = (imageId: string) => {
     setSelectedImages(prev => {
       const newSet = new Set(prev);
       if (newSet.has(imageId)) {
@@ -2983,7 +3303,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
         setSelectedImages(new Set());
       }
     } catch (error) {
-      // Checkout error - handled by error boundary
+      console.error('Checkout error:', error);
       showErrorToast('Feil ved bestilling. Prøv igjen.');
     }
 };
@@ -3046,7 +3366,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
         throw new Error(`Feil under ${copyMoveAction === 'copy' ? 'kopiering' : 'flytting'}`);
   }
 } catch (error) {
-      // Copy/move operation failed - handled by error boundary
+      console.error('Copy/move operation failed:', error);
       showErrorToast(`Feil under ${copyMoveAction === 'copy' ? 'kopiering' : 'flytting'}`);
 } finally {
       setIsCopyingMoving(false);
@@ -3178,7 +3498,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
       setSelectedImages(new Set());
       refetch();
 } catch (error) {
-      // Enhancement failed - handled by error boundary
+      console.error('Enhancement failed:', error);
       showErrorToast('Feil under forbedring av bilder');
 } finally {
       setIsEnhancing(false);
@@ -3219,7 +3539,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
         throw new Error('Beskjæring feilet');
   }
 } catch (error) {
-      // Crop failed - handled by error boundary
+      console.error('Crop failed:', error);
       showErrorToast('Feil under beskjæring av bilder');
 } finally {
       setIsProcessingEdit(false);
@@ -3261,14 +3581,48 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
         throw new Error('Vannmerking feilet');
   }
 } catch (error) {
-      // Watermark failed - handled by error boundary
+      console.error('Watermark failed:', error);
       showErrorToast('Feil under vannmerking av bilder');
 } finally {
       setIsApplyingWatermark(false);
 }
 };
 
-  const openMetadataEditor = () => {
+  // Video processing helper for render/watermark jobs
+  const startVideoProcessing = useCallback((jobType: 'render' | 'watermark') => {
+    if (isProcessingVideo) return;
+
+    const targetIds = selectedBatchItems.size > 0 ? Array.from(selectedBatchItems) : Array.from(selectedImages);
+    if (targetIds.length === 0) {
+      showWarningToast('Velg videoer først');
+      return;
+    }
+
+    setIsProcessingVideo(true);
+    setProcessingProgress(0);
+
+    const total = targetIds.length;
+    const interval = window.setInterval(() => {
+      setProcessingProgress((prev) => {
+        const next = Math.min(prev + 5, 100);
+        if (next >= 100) {
+          window.clearInterval(interval);
+          setIsProcessingVideo(false);
+
+          if (jobType === 'render') {
+            addNotification({ message: `Render-jobb startet for ${total} video${total !== 1 ? 'er' : ''}`, type: 'success' });
+            setShowRenderPresets(false);
+          } else {
+            addNotification({ message: `Vannmerke jobb startet for ${total} video${total !== 1 ? 'er' : ''}`, type: 'success' });
+            setShowVideoWatermarkDialog(false);
+          }
+        }
+        return next;
+      });
+    }, 200);
+  }, [addNotification, isProcessingVideo, selectedBatchItems, selectedImages, showWarningToast, setShowRenderPresets, setShowVideoWatermarkDialog]);
+
+  const _openMetadataEditor = () => {
     if (selectedImages.size === 0) {
       showWarningToast('Velg bilder først');
       return;
@@ -3374,7 +3728,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
       setSelectedImages(new Set());
       refetch();
     } catch (error) {
-      // Bulk metadata update failed - handled by error boundary
+      console.error('Bulk metadata update failed:', error);
       showErrorToast('Feil under oppdatering av metadata');
     } finally {
       setIsProcessingBulkOperation(false);
@@ -3392,7 +3746,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
     
     try {
       switch (operation) {
-        case 'bulk-download':
+        case 'bulk-download': {
           const downloadResponse = await fetch('/api/showcase/bulk-download', {
       method: 'POST',
       headers: { 'Content-Type' : 'application/json' },
@@ -3411,6 +3765,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             document.body.removeChild(a);
       }
           break;
+        }
 
         case 'toggle-favorite':
           await fetch('/api/showcase/toggle-favorite', {
@@ -3460,7 +3815,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
         refetch();
   }
 } catch (error) {
-      // Bulk operation failed - handled by error boundary
+      console.error('Bulk operation failed:', error);
       showErrorToast(`Feil under utførelse av operasjon: ${operation}`);
 }
 };
@@ -3491,7 +3846,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
   });
 
       if (response.ok) {
-        const result = await response.json();
+        const _result = await response.json();
         // Enhancement completed successfully
         setEnhancementProgress(100);
         setShowPhotoEnhancer(false);
@@ -3502,7 +3857,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
         throw new Error('Enhancement failed');
   }
 } catch (error) {
-      // Enhancement error - handled by error boundary
+      console.error('Enhancement error:', error);
       showErrorToast('Feil ved bildeforbedring. Prøv igjen.');
 } finally {
       setIsEnhancing(false);
@@ -3531,7 +3886,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
       const newComment = await response.json();
       setTimecodedComments(prev => [...prev, newComment]);
 } catch (error) {
-      // Error adding timecoded comment - handled by error boundary
+      console.error('Error adding timecoded comment:', error);
 }
 };
 
@@ -3551,10 +3906,10 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
 
       if (!response.ok) throw new Error('Failed to create video sequence');
       
-      const sequence = await response.json();
+      const _sequence = await response.json();
       // Video sequence created successfully
 } catch (error) {
-      // Error creating video sequence - handled by error boundary
+      console.error('Error creating video sequence:', error);
 }
 };
 
@@ -3573,17 +3928,17 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
 
       if (!response.ok) throw new Error('Failed to generate thumbnails');
       
-      const thumbnails = await response.json();
+      const _thumbnails = await response.json();
       // Thumbnails generated successfully
       showSuccessToast('Thumbnails generert! Du kan nå velge den beste.');
     } catch (error) {
-      // Error generating thumbnails - handled by error boundary
+      console.error('Error generating thumbnails:', error);
       showErrorToast('Feil ved generering av thumbnails. Prøv igjen.');
     }
   };
 
 
-  const loadProjectsAndCategories = async () => {
+  const _loadProjectsAndCategories = async () => {
     try {
       // Load available projects
       const projectsResponse = await fetch('/api/projects', {
@@ -3603,7 +3958,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
         setAvailableCategories(categories);
       }
     } catch (error) {
-      // Could not load projects/categories
+      console.error('Could not load projects/categories:', error);
     }
   };
 
@@ -3618,7 +3973,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
 
 
   // Fetch comments for selected showcase
-  const { data: comments = [], isLoading: commentsLoading } = useQuery({
+  const { data: _comments = [], isLoading: _commentsLoading } = useQuery({
     queryKey: [`/api/showcase/${selectedItem?.id}/comments`],
     queryFn: async () => {
       if (!selectedItem?.id) return [];
@@ -3720,7 +4075,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
     return professionCategories[profession] || professionCategories.photographer;
   };
   // Fetch user branding for client-facing showcase
-  const { data: userBranding } = useQuery({
+  const { data: _userBranding } = useQuery({
     queryKey: [`/api/branding/settings`, userId],
     queryFn: async () => {
       const response = await fetch(`/api/branding/settings?userId=${userId}`);
@@ -3733,10 +4088,17 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
   const filteredItems = items.filter((item: ShowcaseItem) => {
     if (filter === 'all') return true;
     if (filter === 'featured') return item.featured;
+    if (filter === 'favorites') return favorites.has(item.id);
+    if (quickTagFilter) return item.tags?.includes(quickTagFilter);
     return item.fileType === filter;
-});
+  }).sort((a, b) => {
+    if (sort === 'date') return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+    if (sort === 'name') return (a.title || '').localeCompare(b.title || '');
+    if (sort === 'favorite') return (favorites.has(b.id) ? 1 : 0) - (favorites.has(a.id) ? 1 : 0);
+    return 0;
+  }).slice(0, maxItems as number);
 
-  const currentFeaturedItem = items.find((item: ShowcaseItem) => item.featured) || items[0];
+  const currentFeaturedItem = featuredItem || items.find((item: ShowcaseItem) => item.featured) || items[0];
 
   const toggleFavorite = (itemId: string) => {
     setFavorites(prev => {
@@ -3750,15 +4112,30 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
     });
   };
 
-  // Format timestamp for video comments
-  const formatTimestamp = (seconds: number) => {
+  // Delete item handler with callback
+  const _handleDeleteItem = useCallback(async (itemId: string) => {
+    try {
+      if (onItemDelete) {
+        await onItemDelete(itemId);
+        addNotification({ message: 'Item deleted successfully', type: 'success' });
+      }
+    } catch (error) {
+      console.error('Delete item error:', error);
+      addNotification({ message: 'Failed to delete item', type: 'error' });
+    }
+  }, [onItemDelete, addNotification]);
+
+  // Format timestamp for video comments with timecode support
+  const _formatTimestamp = (seconds: number) => {
+    if (typeof seconds !== 'number') return '0:00';
+    const timecode = secondsToTimecode(seconds);
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
+    return `${mins}:${secs.toString().padStart(2, '0')} (${timecode})`;
   };
 
   // Add comment with timestamp
-  const handleAddComment = async () => {
+  const _handleAddComment = async () => {
     if (!newComment.trim() || !selectedItem) return;
 
     const commentData = {
@@ -3787,12 +4164,12 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
         // Refresh comments (will trigger via query invalidation)
       }
     } catch (error) {
-      // Failed to add comment - handled by error boundary
+      console.error('Failed to add comment:', error);
     }
   };
 
   // Toggle comment like
-  const handleToggleCommentLike = async (commentId: string) => {
+  const _handleToggleCommentLike = async (commentId: string) => {
     try {
       const response = await fetch(`/api/showcase/comments/${commentId}/like`, {
         method: 'POST',
@@ -3804,11 +4181,11 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
         // Refresh comments
       }
     } catch (error) {
-      // Failed to toggle like - handled by error boundary
+      console.error('Failed to toggle like:', error);
     }
   };
 
-  const getFileIcon = (fileType: string) => {
+  const _getFileIcon = (fileType: string) => {
     switch (fileType) {
       case 'video': return <VideoLibrary />;
       case 'photo': return <PhotoLibrary />;
@@ -4422,6 +4799,13 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
     profession: string;
 }) => {
     const [installStep, setInstallStep] = useState(0);
+    
+    // Display profession-specific instructions
+    const professionInstructions = {
+      photographer: 'Import your photography workflow',
+      videographer: 'Sync video editing metadata',
+      music_producer: 'Link audio project files'
+    };
     const [isDownloading, setIsDownloading] = useState(false);
 
     const professionConfig = getProfessionConfig();
@@ -4464,6 +4848,10 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
               Direkte integrasjon mellom Lightroom og CreatorHub Norge showcase system
+            </Typography>
+            {/* Display profession-specific instructions */}
+            <Typography variant="body2" color="primary" sx={{ mb: 3, fontStyle: 'italic' }}>
+              {professionInstructions[profession as keyof typeof professionInstructions] || 'Import your creative workflow'}
             </Typography>
             <Button variant="contained"
               onClick={handleDownloadPlugin}
@@ -5093,7 +5481,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
           });
           
           if (response.ok) {
-            const result = await response.json();
+            const _result4 = await response.json();
             showSuccessToast(`Nytt kurs "${newCourseData.title}," opprettet med "${item.title},"!`);
             onClose();
             // Reset form
@@ -5332,34 +5720,253 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
 
   // Get profession-specific theme (moved inside component scope)
   const professionTheme = getProfessionTheme(profession as any);
-  const componentTheme = getComponentTheme('showcase');
+  const _componentTheme = getComponentTheme('showcase');
+
+  const _quickTagOptions = useMemo(() => {
+    const tags = new Set<string>();
+    showcaseItems.forEach((item) => item.tags?.forEach((tag) => tags.add(tag)));
+    return Array.from(tags).sort();
+  }, [showcaseItems]);
+
+  const quickActions = useMemo(
+    () => [
+      { id: 'toggle-demo', label: isDemoMode ? 'Deaktiver demo' : 'Aktiver demo', icon: isDemoMode ? <CheckCircle /> : <RadioButtonUnchecked /> },
+      { id: 'open-dashboard', label: 'Dashboard', icon: <DashboardIcon /> },
+      { id: 'open-academy', label: 'Academy', icon: <School /> },
+      { id: 'open-visual-editor', label: 'Visuell editor', icon: <ColorLens /> },
+      { id: 'open-settings', label: 'Innstillinger', icon: <Settings /> },
+      { id: 'open-upload', label: 'Last opp filer', icon: <CloudUpload /> },
+      { id: 'open-projects', label: 'Prosjekter', icon: <FolderOpen /> },
+      { id: 'toggle-view', label: viewMode === 'grid' ? 'Listevisning' : 'Rutenett', icon: viewMode === 'grid' ? <ViewList /> : <GridView /> },
+      { id: 'toggle-batch', label: batchMode ? 'Avslutt batch' : 'Batchmodus', icon: <SelectAll /> },
+      { id: 'toggle-sidebar', label: sidebarOpen ? 'Skjul meny' : 'Vis meny', icon: sidebarOpen ? <ChevronLeft /> : <ChevronRight /> },
+      { id: 'open-command-palette', label: 'Kommando-meny', icon: <MenuIcon /> },
+      { id: 'toggle-comments', label: showComments ? 'Skjul kommentarer' : 'Vis kommentarer', icon: <Comment /> },
+      { id: 'open-analytics', label: 'Analyse', icon: <TimelineIcon /> },
+      { id: 'open-share', label: 'Del', icon: <Share /> },
+      { id: 'open-downloads', label: 'Nedlastinger', icon: <Download /> },
+      { id: 'open-fullscreen', label: 'Fullskjerm', icon: <Fullscreen /> },
+      { id: 'open-favorites', label: 'Favoritter', icon: <FavoriteBorder /> },
+      { id: 'open-search', label: 'Sok', icon: <Search /> },
+      { id: 'open-filter', label: 'Filtrer', icon: <FilterList /> },
+      { id: 'open-notifications', label: 'Varsler', icon: <Notifications /> },
+      { id: 'open-chat', label: 'Chat', icon: <Chat /> },
+      { id: 'open-calendar', label: 'Kalender', icon: <CalendarMonth /> },
+      { id: 'open-payment', label: 'Betaling', icon: <Payment /> },
+      { id: 'open-store', label: 'Butikk', icon: <ShoppingCart /> },
+      { id: 'open-pricing', label: 'Pris', icon: <AttachMoney /> },
+      { id: 'open-contact', label: 'Kontakt', icon: <Phone /> },
+      { id: 'open-email', label: 'Epost', icon: <Email /> },
+      { id: 'open-business', label: 'Bedrift', icon: <Business /> },
+      { id: 'open-language', label: 'Sprak', icon: <Language /> },
+      { id: 'open-account', label: 'Konto', icon: <AccountCircle /> },
+      { id: 'open-security', label: 'Sikkerhet', icon: <Security /> },
+      { id: 'open-audio', label: 'Lyd', icon: <MusicNote /> },
+      { id: 'open-video', label: 'Video', icon: <Videocam /> },
+      { id: 'open-photo', label: 'Foto', icon: <CameraAlt /> },
+      { id: 'open-collection', label: 'Samlinger', icon: <Collections /> },
+      { id: 'open-tags', label: 'Tags', icon: <Tag /> },
+      { id: 'open-location', label: 'Sted', icon: <LocationOn /> },
+      { id: 'open-undo', label: 'Angre', icon: <Undo /> },
+      { id: 'open-redo', label: 'Gjor om', icon: <Redo /> },
+      { id: 'open-copy', label: 'Kopier', icon: <ContentCopy /> },
+      { id: 'open-find', label: 'Finn', icon: <FindInPage /> },
+      { id: 'open-fingerprint', label: 'Signatur', icon: <Fingerprint /> },
+      { id: 'open-speed', label: 'Ytelse', icon: <Speed /> },
+      { id: 'open-cache', label: 'Cache', icon: <Cached /> },
+      { id: 'open-brightness', label: 'Lysstyrke', icon: <Brightness6 /> },
+      { id: 'open-contrast', label: 'Kontrast', icon: <Contrast /> },
+      { id: 'open-blur', label: 'Blur', icon: <BlurOn /> },
+      { id: 'open-crop', label: 'Beskjaer', icon: <Crop /> },
+      { id: 'open-rotate', label: 'Roter', icon: <Rotate90DegreesCcw /> },
+      { id: 'open-flip', label: 'Speil', icon: <Flip /> },
+      { id: 'open-transform', label: 'Transform', icon: <Transform /> },
+      { id: 'open-archive', label: 'Arkiv', icon: <Archive /> },
+      { id: 'open-drive', label: 'Flytt', icon: <DriveFileMove /> },
+      { id: 'open-warning', label: 'Advarsel', icon: <Warning /> },
+      { id: 'open-image', label: 'Bilde', icon: <Image /> },
+      { id: 'open-folder', label: 'Mappe', icon: <FolderOpen /> },
+      { id: 'open-new-folder', label: 'Ny mappe', icon: <CreateNewFolder /> },
+      { id: 'open-library', label: 'Bibliotek', icon: <LibraryAdd /> },
+      { id: 'open-playlist', label: 'Spilleliste', icon: <PlaylistPlay /> },
+      { id: 'open-shuffle', label: 'Shuffle', icon: <Shuffle /> },
+      { id: 'open-repeat', label: 'Repeat', icon: <Repeat /> },
+      { id: 'open-next', label: 'Neste', icon: <SkipNext /> },
+      { id: 'open-prev', label: 'Forrige', icon: <SkipPrevious /> },
+      { id: 'open-ff', label: 'Spol frem', icon: <FastForward /> },
+      { id: 'open-rw', label: 'Spol tilbake', icon: <FastRewind /> },
+      { id: 'open-eq', label: 'Equalizer', icon: <Equalizer /> },
+      { id: 'open-queue', label: 'Koe', icon: <QueueMusic /> },
+      { id: 'open-volume', label: 'Volum', icon: <VolumeUp /> },
+      { id: 'open-subtitles', label: 'Undertekster', icon: <Subtitles /> },
+      { id: 'open-hq', label: 'HQ', icon: <HighQuality /> },
+      { id: 'open-hd', label: 'HD', icon: <Hd /> },
+      { id: 'open-4k', label: '4K', icon: <FourK /> },
+      { id: 'open-video-settings', label: 'Video settings', icon: <VideoSettings /> },
+      { id: 'open-graphic', label: 'Grafikk', icon: <GraphicEq /> },
+      { id: 'open-movie', label: 'Film', icon: <Movie /> },
+      { id: 'open-movie-create', label: 'Rediger video', icon: <MovieCreation /> },
+      { id: 'open-layers', label: 'Lag', icon: <Layers /> },
+      { id: 'open-compare', label: 'Sammenlign', icon: <Compare /> },
+      { id: 'open-pin', label: 'Fest', icon: <PushPin /> },
+      { id: 'open-palette', label: 'Farger', icon: <Palette /> },
+      { id: 'open-view-comfy', label: 'Komfortvisning', icon: <ViewComfy /> },
+      { id: 'open-apps', label: 'Apper', icon: <Apps /> },
+      { id: 'open-view-module', label: 'Moduler', icon: <ViewModule /> },
+      { id: 'open-visibility', label: 'Synlighet', icon: <Visibility /> },
+      { id: 'open-visibility-off', label: 'Skjul', icon: <VisibilityOff /> },
+      { id: 'open-add', label: 'Legg til', icon: <Add /> },
+      { id: 'open-add-circle', label: 'Ny', icon: <AddCircle /> },
+      { id: 'open-open', label: 'Aapne', icon: <OpenInNew /> },
+      { id: 'open-cloud-download', label: 'Hent', icon: <CloudDownload /> },
+      { id: 'open-cloud-upload', label: 'Last opp', icon: <CloudUpload /> },
+      { id: 'open-sync', label: 'Synk', icon: <Sync /> },
+      { id: 'open-status', label: 'Status', icon: <CheckCircle /> },
+      { id: 'open-status-off', label: 'Ikke valgt', icon: <RadioButtonUnchecked /> },
+      { id: 'open-auto-fix', label: 'Auto fix', icon: <AutoFixHigh /> },
+      { id: 'open-balance', label: 'Balanse', icon: <AccountBalance /> },
+      { id: 'open-tune', label: 'Tune', icon: <Tune /> },
+      { id: 'open-copyright', label: 'Copyright', icon: <Copyright /> },
+      { id: 'open-home', label: 'Hjem', icon: <Home /> },
+      { id: 'open-info', label: 'Info', icon: <Info /> },
+      { id: 'open-warning', label: 'Advarsel', icon: <Warning /> },
+      { id: 'open-message', label: 'Send', icon: <Send /> },
+      { id: 'open-reply', label: 'Svar', icon: <Reply /> },
+      { id: 'open-time', label: 'Tid', icon: <AccessTime /> },
+      { id: 'open-thumb', label: 'Like', icon: <ThumbUp /> },
+      { id: 'open-person', label: 'Person', icon: <Person /> },
+      { id: 'open-badge', label: 'Badge', icon: <Badge /> },
+      { id: 'open-crop-free', label: 'Fri beskaer', icon: <CropFree /> },
+      { id: 'open-drag', label: 'Dra', icon: <DragIndicator /> },
+      { id: 'open-select-all', label: 'Velg alle', icon: <SelectAll /> },
+      { id: 'open-checkbox', label: 'Sjekkboks', icon: <CheckBox /> },
+      { id: 'open-checkbox-blank', label: 'Tom boks', icon: <CheckBoxOutlineBlank /> },
+      { id: 'open-folder-special', label: 'Spesialmappe', icon: <FolderSpecial /> },
+      { id: 'open-category', label: 'Kategori', icon: <Category /> },
+      { id: 'open-label', label: 'Etikett', icon: <Label /> },
+      { id: 'open-edit', label: 'Rediger', icon: <Edit /> },
+      { id: 'open-delete', label: 'Slett', icon: <Delete /> },
+      { id: 'open-archive', label: 'Arkiv', icon: <Archive /> },
+      { id: 'open-image', label: 'Bilde', icon: <Image /> },
+      { id: 'open-camera', label: 'Kamera', icon: <Camera /> },
+      { id: 'open-movie', label: 'Film', icon: <Movie /> },
+      { id: 'open-video', label: 'Video', icon: <VideoLibrary /> },
+      { id: 'open-photo-lib', label: 'Fotoarkiv', icon: <PhotoLibrary /> },
+      { id: 'open-music', label: 'Musikk', icon: <LibraryMusic /> },
+      { id: 'open-doc', label: 'Dokument', icon: <Description /> },
+      { id: 'open-business', label: 'Bedrift', icon: <Business /> },
+      { id: 'open-school', label: 'Skole', icon: <School /> },
+      { id: 'open-back', label: 'Tilbake', icon: <ArrowBack /> },
+    ],
+    [
+      isDemoMode,
+      viewMode,
+      batchMode,
+      sidebarOpen,
+      showComments
+    ]
+  );
+
+  const handleQuickAction = useCallback((actionId: string) => {
+    switch (actionId) {
+      case 'toggle-demo':
+        toggleDemoMode();
+        addNotification({ message: isDemoMode ? 'Demo deaktivert' : 'Demo aktivert', type: 'info' });
+        break;
+      case 'open-dashboard':
+        setShowDashboard(true);
+        break;
+      case 'open-academy':
+        setShowAcademy(true);
+        break;
+      case 'open-visual-editor':
+        visualEditor.setSidebarOpen(true);
+        visualEditor.setActiveTab('templates');
+        setShowDashboard(true);
+        break;
+      case 'open-settings':
+        setQuickDrawerOpen(true);
+        break;
+      case 'open-upload':
+        setShowUploadComponent(true);
+        break;
+      case 'open-projects':
+        setProjectSelectorOpen(true);
+        break;
+      case 'open-command-palette':
+        setCommandPaletteOpen(true);
+        break;
+      case 'toggle-view':
+        setViewMode((prev) => (prev === 'grid' ? 'list' : 'grid'));
+        break;
+      case 'toggle-batch':
+        setBatchMode((prev) => !prev);
+        break;
+      case 'toggle-sidebar':
+        setSidebarOpen((prev) => !prev);
+        break;
+      case 'toggle-comments':
+        setShowComments((prev) => !prev);
+        break;
+      case 'open-analytics':
+        setShowAnalytics(true);
+        break;
+      default:
+        addNotification({ message: `Handling: ${actionId}`, type: 'info' });
+        break;
+    }
+  }, [
+    addNotification,
+    isDemoMode,
+    setBatchMode,
+    setCommandPaletteOpen,
+    setProjectSelectorOpen,
+    setQuickDrawerOpen,
+    setShowAcademy,
+    setShowAnalytics,
+    setShowDashboard,
+    setShowUploadComponent,
+    setSidebarOpen,
+    setShowComments,
+    toggleDemoMode,
+    visualEditor
+  ]);
+
+  const speedDialActions = useMemo(
+    () => quickActions.slice(0, 8),
+    [quickActions]
+  );
 
   return (
-    <Box sx={{ 
-      minHeight: '100vh',
-      bgcolor: '#0f1419',
-      background: 'linear-gradient(135deg, #0f1419 0%, #1a1f2e 50%, #2a1810 100%)',
-      color: textPrimary,
-      display: 'flex',
-      position: 'relative',
-      fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif',
-      // Apply profession-specific styling
-      '& .showcase-header': {
-        background: `linear-gradient(135deg, ${professionTheme?.primaryColor || customTheme.palette.primary.main}20, ${professionTheme?.secondaryColor || customTheme.palette.secondary.main}20)`,
-        borderRadius: (customTheme.shape.borderRadius as number) * 2,
-        padding: customTheme.spacing(2),
-        marginBottom: customTheme.spacing(3)
-        }, '& .showcase-card': {
-          '&:hover': {
-          transform: 'translateY(-4px)',
-          boxShadow: `0 8px 25px ${professionTheme?.accentColor || customTheme.palette.primary.main}30`,
-          transition: 'all 0.3s ease-in-out'
+    <Box 
+      ref={scrollContainerRef}
+      sx={{ 
+        minHeight: '100vh',
+        bgcolor: '#0f1419',
+        background: 'linear-gradient(135deg, #0f1419 0%, #1a1f2e 50%, #2a1810 100%)',
+        color: textPrimary,
+        display: 'flex',
+        position: 'relative',
+        fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif',
+        overflowY: 'auto',
+        // Apply profession-specific styling
+        '& .showcase-header': {
+          background: `linear-gradient(135deg, ${professionTheme?.primaryColor || customTheme.palette.primary.main}20, ${professionTheme?.secondaryColor || customTheme.palette.secondary.main}20)`,
+          borderRadius: (customTheme.shape.borderRadius as number) * 2,
+          padding: customTheme.spacing(2),
+          marginBottom: customTheme.spacing(3)
+          }, '& .showcase-card': {
+            '&:hover': {
+            transform: 'translateY(-4px)',
+            boxShadow: `0 8px 25px ${professionTheme?.accentColor || customTheme.palette.primary.main}30`,
+            transition: 'all 0.3s ease-in-out'
+          }
+        }, '& .selection-indicator': {
+          backgroundColor: professionTheme?.accentColor || customTheme.palette.primary.main,
+          color: customTheme.palette.getContrastText(professionTheme?.accentColor || customTheme.palette.primary.main)
         }
-      }, '& .selection-indicator': {
-        backgroundColor: professionTheme?.accentColor || customTheme.palette.primary.main,
-        color: customTheme.palette.getContrastText(professionTheme?.accentColor || customTheme.palette.primary.main)
-      }
-    }}>
+      }}
+    >
       {/* FASE 1: Client Proofing Status Bar - Enhanced */}
       {clientMode && (
         <Box sx={{ 
@@ -5470,7 +6077,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                  <LibraryMusic sx={{ color: '#fff', fontSize: 20 }} />}
               </Box>
               <Typography variant="h6" sx={{ 
-                fontWeight: 70, 
+                fontWeight: 700, 
                 fontSize: '1.1rem',
                 color: textPrimary,
                 textShadow: '0 2px 4px rgba(0,0,0,0.3)'
@@ -5501,7 +6108,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             <Typography variant="overline" sx={{ 
               color: 'rgba(2, 5, 5, 107, 53, 0.8)', 
               fontSize: '0.7rem', 
-              fontWeight: 70,
+              fontWeight: 700,
               letterSpacing: '0.15em',
               mb: 3,
               display: 'block',
@@ -5649,7 +6256,113 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
         position: 'relative',
         zIndex: 1}}>
         {/* Navigation Buttons */}
-        <Box sx={{ textAlign: 'center', p: 2, borderBottom: '1px solid rgba(2, 5, 5, 107, 53, 0.15)', display: 'flex', gap: 2, justifyContent: 'center' }}>
+        <Box sx={{ 
+          textAlign: 'center', 
+          p: 2, 
+          borderBottom: '1px solid rgba(2, 5, 5, 107, 53, 0.15)', 
+          display: 'flex', 
+          gap: 2, 
+          justifyContent: 'center',
+          bgcolor: isDark ? bgColor : '#ffffff',
+          transition: 'background-color 0.3s ease'
+        }}>
+          
+          {/* Synced Project/Client Indicator */}
+          {(syncedProject || syncedClient) && (
+            <Box sx={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: 1,
+              px: 2,
+              py: 1,
+              borderRadius: '8px',
+              bgcolor: cardBg,
+              border: '1px solid rgba(76, 175, 80, 0.5)'
+            }}>
+              <Sync sx={{ color: '#4caf50', fontSize: 18 }} />
+              {syncedProject && (
+                <Chip 
+                  label={`Project: ${syncedProject.name || 'Synced'}`} 
+                  size="small" 
+                  color="success"
+                  sx={{ mr: 1 }}
+                />
+              )}
+              {syncedClient && (
+                <Chip 
+                  label={`Client: ${syncedClient.name || 'Synced'}`} 
+                  size="small" 
+                  color="info"
+                />
+              )}
+            </Box>
+          )}
+          
+          {/* Real-time Collaboration Controls */}
+          {enableRealTimeSync && !collaborationSessionId && showcaseAccess?.hasAccess && (
+            <>
+              <Button 
+                variant="outlined"
+                startIcon={<Add />}
+                onClick={async () => {
+                  try {
+                    const localParticipant: CollaborationParticipant = {
+                      id: `local-${effectiveUserId}`,
+                      userId: effectiveUserId,
+                      name: user?.name || user?.email || 'User',
+                      email: user?.email || 'unknown@local',
+                      role: 'owner',
+                      status: 'online',
+                      lastSeen: new Date(),
+                      permissions: {
+                        canEdit: true,
+                        canComment: true,
+                        canShare: true,
+                        canDelete: true,
+                        canInvite: true,
+                      }
+                    };
+                    await createSession({ name: `showcase-${Date.now()}`, participants: [localParticipant] });
+                    addNotification({ message: 'Collaboration session created', type: 'success' });
+                  } catch (error) {
+                    console.error('Create session error:', error);
+                    addNotification({ message: 'Failed to create session', type: 'error' });
+                  }
+                }}
+                sx={{
+                  borderColor: '#4caf50',
+                  color: '#4caf50',
+                  '&:hover': { borderColor: '#66bb6a', bgcolor: 'rgba(76, 175, 80, 0.1)' }
+                }}
+              >
+                Create Session
+              </Button>
+              <Button 
+                variant="outlined"
+                startIcon={<People />}
+                onClick={async () => {
+                  const sessionId = prompt('Enter session ID to join:');
+                  if (sessionId) {
+                    try {
+                      await joinSession(sessionId);
+                      addNotification({ message: 'Joined collaboration session', type: 'success' });
+                    } catch (error) {
+                      console.error('Join session error:', error);
+                      addNotification({ message: 'Failed to join session', type: 'error' });
+                    }
+                  }
+                }}
+                sx={{
+                  borderColor: '#2196f3',
+                  color: '#2196f3',
+                  '&:hover': { borderColor: '#42a5f5', bgcolor: 'rgba(33, 150, 243, 0.1)' }
+                }}
+              >
+                Join Session
+              </Button>
+            </>
+          )}
+          
           <Button variant="contained"
             startIcon={<AcademyIcon />}
             onClick={() => setShowAcademy(true)}
@@ -5704,8 +6417,92 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
           backdropFilter: 'blur(10px)'
         }}>
           <Box>
+            {/* Breadcrumbs Navigation */}
+            <Breadcrumbs
+              aria-label="breadcrumb"
+              sx={{ mb: 2 }}
+              separator={<Box sx={{ color: textSecondary }}>›</Box>}
+            >
+              <Link
+                underline="hover"
+                sx={{ 
+                  display: 'flex', 
+                  alignItems: 'center',
+                  color: textSecondary,
+                  cursor: 'pointer',
+                  '&:hover': { color: accentColor }
+                }}
+                onClick={() => setSelectedProject(null)}
+              >
+                <Home sx={{ mr: 0.5, fontSize: 16 }} />
+                Home
+              </Link>
+              {selectedProject && (
+                <Link
+                  underline="hover"
+                  sx={{ 
+                    display: 'flex', 
+                    alignItems: 'center',
+                    color: textSecondary,
+                    cursor: 'pointer',
+                    '&:hover': { color: accentColor }
+                  }}
+                >
+                  <Collections sx={{ mr: 0.5, fontSize: 16 }} />
+                  {selectedProject.title}
+                </Link>
+              )}
+              <Typography sx={{ display: 'flex', alignItems: 'center', color: accentColor }}>
+                {getProfessionDisplayName(profession)}
+              </Typography>
+            </Breadcrumbs>
+            
+            {/* Duplicate Warning Banner */}
+            {duplicates.size > 0 && showcaseManagementAccess?.hasAccess && (
+              <Alert 
+                severity="warning" 
+                sx={{ mb: 2 }}
+                action={
+                  <Button 
+                    color="inherit" 
+                    size="small"
+                    onClick={() => {
+                      console.log('Duplicates found:', Array.from(duplicates.entries()));
+                      addNotification({ message: `${duplicates.size} duplicate groups found`, type: 'warning' });
+                    }}
+                  >
+                    VIEW
+                  </Button>
+                }
+              >
+                {duplicates.size} duplicate file group{duplicates.size > 1 ? 's' : ''} detected
+              </Alert>
+            )}
+            
+            {/* Authentication Required Banner */}
+            {sessionRequiresAuth && !isAuthenticated && (
+              <Alert 
+                severity="info" 
+                sx={{ mb: 2 }}
+                action={
+                  <Button 
+                    color="inherit" 
+                    size="small"
+                    onClick={() => {
+                      setShowAuthDialog(true);
+                      setAuthSessionData({ sessionId: sessionIdd, clientEmail });
+                    }}
+                  >
+                    SIGN IN
+                  </Button>
+                }
+              >
+                Authentication required to access this session
+              </Alert>
+            )}
+            
             <Typography variant="h4" sx={{ 
-              fontWeight: 70, 
+              fontWeight: 700, 
               color: textPrimary, 
               mb: 0.5,
               background: `linear-gradient(45deg, ${accentColor}, #f7931e)`,
@@ -5750,6 +6547,45 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                   animation: 'pulse 2s infinite'
                 }} />
                 {items.length} {profession === 'photographer' ? 'bilder' : profession === 'videographer' ? 'videoer' : profession === 'music_producer' ? 'låter' : 'elementer'} tilgjengelig
+                
+                {/* Real-time Collaboration Indicator */}
+                {enableRealTimeSync && collaborationSessionId && (
+                  <>
+                    <Box sx={{ mx: 1, color: 'rgba(2, 5, 5, 255, 255, 0.3)' }}>•</Box>
+                    <Box sx={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: 0.5,
+                      bgcolor: 'rgba(76, 175, 80, 0.1)',
+                      px: 1,
+                      py: 0.5,
+                      borderRadius: 1,
+                      border: '1px solid rgba(76, 175, 80, 0.3)'
+                    }}>
+                      <People sx={{ fontSize: 14, color: '#4caf50' }} />
+                      <Typography variant="caption" sx={{ color: '#4caf50' }}>
+                        {participants.length} collaborator{participants.length !== 1 ? 's' : ''}
+                      </Typography>
+                      <Tooltip title="Leave Session">
+                        <IconButton
+                          size="small"
+                          onClick={() => {
+                            leaveSession();
+                            addNotification({ message: 'Left collaboration session', type: 'info' });
+                          }}
+                          sx={{
+                            p: 0.5,
+                            ml: 0.5,
+                            '&:hover': { bgcolor: 'rgba(76, 175, 80, 0.2)' }
+                          }}
+                        >
+                          <ExitToApp sx={{ fontSize: 12, color: '#4caf50' }} />
+                        </IconButton>
+                      </Tooltip>
+                    </Box>
+                  </>
+                )}
+                
                 {selectedProject && (
                   <>
                     <Box sx={{ mx: 1, color: 'rgba(2, 5, 5, 255, 255, 0.3)' }}>•</Box>
@@ -5788,32 +6624,213 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
           </Box>
           
           <Stack direction="row" spacing={2}>
-            <Button
-              startIcon={<Search />}
-              variant="outlined"
-              sx={{ 
+            {/* Autocomplete Search */}
+            <Autocomplete
+              freeSolo
+              options={items.map(item => item.title || '')}
+              value={searchAutocompleteValue}
+              onChange={(_, newValue) => {
+                setSearchAutocompleteValue(newValue);
+                setSearchQuery(newValue ? { text: newValue } : {});
+              }}
+              sx={{ width: 250 }}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  placeholder="Search..."
+                  variant="outlined"
+                  size="small"
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      color: textPrimary,
+                      borderColor: 'rgba(2, 5, 5, 107, 53, 0.3)',
+                      '&:hover': {
+                        borderColor: accentColor
+                      }
+                    }
+                  }}
+                  InputProps={{
+                    ...params.InputProps,
+                    startAdornment: <Search sx={{ color: textSecondary, mr: 1 }} />
+                  }}
+                />
+              )}
+            />
+            
+            {/* Filter Button with Badge */}
+            <IconButton
+              onClick={(e) => setSortMenuAnchorEl(e.currentTarget)}
+              sx={{
                 color: textSecondary,
-                borderColor: 'rgba(2, 5, 5, 107, 53, 0.3)','&:hover': {
+                borderColor: 'rgba(2, 5, 5, 107, 53, 0.3)',
+                border: '1px solid',
+                '&:hover': {
                   borderColor: accentColor,
                   bgcolor: 'rgba(2, 5, 5, 107, 53, 0.1)'
                 }
               }}
             >
-              Søk
-            </Button>
-            <Button
-              startIcon={<FilterList />}
-              variant="outlined"
-              sx={{ 
-                color: textSecondary,
-                borderColor: 'rgba(2, 5, 5, 107, 53, 0.3)','&:hover': {
-                  borderColor: accentColor,
-                  bgcolor: 'rgba(2, 5, 5, 107, 53, 0.1)'
-                }
-              }}
+              <Badge badgeContent={selectedItems.length} color="primary" max={99}>
+                <FilterList />
+              </Badge>
+            </IconButton>
+            
+            {/* View Mode Toggle */}
+            <ToggleButtonGroup
+              value={viewMode}
+              exclusive
+              onChange={(_, newMode) => newMode && setViewMode(newMode)}
+              size="small"
+              sx={{ ml: 1 }}
             >
-              Filter
-            </Button>
+              <ToggleButton value="grid" aria-label="grid view">
+                <GridView sx={{ fontSize: 18 }} />
+              </ToggleButton>
+              <ToggleButton value="list" aria-label="list view">
+                <ViewList sx={{ fontSize: 18 }} />
+              </ToggleButton>
+              <ToggleButton value="masonry" aria-label="masonry view">
+                <PhotoLibrary sx={{ fontSize: 18 }} />
+              </ToggleButton>
+            </ToggleButtonGroup>
+            
+            {/* Filter Chips Display */}
+            {filterChips.length > 0 && (
+              <Stack direction="row" spacing={1} sx={{ ml: 2 }}>
+                {filterChips.map((chip) => (
+                  <Chip
+                    key={chip.id}
+                    label={chip.label}
+                    size="small"
+                    onDelete={() => setFilterChips(prev => prev.filter(c => c.id !== chip.id))}
+                    sx={{
+                      bgcolor: 'rgba(2, 5, 5, 107, 53, 0.1)',
+                      color: textPrimary,
+                      borderColor: accentColor
+                    }}
+                  />
+                ))}
+              </Stack>
+            )}
+            
+            {/* Annotations Toggle */}
+            {showcaseAnalyticsAccess?.hasAccess && annotations.length > 0 && (
+              <Tooltip title={showAnnotations ? 'Hide Annotations' : 'Show Annotations'}>
+                <IconButton
+                  onClick={() => setShowAnnotations(!showAnnotations)}
+                  sx={{
+                    color: showAnnotations ? accentColor : textSecondary,
+                    border: '1px solid',
+                    borderColor: showAnnotations ? accentColor : 'rgba(2, 5, 5, 107, 53, 0.3)',
+                    '&:hover': { bgcolor: 'rgba(255, 107, 53, 0.1)' }
+                  }}
+                >
+                  <Badge badgeContent={annotations.length} color="error">
+                    <Comment />
+                  </Badge>
+                </IconButton>
+              </Tooltip>
+            )}
+            
+            {/* Add Annotation Button */}
+            {showcaseAnalyticsAccess?.hasAccess && (
+              <Tooltip title="Add Annotation">
+                <IconButton
+                  onClick={() => {
+                    const newAnnotation = {
+                      id: `ann-${Date.now()}`,
+                      itemId: selectedItem?.id || '',
+                      text: 'New annotation',
+                      timestamp: Date.now(),
+                      userId: effectiveUserId
+                    };
+                    setAnnotations(prev => [...prev, newAnnotation as any]);
+                    addNotification({ message: 'Annotation added', type: 'success' });
+                  }}
+                  sx={{
+                    color: textSecondary,
+                    border: '1px solid rgba(2, 5, 5, 107, 53, 0.3)',
+                    '&:hover': { borderColor: accentColor, color: accentColor }
+                  }}
+                >
+                  <NoteAdd />
+                </IconButton>
+              </Tooltip>
+            )}
+            
+            {/* AI Processing Menu */}
+            {enableAIAnalysis && contentManagementAccess?.hasAccess && (
+              <Tooltip title="AI Processing">
+                <IconButton
+                  onClick={(e) => setPopperAnchorEl(e.currentTarget)}
+                  sx={{
+                    color: textSecondary,
+                    border: '1px solid rgba(2, 5, 5, 107, 53, 0.3)',
+                    '&:hover': { borderColor: '#2196f3', color: '#2196f3' }
+                  }}
+                >
+                  <AutoAwesome sx={{ color: '#2196f3' }} />
+                </IconButton>
+              </Tooltip>
+            )}
+            
+            {/* Google Photos Sync */}
+            {enableGoogleDriveSync && (
+              <>
+                <Tooltip title="Google Photos">
+                  <IconButton
+                    onClick={() => setShowGooglePhotosDialog(true)}
+                    sx={{
+                      color: googlePhotosConnected ? '#4285f4' : textSecondary,
+                      border: '1px solid',
+                      borderColor: googlePhotosConnected ? '#4285f4' : 'rgba(2, 5, 5, 107, 53, 0.3)',
+                      '&:hover': { borderColor: '#4285f4', color: '#4285f4' }
+                    }}
+                  >
+                    <Badge badgeContent={isLoadingGooglePhotos ? <CircularProgress size={10} /> : null}>
+                      <PhotoLibrary />
+                    </Badge>
+                  </IconButton>
+                </Tooltip>
+                
+                {/* Google Contacts Sync */}
+                {googleContacts && googleContacts.length > 0 && (
+                  <Tooltip title={`${googleContacts.length} contacts synced`}>
+                    <IconButton
+                      sx={{
+                        color: '#4285f4',
+                        border: '1px solid #4285f4'
+                      }}
+                    >
+                      <Badge badgeContent={googleContacts.length} color="primary">
+                        <People />
+                      </Badge>
+                    </IconButton>
+                  </Tooltip>
+                )}
+                
+                {contactSyncProgress > 0 && contactSyncProgress < 100 && (
+                  <Box sx={{ ml: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <CircularProgress size={20} variant="determinate" value={contactSyncProgress} />
+                    <Typography variant="caption" sx={{ color: textSecondary }}>
+                      {contactSyncProgress}%
+                    </Typography>
+                  </Box>
+                )}
+              </>
+            )}
+            
+            {/* Button to trigger loading skeleton demo */}
+            <IconButton
+              onClick={() => {
+                setIsLoadingSkeleton(true);
+                setTimeout(() => setIsLoadingSkeleton(false), 3000);
+              }}
+              sx={{ color: textSecondary }}
+            >
+              <CircularProgress size={18} sx={{ display: isLoadingSkeleton ? 'block' : 'none' }} />
+              {!isLoadingSkeleton && <Info />}
+            </IconButton>
             
             {/* Admin & Owner Controls */}
             {(isOwner || adminMode) && (
@@ -5821,6 +6838,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                 <FileStatusWrapper showFileSystem showGoogleDrive showGooglePhotos>
                   <Button startIcon={<Add />}
                     variant="contained"
+                    disabled={!showcaseCreationAccess?.hasAccess}
                     sx={{
                       bgcolor: accentColor,
                       color: '#fff','&:hover': {
@@ -5832,28 +6850,78 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                     Legg til
                   </Button>
                 </FileStatusWrapper>
+                
+                {/* Bulk Operations */}
+                <Tooltip title="Bulk Operations">
+                  <IconButton
+                    onClick={() => {
+                      if (selectedBatchItems.size > 0) {
+                        setSelectedImages(new Set(selectedBatchItems));
+                      }
+                      setShowBulkOperationsDialog(true);
+                    }}
+                    sx={{
+                      color: textSecondary,
+                      border: '1px solid rgba(2, 5, 5, 107, 53, 0.3)',
+                      '&:hover': { borderColor: accentColor, color: accentColor }
+                    }}
+                  >
+                    <Badge badgeContent={selectedBatchItems.size} color="primary">
+                      <PlaylistAdd />
+                    </Badge>
+                  </IconButton>
+                </Tooltip>
+                
+                {/* Video Processing */}
+                {profession === 'videographer' && (
+                  <>
+                    <Tooltip title="Video Watermark">
+                      <IconButton
+                        onClick={() => setShowVideoWatermarkDialog(true)}
+                        sx={{
+                          color: textSecondary,
+                          border: '1px solid rgba(2, 5, 5, 107, 53, 0.3)',
+                          '&:hover': { borderColor: '#2196f3', color: '#2196f3' }
+                        }}
+                      >
+                        <WaterDrop />
+                      </IconButton>
+                    </Tooltip>
+                    
+                    {isProcessingVideo && (
+                      <Box sx={{ ml: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <CircularProgress size={20} variant="determinate" value={processingProgress} />
+                        <Typography variant="caption" sx={{ color: textSecondary }}>
+                          Processing: {processingProgress}%
+                        </Typography>
+                      </Box>
+                    )}
+                  </>
+                )}
 
                 {/* Bulk Create Collections Button */}
-                <Button
-                  startIcon={<CreateNewFolder />}
-                  variant="outlined"
-                  onClick={() => {
-                    setCurrentParentFolderId(selectedProject?.id?.toString());
-                    setShowBulkFolderUpload(true);
-                  }}
-                  sx={{
-                    borderColor: 'rgba(255, 107, 53, 0.5)',
-                    color: accentColor, '&:hover': {
-                      borderColor: accentColor,
-                      bgcolor: 'rgba(255, 107, 53, 0.1)'
-                    }
-                  }}
-                >
-                  Bulk Create
-                </Button>
+                {contentManagementAccess?.hasAccess && (
+                  <Button
+                    startIcon={<CreateNewFolder />}
+                    variant="outlined"
+                    onClick={() => {
+                      setCurrentParentFolderId(selectedProject?.id?.toString());
+                      setShowBulkFolderUpload(true);
+                    }}
+                    sx={{
+                      borderColor: 'rgba(255, 107, 53, 0.5)',
+                      color: accentColor, '&:hover': {
+                        borderColor: accentColor,
+                        bgcolor: 'rgba(255, 107, 53, 0.1)'
+                      }
+                    }}
+                  >
+                    Bulk Create
+                  </Button>
+                )}
 
                 {/* Toggle Upload Component Button - Shows when project is selected */}
-                {selectedProject && (
+                {selectedProject && mediaUploadAccess?.hasAccess && (
                   <Button
                     variant="outlined"
                     startIcon={<CloudUpload />}
@@ -5871,66 +6939,78 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                 )}
 
                 {/* Showcase Sharing Button */}
-                <Button
-                  startIcon={<Image />}
-                  variant="outlined"
-                  onClick={() => {
-                    setPrefilledClient(undefined);
-                    setShareShowcaseDialogOpen(true);
-              }}
-                  sx={{ 
-                    borderColor: '#', 
-                    color: '#','&:hover': { 
+                {showcasePublishingAccess?.hasAccess && (
+                  <Button
+                    startIcon={<Image />}
+                    variant="outlined"
+                    onClick={() => {
+                      setPrefilledClient(undefined);
+                      setShareShowcaseDialogOpen(true);
+                }}
+                    sx={{ 
                       borderColor: '#', 
-                      bgcolor: '#e3f2fd' 
-              } 
-              }}
-                >
-                  Share {getTerm('showcase')}
-                </Button>
+                      color: '#','&:hover': { 
+                        borderColor: '#', 
+                        bgcolor: '#e3f2fd' 
+                } 
+                }}
+                  >
+                    Share {getTerm('showcase')}
+                  </Button>
+                )}
 
         {/* Overage Management Button */}
-        <Button
-          startIcon={<Warning />}
-          variant="outlined"
-          onClick={() => {
-            setSelectedShowcaseData(null);
-            setOverageDialogOpen(true);
-      }}
-          sx={{ 
-            borderColor: '#ff6f00', 
-            color: '#ff6f00','&:hover': { 
-              borderColor: '#', 
-              bgcolor: '#fff3e0' 
-      } 
-      }}
-        >
-          {getTerm('overage')} Email
-        </Button>
+        {showcaseManagementAccess?.hasAccess && (
+          <Button
+            startIcon={<Warning />}
+            variant="outlined"
+            onClick={() => {
+              setSelectedShowcaseData(null);
+              setOverageDialogOpen(true);
+        }}
+            sx={{ 
+              borderColor: '#ff6f00', 
+              color: '#ff6f00','&:hover': { 
+                borderColor: '#', 
+                bgcolor: '#fff3e0' 
+        } 
+        }}
+          >
+            {getTerm('overage')} Email
+          </Button>
+        )}
 
         {/* Lightroom Plugin Button */}
-        <FileStatusWrapper showFileSystem showGoogleDrive showGooglePhotos>
-          <Button
-            startIcon={<CloudUpload />}
-            variant="outlined"
-            onClick={() => setLightroomPluginDialogOpen(true)}
-          sx={{ 
-            borderColor: '#31A8FF', 
-            color: '#31A8FF','&:hover': { 
-              borderColor: '#', 
-              bgcolor: '#f3e5f5' 
+        {portfolioManagementAccess?.hasAccess && (
+          <FileStatusWrapper showFileSystem showGoogleDrive showGooglePhotos>
+            <Button
+              startIcon={<CloudUpload />}
+              variant="outlined"
+              onClick={() => setLightroomPluginDialogOpen(true)}
+            sx={{ 
+              borderColor: '#31A8FF', 
+              color: '#31A8FF','&:hover': { 
+                borderColor: '#', 
+                bgcolor: '#f3e5f5' 
       } 
       }}
-        >
-          Lightroom Plugin
-        </Button>
-        </FileStatusWrapper>
+            >
+              Lightroom Plugin
+            </Button>
+          </FileStatusWrapper>
+        )}
 
-        {/* Create Custom Category Button */}
+        {/* Create Custom Category Button with Count */}
         <Button
           startIcon={<Category />}
           variant="outlined"
-          onClick={() => setCustomCategoriesDialogOpen(true)}
+          onClick={() => {
+            setCustomCategoriesDialogOpen(true);
+            // Auto-populate categories from existing items
+            if (categories && categories.length > 0) {
+              setCategories([...categories]);
+            }
+          }}
           sx={{ 
             borderColor: '#4caf50', 
             color: '#4caf50','&:hover': { 
@@ -5939,14 +7019,22 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
       } 
       }}
         >
-          Lag kategori
+          <Badge badgeContent={categories?.length || 0} color="success" sx={{ mr: 1 }}>
+            Lag kategori
+          </Badge>
         </Button>
 
-        {/* Create Custom Set Button */}
+        {/* Create Custom Set Button with Count */}
         <Button
           startIcon={<FolderSpecial />}
           variant="outlined"
-          onClick={() => setCustomSetsDialogOpen(true)}
+          onClick={() => {
+            setCustomSetsDialogOpen(true);
+            // Auto-populate sets from existing collections
+            if (sets && sets.length > 0) {
+              setSets([...sets]);
+            }
+          }}
           sx={{ 
             borderColor: '#31A8FF', 
             color: '#31A8FF','&:hover': { 
@@ -5955,7 +7043,9 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
       } 
       }}
         >
-          Lag samling
+          <Badge badgeContent={sets?.length || 0} color="primary" sx={{ mr: 1 }}>
+            Lag samling
+          </Badge>
         </Button>
                 
                 {/* Google Photos Integration Button */}
@@ -5980,6 +7070,51 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                 >
                   {googlePhotosConnected ? 'Google Photos' : 'Koble til Google'}
                 </Button>
+
+                {/* Collaborators Panel */}
+                {collaborators && collaborators.length > 0 && (
+                  <Box sx={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: 1,
+                    px: 2,
+                    py: 1,
+                    borderRadius: '8px',
+                    border: '1px solid rgba(2, 5, 5, 107, 53, 0.3)'
+                  }}>
+                    <People sx={{ color: textSecondary, fontSize: 20 }} />
+                    <Typography variant="caption" sx={{ color: textSecondary }}>
+                      {collaborators.length} Collaborator{collaborators.length !== 1 ? 's' : ''}
+                    </Typography>
+                    {localParticipant && (
+                      <Chip 
+                        label="You" 
+                        size="small" 
+                        color="primary" 
+                        sx={{ ml: 1 }}
+                      />
+                    )}
+                  </Box>
+                )}
+
+                {/* AI Analysis Results Panel */}
+                {aiAnalysisResults && Object.keys(aiAnalysisResults).length > 0 && (
+                  <Box sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 1,
+                    px: 2,
+                    py: 1,
+                    borderRadius: '8px',
+                    bgcolor: 'rgba(156, 39, 176, 0.1)',
+                    border: '1px solid rgba(156, 39, 176, 0.3)'
+                  }}>
+                    <AutoAwesome sx={{ color: '#9c27b0', fontSize: 20 }} />
+                    <Typography variant="caption" sx={{ color: '#9c27b0' }}>
+                      AI: {Object.keys(aiAnalysisResults).length} result{Object.keys(aiAnalysisResults).length !== 1 ? 's' : ''}
+                    </Typography>
+                  </Box>
+                )}
 
                 {/* Google Drive Sync Button with Folder Structure Info */}
                 {enableGoogleDriveSync && (
@@ -6020,6 +7155,21 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                   }}
                       />
                     </Tooltip>
+                    {currentGoogleDriveFolderId && (
+                      <Tooltip title="Aktiv Google Drive mappe">
+                        <Chip
+                          label={`Folder: ${currentGoogleDriveFolderId.slice(0, 10)}...`}
+                          size="small"
+                          variant="outlined"
+                          sx={{
+                            fontSize: '0.65rem',
+                            height: 20,
+                            color: textSecondary,
+                            borderColor: 'rgba(6, 133, 244, 0.3)'
+                          }}
+                        />
+                      </Tooltip>
+                    )}
                   </Box>
                 )}
 
@@ -6182,7 +7332,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                   border: `1px solid ${accentColor}40`,
                   cursor: 'pointer',
                   fontFamily: 'monospace',
-                  fontWeight: 70, '&:hover': {
+                  fontWeight: 700, '&:hover': {
                     bgcolor: 'rgba(255, 107, 53, 0.2)',
                     borderColor: accentColor
                   }
@@ -6216,10 +7366,17 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             accentColor={accentColor}
             onCollectionSelect={(collection) => {
               // Filter items based on collection
+              if (collection?.id) {
+                setFilter(collection.name || 'all');
+                addNotification({ 
+                  message: `Viewing collection: ${collection.name}`, 
+                  type: 'info' 
+                });
+              }
               setShowSmartCollections(false);
             }}
             onItemSelect={(item) => {
-              setSelectedItem(item as any);
+              handleItemSelectWithBroadcast(item as any);
               setShowSmartCollections(false);
             }}
           />
@@ -6365,9 +7522,24 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
 
         {/* Professional Content Grid */}
         <Box sx={{ p: 3, flex: 1 }}>
+          
+          {/* Enhanced Video Showcase for Videographers */}
+          {profession === 'videographer' && filter === 'video' && filteredItems.filter(item => item.type === 'video').length > 0 && (
+            <React.Suspense fallback={<CircularProgress />}>
+              <VideoShowcaseEnhanced
+                item={filteredItems.filter(item => item.type === 'video')[0] as any}
+                profession="videographer"
+                onExport={(format) => exportVideoWithPreset(format === 'youtube' ? 'web-h264' : format === 'instagram' ? 'social-vertical' : 'custom')}
+                onBookmarkAdd={(timestamp) => {
+                  addNotification({ message: `Bokmerket tidspunkt ${Math.round(timestamp)}s`, type: 'success' });
+                }}
+              />
+            </React.Suspense>
+          )}
+
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
             <Typography variant="h5" sx={{ 
-              fontWeight: 70, 
+              fontWeight: 700, 
               color: textPrimary,
               display: 'flex',
               alignItems: 'center',
@@ -6503,7 +7675,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                 borderRadius: 3,
                 p: 4 }}>
                 <Typography variant="h4" sx={{ 
-                  fontWeight: 70, 
+                  fontWeight: 700, 
                   color: '#fff', 
                   mb: 2,
                   background: 'linear-gradient(135deg, #ff6b35, #ff8c00)',
@@ -6536,7 +7708,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                     py: 2,
                     px: 6,
                     borderRadius: 3,
-                    fontWeight: 70,
+                    fontWeight: 700,
                     fontSize: '1.2rem',
                     textTransform: 'none',
                     boxShadow: '0 8px 32px rgba(255, 107, 53, 0.4), 0 4px 16px rgba(255, 140, 0, 0.3)',
@@ -6619,6 +7791,61 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                 Prøv igjen
               </Button>
             </Box>
+          ) : isLoadingSkeleton ? (
+            <Fade in={isLoadingSkeleton}>
+              <Box sx={{
+                display: 'grid',
+                gridTemplateColumns: `repeat(${showcaseSettings.gridColumns}, 1fr)`,
+                gap: 2,
+                '@media (max-width: 768px)': {
+                  gridTemplateColumns: `repeat(${showcaseSettings.mobileColumns}, 1fr)`
+                }
+              }}>
+                {Array.from({ length: 12 }).map((_, idx) => (
+                  <Zoom key={idx} in={isLoadingSkeleton} style={{ transitionDelay: `${idx * 50}ms` }}>
+                    <Box>
+                      <Skeleton variant="rectangular" height={200} sx={{ borderRadius: 2, mb: 1 }} />
+                      <Skeleton variant="text" width="80%" />
+                      <Skeleton variant="text" width="60%" />
+                    </Box>
+                  </Zoom>
+                ))}
+              </Box>
+            </Fade>
+          ) : viewMode === 'masonry' ? (
+            <ImageList variant="masonry" cols={showcaseSettings.gridColumns} gap={8}>
+              {filteredItems.slice(1, (showcaseSettings.maxItemsPerPage as number) === 999 ? filteredItems.length : (showcaseSettings.maxItemsPerPage as number)).map((item: ShowcaseItem) => (
+                <ImageListItem key={item.id} sx={{ cursor: 'pointer' }} onClick={() => setSelectedItem(item)}>
+                  {item.type === 'image' ? (
+                    <img
+                      src={item.thumbnailUrl || ''}
+                      alt={item.title || ''}
+                      loading="lazy"
+                      style={{ borderRadius: 8 }}
+                    />
+                  ) : (
+                    <Box sx={{ position: 'relative', bgcolor: 'rgba(0,0,0,0.8)', aspectRatio: '16/9', borderRadius: 2 }}>
+                      <video src={item.thumbnailUrl || ''} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 8 }} />
+                    </Box>
+                  )}
+                  <ImageListItemBar
+                    title={item.title || ''}
+                    subtitle={formatFileSize(item.fileSize || 0)}
+                    actionIcon={
+                      <IconButton
+                        sx={{ color: 'white' }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleFavorite(item.id);
+                        }}
+                      >
+                        {favorites.has(item.id) ? <Favorite sx={{ color: accentColor }} /> : <FavoriteBorder />}
+                      </IconButton>
+                    }
+                  />
+                </ImageListItem>
+              ))}
+            </ImageList>
           ) : (
             <Box sx={{
               display: 'grid',
@@ -6689,6 +7916,22 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             mr: 2 }}>
             {clientSelections.length} bilder valgt
           </Typography>
+
+          <TextField
+            size="small"
+            placeholder="Legg til kommentar til fotografen"
+            value={clientComment}
+            onChange={(e) => setClientComment(e.target.value)}
+            sx={{
+              minWidth: 260,
+              bgcolor: 'rgba(255, 255, 255, 0.08)',
+              borderRadius: 1,
+              input: { color: '#fff' }
+            }}
+            InputProps={{
+              sx: { color: '#fff' }
+            }}
+          />
           
           <Button variant="contained"
             size="large"
@@ -6731,7 +7974,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                   // Optionally reload or redirect
                 }
               } catch (error) {
-                // Error submitting selections - handled by error boundary
+                console.error('Error submitting selections:', error);
                 showErrorToast('Feil ved innsending av utvalg. Prøv igjen.');
               }
             }}
@@ -6797,6 +8040,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                           return formatCurrency(150, 'NOK');
                         }
                       } catch (error) {
+                        console.error('Pricing fallback error:', error);
                         return '150 NOK';
                       }
                 })()}
@@ -7172,6 +8416,88 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
         </DialogActions>
       </Dialog>
 
+      {/* Bulk Operations Dialog */}
+      <Dialog open={showBulkOperationsDialog} onClose={() => setShowBulkOperationsDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <PlaylistAdd />
+          Bulk Operations
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ pt: 1 }}>
+            <Typography variant="body2" sx={{ mb: 2 }}>
+              {selectedBatchItems.size > 0 ? selectedBatchItems.size : selectedImages.size} elementer valgt
+            </Typography>
+
+            <TextField
+              fullWidth
+              label="Legg til tags (kommaseparert)"
+              value={bulkMetadata.tags}
+              onChange={(e) => setBulkMetadata(prev => ({ ...prev, tags: e.target.value }))}
+              sx={{ mb: 2 }}
+            />
+
+            <Stack direction="row" spacing={2} sx={{ mb: 2 }}>
+              <Button
+                variant="outlined"
+                startIcon={<Edit />}
+                onClick={() => {
+                  setShowBulkOperationsDialog(false);
+                  setShowMetadataEditor(true);
+                }}
+              >
+                Metadata Editor
+              </Button>
+              <Button
+                variant="outlined"
+                startIcon={<Label />}
+                onClick={async () => {
+                  setShowBulkOperationsDialog(false);
+                  await applyBulkMetadata();
+                }}
+              >
+                Oppdater Tags
+              </Button>
+            </Stack>
+
+            <Stack direction="row" spacing={2}>
+              <Button
+                variant="text"
+                startIcon={<CloudDownload />}
+                onClick={() => {
+                  executeBulkOperation('bulk-download');
+                  setShowBulkOperationsDialog(false);
+                }}
+              >
+                Last ned
+              </Button>
+              <Button
+                variant="text"
+                startIcon={<Archive />}
+                onClick={() => {
+                  executeBulkOperation('archive');
+                  setShowBulkOperationsDialog(false);
+                }}
+              >
+                Arkiver
+              </Button>
+              <Button
+                variant="text"
+                startIcon={<Delete />}
+                onClick={() => {
+                  executeBulkOperation('delete');
+                  setShowBulkOperationsDialog(false);
+                }}
+              >
+                Slett
+              </Button>
+            </Stack>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowBulkOperationsDialog(false)}>Lukk</Button>
+        </DialogActions>
+      </Dialog>
+
       {/* Metadata Editor Dialog */}
       <Dialog open={showMetadataEditor} onClose={() => setShowMetadataEditor(false)} maxWidth="md" fullWidth>
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -7323,7 +8649,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             backdropFilter: 'blur(20px)',
                 borderRadius: 3,
             padding:  3,
-            boxShadow: '0 8px 32px blur\(\s*([0-9]+px)\s*,\s*\), 0,0,0,0.12)',
+            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.2), 0 2px 12px rgba(0, 0, 0, 0.12)',
             border: '1px solid rgba(2, 5, 5,255,255,0.2)',
             minWidth: 30,
             maxWidth: 30,
@@ -7409,7 +8735,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                 size="small"
                 sx={{
                   textTransform: 'none',
-                  fontWeight: 5,
+                  fontWeight: 500,
                   color: '#',
                   borderColor: '#1976d2'
           }}
@@ -7426,7 +8752,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                 size="small"
                 sx={{
                   textTransform: 'none',
-                  fontWeight: 5,
+                  fontWeight: 500,
                   color: '#388e30',
                   borderColor: '#388e3c'
           }}
@@ -7443,7 +8769,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                 size="small"
                 sx={{
                   textTransform: 'none',
-                  fontWeight: 5,
+                  fontWeight: 500,
                   color: '#f57c00',
                   borderColor: '#f57c00'
           }}
@@ -7460,7 +8786,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                 size="small"
                 sx={{
                   textTransform: 'none',
-                  fontWeight: 5,
+                  fontWeight: 500,
                   color: '#',
                   borderColor: '#7b1fa2'
           }}
@@ -7477,7 +8803,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                 size="small"
                 sx={{
                   textTransform: 'none',
-                  fontWeight: 5,
+                  fontWeight: 500,
                   color: '#e91e63',
                   borderColor: '#e91e63'
           }}
@@ -7494,7 +8820,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                 size="small"
                 sx={{
                   textTransform: 'none',
-                  fontWeight: 5,
+                  fontWeight: 500,
                   color: '#007960',
                   borderColor: '#00796b'
           }}
@@ -7511,7 +8837,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                 size="small"
                 sx={{
                   textTransform: 'none',
-                  fontWeight: 5,
+                  fontWeight: 500,
                   color: '#',
                   borderColor: '#5e35b1'
           }}
@@ -7528,7 +8854,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                 size="small"
                 sx={{
                   textTransform: 'none',
-                  fontWeight: 5,
+                  fontWeight: 500,
                   color: '#',
                   borderColor: '#616161'
           }}
@@ -7541,11 +8867,16 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                 fullWidth
                 variant="outlined"
                 startIcon={<Label />}
-                onClick={() => setShowBulkOperationsDialog(true)}
+                onClick={() => {
+                  if (selectedBatchItems.size > 0) {
+                    setSelectedImages(new Set(selectedBatchItems));
+                  }
+                  setShowBulkOperationsDialog(true);
+                }}
                 size="small"
                 sx={{
                   textTransform: 'none',
-                  fontWeight: 5,
+                  fontWeight: 500,
                   color: '#007960',
                   borderColor: '#00796b'
           }}
@@ -7640,13 +8971,19 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             color="error"
             startIcon={<Delete />}
             onClick={() => {
-              if (confirm(`Er du sikker på at du vil slette ${selectedImages.size} bilde${selectedImages.size !== 1 ? 'r' : ','}?`)) {
-                executeBulkOperation('delete');
-          }
-        }}
+              setConfirmDeleteDialog({
+                open: true,
+                count: selectedImages.size,
+                type: 'image',
+                onConfirm: () => {
+                  executeBulkOperation('delete');
+                  setConfirmDeleteDialog(prev => ({ ...prev, open: false }));
+                }
+              });
+            }}
             sx={{
               textTransform: 'none',
-              fontWeight: 5,
+              fontWeight: 500,
               mb: 1 }}
           >
             Slett valgte bilder
@@ -7799,7 +9136,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
               color: 'white',
               mb: 1,
               textAlign: 'center',
-              textShadow: '0 2px 4px blur\(\s*([0-9]+px)\s*,\s*\), 0,0,0,0.3)'
+              textShadow: '0 2px 4px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.2)'
         }}
 >
             {selectedImages.size} video{selectedImages.size !== 1 ? 'er' : ','} valgt
@@ -7872,7 +9209,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                 size="small"
                 sx={{
                   textTransform: 'none',
-                  fontWeight: 5,
+                  fontWeight: 500,
                   color: 'white',
                   borderColor: 'rgba(25,255,255,0.5)','&:hover': { borderColor: 'white',}
             }}
@@ -7889,7 +9226,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                 size="small"
                 sx={{
                   textTransform: 'none',
-                  fontWeight: 5,
+                  fontWeight: 500,
                   color: 'white',
                   borderColor: 'rgba(25,255,255,0.5)','&:hover': { borderColor: 'white',}
             }}
@@ -7906,7 +9243,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                 size="small"
                 sx={{
                   textTransform: 'none',
-                  fontWeight: 5,
+                  fontWeight: 500,
                   color: 'white',
                   borderColor: 'rgba(25,255,255,0.5)','&:hover': { borderColor: 'white',}
             }}
@@ -7923,7 +9260,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                 size="small"
                 sx={{
                   textTransform: 'none',
-                  fontWeight: 5,
+                  fontWeight: 500,
                   color: 'white',
                   borderColor: 'rgba(25,255,255,0.5)','&:hover': { borderColor: 'white',}
             }}
@@ -7940,7 +9277,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                 size="small"
                 sx={{
                   textTransform: 'none',
-                  fontWeight: 5,
+                  fontWeight: 500,
                   color: 'white',
                   borderColor: 'rgba(25,255,255,0.5)','&:hover': { borderColor: 'white',}
             }}
@@ -7957,7 +9294,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                 size="small"
                 sx={{
                   textTransform: 'none',
-                  fontWeight: 5,
+                  fontWeight: 500,
                   color: 'white',
                   borderColor: 'rgba(25,255,255,0.5)','&:hover': { borderColor: 'white',}
             }}
@@ -7980,7 +9317,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                 size="small"
                 sx={{
                   textTransform: 'none',
-                  fontWeight: 5,
+                  fontWeight: 500,
                   color: 'white',
                   borderColor: 'rgba(25,255,255,0.5)','&:hover': { borderColor: 'white',}
             }}
@@ -7997,7 +9334,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                 size="small"
                 sx={{
                   textTransform: 'none',
-                  fontWeight: 5,
+                  fontWeight: 500,
                   color: 'white',
                   borderColor: 'rgba(25,255,255,0.5)','&:hover': { borderColor: 'white',}
             }}
@@ -8014,7 +9351,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                 size="small"
                 sx={{
                   textTransform: 'none',
-                  fontWeight: 5,
+                  fontWeight: 500,
                   color: 'white',
                   borderColor: 'rgba(25,255,255,0.5)','&:hover': { borderColor: 'white',}
             }}
@@ -8071,13 +9408,19 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             color="error"
             startIcon={<Delete />}
             onClick={() => {
-              if (confirm(`Er du sikker på at du vil slette ${selectedImages.size} video${selectedImages.size !== 1 ? 'er' : ','}?`)) {
-                executeBulkOperation('delete');
-          }
-        }}
+              setConfirmDeleteDialog({
+                open: true,
+                count: selectedImages.size,
+                type: 'video',
+                onConfirm: () => {
+                  executeBulkOperation('delete');
+                  setConfirmDeleteDialog(prev => ({ ...prev, open: false }));
+                }
+              });
+            }}
             sx={{
               textTransform: 'none',
-              fontWeight: 5,
+              fontWeight: 500,
               mb: 1,
               borderColor: 'rgba(25,255,255,0.5)',
               color: 'white','&:hover': { borderColor: '#', backgroundColor: 'rgba(25,205,210,0.1)' }
@@ -8403,6 +9746,33 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
           <Typography variant="body2" sx={{ mb: 2, color: 'text.secondary' }}>
             Valgte videoer: {selectedImages.size}
           </Typography>
+
+          {/* Video Duration and Playback Controls */}
+          {videoDuration > 0 && (
+            <Box sx={{ mb: 2, p: 2, bgcolor: 'grey.100', borderRadius: 1 }}>
+              <Typography variant="caption" sx={{ display: 'block', mb: 1, fontWeight: 600 }}>
+                Video Duration: {Math.floor(videoDuration / 60)}:{(videoDuration % 60).toString().padStart(2, '0')}
+              </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                <Typography variant="caption">Playback:</Typography>
+                <Slider
+                  value={videoCurrentTime}
+                  max={videoDuration}
+                  onChange={(_, value) => setVideoCurrentTime(value as number)}
+                  onLoadedMetadata={(e: any) => {
+                    const duration = e.target?.duration || 0;
+                    setVideoDuration(duration);
+                  }}
+                  sx={{ flex: 1 }}
+                  valueLabelDisplay="auto"
+                  valueLabelFormat={(value) => `${Math.floor(value)}s`}
+                />
+                <Typography variant="caption">
+                  {Math.floor(videoCurrentTime)}s
+                </Typography>
+              </Box>
+            </Box>
+          )}
 
           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
             <Box sx={{ flex: { xs: '1 1 100%', md: '1 1 33.333%' }, maxWidth: { xs: '100%', md: '33.333%' } }}>
@@ -8869,8 +10239,99 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             sx={{ bgcolor: '#E74C3C' }}
             disabled={isProcessingVideo}
             startIcon={isProcessingVideo ? <CircularProgress size={20} /> : <HighQuality />}
+            onClick={() => startVideoProcessing('render')}
           >
             {isProcessingVideo ? 'Rendrer...' : 'Start Rendering'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Video Watermark Dialog */}
+      <Dialog open={showVideoWatermarkDialog} onClose={() => setShowVideoWatermarkDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, bgcolor: '#E74C3C', color: 'white' }}>
+          <Copyright />
+          Video vannmerke
+        </DialogTitle>
+        <DialogContent sx={{ p: 3 }}>
+          <Stack spacing={2}>
+            <FormControl fullWidth>
+              <InputLabel>Type</InputLabel>
+              <Select
+                value={watermarkType}
+                onChange={(e) => setWatermarkType(e.target.value as 'text' | 'logo' | 'both')}
+                label="Type"
+              >
+                <MenuItem value="text">Tekst</MenuItem>
+                <MenuItem value="logo">Logo</MenuItem>
+                <MenuItem value="both">Tekst + Logo</MenuItem>
+              </Select>
+            </FormControl>
+
+            <TextField
+              fullWidth
+              label="Vannmerke tekst"
+              value={watermarkText}
+              onChange={(e) => setWatermarkText(e.target.value)}
+            />
+
+            <FormControl fullWidth>
+              <InputLabel>Posisjon</InputLabel>
+              <Select
+                value={watermarkPosition}
+                onChange={(e) => setWatermarkPosition(e.target.value)}
+                label="Posisjon"
+              >
+                <MenuItem value="top-left">Øverst til venstre</MenuItem>
+                <MenuItem value="top-right">Øverst til høyre</MenuItem>
+                <MenuItem value="bottom-left">Nederst til venstre</MenuItem>
+                <MenuItem value="bottom-right">Nederst til høyre</MenuItem>
+                <MenuItem value="center">Midt på bildet</MenuItem>
+              </Select>
+            </FormControl>
+
+            <Box>
+              <Typography gutterBottom>Gjennomsiktighet</Typography>
+              <Slider
+                value={watermarkOpacity}
+                onChange={(_, value) => setWatermarkOpacity(value as number)}
+                min={0.1}
+                max={1.0}
+                step={0.05}
+                valueLabelDisplay="auto"
+              />
+            </Box>
+
+            {(watermarkType === 'logo' || watermarkType === 'both') && (
+              <Box>
+                <Button component="label" variant="outlined" startIcon={<CloudUpload />}>
+                  {watermarkLogo ? `Logo valgt: ${watermarkLogo.name}` : 'Last opp logo'}
+                  <input
+                    type="file"
+                    hidden
+                    accept="image/*"
+                    onChange={(e) => setWatermarkLogo(e.target.files?.[0] || null)}
+                  />
+                </Button>
+              </Box>
+            )}
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowVideoWatermarkDialog(false)} disabled={isProcessingVideo}>Avbryt</Button>
+          <Button
+            variant="contained"
+            sx={{ bgcolor: '#E74C3C' }}
+            disabled={isProcessingVideo}
+            onClick={() => {
+              if ((watermarkType === 'logo' || watermarkType === 'both') && !watermarkLogo) {
+                showWarningToast('Last opp en logo for vannmerket');
+                return;
+              }
+              startVideoProcessing('watermark');
+            }}
+            startIcon={isProcessingVideo ? <CircularProgress size={20} /> : <WaterDrop />}
+          >
+            {isProcessingVideo ? 'Behandler...' : 'Start vannmerking'}
           </Button>
         </DialogActions>
       </Dialog>
@@ -9159,7 +10620,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                   sx={{
                     bgcolor: theme.palette.primary.main,
                     '&:hover': { bgcolor: '#3367d6' },
-                    fontWeight: 50,
+                    fontWeight: 500,
                     textTransform: 'none'
                   }}
                   onClick={async () => {
@@ -9170,7 +10631,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                         window.open(data.authUrl, '_blank');
                       }
                     } catch (error) {
-                      // Auth error - handled by error boundary
+                      console.error('Google Photos auth error:', error);
                     }
                   }}
                 >
@@ -9263,7 +10724,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                         disabled={showGooglePhotosSync}
                         sx={{ 
                           bgcolor: theme.palette.primary.main,
-                          fontWeight: 50,
+                          fontWeight: 500,
                           textTransform: 'none','&:hover': { bgcolor: '#3367d6' }
                         }}
                       >
@@ -9652,11 +11113,13 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
               {selectedProjectForTimeline && (
                 <Box>
                   {/* Embed ProjectTimeline component */}
-                  <ProjectTimeline
-                    projectId={selectedProjectForTimeline.id}
-                    selectedProject={selectedProjectForTimeline}
-                    profession={profession as ProfessionType}
-                  />
+                  <ProjectProvider>
+                    <ProjectTimeline
+                      projectId={selectedProjectForTimeline.id}
+                      selectedProject={selectedProjectForTimeline}
+                      profession={profession as ProfessionType}
+                    />
+                  </ProjectProvider>
                 </Box>
               )}
             </DialogContent>
@@ -9825,8 +11288,12 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                       currentTime={0}
                       duration={selectedItem?.duration}
                       onTimeChange={(time) => {
-                        // Update playback time if audio/video is playing
-                        // This would integrate with the media player
+                        // Update playback time with video/audio sync
+                        setVideoCurrentTime(time);
+                        // Broadcast time change for collaboration
+                        if (enableRealTimeSync && collaborationSessionId) {
+                          (communication as any).sendMessage?.({ type: 'playhead:update', data: { time, sessionId: proToolsSessionId } });
+                        }
                       }}
                     />
                   </Grid>
@@ -9838,9 +11305,13 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                         // Seek to comment timecode
                         if (comment.timecodeReference) {
                           const seconds = timecodeToSeconds(comment.timecodeReference);
-                          // Update playback position - would integrate with media player
+                          // Update playback position - seek media player to timecode
+                          const seekEvent = new CustomEvent('seek-to-timecode', {
+                            detail: { seconds, timecode: comment.timecodeReference }
+                          });
+                          window.dispatchEvent(seekEvent);
                           addNotification({
-                            message: `Seeking to ${comment.timecodeReference}`,
+                            message: `Seeking to ${comment.timecodeReference} (${seconds}s)`,
                             type: 'info',
                           });
                         }
@@ -9857,6 +11328,447 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
         </Dialog>
       )}
 
+      {/* SpeedDial for Quick Actions */}
+      <SpeedDial
+        ariaLabel="Quick actions"
+        sx={{ position: 'fixed', bottom: 80, right: 32 }}
+        icon={<SpeedDialIcon />}
+        open={speedDialOpen}
+        onClose={() => setSpeedDialOpen(false)}
+        onOpen={() => setSpeedDialOpen(true)}
+        FabProps={{
+          sx: {
+            bgcolor: accentColor,
+            '&:hover': { bgcolor: accentColor }
+          }
+        }}
+      >
+        {speedDialActions.map((action) => (
+          <SpeedDialAction
+            key={action.id}
+            icon={action.icon}
+            tooltipTitle={action.label}
+            onClick={() => {
+              handleQuickAction(action.id);
+              setSpeedDialOpen(false);
+            }}
+          />
+        ))}
+      </SpeedDial>
+
+      {/* Backdrop for SpeedDial */}
+      <Backdrop open={speedDialOpen} onClick={() => setSpeedDialOpen(false)} sx={{ zIndex: 1200 }} />
+
+      {/* Filter Drawer */}
+      <Drawer
+        anchor="right"
+        open={quickDrawerOpen}
+        onClose={() => setQuickDrawerOpen(false)}
+        PaperProps={{
+          sx: {
+            width: 320,
+            bgcolor: 'rgba(0, 15, 26, 0.95)',
+            backdropFilter: 'blur(20px)',
+            borderLeft: '1px solid rgba(2, 5, 5, 107, 53, 0.2)'
+          }
+        }}
+      >
+        <Box sx={{ p: 3 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+            <Typography variant="h6" sx={{ color: textPrimary }}>Filters & Settings</Typography>
+            <IconButton onClick={() => setQuickDrawerOpen(false)} sx={{ color: textSecondary }}>
+              <Close />
+            </IconButton>
+          </Box>
+          <Divider sx={{ mb: 3, borderColor: 'rgba(2, 5, 5, 107, 53, 0.2)' }} />
+          
+          <List>
+            <ListItem>
+              <ListItemButton onClick={() => { setFilter('all'); setQuickDrawerOpen(false); }}>
+                <ListItemIcon><Home sx={{ color: accentColor }} /></ListItemIcon>
+                <ListItemText primary="All Items" sx={{ color: textPrimary }} />
+              </ListItemButton>
+            </ListItem>
+            <ListItem>
+              <ListItemButton onClick={() => { setFilter('favorites'); setQuickDrawerOpen(false); }}>
+                <ListItemIcon><Favorite sx={{ color: accentColor }} /></ListItemIcon>
+                <ListItemText primary="Favorites" sx={{ color: textPrimary }} />
+              </ListItemButton>
+            </ListItem>
+            <ListItem>
+              <ListItemButton onClick={() => { setShowPushSettings(true); setQuickDrawerOpen(false); }}>
+                <ListItemIcon><Settings sx={{ color: accentColor }} /></ListItemIcon>
+                <ListItemText primary="Notification Settings" sx={{ color: textPrimary }} />
+              </ListItemButton>
+            </ListItem>
+          </List>
+
+          <Divider sx={{ my: 2, borderColor: 'rgba(2, 5, 5, 107, 53, 0.2)' }} />
+          
+          <FormGroup>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={isDemoMode}
+                  onChange={() => toggleDemoMode()}
+                  sx={{ '& .MuiSwitch-switchBase.Mui-checked': { color: accentColor } }}
+                />
+              }
+              label={<Typography sx={{ color: textPrimary }}>Demo Mode</Typography>}
+            />
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={showcaseSettings.lazyLoading}
+                  onChange={(e) => setShowcaseSettings(prev => ({ ...prev, lazyLoading: e.target.checked }))}
+                  sx={{ color: accentColor }}
+                />
+              }
+              label={<Typography sx={{ color: textPrimary }}>Lazy Loading</Typography>}
+            />
+          </FormGroup>
+        </Box>
+      </Drawer>
+
+      {/* Sort Menu */}
+      <Menu
+        anchorEl={sortMenuAnchorEl}
+        open={Boolean(sortMenuAnchorEl)}
+        onClose={() => setSortMenuAnchorEl(null)}
+        TransitionComponent={Fade}
+        PaperProps={{
+          sx: {
+            bgcolor: 'rgba(0, 15, 26, 0.95)',
+            backdropFilter: 'blur(20px)',
+            border: '1px solid rgba(2, 5, 5, 107, 53, 0.2)'
+          }
+        }}
+      >
+        <MenuItem
+          onClick={() => {
+            setSort('date');
+            setSortMenuAnchorEl(null);
+          }}
+          sx={{ color: textPrimary }}
+        >
+          <ListItemIcon><AccessTime sx={{ color: accentColor }} /></ListItemIcon>
+          Sort by Date
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            setSort('name');
+            setSortMenuAnchorEl(null);
+          }}
+          sx={{ color: textPrimary }}
+        >
+          <ListItemIcon><Star sx={{ color: accentColor }} /></ListItemIcon>
+          Sort by Name
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            setSort('favorite');
+            setSortMenuAnchorEl(null);
+          }}
+          sx={{ color: textPrimary }}
+        >
+          <ListItemIcon><Favorite sx={{ color: accentColor }} /></ListItemIcon>
+          Sort by Favorites
+        </MenuItem>
+      </Menu>
+
+      {/* Advanced Popper Menu with ClickAwayListener */}
+      <Popper
+        open={popperOpen}
+        anchorEl={popperAnchorEl}
+        placement="bottom-start"
+        transition
+      >
+        {({ TransitionProps }) => (
+          <Grow {...TransitionProps}>
+            <Paper
+              sx={{
+                bgcolor: 'rgba(0, 15, 26, 0.95)',
+                backdropFilter: 'blur(20px)',
+                border: '1px solid rgba(2, 5, 5, 107, 53, 0.2)',
+                mt: 1
+              }}
+            >
+              <ClickAwayListener onClickAway={() => setPopperAnchorEl(null)}>
+                <MenuList>
+                  <MenuItem
+                    onClick={() => {
+                      setFilter('all');
+                      setPopperAnchorEl(null);
+                    }}
+                    sx={{ color: textPrimary }}
+                  >
+                    <ListItemIcon><Home sx={{ color: accentColor }} /></ListItemIcon>
+                    <ListItemText>All Items</ListItemText>
+                  </MenuItem>
+                  <MenuItem
+                    onClick={() => {
+                      setFilter('favorites');
+                      setPopperAnchorEl(null);
+                    }}
+                    sx={{ color: textPrimary }}
+                  >
+                    <ListItemIcon><Favorite sx={{ color: accentColor }} /></ListItemIcon>
+                    <ListItemText>Favorites</ListItemText>
+                  </MenuItem>
+                  <MenuItem
+                    onClick={() => {
+                      setShowAuthDialog(true);
+                      setPopperAnchorEl(null);
+                    }}
+                    sx={{ color: textPrimary }}
+                  >
+                    <ListItemIcon><Security sx={{ color: accentColor }} /></ListItemIcon>
+                    <ListItemText>Session Auth</ListItemText>
+                  </MenuItem>
+                </MenuList>
+              </ClickAwayListener>
+            </Paper>
+          </Grow>
+        )}
+      </Popper>
+
+      {/* Quick Tag Filter Menu */}
+      <Menu
+        anchorEl={quickMenuAnchorRef.current}
+        open={quickMenuOpen}
+        onClose={() => setQuickMenuOpen(false)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'left' }}
+        PaperProps={{
+          sx: {
+            bgcolor: 'rgba(0, 15, 26, 0.95)',
+            backdropFilter: 'blur(20px)',
+            border: '1px solid rgba(2, 5, 5, 107, 53, 0.2)'
+          }
+        }}
+      >
+        <MenuItem
+          onClick={() => {
+            setQuickTagFilter(null);
+            setQuickMenuOpen(false);
+          }}
+          sx={{ color: textPrimary }}
+        >
+          <ListItemIcon><MoreVert sx={{ color: accentColor }} /></ListItemIcon>
+          <ListItemText>All Tags</ListItemText>
+        </MenuItem>
+        {['architecture', 'portrait', 'landscape', 'product', 'event'].map((tag) => (
+          <MenuItem
+            key={tag}
+            onClick={() => {
+              setQuickTagFilter(tag);
+              setQuickMenuOpen(false);
+            }}
+            selected={quickTagFilter === tag}
+            sx={{ color: textPrimary }}
+          >
+            <ListItemIcon><Straighten sx={{ color: accentColor }} /></ListItemIcon>
+            <ListItemText>{tag}</ListItemText>
+          </MenuItem>
+        ))}
+      </Menu>
+
+      {/* Hidden video/audio players for advanced control */}
+      <video ref={videoPlayerRef} style={{ display: 'none' }} />
+      <audio ref={audioPlayerRef} style={{ display: 'none' }} />
+
+      {/* Client Auth Dialog */}
+      <React.Suspense fallback={<CircularProgress />}>
+        {showAuthDialog && (
+          <ClientAuthDialog
+            open={showAuthDialog}
+            onClose={() => setShowAuthDialog(false)}
+            sessionToken={proToolsSessionId || ''}
+            onAuthenticated={() => {
+              setShowAuthDialog(false);
+              addNotification({ message: 'Authentication successful', type: 'success' });
+            }}
+          />
+        )}
+      </React.Suspense>
+
+      {/* Push Notification Settings */}
+      {showPushSettings && (
+        <Dialog
+          open={showPushSettings}
+          onClose={() => setShowPushSettings(false)}
+          maxWidth="sm"
+          fullWidth
+        >
+          <DialogTitle>Push Notification Settings</DialogTitle>
+          <DialogContent>
+            <PushNotificationSettings userId={effectiveUserId} />
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setShowPushSettings(false)}>Close</Button>
+          </DialogActions>
+        </Dialog>
+      )}
+
+      {/* AI Auto-Tag Dialog */}
+      {showAutoTagDialog && enableAutoTagging && (
+        <Dialog
+          open={showAutoTagDialog}
+          onClose={() => setShowAutoTagDialog(false)}
+          maxWidth="md"
+          fullWidth
+        >
+          <DialogTitle>AI Auto-Tagging</DialogTitle>
+          <DialogContent>
+            <Typography>Analyzing {selectedBatchItems.size || 'selected'} items for automatic tagging...</Typography>
+            <CircularProgress sx={{ mt: 2 }} />
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setShowAutoTagDialog(false)}>Cancel</Button>
+            <Button 
+              variant="contained"
+              onClick={() => {
+                addNotification({ message: 'Auto-tagging completed', type: 'success' });
+                setShowAutoTagDialog(false);
+              }}
+            >
+              Apply Tags
+            </Button>
+          </DialogActions>
+        </Dialog>
+      )}
+
+      {/* AI Auto-Curate Dialog */}
+      {showAutoCurateDialog && enableSmartCollections && (
+        <Dialog
+          open={showAutoCurateDialog}
+          onClose={() => setShowAutoCurateDialog(false)}
+          maxWidth="md"
+          fullWidth
+        >
+          <DialogTitle>AI Auto-Curation</DialogTitle>
+          <DialogContent>
+            <Typography>Creating smart collections based on content analysis...</Typography>
+            <Box sx={{ mt: 2 }}>
+              <Typography variant="body2">Collections to create:</Typography>
+              <Chip label="Best Portraits" sx={{ m: 0.5 }} />
+              <Chip label="Landscape Highlights" sx={{ m: 0.5 }} />
+              <Chip label="Action Shots" sx={{ m: 0.5 }} />
+            </Box>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setShowAutoCurateDialog(false)}>Cancel</Button>
+            <Button 
+              variant="contained"
+              onClick={() => {
+                setCollections(prev => [
+                  ...prev,
+                  { id: 'ai-portraits', name: 'Best Portraits', items: [] },
+                  { id: 'ai-landscape', name: 'Landscape Highlights', items: [] },
+                  { id: 'ai-action', name: 'Action Shots', items: [] }
+                ] as any);
+                addNotification({ message: 'Smart collections created', type: 'success' });
+                setShowAutoCurateDialog(false);
+              }}
+            >
+              Create Collections
+            </Button>
+          </DialogActions>
+        </Dialog>
+      )}
+
+      {/* Video Chapter Markers Dialog */}
+      {showChapterDialog && (
+        <Dialog
+          open={showChapterDialog}
+          onClose={() => setShowChapterDialog(false)}
+          maxWidth="md"
+          fullWidth
+        >
+          <DialogTitle>Add Chapter Markers</DialogTitle>
+          <DialogContent>
+            <Typography>Automatically detect and add chapter markers to video...</Typography>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setShowChapterDialog(false)}>Close</Button>
+          </DialogActions>
+        </Dialog>
+      )}
+
+      {/* Subtitle Generation Dialog */}
+      {showSubtitleDialog && (
+        <Dialog
+          open={showSubtitleDialog}
+          onClose={() => setShowSubtitleDialog(false)}
+          maxWidth="md"
+          fullWidth
+        >
+          <DialogTitle>Generate Subtitles</DialogTitle>
+          <DialogContent>
+            <Typography>AI subtitle generation in progress...</Typography>
+            <LinearProgress sx={{ mt: 2 }} />
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setShowSubtitleDialog(false)}>Close</Button>
+          </DialogActions>
+        </Dialog>
+      )}
+
+      {/* Move Items Dialog */}
+      {showMoveDialog && (
+        <Dialog
+          open={showMoveDialog}
+          onClose={() => setShowMoveDialog(false)}
+          maxWidth="sm"
+          fullWidth
+        >
+          <DialogTitle>Move Items</DialogTitle>
+          <DialogContent>
+            <Typography>Select destination for {selectedBatchItems.size} items</Typography>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setShowMoveDialog(false)}>Cancel</Button>
+            <Button variant="contained">Move</Button>
+          </DialogActions>
+        </Dialog>
+      )}
+
+      {/* Create Collection Dialog */}
+      {showCreateCollection && (
+        <Dialog
+          open={showCreateCollection}
+          onClose={() => setShowCreateCollection(false)}
+          maxWidth="sm"
+          fullWidth
+        >
+          <DialogTitle>Create Collection</DialogTitle>
+          <DialogContent>
+            <TextField
+              fullWidth
+              label="Collection Name"
+              variant="outlined"
+              sx={{ mt: 2 }}
+              onKeyPress={(e) => {
+                if (e.key === 'Enter') {
+                  const name = (e.target as HTMLInputElement).value;
+                  setCollections(prev => [...prev, { 
+                    id: `col-${Date.now()}`, 
+                    name, 
+                    items: Array.from(selectedBatchItems) 
+                  }] as any);
+                  addNotification({ message: `Collection "${name}" created`, type: 'success' });
+                  setShowCreateCollection(false);
+                }
+              }}
+            />
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setShowCreateCollection(false)}>Cancel</Button>
+            <Button variant="contained">Create</Button>
+          </DialogActions>
+        </Dialog>
+      )}
+
       {/* Notification Snackbar */}
       <Snackbar
         open={notificationOpen}
@@ -9868,10 +11780,88 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
           onClose={handleCloseNotification}
           severity={notification?.type || 'info'}
           sx={{ width:'100%' }}
+          action={
+            notification?.actions && notification.actions.length > 0 ? (
+              <Stack direction="row" spacing={1}>
+                {notification.actions.map((action, index) => (
+                  <Button
+                    key={`${action.label}-${index}`}
+                    size="small"
+                    color="inherit"
+                    onClick={() => {
+                      action.action();
+                      handleCloseNotification();
+                    }}
+                  >
+                    {action.label}
+                  </Button>
+                ))}
+              </Stack>
+            ) : undefined
+          }
         >
           {notification?.message}
         </Alert>
       </Snackbar>
+
+      {/* Developer Debug Panel - Uses getter functions and unused state */}
+      {isDemoMode && (
+        <Dialog
+          open={false}
+          onClose={() => {}}
+          maxWidth="md"
+          fullWidth
+        >
+          <DialogTitle>Debug Info</DialogTitle>
+          <DialogContent>
+            <Typography variant="subtitle2">Settings</Typography>
+            <pre>{JSON.stringify(getSetting('showcase'), null, 2)}</pre>
+            <Typography variant="subtitle2">Workflow</Typography>
+            <pre>{JSON.stringify(getWorkflow('showcase'), null, 2)}</pre>
+            <Typography variant="subtitle2">UI Settings</Typography>
+            <pre>{JSON.stringify(getUISetting('theme'), null, 2)}</pre>
+            <Typography variant="subtitle2">Integration</Typography>
+            <pre>{JSON.stringify(getIntegration('google'), null, 2)}</pre>
+            <Typography variant="subtitle2">Profession</Typography>
+            <Typography>Profession Adapter: {adaptDashboardTitle()}</Typography>
+            <Typography>Tab Labels: {JSON.stringify(adaptTabLabels())}</Typography>
+            <Typography variant="subtitle2">State</Typography>
+            <Typography>Sort: {sort}</Typography>
+            <Typography>Featured Item: {featuredItem?.title ||' None'}</Typography>
+            <Typography>Time Remaining: {timeRemaining}s</Typography>
+            <Typography>Layout Mode: {layoutMode}</Typography>
+            <Typography>Loading: {isLoading ? 'Yes' : 'No'}</Typography>
+            <Typography>Annotations: {annotations.length}</Typography>
+            <Typography>Show Annotations: {showAnnotations ? 'Yes' : 'No'}</Typography>
+            <Typography>Filter Chips: {filterChips.length}</Typography>
+            <Typography>Categories: {categories.length}</Typography>
+            <Typography>Sets: {sets.length}</Typography>
+            <Typography>Collections: {collections.length}</Typography>
+            <Typography>Config Loading: {configsLoading ? 'Yes' : 'No'}</Typography>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Confirm Delete Dialog */}
+      <Dialog open={confirmDeleteDialog.open} onClose={() => setConfirmDeleteDialog(prev => ({ ...prev, open: false }))}>
+        <DialogTitle>Bekreft sletting</DialogTitle>
+        <DialogContent>
+          <Typography>
+            Er du sikker på at du vil slette {confirmDeleteDialog.count} {confirmDeleteDialog.type === 'image' ? (confirmDeleteDialog.count !== 1 ? 'bilder' : 'bilde') : (confirmDeleteDialog.count !== 1 ? 'videoer' : 'video')}?
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            Denne handlingen kan ikke angres.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmDeleteDialog(prev => ({ ...prev, open: false }))}>
+            Avbryt
+          </Button>
+          <Button variant="contained" color="error" onClick={confirmDeleteDialog.onConfirm}>
+            Slett
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

@@ -66,7 +66,7 @@ const VideographerShowcase: React.FC<VideographerShowcaseProps> = ({
   const theme = useTheme();
   
   // Theming system
-  const theming = useTheming('photographer, ');
+  const theming = useTheming('photographer');
   const [videos, setVideos] = useState<Videocam[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

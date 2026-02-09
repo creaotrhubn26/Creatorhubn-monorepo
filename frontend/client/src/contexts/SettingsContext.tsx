@@ -760,8 +760,30 @@ export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }
 export const useSettings = (): SettingsContextType => {
   const context = useContext(SettingsContext);
   if (context === undefined) {
-    throw new Error('useSettings must be used within a SettingsProvider');
-}
+    // Return a safe default context when used outside of SettingsProvider
+    // This allows components to work without being wrapped in a provider
+    console.warn('useSettings: Component using settings outside of SettingsProvider. Using defaults.');
+    return {
+      settings: defaultSettings,
+      setSettings: () => {},
+      updateSetting: () => {},
+      getSetting: (category, key) => (defaultSettings as any)[category]?.[key],
+      resetSettings: () => {},
+      resetCategory: () => {},
+      saveSettings: async () => {},
+      loadSettings: async () => {},
+      exportSettings: async () => JSON.stringify(defaultSettings),
+      importSettings: async () => {},
+      validateSettings: () => ({ isValid: true, errors: [] }),
+      isLoading: false,
+      isDirty: false,
+      lastSaved: null,
+      error: null,
+      getDefaultSettings: () => defaultSettings,
+      getProfessionDefaults: () => ({}),
+      mergeWithDefaults: (settings) => ({ ...defaultSettings, ...settings }) as UserSettings,
+    };
+  }
   return context;
 };
 

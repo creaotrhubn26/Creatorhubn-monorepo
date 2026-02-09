@@ -13,15 +13,15 @@ import {
 export interface UseResponsiveDesignOptions {
   config?: Partial<ResponsiveConfig>;
   onBreakpointChanged?: (data: { breakpoint: string }) => void;
-  onOrientationChanged?: (data: { orientation: 'portrait' | 'landscape',}) => void;
+  onOrientationChanged?: (data: { orientation: 'portrait' | 'landscape' }) => void;
   onViewportChanged?: (data: { viewport: { width: number; height: number; scale: number } }) => void;
-  onDeviceTypeChanged?: (data: { deviceType: 'mobile' | 'tablet' | 'desktop' | 'unknown',}) => void;
+  onDeviceTypeChanged?: (data: { deviceType: 'mobile' | 'tablet' | 'desktop' | 'unknown' }) => void;
   onTouchSupportChanged?: (data: { touchSupport: boolean }) => void;
-  onAccessibilityMetricsChanged?: (data: { metrics: ResponsiveState['accessibilityMetrics', ],}) => void;
+  onAccessibilityMetricsChanged?: (data: { metrics: ResponsiveState['accessibilityMetrics'] }) => void;
   onElementResized?: (data: { element: Element; size: DOMRectReadOnly }) => void;
   onElementVisible?: (data: { element: Element }) => void;
   onError?: (error: string) => void;
-  onInitialized?: () => void
+  onInitialized?: () => void;
 }
 
 export interface UseResponsiveDesignReturn {
@@ -85,8 +85,8 @@ export const useResponsiveDesign = (options: UseResponsiveDesignOptions = {}): U
     currentBreakpoint: 'xs',
     currentOrientation: 'portrait',
     currentViewport: {
-      width:, 0,
-      height:  0,
+      width: 0,
+      height: 0,
       scale: 1
 },
     deviceType: 'unknown',
@@ -94,14 +94,14 @@ export const useResponsiveDesign = (options: UseResponsiveDesignOptions = {}): U
     orientationSupport: false,
     viewportSupport: false,
     performanceMetrics: {
-      layoutShift:, 0,
+      layoutShift: 0,
       firstContentfulPaint:  0,
       largestContentfulPaint:  0,
       firstInputDelay:  0,
       cumulativeLayoutShift: 0
 },
     accessibilityMetrics: {
-      colorContrast:, 0,
+      colorContrast: 0,
       textSize:  16,
       focusVisibility: false,
       keyboardNavigation: false,
@@ -144,7 +144,7 @@ export const useResponsiveDesign = (options: UseResponsiveDesignOptions = {}): U
     }
   };
 
-    const handleDeviceTypeChanged = (data: { deviceType: 'mobile' | 'tablet' | 'desktop' | 'unknown',}) => {
+    const handleDeviceTypeChanged = (data: { deviceType: 'mobile' | 'tablet' | 'desktop' | 'unknown' }) => {
       if (onDeviceTypeChanged) {
         onDeviceTypeChanged(data);
     }
@@ -156,7 +156,7 @@ export const useResponsiveDesign = (options: UseResponsiveDesignOptions = {}): U
     }
   };
 
-    const handleAccessibilityMetricsChanged = (data: { metrics: ResponsiveState['accessibilityMetrics', ],}) => {
+    const handleAccessibilityMetricsChanged = (data: { metrics: ResponsiveState['accessibilityMetrics'] }) => {
       if (onAccessibilityMetricsChanged) {
         onAccessibilityMetricsChanged(data);
     }

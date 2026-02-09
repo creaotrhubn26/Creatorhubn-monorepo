@@ -329,7 +329,7 @@ export default function SubmissionsOverview({
 
   const handleStatusUpdate = (submission: ClientSubmission, newStatus: string) => {
     updateStatusMutation.mutate({
-      id: submission.d,
+      id: submission.id,
       status: newStatus,
 });
 };
@@ -337,7 +337,7 @@ export default function SubmissionsOverview({
   // Quick action handlers for integration workflow
   const handleAcceptSubmission = (submission: ClientSubmission) => {
     updateStatusMutation.mutate({
-      id: submission.d,
+      id: submission.id,
       status: 'accepted',
       internalNotes: `AKSEPTERT: Auto-oppretter prosjekt "${submission.name} - ${submission.projectType}, " | Estimert timer: basert på beskrivelse | Dato: ${new Date().toLocaleDateString('')}`
 });
@@ -345,7 +345,7 @@ export default function SubmissionsOverview({
 
   const handleContactClient = (submission: ClientSubmission) => {
     updateStatusMutation.mutate({
-      id: submission.d,
+      id: submission.id,
       status: 'contacted',
       internalNotes: `KONTAKTET: Oppfølging sendt til ${submission.email} | Dato: ${new Date().toLocaleDateString('')}`
 });
@@ -353,7 +353,7 @@ export default function SubmissionsOverview({
 
   const handleBookSubmission = (submission: ClientSubmission) => {
     updateStatusMutation.mutate({
-      id: submission.d,
+      id: submission.id,
       status: 'booked',
       internalNotes: `BESTILT: Prosjekt bekreftet og bestilt | Auto-oppretter kontrakt | Dato: ${new Date().toLocaleDateString('')}`
 });
@@ -375,45 +375,61 @@ export default function SubmissionsOverview({
 
   const calculateEstimatedHoursForSubmission = (submission: ClientSubmission): number => {
     const baseHours: Record<string, number> = {
-      'bryllup': 8'portrett': 2'business': 4'produkt': 3'event': 6'familie': 2'musikk': 6'video': 8 };
+      bryllup: 8,
+      portrett: 2,
+      business: 4,
+      produkt: 3,
+      event: 6,
+      familie: 2,
+      musikk: 6,
+      video: 8,
+    };
     
     let hours = baseHours[submission.projectType] || 4;
     
     if (submission.description && submission.description.length > 200) {
       hours += 1;
-}
+    }
     
     if (submission.specialRequests && submission.specialRequests.length > 0) {
       hours += 0.5;
-}
+    }
     
     return Math.round(hours * 2) / 2;
 };
 
   const calculateEstimatedPriceForSubmission = (submission: ClientSubmission, hours: number): number => {
     const hourlyRates: Record<string, number> = {
-      'bryllup': 1200'business': 1000'portrett': 800'produkt': 1100'event': 900'familie': 700'musikk': 1500'video': 1300 };
+      bryllup: 1200,
+      business: 1000,
+      portrett: 800,
+      produkt: 1100,
+      event: 900,
+      familie: 700,
+      musikk: 1500,
+      video: 1300,
+    };
 
     const rate = hourlyRates[submission.projectType] || 1000;
     const subtotal = hours * rate;
     return Math.round(subtotal * 1.25); // Add 25% Norwegian VAT
-};
+  };
 
   const handleSendEmail = () => {
     if (!emailSubmission) return;
     
     sendEmailMutation.mutate({
-      submissionId: emailSubmission.d,
+      submissionId: emailSubmission.id,
       responseType: emailType,
       customMessage: customMessage || undefined,
       estimatedHours: estimatedHours || undefined,
       estimatedPrice: estimatedPrice || undefined
-});
-};
+    });
+  };
 
   const renderSubmissionCard = (submission: ClientSubmission) => (
     <Card
-      key={submission.d}
+      key={submission.id}
       sx={{
         mb:  2,
         position: 'relative', '&:hover': {
@@ -494,7 +510,7 @@ export default function SubmissionsOverview({
         {submission.description && (
           <Box mt={2}>
             <Typography variant="body2" color="text.secondary">
-              <strong>Beskrivelse: </strong> {submission.description.substring, (150)}
+              <strong>Beskrivelse: </strong> {submission.description.substring(0, 150)}
               {submission.description.length > 150 && '...'}
             </Typography>
           </Box>
@@ -1245,24 +1261,34 @@ export default function SubmissionsOverview({
           >
             Avbryt
           </Button>
-          <Button variant="contained"
+          <Button
+            variant="contained"
             onClick={handleSendEmail}
             disabled={sendEmailMutation.isPending || !emailSubmission}
-            startIcon={sendEmailMutation.isPending ? <CircularProgress size={16} sx={theming.getThemedButtonSx()}> : <EmailIcon />}
-            sx={{ 
+            startIcon={
+              sendEmailMutation.isPending ? (
+                <CircularProgress size={16} sx={theming.getThemedButtonSx()} />
+              ) : (
+                <EmailIcon />
+              )
+            }
+            sx={{
               background: 'linear-gradient(135deg, #4ECDC4 0%, #36C7B8 100%)',
-              px:  4,
+              px: 4,
               py: 1.5,
-              borderRadius:  3,
+              borderRadius: 3,
               fontWeight: 'bold',
-              fontSize: '1.1rem', '&:hover': { 
+              fontSize: '1.1rem',
+              '&:hover': {
                 background: 'linear-gradient(135deg, #36C7B8 0%, #2EA89A 100%)',
                 transform: 'translateY(-1px)',
-                boxShadow: '0 8px 24px rgba(8, 205, 196, 0.3)'
-          }
-        }}
+                boxShadow: '0 8px 24px rgba(8, 205, 196, 0.3)',
+              },
+            }}
           >
-{sendEmailMutation.isPending ? 'Sender e-post...' : 'Send profesjonell e-post'}
+            {sendEmailMutation.isPending
+              ? 'Sender e-post...'
+              : 'Send profesjonell e-post'}
           </Button>
         </DialogActions>
       </Dialog>

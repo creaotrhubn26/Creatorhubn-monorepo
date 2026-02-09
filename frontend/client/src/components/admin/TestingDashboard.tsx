@@ -147,7 +147,7 @@ export default function TestingDashboard() {
   const { toast } = useToast();
   
   // Theming system
-  const theming = useTheming('prototype_tester, ');
+  const theming = useTheming('prototype_tester');
   const queryClient = useQueryClient();
 
   // State management
@@ -395,7 +395,7 @@ export default function TestingDashboard() {
                 />
               </Box>
               <Box sx={{ textAlign: 'center', ml:  3 }}>
-                <Typography variant="h3" sx={{  color: 'white', fontWeight: 70 }}>
+                <Typography variant="h3" sx={{  color: 'white', fontWeight: 700 }}>
                   {calculateOverallReadiness()}%
                 </Typography>
                 <Typography variant="body2" sx={{ color: 'rgba(25,255,255,0.9)' }}>

@@ -1,2493 +1,375 @@
-import { useTheming } from '../../utils/theming-helper';
-import React from 'react';
-import { apiRequest } from '@/lib/queryClient';
-import { useQuery } from '@tanstack/react-query';
-import { useAuth } from '@/hooks/useAuth';
 /**
  * CreatorHub Norge - Centralized Icon System
- * All icons used throughout the CreatorHub platform
+ * Using Material-UI Icons Library for Professional, Consistent Design
+ * 
+ * This module provides a unified icon system using Material-UI's comprehensive
+ * icon library. All icons are properly typed and exported with CreatorHub naming
+ * conventions for consistency across the application.
  */
 
-import { SvgIcon } from '@mui/material';
 import {
-  // Material UI Icons
-  // Add, // Using custom icon instead
-  // Analytics, // Using custom icon instead
-  // Article, // Using custom icon instead
-  // Assessment, // Using custom icon instead
-  // AttachMoney, // Using custom icon instead
-  //  // AutoFixHigh, // Using custom icon instead // Using custom icon instead
-  // Business, // Using custom icon instead
-  // Build, // Using custom icon instead
-  // BugReport, // Using custom icon instead
-  // Calculate, // Using custom icon instead
-  //  // CalendarToday, // Using custom icon instead // Using custom icon instead
-  //  // CameraAlt, // Using custom icon instead // Using custom icon instead
-  //  // CheckCircle, // Using custom icon instead // Using custom icon instead
-  //  // Circle, // Using custom icon instead // Using custom icon instead
-  //  // CloudDone, // Using custom icon instead // Using custom icon instead
-  //  // CloudUpload, // Using custom icon instead // Using custom icon instead
-  //  // Code, // Using custom icon instead // Using custom icon instead
-  //  // Comment, // Using custom icon instead // Using custom icon instead
-  //  // Computer, // Using custom icon instead // Using custom icon instead
-  //  // ContentCopy, // Using custom icon instead // Using custom icon instead
-  //  // Delete, // Using custom icon instead // Using custom icon instead
-  //  // Description, // Using custom icon instead // Using custom icon instead
-  //  // Download, // Using custom icon instead // Using custom icon instead
-  //  // Edit, // Using custom icon instead // Using custom icon instead
-  //  // Email, // Using custom icon instead // Using custom icon instead
-  //  // Error, // Using custom icon instead // Using custom icon instead
-  //  // Event, // Using custom icon instead // Using custom icon instead
-  //  // ExpandMore, // Using custom icon instead // Using custom icon instead
-  //  // Favorite, // Using custom icon instead // Using custom icon instead
-  //  // FavoriteBorder, // Using custom icon instead // Using custom icon instead
-  //  // Folder, // Using custom icon instead // Using custom icon instead
-  //  // Group, // Using custom icon instead // Using custom icon instead
-  //  // History, // Using custom icon instead // Using custom icon instead
-  //  // Home, // Using custom icon instead // Using custom icon instead
-  //  // Image, // Using custom icon instead // Using custom icon instead
-  //  // Info, // Using custom icon instead // Using custom icon instead
-  //  // Inventory, // Using custom icon instead // Using custom icon instead
-  //  // Key, // Using custom icon instead // Using custom icon instead
-  //  // Lightbulb, // Using custom icon instead // Using custom icon instead
-  //  // LibraryMusic, // Using custom icon instead // Using custom icon instead
-  //  // Notifications, // Using custom icon instead // Using custom icon instead
-  //  // NotificationAdd, // Using custom icon instead // Using custom icon instead
-  //  // Pause, // Using custom icon instead // Using custom icon instead
-  //  // Palette, // Using custom icon instead // Using custom icon instead
-  //  // Phone, // Using custom icon instead // Using custom icon instead
-  //  // PlayArrow, // Using custom icon instead // Using custom icon instead
-  //  // Portrait, // Using custom icon instead // Using custom icon instead
-  //  // Psychology, // Using custom icon instead // Using custom icon instead
-  //  // Public, // Using custom icon instead // Using custom icon instead
-  //  // Refresh, // Using custom icon instead // Using custom icon instead
-  //  // Reply, // Using custom icon instead // Using custom icon instead
-  //  // Save, // Using custom icon instead // Using custom icon instead
-  //  // Science, // Using custom icon instead // Using custom icon instead
-  // Settings, // Using custom icon instead
-  //  // Share, // Using custom icon instead // Using custom icon instead
-  //  // SmartToy, // Using custom icon instead // Using custom icon instead
-  //  // Star, // Using custom icon instead // Using custom icon instead
-  //  // Stop, // Using custom icon instead // Using custom icon instead
-  // Store, // Using custom icon instead
-  //  // Tablet, // Using custom icon instead // Using custom icon instead
-  // ThumbUp, // Using custom icon instead
-  //  // Timeline, // Using custom icon instead // Using custom icon instead
-  //  // TrendingUp, // Using custom icon instead // Using custom icon instead
-  // Upload, // Using custom icon instead
-  // VideoLibrary, // Using custom icon instead
-  // Videocam, // Using custom icon instead
-  //  // Visibility, // Using custom icon instead // Using custom icon instead
-  // VisibilityOff, // Using custom icon instead
-  //  // Warning, // Using custom icon instead // Using custom icon instead
-  // Lock, // Using custom icon instead
-  // Percent, // Using custom icon instead
-  // AccountCircle, // Using custom icon instead
-  // Clear, // Using custom icon instead
-  // Close, // Using custom icon instead
-  // Dashboard, // Using custom icon instead
-  // KeyboardArrowDown, // Using custom icon instead
-  // KeyboardArrowLeft, // Using custom icon instead
-  // KeyboardArrowRight, // Using custom icon instead
-  // KeyboardArrowUp, // Using custom icon instead
-  // Logout, // Using custom icon instead
-  // Menu, // Using custom icon instead
-  // RotateLeft, // Using custom icon instead
-  // Swipe, // Using custom icon instead
-  //  // TouchApp, // Using custom icon instead // Using custom icon instead
-  // Tv, // Using custom icon instead
-  //  // ZoomIn, // Using custom icon instead // Using custom icon instead
-  // BlurOn, // Using custom icon instead
-  // DarkMode, // Using custom icon instead
-  // Minimize, // Using custom icon instead
-  // Filter, // Using custom icon instead
-  // Transform, // Using custom icon instead
-  // AdminPanelSettings, // Using custom icon instead
-  // Cancel, // Using custom icon instead
-  // Collections, // Using custom icon instead
-  // PrivacyTip, // Using custom icon instead
-  // Schedule, // Using custom icon instead
-  // Shield, // Using custom icon instead
-  // Storage, // Using custom icon instead
-  // Api, // Using custom icon instead
-  // Person, // Commented out duplicate
-  // Dataset, // Using custom icon instead
-  // Link, // Using custom icon instead
-  // Speed, // Using custom icon instead
-  // Search, // Using custom icon instead
-  // SkipNext, // Using custom icon instead
-  // TrendingDown, // Using custom icon instead
-  // TrendingFlat, // Using custom icon instead
-  // Notes, // Using custom icon instead
-  // Architecture, // Using custom icon instead
-  // Help, // Using custom icon instead
-  // Category, // Using custom icon instead
-  //  // FolderOpen, // Using custom icon instead // Using custom icon instead
-  //  // AddCircle, // Using custom icon instead // Using custom icon instead
-  //  // Chat, // Using custom icon instead // Using custom icon instead
-  // Person, // Commented out duplicate
-  //  // MoreVert, // Using custom icon instead // Using custom icon instead
-  //  // LocationOn, // Using custom icon instead // Using custom icon instead
-  //  // Payment, // Using custom icon instead // Using custom icon instead
-  //  // Keyboard, // Using custom icon instead // Using custom icon instead
-  //  // HelpCenter, // Using custom icon instead // Using custom icon instead
-  // Quiz, // Using custom icon instead
-  //  // PriorityHigh, // Using custom icon instead // Using custom icon instead
-  // Launch, // Using custom icon instead
-  // PhotoLibrary, // Using custom icon instead
-  // Brightness1, // Using custom icon instead
-  // WbSunny, // Using custom icon instead
-  // WbCloudy, // Using custom icon instead
-  // Umbrella, // Using custom icon instead
-  // Remove, // Using custom icon instead
-  // NotificationsActive, // Using custom icon instead
-  // ToggleOn, // Using custom icon instead
-  // MovieCreation, // Using custom icon instead
-  // Flag, // Using custom icon instead
-  // GetApp, // Using custom icon instead
-  //  // Update, // Using custom icon instead // Using custom icon instead
-  // Security, // Using custom icon instead
-  // Rocket, // Using custom icon instead
-  // CreditCard, // Using custom icon instead
-  // MonetizationOn, // Using custom icon instead
-  // AccountBalanceWallet, // Using custom icon instead
-  // LocalAtm, // Using custom icon instead
-  // DirectionsBus, // Using custom icon instead
-  // MusicNote, // Using custom icon instead
-  // CloudSync, // Using custom icon instead
-  // Money, // Using custom icon instead
-  // People, // Using custom icon instead
-  // GitHub, // Using custom icon instead
-  // Sort, // Using custom icon instead
-  // Assignment, // Using custom icon instead
-  // Google, // Using custom icon instead
-  // Receipt, // Using custom icon instead
-  // AutoAwesome, // Using custom icon instead
-  // ShowChart, // Using custom icon instead
-  // DateRange, // Using custom icon instead
-  // Archive, // Using custom icon instead
-  // CloudDownload, // Using custom icon instead
-  // DriveFileMove, // Using custom icon instead
-  // FindInPage, // Using custom icon instead
-  // Undo, // Using custom icon instead
-  // Redo, // Using custom icon instead
-  // GridView, // Using custom icon instead
-  //  // ViewList, // Using custom icon instead // Using custom icon instead
-  // Label, // Using custom icon instead
-  // Movie, // Using custom icon instead
-  // SubtitlesOutlined, // Using custom icon instead
-  // Instagram, // Using custom icon instead
-  // YouTube, // Using custom icon instead
-  // Facebook, // Using custom icon instead
-  // Twitter, // Using custom icon instead
-  //  // Work, // Using custom icon instead // Using custom icon instead
-  // Create, // Using custom icon instead
-  // Pets, // Using custom icon instead
-  // SportsBaseball, // Using custom icon instead
-  // ShoppingCart, // Using custom icon instead
-  // Send, // Using custom icon instead
-  // CheckCircleOutline, // Using custom icon instead
-  // Publish, // Using custom icon instead
-  // Brightness6, // Using custom icon instead
-  // Tune, // Using custom icon instead
-  // Equalizer, // Using custom icon instead
-  // VolumeUp, // Using custom icon instead
-  // Sync, // Using custom icon instead
-  // Headset, // Using custom icon instead
-  // ArrowBack, // Using custom icon instead
-  // PhotoCamera, // Using custom icon instead
-  // EventAvailable, // Using custom icon instead
-  // Support, // Using custom icon instead
-  // Map, // Using custom icon instead
-  // Bookmark, // Using custom icon instead
-  // Language, // Using custom icon instead
-  // PictureAsPdf, // Using custom icon instead
-  // AudioFile, // Using custom icon instead
-  // InsertDriveFile, // Using custom icon instead
-  // Print, // Using custom icon instead
-  // Brush, // Using custom icon instead
-} from'@mui/icons-material';
-
-// Custom Project Category Icons
-export function RingIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" strokeWidth="1.5"/>
-      <circle cx="12" cy="12" r="1" fill="currentColor"/>
-    </SvgIcon>
-  );
-}
-
-export function PhotographyIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <rect x="6" y="4" width="12" height="10" rx="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <circle cx="12" cy="9" r="3" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <circle cx="12" cy="9" r="1.5" fill="currentColor"/>
-      <path d="M8 2L10 4H14L16 2" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M9 14L10 16H14L15 14" stroke="currentColor" strokeWidth="2" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function VideographyIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <rect x="3" y="6" width="14" height="8" rx="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M8 10L11 8L14 10L11 12L8 10Z" fill="currentColor"/>
-      <circle cx="11" cy="10" r="1" fill="white"/>
-      <path d="M5 4L7 6" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M19 4L17 6" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M5 18L7 16" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M19 18L17 16" stroke="currentColor" strokeWidth="2" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function MusicProductionIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <path d="M12 3L20 7V17L12 21L4 17V7L12 3Z" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M8 9L12 11L16 9" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M8 13L12 15L16 13" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <circle cx="12" cy="9" r="1" fill="currentColor"/>
-      <circle cx="12" cy="13" r="1" fill="currentColor"/>
-      <path d="M6 5L18 5" stroke="currentColor" strokeWidth="1" fill="none"/>
-      <path d="M6 19L18 19" stroke="currentColor" strokeWidth="1" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function CorporateIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <rect x="4" y="4" width="16" height="16" rx="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <rect x="6" y="6" width="12" height="2" fill="currentColor"/>
-      <rect x="6" y="10" width="8" height="1" fill="currentColor"/>
-      <rect x="6" y="13" width="10" height="1" fill="currentColor"/>
-      <rect x="6" y="16" width="6" height="1" fill="currentColor"/>
-      <circle cx="16" cy="14" r="2" fill="none" stroke="currentColor" strokeWidth="1.5"/>
-      <path d="M15 14L16 15L17 13" stroke="currentColor" strokeWidth="1" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-// Additional custom icons for profession types
-export function PhotographyIconAlt(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <rect x="6" y="4" width="12" height="10" rx="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <circle cx="12" cy="9" r="3" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <circle cx="12" cy="9" r="1.5" fill="currentColor"/>
-      <path d="M8 2L10 4H14L16 2" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M9 14L10 16H14L15 14" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M12 1L12 3" stroke="currentColor" strokeWidth="2" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function Videocamcam(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <rect x="3" y="6" width="14" height="8" rx="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M8 10L11 8L14 10L11 12L8 10Z" fill="currentColor"/>
-      <circle cx="11" cy="10" r="1" fill="white"/>
-      <path d="M5 4L7 6" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M19 4L17 6" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M5 18L7 16" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M19 18L17 16" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <circle cx="11" cy="4" r="1" fill="currentColor"/>
-    </SvgIcon>
-  );
-}
-
-export function LibraryMusicNote(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <path d="M12 3L20 7V17L12 21L4 17V7L12 3Z" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M8 9L12 11L16 9" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M8 13L12 15L16 13" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <circle cx="12" cy="9" r="1" fill="currentColor"/>
-      <circle cx="12" cy="13" r="1" fill="currentColor"/>
-      <path d="M6 5L18 5" stroke="currentColor" strokeWidth="1" fill="none"/>
-      <path d="M6 19L18 19" stroke="currentColor" strokeWidth="1" fill="none"/>
-      <path d="M12 1L12 3" stroke="currentColor" strokeWidth="2" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function ShoppingDirectionsCart(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <circle cx="9" cy="21" r="1" fill="currentColor"/>
-      <circle cx="20" cy="21" r="1" fill="currentColor"/>
-      <path d="M1 1H5L7.68 14.39C7.77 14.76 8.1 15 8.48 15H19.4C19.8 15 20.15 14.73 20.25 14.35L22 8H7" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M7 8H22L20 14H8" stroke="currentColor" strokeWidth="1" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-// New Custom Icons for Interactive Documentation System
-export function InteractiveDocsIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <rect x="3" y="4" width="18" height="14" rx="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M8 8L12 12L16 8" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <circle cx="8" cy="16" r="1.5" fill="currentColor"/>
-      <circle cx="12" cy="16" r="1.5" fill="currentColor"/>
-      <circle cx="16" cy="16" r="1.5" fill="currentColor"/>
-      <path d="M6 2L8 4H16L18 2" stroke="currentColor" strokeWidth="2" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function AIIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M8 12L10.5 14.5L16 9" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <circle cx="12" cy="8" r="2" fill="currentColor"/>
-      <path d="M6 18C6 15.5 8.5 13 12 13S18 15.5 18 18" stroke="currentColor" strokeWidth="2" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function CollaborationIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <circle cx="9" cy="9" r="4" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <circle cx="15" cy="9" r="4" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M9 13C9 15.5 10.5 17 12 17S15 15.5 15 13" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M12 17V21" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M8 21H16" stroke="currentColor" strokeWidth="2" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function AnalyticsIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M7 12L10 9L13 12L17 8" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <circle cx="7" cy="12" r="1.5" fill="currentColor"/>
-      <circle cx="10" cy="9" r="1.5" fill="currentColor"/>
-      <circle cx="13" cy="12" r="1.5" fill="currentColor"/>
-      <circle cx="17" cy="8" r="1.5" fill="currentColor"/>
-    </SvgIcon>
-  );
-}
-
-export function GamificationIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <path d="M12 2L15.09 8.26L22 9L17 14L18.18 21L12 17.77L5.82 21L7 14L2 9L8.91 8.26L12 2Z" fill="currentColor"/>
-      <circle cx="12" cy="12" r="3" fill="white"/>
-      <path d="M9 12L10.5 13.5L15 9" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function MobileIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <rect x="6" y="2" width="12" height="20" rx="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <rect x="8" y="4" width="8" height="12" rx="1" fill="currentColor" opacity="0.3"/>
-      <circle cx="12" cy="18" r="1" fill="currentColor"/>
-      <path d="M10 2L14 2" stroke="currentColor" strokeWidth="2" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function CodeSandboxIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M8 8L12 12L16 8" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <rect x="6" y="14" width="12" height="2" rx="1" fill="currentColor"/>
-      <circle cx="9" cy="17" r="1" fill="currentColor"/>
-      <circle cx="15" cy="17" r="1" fill="currentColor"/>
-    </SvgIcon>
-  );
-}
-
-export function DiagramIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <circle cx="9" cy="9" r="2" fill="currentColor"/>
-      <circle cx="15" cy="9" r="2" fill="currentColor"/>
-      <circle cx="9" cy="15" r="2" fill="currentColor"/>
-      <circle cx="15" cy="15" r="2" fill="currentColor"/>
-      <path d="M11 9L13 9" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M9 11L9 13" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M15 11L15 13" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M11 15L13 15" stroke="currentColor" strokeWidth="2" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function SimulationIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <circle cx="12" cy="8" r="2" fill="currentColor"/>
-      <path d="M8 12L12 16L16 12" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <rect x="6" y="18" width="12" height="2" rx="1" fill="currentColor"/>
-      <circle cx="8" cy="6" r="1" fill="currentColor"/>
-      <circle cx="16" cy="6" r="1" fill="currentColor"/>
-    </SvgIcon>
-  );
-}
-
-export function CustomizationIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <circle cx="12" cy="8" r="2" fill="currentColor"/>
-      <path d="M8 12L12 16L16 12" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <rect x="6" y="18" width="12" height="2" rx="1" fill="currentColor"/>
-      <path d="M6 6L18 6" stroke="currentColor" strokeWidth="1" fill="none"/>
-      <path d="M6 20L18 20" stroke="currentColor" strokeWidth="1" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-// Phase 3: Advanced Visual Features & Customization Icons
-export function ThemeEngineIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <circle cx="8" cy="8" r="2" fill="currentColor"/>
-      <circle cx="16" cy="8" r="2" fill="currentColor"/>
-      <circle cx="8" cy="16" r="2" fill="currentColor"/>
-      <circle cx="16" cy="16" r="2" fill="currentColor"/>
-      <path d="M10 8L14 8" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M10 16L14 16" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M8 10L8 14" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M16 10L16 14" stroke="currentColor" strokeWidth="2" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function AnimationIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <circle cx="12" cy="12" r="3" fill="currentColor"/>
-      <path d="M9 9L15 15" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M15 9L9 15" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <circle cx="6" cy="6" r="1" fill="currentColor"/>
-      <circle cx="18" cy="6" r="1" fill="currentColor"/>
-      <circle cx="6" cy="18" r="1" fill="currentColor"/>
-      <circle cx="18" cy="18" r="1" fill="currentColor"/>
-    </SvgIcon>
-  );
-}
-
-export function VisualEffectsIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M8 8L12 12L16 8" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <circle cx="8" cy="8" r="1.5" fill="currentColor"/>
-      <circle cx="12" cy="12" r="1.5" fill="currentColor"/>
-      <circle cx="16" cy="8" r="1.5" fill="currentColor"/>
-      <path d="M6 16L18 16" stroke="currentColor" strokeWidth="1" fill="none"/>
-      <path d="M6 18L18 18" stroke="currentColor" strokeWidth="1" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function AdvancedCustomizationIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <circle cx="12" cy="8" r="2" fill="currentColor"/>
-      <path d="M8 12L12 16L16 12" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <rect x="6" y="18" width="12" height="2" rx="1" fill="currentColor"/>
-      <path d="M6 6L18 6" stroke="currentColor" strokeWidth="1" fill="none"/>
-      <path d="M6 20L18 20" stroke="currentColor" strokeWidth="1" fill="none"/>
-      <circle cx="6" cy="6" r="1" fill="currentColor"/>
-      <circle cx="18" cy="6" r="1" fill="currentColor"/>
-      <circle cx="6" cy="20" r="1" fill="currentColor"/>
-      <circle cx="18" cy="20" r="1" fill="currentColor"/>
-    </SvgIcon>
-  );
-}
-
-// Phase 4: Security & Privacy Features Icons
-export function AccessControlIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <circle cx="9" cy="9" r="2" fill="currentColor"/>
-      <circle cx="15" cy="9" r="2" fill="currentColor"/>
-      <circle cx="9" cy="15" r="2" fill="currentColor"/>
-      <circle cx="15" cy="15" r="2" fill="currentColor"/>
-      <path d="M11 9L13 9" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M9 11L9 13" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M15 11L15 13" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M11 15L13 15" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M6 6L18 6" stroke="currentColor" strokeWidth="1" fill="none"/>
-      <path d="M6 18L18 18" stroke="currentColor" strokeWidth="1" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function DataEncryptionIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <circle cx="12" cy="8" r="2" fill="currentColor"/>
-      <path d="M8 12L12 16L16 12" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <rect x="6" y="18" width="12" height="2" rx="1" fill="currentColor"/>
-      <path d="M6 6L18 6" stroke="currentColor" strokeWidth="1" fill="none"/>
-      <path d="M6 20L18 20" stroke="currentColor" strokeWidth="1" fill="none"/>
-      <circle cx="6" cy="6" r="1" fill="currentColor"/>
-      <circle cx="18" cy="6" r="1" fill="currentColor"/>
-      <circle cx="6" cy="20" r="1" fill="currentColor"/>
-      <circle cx="18" cy="20" r="1" fill="currentColor"/>
-    </SvgIcon>
-  );
-}
-
-export function PrivacyControlsIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <circle cx="12" cy="8" r="2" fill="currentColor"/>
-      <path d="M8 12L12 16L16 12" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <rect x="6" y="18" width="12" height="2" rx="1" fill="currentColor"/>
-      <path d="M6 6L18 6" stroke="currentColor" strokeWidth="1" fill="none"/>
-      <path d="M6 20L18 20" stroke="currentColor" strokeWidth="1" fill="none"/>
-      <circle cx="6" cy="6" r="1" fill="currentColor"/>
-      <circle cx="18" cy="6" r="1" fill="currentColor"/>
-      <circle cx="6" cy="20" r="1" fill="currentColor"/>
-      <circle cx="18" cy="20" r="1" fill="currentColor"/>
-    </SvgIcon>
-  );
-}
-
-export function SecurityIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <circle cx="12" cy="8" r="2" fill="currentColor"/>
-      <path d="M8 12L12 16L16 12" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <rect x="6" y="18" width="12" height="2" rx="1" fill="currentColor"/>
-      <path d="M6 6L18 6" stroke="currentColor" strokeWidth="1" fill="none"/>
-      <path d="M6 20L18 20" stroke="currentColor" strokeWidth="1" fill="none"/>
-      <circle cx="6" cy="6" r="1" fill="currentColor"/>
-      <circle cx="18" cy="6" r="1" fill="currentColor"/>
-      <circle cx="6" cy="20" r="1" fill="currentColor"/>
-      <circle cx="18" cy="20" r="1" fill="currentColor"/>
-    </SvgIcon>
-  );
-}
-
-// Phase 5: Integration & Testing Features Icons
-export function APIIntegrationIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M8 8L12 12L16 8" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <rect x="6" y="14" width="12" height="2" rx="1" fill="currentColor"/>
-      <circle cx="9" cy="17" r="1" fill="currentColor"/>
-      <circle cx="15" cy="17" r="1" fill="currentColor"/>
-      <path d="M6 6L18 6" stroke="currentColor" strokeWidth="1" fill="none"/>
-      <path d="M6 20L18 20" stroke="currentColor" strokeWidth="1" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-// Academy Icons - CreatorHub Academy Learning Platform
-export function AcademyIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <path d="M12 2L20 6V18L12 22L4 18V6L12 2Z" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M8 8L12 10L16 8" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M8 12L12 14L16 12" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M8 16L12 18L16 16" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <circle cx="12" cy="8" r="1" fill="currentColor"/>
-      <circle cx="12" cy="12" r="1" fill="currentColor"/>
-      <circle cx="12" cy="16" r="1" fill="currentColor"/>
-    </SvgIcon>
-  );
-}
-
-export function CourseIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <rect x="4" y="6" width="16" height="12" rx="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M8 10L12 12L16 10" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <circle cx="12" cy="10" r="1.5" fill="currentColor"/>
-      <rect x="6" y="14" width="12" height="2" rx="1" fill="currentColor"/>
-      <path d="M6 4L8 6H16L18 4" stroke="currentColor" strokeWidth="2" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function LessonIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <rect x="3" y="4" width="18" height="14" rx="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <circle cx="12" cy="8" r="2" fill="currentColor"/>
-      <path d="M8 12L12 16L16 12" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <rect x="6" y="18" width="12" height="2" rx="1" fill="currentColor"/>
-      <path d="M6 2L8 4H16L18 2" stroke="currentColor" strokeWidth="2" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function VideoPlayerIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <rect x="2" y="4" width="20" height="16" rx="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M9 12L13 10L17 12L13 14L9 12Z" fill="currentColor"/>
-      <circle cx="13" cy="12" r="1" fill="white"/>
-      <path d="M6 2L8 4" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M18 2L20 4" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M6 22L8 20" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M18 22L20 20" stroke="currentColor" strokeWidth="2" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function ProgressIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M8 12L10.5 14.5L16 9" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" strokeWidth="1.5"/>
-    </SvgIcon>
-  );
-}
-
-export function BookmarkIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <path d="M19 21L12 16L5 21V5C5 3.89543 5.89543 3 7 3H17C18.1046 3 19 3.89543 19 5V21Z" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M9 9L12 12L15 9" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function NoteIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <path d="M14 2H6C4.89543 2 4 2.89543 4 4V20C4 21.1046 4.89543 22 6 22H18C19.1046 22 20 21.1046 20 20V8L14 2Z" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M14 2V8H20" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M8 12H16" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M8 16H12" stroke="currentColor" strokeWidth="2" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function CertificateIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <rect x="4" y="6" width="16" height="12" rx="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M8 10L12 12L16 10" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <circle cx="12" cy="10" r="1.5" fill="currentColor"/>
-      <rect x="6" y="14" width="12" height="2" rx="1" fill="currentColor"/>
-      <path d="M6 4L8 6H16L18 4" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M12 2L12 6" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M10 2L14 2" stroke="currentColor" strokeWidth="2" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function QuizIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <circle cx="9" cy="9" r="2" fill="currentColor"/>
-      <circle cx="15" cy="9" r="2" fill="currentColor"/>
-      <circle cx="9" cy="15" r="2" fill="currentColor"/>
-      <circle cx="15" cy="15" r="2" fill="currentColor"/>
-      <path d="M11 9L13 9" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M9 11L9 13" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M15 11L15 13" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M11 15L13 15" stroke="currentColor" strokeWidth="2" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function InstructorIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <circle cx="12" cy="8" r="4" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M6 20C6 16.6863 8.68629 14 12 14C15.3137 14 18 16.6863 18 20" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M12 2L12 6" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M10 4L14 4" stroke="currentColor" strokeWidth="2" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function StudentIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <circle cx="12" cy="8" r="3" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M6 20C6 17.7909 7.79086 16 10 16H14C16.2091 16 18 17.7909 18 20" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M12 2L12 5" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M10 3L14 3" stroke="currentColor" strokeWidth="2" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function LearningPathIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <circle cx="6" cy="6" r="3" fill="currentColor"/>
-      <circle cx="18" cy="6" r="3" fill="currentColor"/>
-      <circle cx="6" cy="18" r="3" fill="currentColor"/>
-      <circle cx="18" cy="18" r="3" fill="currentColor"/>
-      <path d="M9 6L15 6" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M6 9L6 15" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M18 9L18 15" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M9 18L15 18" stroke="currentColor" strokeWidth="2" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function XRayIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <circle cx="12" cy="8" r="2" fill="currentColor"/>
-      <path d="M8 12L12 16L16 12" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <rect x="6" y="18" width="12" height="2" rx="1" fill="currentColor"/>
-      <path d="M6 6L18 6" stroke="currentColor" strokeWidth="1" fill="none"/>
-      <path d="M6 20L18 20" stroke="currentColor" strokeWidth="1" fill="none"/>
-      <circle cx="6" cy="6" r="1" fill="currentColor"/>
-      <circle cx="18" cy="6" r="1" fill="currentColor"/>
-      <circle cx="6" cy="20" r="1" fill="currentColor"/>
-      <circle cx="18" cy="20" r="1" fill="currentColor"/>
-    </SvgIcon>
-  );
-}
-
-export function QualityIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M8 8L12 12L16 8" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <circle cx="8" cy="8" r="1.5" fill="currentColor"/>
-      <circle cx="12" cy="12" r="1.5" fill="currentColor"/>
-      <circle cx="16" cy="8" r="1.5" fill="currentColor"/>
-      <path d="M6 16L18 16" stroke="currentColor" strokeWidth="1" fill="none"/>
-      <path d="M6 18L18 18" stroke="currentColor" strokeWidth="1" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function SpeedIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M12 6L12 12L16 16" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <circle cx="12" cy="12" r="2" fill="currentColor"/>
-    </SvgIcon>
-  );
-}
-
-export function SubtitlesIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <rect x="2" y="4" width="20" height="16" rx="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M9 12L13 10L17 12L13 14L9 12Z" fill="currentColor"/>
-      <circle cx="13" cy="12" r="1" fill="white"/>
-      <rect x="6" y="16" width="12" height="2" rx="1" fill="currentColor"/>
-      <rect x="6" y="18" width="8" height="1" rx="0.5" fill="currentColor"/>
-    </SvgIcon>
-  );
-}
-
-export function FullscreenIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <path d="M8 3H5C3.89543 3 3 3.89543 3 5V8" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M16 3H19C20.1046 3 21 3.89543 21 5V8" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M8 21H5C3.89543 21 3 20.1046 3 19V16" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M16 21H19C20.1046 21 21 20.1046 21 19V16" stroke="currentColor" strokeWidth="2" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function VolumeIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <path d="M11 5L6 9H2V15H6L11 19V5Z" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M19.07 4.93C20.9441 6.80407 21.9999 9.34784 21.9999 12C21.9999 14.6522 20.9441 17.1959 19.07 19.07" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M15.54 8.46C16.4774 9.39764 17.0039 10.6692 17.0039 12C17.0039 13.3308 16.4774 14.6024 15.54 15.54" stroke="currentColor" strokeWidth="2" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function MuteIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <path d="M11 5L6 9H2V15H6L11 19V5Z" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M23 9L17 15" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M17 9L23 15" stroke="currentColor" strokeWidth="2" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function TestingFrameworkIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <circle cx="12" cy="8" r="2" fill="currentColor"/>
-      <path d="M8 12L12 16L16 12" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <rect x="6" y="18" width="12" height="2" rx="1" fill="currentColor"/>
-      <path d="M6 6L18 6" stroke="currentColor" strokeWidth="1" fill="none"/>
-      <path d="M6 20L18 20" stroke="currentColor" strokeWidth="1" fill="none"/>
-      <circle cx="6" cy="6" r="1" fill="currentColor"/>
-      <circle cx="18" cy="6" r="1" fill="currentColor"/>
-      <circle cx="6" cy="20" r="1" fill="currentColor"/>
-      <circle cx="18" cy="20" r="1" fill="currentColor"/>
-    </SvgIcon>
-  );
-}
-
-export function PerformanceMonitoringIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <circle cx="12" cy="8" r="2" fill="currentColor"/>
-      <path d="M8 12L12 16L16 12" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <rect x="6" y="18" width="12" height="2" rx="1" fill="currentColor"/>
-      <path d="M6 6L18 6" stroke="currentColor" strokeWidth="1" fill="none"/>
-      <path d="M6 20L18 20" stroke="currentColor" strokeWidth="1" fill="none"/>
-      <circle cx="6" cy="6" r="1" fill="currentColor"/>
-      <circle cx="18" cy="6" r="1" fill="currentColor"/>
-      <circle cx="6" cy="20" r="1" fill="currentColor"/>
-      <circle cx="18" cy="20" r="1" fill="currentColor"/>
-    </SvgIcon>
-  );
-}
-
-export function WebhookIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <circle cx="12" cy="8" r="2" fill="currentColor"/>
-      <path d="M8 12L12 16L16 12" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <rect x="6" y="18" width="12" height="2" rx="1" fill="currentColor"/>
-      <path d="M6 6L18 6" stroke="currentColor" strokeWidth="1" fill="none"/>
-      <path d="M6 20L18 20" stroke="currentColor" strokeWidth="1" fill="none"/>
-      <circle cx="6" cy="6" r="1" fill="currentColor"/>
-      <circle cx="18" cy="6" r="1" fill="currentColor"/>
-      <circle cx="6" cy="20" r="1" fill="currentColor"/>
-      <circle cx="18" cy="20" r="1" fill="currentColor"/>
-    </SvgIcon>
-  );
-}
-
-// Video Annotation Icons
-export function AnnotationIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <circle cx="12" cy="8" r="2" fill="currentColor"/>
-      <path d="M8 12L12 16L16 12" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <rect x="6" y="18" width="12" height="2" rx="1" fill="currentColor"/>
-      <path d="M6 6L18 6" stroke="currentColor" strokeWidth="1" fill="none"/>
-      <path d="M6 20L18 20" stroke="currentColor" strokeWidth="1" fill="none"/>
-      <circle cx="6" cy="6" r="1" fill="currentColor"/>
-      <circle cx="18" cy="6" r="1" fill="currentColor"/>
-      <circle cx="6" cy="20" r="1" fill="currentColor"/>
-      <circle cx="18" cy="20" r="1" fill="currentColor"/>
-    </SvgIcon>
-  );
-}
-
-export function HotspotIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <circle cx="12" cy="12" r="3" fill="currentColor"/>
-      <path d="M8 8L12 12L16 8" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function CalloutIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <rect x="4" y="4" width="16" height="12" rx="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M12 16L8 20H16L12 16Z" fill="currentColor"/>
-      <circle cx="12" cy="8" r="1.5" fill="currentColor"/>
-      <path d="M8 12H16" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function ChapterIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <rect x="3" y="4" width="18" height="14" rx="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M8 8L12 10L16 8" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M8 12L12 14L16 12" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M8 16L12 18L16 16" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <circle cx="12" cy="8" r="1" fill="currentColor"/>
-      <circle cx="12" cy="12" r="1" fill="currentColor"/>
-      <circle cx="12" cy="16" r="1" fill="currentColor"/>
-      <path d="M6 2L8 4H16L18 2" stroke="currentColor" strokeWidth="2" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function ThumbnailIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <rect x="6" y="6" width="12" height="8" rx="1" fill="currentColor" opacity="0.3"/>
-      <circle cx="12" cy="10" r="2" fill="currentColor"/>
-      <path d="M9 10L12 12L15 10" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function AutoDetectIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M8 12L10.5 14.5L16 9" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" strokeWidth="1.5"/>
-      <path d="M6 6L18 6" stroke="currentColor" strokeWidth="1" fill="none"/>
-      <path d="M6 18L18 18" stroke="currentColor" strokeWidth="1" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function VideoProcessingIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <rect x="2" y="4" width="20" height="16" rx="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M9 12L13 10L17 12L13 14L9 12Z" fill="currentColor"/>
-      <circle cx="13" cy="12" r="1" fill="white"/>
-      <path d="M6 2L8 4" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M18 2L20 4" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M6 22L8 20" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M18 22L20 20" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <circle cx="12" cy="6" r="1" fill="currentColor"/>
-      <circle cx="12" cy="18" r="1" fill="currentColor"/>
-    </SvgIcon>
-  );
-}
-
-export function InteractiveElementIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <circle cx="12" cy="8" r="2" fill="currentColor"/>
-      <path d="M8 12L12 16L16 12" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <rect x="6" y="18" width="12" height="2" rx="1" fill="currentColor"/>
-      <path d="M6 6L18 6" stroke="currentColor" strokeWidth="1" fill="none"/>
-      <path d="M6 20L18 20" stroke="currentColor" strokeWidth="1" fill="none"/>
-      <circle cx="6" cy="6" r="1" fill="currentColor"/>
-      <circle cx="18" cy="6" r="1" fill="currentColor"/>
-      <circle cx="6" cy="20" r="1" fill="currentColor"/>
-      <circle cx="18" cy="20" r="1" fill="currentColor"/>
-    </SvgIcon>
-  );
-}
-
-export function VideoMarkerIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M8 8L12 12L16 8" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <circle cx="8" cy="8" r="1.5" fill="currentColor"/>
-      <circle cx="12" cy="12" r="1.5" fill="currentColor"/>
-      <circle cx="16" cy="8" r="1.5" fill="currentColor"/>
-      <path d="M6 16L18 16" stroke="currentColor" strokeWidth="1" fill="none"/>
-      <path d="M6 18L18 18" stroke="currentColor" strokeWidth="1" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function ContentCreationIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M8 8L12 12L16 8" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <circle cx="8" cy="8" r="1.5" fill="currentColor"/>
-      <circle cx="12" cy="12" r="1.5" fill="currentColor"/>
-      <circle cx="16" cy="8" r="1.5" fill="currentColor"/>
-      <path d="M6 16L18 16" stroke="currentColor" strokeWidth="1" fill="none"/>
-      <path d="M6 18L18 18" stroke="currentColor" strokeWidth="1" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-// Camera Template System Icons
-export function CameraTemplateIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <rect x="4" y="6" width="16" height="12" rx="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <circle cx="12" cy="12" r="1.5" fill="currentColor"/>
-      <path d="M8 2L10 4H14L16 2" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M9 18L10 20H14L15 18" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <rect x="2" y="4" width="4" height="2" rx="1" fill="currentColor"/>
-      <rect x="18" y="4" width="4" height="2" rx="1" fill="currentColor"/>
-    </SvgIcon>
-  );
-}
-
-export function CameraSetupIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <rect x="3" y="5" width="18" height="14" rx="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <circle cx="12" cy="12" r="2" fill="currentColor"/>
-      <path d="M8 2L10 4H14L16 2" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M6 8L8 10" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M18 8L16 10" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M6 16L8 14" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M18 16L16 14" stroke="currentColor" strokeWidth="2" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function TemplateManagerIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <rect x="2" y="4" width="20" height="16" rx="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <rect x="4" y="6" width="16" height="2" rx="1" fill="currentColor"/>
-      <rect x="4" y="10" width="12" height="1" rx="0.5" fill="currentColor"/>
-      <rect x="4" y="13" width="14" height="1" rx="0.5" fill="currentColor"/>
-      <rect x="4" y="16" width="10" height="1" rx="0.5" fill="currentColor"/>
-      <circle cx="18" cy="12" r="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M17 12L18.5 13.5L21 11" stroke="currentColor" strokeWidth="2" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function CameraGearIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <rect x="6" y="4" width="12" height="10" rx="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <circle cx="12" cy="9" r="3" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <circle cx="12" cy="9" r="1.5" fill="currentColor"/>
-      <path d="M8 2L10 4H14L16 2" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M9 14L10 16H14L15 14" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <circle cx="4" cy="6" r="1" fill="currentColor"/>
-      <circle cx="20" cy="6" r="1" fill="currentColor"/>
-      <circle cx="4" cy="12" r="1" fill="currentColor"/>
-      <circle cx="20" cy="12" r="1" fill="currentColor"/>
-    </SvgIcon>
-  );
-}
-
-export function LensIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" strokeWidth="1.5"/>
-      <circle cx="12" cy="12" r="1" fill="currentColor"/>
-      <path d="M4 4L8 8" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-      <path d="M20 4L16 8" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-      <path d="M4 20L8 16" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-      <path d="M20 20L16 16" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function TripodIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <path d="M12 2L12 8" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M8 8L12 12L16 8" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <circle cx="12" cy="8" r="1" fill="currentColor"/>
-      <path d="M6 20L8 18" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M18 20L16 18" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M12 20L12 18" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M6 22L18 22" stroke="currentColor" strokeWidth="2" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function GimbalIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <circle cx="12" cy="12" r="6" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <circle cx="12" cy="12" r="3" fill="currentColor"/>
-      <path d="M6 6L8 8" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M18 6L16 8" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M6 18L8 16" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M18 18L16 16" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M12 2L12 6" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M12 18L12 22" stroke="currentColor" strokeWidth="2" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function LightingIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <path d="M12 2L12 8" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M8 8L12 12L16 8" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <circle cx="12" cy="8" r="1" fill="currentColor"/>
-      <path d="M6 14L8 16" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M18 14L16 16" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M12 14L12 16" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M4 20L20 20" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M6 18L6 20" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M18 18L18 20" stroke="currentColor" strokeWidth="2" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function MemoryCardIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <rect x="4" y="6" width="16" height="12" rx="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <rect x="6" y="8" width="12" height="8" rx="1" fill="currentColor" opacity="0.3"/>
-      <path d="M8 10L12 12L16 10" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-      <circle cx="12" cy="12" r="1" fill="currentColor"/>
-      <rect x="4" y="4" width="4" height="2" rx="1" fill="currentColor"/>
-    </SvgIcon>
-  );
-}
-
-export function CameraSettingsIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <rect x="4" y="6" width="16" height="12" rx="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <circle cx="12" cy="12" r="1.5" fill="currentColor"/>
-      <path d="M8 2L10 4H14L16 2" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M9 18L10 20H14L15 18" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <circle cx="6" cy="8" r="1" fill="currentColor"/>
-      <circle cx="18" cy="8" r="1" fill="currentColor"/>
-      <circle cx="6" cy="16" r="1" fill="currentColor"/>
-      <circle cx="18" cy="16" r="1" fill="currentColor"/>
-    </SvgIcon>
-  );
-}
-
-export function VideoSettingsIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <rect x="3" y="6" width="14" height="8" rx="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M8 10L11 8L14 10L11 12L8 10Z" fill="currentColor"/>
-      <circle cx="11" cy="10" r="1" fill="white"/>
-      <path d="M5 4L7 6" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M19 4L17 6" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M5 18L7 16" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M19 18L17 16" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <circle cx="2" cy="8" r="1" fill="currentColor"/>
-      <circle cx="22" cy="8" r="1" fill="currentColor"/>
-      <circle cx="2" cy="12" r="1" fill="currentColor"/>
-      <circle cx="22" cy="12" r="1" fill="currentColor"/>
-    </SvgIcon>
-  );
-}
-
-export function PhotoSettingsIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <rect x="6" y="4" width="12" height="10" rx="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <circle cx="12" cy="9" r="3" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <circle cx="12" cy="9" r="1.5" fill="currentColor"/>
-      <path d="M8 2L10 4H14L16 2" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M9 14L10 16H14L15 14" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <circle cx="4" cy="6" r="1" fill="currentColor"/>
-      <circle cx="20" cy="6" r="1" fill="currentColor"/>
-      <circle cx="4" cy="12" r="1" fill="currentColor"/>
-      <circle cx="20" cy="12" r="1" fill="currentColor"/>
-      <path d="M2 2L4 4" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-      <path d="M22 2L20 4" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function WorkflowIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <rect x="2" y="4" width="20" height="16" rx="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <circle cx="6" cy="8" r="2" fill="currentColor"/>
-      <circle cx="12" cy="8" r="2" fill="currentColor"/>
-      <circle cx="18" cy="8" r="2" fill="currentColor"/>
-      <circle cx="6" cy="16" r="2" fill="currentColor"/>
-      <circle cx="12" cy="16" r="2" fill="currentColor"/>
-      <circle cx="18" cy="16" r="2" fill="currentColor"/>
-      <path d="M8 8L10 8" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M14 8L16 8" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M8 16L10 16" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M14 16L16 16" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M12 10L12 14" stroke="currentColor" strokeWidth="2" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function TemplateCategoryIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <rect x="5" y="5" width="14" height="2" rx="1" fill="currentColor"/>
-      <rect x="5" y="9" width="10" height="1" rx="0.5" fill="currentColor"/>
-      <rect x="5" y="12" width="12" height="1" rx="0.5" fill="currentColor"/>
-      <rect x="5" y="15" width="8" height="1" rx="0.5" fill="currentColor"/>
-      <circle cx="16" cy="13" r="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M15 13L16 14L17 12" stroke="currentColor" strokeWidth="2" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function TemplateShareIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <circle cx="9" cy="9" r="2" fill="currentColor"/>
-      <circle cx="15" cy="9" r="2" fill="currentColor"/>
-      <circle cx="9" cy="15" r="2" fill="currentColor"/>
-      <circle cx="15" cy="15" r="2" fill="currentColor"/>
-      <path d="M11 9L13 9" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M9 11L9 13" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M15 11L15 13" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M11 15L13 15" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M6 6L18 6" stroke="currentColor" strokeWidth="1" fill="none"/>
-      <path d="M6 18L18 18" stroke="currentColor" strokeWidth="1" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function TemplateImportIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M8 8L12 12L16 8" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <rect x="6" y="14" width="12" height="2" rx="1" fill="currentColor"/>
-      <circle cx="9" cy="17" r="1" fill="currentColor"/>
-      <circle cx="15" cy="17" r="1" fill="currentColor"/>
-      <path d="M6 6L18 6" stroke="currentColor" strokeWidth="1" fill="none"/>
-      <path d="M6 20L18 20" stroke="currentColor" strokeWidth="1" fill="none"/>
-      <path d="M12 2L12 6" stroke="currentColor" strokeWidth="2" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function TemplateExportIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M8 8L12 12L16 8" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <rect x="6" y="14" width="12" height="2" rx="1" fill="currentColor"/>
-      <circle cx="9" cy="17" r="1" fill="currentColor"/>
-      <circle cx="15" cy="17" r="1" fill="currentColor"/>
-      <path d="M6 6L18 6" stroke="currentColor" strokeWidth="1" fill="none"/>
-      <path d="M6 20L18 20" stroke="currentColor" strokeWidth="1" fill="none"/>
-      <path d="M12 18L12 22" stroke="currentColor" strokeWidth="2" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function TemplateSearchIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <circle cx="11" cy="11" r="8" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M21 21L16.65 16.65" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke="currentColor" strokeWidth="1" opacity="0.3"/>
-    </SvgIcon>
-  );
-}
-
-export function TemplateFilterIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M6 8L18 8" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M6 12L18 12" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M6 16L18 16" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <circle cx="8" cy="8" r="1" fill="currentColor"/>
-      <circle cx="12" cy="12" r="1" fill="currentColor"/>
-      <circle cx="16" cy="16" r="1" fill="currentColor"/>
-    </SvgIcon>
-  );
-}
-
-export function TemplateRatingIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <path d="M12 2L15.09 8.26L22 9L17 14L18.18 21L12 17.77L5.82 21L7 14L2 9L8.91 8.26L12 2Z" fill="currentColor"/>
-      <circle cx="12" cy="12" r="3" fill="white"/>
-      <path d="M9 12L10.5 13.5L15 9" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function TemplateUsageIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M7 12L10 9L13 12L17 8" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <circle cx="7" cy="12" r="1.5" fill="currentColor"/>
-      <circle cx="10" cy="9" r="1.5" fill="currentColor"/>
-      <circle cx="13" cy="12" r="1.5" fill="currentColor"/>
-      <circle cx="17" cy="8" r="1.5" fill="currentColor"/>
-      <rect x="6" y="16" width="12" height="2" rx="1" fill="currentColor"/>
-    </SvgIcon>
-  );
-}
-
-// Context Menu Action Icons
-export function ViewDetailsIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M8 12L10.5 14.5L16 9" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" strokeWidth="1.5"/>
-    </SvgIcon>
-  );
-}
-
-export function EditCourseIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <path d="M11 4H4C3.46957 4 2.96086 4.21071 2.58579 4.58579C2.21071 4.96086 2 5.46957 2 6V20C2 20.5304 2.21071 21.0391 2.58579 21.4142C2.96086 21.7893 3.46957 22 4 22H18C18.5304 22 19.0391 21.7893 19.4142 21.4142C19.7893 21.0391 20 20.5304 20 20V13" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M18.5 2.5C18.8978 2.10218 19.4374 1.87868 20 1.87868C20.5626 1.87868 21.1022 2.10218 21.5 2.5C21.8978 2.89782 22.1213 3.43739 22.1213 4C22.1213 4.56261 21.8978 5.10218 21.5 5.5L12 15L8 16L9 12L18.5 2.5Z" stroke="currentColor" strokeWidth="2" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function DeleteCourseIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <path d="M3 6H5H21" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M8 6V4C8 3.46957 8.21071 2.96086 8.58579 2.58579C8.96086 2.21071 9.46957 2 10 2H14C14.5304 2 15.0391 2.21071 15.4142 2.58579C15.7893 2.96086 16 3.46957 16 4V6M19 6V20C19 20.5304 18.7893 21.0391 18.4142 21.4142C18.0391 21.7893 17.5304 22 17 22H7C6.46957 22 5.96086 21.7893 5.58579 21.4142C5.21071 21.0391 5 20.5304 5 20V6H19Z" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M10 11V17" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M14 11V17" stroke="currentColor" strokeWidth="2" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function ShareCourseIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <circle cx="18" cy="5" r="3" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <circle cx="6" cy="12" r="3" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <circle cx="18" cy="19" r="3" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M8.59 13.51L15.42 17.49" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M15.41 6.51L8.59 10.49" stroke="currentColor" strokeWidth="2" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function CopyLinkIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <rect x="9" y="9" width="13" height="13" rx="2" ry="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M5 15H4C2.93913 15 1.92172 14.5786 1.17157 13.8284C0.421427 13.0783 0 12.0609 0 11V4C0 2.93913 0.421427 1.92172 1.17157 1.17157C1.92172 0.421427 2.93913 0 4 0H11C12.0609 0 13.0783 0.421427 13.8284 1.17157C14.5786 1.92172 15 2.93913 15 4V5" stroke="currentColor" strokeWidth="2" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function DownloadResourcesIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <path d="M21 15V19C21 19.5304 20.7893 20.0391 20.4142 20.4142C20.0391 20.7893 19.5304 21 19 21H5C4.46957 21 3.96086 20.7893 3.58579 20.4142C3.21071 20.0391 3 19.5304 3 19V15" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M7 10L12 15L17 10" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M12 15V3" stroke="currentColor" strokeWidth="2" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function ToggleVisibilityIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <path d="M1 12S5 4 12 4S23 12 23 12S19 20 12 20S1 12 1 12Z" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" strokeWidth="2"/>
-    </SvgIcon>
-  );
-}
-
-export function ToggleVisibilityOffIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <path d="M17.94 17.94C16.2306 19.243 14.1491 19.9649 12 20C5 20 1 12 1 12C2.24389 9.68192 3.96914 7.65663 6.06 6.06M9.9 4.24C10.5883 4.0789 11.2931 3.99836 12 4C19 4 23 12 23 12C22.393 13.1356 21.6691 14.2048 20.84 15.19M14.12 14.12C13.8454 14.4148 13.5141 14.6512 13.1462 14.8151C12.7782 14.9791 12.3802 15.0673 11.9781 15.0744C11.5759 15.0815 11.1759 15.0074 10.8016 14.8565C10.4273 14.7055 10.0859 14.4801 9.79785 14.1941C9.5098 13.908 9.28038 13.5666 9.12388 13.1923C8.96738 12.818 8.88679 12.418 8.88636 12.0158C8.88593 11.6136 8.96566 11.2136 9.12141 10.8391C9.27716 10.4646 9.50589 10.123 9.79322 9.83668" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M1 1L23 23" stroke="currentColor" strokeWidth="2" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function ReportIssueIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <path d="M4 15L12 9L20 15" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M12 2L12 9" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M12 18L12 22" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <circle cx="12" cy="18" r="2" fill="currentColor"/>
-    </SvgIcon>
-  );
-}
-
-// Missing MUI Icons - CreatorHub Branded Versions
-export function BusinessIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <rect x="6" y="6" width="12" height="2" rx="1" fill="currentColor"/>
-      <rect x="6" y="10" width="8" height="1" rx="0.5" fill="currentColor"/>
-      <rect x="6" y="13" width="10" height="1" rx="0.5" fill="currentColor"/>
-      <rect x="6" y="16" width="6" height="1" rx="0.5" fill="currentColor"/>
-      <circle cx="16" cy="14" r="2" fill="none" stroke="currentColor" strokeWidth="1.5"/>
-      <path d="M15 14L16 15L17 13" stroke="currentColor" strokeWidth="1" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function MusicNoteIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <path d="M12 3L20 7V17L12 21L4 17V7L12 3Z" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M8 9L12 11L16 9" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M8 13L12 15L16 13" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <circle cx="12" cy="9" r="1" fill="currentColor"/>
-      <circle cx="12" cy="13" r="1" fill="currentColor"/>
-      <path d="M6 5L18 5" stroke="currentColor" strokeWidth="1" fill="none"/>
-      <path d="M6 19L18 19" stroke="currentColor" strokeWidth="1" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function StoreIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <path d="M3 9L12 2L21 9V20C21 20.5304 20.7893 21.0391 20.4142 21.4142C20.0391 21.7893 19.5304 22 19 22H5C4.46957 22 3.96086 21.7893 3.58579 21.4142C3.21071 21.0391 3 20.5304 3 20V9Z" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M9 22V12H15V22" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <circle cx="12" cy="6" r="1" fill="currentColor"/>
-    </SvgIcon>
-  );
-}
-
-export function AgricultureIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <path d="M12 2L13.5 8.5L20 10L13.5 11.5L12 18L10.5 11.5L4 10L10.5 8.5L12 2Z" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <circle cx="12" cy="10" r="2" fill="currentColor"/>
-      <path d="M8 6L10 8" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-      <path d="M16 6L14 8" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-      <path d="M8 14L10 12" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-      <path d="M16 14L14 12" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function HealingIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M12 6L12 18" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M6 12L18 12" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <circle cx="12" cy="8" r="1" fill="currentColor"/>
-      <circle cx="12" cy="16" r="1" fill="currentColor"/>
-      <circle cx="8" cy="12" r="1" fill="currentColor"/>
-      <circle cx="16" cy="12" r="1" fill="currentColor"/>
-    </SvgIcon>
-  );
-}
-
-export function SportsSoccerIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M12 2L12 22" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M2 12L22 12" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M4.93 4.93L19.07 19.07" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-      <path d="M19.07 4.93L4.93 19.07" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-      <circle cx="12" cy="12" r="2" fill="currentColor"/>
-    </SvgIcon>
-  );
-}
-
-export function TravelExploreIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M8 8L16 16" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M16 8L8 16" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" strokeWidth="1.5"/>
-      <circle cx="12" cy="12" r="1" fill="currentColor"/>
-    </SvgIcon>
-  );
-}
-
-export function ShoppingBagIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <path d="M6 2L3 6V20C3 20.5304 3.21071 21.0391 3.58579 21.4142C3.96086 21.7893 4.46957 22 5 22H19C19.5304 22 20.0391 21.7893 20.4142 21.4142C20.7893 21.0391 21 20.5304 21 20V6L18 2H6Z" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M3 6H21" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M8 11V17" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M12 11V17" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M16 11V17" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <circle cx="9" cy="10" r="1" fill="currentColor"/>
-    </SvgIcon>
-  );
-}
-
-export function AccessibilityIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <circle cx="12" cy="4" r="2" fill="currentColor"/>
-      <path d="M19 13V12C19 10.67 18.33 9.5 17.25 8.75L16 7.5V6.5C16 5.67 15.33 5 14.5 5S13 5.67 13 6.5V7.5L11.75 8.75C10.67 9.5 10 10.67 10 12V13" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M12 6V12" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M8 16L12 14L16 16" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <circle cx="12" cy="18" r="1" fill="currentColor"/>
-      <path d="M7 10L17 10" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-      <path d="M7 14L17 14" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function AccountBalanceWalletIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <rect x="6" y="6" width="12" height="8" rx="1" fill="currentColor" opacity="0.2"/>
-      <circle cx="12" cy="10" r="2" fill="none" stroke="currentColor" strokeWidth="1.5"/>
-      <circle cx="12" cy="10" r="1" fill="currentColor"/>
-      <path d="M8 8L16 8" stroke="currentColor" strokeWidth="1" fill="none"/>
-      <path d="M8 12L16 12" stroke="currentColor" strokeWidth="1" fill="none"/>
-      <path d="M6 16L18 16" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-      <path d="M6 18L18 18" stroke="currentColor" strokeWidth="1" fill="none"/>
-      <circle cx="8" cy="4" r="1" fill="currentColor"/>
-      <circle cx="16" cy="4" r="1" fill="currentColor"/>
-    </SvgIcon>
-  );
-}
-
-export function AccountCircleIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <circle cx="12" cy="8" r="3" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M6 20C6 16.6863 8.68629 14 12 14C15.3137 14 18 16.6863 18 20" stroke="currentColor" strokeWidth="2" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function AddIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <path d="M12 5V19" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M5 12H19" stroke="currentColor" strokeWidth="2" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function AddCircleIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M12 8V16" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M8 12H16" stroke="currentColor" strokeWidth="2" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function PaletteIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <circle cx="8" cy="8" r="2" fill="currentColor"/>
-      <circle cx="16" cy="8" r="2" fill="currentColor"/>
-      <circle cx="8" cy="16" r="2" fill="currentColor"/>
-      <circle cx="16" cy="16" r="2" fill="currentColor"/>
-      <circle cx="12" cy="6" r="1.5" fill="currentColor"/>
-      <circle cx="6" cy="12" r="1.5" fill="currentColor"/>
-      <circle cx="18" cy="12" r="1.5" fill="currentColor"/>
-      <circle cx="12" cy="18" r="1.5" fill="currentColor"/>
-    </SvgIcon>
-  );
-}
-
-export function PhotoCameraIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <rect x="6" y="4" width="12" height="10" rx="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <circle cx="12" cy="9" r="3" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <circle cx="12" cy="9" r="1.5" fill="currentColor"/>
-      <path d="M8 2L10 4H14L16 2" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M9 14L10 16H14L15 14" stroke="currentColor" strokeWidth="2" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function SchoolIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <path d="M12 3L20 7V17L12 21L4 17V7L12 3Z" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M8 8L12 10L16 8" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M8 12L12 14L16 12" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M8 16L12 18L16 16" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <circle cx="12" cy="8" r="1" fill="currentColor"/>
-      <circle cx="12" cy="12" r="1" fill="currentColor"/>
-      <circle cx="12" cy="16" r="1" fill="currentColor"/>
-      <path d="M12 1L12 3" stroke="currentColor" strokeWidth="2" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-// SecurityIcon already defined above
-
-export function VideocamIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <rect x="3" y="6" width="14" height="8" rx="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M8 10L11 8L14 10L11 12L8 10Z" fill="currentColor"/>
-      <circle cx="11" cy="10" r="1" fill="white"/>
-      <path d="M5 4L7 6" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M19 4L17 6" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M5 18L7 16" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M19 18L17 16" stroke="currentColor" strokeWidth="2" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-// Pet and Animal Care Icons
-export function DogIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <ellipse cx="12" cy="18" rx="8" ry="4" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <circle cx="8" cy="14" r="2" fill="currentColor"/>
-      <circle cx="16" cy="14" r="2" fill="currentColor"/>
-      <ellipse cx="12" cy="10" rx="3" ry="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M10 8L12 6L14 8" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <circle cx="10" cy="12" r="1" fill="currentColor"/>
-      <circle cx="14" cy="12" r="1" fill="currentColor"/>
-      <path d="M12 9L12 11" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function DogHotelIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <rect x="3" y="8" width="18" height="12" rx="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <rect x="5" y="10" width="4" height="3" rx="1" fill="currentColor" opacity="0.3"/>
-      <rect x="11" y="10" width="4" height="3" rx="1" fill="currentColor" opacity="0.3"/>
-      <rect x="17" y="10" width="2" height="3" rx="1" fill="currentColor" opacity="0.3"/>
-      <rect x="5" y="15" width="4" height="3" rx="1" fill="currentColor" opacity="0.3"/>
-      <rect x="11" y="15" width="4" height="3" rx="1" fill="currentColor" opacity="0.3"/>
-      <rect x="17" y="15" width="2" height="3" rx="1" fill="currentColor" opacity="0.3"/>
-      <circle cx="7" cy="11.5" r="0.5" fill="currentColor"/>
-      <circle cx="13" cy="11.5" r="0.5" fill="currentColor"/>
-      <circle cx="7" cy="16.5" r="0.5" fill="currentColor"/>
-      <circle cx="13" cy="16.5" r="0.5" fill="currentColor"/>
-      <path d="M12 2L12 8" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M10 4L12 2L14 4" stroke="currentColor" strokeWidth="2" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function VeterinaryIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M8 12L10 14L16 8" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <circle cx="12" cy="6" r="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M10 8L12 10L14 8" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M6 16L8 18L10 16" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M14 16L16 18L18 16" stroke="currentColor" strokeWidth="2" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function NurseIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <circle cx="12" cy="8" r="4" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M6 20C6 16.6863 8.68629 14 12 14C15.3137 14 18 16.6863 18 20" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <circle cx="12" cy="6" r="1.5" fill="currentColor"/>
-      <path d="M12 2L12 4" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M10 3L12 4L14 3" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <rect x="10" y="12" width="4" height="2" rx="1" fill="currentColor" opacity="0.3"/>
-    </SvgIcon>
-  );
-}
-
-export function PetGroomingIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <ellipse cx="12" cy="16" rx="6" ry="3" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <circle cx="8" cy="14" r="1.5" fill="currentColor"/>
-      <circle cx="16" cy="14" r="1.5" fill="currentColor"/>
-      <ellipse cx="12" cy="10" rx="2.5" ry="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M10 8L12 6L14 8" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M8 6L10 4" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-      <path d="M16 6L14 4" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-      <circle cx="6" cy="4" r="1" fill="currentColor"/>
-      <circle cx="18" cy="4" r="1" fill="currentColor"/>
-    </SvgIcon>
-  );
-}
-
-export function PetFoodIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <rect x="6" y="8" width="12" height="8" rx="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <circle cx="9" cy="12" r="1" fill="currentColor"/>
-      <circle cx="12" cy="12" r="1" fill="currentColor"/>
-      <circle cx="15" cy="12" r="1" fill="currentColor"/>
-      <circle cx="9" cy="15" r="1" fill="currentColor"/>
-      <circle cx="12" cy="15" r="1" fill="currentColor"/>
-      <circle cx="15" cy="15" r="1" fill="currentColor"/>
-      <path d="M12 2L12 8" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M10 4L12 2L14 4" stroke="currentColor" strokeWidth="2" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function PetTrainingIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <ellipse cx="12" cy="16" rx="5" ry="3" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <circle cx="9" cy="14" r="1" fill="currentColor"/>
-      <circle cx="15" cy="14" r="1" fill="currentColor"/>
-      <ellipse cx="12" cy="10" rx="2" ry="1.5" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M11 8L12 6L13 8" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M8 6L10 4" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-      <path d="M16 6L14 4" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-      <circle cx="6" cy="8" r="1" fill="currentColor"/>
-      <circle cx="18" cy="8" r="1" fill="currentColor"/>
-      <path d="M6 8L8 10" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-      <path d="M18 8L16 10" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function PetSittingIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <rect x="4" y="6" width="16" height="12" rx="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <ellipse cx="12" cy="18" rx="4" ry="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <circle cx="8" cy="12" r="1.5" fill="currentColor"/>
-      <circle cx="16" cy="12" r="1.5" fill="currentColor"/>
-      <ellipse cx="12" cy="8" rx="2" ry="1.5" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M11 6L12 4L13 6" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <circle cx="10" cy="10" r="0.5" fill="currentColor"/>
-      <circle cx="14" cy="10" r="0.5" fill="currentColor"/>
-      <path d="M12 8L12 10" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function CatIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <ellipse cx="12" cy="18" rx="6" ry="3" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <circle cx="9" cy="14" r="1.5" fill="currentColor"/>
-      <circle cx="15" cy="14" r="1.5" fill="currentColor"/>
-      <ellipse cx="12" cy="10" rx="2.5" ry="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M10 8L12 6L14 8" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M6 6L8 4" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-      <path d="M18 6L16 4" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-      <path d="M6 4L6 2" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-      <path d="M18 4L18 2" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-      <circle cx="10" cy="11" r="0.5" fill="currentColor"/>
-      <circle cx="14" cy="11" r="0.5" fill="currentColor"/>
-      <path d="M12 9L12 11" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function PetVaccinationIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <ellipse cx="12" cy="16" rx="5" ry="3" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <circle cx="9" cy="14" r="1" fill="currentColor"/>
-      <circle cx="15" cy="14" r="1" fill="currentColor"/>
-      <ellipse cx="12" cy="10" rx="2" ry="1.5" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M11 8L12 6L13 8" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <circle cx="10" cy="11" r="0.5" fill="currentColor"/>
-      <circle cx="14" cy="11" r="0.5" fill="currentColor"/>
-      <path d="M12 8L12 10" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-      <circle cx="12" cy="4" r="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M12 2L12 6" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M10 3L12 2L14 3" stroke="currentColor" strokeWidth="2" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-// Professional Pet Grooming & Care Icons for Dyrepleier
-export function PetGroomingProfessionalIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <ellipse cx="12" cy="18" rx="7" ry="4" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <circle cx="8" cy="16" r="2" fill="currentColor"/>
-      <circle cx="16" cy="16" r="2" fill="currentColor"/>
-      <ellipse cx="12" cy="12" rx="3" ry="2.5" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M10 9L12 7L14 9" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M6 8L8 6" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-      <path d="M18 8L16 6" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-      <path d="M6 6L6 4" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-      <path d="M18 6L18 4" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-      <circle cx="10" cy="13" r="1" fill="currentColor"/>
-      <circle cx="14" cy="13" r="1" fill="currentColor"/>
-      <path d="M12 11L12 13" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-      <path d="M4 2L8 4" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-      <path d="M20 2L16 4" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-      <circle cx="4" cy="2" r="1" fill="currentColor"/>
-      <circle cx="20" cy="2" r="1" fill="currentColor"/>
-    </SvgIcon>
-  );
-}
-
-export function PetCareSpecialistIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <ellipse cx="12" cy="18" rx="6" ry="3" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <circle cx="8" cy="16" r="1.5" fill="currentColor"/>
-      <circle cx="16" cy="16" r="1.5" fill="currentColor"/>
-      <ellipse cx="12" cy="11" rx="2.5" ry="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M10 9L12 7L14 9" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <circle cx="10" cy="12" r="0.5" fill="currentColor"/>
-      <circle cx="14" cy="12" r="0.5" fill="currentColor"/>
-      <path d="M12 10L12 12" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-      <rect x="3" y="4" width="18" height="2" rx="1" fill="currentColor" opacity="0.3"/>
-      <path d="M6 2L8 4" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-      <path d="M18 2L16 4" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-      <circle cx="6" cy="2" r="1" fill="currentColor"/>
-      <circle cx="18" cy="2" r="1" fill="currentColor"/>
-      <path d="M8 6L10 8" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-      <path d="M16 6L14 8" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function AnimalWellnessIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <ellipse cx="12" cy="17" rx="5" ry="3" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <circle cx="9" cy="15" r="1" fill="currentColor"/>
-      <circle cx="15" cy="15" r="1" fill="currentColor"/>
-      <ellipse cx="12" cy="10" rx="2" ry="1.5" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M11 8L12 6L13 8" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <circle cx="10" cy="11" r="0.5" fill="currentColor"/>
-      <circle cx="14" cy="11" r="0.5" fill="currentColor"/>
-      <path d="M12 9L12 11" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-      <circle cx="12" cy="3" r="3" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M9 3L12 6L15 3" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <circle cx="12" cy="3" r="1" fill="currentColor"/>
-      <path d="M8 1L10 3" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-      <path d="M16 1L14 3" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function PetStylingIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <ellipse cx="12" cy="18" rx="6" ry="3" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <circle cx="8" cy="16" r="1.5" fill="currentColor"/>
-      <circle cx="16" cy="16" r="1.5" fill="currentColor"/>
-      <ellipse cx="12" cy="11" rx="2.5" ry="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M10 9L12 7L14 9" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <circle cx="10" cy="12" r="0.5" fill="currentColor"/>
-      <circle cx="14" cy="12" r="0.5" fill="currentColor"/>
-      <path d="M12 10L12 12" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-      <path d="M6 4L8 6" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-      <path d="M18 4L16 6" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-      <path d="M6 4L6 2" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-      <path d="M18 4L18 2" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-      <circle cx="6" cy="2" r="1" fill="currentColor"/>
-      <circle cx="18" cy="2" r="1" fill="currentColor"/>
-      <path d="M2 8L6 10" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-      <path d="M22 8L18 10" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-      <circle cx="2" cy="8" r="1" fill="currentColor"/>
-      <circle cx="22" cy="8" r="1" fill="currentColor"/>
-    </SvgIcon>
-  );
-}
-
-export function MobilePetCareIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <rect x="4" y="6" width="16" height="12" rx="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <ellipse cx="12" cy="18" rx="4" ry="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <circle cx="8" cy="14" r="1.5" fill="currentColor"/>
-      <circle cx="16" cy="14" r="1.5" fill="currentColor"/>
-      <ellipse cx="12" cy="9" rx="2" ry="1.5" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M11 7L12 5L13 7" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <circle cx="10" cy="10" r="0.5" fill="currentColor"/>
-      <circle cx="14" cy="10" r="0.5" fill="currentColor"/>
-      <path d="M12 8L12 10" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-      <rect x="2" y="4" width="4" height="2" rx="1" fill="currentColor" opacity="0.3"/>
-      <rect x="18" y="4" width="4" height="2" rx="1" fill="currentColor" opacity="0.3"/>
-      <path d="M6 2L8 4" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-      <path d="M18 2L16 4" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function PetSalonIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <rect x="3" y="8" width="18" height="12" rx="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <ellipse cx="12" cy="20" rx="5" ry="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <circle cx="8" cy="16" r="1.5" fill="currentColor"/>
-      <circle cx="16" cy="16" r="1.5" fill="currentColor"/>
-      <ellipse cx="12" cy="12" rx="2.5" ry="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M10 10L12 8L14 10" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <circle cx="10" cy="13" r="0.5" fill="currentColor"/>
-      <circle cx="14" cy="13" r="0.5" fill="currentColor"/>
-      <path d="M12 11L12 13" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-      <rect x="5" y="4" width="2" height="4" rx="1" fill="currentColor" opacity="0.3"/>
-      <rect x="17" y="4" width="2" height="4" rx="1" fill="currentColor" opacity="0.3"/>
-      <rect x="10" y="4" width="4" height="2" rx="1" fill="currentColor" opacity="0.3"/>
-      <circle cx="6" cy="6" r="1" fill="currentColor"/>
-      <circle cx="18" cy="6" r="1" fill="currentColor"/>
-      <circle cx="12" cy="6" r="1" fill="currentColor"/>
-    </SvgIcon>
-  );
-}
-
-// ⭐ NEW PROFESSION ICONS
-
-export function YogaStudioIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <circle cx="12" cy="8" r="2" fill="currentColor"/>
-      <path d="M12 10C9.5 10 7 12 7 14V16C7 16 9 18 12 18C15 18 17 16 17 16V14C17 12 14.5 10 12 10Z" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M7 14L4 12" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M17 14L20 12" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M12 18V22" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M8 22L16 22" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <circle cx="4" cy="12" r="1" fill="currentColor"/>
-      <circle cx="20" cy="12" r="1" fill="currentColor"/>
-      <circle cx="8" cy="22" r="1" fill="currentColor"/>
-      <circle cx="16" cy="22" r="1" fill="currentColor"/>
-    </SvgIcon>
-  );
-}
-
-export function TattooArtistIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <path d="M8 2L8 8" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M6 2L8 4L10 2" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <circle cx="8" cy="10" r="2" fill="currentColor"/>
-      <path d="M8 12L8 18" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-      <path d="M6 18L10 18" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <ellipse cx="16" cy="14" rx="4" ry="6" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M14 10L16 8L18 10" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <circle cx="16" cy="14" r="2" fill="currentColor" opacity="0.3"/>
-      <path d="M13 14L19 14" stroke="currentColor" strokeWidth="1" fill="none"/>
-      <path d="M14 12L18 12" stroke="currentColor" strokeWidth="1" fill="none"/>
-      <path d="M14 16L18 16" stroke="currentColor" strokeWidth="1" fill="none"/>
-      <path d="M16 20L16 22" stroke="currentColor" strokeWidth="2" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function HairdresserIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <circle cx="12" cy="8" r="4" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M6 20C6 16.6863 8.68629 14 12 14C15.3137 14 18 16.6863 18 20" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M8 4L10 6" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M16 4L14 6" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <circle cx="8" cy="4" r="1" fill="currentColor"/>
-      <circle cx="16" cy="4" r="1" fill="currentColor"/>
-      <path d="M4 12L6 14" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-      <path d="M20 12L18 14" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-      <circle cx="4" cy="12" r="1" fill="currentColor"/>
-      <circle cx="20" cy="12" r="1" fill="currentColor"/>
-      <path d="M10 8L14 8" stroke="currentColor" strokeWidth="1" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function PersonalTrainerIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <circle cx="12" cy="6" r="3" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M12 9V14" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M7 11L12 14L17 11" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <circle cx="7" cy="11" r="1.5" fill="currentColor"/>
-      <circle cx="17" cy="11" r="1.5" fill="currentColor"/>
-      <path d="M12 14V18" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M9 18L12 22L15 18" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <circle cx="9" cy="18" r="1" fill="currentColor"/>
-      <circle cx="15" cy="18" r="1" fill="currentColor"/>
-      <path d="M4 11L7 11" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M17 11L20 11" stroke="currentColor" strokeWidth="2" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function RestaurantIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <path d="M11 2V22" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M8 2V8C8 9 9 10 11 10" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-      <path d="M14 2V8C14 9 13 10 11 10" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-      <path d="M17 2V10" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M17 10C17 11 16 12 14 12H14" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-      <circle cx="11" cy="10" r="1" fill="currentColor"/>
-      <circle cx="17" cy="10" r="1" fill="currentColor"/>
-    </SvgIcon>
-  );
-}
-
-export function FloristIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <circle cx="12" cy="8" r="3" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <circle cx="8" cy="6" r="2" fill="currentColor" opacity="0.3"/>
-      <circle cx="16" cy="6" r="2" fill="currentColor" opacity="0.3"/>
-      <circle cx="10" cy="11" r="2" fill="currentColor" opacity="0.3"/>
-      <circle cx="14" cy="11" r="2" fill="currentColor" opacity="0.3"/>
-      <circle cx="12" cy="8" r="1.5" fill="currentColor"/>
-      <path d="M12 11V16" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M10 14L8 16" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-      <path d="M14 14L16 16" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-      <ellipse cx="12" cy="20" rx="3" ry="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-    </SvgIcon>
-  );
-}
-
-export function ChildcareIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <circle cx="12" cy="7" r="3" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <circle cx="12" cy="7" r="1" fill="currentColor"/>
-      <path d="M8 18C8 15.5 9.79 13.5 12 13.5C14.21 13.5 16 15.5 16 18" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <rect x="6" y="18" width="12" height="4" rx="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <circle cx="9" cy="20" r="0.5" fill="currentColor"/>
-      <circle cx="12" cy="20" r="0.5" fill="currentColor"/>
-      <circle cx="15" cy="20" r="0.5" fill="currentColor"/>
-      <circle cx="6" cy="4" r="1.5" fill="currentColor" opacity="0.3"/>
-      <circle cx="18" cy="4" r="1.5" fill="currentColor" opacity="0.3"/>
-      <circle cx="4" cy="10" r="1.5" fill="currentColor" opacity="0.3"/>
-      <circle cx="20" cy="10" r="1.5" fill="currentColor" opacity="0.3"/>
-    </SvgIcon>
-  );
-}
-
-export function PsychologistIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M8 10C8 10 9 11 10 11C11 11 11 10 11 10" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-      <path d="M13 10C13 10 14 11 15 11C16 11 16 10 16 10" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-      <circle cx="12" cy="16" r="3" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M10 16L12 18L14 16" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-      <circle cx="12" cy="6" r="2" fill="currentColor" opacity="0.3"/>
-      <path d="M8 4L10 6" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-      <path d="M16 4L14 6" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function DrivingSchoolIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <rect x="4" y="8" width="16" height="10" rx="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <circle cx="8" cy="15" r="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <circle cx="16" cy="15" r="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <rect x="6" y="10" width="12" height="4" rx="1" fill="currentColor" opacity="0.2"/>
-      <path d="M4 8L6 4H18L20 8" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <rect x="10" y="11" width="4" height="2" rx="0.5" fill="currentColor"/>
-      <circle cx="12" cy="6" r="1" fill="currentColor"/>
-      <path d="M12 2L12 4" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M10 3L12 2L14 3" stroke="currentColor" strokeWidth="2" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function SpaWellnessIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M8 8C8 8 10 6 12 6C14 6 16 8 16 8" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <circle cx="12" cy="6" r="1" fill="currentColor"/>
-      <ellipse cx="12" cy="14" rx="4" ry="3" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M9 14L15 14" stroke="currentColor" strokeWidth="1" fill="none"/>
-      <path d="M10 12L14 12" stroke="currentColor" strokeWidth="1" fill="none"/>
-      <path d="M10 16L14 16" stroke="currentColor" strokeWidth="1" fill="none"/>
-      <circle cx="6" cy="12" r="1.5" fill="currentColor" opacity="0.3"/>
-      <circle cx="18" cy="12" r="1.5" fill="currentColor" opacity="0.3"/>
-      <circle cx="12" cy="20" r="1.5" fill="currentColor" opacity="0.3"/>
-    </SvgIcon>
-  );
-}
-
-export function PetHotelIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <rect x="3" y="8" width="18" height="12" rx="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <rect x="5" y="10" width="4" height="3" rx="1" fill="currentColor" opacity="0.25"/>
-      <rect x="11" y="10" width="4" height="3" rx="1" fill="currentColor" opacity="0.25"/>
-      <rect x="17" y="10" width="2" height="3" rx="1" fill="currentColor" opacity="0.25"/>
-      <rect x="5" y="15" width="4" height="3" rx="1" fill="currentColor" opacity="0.25"/>
-      <rect x="11" y="15" width="4" height="3" rx="1" fill="currentColor" opacity="0.25"/>
-      <rect x="17" y="15" width="2" height="3" rx="1" fill="currentColor" opacity="0.25"/>
-      <ellipse cx="7" cy="11.5" rx="1" ry="0.8" fill="currentColor"/>
-      <ellipse cx="13" cy="11.5" rx="1" ry="0.8" fill="currentColor"/>
-      <ellipse cx="7" cy="16.5" rx="1" ry="0.8" fill="currentColor"/>
-      <ellipse cx="13" cy="16.5" rx="1" ry="0.8" fill="currentColor"/>
-      <rect x="10" y="4" width="4" height="2" rx="1" fill="currentColor" opacity="0.3"/>
-      <circle cx="12" cy="5" r="0.5" fill="currentColor"/>
-      <path d="M12 2L12 4" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M10 3L12 2L14 3" stroke="currentColor" strokeWidth="2" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-// Additional missing MUI icons - AnalyticsIcon already defined above
-
-export function ArticleIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <path d="M14 2H6C4.89543 2 4 2.89543 4 4V20C4 21.1046 4.89543 22 6 22H18C19.1046 22 20 21.1046 20 20V8L14 2Z" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M14 2V8H20" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M8 12H16" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M8 16H12" stroke="currentColor" strokeWidth="2" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function AssessmentIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M7 7H17" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M7 11H17" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M7 15H13" stroke="currentColor" strokeWidth="2" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function AttachMoneyIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <path d="M12 1V23" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M17 5H9.5C8.57174 5 7.6815 5.36875 7.02513 6.02513C6.36875 6.6815 6 7.57174 6 8.5C6 9.42826 6.36875 10.3185 7.02513 10.9749C7.6815 11.6312 8.57174 12 9.5 12H14.5C15.4283 12 16.3185 12.3687 16.9749 13.0251C17.6312 13.6815 18 14.5717 18 15.5C18 16.4283 17.6312 17.3185 16.9749 17.9749C16.3185 18.6312 15.4283 19 14.5 19H6" stroke="currentColor" strokeWidth="2" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function BuildIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <path d="M22.61 16.95C22.61 16.95 20.81 16.95 19.61 18.15L17.45 15.99C16.25 14.79 16.25 12.99 17.45 11.79L19.61 9.63C20.81 8.43 20.81 6.63 19.61 5.43L18.15 3.97C16.95 2.77 15.15 2.77 13.95 3.97L11.79 6.13C10.59 7.33 8.79 7.33 7.59 6.13L5.43 3.97C4.23 2.77 2.43 2.77 1.23 3.97L3.97 6.71C5.17 7.91 5.17 9.71 3.97 10.91L6.13 13.07C7.33 14.27 7.33 16.07 6.13 17.27L3.97 19.43C2.77 20.63 2.77 22.43 3.97 23.63L5.43 22.17C6.63 20.97 8.43 20.97 9.63 22.17L11.79 20.01C12.99 18.81 14.79 18.81 15.99 20.01L18.15 22.17C19.35 23.37 21.15 23.37 22.35 22.17L22.61 16.95Z" fill="none" stroke="currentColor" strokeWidth="2"/>
-    </SvgIcon>
-  );
-}
-
-export function BugReportIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <path d="M20 8H18V6C18 4.9 17.1 4 16 4H8C6.9 4 6 4.9 6 6V8H4C2.9 8 2 8.9 2 10V12C2 13.1 2.9 14 4 14H6V16C6 17.1 6.9 18 8 18H16C17.1 18 18 17.1 18 16V14H20C21.1 14 22 13.1 22 12V10C22 8.9 21.1 8 20 8Z" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M12 6V12" stroke="currentColor" strokeWidth="2" fill="none"/>
-      <path d="M12 14H12.01" stroke="currentColor" strokeWidth="2" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-export function SettingsIcon(props: any) {
-  return (
-    <SvgIcon {...props}>
-      <circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M19.4 15C19.2669 15.3016 19.2272 15.6362 19.286 15.9606C19.3448 16.285 19.4995 16.5843 19.73 16.82L19.79 16.88C19.976 17.0657 20.1235 17.2863 20.2241 17.5291C20.3248 17.7719 20.3766 18.0322 20.3766 18.295C20.3766 18.5578 20.3248 18.8181 20.2241 19.0609C20.1235 19.3037 19.976 19.5243 19.79 19.71C19.6043 19.896 19.3837 20.0435 19.1409 20.1441C18.8981 20.2448 18.6378 20.2966 18.375 20.2966C18.1122 20.2966 17.8519 20.2448 17.6091 20.1441C17.3663 20.0435 17.1457 19.896 16.96 19.71L16.9 19.65C16.6643 19.4195 16.365 19.2648 16.0406 19.206C15.7162 19.1472 15.3816 19.1869 15.08 19.32C14.7842 19.4468 14.532 19.6572 14.3543 19.9255C14.1766 20.1938 14.0813 20.5082 14.08 20.83V21C14.08 21.5304 13.8693 22.0391 13.4942 22.4142C13.1191 22.7893 12.6104 23 12.08 23C11.5496 23 11.0409 22.7893 10.6658 22.4142C10.2907 22.0391 10.08 21.5304 10.08 21V20.91C10.0723 20.579 9.96512 20.2573 9.77251 19.9887C9.5799 19.7201 9.31074 19.5176 9 19.41C8.69838 19.2769 8.36381 19.2372 8.03941 19.296C7.71502 19.3548 7.41568 19.5095 7.18 19.74L7.12 19.8C6.93425 19.986 6.71368 20.1335 6.47088 20.2341C6.22808 20.3348 5.96783 20.3866 5.705 20.3866C5.44217 20.3866 5.18192 20.3348 4.93912 20.2341C4.69632 20.1335 4.47575 19.986 4.29 19.8C4.10405 19.6143 3.95653 19.3937 3.85588 19.1509C3.75523 18.9081 3.70343 18.6478 3.70343 18.385C3.70343 18.1222 3.75523 17.8619 3.85588 17.6191C3.95653 17.3763 4.10405 17.1557 4.29 16.97L4.35 16.91C4.58054 16.6743 4.73519 16.375 4.794 16.0506C4.85282 15.7262 4.81312 15.3916 4.68 15.09C4.55324 14.7942 4.34276 14.542 4.07447 14.3643C3.80618 14.1866 3.49179 14.0913 3.17 14.09H3C2.46957 14.09 1.96086 13.8793 1.58579 13.5042C1.21071 13.1291 1 12.6204 1 12.09C1 11.5596 1.21071 11.0509 1.58579 10.6758C1.96086 10.3007 2.46957 10.09 3 10.09H3.09C3.42099 10.0823 3.74273 9.97512 4.01133 9.78251C4.27993 9.5899 4.4824 9.32074 4.59 9.01C4.72312 8.70838 4.76282 8.37381 4.704 8.04941C4.64519 7.72502 4.49054 7.42568 4.26 7.19L4.2 7.13C4.01405 6.94425 3.86653 6.72368 3.76588 6.48088C3.66523 6.23808 3.61343 5.97783 3.61343 5.715C3.61343 5.45217 3.66523 5.19192 3.76588 4.94912C3.86653 4.70632 4.01405 4.48575 4.2 4.3C4.38575 4.11405 4.60632 3.96653 4.84912 3.86588C5.09192 3.76523 5.35217 3.71343 5.615 3.71343C5.87783 3.71343 6.13808 3.76523 6.38088 3.86588C6.62368 3.96653 6.84425 4.11405 7.03 4.3L7.09 4.36C7.32568 4.59054 7.62502 4.74519 7.94941 4.804C8.27381 4.86282 8.60838 4.82312 8.91 4.69H9C9.29577 4.56324 9.54802 4.35276 9.72569 4.08447C9.90337 3.81618 9.99872 3.50179 10 3.18V3C10 2.46957 10.2107 1.96086 10.5858 1.58579C10.9609 1.21071 11.4696 1 12 1C12.5304 1 13.0391 1.21071 13.4142 1.58579C13.7893 1.96086 14 2.46957 14 3V3.09C14.0013 3.41179 14.0966 3.72618 14.2743 3.99447C14.452 4.26276 14.7042 4.47324 15 4.6C15.3016 4.73312 15.6362 4.77282 15.9606 4.714C16.285 4.65519 16.5843 4.50054 16.82 4.27L16.88 4.21C17.0657 4.02405 17.2863 3.87653 17.5291 3.77588C17.7719 3.67523 18.0322 3.62343 18.295 3.62343C18.5578 3.62343 18.8181 3.67523 19.0609 3.77588C19.3037 3.87653 19.5243 4.02405 19.71 4.21C19.896 4.39575 20.0435 4.61632 20.1441 4.85912C20.2448 5.10192 20.2966 5.36217 20.2966 5.625C20.2966 5.88783 20.2448 6.14808 20.1441 6.39088C20.0435 6.63368 19.896 6.85425 19.71 7.04L19.65 7.1C19.4195 7.33568 19.2648 7.63502 19.206 7.95941C19.1472 8.28381 19.1869 8.61838 19.32 8.92V9C19.4468 9.29577 19.6572 9.54802 19.9255 9.72569C20.1938 9.90337 20.5082 9.99872 20.83 10H21C21.5304 10 22.0391 10.2107 22.4142 10.5858C22.7893 10.9609 23 11.4696 23 12C23 12.5304 22.7893 13.0391 22.4142 13.4142C22.0391 13.7893 21.5304 14 21 14H20.91C20.5882 14.0013 20.2738 14.0966 20.0055 14.2743C19.7372 14.452 19.5268 14.7042 19.4 15Z" stroke="currentColor" strokeWidth="2" fill="none"/>
-    </SvgIcon>
-  );
-}
+  // Core icons
+  Favorite,
+  PhotoCamera,
+  Videocam,
+  LibraryMusic,
+  Business,
+  Psychology,
+  Diversity3,
+  SmartToy,
+  Analytics,
+  EmojiEvents,
+  Smartphone,
+  Code,
+  Troubleshoot,
+  Tune,
+  AnimationOutlined,
+  FeaturedPlayList,
+  Security,
+  VpnKey,
+  Lock,
+  PrivacyTip,
+  Api,
+  School,
+  Book,
+  AutoStories,
+  Movie,
+  CheckCircle,
+  Bookmark,
+  NoteOutlined,
+  EmojiEventsOutlined,
+  Quiz,
+  Person,
+  People,
+  Timeline,
+  Speed,
+  ClosedCaption,
+  Fullscreen,
+  VolumeUp,
+  VolumeOff,
+  BugReport,
+  Timelapse,
+  Telegram,
+  Assignment,
+  TrendingUp,
+  Edit,
+  Delete,
+  Share,
+  FileCopy,
+  GetApp,
+  Visibility,
+  VisibilityOff,
+  Flag,
+  Storage,
+  DataUsage,
+  ShoppingCart,
+  Storefront,
+  Pets,
+  MonetizationOn,
+  AccountCircle,
+  AddCircle,
+  Palette,
+  FitnessCenter,
+  Restaurant,
+  Spa,
+  DirectionsCar,
+  LocalFlorist,
+  ChildCare,
+  Hotel,
+  Medication,
+  Vaccines,
+  LocalShipping,
+  Create,
+  Article,
+  AttachMoney,
+  Build,
+  Settings,
+  Lightbulb,
+  Category,
+  Save,
+  Search,
+  StarRate,
+  Sports,
+  Explore,
+  ShoppingBag,
+  Accessibility,
+  AccountBalanceWallet,
+  Add,
+  Assessment,
+  Info,
+  Warning,
+  Error,
+  Close,
+  Menu,
+  ExpandMore,
+  ChevronDown,
+  ChevronRight,
+  ChevronLeft,
+  Home,
+  Dashboard,
+  Logout,
+  VolumeOutlined,
+  Image,
+  Description,
+  Download,
+  Publish,
+  MoreVert,
+  Search as SearchIcon,
+  Filter,
+  WorkHistory,
+  FileDownload,
+  UploadFile,
+  Folder,
+  FolderOpen,
+  AutoAwesome,
+  Rocket,
+} from '@mui/icons-material';
+
+// Export all Material-UI icons with CreatorHub naming convention
+// Project Category Icons
+export { Favorite as RingIcon };
+export { PhotoCamera as PhotographyIcon };
+export { PhotoCamera as PhotographyIconAlt };
+export { Videocam as VideographyIcon };
+export { Videocam as Videocamcam };
+export { LibraryMusic as MusicProductionIcon };
+export { LibraryMusic as LibraryMusicNote };
+export { Business as CorporateIcon };
+export { Business as BusinessIcon };
+export { ShoppingCart as ShoppingDirectionsCart };
+export { Book as InteractiveDocsIcon };
+export { SmartToy as AIIcon };
+export { People as CollaborationIcon };
+export { Analytics as AnalyticsIcon };
+export { EmojiEvents as GamificationIcon };
+export { Smartphone as MobileIcon };
+export { Code as CodeSandboxIcon };
+export { Troubleshoot as DiagramIcon };
+export { TrendingUp as SimulationIcon };
+export { Tune as CustomizationIcon };
+export { Palette as ThemeEngineIcon };
+export { AnimationOutlined as AnimationIcon };
+export { FeaturedPlayList as VisualEffectsIcon };
+export { Tune as AdvancedCustomizationIcon };
+
+// Security & Privacy Icons
+export { Security as AccessControlIcon };
+export { Lock as DataEncryptionIcon };
+export { PrivacyTip as PrivacyControlsIcon };
+export { Security as SecurityIcon };
+export { Api as APIIntegrationIcon };
+
+// Academy & Learning Icons
+export { School as AcademyIcon };
+export { Book as CourseIcon };
+export { AutoStories as LessonIcon };
+export { Movie as VideoPlayerIcon };
+export { CheckCircle as ProgressIcon };
+export { Bookmark as BookmarkIcon };
+export { NoteOutlined as NoteIcon };
+export { EmojiEventsOutlined as CertificateIcon };
+export { Quiz as QuizIcon };
+export { Person as InstructorIcon };
+export { People as StudentIcon };
+export { Timeline as LearningPathIcon };
+export { Troubleshoot as XRayIcon };
+export { Speed as QualityIcon };
+export { Speed as SpeedIcon };
+export { ClosedCaption as SubtitlesIcon };
+export { Fullscreen as FullscreenIcon };
+export { VolumeUp as VolumeIcon };
+export { VolumeOff as MuteIcon };
+
+// Testing & Quality Icons
+export { BugReport as TestingFrameworkIcon };
+export { Speed as PerformanceMonitoringIcon };
+export { Telegram as WebhookIcon };
+
+// Content & Media Icons
+export { Edit as AnnotationIcon };
+export { Troubleshoot as HotspotIcon };
+export { Edit as CalloutIcon };
+export { Book as ChapterIcon };
+export { Image as ThumbnailIcon };
+export { Speed as AutoDetectIcon };
+export { Movie as VideoProcessingIcon };
+export { FeaturedPlayList as InteractiveElementIcon };
+export { Flag as VideoMarkerIcon };
+export { Create as ContentCreationIcon };
+
+// Camera & Photography Equipment
+export { PhotoCamera as CameraTemplateIcon };
+export { PhotoCamera as CameraSetupIcon };
+export { Storage as TemplateManagerIcon };
+export { Settings as CameraGearIcon };
+export { PhotoCamera as LensIcon };
+export { PhotoCamera as TripodIcon };
+export { Tune as GimbalIcon };
+export { Lightbulb as LightingIcon };
+export { Storage as MemoryCardIcon };
+export { Settings as CameraSettingsIcon };
+export { Settings as VideoSettingsIcon };
+export { Settings as PhotoSettingsIcon };
+
+// Template & Workflow Icons
+export { Timeline as WorkflowIcon };
+export { Category as TemplateCategoryIcon };
+export { Share as TemplateShareIcon };
+export { GetApp as TemplateImportIcon };
+export { Save as TemplateExportIcon };
+export { SearchIcon as TemplateSearchIcon };
+export { Tune as TemplateFilterIcon };
+export { StarRate as TemplateRatingIcon };
+export { DataUsage as TemplateUsageIcon };
+
+// Course & Learning Actions
+export { Visibility as ViewDetailsIcon };
+export { Edit as EditCourseIcon };
+export { Delete as DeleteCourseIcon };
+export { Share as ShareCourseIcon };
+export { FileCopy as CopyLinkIcon };
+export { GetApp as DownloadResourcesIcon };
+export { Visibility as ToggleVisibilityIcon };
+export { VisibilityOff as ToggleVisibilityOffIcon };
+export { Flag as ReportIssueIcon };
+
+// Profession Icons
+export { FitnessCenter as YogaStudioIcon };
+export { Palette as TattooArtistIcon };
+export { Edit as HairdresserIcon };
+export { FitnessCenter as PersonalTrainerIcon };
+export { Restaurant as RestaurantIcon };
+export { LocalFlorist as FloristIcon };
+export { ChildCare as ChildcareIcon };
+export { Psychology as PsychologistIcon };
+export { DirectionsCar as DrivingSchoolIcon };
+export { Spa as SpaWellnessIcon };
+
+// Pet & Animal Care Icons
+export { Pets as DogIcon };
+export { Hotel as DogHotelIcon };
+export { Medication as VeterinaryIcon };
+export { Person as NurseIcon };
+export { Spa as PetGroomingIcon };
+export { Restaurant as PetFoodIcon };
+export { School as PetTrainingIcon };
+export { People as PetSittingIcon };
+export { Pets as CatIcon };
+export { Vaccines as PetVaccinationIcon };
+export { Spa as PetGroomingProfessionalIcon };
+export { Pets as PetCareSpecialistIcon };
+export { Favorite as AnimalWellnessIcon };
+export { Spa as PetStylingIcon };
+export { LocalShipping as MobilePetCareIcon };
+export { Spa as PetSalonIcon };
+export { Hotel as PetHotelIcon };
+
+// Business & Commerce Icons
+export { Storefront as StoreIcon };
+export { Business as AgricultureIcon };
+export { Favorite as HealingIcon };
+export { Sports as SportsSoccerIcon };
+export { Explore as TravelExploreIcon };
+export { ShoppingBag as ShoppingBagIcon };
+export { Accessibility as AccessibilityIcon };
+export { AccountBalanceWallet as AccountBalanceWalletIcon };
+export { AccountCircle as AccountCircleIcon };
+export { Add as AddIcon };
+export { AddCircle as AddCircleIcon };
+export { Palette as PaletteIcon };
+export { PhotoCamera as PhotoCameraIcon };
+export { School as SchoolIcon };
+export { Videocam as VideocamIcon };
+
+// Additional Material-UI Icons
+export { Article as ArticleIcon };
+export { Assessment as AssessmentIcon };
+export { AttachMoney as AttachMoneyIcon };
+export { Build as BuildIcon };
+export { BugReport as BugReportIcon };
+export { Settings as SettingsIcon };
+
+// Equipment & Gear Icons
+export { PhotoCamera as ProfessionalCameraIcon };
+export { Videocam as MusicNoteIcon };
+export { Storage as EquipmentDatabaseIcon };
+export { Storage as EquipmentInventoryIcon };
+export { Build as EquipmentMaintenanceIcon };
+export { LocalShipping as EquipmentRentalIcon };
+export { TrendingUp as MarketPricesIcon };
+export { PhotoCamera as LensDatabaseIcon };
+export { Code as SoftwareDatabaseIcon };
+export { Build as EquipmentToolsIcon };
+export { Article as EquipmentNewsIcon };
+export { Download as FirmwareUpdateIcon };
+export { MonetizationOn as EnhancedMonetizationIcon };
 
 // Icon mapping for easy access
 export const CREATOR_HUB_ICONS = {
-  // Project Categories
-  // wedding: RingIcon, // Using custom icon instead
-  // photography: PhotographyIcon, // Using custom icon instead
-  // videography: VideographyIcon, // Using custom icon instead
-  // music: MusicProductionIcon, // Using custom icon instead
-  // corporate: CorporateIcon, // Using custom icon instead
-  // Interactive Documentation System Icons
-  // interactiveDocs: InteractiveDocsIcon, // Using custom icon instead
-  // ai: AIIcon, // Using custom icon instead
-  // collaboration: CollaborationIcon, // Using custom icon instead
-  // analyticsCustom: AnalyticsIcon, // Using custom icon instead
-  // gamification: GamificationIcon, // Using custom icon instead
-  // mobile: MobileIcon, // Using custom icon instead
-  // codeSandbox: CodeSandboxIcon, // Using custom icon instead
-  // diagram: DiagramIcon, // Using custom icon instead
-  // simulation: SimulationIcon, // Using custom icon instead
-  // customization: CustomizationIcon, // Using custom icon instead
-  // Phase 3: Advanced Visual Features & Customization Icons
-  // themeEngine: ThemeEngineIcon, // Using custom icon instead
-  // animation: AnimationIcon, // Using custom icon instead
-  // visualEffects: VisualEffectsIcon, // Using custom icon instead
-  // advancedCustomization: AdvancedCustomizationIcon, // Using custom icon instead
-  // Phase 4: Security & Privacy Features Icons
-  // accessControl: AccessControlIcon, // Using custom icon instead
-  // dataEncryption: DataEncryptionIcon, // Using custom icon instead
-  // privacyControls: PrivacyControlsIcon, // Using custom icon instead
-  // security: SecurityIcon, // Using custom icon instead
-  // Phase 5: Integration & Testing Features Icons
-  // apiIntegration: APIIntegrationIcon, // Using custom icon instead
-  // testingFramework: TestingFrameworkIcon, // Using custom icon instead
-  // performanceMonitoring: PerformanceMonitoringIcon, // Using custom icon instead
-  // webhook: WebhookIcon, // Using custom icon instead
-  // Academy Icons
-  // academy: AcademyIcon, // Using custom icon instead
-  // course: CourseIcon, // Using custom icon instead
-  // lesson: LessonIcon, // Using custom icon instead
-  // videoPlayer: VideoPlayerIcon, // Using custom icon instead
-  // progress: ProgressIcon, // Using custom icon instead
-  // bookmark: BookmarkIcon, // Using custom icon instead
-  // note: NoteIcon, // Using custom icon instead
-  // certificate: CertificateIcon, // Using custom icon instead
-  // quiz: QuizIcon, // Using custom icon instead
-  // instructor: InstructorIcon, // Using custom icon instead
-  // student: StudentIcon, // Using custom icon instead
-  // learningPath: LearningPathIcon, // Using custom icon instead
-  // xRay: XRayIcon, // Using custom icon instead
-  // quality: QualityIcon, // Using custom icon instead
-  // speed: SpeedIcon, // Using custom icon instead
-  // subtitles: SubtitlesIcon, // Using custom icon instead
-  // fullscreen: FullscreenIcon, // Using custom icon instead
-  // volume: VolumeIcon, // Using custom icon instead
-  // mute: MuteIcon, // Using custom icon instead
-  // Video Annotation & Chapter Icons
-  // annotation: AnnotationIcon, // Using custom icon instead
-  // hotspot: HotspotIcon, // Using custom icon instead
-  // callout: CalloutIcon, // Using custom icon instead
-  // chapter: ChapterIcon, // Using custom icon instead
-  // thumbnail: ThumbnailIcon, // Using custom icon instead
-  // autoDetect: AutoDetectIcon, // Using custom icon instead
-  // videoProcessing: VideoProcessingIcon, // Using custom icon instead
-  // interactiveElement: InteractiveElementIcon, // Using custom icon instead
-  // videoMarker: VideoMarkerIcon, // Using custom icon instead
-  // contentCreation: ContentCreationIcon, // Using custom icon instead
-  // Camera Template System Icons
-  // cameraTemplate: CameraTemplateIcon, // Using custom icon instead
-  // cameraSetup: CameraSetupIcon, // Using custom icon instead
-  // templateManager: TemplateManagerIcon, // Using custom icon instead
-  // cameraGear: CameraGearIcon, // Using custom icon instead
-  // lens: LensIcon, // Using custom icon instead
-  // tripod: TripodIcon, // Using custom icon instead
-  // gimbal: GimbalIcon, // Using custom icon instead
-  // lighting: LightingIcon, // Using custom icon instead
-  // memoryCard: MemoryCardIcon, // Using custom icon instead
-  // cameraSettings: CameraSettingsIcon, // Using custom icon instead
-  // videoSettings: VideoSettingsIcon, // Using custom icon instead
-  // photoSettings: PhotoSettingsIcon, // Using custom icon instead
-  // workflow: WorkflowIcon, // Using custom icon instead
-  // templateCategory: TemplateCategoryIcon, // Using custom icon instead
-  // templateShare: TemplateShareIcon, // Using custom icon instead
-  // templateImport: TemplateImportIcon, // Using custom icon instead
-  // templateExport: TemplateExportIcon, // Using custom icon instead
-  // templateSearch: TemplateSearchIcon, // Using custom icon instead
-  // templateFilter: TemplateFilterIcon, // Using custom icon instead
-  // templateRating: TemplateRatingIcon, // Using custom icon instead
-  // templateUsage: TemplateUsageIcon, // Using custom icon instead
-  // Context Menu Action Icons
-  // viewDetails: ViewDetailsIcon, // Using custom icon instead
-  // editCourse: EditCourseIcon, // Using custom icon instead
-  // deleteCourse: DeleteCourseIcon, // Using custom icon instead
-  // shareCourse: ShareCourseIcon, // Using custom icon instead
-  // copyLink: CopyLinkIcon, // Using custom icon instead
-  // downloadResources: DownloadResourcesIcon, // Using custom icon instead
-  // toggleVisibility: ToggleVisibilityIcon, // Using custom icon instead
-  // toggleVisibilityOff: ToggleVisibilityOffIcon, // Using custom icon instead
-  // reportIssue: ReportIssueIcon, // Using custom icon instead
-  // Missing MUI Icons - CreatorHub Branded Versions
-  // business: BusinessIcon, // Using custom icon instead
-  // musicNote: MusicNoteIcon, // Using custom icon instead
-  // store: StoreIcon, // Using custom icon instead
-  // agriculture: AgricultureIcon, // Using custom icon instead
-  // healing: HealingIcon, // Using custom icon instead
-  // sportsSoccer: SportsSoccerIcon, // Using custom icon instead
-  // travelExplore: TravelExploreIcon, // Using custom icon instead
-  // shoppingBag: ShoppingBagIcon, // Using custom icon instead
-  // accessibility: AccessibilityIcon, // Using custom icon instead
-  // accountBalanceWallet: AccountBalanceWalletIcon, // Using custom icon instead
-  // accountCircle: AccountCircleIcon, // Using custom icon instead
-  // add: AddIcon, // Using custom icon instead
-  // addCircle: AddCircleIcon, // Using custom icon instead
-  // palette: PaletteIcon, // Using custom icon instead
-  // photoCamera: PhotoCameraIcon, // Using custom icon instead
-  // school: SchoolIcon, // Using custom icon instead
-  // security: SecurityIcon, // Using custom icon instead
-  // videocam: VideocamIcon, // Using custom icon instead
-  // Pet and Animal Care Icons
-  // dog: DogIcon, // Using custom icon instead
-  // dogHotel: DogHotelIcon, // Using custom icon instead
-  // veterinary: VeterinaryIcon, // Using custom icon instead
-  // nurse: NurseIcon, // Using custom icon instead
-  // petGrooming: PetGroomingIcon, // Using custom icon instead
-  // petFood: PetFoodIcon, // Using custom icon instead
-  // petTraining: PetTrainingIcon, // Using custom icon instead
-  // petSitting: PetSittingIcon, // Using custom icon instead
-  // cat: CatIcon, // Using custom icon instead
-  // petVaccination: PetVaccinationIcon, // Using custom icon instead
-  // petGroomingProfessional: PetGroomingProfessionalIcon, // Using custom icon instead
-  // petCareSpecialist: PetCareSpecialistIcon, // Using custom icon instead
-  // animalWellness: AnimalWellnessIcon, // Using custom icon instead
-  // petStyling: PetStylingIcon, // Using custom icon instead
-  // mobilePetCare: MobilePetCareIcon, // Using custom icon instead
-  // petSalon: PetSalonIcon, // Using custom icon instead
-  // Material UI Icons (re-exported for consistency)
-  // analytics: AnalyticsIcon, // Using custom icon instead
-  // article: ArticleIcon, // Using custom icon instead
-  // assessment: AssessmentIcon, // Using custom icon instead
-  // attachMoney: AttachMoneyIcon, // Using custom icon instead
-  // autoFixHigh: AutoFixHigh, // Using custom icon instead
-  // build: BuildIcon, // Using custom icon instead
-  // bugReport: BugReportIcon, // Using custom icon instead
-    // calendarToday: CalendarToday, // Using custom icon instead
-    // cameraAlt: CameraAlt, // Using custom icon instead
-    // checkCircle: CheckCircle, // Using custom icon instead
-    // circle: Circle, // Using custom icon instead
-    // cloudDone: CloudDone, // Using custom icon instead
-    // cloudUpload: CloudUpload, // Using custom icon instead
-    // code: Code, // Using custom icon instead
-    // comment: Comment, // Using custom icon instead
-    // computer: Computer, // Using custom icon instead
-    // contentCopy: ContentCopy, // Using custom icon instead
-    // delete: Delete, // Using custom icon instead
-    // description: Description, // Using custom icon instead
-    // download: Download, // Using custom icon instead
-    // edit: Edit, // Using custom icon instead
-    // email: Email, // Using custom icon instead
-    // error: Error, // Using custom icon instead
-    // event: Event, // Using custom icon instead
-    // expandMore: ExpandMore, // Using custom icon instead
-    // favorite: Favorite, // Using custom icon instead
-    // favoriteBorder: FavoriteBorder, // Using custom icon instead
-    // folder: Folder, // Using custom icon instead
-    // group: Group, // Using custom icon instead
-    // history: History, // Using custom icon instead
-    // home: Home, // Using custom icon instead
-    // image: Image, // Using custom icon instead
-    // info: Info, // Using custom icon instead
-    // inventory: Inventory, // Using custom icon instead
-    // key: Key, // Using custom icon instead
-    // lightbulb: Lightbulb, // Using custom icon instead
-    // libraryMusic: LibraryMusic, // Using custom icon instead
-    // notifications: Notifications, // Using custom icon instead
-    // notificationAdd: NotificationAdd, // Using custom icon instead
-    // pause: Pause, // Using custom icon instead
-    // palette: Palette, // Using custom icon instead
-    // phone: Phone, // Using custom icon instead
-    // playArrow: PlayArrow, // Using custom icon instead
-    // portrait: Portrait, // Using custom icon instead
-    // psychology: Psychology, // Using custom icon instead
-    // public: Public, // Using custom icon instead
-    // refresh: Refresh, // Using custom icon instead
-    // reply: Reply, // Using custom icon instead
-    // save: Save, // Using custom icon instead
-    // science: Science, // Using custom icon instead
-  // settings: SettingsIcon, // Using custom icon instead
-    // share: Share, // Using custom icon instead
-    // smartToy: SmartToy, // Using custom icon instead
-    // star: Star, // Using custom icon instead
-    // stop: Stop, // Using custom icon instead
-    // tablet: Tablet, // Using custom icon instead
-  // thumbUp: ThumbUp, // Using custom icon instead
-    // timeline: Timeline, // Using custom icon instead
-    // trendingUp: TrendingUp, // Using custom icon instead
-  // upload: Upload, // Using custom icon instead
-  // videoLibrary: VideoLibrary, // Using custom icon instead
-  // videocam: Videocam, // Using custom icon instead
-    // visibility: Visibility, // Using custom icon instead
-  // visibilityOff: VisibilityOff, // Using custom icon instead
-    // warning: Warning, // Using custom icon instead
-  // lock: Lock, // Using custom icon instead
-  // percent: Percent, // Using custom icon instead
-  // accountCircle: AccountCircleIcon, // Using custom icon instead
-  // clear: Clear, // Using custom icon instead
-  // close: Close, // Using custom icon instead
-  // dashboard: Dashboard, // Using custom icon instead
-  // keyboardArrowDown: KeyboardArrowDown, // Using custom icon instead
-  // keyboardArrowLeft: KeyboardArrowLeft, // Using custom icon instead
-  // keyboardArrowRight: KeyboardArrowRight, // Using custom icon instead
-  // keyboardArrowUp: KeyboardArrowUp, // Using custom icon instead
-  // logout: Logout, // Using custom icon instead
-  // menu: Menu, // Using custom icon instead
-  // rotate: RotateLeft, // Using custom icon instead
-  // swipe: Swipe, // Using custom icon instead
-    // touchApp: TouchApp, // Using custom icon instead
-  // tv: Tv, // Using custom icon instead
-    // zoomIn: ZoomIn, // Using custom icon instead
-  // blur: BlurOn, // Using custom icon instead
-  // darkMode: DarkMode, // Using custom icon instead
-  // minimize: Minimize, // Using custom icon instead
-  // filter: Filter, // Using custom icon instead
-  // transform: Transform, // Using custom icon instead
-  // admin: AdminPanelSettings, // Using custom icon instead
-  // cancel: Cancel, // Using custom icon instead
-  // collect: Collections, // Using custom icon instead
-  // privacy: PrivacyTip, // Using custom icon instead
-  // schedule: Schedule, // Using custom icon instead
-  // shield: Shield, // Using custom icon instead
-  // storage: Storage, // Using custom icon instead
-  // api: Api, // Using custom icon instead
-  // accessibility: AccessibilityIcon, // Using custom icon instead
-  // database: Dataset, // Using custom icon instead
-  // integration: Link, // Using custom icon instead
-    // e2e: PlayArrow, // Using custom icon instead
-  // performance: Speed, // Using custom icon instead
-  // seo: Search, // Using custom icon instead
-  // skip: SkipNext, // Using custom icon instead
-  // trendingDown: TrendingDown, // Using custom icon instead
-  // trendingFlat: TrendingFlat, // Using custom icon instead
-  // notes: Notes, // Using custom icon instead
-  // architecture: Architecture, // Using custom icon instead
-  // documentation: Article, // Using custom icon instead
-  // support: Help, // Using custom icon instead
-    // community: Group, // Using custom icon instead
-    // video: PlayArrow, // Using custom icon instead
-  // timer: Schedule, // Using custom icon instead
-  // category: Category, // Using custom icon instead
-    // level: TrendingUp, // Using custom icon instead
-    // folderOpen: FolderOpen, // Using custom icon instead
-    // addCircle: AddCircle, // Using custom icon instead
-    // chat: Chat, // Using custom icon instead
-  // person: Person, // Using custom icon instead
-    // moreVert: MoreVert, // Using custom icon instead
-    // locationOn: LocationOn, // Using custom icon instead
-    // payment: Payment, // Using custom icon instead
-    // keyboard: Keyboard, // Using custom icon instead
-    // helpCenter: HelpCenter, // Using custom icon instead
-    // priorityHigh: PriorityHigh, // Using custom icon instead
-  // launch: Launch, // Using custom icon instead
-  // photoLibrary: PhotoLibrary, // Using custom icon instead
-  // brightness1: Brightness1, // Using custom icon instead
-  // wbSunny: WbSunny, // Using custom icon instead
-  // wbCloudy: WbCloudy, // Using custom icon instead
-  // umbrella: Umbrella, // Using custom icon instead
-  // remove: Remove, // Using custom icon instead
-  // notificationsActive: NotificationsActive, // Using custom icon instead
-  // toggleOn: ToggleOn, // Using custom icon instead
-  // movieCreation: MovieCreation, // Using custom icon instead
-  // flag: Flag, // Using custom icon instead
-  // getApp: GetApp, // Using custom icon instead
-    // update: Update, // Using custom icon instead
-  // rocket: Rocket, // Using custom icon instead
-  // creditCard: CreditCard, // Using custom icon instead
-  // monetizationOn: MonetizationOn, // Using custom icon instead
-  // accountBalance: AccountBalanceWalletIcon, // Using custom icon instead
-  // localAtm: LocalAtm, // Using custom icon instead
-  // directionsBus: DirectionsBus, // Using custom icon instead
-  // cloudSync: CloudSync, // Using custom icon instead
-  // money: Money, // Using custom icon instead
-  // people: People, // Using custom icon instead
-  // github: GitHub, // Using custom icon instead
-  // sort: Sort, // Using custom icon instead
-  // assignment: Assignment, // Using custom icon instead
-  // google: Google, // Using custom icon instead
-  // receipt: Receipt, // Using custom icon instead
-  // autoAwesome: AutoAwesome, // Using custom icon instead
-  // showChart: ShowChart, // Using custom icon instead
-  // dateRange: DateRange, // Using custom icon instead
+  ringIcon: Favorite,
+  photography: PhotoCamera,
+  videography: Videocam,
+  music: LibraryMusic,
+  corporate: Business,
+  psychology: Psychology,
+  collaboration: People,
+  analytics: Analytics,
+  gaming: EmojiEvents,
+  mobile: Smartphone,
+  code: Code,
+  ai: SmartToy,
+  security: Security,
+  api: Api,
+  school: School,
+  book: Book,
+  movie: Movie,
+  quiz: Quiz,
+  timeline: Timeline,
+  speed: Speed,
+  volume: VolumeUp,
+  bug: BugReport,
+  edit: Edit,
+  delete: Delete,
+  share: Share,
+  download: GetApp,
+  visibility: Visibility,
+  flag: Flag,
+  storage: Storage,
+  cart: ShoppingCart,
+  pets: Pets,
+  money: MonetizationOn,
+  user: AccountCircle,
+  palette: Palette,
+  fitness: FitnessCenter,
+  restaurant: Restaurant,
+  spa: Spa,
+  car: DirectionsCar,
+  flower: LocalFlorist,
+  childcare: ChildCare,
+  hotel: Hotel,
+  medicine: Medication,
+  home: Home,
+  dashboard: Dashboard,
+  logout: Logout,
+  settings: Settings,
+  lightbulb: Lightbulb,
+  search: SearchIcon,
+  filter: Filter,
+  add: Add,
+  image: Image,
+  document: Description,
+  warning: Warning,
+  error: Error,
+  info: Info,
+  close: Close,
+  menu: Menu,
+  more: MoreVert,
+  checkCircle: CheckCircle,
+  publish: Publish,
+  upload: UploadFile,
+  folder: Folder,
+  awesome: AutoAwesome,
+  rocket: Rocket,
 } as const;
 
 // Helper functions
@@ -2497,546 +379,49 @@ export function getProjectCategoryIcon(category: keyof typeof CREATOR_HUB_ICONS)
 
 export function getProfessionIcon(profession: string) {
   const professionIconMap: Record<string, any> = {
-    photographer: PhotographyIcon,
-    fotograf: PhotographyIcon,
-    videographer: VideographyIcon,
-    videograf: VideographyIcon,
-    music_producer: MusicProductionIcon,
-    musikkprodusent: MusicProductionIcon,
-    pet_groomer: PetGroomingProfessionalIcon,
-    dyrepleier: PetCareSpecialistIcon,
-    pet_hotel: PetHotelIcon,
-    dyrehotell: PetHotelIcon,
-    yoga_studio: YogaStudioIcon,
-    yogastudio: YogaStudioIcon,
-    tattoo_artist: TattooArtistIcon,
-    tatovør: TattooArtistIcon,
-    hairdresser: HairdresserIcon,
-    frisør: HairdresserIcon,
-    personal_trainer: PersonalTrainerIcon,
-    personlig_trener: PersonalTrainerIcon,
-    restaurant: RestaurantIcon,
-    florist: FloristIcon,
-    blomsterhandler: FloristIcon,
-    childcare: ChildcareIcon,
-    barnehage: ChildcareIcon,
-    psychologist: PsychologistIcon,
-    psykolog: PsychologistIcon,
-    driving_school: DrivingSchoolIcon,
-    kjøreskole: DrivingSchoolIcon,
-    spa_wellness: SpaWellnessIcon,
-    spa: SpaWellnessIcon,
-    vendor: CorporateIcon,
-    leverandør: CorporateIcon,
+    photographer: PhotoCamera,
+    fotograf: PhotoCamera,
+    videographer: Videocam,
+    videograf: Videocam,
+    music_producer: LibraryMusic,
+    musikkprodusent: LibraryMusic,
+    pet_groomer: Spa,
+    dyrepleier: Pets,
+    pet_hotel: Hotel,
+    dyrehotell: Hotel,
+    yoga_studio: FitnessCenter,
+    yogastudio: FitnessCenter,
+    tattoo_artist: Palette,
+    tatovør: Palette,
+    hairdresser: Edit,
+    frisør: Edit,
+    personal_trainer: FitnessCenter,
+    personlig_trener: FitnessCenter,
+    restaurant: Restaurant,
+    florist: LocalFlorist,
+    blomsterhandler: LocalFlorist,
+    childcare: ChildCare,
+    barnehage: ChildCare,
+    psychologist: Psychology,
+    psykolog: Psychology,
+    driving_school: DirectionsCar,
+    kjøreskole: DirectionsCar,
+    spa_wellness: Spa,
+    spa: Spa,
+    vendor: Business,
+    leverandør: Business,
   };
   
-  return professionIconMap[profession] || BusinessIcon;
+  return professionIconMap[profession] || Business;
 }
 
 // Legacy compatibility - map old icon names to new ones
-export const LEGACY_ICON_MAP = {
-  // PhotoCamera: PhotographyIcon, // Using custom icon instead
-  // Videocam: VideographyIcon, // Using custom icon instead
-  // LibraryMusic: MusicProductionIcon, // Using custom icon instead
-  // Store: CorporateIcon, // Using custom icon instead
-  // Favorite: RingIcon, // Using custom icon instead
-  // CameraAlt: PhotographyIcon, // Using custom icon instead
-  // MusicNote: MusicProductionIcon, // Using custom icon instead
-  // Business: CorporateIcon, // Using custom icon instead
-  // PhotoCameraAlt: PhotographyIcon, // Using custom icon instead
-  // Videocamcam: VideographyIcon, // Using custom icon instead
-  // MusicNoteNote: MusicProductionIcon, // Using custom icon instead
-  // DirectionsBusiness: CorporateIcon, // Using custom icon instead
-} as const;
+export const LEGACY_ICON_MAP = {} as const;
 
-// Export all icons for easy importing
-export {
-  // Material UI Icons
-  // Add, // Using custom icon instead
-  // Analytics, // Using custom icon instead
-  // Article, // Using custom icon instead
-  // Assessment, // Using custom icon instead
-  // AttachMoney, // Using custom icon instead
-  //  // AutoFixHigh, // Using custom icon instead // Using custom icon instead
-  // Business, // Using custom icon instead
-  // Build, // Using custom icon instead
-  // BugReport, // Using custom icon instead
-  // Calculate, // Using custom icon instead
-  //  // CalendarToday, // Using custom icon instead // Using custom icon instead
-  //  // CameraAlt, // Using custom icon instead // Using custom icon instead
-  //  // CheckCircle, // Using custom icon instead // Using custom icon instead
-  //  // Circle, // Using custom icon instead // Using custom icon instead
-  //  // CloudDone, // Using custom icon instead // Using custom icon instead
-  //  // CloudUpload, // Using custom icon instead // Using custom icon instead
-  //  // Code, // Using custom icon instead // Using custom icon instead
-  //  // Comment, // Using custom icon instead // Using custom icon instead
-  //  // Computer, // Using custom icon instead // Using custom icon instead
-  //  // ContentCopy, // Using custom icon instead // Using custom icon instead
-  //  // Delete, // Using custom icon instead // Using custom icon instead
-  //  // Description, // Using custom icon instead // Using custom icon instead
-  //  // Download, // Using custom icon instead // Using custom icon instead
-  //  // Edit, // Using custom icon instead // Using custom icon instead
-  //  // Email, // Using custom icon instead // Using custom icon instead
-  //  // Error, // Using custom icon instead // Using custom icon instead
-  //  // Event, // Using custom icon instead // Using custom icon instead
-  //  // ExpandMore, // Using custom icon instead // Using custom icon instead
-  //  // Favorite, // Using custom icon instead // Using custom icon instead
-  //  // FavoriteBorder, // Using custom icon instead // Using custom icon instead
-  //  // Folder, // Using custom icon instead // Using custom icon instead
-  //  // Group, // Using custom icon instead // Using custom icon instead
-  //  // History, // Using custom icon instead // Using custom icon instead
-  //  // Home, // Using custom icon instead // Using custom icon instead
-  //  // Image, // Using custom icon instead // Using custom icon instead
-  //  // Info, // Using custom icon instead // Using custom icon instead
-  //  // Inventory, // Using custom icon instead // Using custom icon instead
-  //  // Key, // Using custom icon instead // Using custom icon instead
-  //  // Lightbulb, // Using custom icon instead // Using custom icon instead
-  //  // LibraryMusic, // Using custom icon instead // Using custom icon instead
-  //  // Notifications, // Using custom icon instead // Using custom icon instead
-  //  // NotificationAdd, // Using custom icon instead // Using custom icon instead
-  //  // Pause, // Using custom icon instead // Using custom icon instead
-  //  // Palette, // Using custom icon instead // Using custom icon instead
-  //  // Phone, // Using custom icon instead // Using custom icon instead
-  //  // PlayArrow, // Using custom icon instead // Using custom icon instead
-  //  // Portrait, // Using custom icon instead // Using custom icon instead
-  //  // Psychology, // Using custom icon instead // Using custom icon instead
-  //  // Public, // Using custom icon instead // Using custom icon instead
-  //  // Refresh, // Using custom icon instead // Using custom icon instead
-  //  // Reply, // Using custom icon instead // Using custom icon instead
-  //  // Save, // Using custom icon instead // Using custom icon instead
-  //  // Science, // Using custom icon instead // Using custom icon instead
-  // Settings, // Using custom icon instead
-  //  // Share, // Using custom icon instead // Using custom icon instead
-  //  // SmartToy, // Using custom icon instead // Using custom icon instead
-  //  // Star, // Using custom icon instead // Using custom icon instead
-  //  // Stop, // Using custom icon instead // Using custom icon instead
-  // Store, // Using custom icon instead
-  //  // Tablet, // Using custom icon instead // Using custom icon instead
-  // ThumbUp, // Using custom icon instead
-  //  // Timeline, // Using custom icon instead // Using custom icon instead
-  //  // TrendingUp, // Using custom icon instead // Using custom icon instead
-  // Upload, // Using custom icon instead
-  // VideoLibrary, // Using custom icon instead
-  // Videocam, // Using custom icon instead
-  //  // Visibility, // Using custom icon instead // Using custom icon instead
-  // VisibilityOff, // Using custom icon instead
-  //  // Warning, // Using custom icon instead // Using custom icon instead
-  // Lock, // Using custom icon instead
-  // Percent, // Using custom icon instead
-  // AccountCircle, // Using custom icon instead
-  // Clear, // Using custom icon instead
-  // Close, // Using custom icon instead
-  // Dashboard, // Using custom icon instead
-  // KeyboardArrowDown, // Using custom icon instead
-  // KeyboardArrowLeft, // Using custom icon instead
-  // KeyboardArrowRight, // Using custom icon instead
-  // KeyboardArrowUp, // Using custom icon instead
-  // Logout, // Using custom icon instead
-  // Menu, // Using custom icon instead
-  // RotateLeft, // Using custom icon instead
-  // Swipe, // Using custom icon instead
-  //  // TouchApp, // Using custom icon instead // Using custom icon instead
-  // Tv, // Using custom icon instead
-  //  // ZoomIn, // Using custom icon instead // Using custom icon instead
-  // BlurOn, // Using custom icon instead
-  // DarkMode, // Using custom icon instead
-  // Minimize, // Using custom icon instead
-  // Filter, // Using custom icon instead
-  // Transform, // Using custom icon instead
-  // AdminPanelSettings, // Using custom icon instead
-  // Cancel, // Using custom icon instead
-  // Collections, // Using custom icon instead
-  // PrivacyTip, // Using custom icon instead
-  // Schedule, // Using custom icon instead
-  // Shield, // Using custom icon instead
-  // Storage, // Using custom icon instead
-  // Api, // Using custom icon instead
-  // Person, // Commented out duplicate
-  // Dataset, // Using custom icon instead
-  // Link, // Using custom icon instead
-  // Speed, // Using custom icon instead
-  // Search, // Using custom icon instead
-  // SkipNext, // Using custom icon instead
-  // TrendingDown, // Using custom icon instead
-  // TrendingFlat, // Using custom icon instead
-  // Notes, // Using custom icon instead
-  // Architecture, // Using custom icon instead
-  // Help, // Using custom icon instead
-  // Category, // Using custom icon instead
-  //  // FolderOpen, // Using custom icon instead // Using custom icon instead
-  //  // AddCircle, // Using custom icon instead // Using custom icon instead
-  //  // Chat, // Using custom icon instead // Using custom icon instead
-  // Person, // Commented out duplicate
-  //  // MoreVert, // Using custom icon instead // Using custom icon instead
-  //  // LocationOn, // Using custom icon instead // Using custom icon instead
-  //  // Payment, // Using custom icon instead // Using custom icon instead
-  //  // Keyboard, // Using custom icon instead // Using custom icon instead
-  //  // HelpCenter, // Using custom icon instead // Using custom icon instead
-  // Quiz, // Using custom icon instead
-  //  // PriorityHigh, // Using custom icon instead // Using custom icon instead
-  // Launch, // Using custom icon instead
-  // PhotoLibrary, // Using custom icon instead
-  // Brightness1, // Using custom icon instead
-  // WbSunny, // Using custom icon instead
-  // WbCloudy, // Using custom icon instead
-  // Umbrella, // Using custom icon instead
-  // Remove, // Using custom icon instead
-  // NotificationsActive, // Using custom icon instead
-  // ToggleOn, // Using custom icon instead
-  // MovieCreation, // Using custom icon instead
-  // Flag, // Using custom icon instead
-  // GetApp, // Using custom icon instead
-  //  // Update, // Using custom icon instead // Using custom icon instead
-  // Security, // Using custom icon instead
-  // Rocket, // Using custom icon instead
-  // CreditCard, // Using custom icon instead
-  // MonetizationOn, // Using custom icon instead
-  // AccountBalanceWallet, // Using custom icon instead
-  // LocalAtm, // Using custom icon instead
-  // DirectionsBus, // Using custom icon instead
-  // MusicNote, // Using custom icon instead
-  // CloudSync, // Using custom icon instead
-  // Money, // Using custom icon instead
-  // People, // Using custom icon instead
-  // GitHub, // Using custom icon instead
-  // Sort, // Using custom icon instead
-  // Assignment, // Using custom icon instead
-  // Google, // Using custom icon instead
-  // Receipt, // Using custom icon instead
-  // AutoAwesome, // Using custom icon instead
-  // ShowChart, // Using custom icon instead
-  // DateRange, // Using custom icon instead
-  // Archive, // Using custom icon instead
-  // CloudDownload, // Using custom icon instead
-  // DriveFileMove, // Using custom icon instead
-  // FindInPage, // Using custom icon instead
-  // Undo, // Using custom icon instead
-  // Redo, // Using custom icon instead
-  // GridView, // Using custom icon instead
-  //  // ViewList, // Using custom icon instead // Using custom icon instead
-  // Label, // Using custom icon instead
-  // Movie, // Using custom icon instead
-  // SubtitlesOutlined, // Using custom icon instead
-  // Instagram, // Using custom icon instead
-  // YouTube, // Using custom icon instead
-  // Facebook, // Using custom icon instead
-  // Twitter, // Using custom icon instead
-  //  // Work, // Using custom icon instead // Using custom icon instead
-  // Create, // Using custom icon instead
-  // Pets, // Using custom icon instead
-  // SportsBaseball, // Using custom icon instead
-  // ShoppingCart, // Using custom icon instead
-  // Send, // Using custom icon instead
-  // CheckCircleOutline, // Using custom icon instead
-  // Publish, // Using custom icon instead
-  // Brightness6, // Using custom icon instead
-  // Tune, // Using custom icon instead
-  // Equalizer, // Using custom icon instead
-  // VolumeUp, // Using custom icon instead
-  // Sync, // Using custom icon instead
-  // Headset, // Using custom icon instead
-  // ArrowBack, // Using custom icon instead
-  // PhotoCamera, // Using custom icon instead
-  // EventAvailable, // Using custom icon instead
-  // Support, // Using custom icon instead
-  // Map, // Using custom icon instead
-  // Bookmark, // Using custom icon instead
-  // Language, // Using custom icon instead
-  // PictureAsPdf, // Using custom icon instead
-  // AudioFile, // Using custom icon instead
-  // InsertDriveFile, // Using custom icon instead
-  // Print, // Using custom icon instead
-  // Brush, // Using custom icon instead
-};
-
-// ============================================================================
-// EQUIPMENT-SPECIFIC ICONS FOR ENHANCED GEAR TAB
-// Custom high-quality SVG icons for equipment management
-// ============================================================================
-
-// Equipment Inventory Icon (better than generic Camera)
-export function EquipmentInventoryIcon(props: any) {
-  return (
-    <SvgIcon {...props} viewBox="0 0 24 24">
-      <defs>
-        <linearGradient id="brandGradientInventory" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#ff8c00"/>
-          <stop offset="100%" stopColor="#3b82f6"/>
-        </linearGradient>
-      </defs>
-      <rect x="4" y="6" width="16" height="14" rx="2" fill="none" stroke="#111111" strokeWidth="1.5"/>
-      <circle cx="12" cy="11" r="3.5" fill="none" stroke="url(#brandGradientInventory)" strokeWidth="1.8"/>
-      <circle cx="12" cy="11" r="2" fill="#3b82f6" opacity="0.3"/>
-      <circle cx="12" cy="11" r="0.8" fill="#3b82f6"/>
-      <path d="M8 2L10 4H14L16 2" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round"/>
-      <path d="M8 20L10 22H14L16 20" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round"/>
-      <circle cx="7" cy="8" r="1.2" fill="#ff8c00"/>
-      <rect x="9" y="16" width="6" height="2" rx="1" fill="url(#brandGradientInventory)" opacity="0.6"/>
-      <path d="M4 9L2 11L4 13" stroke="currentColor" strokeWidth="1.2" fill="none" strokeLinecap="round"/>
-      <path d="M20 9L22 11L20 13" stroke="currentColor" strokeWidth="1.2" fill="none" strokeLinecap="round"/>
-    </SvgIcon>
-  );
-}
-
-// Equipment Maintenance Icon (Tools + Schedule)
-export function EquipmentMaintenanceIcon(props: any) {
-  return (
-    <SvgIcon {...props} viewBox="0 0 24 24">
-      <defs>
-        <linearGradient id="brandGradientMaintenance" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#ff8c00"/>
-          <stop offset="100%" stopColor="#16a34a"/>
-        </linearGradient>
-      </defs>
-      <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="1.5"/>
-      <path d="M12 7V12L15 14" stroke="url(#brandGradientMaintenance)" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-      <path d="M6 4L8 6" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round"/>
-      <path d="M18 4L16 6" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round"/>
-      <path d="M6 20L8 18" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round"/>
-      <path d="M18 20L16 18" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round"/>
-      <circle cx="12" cy="12" r="2" fill="#16a34a" opacity="0.3"/>
-      <path d="M15.5 8.5L17 7" stroke="#ff8c00" strokeWidth="1.2" fill="none"/>
-      <path d="M8.5 15.5L7 17" stroke="#ff8c00" strokeWidth="1.2" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-// Equipment Rental Icon (Shopping cart + Calendar)
-export function EquipmentRentalIcon(props: any) {
-  return (
-    <SvgIcon {...props} viewBox="0 0 24 24">
-      <defs>
-        <linearGradient id="brandGradientRental" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#3b82f6"/>
-          <stop offset="100%" stopColor="#ff8c00"/>
-        </linearGradient>
-      </defs>
-      <rect x="3" y="6" width="18" height="13" rx="2" fill="none" stroke="currentColor" strokeWidth="1.5"/>
-      <path d="M3 10H21" stroke="currentColor" strokeWidth="1.5"/>
-      <circle cx="9" cy="21" r="1.5" fill="url(#brandGradientRental)"/>
-      <circle cx="20" cy="21" r="1.5" fill="url(#brandGradientRental)"/>
-      <path d="M6 3L8 6H16L18 3" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round"/>
-      <rect x="7" y="13" width="3" height="3" rx="0.5" fill="#3b82f6" opacity="0.4"/>
-      <rect x="11" y="13" width="3" height="3" rx="0.5" fill="#ff8c00" opacity="0.6"/>
-      <rect x="15" y="13" width="3" height="3" rx="0.5" fill="#3b82f6" opacity="0.8"/>
-      <circle cx="12" cy="8" r="1" fill="#ff8c00"/>
-    </SvgIcon>
-  );
-}
-
-// Market Prices Icon (Money + Chart)
-export function MarketPricesIcon(props: any) {
-  return (
-    <SvgIcon {...props} viewBox="0 0 24 24">
-      <defs>
-        <linearGradient id="brandGradientMarket" x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor="#16a34a"/>
-          <stop offset="100%" stopColor="#3b82f6"/>
-        </linearGradient>
-      </defs>
-      <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="1.5"/>
-      <path d="M12 6V18" stroke="#ff8c00" strokeWidth="2" fill="none"/>
-      <path d="M15 8H10C9.2 8 8.5 8.7 8.5 9.5C8.5 10.3 9.2 11 10 11H14C14.8 11 15.5 11.7 15.5 12.5C15.5 13.3 14.8 14 14 14H9" stroke="#ff8c00" strokeWidth="1.8" fill="none" strokeLinecap="round"/>
-      <path d="M7 16L10 13L13 15L17 11" stroke="url(#brandGradientMarket)" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-      <circle cx="7" cy="16" r="1" fill="#16a34a"/>
-      <circle cx="10" cy="13" r="1" fill="#16a34a"/>
-      <circle cx="13" cy="15" r="1" fill="#3b82f6"/>
-      <circle cx="17" cy="11" r="1" fill="#3b82f6"/>
-    </SvgIcon>
-  );
-}
-
-// Lens Database Icon (Professional lens icon)
-export function LensDatabaseIcon(props: any) {
-  return (
-    <SvgIcon {...props} viewBox="0 0 24 24">
-      <defs>
-        <linearGradient id="brandGradientLens" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#3b82f6"/>
-          <stop offset="100%" stopColor="#ff8c00"/>
-        </linearGradient>
-      </defs>
-      <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="1.5"/>
-      <circle cx="12" cy="12" r="6" fill="none" stroke="url(#brandGradientLens)" strokeWidth="1.8"/>
-      <circle cx="12" cy="12" r="3" fill="none" stroke="url(#brandGradientLens)" strokeWidth="1.5"/>
-      <circle cx="12" cy="12" r="1.2" fill="#3b82f6"/>
-      <path d="M3 12H6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-      <path d="M18 12H21" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-      <path d="M5.6 5.6L7.8 7.8" stroke="#ff8c00" strokeWidth="1.2" strokeLinecap="round" opacity="0.6"/>
-      <path d="M16.2 16.2L18.4 18.4" stroke="#ff8c00" strokeWidth="1.2" strokeLinecap="round" opacity="0.6"/>
-      <path d="M5.6 18.4L7.8 16.2" stroke="#3b82f6" strokeWidth="1.2" strokeLinecap="round" opacity="0.6"/>
-      <path d="M16.2 7.8L18.4 5.6" stroke="#3b82f6" strokeWidth="1.2" strokeLinecap="round" opacity="0.6"/>
-      <path d="M12 3V5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-      <path d="M12 19V21" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-    </SvgIcon>
-  );
-}
-
-// Software Database Icon (Code + Database)
-export function SoftwareDatabaseIcon(props: any) {
-  return (
-    <SvgIcon {...props} viewBox="0 0 24 24">
-      <defs>
-        <linearGradient id="brandGradientSoftware" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#ff8c00"/>
-          <stop offset="100%" stopColor="#3b82f6"/>
-        </linearGradient>
-      </defs>
-      <rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke="currentColor" strokeWidth="1.5"/>
-      <path d="M8 8L10 10L8 12" stroke="#ff8c00" strokeWidth="1.8" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-      <path d="M16 8L14 10L16 12" stroke="#ff8c00" strokeWidth="1.8" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-      <path d="M11 8L13 12" stroke="#3b82f6" strokeWidth="1.5" fill="none" strokeLinecap="round"/>
-      <ellipse cx="12" cy="17" rx="6" ry="2" fill="url(#brandGradientSoftware)" opacity="0.9"/>
-      <path d="M6 17V19C6 19.8 8.7 20 12 20C15.3 20 18 19.8 18 19" stroke="url(#brandGradientSoftware)" strokeWidth="1.5" fill="none"/>
-      <circle cx="18" cy="6" r="2" fill="#3b82f6"/>
-      <path d="M18 6L16 4" stroke="#3b82f6" strokeWidth="1.2" fill="none" strokeLinecap="round"/>
-    </SvgIcon>
-  );
-}
-
-// Equipment Database Icon (Template/Grid with camera)
-export function EquipmentDatabaseIcon(props: any) {
-  return (
-    <SvgIcon {...props} viewBox="0 0 24 24">
-      <defs>
-        <linearGradient id="brandGradientDatabase" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#ff8c00"/>
-          <stop offset="100%" stopColor="#3b82f6"/>
-        </linearGradient>
-      </defs>
-      <rect x="2" y="3" width="20" height="18" rx="2" fill="none" stroke="currentColor" strokeWidth="1.5"/>
-      <path d="M2 8H22" stroke="currentColor" strokeWidth="1.5"/>
-      <path d="M8 8V21" stroke="currentColor" strokeWidth="1.5"/>
-      <path d="M14 8V21" stroke="currentColor" strokeWidth="1.5"/>
-      <rect x="9" y="10" width="4" height="3" rx="1" fill="none" stroke="url(#brandGradientDatabase)" strokeWidth="1.5"/>
-      <circle cx="11" cy="11.5" r="0.8" fill="#3b82f6"/>
-      <path d="M10 9L10.5 10H11.5L12 9" stroke="#ff8c00" strokeWidth="0.8" fill="none"/>
-      <rect x="15" y="10" width="4" height="3" rx="0.5" fill="#3b82f6" opacity="0.3"/>
-      <rect x="3" y="10" width="4" height="3" rx="0.5" fill="#ff8c00" opacity="0.3"/>
-      <rect x="9" y="14" width="4" height="3" rx="0.5" fill="url(#brandGradientDatabase)" opacity="0.2"/>
-      <rect x="15" y="14" width="4" height="3" rx="0.5" fill="#3b82f6" opacity="0.2"/>
-      <rect x="3" y="14" width="4" height="3" rx="0.5" fill="#ff8c00" opacity="0.2"/>
-      <circle cx="12" cy="5.5" r="1.5" fill="url(#brandGradientDatabase)"/>
-    </SvgIcon>
-  );
-}
-
-// Equipment Tools Icon (Wrench + Gear)
-export function EquipmentToolsIcon(props: any) {
-  return (
-    <SvgIcon {...props} viewBox="0 0 24 24">
-      <defs>
-        <linearGradient id="brandGradientTools" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#3b82f6"/>
-          <stop offset="100%" stopColor="#16a34a"/>
-        </linearGradient>
-      </defs>
-      <circle cx="12" cy="12" r="3" fill="none" stroke="url(#brandGradientTools)" strokeWidth="2"/>
-      <path d="M12 1V4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-      <path d="M12 20V23" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-      <path d="M23 12H20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-      <path d="M4 12H1" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-      <path d="M20.5 20.5L18.4 18.4" stroke="#ff8c00" strokeWidth="1.8" strokeLinecap="round"/>
-      <path d="M5.6 5.6L3.5 3.5" stroke="#ff8c00" strokeWidth="1.8" strokeLinecap="round"/>
-      <path d="M20.5 3.5L18.4 5.6" stroke="#3b82f6" strokeWidth="1.8" strokeLinecap="round"/>
-      <path d="M5.6 18.4L3.5 20.5" stroke="#3b82f6" strokeWidth="1.8" strokeLinecap="round"/>
-      <circle cx="12" cy="12" r="1.5" fill="#16a34a"/>
-      <path d="M8 8L10 10" stroke="url(#brandGradientTools)" strokeWidth="1.2" fill="none" opacity="0.5"/>
-      <path d="M14 14L16 16" stroke="url(#brandGradientTools)" strokeWidth="1.2" fill="none" opacity="0.5"/>
-    </SvgIcon>
-  );
-}
-
-// Equipment News Icon (Newspaper + RSS)
-export function EquipmentNewsIcon(props: any) {
-  return (
-    <SvgIcon {...props} viewBox="0 0 24 24">
-      <defs>
-        <linearGradient id="brandGradientNews" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#ff8c00"/>
-          <stop offset="100%" stopColor="#3b82f6"/>
-        </linearGradient>
-      </defs>
-      <rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke="currentColor" strokeWidth="1.5"/>
-      <rect x="5" y="5" width="14" height="3" rx="1" fill="url(#brandGradientNews)" opacity="0.8"/>
-      <rect x="5" y="10" width="6" height="2" rx="0.5" fill="#111111" opacity="0.4"/>
-      <rect x="5" y="14" width="8" height="2" rx="0.5" fill="#111111" opacity="0.3"/>
-      <rect x="5" y="18" width="5" height="1" rx="0.5" fill="#111111" opacity="0.3"/>
-      <rect x="13" y="10" width="6" height="2" rx="0.5" fill="#111111" opacity="0.4"/>
-      <rect x="15" y="14" width="4" height="2" rx="0.5" fill="#111111" opacity="0.3"/>
-      <circle cx="19" cy="18" r="1.5" fill="#ff8c00"/>
-      <path d="M16 18C16 16.3 17.3 15 19 15" stroke="#ff8c00" strokeWidth="1.2" fill="none"/>
-      <path d="M13 18C13 14.7 15.7 12 19 12" stroke="#3b82f6" strokeWidth="1.2" fill="none"/>
-    </SvgIcon>
-  );
-}
-
-// Firmware Update Icon (Chip + Arrow)
-export function FirmwareUpdateIcon(props: any) {
-  return (
-    <SvgIcon {...props} viewBox="0 0 24 24">
-      <defs>
-        <linearGradient id="brandGradientFirmware" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#3b82f6"/>
-          <stop offset="100%" stopColor="#16a34a"/>
-        </linearGradient>
-      </defs>
-      <rect x="6" y="6" width="12" height="12" rx="2" fill="none" stroke="currentColor" strokeWidth="1.5"/>
-      <rect x="8" y="8" width="8" height="8" rx="1" fill="none" stroke="#111111" strokeWidth="1.5"/>
-      <path d="M6 10H4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-      <path d="M6 14H4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-      <path d="M20 10H18" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-      <path d="M20 14H18" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-      <path d="M10 6V4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-      <path d="M14 6V4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-      <path d="M10 20V18" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-      <path d="M14 20V18" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-      <path d="M12 10V14" stroke="url(#brandGradientFirmware)" strokeWidth="2" fill="none" strokeLinecap="round"/>
-      <path d="M10 12L12 14L14 12" stroke="url(#brandGradientFirmware)" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-      <circle cx="12" cy="12" r="1" fill="#16a34a"/>
-    </SvgIcon>
-  );
-}
-
-// Professional Camera Icon (Better than default)
-export function ProfessionalCameraIcon(props: any) {
-  return (
-    <SvgIcon {...props} viewBox="0 0 24 24">
-      <defs>
-        <linearGradient id="brandGradientCamera" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#0ea5e9"/>
-          <stop offset="100%" stopColor="#ff8c00"/>
-        </linearGradient>
-      </defs>
-      <rect x="4" y="7" width="16" height="11" rx="2" fill="#111111" stroke="#111111" strokeWidth="1.5"/>
-      <circle cx="13" cy="12.5" r="4" fill="none" stroke="url(#brandGradientCamera)" strokeWidth="2"/>
-      <circle cx="13" cy="12.5" r="2.5" fill="#3b82f6" opacity="0.2"/>
-      <circle cx="13" cy="12.5" r="1.2" fill="#3b82f6"/>
-      <path d="M8 3L10 5H14L16 3" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-      <path d="M8 18L9 20H13L14 18" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round"/>
-      <circle cx="18" cy="9" r="1" fill="#ff8c00"/>
-      <rect x="2" y="11" width="2" height="3" rx="1" fill="#111111"/>
-      <path d="M4 10L6 12L4 14" stroke="#ff8c00" strokeWidth="1.2" fill="none" opacity="0.6"/>
-    </SvgIcon>
-  );
-}
-
-// Money/Price Icon (Better currency icon)  
-export function EnhancedMonetizationIcon(props: any) {
-  return (
-    <SvgIcon {...props} viewBox="0 0 24 24">
-      <defs>
-        <linearGradient id="brandGradientMoney" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#16a34a"/>
-          <stop offset="100%" stopColor="#ff8c00"/>
-        </linearGradient>
-      </defs>
-      <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="1.8"/>
-      <path d="M12 6V18" stroke="url(#brandGradientMoney)" strokeWidth="2.5" fill="none" strokeLinecap="round"/>
-      <path d="M15.5 9H10C9 9 8 9.7 8 10.5C8 11.3 9 12 10 12H14C15 12 16 12.7 16 13.5C16 14.3 15 15 14 15H8.5" stroke="url(#brandGradientMoney)" strokeWidth="2" fill="none" strokeLinecap="round"/>
-      <circle cx="12" cy="12" r="7" fill="none" stroke="#16a34a" strokeWidth="0.5" opacity="0.2"/>
-      <path d="M8 8L10 6" stroke="#16a34a" strokeWidth="1.2" opacity="0.5" strokeLinecap="round"/>
-      <path d="M16 16L14 18" stroke="#ff8c00" strokeWidth="1.2" opacity="0.5" strokeLinecap="round"/>
-    </SvgIcon>
-  );
+// Export helper for getting icons by name
+export function getIconByName(name: string) {
+  const iconMap = {
+    ...CREATOR_HUB_ICONS,
+  };
+  return (iconMap as any)[name] || null;
 }

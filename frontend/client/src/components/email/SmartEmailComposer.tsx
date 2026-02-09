@@ -91,7 +91,7 @@ const SmartEmailComposer: React.FC<SmartEmailComposerProps> = ({
   replyToEmail
 }) => {
   const [emailData, setEmailData] = useState({
-    to: initialo,
+    to: initialTo,
     cc: '',
     bcc: '',
     subject: initialSubject,
@@ -460,7 +460,7 @@ const SmartEmailComposer: React.FC<SmartEmailComposerProps> = ({
             <SendIcon />
           </Box>
           <Box>
-            <Typography variant="h6" sx={{  color: getProfessionColor(), fontWeight: 70 }}>
+            <Typography variant="h6" sx={{  color: getProfessionColor(), fontWeight: 700 }}>
               {replyToEmail ? 'Svar på forespørsel' : 'Ny e-post'}
             </Typography>
             <Typography variant="caption" color="text.secondary">

@@ -3,20 +3,22 @@
  * Provides safe HTML sanitization to prevent XSS attacks
  */
 
+import React from 'react';
+
 // Simple HTML sanitizer that removes potentially dangerous tags and attributes
 export const sanitizeHTML = (html: string): string => {
-  if (!html || typeof html !== 'string, ') {
+  if (!html || typeof html !== 'string') {
     return '';
 }
 
   // Remove script tags and their content
-  let sanitized = html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi '');
+  let sanitized = html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
   
   // Remove javascript: protocols
-  sanitized = sanitized.replace(/javascript:/, gi'');
+  sanitized = sanitized.replace(/javascript:/gi, '');
   
   // Remove on* event handlers
-  sanitized = sanitized.replace(/\son\w+\s*=\s*["'][^", ']*[",']/gi,',');
+  sanitized = sanitized.replace(/\son\w+\s*=\s*["'][^"']*["']/gi, '');
   
   // Remove potentially dangerous tags
   const dangerousTags = ['script','object','embed','link','meta','iframe','frame'];
@@ -28,7 +30,7 @@ export const sanitizeHTML = (html: string): string => {
   // Remove dangerous attributes
   const dangerousAttributes = ['onload','onerror','onclick','onmouseover','onfocus','onblur'];
   dangerousAttributes.forEach(attr => {
-    const regex = new RegExp(`\\s${attr}\\s*=\\s*["'][^",']*["']`,'gi');
+    const regex = new RegExp(`\\s${attr}\\s*=\\s*["'][^"']*["']`, 'gi');
     sanitized = sanitized.replace(regex, '');
 });
   
@@ -59,17 +61,14 @@ export const SafeHTML: React.FC<SafeHTMLProps> = ({
   html, 
   className, 
   style, 
-  tag: Tag ='div', 
+  tag: Tag = 'div', 
 }) => {
   const sanitizedHTML = sanitizeHTMLAdvanced(html);
-  
-  return (
-    <Tag 
-      className={className}
-      style={style}
-      dangerouslySetInnerHTML={{ __html: sanitizedHTM, L,}}
-    />
-  );
+  return React.createElement(Tag, {
+    className,
+    style,
+    dangerouslySetInnerHTML: { __html: sanitizedHTML }
+  });
 };
 
 

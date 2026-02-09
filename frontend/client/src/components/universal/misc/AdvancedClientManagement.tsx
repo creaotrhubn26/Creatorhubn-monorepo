@@ -64,6 +64,7 @@ import {
   FilterList,
   MoreVert
 } from '@mui/icons-material';
+import { apiRequest } from '@/lib/queryClient';
 
 interface Client {
   id: string;
@@ -102,7 +103,7 @@ export default function AdvancedClientManagement() {
   const { isDemoMode } = useDemoMode();
   
   // Theming system
-  const theming = useTheming('photographer, ');
+  const theming = useTheming('photographer');
   const [clients, setClients] = useState<Client[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedTab, setSelectedTab] = useState(0);
@@ -111,6 +112,25 @@ export default function AdvancedClientManagement() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterType, setFilterType] = useState<string>('all');
+  const [isLoading, setIsLoading] = useState(false);
+  const [saveError, setSaveError] = useState('');
+  const [clientForm, setClientForm] = useState<Partial<Client>>({
+    name: '',
+    email: '',
+    phone: '',
+    location: '',
+    clientType: 'individual',
+    status: 'potential',
+    totalValue: 0,
+    projectCount: 0,
+    rating: 0,
+    notes: '',
+    tags: [],
+    preferredCommunication: 'email',
+    language: 'no',
+    gdprConsent: false,
+    source: 'manual'
+  });
 
   // Get demo data when in demo mode, otherwise use real data
   const demoClients = useDemoModeData<Client>('clients', []);
@@ -124,34 +144,27 @@ export default function AdvancedClientManagement() {
   } else {
       // Load real data from API
       const loadClients = async () => {
+        setIsLoading(true);
         try {
-          const response = await fetch('/api/clients');
-          if (response.ok) {
-            const data = await response.json();
-            setClients(data);
-        } else {
-            setClients([]);
-        }
-      } catch (error) {
+          const data = await apiRequest('/api/clients');
+          setClients(data || []);
+        } catch (error) {
           console.error('Error loading clients: ', error);
           setClients([]);
-      }
-    };
+        } finally {
+          setIsLoading(false);
+        }
+      };
       
       const loadProjects = async () => {
         try {
-          const response = await fetch('/api/projects');
-          if (response.ok) {
-            const data = await response.json();
-            setProjects(data);
-        } else {
-            setProjects([]);
-        }
-      } catch (error) {
+          const data = await apiRequest('/api/projects');
+          setProjects(data || []);
+        } catch (error) {
           console.error('Error loading projects:', error);
           setProjects([]);
-      }
-    };
+        }
+      };
 
       loadClients();
       loadProjects();
@@ -168,7 +181,9 @@ export default function AdvancedClientManagement() {
     return matchesSearch && matchesStatus && matchesType;
 });
 
-  const getClientStatusColor = (status: string) => {
+  type ChipColor = 'default' | 'primary' | 'secondary' | 'error' | 'info' | 'success' | 'warning';
+
+  const getClientStatusColor = (status: string): ChipColor => {
     switch (status) {
       case 'active': return 'success';
       case 'potential': return 'warning';
@@ -180,13 +195,21 @@ export default function AdvancedClientManagement() {
 
   const getClientTypeIcon = (type: string) => {
     switch (type) {
-      case 'business': return theming.getThemedIcon(', ');
-      case 'wedding': return theming.getThemedIcon('star');
-      case 'individual': return theming.getThemedIcon('person');
-      case 'corporate': return theming.getThemedIcon('assignment');
-      default: return theming.getThemedIcon(', ');
+      case 'business': return <Business />;
+      case 'wedding': return <Star />;
+      case 'individual': return <Person />;
+      case 'corporate': return <Assignment />;
+      default: return <Person />;
   }
 };
+
+  const getProjectIcon = (type: string) => {
+    const normalized = type.toLowerCase();
+    if (normalized.includes('photo')) return <PhotoCamera />;
+    if (normalized.includes('video')) return <Videocam />;
+    if (normalized.includes('music')) return <LibraryMusic />;
+    return <Assignment />;
+  };
 
   const handleEditClient = (client: Client) => {
     setSelectedClient(client);
@@ -198,20 +221,136 @@ export default function AdvancedClientManagement() {
     setShowClientDialog(true);
 };
 
+  useEffect(() => {
+    if (selectedClient) {
+      setClientForm({
+        ...selectedClient,
+        tags: selectedClient.tags || []
+      });
+      setSaveError('');
+      return;
+    }
+    setClientForm({
+      name: '',
+      email: '',
+      phone: '',
+      location: '',
+      clientType: 'individual',
+      status: 'potential',
+      totalValue: 0,
+      projectCount: 0,
+      rating: 0,
+      notes: '',
+      tags: [],
+      preferredCommunication: 'email',
+      language: 'no',
+      gdprConsent: false,
+      source: 'manual'
+    });
+    setSaveError('');
+  }, [selectedClient, showClientDialog]);
+
+  const handleSaveClient = async () => {
+    if (!clientForm.name || !clientForm.email) {
+      setSaveError('Navn og e-post er obligatorisk.');
+      return;
+    }
+
+    const payload: Client = {
+      id: selectedClient?.id || `client-${Date.now()}`,
+      name: clientForm.name,
+      email: clientForm.email,
+      phone: clientForm.phone || '',
+      company: clientForm.company,
+      location: clientForm.location || '',
+      clientType: clientForm.clientType || 'individual',
+      status: clientForm.status || 'potential',
+      totalValue: Number(clientForm.totalValue) || 0,
+      projectCount: Number(clientForm.projectCount) || 0,
+      rating: Number(clientForm.rating) || 0,
+      lastContact: selectedClient?.lastContact || new Date(),
+      notes: clientForm.notes || '',
+      tags: clientForm.tags || [],
+      avatar: clientForm.avatar,
+      preferredCommunication: clientForm.preferredCommunication || 'email',
+      language: clientForm.language || 'no',
+      gdprConsent: clientForm.gdprConsent ?? false,
+      source: clientForm.source || 'manual'
+    };
+
+    try {
+      setIsLoading(true);
+      if (isDemoMode) {
+        setClients((prev) => {
+          const exists = prev.find((c) => c.id === payload.id);
+          if (exists) {
+            return prev.map((c) => (c.id === payload.id ? payload : c));
+          }
+          return [payload, ...prev];
+        });
+      } else if (selectedClient) {
+        await apiRequest(`/api/clients/${payload.id}`, {
+          method: 'PUT',
+          body: payload
+        });
+        setClients((prev) => prev.map((c) => (c.id === payload.id ? payload : c)));
+      } else {
+        const created = await apiRequest('/api/clients', {
+          method: 'POST',
+          body: payload
+        });
+        setClients((prev) => [created || payload, ...prev]);
+      }
+      setShowClientDialog(false);
+      setSelectedClient(null);
+    } catch (error) {
+      console.error('Error saving client:', error);
+      setSaveError('Kunne ikke lagre kunden. Prov igjen.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleDeleteClient = async (client: Client) => {
+    if (!window.confirm(`Vil du slette kunden ${client.name}?`)) return;
+    try {
+      if (!isDemoMode) {
+        await apiRequest(`/api/clients/${client.id}`, { method: 'DELETE' });
+      }
+      setClients((prev) => prev.filter((c) => c.id !== client.id));
+    } catch (error) {
+      console.error('Error deleting client:', error);
+    }
+  };
+
+  const handleContactClient = (client: Client) => {
+    if (client.preferredCommunication === 'phone' && client.phone) {
+      window.open(`tel:${client.phone}`, '_self');
+      return;
+    }
+    if (client.preferredCommunication === 'sms' && client.phone) {
+      window.open(`sms:${client.phone}`, '_self');
+      return;
+    }
+    window.open(`mailto:${client.email}`, '_self');
+  };
+
   return (
     <Box sx={{ p:  3 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb:  3 }}>
         <Typography variant="h4" sx={{  fontWeight: 600, color: theming.colors.primary }}>
           Avansert Kundeadministrasjon
         </Typography>
-        <Button variant="contained"
+        <Button
+          variant="contained"
           startIcon={theming.getThemedIcon('add')}
           onClick={handleAddClient}
           sx={{
             background: 'linear-gradient(45deg, #ff8c00 30%, #ff6600 90%)',
-            color: 'white'
-      }}
-         sx={theming.getThemedButtonSx()}>
+            color: 'white',
+            ...theming.getThemedButtonSx()
+          }}
+        >
           Ny kunde
         </Button>
       </Box>
@@ -275,6 +414,11 @@ export default function AdvancedClientManagement() {
       {/* Client List */}
       {selectedTab === 0 && (
         <Grid container spacing={2}>
+          {isLoading && (
+            <Grid item xs={12}>
+              <LinearProgress sx={{ mb: 2 }} />
+            </Grid>
+          )}
           {filteredClients.map((client) => (
             <Grid item xs={12} md={6} lg={4} key={client.id}>
               <Card sx={{ 
@@ -301,7 +445,7 @@ export default function AdvancedClientManagement() {
                     </Box>
                     <Chip
                       label={client.status}
-                      color={getClientStatusColor(client.status) as any}
+                      color={getClientStatusColor(client.status)}
                       size="small"
                     />
                   </Box>
@@ -354,11 +498,11 @@ export default function AdvancedClientManagement() {
                   <Button size="small" startIcon={theming.getThemedIcon('edit')} onClick={() => handleEditClient(client)}>
                     Rediger
                   </Button>
-                  <Button size="small" startIcon={theming.getThemedIcon('chat')}>
+                  <Button size="small" startIcon={theming.getThemedIcon('chat')} onClick={() => handleContactClient(client)}>
                     Kontakt
                   </Button>
-                  <Button size="small" startIcon={<History />}>
-                    Historikk
+                  <Button size="small" startIcon={<Delete />} color="error" onClick={() => handleDeleteClient(client)}>
+                    Slett
                   </Button>
                 </CardActions>
               </Card>
@@ -369,9 +513,64 @@ export default function AdvancedClientManagement() {
 
       {/* Active Projects Tab */}
       {selectedTab === 1 && (
-        <Alert severity="info">
-          Aktive prosjekter vises her når de er implementert
-        </Alert>
+        <Grid container spacing={2}>
+          {projects.filter((project) => project.status !== 'completed').length === 0 ? (
+            <Grid item xs={12}>
+              <Alert severity="info">
+                Ingen aktive prosjekter akkurat na.
+              </Alert>
+            </Grid>
+          ) : (
+            projects
+              .filter((project) => project.status !== 'completed')
+              .map((project) => {
+                const client = clients.find((c) => c.id === project.clientId);
+                return (
+                  <Grid item xs={12} md={6} key={project.id}>
+                    <Card sx={theming.getThemedCardSx()}>
+                      <CardContent sx={theming.getThemedCardSx()}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
+                          <Avatar sx={{ bgcolor: 'primary.main' }}>
+                            {getProjectIcon(project.type)}
+                          </Avatar>
+                          <Box>
+                            <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                              {project.name}
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              {client?.name || 'Ukjent kunde'} • {project.status}
+                            </Typography>
+                          </Box>
+                        </Box>
+                        <Divider sx={{ my: 1 }} />
+                        <Typography variant="body2" color="text.secondary">
+                          Prosjektverdi: NOK {project.value.toLocaleString('no-NO')}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          Startdato: {new Date(project.date).toLocaleDateString('no-NO')}
+                        </Typography>
+                        {project.deliveryDate && (
+                          <Typography variant="body2" color="text.secondary">
+                            Levering: {new Date(project.deliveryDate).toLocaleDateString('no-NO')}
+                          </Typography>
+                        )}
+                      </CardContent>
+                      <CardActions sx={theming.getThemedCardSx()}>
+                        {client && (
+                          <Button size="small" startIcon={<Chat />} onClick={() => handleContactClient(client)}>
+                            Kontakt kunde
+                          </Button>
+                        )}
+                        <Button size="small" startIcon={<Assessment />}>
+                          Rapport
+                        </Button>
+                      </CardActions>
+                    </Card>
+                  </Grid>
+                );
+              })
+          )}
+        </Grid>
       )}
 
       {/* Statistics Tab */}
@@ -443,16 +642,153 @@ export default function AdvancedClientManagement() {
           {selectedClient ? 'Rediger kunde' : 'Ny kunde'}
         </DialogTitle>
         <DialogContent>
-          <Alert severity="info" sx={{ mb:  2 }}>
-            Kundedialog implementeres når backend API er klart
-          </Alert>
+            {saveError && (
+              <Alert severity="error" sx={{ mb: 2 }}>
+                {saveError}
+              </Alert>
+            )}
+            <Grid container spacing={2} sx={{ mt: 1 }}>
+              <Grid item xs={12} md={6}>
+                <TextField
+                  fullWidth
+                  label="Navn"
+                  value={clientForm.name || ''}
+                  onChange={(e) => setClientForm((prev) => ({ ...prev, name: e.target.value }))}
+                  required
+                />
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <TextField
+                  fullWidth
+                  label="E-post"
+                  value={clientForm.email || ''}
+                  onChange={(e) => setClientForm((prev) => ({ ...prev, email: e.target.value }))}
+                  required
+                />
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <TextField
+                  fullWidth
+                  label="Telefon"
+                  value={clientForm.phone || ''}
+                  onChange={(e) => setClientForm((prev) => ({ ...prev, phone: e.target.value }))}
+                />
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <TextField
+                  fullWidth
+                  label="Firma"
+                  value={clientForm.company || ''}
+                  onChange={(e) => setClientForm((prev) => ({ ...prev, company: e.target.value }))}
+                />
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <TextField
+                  fullWidth
+                  label="Lokasjon"
+                  value={clientForm.location || ''}
+                  onChange={(e) => setClientForm((prev) => ({ ...prev, location: e.target.value }))}
+                />
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <FormControl fullWidth>
+                  <InputLabel>Type</InputLabel>
+                  <Select
+                    value={clientForm.clientType || 'individual'}
+                    label="Type"
+                    onChange={(e) => setClientForm((prev) => ({ ...prev, clientType: e.target.value as Client['clientType'] }))}
+                  >
+                    <MenuItem value="individual">Privatperson</MenuItem>
+                    <MenuItem value="business">Bedrift</MenuItem>
+                    <MenuItem value="wedding">Bryllup</MenuItem>
+                    <MenuItem value="corporate">Bedriftskunde</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <FormControl fullWidth>
+                  <InputLabel>Status</InputLabel>
+                  <Select
+                    value={clientForm.status || 'potential'}
+                    label="Status"
+                    onChange={(e) => setClientForm((prev) => ({ ...prev, status: e.target.value as Client['status'] }))}
+                  >
+                    <MenuItem value="active">Aktiv</MenuItem>
+                    <MenuItem value="potential">Potensiell</MenuItem>
+                    <MenuItem value="inactive">Inaktiv</MenuItem>
+                    <MenuItem value="past">Tidligere</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <FormControl fullWidth>
+                  <InputLabel>Foretrukket kontakt</InputLabel>
+                  <Select
+                    value={clientForm.preferredCommunication || 'email'}
+                    label="Foretrukket kontakt"
+                    onChange={(e) => setClientForm((prev) => ({ ...prev, preferredCommunication: e.target.value as Client['preferredCommunication'] }))}
+                  >
+                    <MenuItem value="email">E-post</MenuItem>
+                    <MenuItem value="phone">Telefon</MenuItem>
+                    <MenuItem value="sms">SMS</MenuItem>
+                    <MenuItem value="whatsapp">WhatsApp</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <TextField
+                  fullWidth
+                  label="Totalverdi (NOK)"
+                  type="number"
+                  value={clientForm.totalValue ?? 0}
+                  onChange={(e) => setClientForm((prev) => ({ ...prev, totalValue: Number(e.target.value) }))}
+                />
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <TextField
+                  fullWidth
+                  label="Prosjekter"
+                  type="number"
+                  value={clientForm.projectCount ?? 0}
+                  onChange={(e) => setClientForm((prev) => ({ ...prev, projectCount: Number(e.target.value) }))}
+                />
+              </Grid>
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  label="Notater"
+                  multiline
+                  minRows={3}
+                  value={clientForm.notes || ''}
+                  onChange={(e) => setClientForm((prev) => ({ ...prev, notes: e.target.value }))}
+                />
+              </Grid>
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  label="Tags (kommaseparert)"
+                  value={(clientForm.tags || []).join(', ')}
+                  onChange={(e) =>
+                    setClientForm((prev) => ({
+                      ...prev,
+                      tags: e.target.value.split(',').map((tag) => tag.trim()).filter(Boolean)
+                    }))
+                  }
+                />
+              </Grid>
+            </Grid>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setShowClientDialog(false)}>
             Avbryt
           </Button>
-          <Button variant="contained" sx={theming.getThemedButtonSx()}>
-            Lagre
+            <Button
+              variant="contained"
+              onClick={handleSaveClient}
+              disabled={isLoading}
+              sx={theming.getThemedButtonSx()}
+            >
+              {isLoading ? 'Lagrer...' : 'Lagre'}
           </Button>
         </DialogActions>
       </Dialog>

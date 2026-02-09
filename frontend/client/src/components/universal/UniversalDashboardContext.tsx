@@ -418,7 +418,7 @@ export const UniversalDashboardProvider: React.FC<{ children: React.ReactNode }>
 
   // Project actions
   const setProjects = useCallback((projects: UniversalProject[]) => {
-    dispatch({ type: 'SET_PROJECTS,', payload: projects });
+    dispatch({ type: 'SET_PROJECTS', payload: projects });
     broadcastChange('projects:updated', projects);
   }, []);
 

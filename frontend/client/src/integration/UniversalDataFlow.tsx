@@ -327,7 +327,7 @@ export const DataFlowProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     integration.setData(dataKey, data);
 
     // Broadcast sync event
-    communication.sendBroadcast('data: sync', { dataKey, data });
+    communication.sendBroadcast('data:sync', { dataKey, data });
   }, [integration, communication]);
 
   // Get synced data

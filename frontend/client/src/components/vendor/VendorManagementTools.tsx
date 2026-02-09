@@ -1,9 +1,7 @@
 import { useTheming } from '../../utils/theming-helper';
-import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
-import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
-import getProfessionIcon from '@/utils/profession-icons';
-import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
-import React, { useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
 import {
   Box,
   Typography,
@@ -33,7 +31,9 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
-  DialogActions
+  DialogActions,
+  LinearProgress,
+  Alert
 } from '@mui/material';
 import {
   Store,
@@ -69,89 +69,61 @@ interface Order {
   items: number;
   total: number;
   status: 'pending' | 'processing' | 'shipped' | 'delivered';
-  date: Date
+  date: string
 }
 
-const VendorManagementTools: React.FC = () => {
-  const [selectedT, absetSelectedTab] = useState(false);
+interface VendorManagementToolsProps {
+  vendorType: string;
+  vendorName: string;
+  userId: string;
+}
+
+interface InventoryCreatePayload {
+  name: string;
+  category: string;
+  brand: string;
+  stock: number;
+  minStock: number;
+  price: number;
+}
+
+const VendorManagementTools: React.FC<VendorManagementToolsProps> = ({ vendorType, vendorName, userId }) => {
+  const queryClient = useQueryClient();
+  const [selectedTab, setSelectedTab] = useState<'inventory' | 'orders' | 'analytics'>('inventory');
   
   // Theming system
   const theming = useTheming('vendor');
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [addItemDialog, setAddItemDialog] = useState(false);
+  const [newItem, setNewItem] = useState<InventoryCreatePayload>({
+    name: '',
+    category: '',
+    brand: '',
+    stock: 0,
+    minStock: 0,
+    price: 0
+  });
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
 
-  const inventoryItems: InventoryItem[] = [
-    {
-      id: '',
-      name: 'Canon EOS R',
-      category: 'Kamerautstyr',
-      brand: 'Canon',
-      stock:  12,
-      minStock:  5,
-      price: 4290,
-      status: 'in_stock'
-},
-    {
-      id: '',
-      name: 'Sony FX',
-      category: 'Videoutstyr',
-      brand: 'Sony',
-      stock:  3,
-      minStock:  5,
-      price: 5190,
-      status: 'low_stock'
-},
-    {
-      id: '',
-      name: 'Rode PodMic',
-      category: 'Lydutstyr',
-      brand: 'Rode',
-      stock:  0,
-      minStock:  10,
-      price: 240,
-      status: 'out_of_stock'
-},
-    {
-      id: '',
-      name: 'Godox AD600Pro',
-      category: 'Belysningsutstyr',
-      brand: 'Godox',
-      stock:  8,
-      minStock:  3,
-      price: 1290,
-      status: 'in_stock'
-}
-  ];
+  const { data: inventoryData, isLoading: inventoryLoading } = useQuery<{ inventory?: InventoryItem[] }>({
+    queryKey: ['/api/vendor-inventory', vendorType, vendorName, userId],
+    queryFn: () => apiRequest(`/api/vendor-inventory/${vendorType}/${vendorName}/${userId}?status=all`)
+  });
 
-  const orders: Order[] = [
-    {
-      id: 'ORD-00',
-      customer: 'Fotograf Lars A',
-      items:  3,
-      total: 6790,
-      status: 'pending',
-      date: new Date()
-},
-    {
-      id: 'ORD-00',
-      customer: 'Videograf Maria',
-      items:  1,
-      total: 5190,
-      status: 'processing',
-      date: new Date(Date.now() - 24 * 60 * 60 * 1000)
-},
-    {
-      id: 'ORD-00',
-      customer: 'Studio Bergen',
-      items:  5,
-      total: 8970,
-      status: 'shipped',
-      date: new Date(Date.now() - 48 * 60 * 60 * 1000)
-}
-  ];
+  const { data: ordersData, isLoading: ordersLoading } = useQuery<{ orders?: Order[] }>({
+    queryKey: ['/api/vendor-orders', vendorType, vendorName, userId],
+    queryFn: () => apiRequest(`/api/vendor-orders/${vendorType}/${vendorName}/${userId}?status=all`)
+  });
 
-  const categories = ['Kamerautstyr', 'Videoutstyr', 'Lydutstyr', 'Belysningsutstyr', 'Tilbehør', 'Software'];
+  const inventoryItems = inventoryData?.inventory || [];
+  const orders = ordersData?.orders || [];
+
+  const categories = useMemo(() => {
+    const unique = new Set<string>();
+    inventoryItems.forEach((item) => unique.add(item.category));
+    return Array.from(unique);
+  }, [inventoryItems]);
 
   const getStockStatusColor = (status: string) => {
     switch (status) {
@@ -198,8 +170,70 @@ const VendorManagementTools: React.FC = () => {
     return matchesSearch && matchesCategory;
 });
 
+  const createInventoryMutation = useMutation<InventoryItem, Error, InventoryCreatePayload>({
+    mutationFn: async (payload) =>
+      apiRequest('/api/vendor-inventory/create', {
+        method: 'POST',
+        body: JSON.stringify({ ...payload, vendorType, vendorName, userId }),
+        headers: { 'Content-Type': 'application/json' }
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/vendor-inventory', vendorType, vendorName, userId] });
+      setAddItemDialog(false);
+      setNewItem({ name: '', category: '', brand: '', stock: 0, minStock: 0, price: 0 });
+    }
+  });
+
+  const deleteInventoryMutation = useMutation<void, Error, string>({
+    mutationFn: async (itemId) =>
+      apiRequest(`/api/vendor-inventory/${itemId}`, {
+        method: 'DELETE'
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/vendor-inventory', vendorType, vendorName, userId] });
+    }
+  });
+
+  const updateOrderStatusMutation = useMutation<void, Error, { orderId: string; status: Order['status'] }>({
+    mutationFn: async ({ orderId, status }) =>
+      apiRequest('/api/vendor-orders/update-status', {
+        method: 'POST',
+        body: JSON.stringify({ orderId, status, vendorType, vendorName }),
+        headers: { 'Content-Type': 'application/json' }
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/vendor-orders', vendorType, vendorName, userId] });
+    }
+  });
+
+  const handleExportInventory = useCallback(() => {
+    const csvRows = [
+      ['Produkt', 'Kategori', 'Merke', 'Lager', 'Min. lager', 'Pris', 'Status'].join(',')
+    ];
+    filteredItems.forEach((item) => {
+      csvRows.push([
+        item.name,
+        item.category,
+        item.brand,
+        item.stock,
+        item.minStock,
+        item.price,
+        getStockStatusText(item.status)
+      ].join(','));
+    });
+    const blob = new Blob([csvRows.join('\n')], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `inventory-${vendorName}-${Date.now()}.csv`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }, [filteredItems, vendorName]);
+
   const lowStockCount = inventoryItems.filter(item => item.status === 'low_stock' || item.status === 'out_of_stock').length;
   const totalValue = inventoryItems.reduce((sum, item) => sum + (item.stock * item.price), 0);
+
+  const isLoading = inventoryLoading || ordersLoading;
 
   return (
     <Box sx={{ p:  3 }}>
@@ -208,9 +242,11 @@ const VendorManagementTools: React.FC = () => {
         Vendor Management Tools
       </Typography>
 
+      {isLoading && <LinearProgress sx={{ mb: 2 }} />}
+
       {/* Dashboard Overview */}
       <Grid container spacing={3} sx={{ mb:  3 }}>
-        <Grid size={{ xs:  12, sm:  6, md:  3 }}>
+        <Grid item xs={12} sm={6} md={3}>
           <Card sx={theming.getThemedCardSx()}>
             <CardContent sx={{ textAlign: 'center',  ...theming.getThemedCardSx() }}>
               <Typography variant="h4" color="primary" sx={{ color: theming.colors.primary }}>
@@ -222,7 +258,7 @@ const VendorManagementTools: React.FC = () => {
             </CardContent>
           </Card>
         </Grid>
-        <Grid size={{ xs:  12, sm:  6, md:  3 }}>
+        <Grid item xs={12} sm={6} md={3}>
           <Card sx={theming.getThemedCardSx()}>
             <CardContent sx={{ textAlign: 'center',  ...theming.getThemedCardSx() }}>
               <Typography variant="h4" color="warning.main" sx={{ color: theming.colors.primary }}>
@@ -234,7 +270,7 @@ const VendorManagementTools: React.FC = () => {
             </CardContent>
           </Card>
         </Grid>
-        <Grid size={{ xs:  12, sm:  6, md:  3 }}>
+        <Grid item xs={12} sm={6} md={3}>
           <Card sx={theming.getThemedCardSx()}>
             <CardContent sx={{ textAlign: 'center',  ...theming.getThemedCardSx() }}>
               <Typography variant="h4" color="success.main" sx={{ color: theming.colors.primary }}>
@@ -246,7 +282,7 @@ const VendorManagementTools: React.FC = () => {
             </CardContent>
           </Card>
         </Grid>
-        <Grid size={{ xs:  12, sm:  6, md:  3 }}>
+        <Grid item xs={12} sm={6} md={3}>
           <Card sx={theming.getThemedCardSx()}>
             <CardContent sx={{ textAlign: 'center',  ...theming.getThemedCardSx() }}>
               <Typography variant="h4" color="info.main" sx={{ color: theming.colors.primary }}>
@@ -280,7 +316,7 @@ const VendorManagementTools: React.FC = () => {
         </Button>
         <Button
           variant={selectedTab === 'analytics' ? 'contained' : 'outlined'}
-          startIcon={theming.getThemedIcon('trendingUp')}
+          startIcon={<TrendingUp />}
           onClick={() => setSelectedTab('analytics')}
         >
           Analyse
@@ -290,7 +326,7 @@ const VendorManagementTools: React.FC = () => {
       {/* Inventory Management */}
       {selectedTab === 'inventory' && (
         <Grid container spacing={3}>
-          <Grid size={{ xs: 12 }}>
+          <Grid item xs={12}>
             <Card sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb:  2 }}>
@@ -299,7 +335,7 @@ const VendorManagementTools: React.FC = () => {
                     Lager Administrasjon
                   </Typography>
                   <Button variant="contained"
-                    startIcon={theming.getThemedIcon('add')}
+                    startIcon={<Add />}
                     onClick={() => setAddItemDialog(true)}
                   >
                     Legg til produkt
@@ -308,7 +344,7 @@ const VendorManagementTools: React.FC = () => {
 
                 {/* Search and Filter */}
                 <Grid container spacing={2} sx={{ mb:  2 }}>
-                  <Grid size={{ xs: 12 }} md={6}>
+                  <Grid item xs={12} md={6}>
                     <TextField
                       fullWidth
                       label="Søk produkter"
@@ -319,7 +355,7 @@ const VendorManagementTools: React.FC = () => {
                     }}
                     />
                   </Grid>
-                  <Grid size={{ xs: 12 }} md={4}>
+                  <Grid item xs={12} md={4}>
                     <FormControl fullWidth>
                       <InputLabel>Kategori</InputLabel>
                       <Select
@@ -335,12 +371,13 @@ const VendorManagementTools: React.FC = () => {
                       </Select>
                     </FormControl>
                   </Grid>
-                  <Grid size={{ xs: 12 }} md={2}>
+                  <Grid item xs={12} md={2}>
                     <Button
                       fullWidth
                       variant="outlined"
-                      startIcon={theming.getThemedIcon('getApp')}
+                      startIcon={<GetApp />}
                       sx={{ height: '56px'}}
+                      onClick={handleExportInventory}
                     >
                       Eksporter
                     </Button>
@@ -387,11 +424,17 @@ const VendorManagementTools: React.FC = () => {
                           </TableCell>
                           <TableCell>
                             <Box sx={{ display: 'flex', gap:  1 }}>
-                              <IconButton size="small">
-                                {theming.getThemedIcon('edit')}
+                              <IconButton size="small" aria-label="Rediger produkt">
+                                <Edit fontSize="small" />
                               </IconButton>
-                              <IconButton size="small" color="error">
-                                {theming.getThemedIcon('delete')}
+                              <IconButton
+                                size="small"
+                                color="error"
+                                aria-label="Slett produkt"
+                                onClick={() => deleteInventoryMutation.mutate(item.id)}
+                                disabled={deleteInventoryMutation.isPending}
+                              >
+                                <Delete fontSize="small" />
                               </IconButton>
                             </Box>
                           </TableCell>
@@ -400,6 +443,11 @@ const VendorManagementTools: React.FC = () => {
                     </TableBody>
                   </Table>
                 </TableContainer>
+                {createInventoryMutation.isError && (
+                  <Alert severity="error" sx={{ mt: 2 }}>
+                    Kunne ikke opprette produkt. Prøv igjen.
+                  </Alert>
+                )}
               </CardContent>
             </Card>
           </Grid>
@@ -409,7 +457,7 @@ const VendorManagementTools: React.FC = () => {
       {/* Order Management */}
       {selectedTab === 'orders' && (
         <Grid container spacing={3}>
-          <Grid size={{ xs: 12 }}>
+          <Grid item xs={12}>
             <Card sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
                 <Typography variant="h6" sx={{  mb: 2, display: 'flex', alignItems: 'center', gap:  1  }}>
@@ -444,13 +492,17 @@ const VendorManagementTools: React.FC = () => {
                               size="small"
                             />
                           </TableCell>
-                          <TableCell>{order.date.toLocaleDateString('no-NO')}</TableCell>
+                          <TableCell>{new Date(order.date).toLocaleDateString('no-NO')}</TableCell>
                           <TableCell>
                             <Box sx={{ display: 'flex', gap:  1 }}>
-                              <IconButton size="small">
-                                {theming.getThemedIcon('edit')}
+                              <IconButton size="small" onClick={() => setSelectedOrder(order)}>
+                                <Edit fontSize="small" />
                               </IconButton>
-                              <IconButton size="small">
+                              <IconButton
+                                size="small"
+                                onClick={() => updateOrderStatusMutation.mutate({ orderId: order.id, status: 'shipped' })}
+                                disabled={updateOrderStatusMutation.isPending}
+                              >
                                 <LocalShipping />
                               </IconButton>
                             </Box>
@@ -469,18 +521,18 @@ const VendorManagementTools: React.FC = () => {
       {/* Analytics */}
       {selectedTab === 'analytics' && (
         <Grid container spacing={3}>
-          <Grid size={{ xs: 12 }}>
+          <Grid item xs={12}>
             <Card sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
                 <Typography variant="h6" sx={{  mb: 2, display: 'flex', alignItems: 'center', gap:  1  }}>
-                  {theming.getThemedIcon('trendingUp')}
+                  <TrendingUp />
                   Salgs- og Lageranalyse
                 </Typography>
 
                 <List>
                   <ListItem>
                     <ListItemIcon>
-                      {theming.getThemedIcon('money')}
+                      <AttachMoney />
                     </ListItemIcon>
                     <ListItemText
                       primary="Totalt lagerverdi"
@@ -489,16 +541,16 @@ const VendorManagementTools: React.FC = () => {
                   </ListItem>
                   <ListItem>
                     <ListItemIcon>
-                      {theming.getThemedIcon('assignment')}
+                      <Assignment />
                     </ListItemIcon>
                     <ListItemText
                       primary="Mest populære kategori"
-                      secondary="Kamerautstyr (47% av salg)"
+                      secondary={categories[0] ? `${categories[0]} (${categories.length} kategorier)` : 'Ingen data'}
                     />
                   </ListItem>
                   <ListItem>
                     <ListItemIcon>
-                      {theming.getThemedIcon('notifications')}
+                      <Notifications />
                     </ListItemIcon>
                     <ListItemText
                       primary="Produkter som trenger påfylling"
@@ -522,13 +574,21 @@ const VendorManagementTools: React.FC = () => {
         <DialogTitle>Legg til nytt produkt</DialogTitle>
         <DialogContent>
           <Grid container spacing={2} sx={{ mt:  1 }}>
-            <Grid size={{ xs: 12 }}>
-              <TextField fullWidth label="Produktnavn" />
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Produktnavn"
+                value={newItem.name}
+                onChange={(e) => setNewItem((prev) => ({ ...prev, name: e.target.value }))}
+              />
             </Grid>
-            <Grid size={{ xs: 12 }} sm={6}>
+            <Grid item xs={12} sm={6}>
               <FormControl fullWidth>
                 <InputLabel>Kategori</InputLabel>
-                <Select defaultValue="">
+                <Select
+                  value={newItem.category}
+                  onChange={(e) => setNewItem((prev) => ({ ...prev, category: String(e.target.value) }))}
+                >
                   {categories.map((category) => (
                     <MenuItem key={category} value={category}>
                       {category}
@@ -537,24 +597,86 @@ const VendorManagementTools: React.FC = () => {
                 </Select>
               </FormControl>
             </Grid>
-            <Grid size={{ xs: 12 }} sm={6}>
-              <TextField fullWidth label="Merke" />
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Merke"
+                value={newItem.brand}
+                onChange={(e) => setNewItem((prev) => ({ ...prev, brand: e.target.value }))}
+              />
             </Grid>
-            <Grid size={{ xs: 12 }} sm={4}>
-              <TextField fullWidth label="Lagerantall" type="number" />
+            <Grid item xs={12} sm={4}>
+              <TextField
+                fullWidth
+                label="Lagerantall"
+                type="number"
+                value={newItem.stock}
+                onChange={(e) => setNewItem((prev) => ({ ...prev, stock: Number(e.target.value) }))}
+              />
             </Grid>
-            <Grid size={{ xs: 12 }} sm={4}>
-              <TextField fullWidth label="Min. lager" type="number" />
+            <Grid item xs={12} sm={4}>
+              <TextField
+                fullWidth
+                label="Min. lager"
+                type="number"
+                value={newItem.minStock}
+                onChange={(e) => setNewItem((prev) => ({ ...prev, minStock: Number(e.target.value) }))}
+              />
             </Grid>
-            <Grid size={{ xs: 12 }} sm={4}>
-              <TextField fullWidth label="Pris (NOK)" type="number" />
+            <Grid item xs={12} sm={4}>
+              <TextField
+                fullWidth
+                label="Pris (NOK)"
+                type="number"
+                value={newItem.price}
+                onChange={(e) => setNewItem((prev) => ({ ...prev, price: Number(e.target.value) }))}
+              />
             </Grid>
           </Grid>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setAddItemDialog(false)}>Avbryt</Button>
-          <Button variant="contained" sx={theming.getThemedButtonSx()}>Legg til</Button>
+          <Button
+            variant="contained"
+            sx={theming.getThemedButtonSx()}
+            onClick={() => createInventoryMutation.mutate(newItem)}
+            disabled={createInventoryMutation.isPending || !newItem.name.trim()}
+          >
+            {createInventoryMutation.isPending ? 'Lagrer...' : 'Legg til'}
+          </Button>
         </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(selectedOrder)}
+        onClose={() => setSelectedOrder(null)}
+        maxWidth="sm"
+        fullWidth
+      >
+        {selectedOrder && (
+          <>
+            <DialogTitle>Ordre {selectedOrder.id}</DialogTitle>
+            <DialogContent>
+              <Typography variant="subtitle2">{selectedOrder.customer}</Typography>
+              <Typography variant="body2" color="text.secondary">
+                {selectedOrder.items} varer • {selectedOrder.total.toLocaleString()} NOK
+              </Typography>
+              <Typography variant="body2" sx={{ mt: 2 }}>
+                Status: {getOrderStatusText(selectedOrder.status)}
+              </Typography>
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => setSelectedOrder(null)}>Lukk</Button>
+              <Button
+                variant="contained"
+                startIcon={<LocalShipping />}
+                onClick={() => updateOrderStatusMutation.mutate({ orderId: selectedOrder.id, status: 'shipped' })}
+              >
+                Marker som sendt
+              </Button>
+            </DialogActions>
+          </>
+        )}
       </Dialog>
     </Box>
   );

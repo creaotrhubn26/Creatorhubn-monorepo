@@ -323,7 +323,7 @@ const AnnotationIcon: React.FC<AnnotationIconProps> = ({
             {label ? (
               <Typography
                 variant="caption"
-                sx={{ color: 'white', fontWeight: 70, fontSize: size * 0.5 }}
+                sx={{ color: 'white', fontWeight: 700, fontSize: size * 0.5 }}
               >
                 {label}
               </Typography>
@@ -421,7 +421,7 @@ const AnnotationIcon: React.FC<AnnotationIconProps> = ({
               {label ? (
                 <Typography
                   variant="caption"
-                  sx={{ color: '#1a1a2e', fontWeight: 70, fontSize: size * 0.45 }}
+                  sx={{ color: '#1a1a2e', fontWeight: 700, fontSize: size * 0.45 }}
                 >
                   {label}
                 </Typography>

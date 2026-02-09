@@ -129,17 +129,17 @@ interface InvoiceData {
   beskrivelse: string;
   dato: Date;
   forfallsdato: Date;
-  status: 'draft' | 'sent' | 'paid' | 'overdue'
+  status: 'draft' | 'sent' | 'paid' | 'overdue';
 }
 
 interface ExpenseCategory {
   kategori: string;
   beskrivelse: string;
   maksGradFradrag: number;
-  MVAFradragsrett: boolean
+  MVAFradragsrett: boolean;
 }
 
-const EXPENSE_CATEGORIES: { [key: string]: ExpenseCategory[, ],} = {
+const EXPENSE_CATEGORIES: Record<string, ExpenseCategory[]> = {
   photographer: [
     {
       kategori: 'Kamerautstyr',
@@ -295,26 +295,29 @@ const EXPENSE_CATEGORIES: { [key: string]: ExpenseCategory[, ],} = {
 };
 
 const MVA_SATSER = {
-  '25': { sats:  25, beskrivelse: 'Generell sats (foto, video, musikk)' } '15': { sats:  15, beskrivelse: 'Matvarer og enkelte tjenester' }, '12': { sats:  12, beskrivelse: 'Transport av personer og enkelte varer' }, '0': { sats: 0, beskrivelse: 'Fritatt (eksport, bøker, aviser)' },
+  '25': { sats: 25, beskrivelse: 'Generell sats (foto, video, musikk)' },
+  '15': { sats: 15, beskrivelse: 'Matvarer og enkelte tjenester' },
+  '12': { sats: 12, beskrivelse: 'Transport av personer og enkelte varer' },
+  '0': { sats: 0, beskrivelse: 'Fritatt (eksport, bøker, aviser)' },
 };
 
 export default function NorwegianTaxCalculator({
-  profession = 'photographer,',
+  profession = 'photographer',
   mode = 'standalone',
   onTaxCalculated,
 }: NorwegianTaxCalculatorProps) {
   const [activeTab, setActiveTab] = useState(0);
-  const [currentPeriod, setCurrentPeriod] = useState('2024-Q1,');
+  const [currentPeriod, setCurrentPeriod] = useState('2024-Q1');
   const [calculations, setCalculations] = useState<TaxCalculation[]>([]);
   const [invoices, setInvoices] = useState<InvoiceData[]>([]);
   const [expenses, setExpenses] = useState<any[]>([]);
   const [newExpense, setNewExpense] = useState({
-    beskrivelse: ', ',
-    belop:  0,
+    beskrivelse: '',
+    belop: 0,
     kategori: '',
-    mvaSats:  25,
-    dato: new Date().toISOString().split('T')[],
-});
+    mvaSats: 25,
+    dato: new Date().toISOString().split('T')[0],
+  });
   const [isCalculating, setIsCalculating] = useState(false);
   const [reportDialogOpen, setReportDialogOpen] = useState(false);
   const [currentCalculation, setCurrentCalculation] = useState<TaxCalculation | null>(null);
@@ -337,42 +340,43 @@ export default function NorwegianTaxCalculator({
       ]);
       setExternalTaxRates(taxRates);
       setExternalFuelPrices(fuelPrices);
-  } catch (error) {
+    } catch (error) {
       console.error('Failed to fetch external tax data: ', error);
-  }
-};
+    }
+  };
   
   // Fetch external data on component mount
   useEffect(() => {
     fetchExternalData();
-}, []);
+  }, []);
 
   const professionColors = {
     photographer: '#ff8c00',
     videographer: '#e74c30',
     musicproducer: '#9b59b0',
-    vendor: '#27ae60' };
+    vendor: '#27ae60',
+  };
 
   const color = professionColors[profession];
 
   // Tax calculation queries
   const { data: taxHistory, isLoading: isLoadingHistory } = useQuery({
     queryKey: ['/api/tax/history', profession],
-    staleTime: 1000 * 60 *, 5,
-});
+    staleTime: 1000 * 60 * 5,
+  });
 
   const { data: currentYearSummary } = useQuery({
     queryKey: ['/api/tax/summary', new Date().getFullYear(), profession],
-    staleTime: 1000 * 60 *, 2,
-});
+    staleTime: 1000 * 60 * 2,
+  });
 
   const calculateMVA = (belop: number, sats: number): number => {
     return Math.round(((belop * sats) / (100 + sats)) * 100) / 100;
-};
+  };
 
   const calculateNetAmount = (belop: number, sats: number): number => {
     return Math.round((belop - calculateMVA(belop, sats)) * 100) / 100;
-};
+  };
 
   const performTaxCalculation = async () => {
     setIsCalculating(true);
@@ -481,28 +485,28 @@ export default function NorwegianTaxCalculator({
     };
       setExpenses((prev) => [expense, ...prev]);
       setNewExpense({
-        beskrivelse: ', ',
-        belop:  0,
-        kategori: ', ',
-        mvaSats:  25,
-        dato: new Date().toISOString().split('T')[],
-    });
-  }
-};
+        beskrivelse: '',
+        belop: 0,
+        kategori: '',
+        mvaSats: 25,
+        dato: new Date().toISOString().split('T')[0],
+      });
+    }
+  };
 
   const generateInvoice = () => {
     // This would integrate with invoice generation system
     console.log('Generating invoice with tax calculation: ', currentCalculation);
-};
+  };
 
   const exportReport = (format: 'pdf' | 'excel') => {
     // This would export the tax report in the specified format
     console.log(`Exporting tax report as ${format}:`, currentCalculation);
-};
+  };
 
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
     setActiveTab(newValue);
-};
+  };
 
   const renderMVACalculator = () => (
     <Paper sx={{ p:  3 ,  ...theming.getThemedCardSx() }}>
@@ -531,7 +535,13 @@ export default function NorwegianTaxCalculator({
             variant="contained"
             onClick={performTaxCalculation}
             disabled={isCalculating}
-            startIcon={isCalculating ? <CircularProgress size={20} sx={theming.getThemedButtonSx()}> : <Calculate />}
+            startIcon={
+              isCalculating ? (
+                <CircularProgress size={20} sx={theming.getThemedButtonSx()} />
+              ) : (
+                <Calculate />
+              )
+            }
             sx={{
               bgcolor: color, '&:hover': { bgcolor: color },
               mb:  2}}
@@ -633,8 +643,8 @@ export default function NorwegianTaxCalculator({
                   </TableCell>
                 </TableRow>
                 <TableRow>
-                  <TableCell sx={{ fontWeight: 600}>Netto omsetning</TableCell>
-                  <TableCell align="right" sx={{ fontWeight: 600}>
+                  <TableCell sx={{ fontWeight: 600 }}>Netto omsetning</TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 600 }}>
                     {currentCalculation.grunnlagMVA.toLocaleString('no-NO')}
                   </TableCell>
                 </TableRow>
@@ -645,8 +655,8 @@ export default function NorwegianTaxCalculator({
                   </TableCell>
                 </TableRow>
                 <TableRow>
-                  <TableCell sx={{ fontWeight: 600}>Skattegrunnlag</TableCell>
-                  <TableCell align="right" sx={{ fontWeight: 600}>
+                  <TableCell sx={{ fontWeight: 600 }}>Skattegrunnlag</TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 600 }}>
                     {currentCalculation.skattegrunnlag.toLocaleString('no-NO')}
                   </TableCell>
                 </TableRow>
@@ -657,7 +667,7 @@ export default function NorwegianTaxCalculator({
                   </TableCell>
                 </TableRow>
                 <TableRow sx={{ bgcolor: 'grey.50' }}>
-                  <TableCell sx={{ fontWeight: 600}>Netto resultat</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Netto resultat</TableCell>
                   <TableCell align="right" sx={{ fontWeight: 600, color: 'success.main' }}>
                     {currentCalculation.nettoResultat.toLocaleString('no-NO')}
                   </TableCell>
@@ -692,8 +702,8 @@ export default function NorwegianTaxCalculator({
                 setNewExpense((prev) => ({
                   ...prev,
                   beskrivelse: e.target.value,
-              }))
-            }
+                }))
+              }
             />
 
             <TextField
@@ -705,8 +715,8 @@ export default function NorwegianTaxCalculator({
                 setNewExpense((prev) => ({
                   ...prev,
                   belop: parseFloat(e.target.value) || 0,
-              }))
-            }
+                }))
+              }
               InputProps={{
                 endAdornment: <InputAdornment position="end">NOK</InputAdornment>}}
             />
@@ -719,8 +729,8 @@ export default function NorwegianTaxCalculator({
                   setNewExpense((prev) => ({
                     ...prev,
                     kategori: e.target.value,
-                }))
-              }
+                  }))
+                }
                 label="Kategori"
               >
                 {EXPENSE_CATEGORIES[profession].map((cat) => (
@@ -739,8 +749,8 @@ export default function NorwegianTaxCalculator({
                   setNewExpense((prev) => ({
                     ...prev,
                     mvaSats: Number(e.target.value),
-                }))
-              }
+                  }))
+                }
                 label="MVA-sats"
               >
                 {Object.entries(MVA_SATSER).map(([key, value]) => (
@@ -764,7 +774,7 @@ export default function NorwegianTaxCalculator({
               onClick={addExpense}
               startIcon={theming.getThemedIcon('add')}
               sx={{ bgcolor: color, '&:hover': { bgcolor: color } }}
-             sx={theming.getThemedButtonSx()}>
+            >
               Legg til kostnad
             </Button>
           </Stack>
@@ -881,7 +891,9 @@ export default function NorwegianTaxCalculator({
               onClick={() => exportReport('pdf')}
               sx={{
                 borderColor: color,
-                color'&:hover': { borderColor: color, bgcolor: `${color}10` }}}
+                color: color,
+                '&:hover': { borderColor: color, bgcolor: `${color}10` },
+              }}
             >
               Last ned MVA-rapport (PDF)
             </Button>
@@ -893,7 +905,9 @@ export default function NorwegianTaxCalculator({
               onClick={() => exportReport('excel')}
               sx={{
                 borderColor: color,
-                color'&:hover': { borderColor: color, bgcolor: `${color}10` }}}
+                color: color,
+                '&:hover': { borderColor: color, bgcolor: `${color}10` },
+              }}
             >
               Eksporter til Excel
             </Button>
@@ -1166,19 +1180,23 @@ export default function NorwegianTaxCalculator({
         onChange={handleTabChange}
         variant="fullWidth"
         sx={{
-          mb: 3'& .MuiTab-root': {
-            textTransform:'none',
-            fontWeight: 60
-        }, '& .Mui-selected': {
+          mb: 3,
+          '& .MuiTab-root': {
+            textTransform: 'none',
+            fontWeight: 600,
+          },
+          '& .Mui-selected': {
             color: `${color} !important`,
-        }, '& .MuiTabs-indicator': {
+          },
+          '& .MuiTabs-indicator': {
             backgroundColor: color,
-        }}}
+          },
+        }}
       >
         <Tab icon={<Calculate />} iconPosition="start" label="MVA-kalkulator" />
         <Tab icon={<Receipt />} iconPosition="start" label="Kostnader" />
-        <Tab icon={theming.getThemedIcon('assessment')}} iconPosition="start" label="Rapporter" />
-        <Tab icon={theming.getThemedIcon('security')}} iconPosition="start" label="Samsvar" />
+        <Tab icon={theming.getThemedIcon('assessment')} iconPosition="start" label="Rapporter" />
+        <Tab icon={theming.getThemedIcon('security')} iconPosition="start" label="Samsvar" />
       </Tabs>
 
       {activeTab === 0 && renderMVACalculator()}

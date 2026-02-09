@@ -44,7 +44,7 @@ const ABComparisonPanel: React.FC<ABComparisonPanelProps> = ({
   versions
 }) => {
   const [selectedA, setSelectedA] = useState(0);
-  const [selectedB, setSelectedB] = useState(Math.min(1, versions.length - 1));
+  const [selectedB, setSelectedB] = useState(Math.min(1, Math.max(0, versions.length - 1)));
   const [currentVersion, setCurrentVersion] = useState<'A' | 'B'>('A');
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -52,6 +52,20 @@ const ABComparisonPanel: React.FC<ABComparisonPanelProps> = ({
 
   const audioARef = useRef<HTMLAudioElement>(null);
   const audioBRef = useRef<HTMLAudioElement>(null);
+
+  useEffect(() => {
+    if (versions.length === 0) {
+      setSelectedA(0);
+      setSelectedB(0);
+      return;
+    }
+    if (selectedA >= versions.length) {
+      setSelectedA(0);
+    }
+    if (selectedB >= versions.length) {
+      setSelectedB(Math.min(1, versions.length - 1));
+    }
+  }, [selectedA, selectedB, versions.length]);
 
   // Sync playback
   useEffect(() => {

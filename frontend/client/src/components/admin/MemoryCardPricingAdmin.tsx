@@ -91,7 +91,7 @@ const MemoryCardPricingAdmin: React.FC<MemoryCardPricingAdminProps> = ({
   const [showEditDialog, setShowEditDialog] = useState(false);
   
   // Theming system
-  const theming = useTheming('prototype_tester, ');
+  const theming = useTheming('prototype_tester');
 
   // Client service pricing service integration
   const { 

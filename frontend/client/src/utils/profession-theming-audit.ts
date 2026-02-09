@@ -12,7 +12,7 @@ export interface ThemingAuditResult {
   iconUsage: string[];
   missingTheming: string[];
   recommendations: string[];
-  severity: 'low' | 'medium' | 'high', ;, 
+  severity: 'low' | 'medium' | 'high';
 }
 
 export interface ComponentThemingStatus {
@@ -21,7 +21,7 @@ export interface ComponentThemingStatus {
   themedComponents: number;
   missingTheming: number;
   coverage: number;
-  results: ThemingAuditResult[], ;, 
+  results: ThemingAuditResult[];
 }
 
 /**
@@ -39,7 +39,7 @@ export function auditComponentTheming(
     missingTheming:  [],
     recommendations:  [],
     severity: 'low'
-,};
+  };
 
   // Check for EnhancedMasterIntegration usage
   const hasIntegration = content.includes('useEnhancedMasterIntegration, ');
@@ -57,7 +57,7 @@ export function auditComponentTheming(
   const iconMatches = content.match(/CREATOR_HUB_ICONS\[[', "`]([^',"`]+)[', "`]\]/g);
   if (iconMatches) {
     result.iconUsage = iconMatches.map(match => 
-      match.match(/[', "`]([^',"`]+)['"`]/)?.[1] || ','
+      match.match(/[', "`]([^',"`]+)['"`]/)?.[1] || ''
     ).filter(Boolean);
 }
 

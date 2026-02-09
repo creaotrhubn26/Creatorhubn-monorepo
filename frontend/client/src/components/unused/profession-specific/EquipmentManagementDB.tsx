@@ -1,170 +1,244 @@
-// @ts-nocheck
-// This file is in the unused directory and may have outdated imports
+import React, { useMemo, useState } from 'react';
 import { useTheming } from '../../../utils/theming-helper';
-import React from 'react';
-import { getAuthHeader } from '@/lib/google/impersonation';
-import { useQuery } from '@tanstack/react-query';
-import { getAuthHeader } from '@/lib/google/impersonation';
 import { useAuth } from '@/hooks/useAuth';
-import { getAuthHeader } from '@/lib/google/impersonation';
-import { Box, Typography, Card as MuiCard, CardContent as MuiCardContent, Grid, List, ListItem, ListItemText, ListItemIcon, Chip, Button } from '@mui/material';
-import { getAuthHeader } from '@/lib/google/impersonation';
 import { apiRequest } from '@/lib/queryClient';
-import { getAuthHeader } from '@/lib/google/impersonation';
-import { PhotoCamera, Videocam, LibraryMusic, Store, CameraAlt, VideoLibrary, Inventory, Build } from '@mui/icons-material';
-import { getAuthHeader } from '@/lib/google/impersonation';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  Box,
+  Button,
+  Card as MuiCard,
+  CardContent as MuiCardContent,
+  Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Grid,
+  List,
+  ListItem,
+  ListItemIcon,
+  ListItemText,
+  MenuItem,
+  TextField,
+  Typography,
+} from '@mui/material';
+import { Build, LibraryMusic, PhotoCamera, Store, Videocam } from '@mui/icons-material';
 
 interface EquipmentManagementDBProps {
   profession?: 'photographer' | 'videographer' | 'musicproducer' | 'vendor';
 }
 
-const professionConfig = {
-  photographer: { 
-    name: 'Fotoutstyr', 
-    icon: theming.getThemedIcon(''), 
-    color: '#ff8c00',
-    equipment: [
-      { name: 'Canon EOS R', type: 'Kamera', status: 'Tilgjengelig',},
-      { name: 'Sony FE 24-70mm', type: 'Objektiv', status: 'I bruk',},
-      { name: 'Profoto B1', type: 'Blitz', status: 'Tilgjengelig',}
-    ]
-},
-  videographer: { 
-    name: 'Videoutstyr', 
-    icon: theming.getThemedIcon(''), 
-    color: '#e74c30',
-    equipment: [
-      { name: 'Sony FX', type: 'Kamera', status: 'Tilgjengelig',},
-      { name: 'DJI Ronin-', type: 'Gimbal', status: 'I bruk',},
-      { name: 'Rode VideoMic Pro', type: 'Mikrofon', status: 'Tilgjengelig',}
-    ]
-},
-  musicproducer: { 
-    name: 'Studioutstyr', 
-    icon: theming.getThemedIcon(', '), 
-    color: '#9b59b0',
-    equipment: [
-      { name: 'Audio-Technica AT202', type: 'Mikrofon', status: 'Tilgjengelig',},
-      { name: 'Yamaha HS', type: 'Monitor', status: 'I bruk',},
-      { name: 'Focusrite Scarlett 2i', type: 'Audio Interface', status: 'Tilgjengelig',}
-    ]
-},
-  vendor: { 
-    name: 'Lagerutstyr', 
-    icon: theming.getThemedIcon(', '), 
-    color: '#27ae60',
-    equipment: [
-      { name: 'Canon 5D Mark I', type: 'Utleie', status: 'Ledig',},
-      { name: 'Manfrotto Tripod', type: 'Tilbehø', status: 'Utleid',},
-      { name: 'Godox AD60', type: 'Blitz', status: 'Ledig',}
-    ]
+interface EquipmentItem {
+  id: string | number;
+  brand: string;
+  model: string;
+  category?: string | null;
+  status?: string | null;
 }
-};
 
-export default function EquipmentManagementDB({ profession = 'photographer' }: EquipmentManagementDBProps) {
+const professionConfig = {
+  photographer: {
+    name: 'Fotoutstyr',
+    icon: PhotoCamera,
+    color: '#ff8c00',
+    defaultCategory: 'camera',
+  },
+  videographer: {
+    name: 'Videoutstyr',
+    icon: Videocam,
+    color: '#e74c30',
+    defaultCategory: 'camera',
+  },
+  musicproducer: {
+    name: 'Studioutstyr',
+    icon: LibraryMusic,
+    color: '#9b59b0',
+    defaultCategory: 'audio',
+  },
+  vendor: {
+    name: 'Lagerutstyr',
+    icon: Store,
+    color: '#27ae60',
+    defaultCategory: 'accessory',
+  },
+} as const;
+
+const CATEGORY_OPTIONS = [
+  'camera',
+  'lens',
+  'audio',
+  'lighting',
+  'accessory',
+  'memory',
+  'tripod',
+  'slider',
+  'flash',
+  'software',
+] as const;
+
+type EquipmentCategory = (typeof CATEGORY_OPTIONS)[number];
+
+const STATUS_OPTIONS = ['Tilgjengelig', 'I bruk', 'Utleid', 'Ledig', 'Vedlikehold'];
+
+export default function EquipmentManagementDB({
+  profession = 'photographer',
+}: EquipmentManagementDBProps) {
+  const { user } = useAuth();
+  const userId = user?.id ?? null;
   const queryClient = useQueryClient();
-  
-  // Theming system
-  const theming = useTheming('photographer');
-  
-  // Database connection for EquipmentManagementDB
-  const { data: componentData = [], isLoading } = useQuery({
-    queryKey: ['/api/component', 'user-data'],
-    queryFn: () => apiRequest('/api/component/user-data', ),
-    retry: false,
-});
 
-  // Mutation for updating component data
-  const updateEquipmentManagementDB = useMutation({
-    mutationFn: async (data: any) => 
-      const auth = await getAuthHeader();
-      return apiRequest('/api/component/update', {
-        headers: auth,
-        headers: {
-    },
-        
-        method: 'POS',
-        body: JSON.stringify(data)
-  }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/component', ],});
-  }
-});
-  
+  const theming = useTheming(profession);
   const config = professionConfig[profession];
 
+  const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [newEquipment, setNewEquipment] = useState<{
+    brand: string;
+    model: string;
+    category: EquipmentCategory;
+    status: string;
+  }>({
+    brand: '',
+    model: '',
+    category: config.defaultCategory,
+    status: 'Tilgjengelig',
+  });
+
+  const { data: equipment = [], isLoading } = useQuery<EquipmentItem[]>({
+    queryKey: ['/api/equipment', profession, userId],
+    queryFn: async () =>
+      (await apiRequest(
+        `/api/equipment?profession=${encodeURIComponent(
+          profession
+        )}&userId=${encodeURIComponent(userId ?? '')}`
+      )) as EquipmentItem[],
+    enabled: Boolean(userId),
+  });
+
+  const addEquipmentMutation = useMutation({
+    mutationFn: async () =>
+      apiRequest('/api/equipment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId,
+          profession,
+          brand: newEquipment.brand,
+          model: newEquipment.model,
+          category: newEquipment.category,
+          status: newEquipment.status,
+        }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/equipment', profession, userId] });
+      setAddDialogOpen(false);
+      setNewEquipment({
+        brand: '',
+        model: '',
+        category: config.defaultCategory,
+        status: 'Tilgjengelig',
+      });
+    },
+  });
+
+  const stats = useMemo(() => {
+    const total = equipment.length;
+    const available = equipment.filter((item) =>
+      ['Tilgjengelig', 'Ledig'].includes(item.status ?? '')
+    ).length;
+    const inUse = equipment.filter((item) =>
+      ['I bruk', 'Utleid'].includes(item.status ?? '')
+    ).length;
+    return { total, available, inUse };
+  }, [equipment]);
+
+  const Icon = config.icon;
+
   return (
-    <Box sx={{ p:  2 }}>
+    <Box sx={{ p: 2 }}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
-        {React.cloneElement(config.icon, { sx: { color: config.color, fontSize: 32} })}
-        <Typography variant="h5" sx={{  fontWeight: 600, color: config.color  }}>
+        <Icon sx={{ color: config.color, fontSize: 32 }} />
+        <Typography variant="h5" sx={{ fontWeight: 600, color: config.color }}>
           {config.name}
         </Typography>
-        <Button variant="contained" 
+        <Button
+          variant="contained"
           startIcon={theming.getThemedIcon('build')}
-          sx={{ 
-            ml: 'auto',
-            bgcolor: config.color'&:hover': { bgcolor: config.color + 'dd',}
-        }}
-         sx={theming.getThemedButtonSx()}>
-          Legg til Utstyr
+          sx={{ ml: 'auto', bgcolor: config.color, '&:hover': { bgcolor: `${config.color}dd` } }}
+          onClick={() => setAddDialogOpen(true)}
+        >
+          Legg til utstyr
         </Button>
       </Box>
 
       <Grid container spacing={3}>
-        <Grid size={{ xs: 12 }} md={8}>
+        <Grid item xs={12} md={8}>
           <MuiCard>
             <MuiCardContent>
-              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>Utstyrsliste</Typography>
+              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                Utstyrsliste
+              </Typography>
               <List>
-                {config.equipment.map((item, index) => (
-                  <ListItem key={index} divider>
+                {equipment.map((item) => (
+                  <ListItem key={item.id} divider>
                     <ListItemIcon>
                       <Build sx={{ color: config.color }} />
                     </ListItemIcon>
                     <ListItemText
-                      primary={item.name}
-                      secondary={`Type: ${item.type}`}
+                      primary={`${item.brand} ${item.model}`}
+                      secondary={`Type: ${item.category ?? 'Ukjent'}`}
                     />
-                    <Chip 
-                      label={item.status}
-                      color={item.status.includes('Tilgjengelig') || item.status.includes('Ledig') ? 'success' : 'warning'}
+                    <Chip
+                      label={item.status ?? 'Ukjent'}
+                      color={
+                        ['Tilgjengelig', 'Ledig'].includes(item.status ?? '')
+                          ? 'success'
+                          : ['I bruk', 'Utleid'].includes(item.status ?? '')
+                            ? 'warning'
+                            : 'default'
+                      }
                       size="small"
                     />
                   </ListItem>
                 ))}
+                {!isLoading && equipment.length === 0 && (
+                  <ListItem>
+                    <ListItemText primary="Ingen utstyr registrert ennå." />
+                  </ListItem>
+                )}
               </List>
             </MuiCardContent>
           </MuiCard>
         </Grid>
 
-        <Grid size={{ xs: 12 }} md={4}>
+        <Grid item xs={12} md={4}>
           <MuiCard>
             <MuiCardContent>
-              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>Utstyrsstatistikk</Typography>
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap:  2 }}>
+              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                Utstyrsstatistikk
+              </Typography>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                 <Box>
-                  <Typography variant="h4" sx={{  color: config.color  }}>
-                    {config.equipment.length}
+                  <Typography variant="h4" sx={{ color: config.color }}>
+                    {stats.total}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
-                    Totalt Utstyr
+                    Totalt utstyr
                   </Typography>
                 </Box>
                 <Box>
-                  <Typography variant="h4" sx={{  color: theming.colors.primary }}>
-                    {config.equipment.filter(e => e.status.includes('Tilgjengelig') || e.status.includes('Ledig')).length}
+                  <Typography variant="h4" sx={{ color: theming.colors.primary }}>
+                    {stats.available}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
                     Tilgjengelig
                   </Typography>
                 </Box>
                 <Box>
-                  <Typography variant="h4" sx={{  color: theming.colors.primary }}>
-                    {config.equipment.filter(e => e.status.includes('I bruk') || e.status.includes('Utleid')).length}
+                  <Typography variant="h4" sx={{ color: theming.colors.primary }}>
+                    {stats.inUse}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
-                    I Bruk
+                    I bruk
                   </Typography>
                 </Box>
               </Box>
@@ -172,6 +246,87 @@ export default function EquipmentManagementDB({ profession = 'photographer' }: E
           </MuiCard>
         </Grid>
       </Grid>
+
+      <Dialog open={addDialogOpen} onClose={() => setAddDialogOpen(false)} fullWidth maxWidth="sm">
+        <DialogTitle>Legg til utstyr</DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
+            <TextField
+              label="Merke"
+              value={newEquipment.brand}
+              onChange={(event) =>
+                setNewEquipment((prev) => ({ ...prev, brand: event.target.value }))
+              }
+              fullWidth
+            />
+            <TextField
+              label="Modell"
+              value={newEquipment.model}
+              onChange={(event) =>
+                setNewEquipment((prev) => ({ ...prev, model: event.target.value }))
+              }
+              fullWidth
+            />
+            <TextField
+              label="Kategori"
+              value={newEquipment.category}
+              onChange={(event) =>
+                setNewEquipment((prev) => {
+                  const nextCategory = CATEGORY_OPTIONS.find(
+                    (value) => value === event.target.value
+                  );
+                  return {
+                    ...prev,
+                    category: nextCategory ?? prev.category,
+                  };
+                })
+              }
+              select
+              fullWidth
+            >
+              <MenuItem value="camera">Kamera</MenuItem>
+              <MenuItem value="lens">Objektiv</MenuItem>
+              <MenuItem value="audio">Audio</MenuItem>
+              <MenuItem value="lighting">Lys</MenuItem>
+              <MenuItem value="accessory">Tilbehør</MenuItem>
+              <MenuItem value="memory">Minne</MenuItem>
+              <MenuItem value="tripod">Stativ</MenuItem>
+              <MenuItem value="slider">Slider</MenuItem>
+              <MenuItem value="flash">Blitz</MenuItem>
+              <MenuItem value="software">Programvare</MenuItem>
+            </TextField>
+            <TextField
+              label="Status"
+              value={newEquipment.status}
+              onChange={(event) =>
+                setNewEquipment((prev) => ({ ...prev, status: event.target.value }))
+              }
+              select
+              fullWidth
+            >
+              {STATUS_OPTIONS.map((status) => (
+                <MenuItem key={status} value={status}>
+                  {status}
+                </MenuItem>
+              ))}
+            </TextField>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setAddDialogOpen(false)}>Avbryt</Button>
+          <Button
+            variant="contained"
+            onClick={() => addEquipmentMutation.mutate()}
+            disabled={
+              addEquipmentMutation.isPending ||
+              !newEquipment.brand.trim() ||
+              !newEquipment.model.trim()
+            }
+          >
+            {addEquipmentMutation.isPending ? 'Lagrer...' : 'Lagre'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

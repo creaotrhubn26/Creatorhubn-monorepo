@@ -124,7 +124,7 @@ export const LoginPage: React.FC = () => {
               border: '1px solid #dadce0',
               borderRadius: '4px',
               fontSize: '14px',
-              fontWeight: 50,
+              fontWeight: 500,
               color: '#3c4043',
               cursor: 'pointer',
               transition: 'all 0.2s',
@@ -157,7 +157,7 @@ export const LoginPage: React.FC = () => {
               style={{
                 color: '#1a73e8',
                 textDecoration: 'none',
-                fontWeight: 50,
+                fontWeight: 500,
               }}
               onMouseOver={(e) => {
                 e.currentTarget.style.textDecoration = 'underline';

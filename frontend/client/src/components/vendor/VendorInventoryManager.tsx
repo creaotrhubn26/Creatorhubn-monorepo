@@ -173,6 +173,13 @@ export default function VendorInventoryManager({
   const [lastUpdatedFilter, setLastUpdatedFilter] = useState<string>('all');
   const [filtersExpanded, setFiltersExpanded] = useState(false);
   const [searchFields, setSearchFields] = useState<string[]>(['productName', 'sku']);
+  const [skuDraft, setSkuDraft] = useState('');
+  const [reorderDraft, setReorderDraft] = useState({ minimumStock: 0, reorderPoint: 0, reorderQuantity: 0 });
+  const [shippingDraft, setShippingDraft] = useState({
+    weight: 0,
+    dimensions: { length: 0, width: 0, height: 0 },
+    shippingEnabled: false
+  });
 
   const vendorConfig = getVendorTypeConfig(vendorType);
 
@@ -219,9 +226,8 @@ export default function VendorInventoryManager({
     }
   });
 
-  // Update reorder settings mutation (reserved for future use)
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const _updateReorderMutation = useMutation({
+  // Update reorder settings mutation
+  const updateReorderMutation = useMutation({
     mutationFn: ({
       productId,
       minimumStock,
@@ -241,6 +247,56 @@ export default function VendorInventoryManager({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/vendor-inventory'] });
       setSettingsDialogOpen(false);
+      setSelectedItem(null);
+    }
+  });
+
+  const updateSkuMutation = useMutation({
+    mutationFn: ({ productId, sku }: { productId: string; sku: string }) =>
+      apiRequest('/api/vendor-inventory/update-sku', {
+        method: 'POST',
+        body: JSON.stringify({ vendorType, vendorName, userId, productId, sku }),
+        headers: { 'Content-Type': 'application/json' }
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/vendor-inventory'] });
+      setSkuDialogOpen(false);
+      setSelectedItem(null);
+    }
+  });
+
+  const updateTrackingMutation = useMutation({
+    mutationFn: ({ productId, trackInventory }: { productId: string; trackInventory: boolean }) =>
+      apiRequest('/api/vendor-inventory/update-tracking', {
+        method: 'POST',
+        body: JSON.stringify({ vendorType, vendorName, userId, productId, trackInventory }),
+        headers: { 'Content-Type': 'application/json' }
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/vendor-inventory'] });
+    }
+  });
+
+  const updateShippingMutation = useMutation({
+    mutationFn: ({
+      productId,
+      weight,
+      dimensions,
+      shippingEnabled
+    }: {
+      productId: string;
+      weight: number;
+      dimensions: { length: number; width: number; height: number };
+      shippingEnabled: boolean;
+    }) =>
+      apiRequest('/api/vendor-inventory/update-shipping', {
+        method: 'POST',
+        body: JSON.stringify({ vendorType, vendorName, userId, productId, weight, dimensions, shippingEnabled }),
+        headers: { 'Content-Type': 'application/json' }
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/vendor-inventory'] });
+      setShippingDialogOpen(false);
       setSelectedItem(null);
     }
   });
@@ -368,6 +424,59 @@ export default function VendorInventoryManager({
   const handleOpenSettingsDialog = (item: InventoryItem) => {
     setSelectedItem(item);
     setSettingsDialogOpen(true);
+    setReorderDraft({
+      minimumStock: item.minimumStock,
+      reorderPoint: item.reorderPoint,
+      reorderQuantity: item.reorderQuantity || 0
+    });
+  };
+
+  const handleOpenSkuDialog = (item: InventoryItem) => {
+    setSelectedItem(item);
+    setSkuDraft(item.sku || '');
+    setSkuDialogOpen(true);
+  };
+
+  const handleOpenShippingDialog = (item: InventoryItem) => {
+    setSelectedItem(item);
+    setShippingDraft({
+      weight: item.weight || 0,
+      dimensions: {
+        length: item.dimensions?.length || 0,
+        width: item.dimensions?.width || 0,
+        height: item.dimensions?.height || 0
+      },
+      shippingEnabled: Boolean(item.shippingEnabled)
+    });
+    setShippingDialogOpen(true);
+  };
+
+  const handleSaveReorderSettings = () => {
+    if (!selectedItem) return;
+    updateReorderMutation.mutate({
+      productId: selectedItem.productId,
+      minimumStock: reorderDraft.minimumStock,
+      reorderPoint: reorderDraft.reorderPoint,
+      reorderQuantity: reorderDraft.reorderQuantity
+    });
+  };
+
+  const handleSaveSku = () => {
+    if (!selectedItem) return;
+    updateSkuMutation.mutate({
+      productId: selectedItem.productId,
+      sku: skuDraft.trim()
+    });
+  };
+
+  const handleSaveShipping = () => {
+    if (!selectedItem) return;
+    updateShippingMutation.mutate({
+      productId: selectedItem.productId,
+      weight: shippingDraft.weight,
+      dimensions: shippingDraft.dimensions,
+      shippingEnabled: shippingDraft.shippingEnabled
+    });
   };
 
   const handleAdjustStock = () => {
@@ -928,7 +1037,7 @@ export default function VendorInventoryManager({
                             }
                           }}
                           onKeyDown={(e) => {
-                            if (item.imageUrl && (e.key === 'Enter' || e.key === ', ')) {
+                            if (item.imageUrl && (e.key === 'Enter' || e.key === ' ')) {
                               e.preventDefault();
                               window.open(item.imageUrl, '_blank');
                             }
@@ -956,15 +1065,11 @@ export default function VendorInventoryManager({
                           role="button"
                           tabIndex={0}
                           aria-label={`Rediger SKU: ${item.sku || 'Ingen SKU'}`}
-                          onClick={() => {
-                            setSelectedItem(item);
-                            setSkuDialogOpen(true);
-                          }}
+                          onClick={() => handleOpenSkuDialog(item)}
                           onKeyDown={(e) => {
-                            if (e.key === 'Enter' || e.key === ', ') {
+                            if (e.key === 'Enter' || e.key === ' ') {
                               e.preventDefault();
-                              setSelectedItem(item);
-                              setSkuDialogOpen(true);
+                              handleOpenSkuDialog(item);
                             }
                           }}
                           sx={{
@@ -1003,8 +1108,10 @@ export default function VendorInventoryManager({
                         checked={item.trackInventory !== false}
                         size="small"
                         onChange={(e) => {
-                          // TODO: Add mutation to toggle inventory tracking
-                          console.log('Toggle inventory tracking for', item.productId, e.target.checked);
+                          updateTrackingMutation.mutate({
+                            productId: item.productId,
+                            trackInventory: e.target.checked
+                          });
                         }}
                         inputProps={{
                           'aria-label': `Spor lager for ${item.productName}`,
@@ -1070,10 +1177,7 @@ export default function VendorInventoryManager({
                             label="Aktivert"
                             size="small"
                             color="success"
-                            onClick={() => {
-                              setSelectedItem(item);
-                              setShippingDialogOpen(true);
-                            }}
+                            onClick={() => handleOpenShippingDialog(item)}
                             sx={{ cursor: 'pointer' }}
                           />
                         </Tooltip>
@@ -1084,10 +1188,7 @@ export default function VendorInventoryManager({
                             label="Inaktiv"
                             size="small"
                             variant="outlined"
-                            onClick={() => {
-                              setSelectedItem(item);
-                              setShippingDialogOpen(true);
-                            }}
+                            onClick={() => handleOpenShippingDialog(item)}
                             sx={{ cursor: 'pointer' }}
                           />
                         </Tooltip>
@@ -1270,7 +1371,10 @@ export default function VendorInventoryManager({
                   fullWidth
                   label="Minimumsbeholdning"
                   type="number"
-                  defaultValue={selectedItem.minimumStock}
+                  value={reorderDraft.minimumStock}
+                  onChange={(e) =>
+                    setReorderDraft((prev) => ({ ...prev, minimumStock: Number(e.target.value) }))
+                  }
                   helperText="Laveste akseptable lagernivå"
                   InputProps={{
                     endAdornment: <InputAdornment position="end">{selectedItem.unit}</InputAdornment>
@@ -1281,7 +1385,10 @@ export default function VendorInventoryManager({
                   fullWidth
                   label="Bestillingspunkt"
                   type="number"
-                  defaultValue={selectedItem.reorderPoint}
+                  value={reorderDraft.reorderPoint}
+                  onChange={(e) =>
+                    setReorderDraft((prev) => ({ ...prev, reorderPoint: Number(e.target.value) }))
+                  }
                   helperText="Når lageret når dette nivået, bør du bestille mer"
                   InputProps={{
                     endAdornment: <InputAdornment position="end">{selectedItem.unit}</InputAdornment>
@@ -1292,7 +1399,10 @@ export default function VendorInventoryManager({
                   fullWidth
                   label="Bestillingsmengde"
                   type="number"
-                  defaultValue={selectedItem.reorderQuantity || 0}
+                  value={reorderDraft.reorderQuantity}
+                  onChange={(e) =>
+                    setReorderDraft((prev) => ({ ...prev, reorderQuantity: Number(e.target.value) }))
+                  }
                   helperText="Hvor mye skal bestilles når bestillingspunktet nås"
                   InputProps={{
                     endAdornment: <InputAdornment position="end">{selectedItem.unit}</InputAdornment>
@@ -1310,7 +1420,13 @@ export default function VendorInventoryManager({
             </DialogContent>
             <DialogActions>
               <Button onClick={() => setSettingsDialogOpen(false)}>Avbryt</Button>
-              <Button variant="contained">Lagre innstillinger</Button>
+              <Button
+                variant="contained"
+                onClick={handleSaveReorderSettings}
+                disabled={updateReorderMutation.isPending}
+              >
+                {updateReorderMutation.isPending ? 'Lagrer...' : 'Lagre innstillinger'}
+              </Button>
             </DialogActions>
           </>
         )}
@@ -1335,7 +1451,8 @@ export default function VendorInventoryManager({
                 <TextField
                   fullWidth
                   label="SKU / Produkt-ID"
-                  defaultValue={selectedItem.sku}
+                  value={skuDraft}
+                  onChange={(e) => setSkuDraft(e.target.value)}
                   placeholder="f.eks. PHOTO-001 eller PR-2024-001"
                   helperText="Bruk bokstaver, tall og bindestrek. Må være unik."
                   InputProps={{
@@ -1352,6 +1469,14 @@ export default function VendorInventoryManager({
                   variant="outlined"
                   startIcon={<QrCode />}
                   sx={{ alignSelf: 'flex-start' }}
+                  onClick={() => {
+                    const base = selectedItem.productName
+                      .toUpperCase()
+                      .replace(/[^A-Z0-9]+/g, '-')
+                      .slice(0, 12)
+                      .replace(/-+$/g, '');
+                    setSkuDraft(`${base}-${Date.now().toString().slice(-4)}`);
+                  }}
                 >
                   Generer automatisk SKU
                 </Button>
@@ -1376,7 +1501,13 @@ export default function VendorInventoryManager({
             </DialogContent>
             <DialogActions>
               <Button onClick={() => setSkuDialogOpen(false)}>Avbryt</Button>
-              <Button variant="contained">Lagre SKU</Button>
+              <Button
+                variant="contained"
+                onClick={handleSaveSku}
+                disabled={!skuDraft.trim() || updateSkuMutation.isPending}
+              >
+                {updateSkuMutation.isPending ? 'Lagrer...' : 'Lagre SKU'}
+              </Button>
             </DialogActions>
           </>
         )}
@@ -1702,7 +1833,10 @@ export default function VendorInventoryManager({
                       fullWidth
                       label="Vekt (kg)"
                       type="number"
-                      defaultValue={selectedItem.weight || 0}
+                      value={shippingDraft.weight}
+                      onChange={(e) =>
+                        setShippingDraft((prev) => ({ ...prev, weight: Number(e.target.value) }))
+                      }
                       helperText="Produktets totalvekt inkl. emballasje"
                       InputProps={{
                         startAdornment: (
@@ -1723,7 +1857,13 @@ export default function VendorInventoryManager({
                           fullWidth
                           label="Lengde"
                           type="number"
-                          defaultValue={selectedItem.dimensions?.length || 0}
+                          value={shippingDraft.dimensions.length}
+                          onChange={(e) =>
+                            setShippingDraft((prev) => ({
+                              ...prev,
+                              dimensions: { ...prev.dimensions, length: Number(e.target.value) }
+                            }))
+                          }
                           InputProps={{
                             endAdornment: <InputAdornment position="end">cm</InputAdornment>
                           }}
@@ -1734,7 +1874,13 @@ export default function VendorInventoryManager({
                           fullWidth
                           label="Bredde"
                           type="number"
-                          defaultValue={selectedItem.dimensions?.width || 0}
+                          value={shippingDraft.dimensions.width}
+                          onChange={(e) =>
+                            setShippingDraft((prev) => ({
+                              ...prev,
+                              dimensions: { ...prev.dimensions, width: Number(e.target.value) }
+                            }))
+                          }
                           InputProps={{
                             endAdornment: <InputAdornment position="end">cm</InputAdornment>
                           }}
@@ -1745,7 +1891,13 @@ export default function VendorInventoryManager({
                           fullWidth
                           label="Høyde"
                           type="number"
-                          defaultValue={selectedItem.dimensions?.height || 0}
+                          value={shippingDraft.dimensions.height}
+                          onChange={(e) =>
+                            setShippingDraft((prev) => ({
+                              ...prev,
+                              dimensions: { ...prev.dimensions, height: Number(e.target.value) }
+                            }))
+                          }
                           InputProps={{
                             endAdornment: <InputAdornment position="end">cm</InputAdornment>
                           }}
@@ -1756,7 +1908,10 @@ export default function VendorInventoryManager({
                     <FormControlLabel
                       control={
                         <Switch
-                          defaultChecked={selectedItem.shippingEnabled}
+                          checked={shippingDraft.shippingEnabled}
+                          onChange={(e) =>
+                            setShippingDraft((prev) => ({ ...prev, shippingEnabled: e.target.checked }))
+                          }
                           sx={{
                             '& .MuiSwitch-switchBase.Mui-checked': {
                               color: vendorConfig?.color || '#2196f3'
@@ -1863,8 +2018,13 @@ export default function VendorInventoryManager({
             </DialogContent>
             <DialogActions>
               <Button onClick={() => setShippingDialogOpen(false)}>Avbryt</Button>
-              <Button variant="contained" startIcon={<LocalShipping />}>
-                Aktiver Bring-frakt
+              <Button
+                variant="contained"
+                startIcon={<LocalShipping />}
+                onClick={handleSaveShipping}
+                disabled={updateShippingMutation.isPending}
+              >
+                {updateShippingMutation.isPending ? 'Lagrer...' : 'Aktiver Bring-frakt'}
               </Button>
             </DialogActions>
           </>

@@ -211,7 +211,7 @@ class UndoRedoOptimizer {
       return {
         success: false,
         error: 'No actions to undo',
-        performance: { executionTime:,  0memoryDelta:  ,  0compressed: false }
+        performance: { executionTime: 0, memoryDelta: 0, compressed: false }
     };
   }
 
@@ -265,7 +265,7 @@ class UndoRedoOptimizer {
       return {
         success: false,
         error: 'No actions to redo',
-        performance: { executionTime:,  0memoryDelta:  ,  0compressed: false }
+        performance: { executionTime: 0, memoryDelta: 0, compressed: false }
     };
   }
 

@@ -219,7 +219,7 @@ export default function QuickCommunicationWidget({
           }
             tooltipTitle={
               <Box sx={{ textAlign: 'center' }}>
-                <Typography variant="body2" sx={{ fontWeight: 50}}>
+                <Typography variant="body2" sx={{ fontWeight: 500}}>
                   {action.name}
                 </Typography>
                 {action.count > 0 && (

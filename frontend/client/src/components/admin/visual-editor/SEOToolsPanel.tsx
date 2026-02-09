@@ -161,6 +161,111 @@ export const SEOToolsPanel: React.FC<SEOToolsPanelProps> = ({
     }
   }, [onNotificationCreate, auth]);
 
+  // Competitor Analysis Function
+  const analyzeCompetitor = useCallback(async () => {
+    if (!competitorUrl) return;
+
+    setIsAnalyzingCompetitor(true);
+
+    try {
+      const headers = await auth.getAuthHeader();
+      const competitorData = await apiRequest('/api/seo/competitor/analyze', {
+        headers: {
+          ...headers,
+          'Content-Type': 'application/json',
+        },
+        method: 'POST',
+        body: JSON.stringify({ 
+          url: competitorUrl,
+          projectId: selectedProject?.id,
+        }),
+      });
+
+      onNotificationCreate?.({
+        id: `competitor_analysis_${Date.now()}`,
+        type: 'seo_audit',
+        title: 'Competitor Analysis Completed',
+        message: `Analyzed ${competitorUrl}`,
+        priority: 'medium',
+        timestamp: new Date().toISOString(),
+        source: 'competitor-analysis',
+      });
+
+      debugging.logIntegration('info', 'Competitor analysis completed', {
+        url: competitorUrl,
+        projectId: selectedProject?.id,
+        resultsCount: competitorData?.metrics?.length || 0,
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Competitor analysis failed';
+      debugging.logIntegration('error', 'Competitor analysis failed', {
+        url: competitorUrl,
+        error: errorMessage,
+      });
+      console.error('Competitor analysis failed:', error);
+    } finally {
+      setIsAnalyzingCompetitor(false);
+    }
+  }, [competitorUrl, selectedProject?.id, auth, onNotificationCreate, debugging]);
+
+  // JSON-LD Generation Function
+  const generateJsonLD = useCallback(async (schemaType: 'organization' | 'website' | 'breadcrumb') => {
+    if (!selectedProject) return;
+
+    setIsGeneratingJSONLD(true);
+
+    try {
+      const headers = await auth.getAuthHeader();
+      const jsonldResult = await apiRequest('/api/seo/jsonld/generate', {
+        headers: {
+          ...headers,
+          'Content-Type': 'application/json',
+        },
+        method: 'POST',
+        body: JSON.stringify({
+          projectId: selectedProject.id,
+          schemaType,
+          projectData: {
+            name: selectedProject.name,
+            url: selectedProject.url,
+            description: selectedProject.description,
+          },
+        }),
+      });
+
+      setJsonLDData(jsonldResult);
+
+      onNotificationCreate?.({
+        id: `jsonld_generated_${Date.now()}`,
+        type: 'seo_audit',
+        title: 'JSON-LD Generated',
+        message: `Generated ${schemaType} structured data`,
+        priority: 'low',
+        timestamp: new Date().toISOString(),
+        source: 'jsonld-generator',
+      });
+
+      analytics.trackEvent('jsonld_generated', {
+        schemaType,
+        projectId: selectedProject.id,
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'JSON-LD generation failed';
+      console.error('JSON-LD generation failed:', error);
+      onNotificationCreate?.({
+        id: `jsonld_error_${Date.now()}`,
+        type: 'error',
+        title: 'JSON-LD Generation Failed',
+        message: errorMessage,
+        priority: 'high',
+        timestamp: new Date().toISOString(),
+        source: 'jsonld-generator',
+      });
+    } finally {
+      setIsGeneratingJSONLD(false);
+    }
+  }, [selectedProject, auth, onNotificationCreate, analytics]);
+
   // Keyword Research Functions
   const researchKeywords = useCallback(async (researchType: 'related' | 'longtail' | 'suggestions') => {
     if (!seedKeyword) return;
@@ -325,19 +430,106 @@ export const SEOToolsPanel: React.FC<SEOToolsPanelProps> = ({
       <Accordion>
         <AccordionSummary expandIcon={theming.getThemedIcon('expandMore')}>
           <Box display="flex" alignItems="center" gap={1}>
+            {theming.getThemedIcon('business')}
+            <Typography variant="h6" sx={{ color: theming.colors.primary }}>Competitor Analysis</Typography>
+          </Box>
+        </AccordionSummary>
+        <AccordionDetails>
+          <Alert severity="info" sx={{ mb: 2 }}>
+            Analyze your competitors' SEO performance to identify opportunities and benchmarks for your site.
+          </Alert>
+          <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+            <TextField 
+              fullWidth 
+              placeholder="Enter competitor website URL"
+              value={competitorUrl}
+              onChange={(e) => setCompetitorUrl(e.target.value)}
+              disabled={isAnalyzingCompetitor}
+            />
+            <Button
+              variant="contained"
+              startIcon={isAnalyzingCompetitor ? <CircularProgress size={20} /> : theming.getThemedIcon('analyze')}
+              onClick={analyzeCompetitor}
+              disabled={isAnalyzingCompetitor || !competitorUrl}
+              sx={theming.getThemedButtonSx()}
+            >
+              {isAnalyzingCompetitor ? 'Analyzing...' : 'Analyze'}
+            </Button>
+          </Box>
+
+          {isAnalyzingCompetitor && (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+              <CircularProgress size={24} />
+              <Typography variant="body2">Analyzing competitor data...</Typography>
+            </Box>
+          )}
+        </AccordionDetails>
+      </Accordion>
+
+      <Accordion>
+        <AccordionSummary expandIcon={theming.getThemedIcon('expandMore')}>
+          <Box display="flex" alignItems="center" gap={1}>
             {theming.getThemedIcon('storage')}
             <Typography variant="h6" sx={{ color: theming.colors.primary }}>Structured Data</Typography>
           </Box>
         </AccordionSummary>
         <AccordionDetails>
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            {isGeneratingJSONLD ? 'Generating JSON-LD schema...' : 'Generate structured data markup for search engines.'}
+          </Alert>
           <ButtonGroup sx={{ mb: 2 }}>
-            <Button variant="outlined">Organization</Button>
-            <Button variant="outlined">Website</Button>
-            <Button variant="outlined">Breadcrumb</Button>
+            <Button 
+              variant="outlined"
+              onClick={() => generateJsonLD('organization')}
+              disabled={isGeneratingJSONLD || !selectedProject}
+              startIcon={isGeneratingJSONLD ? <CircularProgress size={16} /> : undefined}
+            >
+              Organization
+            </Button>
+            <Button 
+              variant="outlined"
+              onClick={() => generateJsonLD('website')}
+              disabled={isGeneratingJSONLD || !selectedProject}
+              startIcon={isGeneratingJSONLD ? <CircularProgress size={16} /> : undefined}
+            >
+              Website
+            </Button>
+            <Button 
+              variant="outlined"
+              onClick={() => generateJsonLD('breadcrumb')}
+              disabled={isGeneratingJSONLD || !selectedProject}
+              startIcon={isGeneratingJSONLD ? <CircularProgress size={16} /> : undefined}
+            >
+              Breadcrumb
+            </Button>
           </ButtonGroup>
 
           {jsonLDData && (
+            <TableContainer component={Paper} sx={{ ...theming.getThemedCardSx(), mb: 2 }}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow sx={{ backgroundColor: theming.colors.surface }}>
+                    <TableCell>Property</TableCell>
+                    <TableCell>Value</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {Object.entries(jsonLDData).map(([key, value]: [string, any], index: number) => (
+                    <TableRow key={index} hover>
+                      <TableCell sx={{ fontWeight: 500 }}>{key}</TableCell>
+                      <TableCell>
+                        {typeof value === 'object' ? JSON.stringify(value).slice(0, 50) : String(value)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+
+          {jsonLDData && (
             <Paper sx={{ ...theming.getThemedCardSx(), p: 2 }}>
+              <Typography variant="subtitle2" gutterBottom>Raw JSON-LD</Typography>
               <Box
                 component="pre"
                 sx={{
@@ -354,8 +546,12 @@ export const SEOToolsPanel: React.FC<SEOToolsPanelProps> = ({
           )}
         </AccordionDetails>
       </Accordion>
-    </Paper>
-  );
-};
 
-export default SEOToolsPanel;
+      <Accordion>
+        <AccordionSummary expandIcon={theming.getThemedIcon('expandMore')}>
+          <Box display="flex" alignItems="center" gap={1}>
+            <Language />
+            <Typography variant="h6" sx={{ color: theming.colors.primary }}>Keyword Research</Typography>
+          </Box>
+        </AccordionSummary>
+        <AccordionDetails>

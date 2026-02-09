@@ -250,7 +250,7 @@ export default function AdminStats({ userEmail }: AdminStatsProps) {
                   </Avatar>
                   <Chip size="small" label="Enterprise" color="warning" />
                 </Box>
-                <Typography variant="h4" sx={{ fontWeight: 70, color: theming.colors.primary, mb: 1 }}>
+                <Typography variant="h4" sx={{ fontWeight: 700, color: theming.colors.primary, mb: 1 }}>
                   {dashboardData.dashboard.quickStats.totalCustomers}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
@@ -269,7 +269,7 @@ export default function AdminStats({ userEmail }: AdminStatsProps) {
                   </Avatar>
                   <Chip size="small" label="Enterprise" color="success" />
                 </Box>
-                <Typography variant="h4" sx={{ fontWeight: 70, color: theming.colors.primary, mb: 1 }}>
+                <Typography variant="h4" sx={{ fontWeight: 700, color: theming.colors.primary, mb: 1 }}>
                   {dashboardData.dashboard.quickStats.totalRevenue} kr
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
@@ -288,7 +288,7 @@ export default function AdminStats({ userEmail }: AdminStatsProps) {
                   </Avatar>
                   <Chip size="small" label="Enterprise" color="primary" />
                 </Box>
-                <Typography variant="h4" sx={{ fontWeight: 70, color: theming.colors.primary, mb: 1 }}>
+                <Typography variant="h4" sx={{ fontWeight: 700, color: theming.colors.primary, mb: 1 }}>
                   {dashboardData.dashboard.quickStats.activeDeals}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
@@ -307,7 +307,7 @@ export default function AdminStats({ userEmail }: AdminStatsProps) {
                   </Avatar>
                   <Chip size="small" label="Enterprise" color="secondary" />
                 </Box>
-                <Typography variant="h4" sx={{ fontWeight: 70, color: theming.colors.primary, mb: 1 }}>
+                <Typography variant="h4" sx={{ fontWeight: 700, color: theming.colors.primary, mb: 1 }}>
                   {dashboardData.dashboard.quickStats.activeSubscriptions}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
@@ -447,7 +447,7 @@ export default function AdminStats({ userEmail }: AdminStatsProps) {
                           <School />
                         </Avatar>
                       </Box>
-                      <Typography variant="h3" sx={{ fontWeight: 70, color: '#ff8c00', mb: 1 }}>
+                      <Typography variant="h3" sx={{ fontWeight: 700, color: '#ff8c00', mb: 1 }}>
                         {academyStats.totalCourses || 0}
                       </Typography>
                       <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600}}>
@@ -476,7 +476,7 @@ export default function AdminStats({ userEmail }: AdminStatsProps) {
                           color="success"
                         />
                       </Box>
-                      <Typography variant="h3" sx={{ fontWeight: 70, color: '#4caf50', mb: 1 }}>
+                      <Typography variant="h3" sx={{ fontWeight: 700, color: '#4caf50', mb: 1 }}>
                         {academyStats.publishedCourses || 0}
                       </Typography>
                       <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600}}>
@@ -500,7 +500,7 @@ export default function AdminStats({ userEmail }: AdminStatsProps) {
                           <Group />
                         </Avatar>
                       </Box>
-                      <Typography variant="h3" sx={{ fontWeight: 70, color: '#2196f3', mb: 1 }}>
+                      <Typography variant="h3" sx={{ fontWeight: 700, color: '#2196f3', mb: 1 }}>
                         {academyStats.totalEnrollments || 0}
                       </Typography>
                       <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600}}>
@@ -524,7 +524,7 @@ export default function AdminStats({ userEmail }: AdminStatsProps) {
                           <EmojiEvents />
                         </Avatar>
                       </Box>
-                      <Typography variant="h3" sx={{ fontWeight: 70, color: '#9c27b0', mb: 1 }}>
+                      <Typography variant="h3" sx={{ fontWeight: 700, color: '#9c27b0', mb: 1 }}>
                         {academyStats.totalInstructors || 0}
                       </Typography>
                       <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600}}>
@@ -584,7 +584,7 @@ export default function AdminStats({ userEmail }: AdminStatsProps) {
                   />
                 )}
               </Box>
-              <Typography variant="h4" sx={{ fontWeight: 70, color: theming.colors.primary, mb: 1 }}>
+              <Typography variant="h4" sx={{ fontWeight: 700, color: theming.colors.primary, mb: 1 }}>
                 {stats?.totalUsers?.current || 0}
               </Typography>
               <Typography variant="body2" color="text.secondary">
@@ -618,7 +618,7 @@ export default function AdminStats({ userEmail }: AdminStatsProps) {
                   />
                 )}
               </Box>
-              <Typography variant="h4" sx={{ fontWeight: 70, color: theming.colors.primary, mb: 1 }}>
+              <Typography variant="h4" sx={{ fontWeight: 700, color: theming.colors.primary, mb: 1 }}>
                 {stats?.activeProjects?.current || 0}
               </Typography>
               <Typography variant="body2" color="text.secondary">
@@ -652,7 +652,7 @@ export default function AdminStats({ userEmail }: AdminStatsProps) {
                   />
                 )}
               </Box>
-              <Typography variant="h4" sx={{ fontWeight: 70, color: theming.colors.primary, mb: 1 }}>
+              <Typography variant="h4" sx={{ fontWeight: 700, color: theming.colors.primary, mb: 1 }}>
                 {formatValue(stats?.totalRevenue?.current || 0, 'currency')}
               </Typography>
               <Typography variant="body2" color="text.secondary">
@@ -677,7 +677,7 @@ export default function AdminStats({ userEmail }: AdminStatsProps) {
                   {theming.getThemedIcon('group')}
                 </Avatar>
               </Box>
-              <Typography variant="h4" sx={{ fontWeight: 70, color: theming.colors.primary, mb: 1 }}>
+              <Typography variant="h4" sx={{ fontWeight: 700, color: theming.colors.primary, mb: 1 }}>
                 {dashboardData?.dashboard?.quickStats?.activeSubscriptions || stats?.newSignups?.current || 0}
               </Typography>
               <Typography variant="body2" color="text.secondary">
@@ -715,7 +715,7 @@ export default function AdminStats({ userEmail }: AdminStatsProps) {
                     </Avatar>
                     <Chip size="small" label="Studenter" sx={{ bgcolor: '#9c27b0', color: 'white' }} />
                   </Box>
-                  <Typography variant="h4" sx={{ fontWeight: 70, color: theming.colors.primary, mb: 1 }}>
+                  <Typography variant="h4" sx={{ fontWeight: 700, color: theming.colors.primary, mb: 1 }}>
                     {academyRevenue.totalStudents || 0}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
@@ -746,7 +746,7 @@ export default function AdminStats({ userEmail }: AdminStatsProps) {
                     </Avatar>
                     <Chip size="small" label="Instruktører" sx={{ bgcolor: '#e91e63', color: 'white' }} />
                   </Box>
-                  <Typography variant="h4" sx={{ fontWeight: 70, color: theming.colors.primary, mb: 1 }}>
+                  <Typography variant="h4" sx={{ fontWeight: 700, color: theming.colors.primary, mb: 1 }}>
                     {academyRevenue.totalInstructors || 0}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
@@ -777,7 +777,7 @@ export default function AdminStats({ userEmail }: AdminStatsProps) {
                     </Avatar>
                     <Chip size="small" label="Academy" sx={{ bgcolor: '#ff8c00', color: 'white' }} />
                   </Box>
-                  <Typography variant="h4" sx={{ fontWeight: 70, color: theming.colors.primary, mb: 1 }}>
+                  <Typography variant="h4" sx={{ fontWeight: 700, color: theming.colors.primary, mb: 1 }}>
                     {formatValue(academyRevenue.totalRevenue || 0, 'currency')}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
@@ -808,7 +808,7 @@ export default function AdminStats({ userEmail }: AdminStatsProps) {
                     </Avatar>
                     <Chip size="small" label="Plattform" color="success" />
                   </Box>
-                  <Typography variant="h4" sx={{ fontWeight: 70, color: theming.colors.primary, mb: 1 }}>
+                  <Typography variant="h4" sx={{ fontWeight: 700, color: theming.colors.primary, mb: 1 }}>
                     {formatValue(academyRevenue.totalPlatformRevenue || 0, 'currency')}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
@@ -846,7 +846,7 @@ export default function AdminStats({ userEmail }: AdminStatsProps) {
                       color="warning"
                     />
                   </Box>
-                  <Typography variant="h4" sx={{ fontWeight: 70, color: theming.colors.primary, mb: 1 }}>
+                  <Typography variant="h4" sx={{ fontWeight: 700, color: theming.colors.primary, mb: 1 }}>
                     {formatValue(academyRevenue.pendingPayoutAmount || 0, 'currency')}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
@@ -1650,7 +1650,7 @@ export default function AdminStats({ userEmail }: AdminStatsProps) {
                 </Typography>
               </Alert>
               <Paper sx={{ p: 3 }}>
-                <Typography variant="h5" sx={{ color: '#4caf50', fontWeight: 70, mb: 2 }}>
+                <Typography variant="h5" sx={{ color: '#4caf50', fontWeight: 700, mb: 2 }}>
                   {formatValue(academyRevenue.totalPlatformRevenue || 0, 'currency')}
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -1672,7 +1672,7 @@ export default function AdminStats({ userEmail }: AdminStatsProps) {
                 Instruktørinntekt - Totalt Utbetalt
               </Typography>
               <Paper sx={{ p: 3, mb: 3 }}>
-                <Typography variant="h5" sx={{ color: '#2196f3', fontWeight: 70, mb: 2 }}>
+                <Typography variant="h5" sx={{ color: '#2196f3', fontWeight: 700, mb: 2 }}>
                   {formatValue(academyRevenue.totalInstructorRevenue || 0, 'currency')}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">

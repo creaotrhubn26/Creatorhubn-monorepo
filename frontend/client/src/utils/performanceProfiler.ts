@@ -431,7 +431,11 @@ class PerformanceProfiler {
     this.cleanupOldMetrics();
 }
 
-  public measure<T>(name: string, fn: () =>,  category: PerformanceMetric['category'] = 'custom'): T {
+  public measure<T>(
+    name: string,
+    fn: () => T,
+    category: PerformanceMetric['category'] = 'custom'
+  ): T {
     const startTime = performance.now();
     try {
       const result = fn();
@@ -762,7 +766,12 @@ class PerformanceProfiler {
     // Simple CSV export implementation
     const headers = ['id','name','category','duration','timestamp','severity'];
     const rows = data.metrics.map((m: PerformanceMetric) => [
-      m., idm.name, m.category, m.duration, m.timestamp, m.severity
+      m.id,
+      m.name,
+      m.category,
+      m.duration,
+      m.timestamp,
+      m.severity
     ]);
     
     return [headers, ...rows].map(row => row.join(', ')).join('\n');

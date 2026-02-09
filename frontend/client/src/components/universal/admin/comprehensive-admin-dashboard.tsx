@@ -183,7 +183,7 @@ export default function ComprehensiveAdminDashboard({ userRole = 'super_admin,' 
       }}>
             <CardContent sx={{ textAlign: 'center',  ...theming.getThemedCardSx() }}>
               <Speed sx={{ fontSize:  40, mb:  1 }} />
-              <Typography variant="h4" sx={{  fontWeight: 70 }}>
+              <Typography variant="h4" sx={{  fontWeight: 700 }}>
                 {metrics.systemHealth || 0}%
               </Typography>
               <Typography variant="body2">System Helse</Typography>
@@ -201,7 +201,7 @@ export default function ComprehensiveAdminDashboard({ userRole = 'super_admin,' 
       }}>
             <CardContent sx={{ textAlign: 'center',  ...theming.getThemedCardSx() }}>
               <People sx={{ fontSize:  40, mb:  1 }} />
-              <Typography variant="h4" sx={{  fontWeight: 70 }}>
+              <Typography variant="h4" sx={{  fontWeight: 700 }}>
                 {metrics.totalUsers || 0}
               </Typography>
               <Typography variant="body2">Totale Brukere</Typography>
@@ -219,7 +219,7 @@ export default function ComprehensiveAdminDashboard({ userRole = 'super_admin,' 
       }}>
             <CardContent sx={{ textAlign: 'center',  ...theming.getThemedCardSx() }}>
               <PhotoCamera sx={{ fontSize:  40, mb:  1 }} />
-              <Typography variant="h4" sx={{  fontWeight: 70 }}>
+              <Typography variant="h4" sx={{  fontWeight: 700 }}>
                 {metrics.totalProjects || 0}
               </Typography>
               <Typography variant="body2">Aktive Prosjekter</Typography>
@@ -237,7 +237,7 @@ export default function ComprehensiveAdminDashboard({ userRole = 'super_admin,' 
       }}>
             <CardContent sx={{ textAlign: 'center',  ...theming.getThemedCardSx() }}>
               <Storage sx={{ fontSize:  40, mb:  1 }} />
-              <Typography variant="h4" sx={{  fontWeight: 70 }}>
+              <Typography variant="h4" sx={{  fontWeight: 700 }}>
                 {Math.round((metrics.storageUsed || 0) / 1024)}GB
               </Typography>
               <Typography variant="body2">Lagring Brukt</Typography>
@@ -667,7 +667,7 @@ export default function ComprehensiveAdminDashboard({ userRole = 'super_admin,' 
     <Box sx={{ p:  3, maxWidth: 140, mx: 'auto'}}>
       <Typography variant="h3" gutterBottom sx={{ 
         color: '#2196F0',
-        fontWeight: 7,
+        fontWeight: 700,
         display: 'flex',
         alignItems: 'center',
         gap:  2,

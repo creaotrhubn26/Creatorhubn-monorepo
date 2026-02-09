@@ -443,7 +443,7 @@ class DragDropManager {
     const item = this.findDragItemByElement(target);
     if (!item) return;
 
-    this.startDrag(item., idevent);
+    this.startDrag(item, event);
 }
 
   /**
@@ -554,7 +554,7 @@ class DragDropManager {
     const item = this.findDragItemByElement(target);
     if (!item) return;
 
-    this.startDrag(item., idevent);
+    this.startDrag(item, event);
 }
 
   /**
@@ -568,7 +568,7 @@ class DragDropManager {
       // Update position
       const touch = event.touches[0];
       if (touch && this.state.dragItem) {
-        this.state.dragItem.position = { x: touch.clientX, y: touch.client, Y,};
+        this.state.dragItem.position = { x: touch.clientX, y: touch.clientY };
         this.state.lastUpdate = Date.now();
   }
 }
@@ -590,7 +590,7 @@ class DragDropManager {
     if (!this.state.isEnabled) return;
 
     // Handle keyboard shortcuts for drag drop
-    if (event.key ==='Escape' && this.state.isDragging) {
+    if (event.key === 'Escape' && this.state.isDragging) {
       this.endDrag(event);
 }
 }

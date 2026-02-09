@@ -10,6 +10,7 @@ import getProfessionIcon from '@/utils/profession-icons';
 import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
 import React, { useState, useEffect } from 'react';
 import { useClientServicePricing } from '../../services/ClientServicePricingService';
+import { useQueryClient, useMutation } from '@tanstack/react-query';
 import {
   Dialog,
   DialogTitle,
@@ -19,7 +20,6 @@ import {
   TextField,
   Box,
   Typography,
-  Grid,
   MenuItem,
   FormControlLabel,
   Switch,
@@ -28,6 +28,7 @@ import {
   InputAdornment,
   Divider
 } from '@mui/material';
+import Grid2 from '@mui/material/Grid2';
 import {
   LocalOffer as PackageIcon,
   PhotoCamera as PhotoIcon,
@@ -120,8 +121,8 @@ const CreatePackageModal: React.FC<CreatePackageModalProps> = ({
   const createPackageMutation = useMutation({
     mutationFn: async (packageData: any) => {
       const url = editData 
-        ? `/api/price-administration/packages/${editData.d}`
-        : '/api/price-administration/packages';
+        ? `/api/pricing/packages/${editData.id}`
+        : '/api/pricing/packages';
       
       const response = await fetch(url, {
         method: editData ? 'PUT' : 'POS',
@@ -133,7 +134,7 @@ const CreatePackageModal: React.FC<CreatePackageModalProps> = ({
       return response.json();
   },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/price-administration/packages', ],});
+      queryClient.invalidateQueries({ queryKey: ['/api/pricing/packages'] });
       handleClose();
   },
 });
@@ -260,15 +261,15 @@ const CreatePackageModal: React.FC<CreatePackageModalProps> = ({
       </DialogTitle>
 
       <DialogContent>
-        <Grid container spacing={3}>
+        <Grid2 container spacing={3}>
           {/* Basic Information */}
-          <Grid size={{ xs: 12 }}>
+          <Grid2 size={{ xs: 12 }}>
             <Typography variant="h6" color="primary" gutterBottom sx={{ color: theming.colors.primary }}>
               Grunnleggende informasjon
             </Typography>
-          </Grid>
+          </Grid2>
 
-          <Grid size={{ xs: 12 }} sm={6}>
+          <Grid2 size={{ xs: 12 }} sm={6}>
             <TextField
               fullWidth
               label="Pakkenavn"
@@ -277,9 +278,9 @@ const CreatePackageModal: React.FC<CreatePackageModalProps> = ({
               placeholder="f.eks. Bryllup Premium, Portrett Basic"
               required
             />
-          </Grid>
+          </Grid2>
 
-          <Grid size={{ xs: 12 }} sm={6}>
+          <Grid2 size={{ xs: 12 }} sm={6}>
             <TextField
               fullWidth
               select
@@ -293,16 +294,23 @@ const CreatePackageModal: React.FC<CreatePackageModalProps> = ({
               }
             }}
               required
+              helperText={categories.length === 0 ? "Opprett først en kategori i 'Kategorier' fanen" : ""}
             >
-              {categories.map((cat) => (
-                <MenuItem key={cat.category} value={cat.category}>
-                  {cat.name}
+              {categories.length === 0 ? (
+                <MenuItem disabled value="">
+                  Ingen kategorier tilgjengelig - opprett en først
                 </MenuItem>
-              ))}
+              ) : (
+                categories.map((cat) => (
+                  <MenuItem key={cat.id} value={cat.id}>
+                    {cat.name}
+                  </MenuItem>
+                ))
+              )}
             </TextField>
-          </Grid>
+          </Grid2>
 
-          <Grid size={{ xs: 12 }} sm={6}>
+          <Grid2 size={{ xs: 12 }} sm={6}>
             <TextField
               fullWidth
               label="Grunnpris"
@@ -314,9 +322,9 @@ const CreatePackageModal: React.FC<CreatePackageModalProps> = ({
               helperText={!editData ? "Velg kategori for å få forslag til pris" : ""}
               required
             />
-          </Grid>
+          </Grid2>
 
-          <Grid size={{ xs: 12 }} sm={6}>
+          <Grid2 size={{ xs: 12 }} sm={6}>
             <FormControlLabel
               control={
                 <Switch
@@ -326,9 +334,9 @@ const CreatePackageModal: React.FC<CreatePackageModalProps> = ({
             }
               label="Aktiv pakke"
             />
-          </Grid>
+          </Grid2>
 
-          <Grid size={{ xs: 12 }}>
+          <Grid2 size={{ xs: 12 }}>
             <TextField
               fullWidth
               multiline
@@ -338,20 +346,20 @@ const CreatePackageModal: React.FC<CreatePackageModalProps> = ({
               onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
               placeholder="Beskriv hva som inkluderes i denne pakken..."
             />
-          </Grid>
+          </Grid2>
 
-          <Grid size={{ xs: 12 }}>
+          <Grid2 size={{ xs: 12 }}>
             <Divider />
-          </Grid>
+          </Grid2>
 
           {/* Package Inclusions */}
-          <Grid size={{ xs: 12 }}>
+          <Grid2 size={{ xs: 12 }}>
             <Typography variant="h6" color="primary" gutterBottom sx={{ color: theming.colors.primary }}>
               Pakkeinnhold
             </Typography>
-          </Grid>
+          </Grid2>
 
-          <Grid size={{ xs: 12 }} sm={6} md={4}>
+          <Grid2 size={{ xs: 12 }} sm={6} md={4}>
             <TextField
               fullWidth
               label="Timer inkludert"
@@ -361,9 +369,9 @@ const CreatePackageModal: React.FC<CreatePackageModalProps> = ({
               InputProps={{
                 endAdornment: <InputAdornment position="end">timer</InputAdornment>}}
             />
-          </Grid>
+          </Grid2>
 
-          <Grid size={{ xs: 12 }} sm={6} md={4}>
+          <Grid2 size={{ xs: 12 }} sm={6} md={4}>
             <TextField
               fullWidth
               label="Bilder inkludert"
@@ -373,9 +381,9 @@ const CreatePackageModal: React.FC<CreatePackageModalProps> = ({
               InputProps={{
                 endAdornment: <InputAdornment position="end">bilder</InputAdornment>}}
             />
-          </Grid>
+          </Grid2>
 
-          <Grid size={{ xs: 12 }} sm={6} md={4}>
+          <Grid2 size={{ xs: 12 }} sm={6} md={4}>
             <TextField
               fullWidth
               label="Videoer inkludert"
@@ -385,9 +393,9 @@ const CreatePackageModal: React.FC<CreatePackageModalProps> = ({
               InputProps={{
                 endAdornment: <InputAdornment position="end">videoer</InputAdornment>}}
             />
-          </Grid>
+          </Grid2>
 
-          <Grid size={{ xs: 12 }} sm={6} md={4}>
+          <Grid2 size={{ xs: 12 }} sm={6} md={4}>
             <TextField
               fullWidth
               label="Utskrifter inkludert"
@@ -397,9 +405,9 @@ const CreatePackageModal: React.FC<CreatePackageModalProps> = ({
               InputProps={{
                 endAdornment: <InputAdornment position="end">utskrifter</InputAdornment>}}
             />
-          </Grid>
+          </Grid2>
 
-          <Grid size={{ xs: 12 }} sm={6} md={4}>
+          <Grid2 size={{ xs: 12 }} sm={6} md={4}>
             <TextField
               fullWidth
               label="Album inkludert"
@@ -409,9 +417,9 @@ const CreatePackageModal: React.FC<CreatePackageModalProps> = ({
               InputProps={{
                 endAdornment: <InputAdornment position="end">album</InputAdornment>}}
             />
-          </Grid>
+          </Grid2>
 
-          <Grid size={{ xs: 12 }} sm={6} md={4}>
+          <Grid2 size={{ xs: 12 }} sm={6} md={4}>
             <TextField
               fullWidth
               label="Leveringstid"
@@ -421,20 +429,20 @@ const CreatePackageModal: React.FC<CreatePackageModalProps> = ({
               InputProps={{
                 endAdornment: <InputAdornment position="end">dager</InputAdornment>}}
             />
-          </Grid>
+          </Grid2>
 
-          <Grid size={{ xs: 12 }}>
+          <Grid2 size={{ xs: 12 }}>
             <Divider />
-          </Grid>
+          </Grid2>
 
           {/* Service Types */}
-          <Grid size={{ xs: 12 }}>
+          <Grid2 size={{ xs: 12 }}>
             <Typography variant="h6" color="primary" gutterBottom sx={{ color: theming.colors.primary }}>
               Tjenester inkludert
             </Typography>
-          </Grid>
+          </Grid2>
 
-          <Grid size={{ xs: 12 }}>
+          <Grid2 size={{ xs: 12 }}>
             <Box sx={{ display: 'flex', flexDirection: 'column', gap:  1 }}>
               <FormControlLabel
                 control={
@@ -490,10 +498,10 @@ const CreatePackageModal: React.FC<CreatePackageModalProps> = ({
                 label="Dronefotografering"
               />
             </Box>
-          </Grid>
+          </Grid2>
 
           {/* Additional Options */}
-          <Grid size={{ xs: 12 }}>
+          <Grid2 size={{ xs: 12 }}>
             <FormControlLabel
               control={
                 <Switch
@@ -503,8 +511,8 @@ const CreatePackageModal: React.FC<CreatePackageModalProps> = ({
             }
               label="Redigering inkludert i prisen"
             />
-          </Grid>
-        </Grid>
+          </Grid2>
+        </Grid2>
 
         {/* Preview */}
         <Box sx={{ mt:  3, p: 2, bgcolor: 'grey.5', borderRadius:  1 }}>

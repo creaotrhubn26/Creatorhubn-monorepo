@@ -68,7 +68,7 @@ export default function
                       <IconComponent sx={{ fontSize: 20}} />
                     </Box>
                     <Box sx={{ textAlign: 'center', mt:  1 }}>
-                      <p style={{ fontSize: '0.875rem', fontWeight: 50}}>{stage.label}</p>
+                      <p style={{ fontSize: '0.875rem', fontWeight: 500}}>{stage.label}</p>
                       <p style={{ fontSize: '0.75rem', color: '#6b7280' }}>{stage.description}</p>
                     </Box>
                   </Box>
@@ -126,7 +126,7 @@ export default function
             <Box sx={{ display: 'flex', flexDirection: 'column', gap:  2 }}>
               {recommendations.trending && recommendations.trending.length > 0 && (
                 <Box>
-                  <h4 style={{ fontSize: '0.875rem', fontWeight: 5, marginBottom: '0.5rem' }}>Trending Now</h4>
+                  <h4 style={{ fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.5rem' }}>Trending Now</h4>
                   <Box sx={{ display: 'flex', flexDirection: 'column', gap:  1 }}>
                     {recommendations.trending.map((rec: any, index: number) => (
                       <Box 
@@ -153,7 +153,7 @@ export default function
               
               {recommendations.similar && recommendations.similar.length > 0 && (
                 <Box>
-                  <h4 style={{ fontSize: '0.875rem', fontWeight: 5, marginBottom: '0.5rem' }}>Based on Your Timeline</h4>
+                  <h4 style={{ fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.5rem' }}>Based on Your Timeline</h4>
                   <Box sx={{ display: 'flex', flexDirection: 'column', gap:  1 }}>
                     {recommendations.similar.map((rec: any, index: number) => (
                       <Box 

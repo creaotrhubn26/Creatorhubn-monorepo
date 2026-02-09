@@ -74,7 +74,7 @@ export default function AnimatedLowerThirds({
   const { user } = useAuth();
   
   // Theming system
-  const theming = useTheming('photographer, ');
+  const theming = useTheming('photographer');
   const queryClient = useQueryClient();
   
   const [selectedTemplate, setSelectedTemplate] = useState<LowerThirdTemplate | null>(null);
@@ -82,6 +82,11 @@ export default function AnimatedLowerThirds({
   const [isPlaying, setIsPlaying] = useState(false);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<LowerThirdTemplate | null>(null);
+  const previewTimeoutRef = useRef<number | null>(null);
+  const animationOptions: LowerThirdTemplate['animationType'][] = ['slide-in','fade-in','typewriter','bounce','glitch'];
+  const positionOptions: LowerThirdTemplate['position'][] = [
+    'bottom-left','bottom-center','bottom-right','top-left','top-center','top-right'
+  ];
   const [formData, setFormData] = useState<Partial<LowerThirdTemplate>>({
     name: '',
     description: '',
@@ -98,34 +103,24 @@ export default function AnimatedLowerThirds({
 });
 
   // Fetch lower third templates
-  const { data: templates = [], isLoading } = useQuery({
-    queryKey: ['/api/lower-thirds,', projectId],
- return apiRequest(`/api/lower-thirds/${projectId || 'default'}`, {
-   headers: {
-          "Content-Type" : "application/json"
-    },
-      headers: {
-  }
-  }),
+  const { data: templates = [], isLoading } = useQuery<LowerThirdTemplate[]>({
+    queryKey: ['/api/lower-thirds', projectId || 'default'],
+    queryFn: () => apiRequest(`/api/lower-thirds/${projectId || 'default'}`),
     retry: false,
-});
+  });
 
   // Create lower third template
   const createTemplate = useMutation({
-    mutationFn: async (data: LowerThirdTemplate) => 
-      return apiRequest('/api/lower-thirds/create', {
-        headers: {
-          "Content-Type" : "application/json"
-    },
-        headers: {
-    },
-        method: 'POS',
-        body: JSON.stringify({ ...data, projectId })
-    }),
+    mutationFn: async (data: LowerThirdTemplate) =>
+      apiRequest('/api/lower-thirds/create', {
+        method: 'POST',
+        body: { ...data, projectId, createdBy: user?.id || 'anonymous' },
+      }),
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/lower-thirds", ],});
+      queryClient.invalidateQueries({ queryKey: ['/api/lower-thirds'] });
       onLowerThirdCreated?.(data);
       setShowCreateDialog(false);
+      setEditingTemplate(null);
       setFormData({
         name: '',
         description: '',
@@ -145,36 +140,27 @@ export default function AnimatedLowerThirds({
 
   // Update lower third template
   const updateTemplate = useMutation({
-    mutationFn: async (data: LowerThirdTemplate) => 
-      return apiRequest(`/api/lower-thirds/${data.d}`, {
-        headers: {
-          "Content-Type" : "application/json"
-    },
-        headers: {
-    },
-        method: 'PU',
-        body: JSON.stringify(data)
-  }),
+    mutationFn: async (data: LowerThirdTemplate) =>
+      apiRequest(`/api/lower-thirds/${data.id}`, {
+        method: 'PUT',
+        body: data,
+      }),
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/lower-thirds", ],});
+      queryClient.invalidateQueries({ queryKey: ['/api/lower-thirds'] });
       onLowerThirdUpdated?.(data);
       setEditingTemplate(null);
+      setShowCreateDialog(false);
   }
 });
 
   // Delete lower third template
   const deleteTemplate = useMutation({
-    mutationFn: async (templateId: string) => 
-      return apiRequest(`/api/lower-thirds/${templated}`, {
-        headers: {
-          "Content-Type" : "application/json"
-    },
-        headers: {
-    },
-        method: 'DELETE'
-  }),
+    mutationFn: async (templateId: string) =>
+      apiRequest(`/api/lower-thirds/${templateId}`, {
+        method: 'DELETE',
+      }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/lower-thirds", ],});
+      queryClient.invalidateQueries({ queryKey: ['/api/lower-thirds'] });
   }
 });
 
@@ -189,9 +175,20 @@ export default function AnimatedLowerThirds({
 
   // Play animation preview
   const playPreview = useCallback(() => {
+    if (previewTimeoutRef.current) {
+      window.clearTimeout(previewTimeoutRef.current);
+    }
     setIsPlaying(true);
-    setTimeout(() => setIsPlaying(false), (formData.duration || 3) * 1000);
-}, [formData.duration]);
+    previewTimeoutRef.current = window.setTimeout(() => setIsPlaying(false), (formData.duration || 3) * 1000);
+  }, [formData.duration]);
+
+  useEffect(() => {
+    return () => {
+      if (previewTimeoutRef.current) {
+        window.clearTimeout(previewTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Get animation styles
   const getAnimationStyles = useCallback((template: LowerThirdTemplate) => {
@@ -207,11 +204,16 @@ export default function AnimatedLowerThirds({
       zIndex: 10,
       maxWidth: '400px',
       wordWrap: 'break-word' as const
-};
+    };
 
-    const positionStyles = {
-      'bottom-left': { bottom: '20px', left: '20px',},'bottom-center': { bottom: '20px', left: '50%', transform: 'translateX(-50%)',},'bottom-right': { bottom: '20px', right: '20px',},'top-left': { top: '20px', left: '20px',},'top-center': { top: '20px', left: '50%', transform: 'translateX(-50%)',},'top-right': { top: '20px', right: '20px',}
-  };
+    const positionStyles: Record<LowerThirdTemplate['position'], React.CSSProperties> = {
+      'bottom-left': { bottom: '20px', left: '20px' },
+      'bottom-center': { bottom: '20px', left: '50%', transform: 'translateX(-50%)' },
+      'bottom-right': { bottom: '20px', right: '20px' },
+      'top-left': { top: '20px', left: '20px' },
+      'top-center': { top: '20px', left: '50%', transform: 'translateX(-50%)' },
+      'top-right': { top: '20px', right: '20px' }
+    };
 
     return {
       ...baseStyles,
@@ -222,49 +224,75 @@ export default function AnimatedLowerThirds({
   // Get animation keyframes
   const getAnimationKeyframes = useCallback((template: LowerThirdTemplate) => {
     const duration = template.duration;
-    
+    const positionStyles: Record<LowerThirdTemplate['position'], React.CSSProperties> = {
+      'bottom-left': {},
+      'bottom-center': { transform: 'translateX(-50%)' },
+      'bottom-right': {},
+      'top-left': {},
+      'top-center': { transform: 'translateX(-50%)' },
+      'top-right': {}
+    };
+    const baseTransform = positionStyles[template.position].transform;
+    const withBase = (value: string) => (baseTransform ? `${baseTransform} ${value}`.trim() : value);
+
     switch (template.animationType) {
       case 'slide-in':
         return {
           '@keyframes slideIn': {
-            '0%': { transform: 'translateX(-100%)', opacity:  0 }, '20%': { transform: 'translateX(0, )', opacity:  1 }, '80%': { transform: 'translateX(0, )', opacity:  1 }, '100%': { transform: 'translateX(100%, )', opacity:  0 }
-        },
+            '0%': { transform: withBase('translateY(20px)'), opacity: 0 },
+            '20%': { transform: withBase('translateY(0)'), opacity: 1 },
+            '80%': { transform: withBase('translateY(0)'), opacity: 1 },
+            '100%': { transform: withBase('translateY(-20px)'), opacity: 0 }
+          },
           animation: `slideIn ${duration}s ease-in-out`
-      };
+        };
       case 'fade-in':
         return {
           '@keyframes fadeIn': {
-            '0%': { opacity:  0 }, '20%': { opacity:  1 }, '80%': { opacity:  1 }'100%': { opacity:  0 }
-        },
+            '0%': { opacity: 0 },
+            '20%': { opacity: 1 },
+            '80%': { opacity: 1 },
+            '100%': { opacity: 0 }
+          },
           animation: `fadeIn ${duration}s ease-in-out`
-      };
+        };
       case 'typewriter':
         return {
           '@keyframes typewriter': {
-            '0%': { width: '0',},'50%': { width: '100%',}'100%': { width: '100%',}
-        },
+            '0%': { width: '0' },
+            '50%': { width: '100%' },
+            '100%': { width: '100%' }
+          },
           animation: `typewriter ${duration}s steps(40, end)`,
           overflow: 'hidden',
           whiteSpace: 'nowrap' as const,
           borderRight: '2px solid'
-    };
+        };
       case 'bounce':
         return {
           '@keyframes bounce': {
-            '0%, 20%, 50%, 80%, 100%': { transform: 'translateY(0)',},'40%': { transform: 'translateY(-10px)',}'60%': { transform: 'translateY(-5px)',}
-        },
+            '0%, 20%, 50%, 80%, 100%': { transform: withBase('translateY(0)') },
+            '40%': { transform: withBase('translateY(-10px)') },
+            '60%': { transform: withBase('translateY(-5px)') }
+          },
           animation: `bounce ${duration}s ease-in-out`
-      };
+        };
       case 'glitch':
         return {
           '@keyframes glitch': {
-            '0%': { transform: 'translate(0)',},'20%': { transform: 'translate(-2, px2px)' }'40%': { transform: 'translate(-2, px-2px)' }'60%': { transform: 'translate(2, px2px)' }'80%': { transform: 'translate(2, px-2px)' }'100%': { transform: 'translate(0)',}
-        },
+            '0%': { transform: withBase('translate(0, 0)') },
+            '20%': { transform: withBase('translate(-2px, 2px)') },
+            '40%': { transform: withBase('translate(-2px, -2px)') },
+            '60%': { transform: withBase('translate(2px, 2px)') },
+            '80%': { transform: withBase('translate(2px, -2px)') },
+            '100%': { transform: withBase('translate(0, 0)') }
+          },
           animation: `glitch ${duration}s ease-in-out`
-      };
-      default: return, {};
-  }
-}, []);
+        };
+      default:
+        return {};
+    }
+  }, []);
 
   const handleCreateTemplate = () => {
     if (!formData.name) return;
@@ -272,7 +300,7 @@ export default function AnimatedLowerThirds({
     const template: LowerThirdTemplate = {
       id: `template_${Date.now()}`,
       name: formData.name,
-      description: formData.description ||', ',
+      description: formData.description || '',
       animationType: formData.animationType || 'slide-in',
       duration: formData.duration || 3,
       position: formData.position || 'bottom-left',
@@ -293,18 +321,30 @@ export default function AnimatedLowerThirds({
     setEditingTemplate(template);
     setFormData(template);
     setShowCreateDialog(true);
-};
+  };
 
   const handleUpdateTemplate = () => {
     if (!editingTemplate) return;
-    
-    const updatedTemplate = {
+
+    const updatedTemplate: LowerThirdTemplate = {
       ...editingTemplate,
-      ...formData
-  } as LowerThirdTemplate;
+      name: formData.name || editingTemplate.name,
+      description: formData.description ?? editingTemplate.description,
+      animationType: formData.animationType || editingTemplate.animationType,
+      duration: formData.duration ?? editingTemplate.duration,
+      position: formData.position || editingTemplate.position,
+      backgroundColor: formData.backgroundColor || editingTemplate.backgroundColor,
+      textColor: formData.textColor || editingTemplate.textColor,
+      fontSize: formData.fontSize ?? editingTemplate.fontSize,
+      fontFamily: formData.fontFamily || editingTemplate.fontFamily,
+      padding: formData.padding ?? editingTemplate.padding,
+      borderRadius: formData.borderRadius ?? editingTemplate.borderRadius,
+      shadow: formData.shadow ?? editingTemplate.shadow,
+      preview: editingTemplate.preview || generatePreviewText()
+    };
 
     updateTemplate.mutate(updatedTemplate);
-};
+  };
 
   return (
     <Box sx={{ p:  2 }}>
@@ -340,7 +380,7 @@ export default function AnimatedLowerThirds({
       ) : (
         <Grid container spacing={3}>
           {templates.map((template: LowerThirdTemplate) => (
-            <Grid item xs={2} sm={6} md={4} key={template.id}>
+            <Grid item xs={12} sm={6} md={4} key={template.id}>
               <Card 
                 sx={{ 
                   cursor: 'pointer', '&:hover': { 
@@ -366,25 +406,28 @@ export default function AnimatedLowerThirds({
                   </Typography>
 
                   {/* Preview Box */}
-                  <Paper 
-                    sx={{ 
-                      p: 2, mb: 2, backgroundColor: template.backgroundColor,
+                  <Paper
+                    sx={{
+                      p: 2,
+                      mb: 2,
+                      backgroundColor: template.backgroundColor,
                       color: template.textColor,
                       fontSize: `${template.fontSize * 0.7}px`,
                       fontFamily: template.fontFamily,
                       borderRadius: `${template.borderRadius}px`,
                       position: 'relative',
-                      overflow: 'hidden'
-                }}
-                   sx={theming.getThemedCardSx()}>
+                      overflow: 'hidden',
+                      ...theming.getThemedCardSx()
+                    }}
+                  >
                     {template.preview}
                   </Paper>
 
                   <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap'}}>
-                    <Chip 
-                      icon={theming.getThemedIcon('speed')}} 
-                      label={`${template.duration}s`} 
-                      size="small" 
+                    <Chip
+                      icon={theming.getThemedIcon('speed') || <Speed />}
+                      label={`${template.duration}s`}
+                      size="small"
                       variant="outlined"
                     />
                     <Chip 
@@ -460,7 +503,7 @@ export default function AnimatedLowerThirds({
               <TextField
                 fullWidth
                 label="Template Name"
-                value={formData.name || ', '}
+                value={formData.name || ''}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 required
               />
@@ -470,7 +513,12 @@ export default function AnimatedLowerThirds({
                 <InputLabel>Animation Type</InputLabel>
                 <Select
                   value={formData.animationType || 'slide-in'}
-                  onChange={(e) => setFormData({ ...formData, animationType: e.target.value as any })}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    if (animationOptions.includes(value as LowerThirdTemplate['animationType'])) {
+                      setFormData({ ...formData, animationType: value as LowerThirdTemplate['animationType'] });
+                    }
+                  }}
                 >
                   <MenuItem value="slide-in">Slide In</MenuItem>
                   <MenuItem value="fade-in">Fade In</MenuItem>
@@ -486,7 +534,7 @@ export default function AnimatedLowerThirds({
                 label="Description"
                 multiline
                 rows={2}
-                value={formData.description || ', '}
+                value={formData.description || ''}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
               />
             </Grid>
@@ -510,7 +558,12 @@ export default function AnimatedLowerThirds({
                 <InputLabel>Position</InputLabel>
                 <Select
                   value={formData.position || 'bottom-left'}
-                  onChange={(e) => setFormData({ ...formData, position: e.target.value as any })}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    if (positionOptions.includes(value as LowerThirdTemplate['position'])) {
+                      setFormData({ ...formData, position: value as LowerThirdTemplate['position'] });
+                    }
+                  }}
                 >
                   <MenuItem value="bottom-left">Bottom Left</MenuItem>
                   <MenuItem value="bottom-center">Bottom Center</MenuItem>

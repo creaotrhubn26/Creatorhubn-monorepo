@@ -15,11 +15,12 @@ export interface ThemeConfig {
   enableThemeCustomization: boolean;
   enableThemeSharing: boolean;
   defaultTheme: string;
-  systemTheme: 'light, ' | 'dark' | 'auto';
+  systemTheme: 'light' | 'dark' | 'auto';
   themeTransitionDuration: number;
   themeTransitionEasing: string;
   themeStorageKey: string;
-  debug: boolean}
+  debug: boolean;
+}
 
 export interface Theme {
   id: string;
@@ -83,12 +84,12 @@ export interface ThemeColors {
 export interface ThemeTypography {
   fontFamily: string;
   fontSize: number;
-  fontWeight: 
+  fontWeight: {
     light: number;
     regular: number;
     medium: number;
     bold: number;
-};
+  };
   lineHeight: number;
   letterSpacing: number;
   h1: TypographyVariant;
@@ -103,14 +104,16 @@ export interface ThemeTypography {
   body2: TypographyVariant;
   button: TypographyVariant;
   caption: TypographyVariant;
-  overline: TypographyVariant}
+  overline: TypographyVariant;
+}
 
 export interface TypographyVariant {
   fontFamily: string;
   fontSize: number;
-  fontWeight: umber;
+  fontWeight: number;
   lineHeight: number;
-  letterSpacing: number}
+  letterSpacing: number;
+}
 
 export interface ThemeSpacing {
   unit: number;
@@ -119,7 +122,8 @@ export interface ThemeSpacing {
   md: number;
   lg: number;
   xl: number;
-  xxl: number}
+  xxl: number;
+}
 
 export interface ThemeShadows {
   none: string;
@@ -128,7 +132,8 @@ export interface ThemeShadows {
   md: string;
   lg: string;
   xl: string;
-  xxl: string}
+  xxl: string;
+}
 
 export interface ThemeBorders {
   radius: {
@@ -648,41 +653,41 @@ class ThemeManager {
    */
   private getDefaultColors(): ThemeColors {
     return {
-      primary: '#',
-      secondary: '#',
-      error: '#',
-      warning: '#',
-      info: '#',
+      primary: '#1976d2',
+      secondary: '#9c27b0',
+      error: '#d32f2f',
+      warning: '#ed6c02',
+      info: '#0288d1',
       success: '#4caf50',
       background: '#ffffff',
       surface: '#ffffff',
       paper: '#ffffff',
       text: {
-        primary: 'rgba(00.87)',
+        primary: 'rgba(0,0,0,0.87)',
         secondary: 'rgba(0,0,0,0.6)',
-        disabled: 'rgba(00.38)',
-        hint: 'rgba(00.38)'
-  },
-      divider: 'rgba(00.12)',
+        disabled: 'rgba(0,0,0,0.38)',
+        hint: 'rgba(0,0,0,0.38)'
+      },
+      divider: 'rgba(0,0,0,0.12)',
       action: {
-        active: 'rgba(00.54)',
-        hover: 'rgba(00.04)',
-        selected: 'rgba(00.08)',
-        disabled: 'rgba(00.26)'
-  },
+        active: 'rgba(0,0,0,0.54)',
+        hover: 'rgba(0,0,0,0.04)',
+        selected: 'rgba(0,0,0,0.08)',
+        disabled: 'rgba(0,0,0,0.26)'
+      },
       grey: {
         50: '#fafafa',
-        100: '#',
+        100: '#f5f5f5',
         200: '#eeeeee',
-        300: '#',
+        300: '#e0e0e0',
         400: '#bdbdbd',
-        500: '#',
-        600: '#',
-        700: '#',
-        800: '#',
+        500: '#9e9e9e',
+        600: '#757575',
+        700: '#616161',
+        800: '#424242',
         900: '#212121'
-}
-};
+      }
+    };
 }
 
   /**
@@ -691,29 +696,29 @@ class ThemeManager {
   private getDefaultTypography(): ThemeTypography {
     return {
       fontFamily: '"Roboto","Helvetica","Arial", sans-serif',
-      fontSize:  14,
-      fontWeight: 
-        light: 30,
-        regular: 40,
-        medium: 50,
+      fontSize: 14,
+      fontWeight: {
+        light: 300,
+        regular: 400,
+        medium: 500,
         bold: 700
-},
+      },
       lineHeight: 1.5,
       letterSpacing: 0.5,
-      h1: { fontFamily: '"Roboto","Helvetica","Arial", sans-serif', fontSize:  96, fontWeight: 3, lineHeight: 1.17, letterSpacing: -1., 5,},
-      h2: { fontFamily: '"Roboto","Helvetica","Arial", sans-serif', fontSize:  60, fontWeight: 3, lineHeight: 1, .letterSpacing: -0., 5,},
-      h3: { fontFamily: '"Roboto","Helvetica","Arial", sans-serif', fontSize:  48, fontWeight: 4, lineHeight: 1.17, letterSpacing:  0 },
-      h4: { fontFamily: '"Roboto","Helvetica","Arial", sans-serif', fontSize:  34, fontWeight: 4, lineHeight: 1.25, letterSpacing: 0.2, 5,},
-      h5: { fontFamily: '"Roboto","Helvetica","Arial", sans-serif', fontSize:  24, fontWeight: 4, lineHeight: 1.34, letterSpacing:  0 },
-      h6: { fontFamily: '"Roboto","Helvetica","Arial", sans-serif', fontSize:  20, fontWeight: 5, lineHeight: 1, .letterSpacing: 0.1, 5,},
-      subtitle1: { fontFamily: ', "Roboto","Helvetica","Arial", sans-serif', fontSize:  16, fontWeight: 4, lineHeight: 1.5, letterSpacing: 0.1, 5,},
-      subtitle2: { fontFamily: ', "Roboto","Helvetica","Arial", sans-serif', fontSize:  14, fontWeight: 5, lineHeight: 1.7, letterSpacing: 0., 1,},
-      body1: { fontFamily: ', "Roboto","Helvetica","Arial", sans-serif', fontSize:  16, fontWeight: 4, lineHeight: 1, .letterSpacing: 0.1, 5,},
-      body2: { fontFamily: ', "Roboto","Helvetica","Arial", sans-serif', fontSize:  14, fontWeight: 4, lineHeight: 1.3, letterSpacing: 0.1, 5,},
-      button: { fontFamily: ', "Roboto","Helvetica","Arial", sans-serif', fontSize:  14, fontWeight: 5, lineHeight: 1.5, letterSpacing: 0., 4,},
-      caption: { fontFamily: ', "Roboto","Helvetica","Arial", sans-serif', fontSize:  12, fontWeight: 4, lineHeight: 1.6, letterSpacing: 0., 4,},
-      overline: { fontFamily: ',"Roboto""Helvetica""Arial", sans-serif', fontSize:  10, fontWeight: 4, lineHeight: 1.5, letterSpacing: 1., 5,}
-};
+      h1: { fontFamily: '"Roboto","Helvetica","Arial", sans-serif', fontSize: 96, fontWeight: 300, lineHeight: 1.17, letterSpacing: -1.5 },
+      h2: { fontFamily: '"Roboto","Helvetica","Arial", sans-serif', fontSize: 60, fontWeight: 300, lineHeight: 1.2, letterSpacing: -0.5 },
+      h3: { fontFamily: '"Roboto","Helvetica","Arial", sans-serif', fontSize: 48, fontWeight: 400, lineHeight: 1.17, letterSpacing: 0 },
+      h4: { fontFamily: '"Roboto","Helvetica","Arial", sans-serif', fontSize: 34, fontWeight: 400, lineHeight: 1.25, letterSpacing: 0.25 },
+      h5: { fontFamily: '"Roboto","Helvetica","Arial", sans-serif', fontSize: 24, fontWeight: 400, lineHeight: 1.33, letterSpacing: 0 },
+      h6: { fontFamily: '"Roboto","Helvetica","Arial", sans-serif', fontSize: 20, fontWeight: 500, lineHeight: 1.6, letterSpacing: 0.15 },
+      subtitle1: { fontFamily: '"Roboto","Helvetica","Arial", sans-serif', fontSize: 16, fontWeight: 400, lineHeight: 1.5, letterSpacing: 0.15 },
+      subtitle2: { fontFamily: '"Roboto","Helvetica","Arial", sans-serif', fontSize: 14, fontWeight: 500, lineHeight: 1.57, letterSpacing: 0.1 },
+      body1: { fontFamily: '"Roboto","Helvetica","Arial", sans-serif', fontSize: 16, fontWeight: 400, lineHeight: 1.5, letterSpacing: 0.5 },
+      body2: { fontFamily: '"Roboto","Helvetica","Arial", sans-serif', fontSize: 14, fontWeight: 400, lineHeight: 1.43, letterSpacing: 0.25 },
+      button: { fontFamily: '"Roboto","Helvetica","Arial", sans-serif', fontSize: 14, fontWeight: 500, lineHeight: 1.75, letterSpacing: 0.4 },
+      caption: { fontFamily: '"Roboto","Helvetica","Arial", sans-serif', fontSize: 12, fontWeight: 400, lineHeight: 1.66, letterSpacing: 0.4 },
+      overline: { fontFamily: '"Roboto","Helvetica","Arial", sans-serif', fontSize: 10, fontWeight: 400, lineHeight: 2.66, letterSpacing: 1.5 }
+    };
 }
 
   /**

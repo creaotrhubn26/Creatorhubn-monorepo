@@ -16,7 +16,8 @@ import {
   CircularProgress,
   Chip,
   Divider,
-  Paper
+  Paper,
+  Snackbar
 } from '@mui/material';
 import {
   CheckCircle,
@@ -63,6 +64,9 @@ export default function FixValidationRequest({
 
   const [isSubmitted, setIsSubmitted] = useState(false);
   const { auth } = useEnhancedMasterIntegration();
+  
+  // Snackbar state
+  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'warning' | 'info' }>({ open: false, message: '', severity: 'info' });
 
   // Theming system
   const theming = useTheming('prototype_tester');
@@ -96,7 +100,7 @@ export default function FixValidationRequest({
 
   const handleSubmit = async () => {
     if (validation.userRating === 0) {
-      alert('Please provide a rating before submitting');
+      setSnackbar({ open: true, message: 'Please provide a rating before submitting', severity: 'warning' });
       return;
   }
     
@@ -195,12 +199,12 @@ export default function FixValidationRequest({
                   onChange={(e) => setValidation(prev => ({ ...prev, userConfirmed: e.target.checked }))}
                   color={validation.userConfirmed ? "success" : "error"}
                 />
-            }
+              }
               label={
-                <Typography variant="body1" sx={{ fontWeight: 600}>
+                <Typography variant="body1" sx={{ fontWeight: 600 }}>
                   {validation.userConfirmed ? "Yes, it's fixed! ✅" : "No, still broken ❌"}
                 </Typography>
-            }
+              }
             />
           </Box>
 
@@ -250,7 +254,7 @@ export default function FixValidationRequest({
           disabled={submitValidationMutation.isPending || validation.userRating === 0}
           fullWidth
           size="large"
-          startIcon={submitValidationMutation.isPending ? <CircularProgress size={20}, sx={theming.getThemedButtonSx()}> : <Send />}
+          startIcon={submitValidationMutation.isPending ? <CircularProgress size={20} /> : <Send />}
           sx={{
             bgcolor: '#ff8c00', '&:hover': { bgcolor: '#e67e00'},
             py: 1.5 }}
@@ -262,6 +266,18 @@ export default function FixValidationRequest({
           Your validation helps us ensure fixes are working correctly and improve our development process.
         </Typography>
       </CardContent>
+
+      {/* Snackbar for notifications */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={6000}
+        onClose={() => setSnackbar({ ...snackbar, open: false })}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert onClose={() => setSnackbar({ ...snackbar, open: false })} severity={snackbar.severity} sx={{ width: '100%' }}>
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Card>
   );
 }

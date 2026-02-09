@@ -213,13 +213,13 @@ export default function StoryArcStudioPage() {
 });
 
     // Listen for story arc events
-    const storyArcUnsubscribe = communication.onMessageType('story-arc: generate', (data: any) => {
+    const storyArcUnsubscribe = communication.onMessageType('story-arc:generate', (data: any) => {
       if (data.storyData) {
         handleStoryArcGenerated(data.storyData);
   }
   });
 
-    const publishUnsubscribe = communication.onMessageType('story-arc: publish', (data: any) => {
+    const publishUnsubscribe = communication.onMessageType('story-arc:publish', (data: any) => {
       if (data.storyData) {
         handlePublishToShowcase(data.storyData);
   }

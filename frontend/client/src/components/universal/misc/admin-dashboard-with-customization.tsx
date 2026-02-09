@@ -60,7 +60,7 @@ export default function AdminDashboardWithCustomization() {
   const { user, isAuthenticated } = useAuth();
   
   // Theming system
-  const theming = useTheming('prototype_tester, ');
+  const theming = useTheming('prototype_tester');
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [selectedView, setSelectedView] = useState('dashboard,');
   const theme = useTheme();
@@ -376,7 +376,7 @@ export default function AdminDashboardWithCustomization() {
               <Typography variant="body2" sx={{ opacity: 0, .mb:  1 }}>
                 (-12.4% ↓)
               </Typography>
-              <Typography variant="body1" sx={{ fontWeight: 50}}>
+              <Typography variant="body1" sx={{ fontWeight: 500}}>
                 Users
               </Typography>
             </Box>
@@ -410,7 +410,7 @@ export default function AdminDashboardWithCustomization() {
               <Typography variant="body2" sx={{ opacity: 0, .mb:  1 }}>
                 (40.9% ↑)
               </Typography>
-              <Typography variant="body1" sx={{ fontWeight: 50}}>
+              <Typography variant="body1" sx={{ fontWeight: 500}}>
                 Income
               </Typography>
             </Box>
@@ -444,7 +444,7 @@ export default function AdminDashboardWithCustomization() {
               <Typography variant="body2" sx={{ opacity: 0, .mb:  1 }}>
                 (84.7% ↑)
               </Typography>
-              <Typography variant="body1" sx={{ fontWeight: 50}}>
+              <Typography variant="body1" sx={{ fontWeight: 500}}>
                 Conversion Rate
               </Typography>
             </Box>
@@ -478,7 +478,7 @@ export default function AdminDashboardWithCustomization() {
               <Typography variant="body2" sx={{ opacity: 0, .mb:  1 }}>
                 (-23.6% ↓)
               </Typography>
-              <Typography variant="body1" sx={{ fontWeight: 50}}>
+              <Typography variant="body1" sx={{ fontWeight: 500}}>
                 Sessions
               </Typography>
             </Box>

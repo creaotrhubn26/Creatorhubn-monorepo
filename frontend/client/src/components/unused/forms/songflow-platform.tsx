@@ -88,7 +88,7 @@ export default function SongFlowPlatform() {
 const queryClient = useQueryClient();
   
   // Theming system
-  const theming = useTheming('photographer, ');
+  const theming = useTheming('photographer');
 
   // Fetch Song Flow projects with real database integration
   const { data: projects, isLoading } = useQuery({

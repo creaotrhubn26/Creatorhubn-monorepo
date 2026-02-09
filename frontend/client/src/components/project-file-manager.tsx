@@ -84,7 +84,7 @@ export default function ProjectFileManager({ projectId, profession, userId }: Pr
   const queryClient = useQueryClient();
   
   // Theming system
-  const theming = useTheming('photographer, ');
+  const theming = useTheming('photographer');
 
   // Fetch project data
   const { data: project, isLoading } = useQuery({

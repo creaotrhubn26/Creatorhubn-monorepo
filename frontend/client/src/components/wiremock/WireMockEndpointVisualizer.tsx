@@ -224,7 +224,7 @@ export function WireMockEndpointVisualizer() {
       spotify: <MusicIcon sx={{ color: '#1db954' }} />,
       custom: <ApiIcon sx={{ color: '#ff8c00' }} />,
   };
-    return iconMap[service] || <ApiIcon sx={{ color: '#666', '}} />;
+    return iconMap[service] || <ApiIcon sx={{ color: '#666' }} />;
 };
 
   // Get status color

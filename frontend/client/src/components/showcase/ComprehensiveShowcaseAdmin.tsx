@@ -20,6 +20,7 @@ import {
   Card,
   CardContent,
   CardActions,
+  CardMedia,
   Chip,
   IconButton,
   Tabs,
@@ -28,7 +29,6 @@ import {
   AccordionSummary,
   AccordionDetails,
   Slider,
-  ColorPicker,
   Tooltip,
   Alert,
   Divider,
@@ -58,7 +58,7 @@ import {
   TrendingUp as TimelineIcon,
   Book as MagazineIcon,
   CropFree as PortfolioIcon,
-  SplitScreen as SplitScreenIcon,
+  Splitscreen as SplitScreenIcon,
   Fullscreen as FullWidthIcon,
 
   // Display Icons
@@ -79,12 +79,12 @@ import {
   Share as ShareIcon,
   Download as DownloadIcon,
   ContentCopy as CopyIcon,
-  RestoreFromDelete as RestoreIcon,
+  Restore as RestoreIcon,
 
   // Content Icons
   Photo as PhotoIcon,
-  VideocamLibrary as VideoIcon,
-  LibraryMusicNote as AudioIcon,
+  VideoLibrary as VideoIcon,
+  LibraryMusic as AudioIcon,
   Description as DocumentIcon,
   YouTube as YouTubeIcon,
   Link as EmbedIcon,
@@ -107,7 +107,7 @@ import {
 
   // Organization Icons
   Category as CategoryIcon,
-  Label as LocalOfferIcon,
+  LocalOffer as LocalOfferIcon,
   Star as StarIcon,
   StarBorder as StarBorderIcon,
   Public as PublicIcon,
@@ -117,9 +117,9 @@ import {
   Dashboard as TemplateIcon,
   GetApp as ImportIcon,
   Publish as ExportIcon,
+  GridView as GridIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { TextField, Box } from '@mui/material';
 
 interface ShowcaseConfiguration {
   id?: string;
@@ -202,6 +202,29 @@ interface ShowcaseConfiguration {
 interface ComprehensiveShowcaseAdminProps {
   profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'admin';
   userId?: string
+}
+
+interface ShowcaseTemplate {
+  id: string;
+  name: string;
+  description: string;
+  profession: string;
+  previewImageUrl: string;
+  isPremium: boolean;
+  isPopular: boolean;
+  configuration: Partial<ShowcaseConfiguration>;
+  createdAt: string;
+}
+
+interface ShowcaseAnalytics {
+  totalViews: number;
+  totalLikes: number;
+  totalShares: number;
+  totalDownloads: number;
+  totalComments: number;
+  averageEngagementRate: number;
+  viewsByDate: { date: string; views: number }[];
+  topItems: { id: string; views: number; title: string }[];
 }
 
 const layoutOptions = [
@@ -287,6 +310,11 @@ export const ComprehensiveShowcaseAdmin: React.FC<ComprehensiveShowcaseAdminProp
   const theming = useTheming('photographer');
   const queryClient = useQueryClient();
 
+  // Error and Success State
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [queryErrors, setQueryErrors] = useState<{ [key: string]: string }>({});
+
   // State Management
   const [configDialog, setConfigDialog] = useState(false);
   const [templatesDialog, setTemplatesDialog] = useState(false);
@@ -294,6 +322,13 @@ export const ComprehensiveShowcaseAdmin: React.FC<ComprehensiveShowcaseAdminProp
   const [activeTab, setActiveTab] = useState(0);
   const [colorPickerOpen, setColorPickerOpen] = useState<string | null>(null);
   const [editingConfig, setEditingConfig] = useState<ShowcaseConfiguration | null>(null);
+  const [confirmDeleteConfigId, setConfirmDeleteConfigId] = useState<string | null>(null);
+  const [isPublic, setIsPublic] = useState(true);
+  const [isPrivate, setIsPrivate] = useState(false);
+  const [canShareSocial, setCanShareSocial] = useState(true);
+  const [youtubeEnabled, setYoutubeEnabled] = useState(true);
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [expandedConfig, setExpandedConfig] = useState<string | null>(null);
 
   // Form State
   const [formData, setFormData] = useState<ShowcaseConfiguration>({
@@ -371,89 +406,136 @@ export const ComprehensiveShowcaseAdmin: React.FC<ComprehensiveShowcaseAdminProp
 });
 
   // Fetch current configurations
-  const { data: configurations = [], isLoading: configsLoading } = useQuery({
+  const { data: configurations = [], isLoading: configsLoading, error: configsError } = useQuery<ShowcaseConfiguration[]>({
     queryKey: [`/api/showcase/configurations/${profession}`, userId],
+    queryFn: async () => {
+      try {
+        const response = await fetch(`/api/showcase/configurations/${profession}?userId=${userId}`);
+        if (!response.ok) throw new Error('Failed to fetch configurations');
+        return response.json();
+      } catch (error) {
+        const message = (error as Error).message;
+        setQueryErrors(prev => ({ ...prev, configs: message }));
+        throw error;
+      }
+    },
     enabled: !!userId && !!profession,
-});
+  });
 
   // Fetch available templates
-  const { data: templates = [], isLoading: templatesLoading } = useQuery({
+  const { data: templates = [], isLoading: templatesLoading, error: templatesError } = useQuery<ShowcaseTemplate[]>({
     queryKey: [`/api/showcase/templates/${profession}`],
+    queryFn: async () => {
+      try {
+        const response = await fetch(`/api/showcase/templates/${profession}`);
+        if (!response.ok) throw new Error('Failed to fetch templates');
+        return response.json();
+      } catch (error) {
+        const message = (error as Error).message;
+        setQueryErrors(prev => ({ ...prev, templates: message }));
+        throw error;
+      }
+    },
     enabled: !!profession,
-});
+  });
 
   // Fetch showcase analytics
-  const { data: analytics = {}, isLoading: analyticsLoading } = useQuery({
+  const { data: analytics = {} as ShowcaseAnalytics, isLoading: analyticsLoading, error: analyticsError } = useQuery<ShowcaseAnalytics>({
     queryKey: [`/api/showcase/analytics/${profession}`, userId],
+    queryFn: async () => {
+      try {
+        const response = await fetch(`/api/showcase/analytics/${profession}?userId=${userId}`);
+        if (!response.ok) throw new Error('Failed to fetch analytics');
+        return response.json();
+      } catch (error) {
+        const message = (error as Error).message;
+        setQueryErrors(prev => ({ ...prev, analytics: message }));
+        throw error;
+      }
+    },
     enabled: !!userId && !!profession,
-});
+  });
 
   // Create/Update configuration mutation
   const saveConfigMutation = useMutation({
     mutationFn: async (configData: ShowcaseConfiguration) => {
       const endpoint = editingConfig
-        ? `/api/showcase/configurations/${editingConfig.d}`
+        ? `/api/showcase/configurations/${editingConfig.id}`
         : '/api/showcase/configurations';
 
       const response = await fetch(endpoint, {
-        method: editingConfig ? 'PUT' : 'POS',
+        method: editingConfig ? 'PUT' : 'POST',
         headers: {
-          'Content-Type' : 'application/json','x-user-id': userId,
-      },
+          'Content-Type': 'application/json',
+          'x-user-id': userId,
+        },
         body: JSON.stringify(configData),
-    });
+      });
 
-      if (!response.ok) throw new Error('Failed to save configuration, ');
+      if (!response.ok) throw new Error('Failed to save configuration');
       return response.json();
-  },
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: [`/api/showcase/configurations/${profession}`, userId],
-    });
+      });
       setConfigDialog(false);
       setEditingConfig(null);
       resetForm();
-  },
-});
+      setSuccessMessage(editingConfig ? 'Konfigurasjon oppdatert' : 'Konfigurasjon opprettet');
+    },
+    onError: (error: any) => {
+      setErrorMessage(error.message || 'Feil ved lagring av konfigurasjon');
+    },
+  });
 
   // Delete configuration mutation
   const deleteConfigMutation = useMutation({
     mutationFn: async (configId: string) => {
-      const response = await fetch(`/api/showcase/configurations/${configd}`, {
-        method: 'DELET',
-        headers: { 'x-user-id': userI, d,},
-    });
+      const response = await fetch(`/api/showcase/configurations/${configId}`, {
+        method: 'DELETE',
+        headers: { 'x-user-id': userId },
+      });
       if (!response.ok) throw new Error('Failed to delete configuration');
       return response.json();
-  },
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: [`/api/showcase/configurations/${profession}`, userId],
-    });
-  },
-});
+      });
+      setSuccessMessage('Konfigurasjon slettet');
+    },
+    onError: (error: any) => {
+      setErrorMessage(error.message || 'Feil ved sletting av konfigurasjon');
+    },
+  });
 
   // Apply template mutation
   const applyTemplateMutation = useMutation({
     mutationFn: async (templateId: string) => {
-      const response = await fetch(`/api/showcase/templates/${templated}/apply`, {
-        method: 'POS',
+      const response = await fetch(`/api/showcase/templates/${templateId}/apply`, {
+        method: 'POST',
         headers: {
-          'Content-Type' : 'application/json','x-user-id': userId,
-      },
+          'Content-Type': 'application/json',
+          'x-user-id': userId,
+        },
         body: JSON.stringify({ profession, userId }),
-    });
+      });
 
       if (!response.ok) throw new Error('Failed to apply template');
       return response.json();
-  },
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: [`/api/showcase/configurations/${profession}`, userId],
-    });
+      });
       setTemplatesDialog(false);
-  },
-});
+      setSuccessMessage('Mal brukt');
+    },
+    onError: (error: any) => {
+      setErrorMessage(error.message || 'Feil ved bruk av mal');
+    },
+  });
 
   const resetForm = () => {
     setFormData({
@@ -511,6 +593,23 @@ export const ComprehensiveShowcaseAdmin: React.FC<ComprehensiveShowcaseAdminProp
   });
 };
 
+  // Initialize component and clear messages after timeout
+  useEffect(() => {
+    // Reset errors messages after 5 seconds
+    if (errorMessage) {
+      const timer = setTimeout(() => setErrorMessage(null), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [errorMessage]);
+
+  useEffect(() => {
+    // Reset success messages after 4 seconds
+    if (successMessage) {
+      const timer = setTimeout(() => setSuccessMessage(null), 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [successMessage]);
+
   const handleEditConfig = (config: ShowcaseConfiguration) => {
     setEditingConfig(config);
     setFormData(config);
@@ -518,10 +617,14 @@ export const ComprehensiveShowcaseAdmin: React.FC<ComprehensiveShowcaseAdminProp
 };
 
   const handleDeleteConfig = (configId: string) => {
-    if (window.confirm('Er du sikker på at du vil slette denne konfigurasjonen?')) {
-      deleteConfigMutation.mutate(configId);
-}
-};
+    setConfirmDeleteConfigId(configId);
+  };
+
+  const executeDeleteConfig = () => {
+    if (!confirmDeleteConfigId) return;
+    deleteConfigMutation.mutate(confirmDeleteConfigId);
+    setConfirmDeleteConfigId(null);
+  };
 
   const handleColorChange = (colorType: string, color: any) => {
     setFormData({ ...formData, [colorType]: color.hex });
@@ -811,16 +914,16 @@ export const ComprehensiveShowcaseAdmin: React.FC<ComprehensiveShowcaseAdminProp
                       cursor: 'pointer',
                       border: formData.hoverEffect === effect.value ? 2 : 1,
                       borderColor: formData.hoverEffect === effect.value
-                          ? professionConfig.primaryColor
-                          : 'divider'}}
-                    onClick={() => sx={theming.getThemedCardSx()}>
-                      setFormData({
-                        ...formData,
-                        hoverEffect: effect.value as any,
-                    })
-                  }
+                        ? professionConfig.primaryColor
+                        : 'divider',
+                      ...theming.getThemedCardSx()
+                    }}
+                    onClick={() => setFormData({
+                      ...formData,
+                      hoverEffect: effect.value as any,
+                    })}
                   >
-                    <CardContent sx={{ textAlign: 'center', p:  2 ,  ...theming.getThemedCardSx() }}>
+                    <CardContent sx={{ textAlign: 'center', p: 2 }}>
                       <Typography variant="subtitle2">{effect.label}</Typography>
                       <Typography variant="caption" color="text.secondary">
                         {effect.description}
@@ -1214,6 +1317,205 @@ export const ComprehensiveShowcaseAdmin: React.FC<ComprehensiveShowcaseAdminProp
     </Box>
   );
 
+  const renderSharingConfiguration = () => (
+    <Box sx={{ p: 3 }}>
+      <Typography variant="h6" gutterBottom sx={{ color: professionConfig.primaryColor }}>
+        🔗 Deling & Tilgangskontroll
+      </Typography>
+      <Stack spacing={3}>
+        <Box>
+          <Typography variant="subtitle2" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <PublicIcon fontSize="small" /> Offentlig Tilgang
+          </Typography>
+          <FormControlLabel
+            control={
+              <Switch
+                checked={isPublic}
+                onChange={(e) => setIsPublic(e.target.checked)}
+              />
+            }
+            label="Gjør showcase offentlig tilgjengelig på nett"
+          />
+        </Box>
+        <Box>
+          <Typography variant="subtitle2" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <PrivateIcon fontSize="small" /> Privat Tilgang
+          </Typography>
+          <FormControlLabel
+            control={
+              <Switch
+                checked={isPrivate}
+                onChange={(e) => setIsPrivate(e.target.checked)}
+              />
+            }
+            label="Begrenset til godkjente brukere"
+          />
+        </Box>
+        <Box>
+          <Typography variant="subtitle2" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <EmbedIcon fontSize="small" /> Innbyggings-alternativer
+          </Typography>
+          <FormControlLabel
+            control={
+              <Switch
+                checked={formData.enableShare}
+                onChange={(e) => setFormData({ ...formData, enableShare: e.target.checked })}
+              />
+            }
+            label="Tillat innbygging på andre nettsider"
+          />
+        </Box>
+        <Box>
+          <Typography variant="subtitle2" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <ShareIcon fontSize="small" /> Deling på Sosiale Medier
+          </Typography>
+          <FormControlLabel
+            control={
+              <Switch
+                checked={canShareSocial}
+                onChange={(e) => setCanShareSocial(e.target.checked)}
+              />
+            }
+            label="Tillat deling på Facebook, Twitter, Instagram"
+          />
+        </Box>
+      </Stack>
+    </Box>
+  );
+
+  const renderEmbedConfiguration = () => (
+    <Box sx={{ p: 3 }}>
+      <Typography variant="h6" gutterBottom sx={{ color: professionConfig.primaryColor }}>
+        📺 Media-integrasjon
+      </Typography>
+      <Stack spacing={3}>
+        <Box>
+          <Typography variant="subtitle2" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <YouTubeIcon fontSize="small" /> YouTube-integrasjon
+          </Typography>
+          <FormControlLabel
+            control={<Switch checked={youtubeEnabled} onChange={(e) => setYoutubeEnabled(e.target.checked)} />}
+            label="Tillat innbygging av YouTube-videoer"
+          />
+        </Box>
+        <Box>
+          <Typography variant="subtitle2" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <EmbedIcon fontSize="small" /> Egendefinert Innbygging
+          </Typography>
+          <TextField
+            fullWidth
+            multiline
+            rows={3}
+            label="Innbyggingskode (iFrame)"
+            placeholder="&lt;iframe src='...'&gt;&lt;/iframe&gt;"
+            variant="outlined"
+          />
+        </Box>
+      </Stack>
+    </Box>
+  );
+
+  const renderAnalyticsConfiguration = () => (
+    <Box sx={{ p: 3 }}>
+      <Typography variant="h6" gutterBottom sx={{ color: professionConfig.primaryColor }}>
+        📊 Avansert Analytikk
+      </Typography>
+      <Stack spacing={3}>
+        <Box>
+          <Typography variant="subtitle2" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <AnalyticsIcon fontSize="small" /> Detaljert Sporing
+          </Typography>
+          <FormControlLabel
+            control={
+              <Switch
+                checked={formData.enableAnalytics}
+                onChange={(e) => setFormData({ ...formData, enableAnalytics: e.target.checked })}
+              />
+            }
+            label="Spor detaljert brukeroppførsel (varighet, interaksjon, etc.)"
+          />
+        </Box>
+        <Box>
+          <Typography variant="body2" color="text.secondary">
+            Med analytics aktivert kan du se:
+          </Typography>
+          <List dense>
+            <ListItem>
+              <ListItemIcon sx={{ minWidth: 24 }}>
+                <ChevronLeftIcon fontSize="small" />
+              </ListItemIcon>
+              <ListItemText primary="Unike besøkende" primaryTypographyProps={{ variant: 'caption' }} />
+            </ListItem>
+            <ListItem>
+              <ListItemIcon sx={{ minWidth: 24 }}>
+                <ChevronLeftIcon fontSize="small" />
+              </ListItemIcon>
+              <ListItemText primary="Gjennomsnittlig sesjonvarighet" primaryTypographyProps={{ variant: 'caption' }} />
+            </ListItem>
+            <ListItem>
+              <ListItemIcon sx={{ minWidth: 24 }}>
+                <ChevronLeftIcon fontSize="small" />
+              </ListItemIcon>
+              <ListItemText primary="Klikkheat maps" primaryTypographyProps={{ variant: 'caption' }} />
+            </ListItem>
+            <ListItem>
+              <ListItemIcon sx={{ minWidth: 24 }}>
+                <ChevronLeftIcon fontSize="small" />
+              </ListItemIcon>
+              <ListItemText primary="Konversjonsratinger" primaryTypographyProps={{ variant: 'caption' }} />
+            </ListItem>
+          </List>
+        </Box>
+      </Stack>
+    </Box>
+  );
+
+  const renderExportConfiguration = () => (
+    <Box sx={{ p: 3 }}>
+      <Typography variant="h6" gutterBottom sx={{ color: professionConfig.primaryColor }}>
+        💾 Eksporter & Sikkerhetskopi
+      </Typography>
+      <Stack spacing={3}>
+        <Box>
+          <Typography variant="subtitle2" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <ExportIcon fontSize="small" /> Eksporter Konfigurasjon
+          </Typography>
+          <Button
+            startIcon={<DownloadIcon />}
+            variant="outlined"
+            fullWidth
+          >
+            Eksporter som JSON
+          </Button>
+        </Box>
+        <Box>
+          <Typography variant="subtitle2" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <RestoreIcon fontSize="small" /> Gjenopprett Tidligere Versjon
+          </Typography>
+          <Button
+            startIcon={<RestoreIcon />}
+            variant="outlined"
+            fullWidth
+          >
+            Se Versjonhistorikk
+          </Button>
+        </Box>
+        <Box>
+          <Typography variant="subtitle2" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <SaveIcon fontSize="small" /> Sikkerhetskopi
+          </Typography>
+          <Button
+            startIcon={<SaveIcon />}
+            variant="outlined"
+            fullWidth
+          >
+            Lag Sikkerhetskopi Nå
+          </Button>
+        </Box>
+      </Stack>
+    </Box>
+  );
+
   const tabs = [
     {
       label: 'Layout',
@@ -1250,17 +1552,173 @@ export const ComprehensiveShowcaseAdmin: React.FC<ComprehensiveShowcaseAdminProp
       icon: <MobileIcon />,
       component: renderMobileConfiguration,
   },
+    {
+      label: 'Deling',
+      icon: <ShareIcon />,
+      component: renderSharingConfiguration,
+  },
+    {
+      label: 'Innbygging',
+      icon: <EmbedIcon />,
+      component: renderEmbedConfiguration,
+  },
+    {
+      label: 'Analytikk',
+      icon: <InsightsIcon />,
+      component: renderAnalyticsConfiguration,
+  },
+    {
+      label: 'Eksport',
+      icon: <ExportIcon />,
+      component: renderExportConfiguration,
+  },
   ];
 
   return (
-    <Box sx={{ p:  3 }}>
+    <Box sx={{ p:  3, backgroundColor: theme.palette.background.default, minHeight: '100vh' }}>
+      {/* Error and Success Alerts */}
+      {errorMessage && (
+        <Alert 
+          severity="error" 
+          sx={{ mb: 2, display: 'flex', alignItems: 'center' }}
+          icon={<ErrorIcon />}
+          onClose={() => setErrorMessage(null)}
+        >
+          {errorMessage}
+        </Alert>
+      )}
+      
+      {successMessage && (
+        <Alert 
+          severity="success" 
+          sx={{ mb: 2, display: 'flex', alignItems: 'center' }}
+          icon={<CheckCircleIcon />}
+          onClose={() => setSuccessMessage(null)}
+        >
+          {successMessage}
+        </Alert>
+      )}
+
+      {(configsError || templatesError || analyticsError) && (
+        <Alert severity="error" sx={{ mb: 2 }} icon={<ErrorIcon />}>
+          <Typography variant="subtitle2">Feil ved henting av data:</Typography>
+          <List dense sx={{ mt: 1 }}>
+            {configsError && (
+              <ListItem sx={{ py: 0.5 }}>
+                <ListItemIcon sx={{ minWidth: 32 }}>
+                  <ChevronLeftIcon fontSize="small" />
+                </ListItemIcon>
+                <ListItemText 
+                  primary={`Konfigurasjoner: ${(configsError as any).message}`}
+                  primaryTypographyProps={{ variant: 'caption' }}
+                />
+                <ListItemSecondaryAction>
+                  <Tooltip title="Skjul denne feilen">
+                    <IconButton 
+                      edge="end" 
+                      size="small"
+                      onClick={() => setErrorMessage(null)}
+                    >
+                      <VisibilityOffIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                </ListItemSecondaryAction>
+              </ListItem>
+            )}
+            {templatesError && (
+              <ListItem sx={{ py: 0.5 }}>
+                <ListItemIcon sx={{ minWidth: 32 }}>
+                  <ChevronLeftIcon fontSize="small" />
+                </ListItemIcon>
+                <ListItemText 
+                  primary={`Maler: ${(templatesError as any).message}`}
+                  primaryTypographyProps={{ variant: 'caption' }}
+                />
+                <ListItemSecondaryAction>
+                  <Tooltip title="Skjul denne feilen">
+                    <IconButton 
+                      edge="end" 
+                      size="small"
+                      onClick={() => setErrorMessage(null)}
+                    >
+                      <VisibilityOffIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                </ListItemSecondaryAction>
+              </ListItem>
+            )}
+            {analyticsError && (
+              <ListItem sx={{ py: 0.5 }}>
+                <ListItemIcon sx={{ minWidth: 32 }}>
+                  <ChevronLeftIcon fontSize="small" />
+                </ListItemIcon>
+                <ListItemText 
+                  primary={`Analytikk: ${(analyticsError as any).message}`}
+                  primaryTypographyProps={{ variant: 'caption' }}
+                />
+                <ListItemSecondaryAction>
+                  <Tooltip title="Skjul denne feilen">
+                    <IconButton 
+                      edge="end" 
+                      size="small"
+                      onClick={() => setErrorMessage(null)}
+                    >
+                      <VisibilityOffIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                </ListItemSecondaryAction>
+              </ListItem>
+            )}
+          </List>
+        </Alert>
+      )}
+
+      {Object.values(queryErrors).length > 0 && (
+        <Alert severity="warning" sx={{ mb: 2 }} icon={<WarningIcon />}>
+          <Typography variant="subtitle2">Advarsel: Noen data kunne ikke lastes inn.</Typography>
+          {Object.entries(queryErrors).length > 0 && (
+            <List dense sx={{ mt: 1 }}>
+              {Object.entries(queryErrors).map(([key, error]) => (
+                <ListItem key={key} sx={{ py: 0.5 }}>
+                  <ListItemIcon sx={{ minWidth: 32 }}>
+                    <InfoIcon fontSize="small" />
+                  </ListItemIcon>
+                  <ListItemText 
+                    primary={`${key}: ${error}`}
+                    primaryTypographyProps={{ variant: 'caption' }}
+                  />
+                  <ListItemSecondaryAction>
+                    <IconButton 
+                      edge="end" 
+                      size="small"
+                      onClick={() => setQueryErrors(prev => {
+                        const next = { ...prev };
+                        delete next[key];
+                        return next;
+                      })}
+                    >
+                      <VisibilityOffIcon fontSize="small" />
+                    </IconButton>
+                  </ListItemSecondaryAction>
+                </ListItem>
+              ))}
+            </List>
+          )}
+        </Alert>
+      )}
+
       {/* Header */}
       <Box
         sx={{
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          mb:  3}}
+          mb:  3,
+          p: 2,
+          backgroundColor: theme.palette.background.paper,
+          borderRadius: 1,
+          boxShadow: theme.shadows[1]
+        }}
       >
         <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
           {professionConfig.icon}
@@ -1274,187 +1732,309 @@ export const ComprehensiveShowcaseAdmin: React.FC<ComprehensiveShowcaseAdminProp
           </Box>
         </Box>
 
-        <Box sx={{ display: 'flex', gap:  2 }}>
-          <Button
-            variant="outlined"
-            startIcon={<TemplateIcon />}
-            onClick={() => setTemplatesDialog(true)}
-          >
-            Maler
-          </Button>
-          <Button variant="contained"
-            startIcon={<AddIcon />}
-            onClick={() => setConfigDialog(true)}
-            sx={{
-              background: `linear-gradient(135deg, ${professionConfig.primaryColor} 0%, ${formData.secondaryColor} 100%)`}}
-          >
-            Ny Konfigurasjon
-          </Button>
-        </Box>
+        <Stack direction="row" spacing={1}>
+          <Tooltip title="Bytt til rutenettvisning">
+            <IconButton 
+              size="small"
+              onClick={() => setViewMode('grid')}
+              color={viewMode === 'grid' ? 'primary' : 'default'}
+            >
+              <GridOnIcon />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Bytt til listevisning">
+            <IconButton 
+              size="small"
+              onClick={() => setViewMode('list')}
+              color={viewMode === 'list' ? 'primary' : 'default'}
+            >
+              <ListIcon />
+            </IconButton>
+          </Tooltip>
+          <Divider orientation="vertical" flexItem />
+          <Tooltip title="Velg malerstøtter">
+            <Button
+              variant="outlined"
+              startIcon={<TemplateIcon />}
+              onClick={() => setTemplatesDialog(true)}
+              disabled={templatesLoading}
+            >
+              Maler {templatesLoading && <Badge badgeContent={1} color="info" />}
+            </Button>
+          </Tooltip>
+          <Tooltip title="Opprett ny konfigurasjon">
+            <Button variant="contained"
+              startIcon={<AddIcon />}
+              onClick={() => setConfigDialog(true)}
+              sx={{
+                background: `linear-gradient(135deg, ${professionConfig.primaryColor} 0%, ${formData.secondaryColor} 100%)`}}
+            >
+              Ny Konfigurasjon
+            </Button>
+          </Tooltip>
+        </Stack>
       </Box>
 
       {/* Analytics Summary */}
-      <Grid container spacing={3} sx={{ mb:  4 }}>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={theming.getThemedCardSx()}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
-                <Avatar sx={{ bgcolor: professionConfig.primaryColor }}>
-                  <VisibilityIcon />
-                </Avatar>
-                <Box>
-                  <Typography variant="h6" sx={{ color: theming.colors.primary }}>{analytics.totalViews || 0}</Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    Totale Visninger
-                  </Typography>
-                </Box>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={theming.getThemedCardSx()}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
-                <Avatar sx={{ bgcolor: '#4CAF50'}}>
-                  <StarIcon />
-                </Avatar>
-                <Box>
-                  <Typography variant="h6" sx={{ color: theming.colors.primary }}>{analytics.totalLikes || 0}</Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    Totale Likes
-                  </Typography>
-                </Box>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={theming.getThemedCardSx()}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
-                <Avatar sx={{ bgcolor: '#FF9800'}}>
-                  <ShareIcon />
-                </Avatar>
-                <Box>
-                  <Typography variant="h6" sx={{ color: theming.colors.primary }}>{analytics.totalShares || 0}</Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    Totale Delinger
-                  </Typography>
-                </Box>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={theming.getThemedCardSx()}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
-                <Avatar sx={{ bgcolor: '#9C27B0'}}>
-                  <DownloadIcon />
-                </Avatar>
-                <Box>
-                  <Typography variant="h6" sx={{ color: theming.colors.primary }}>{analytics.totalDownloads || 0}</Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    Totale Nedlastinger
-                  </Typography>
-                </Box>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
-
-      {/* Existing Configurations */}
-      <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-        Eksisterende Konfigurasjoner
-      </Typography>
-
-      <Grid container spacing={3}>
-        {configurations.map((config: ShowcaseConfiguration) => (
-          <Grid item xs={12} sm={6} md={4} key={config.id}>
+      {analyticsLoading ? (
+        <Stack spacing={2} sx={{ mb: 4 }}>
+          {[1,2,3,4].map((i) => (
+            <Box key={i} sx={{ height: 120, backgroundColor: theme.palette.action.hover, borderRadius: 1, animation: 'pulse 1.5s ease-in-out infinite' }} />
+          ))}
+        </Stack>
+      ) : (
+        <Grid container spacing={3} sx={{ mb:  4 }}>
+          <Grid item xs={12} sm={6} md={3}>
             <Card sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
-                <Box
-                  sx={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'flex-start',
-                    mb:  2}}
-                >
-                  <Typography variant="h6" sx={{ color: theming.colors.primary }}>{config.configName}</Typography>
-                  <Chip
-                    label={config.isActive ? 'Aktiv' : 'Inaktiv'}
-                    color={config.isActive ? 'success' : 'default'}
-                    size="small"
-                  />
+                <Box sx={{ display: 'flex', alignItems: 'center', gap:  2, justifyContent: 'space-between' }}>
+                  <Box>
+                    <Typography variant="body2" color="text.secondary">Totale Visninger</Typography>
+                    <Tooltip title="Se visningsstatistikk">
+                      <Typography variant="h6" sx={{ color: theming.colors.primary, cursor: 'pointer' }}>
+                        <Badge badgeContent={analytics.totalViews ? 3 : 0} color="error">
+                          {analytics.totalViews || 0}
+                        </Badge>
+                      </Typography>
+                    </Tooltip>
+                  </Box>
+                  <Avatar sx={{ bgcolor: professionConfig.primaryColor }}>
+                    <VisibilityIcon />
+                  </Avatar>
                 </Box>
-
-                <Typography variant="body2" color="text.secondary" sx={{ mb:  2 }}>
-                  Layout: {layoutOptions.find((l) => l.value === config.layoutType)?.label}
-                </Typography>
-
-                <Typography variant="body2" color="text.secondary" sx={{ mb:  2 }}>
-                  Kolonner: {config.columnsDesktop} (desktop) / {config.columnsMobile} (mobil)
-                </Typography>
-
-                <LinearProgress
-                  variant="determinate"
-                  value={75}
-                  sx={{ mb: 2, height:  6, borderRadius:  3 }}
-                />
-                <Typography variant="caption" color="text.secondary">
-                  Konfigurasjon fullstendighet: 75%
-                </Typography>
               </CardContent>
-
-              <CardActions sx={theming.getThemedCardSx()}>
-                <Button
-                  size="small"
-                  startIcon={<EditIcon />}
-                  onClick={() => handleEditConfig(config)}
-                >
-                  Rediger
-                </Button>
-                <Button size="small" startIcon={<PreviewIcon />} color="secondary">
-                  Forhåndsvis
-                </Button>
-                <IconButton
-                  size="small"
-                  color="error"
-                  onClick={() => handleDeleteConfig(config.id!)}
-                >
-                  <DeleteIcon />
-                </IconButton>
-              </CardActions>
             </Card>
           </Grid>
-        ))}
 
-        {configurations.length === 0 && (
-          <Grid item xs={12}>
-            <Paper sx={{ p:  4, textAlign: 'center',  ...theming.getThemedCardSx() }}>
-              <Typography variant="h6" color="text.secondary" sx={{  mb:  2  }}>
-                Ingen konfigurasjoner funnet
-              </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mb:  3 }}>
-                Opprett din første showcase-konfigurasjon for å komme i gang
-              </Typography>
-              <Button variant="contained"
-                startIcon={<AddIcon />}
-                onClick={() => setConfigDialog(true)}
-                sx={{
-                  background: `linear-gradient(135deg, ${professionConfig.primaryColor} 0%, ${formData.secondaryColor} 100%)`}}
-              >
-                Opprett Konfigurasjon
-              </Button>
-            </Paper>
+          <Grid item xs={12} sm={6} md={3}>
+            <Card sx={theming.getThemedCardSx()}>
+              <CardContent sx={theming.getThemedCardSx()}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap:  2, justifyContent: 'space-between' }}>
+                  <Box>
+                    <Typography variant="body2" color="text.secondary">Totale Likes</Typography>
+                    <Tooltip title="Se likestatistikk">
+                      <Typography variant="h6" sx={{ color: theming.colors.primary, cursor: 'pointer' }}>
+                        <Badge badgeContent={analytics.totalLikes ? 1 : 0} color="error">
+                          {analytics.totalLikes || 0}
+                        </Badge>
+                      </Typography>
+                    </Tooltip>
+                  </Box>
+                  <Avatar sx={{ bgcolor: '#4CAF50'}}>
+                    <StarIcon />
+                  </Avatar>
+                </Box>
+              </CardContent>
+            </Card>
           </Grid>
-        )}
-      </Grid>
+
+          <Grid item xs={12} sm={6} md={3}>
+            <Card sx={theming.getThemedCardSx()}>
+              <CardContent sx={theming.getThemedCardSx()}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap:  2, justifyContent: 'space-between' }}>
+                  <Box>
+                    <Typography variant="body2" color="text.secondary">Totale Delinger</Typography>
+                    <Tooltip title="Se delingsstatistikk">
+                      <Typography variant="h6" sx={{ color: theming.colors.primary, cursor: 'pointer' }}>
+                        <Badge badgeContent={analytics.totalShares ? 2 : 0} color="error">
+                          {analytics.totalShares || 0}
+                        </Badge>
+                      </Typography>
+                    </Tooltip>
+                  </Box>
+                  <Avatar sx={{ bgcolor: '#FF9800'}}>
+                    <ShareIcon />
+                  </Avatar>
+                </Box>
+              </CardContent>
+            </Card>
+          </Grid>
+
+          <Grid item xs={12} sm={6} md={3}>
+            <Card sx={theming.getThemedCardSx()}>
+              <CardContent sx={theming.getThemedCardSx()}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap:  2, justifyContent: 'space-between' }}>
+                  <Box>
+                    <Typography variant="body2" color="text.secondary">Totale Nedlastinger</Typography>
+                    <Tooltip title="Se nedlastingsstatistikk">
+                      <Typography variant="h6" sx={{ color: theming.colors.primary, cursor: 'pointer' }}>
+                        <Badge badgeContent={analytics.totalDownloads ? 1 : 0} color="error">
+                          {analytics.totalDownloads || 0}
+                        </Badge>
+                      </Typography>
+                    </Tooltip>
+                  </Box>
+                  <Avatar sx={{ bgcolor: '#9C27B0'}}>
+                    <DownloadIcon />
+                  </Avatar>
+                </Box>
+              </CardContent>
+            </Card>
+          </Grid>
+        </Grid>
+      )}
+
+      {/* Existing Configurations */}
+      <Box sx={{ mb: 3 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary, m: 0 }}>
+            Eksisterende Konfigurasjoner
+          </Typography>
+          {configsLoading && <Typography variant="caption" color="text.secondary">Laster...</Typography>}
+          {!configsLoading && <Chip label={`${configurations.length} konfigurasjoner`} color="primary" variant="outlined" />}
+        </Box>
+      </Box>
+
+      {configsLoading ? (
+        <Grid container spacing={3}>
+          {[1,2,3].map((i) => (
+            <Grid item xs={12} sm={viewMode === 'grid' ? 6 : 12} md={viewMode === 'grid' ? 4 : 12} key={i}>
+              <Box sx={{ height: 200, backgroundColor: theme.palette.action.hover, borderRadius: 1, animation: 'pulse 1.5s ease-in-out infinite' }} />
+            </Grid>
+          ))}
+        </Grid>
+      ) : (
+        <Grid container spacing={3}>
+          {configurations.map((config: ShowcaseConfiguration) => (
+            <Grid 
+              item 
+              xs={12} 
+              sm={viewMode === 'grid' ? 6 : 12} 
+              md={viewMode === 'grid' ? 4 : 12} 
+              key={config.id}
+            >
+              <Accordion 
+                expanded={expandedConfig === config.id}
+                onChange={() => setExpandedConfig(expandedConfig === config.id ? null : config.id!)}
+                sx={{ ...theming.getThemedCardSx() }}
+              >
+                <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, width: '100%' }}>
+                    <Typography variant="h6" sx={{ color: theming.colors.primary, flex: 1 }}>
+                      {config.configName}
+                    </Typography>
+                    <Chip
+                      icon={config.isActive ? <CheckCircleIcon /> : <InfoIcon />}
+                      label={config.isActive ? 'Aktiv' : 'Inaktiv'}
+                      color={config.isActive ? 'success' : 'default'}
+                      size="small"
+                    />
+                  </Box>
+                </AccordionSummary>
+                <AccordionDetails sx={{ ...theming.getThemedCardSx() }}>
+                  <Stack spacing={2}>
+                    <Box>
+                      <Typography variant="body2" color="text.secondary">Layout</Typography>
+                      <Chip 
+                        icon={<GridIcon />}
+                        label={layoutOptions.find((l) => l.value === config.layoutType)?.label}
+                        size="small" 
+                      />
+                    </Box>
+
+                    <Box>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                        Kolonnekonfigurasjon
+                      </Typography>
+                      <Stack direction="row" spacing={1}>
+                        <Chip 
+                          icon={<DesktopIcon />}
+                          label={`${config.columnsDesktop} desktop`}
+                          variant="outlined"
+                          size="small" 
+                        />
+                        <Chip 
+                          icon={<MobileIcon />}
+                          label={`${config.columnsMobile} mobil`}
+                          variant="outlined"
+                          size="small" 
+                        />
+                      </Stack>
+                    </Box>
+
+                    <Box>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>Fullstendighet</Typography>
+                      <LinearProgress
+                        variant="determinate"
+                        value={75}
+                        sx={{ height:  6, borderRadius:  3 }}
+                      />
+                      <Typography variant="caption" color="text.secondary">75% konfigurert</Typography>
+                    </Box>
+
+                    <Divider />
+
+                    <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
+                      <Tooltip title="Rediger denne konfigurasjonen">
+                        <Button
+                          size="small"
+                          startIcon={<EditIcon />}
+                          onClick={() => handleEditConfig(config)}
+                          variant="contained"
+                          color="primary"
+                        >
+                          Rediger
+                        </Button>
+                      </Tooltip>
+                      <Tooltip title="Forhåndsvis konfigurasjonen">
+                        <Button 
+                          size="small" 
+                          startIcon={<PreviewIcon />} 
+                          color="secondary"
+                          variant="outlined"
+                        >
+                          Forhåndsvis
+                        </Button>
+                      </Tooltip>
+                      <Tooltip title="Kopier denne konfigurasjonen">
+                        <IconButton
+                          size="small"
+                          color="primary"
+                        >
+                          <CopyIcon />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Slett denne konfigurasjonen">
+                        <IconButton
+                          size="small"
+                          color="error"
+                          onClick={() => handleDeleteConfig(config.id!)}
+                        >
+                          <DeleteIcon />
+                        </IconButton>
+                      </Tooltip>
+                    </Stack>
+                  </Stack>
+                </AccordionDetails>
+              </Accordion>
+            </Grid>
+          ))}
+
+          {configurations.length === 0 && (
+            <Grid item xs={12}>
+              <Paper sx={{ p:  4, textAlign: 'center',  ...theming.getThemedCardSx() }}>
+                <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2 }}>
+                  <CategoryIcon sx={{ fontSize: 64, color: theme.palette.text.secondary }} />
+                </Box>
+                <Typography variant="h6" color="text.secondary" sx={{  mb:  2  }}>
+                  Ingen konfigurasjoner funnet
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb:  3 }}>
+                  Opprett din første showcase-konfigurasjon for å komme i gang
+                </Typography>
+                <Button variant="contained"
+                  startIcon={<AddIcon />}
+                  onClick={() => setConfigDialog(true)}
+                  sx={{
+                    background: `linear-gradient(135deg, ${professionConfig.primaryColor} 0%, ${formData.secondaryColor} 100%)`}}
+                >
+                  Opprett Konfigurasjon
+                </Button>
+              </Paper>
+            </Grid>
+          )}
+        </Grid>
+      )}
 
       {/* Configuration Dialog */}
       <Dialog
@@ -1538,55 +2118,109 @@ export const ComprehensiveShowcaseAdmin: React.FC<ComprehensiveShowcaseAdminProp
         fullWidth
       >
         <DialogTitle>
-          <Typography variant="h6" sx={{ color: theming.colors.primary }}>Velg Showcase-mal</Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <TemplateIcon />
+            <Typography variant="h6" sx={{ color: theming.colors.primary }}>Velg Showcase-mal</Typography>
+            {templatesLoading && <Badge badgeContent={1} color="info" />}
+          </Box>
         </DialogTitle>
         <DialogContent>
-          <Grid container spacing={3}>
-            {templates.map((template: any) => (
-              <Grid item xs={12} sm={6} key={template.id}>
-                <Card sx={{ cursor: 'pointer', '&:hover': { boxShadow:  4 } ,  ...theming.getThemedCardSx() }}>
-                  {template.previewImageUrl && (
-                    <CardMedia component="img"
-                      height="140"
-                      image={template.previewImageUrl}
-                      alt={template.name} sx={theming.getThemedCardSx()}>
-                  )}
-                  <CardContent sx={theming.getThemedCardSx()}>
-                    <Typography variant="h6" sx={{ color: theming.colors.primary }}>{template.name}</Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      {template.description}
-                    </Typography>
-                    <Box sx={{ display: 'flex', gap: 1, mt: 2 }}>
-                      {template.isPremium && <Chip label="Premium" color="warning" size="small" />}
-                      {template.isPopular && <Chip label="Populær" color="success" size="small" />}
-                    </Box>
-                  </CardContent>
-                  <CardActions sx={theming.getThemedCardSx()}>
-                    <Button
-                      size="small"
-                      onClick={() => applyTemplateMutation.mutate(template.id)}
-                      disabled={applyTemplateMutation.isPending}
-                    >
-                      Bruk Mal
-                    </Button>
-                    <Button size="small" color="secondary">
-                      Forhåndsvis
-                    </Button>
-                  </CardActions>
-                </Card>
-              </Grid>
-            ))}
-          </Grid>
+          {templatesLoading ? (
+            <Stack spacing={2}>
+              {[1,2,3].map((i) => (
+                <Box key={i} sx={{ height: 200, backgroundColor: theme.palette.action.hover, borderRadius: 1, animation: 'pulse 1.5s ease-in-out infinite' }} />
+              ))}
+            </Stack>
+          ) : (
+            <Grid container spacing={3}>
+              {templates.map((template: any) => (
+                <Grid item xs={12} sm={6} key={template.id}>
+                  <Card sx={{ cursor: 'pointer', '&:hover': { boxShadow: 4 }, ...theming.getThemedCardSx() }}>
+                    {template.previewImageUrl && (
+                      <CardMedia
+                        component="img"
+                        height="140"
+                        image={template.previewImageUrl}
+                        alt={template.name}
+                      />
+                    )}
+                    <CardContent sx={theming.getThemedCardSx()}>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', mb: 1 }}>
+                        <Typography variant="h6" sx={{ color: theming.colors.primary }}>{template.name}</Typography>
+                        {template.isPopular && <StarIcon sx={{ color: '#FFD700' }} />}
+                      </Box>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                        {template.description}
+                      </Typography>
+                      <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap' }}>
+                        {template.isPremium && <Chip label="Premium" color="warning" size="small" icon={<LocalOfferIcon />} />}
+                        {template.isPopular && <Chip label="Populær" color="success" size="small" icon={<TrendingUpIcon />} />}
+                      </Box>
+                      <Box sx={{ mb: 2 }}>
+                        <Typography variant="caption" color="text.secondary">Vurdering</Typography>
+                        <Rating value={template.rating || 4} readOnly size="small" sx={{ display: 'block' }} />
+                      </Box>
+                    </CardContent>
+                    <CardActions sx={theming.getThemedCardSx()}>
+                      <Tooltip title="Bruk denne malen">
+                        <Button
+                          size="small"
+                          variant="contained"
+                          onClick={() => applyTemplateMutation.mutate(template.id)}
+                          disabled={applyTemplateMutation.isPending}
+                          startIcon={<ImportIcon />}
+                        >
+                          Bruk Mal
+                        </Button>
+                      </Tooltip>
+                      <Tooltip title="Forhåndsvis malen">
+                        <Button 
+                          size="small" 
+                          color="secondary"
+                          startIcon={<PreviewIcon />}
+                        >
+                          Forhåndsvis
+                        </Button>
+                      </Tooltip>
+                    </CardActions>
+                  </Card>
+                </Grid>
+              ))}
+            </Grid>
+          )}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setTemplatesDialog(false)}>Lukk</Button>
         </DialogActions>
       </Dialog>
 
+      {/* Confirm Delete Config Dialog */}
+      <Dialog open={!!confirmDeleteConfigId} onClose={() => setConfirmDeleteConfigId(null)}>
+        <DialogTitle>Bekreft sletting</DialogTitle>
+        <DialogContent>
+          <Typography>Er du sikker på at du vil slette denne konfigurasjonen? Denne handlingen kan ikke angres.</Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmDeleteConfigId(null)}>Avbryt</Button>
+          <Button onClick={executeDeleteConfig} color="error" variant="contained">Slett</Button>
+        </DialogActions>
+      </Dialog>
+
       {/* Floating Admin Controls */}
       <SpeedDial
         ariaLabel="Showcase Admin Actions"
-        sx={{ position: 'fixed', bottom:  20, right: 20}}
+        sx={{ 
+          position: 'fixed', 
+          bottom: 20, 
+          right: 20,
+          '& .MuiFab-primary': {
+            backgroundColor: professionConfig.primaryColor,
+            '&:hover': {
+              backgroundColor: alpha(professionConfig.primaryColor, 0.8),
+              boxShadow: theme.shadows[8],
+            }
+          }
+        }}
         icon={<SpeedDialIcon />}
       >
         <SpeedDialAction
@@ -1604,8 +2238,29 @@ export const ComprehensiveShowcaseAdmin: React.FC<ComprehensiveShowcaseAdminProp
           tooltipTitle="Forhåndsvisning"
           onClick={() => setPreviewMode(!previewMode)}
         />
-        <SpeedDialAction icon={<AnalyticsIcon />} tooltipTitle="Analytikk" />
+        <SpeedDialAction icon={<InsightsIcon />} tooltipTitle="Analytikk" />
+        <SpeedDialAction icon={<SaveIcon />} tooltipTitle="Lagre alt" />
+        <SpeedDialAction icon={<RestoreIcon />} tooltipTitle="Gjenopprett tidligere" />
+        <SpeedDialAction icon={<DownloadIcon />} tooltipTitle="Last ned" />
+        <SpeedDialAction icon={<ChevronRightIcon />} tooltipTitle="Flere alternativer" />
       </SpeedDial>
+
+      {/* Additional FAB for favorites */}
+      <Fab
+        color="secondary"
+        aria-label="favorites"
+        sx={{
+          position: 'fixed',
+          bottom: 100,
+          right: 20,
+          backgroundColor: alpha(formData.secondaryColor, 0.9),
+          '&:hover': {
+            backgroundColor: alpha(formData.secondaryColor, 0.7),
+          }
+        }}
+      >
+        <StarBorderIcon />
+      </Fab>
     </Box>
   );
 };

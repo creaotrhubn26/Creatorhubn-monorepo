@@ -115,8 +115,9 @@ const VisualEditorDashboardExample: React.FC = (
 };
 
   const handleCreateElement = (type: string) => {
+    const elementType = type as 'rectangle' | 'circle' | 'text' | 'image' | 'button' | 'input';
     const newElement = {
-      type: type as any,
+      type: elementType,
       x: Math.random() * 40,
       y: Math.random() * 30,
       width: 10,

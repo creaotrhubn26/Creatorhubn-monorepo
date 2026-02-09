@@ -115,7 +115,7 @@ export const CodeSyncSystem: React.FC<CodeSyncSystemProps> = ({
   const { analytics, lifecycle, performance, debugging } = useEnhancedMasterIntegration();
   
   // Theming system
-  const theming = useTheming('prototype_tester, ');
+  const theming = useTheming('prototype_tester');
   
   const [syncState, setSyncState] = useState<CodeSyncState>({
     lastSync: null,
@@ -145,7 +145,7 @@ export const CodeSyncSystem: React.FC<CodeSyncSystemProps> = ({
 
   // Component registration
   useEffect(() => {
-    lifecycle.registerComponent('code-sync-system, ', {
+    lifecycle.registerComponent('code-sync-system', {
       capabilities: [
         'code:generate','code:parse','code:sync','code:validate','code:format'
       ],
@@ -242,7 +242,7 @@ export default ${project.name.replace(/\s+/g, ', ')};`;
 
 # ${project.name}
 
-${project.description as any || ', '}
+${project.description || ''}
 
 ${elements}`;
 }, [generateElementCode]);

@@ -70,7 +70,7 @@ const ClientCommunicationDashboard: React.FC<ClientCommunicationDashboardProps> 
   const [selectedView, setSelectedView] = useState(false);
   
   // Theming system
-  const theming = useTheming('prototype_tester, ');
+  const theming = useTheming('prototype_tester');
   const [activeTab, setActiveTab] = useState('overview');
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
   const [segmentDialogOpen, setSegmentDialogOpen] = useState(false);

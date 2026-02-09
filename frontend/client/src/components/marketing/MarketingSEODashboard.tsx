@@ -311,7 +311,7 @@ export default function MarketingSEODashboard() {
             gutterBottom
             sx={{ 
               color: theming.colors.primary,
-              fontWeight: 70,
+              fontWeight: 700,
               mb: 1
             }}
           >

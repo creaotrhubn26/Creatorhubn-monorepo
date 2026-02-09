@@ -289,7 +289,7 @@ export default function PaymentStatusVerification({
               {getStatusIcon(paymentStatus.status)}
             </Avatar>
             <Box sx={{ flex:  1 }}>
-              <Typography variant="h5" sx={{  fontWeight: 7, mb:  1  }}>
+              <Typography variant="h5" sx={{  fontWeight: 700, mb:  1  }}>
                 {getStatusText(paymentStatus.status)}
               </Typography>
               <Typography variant="body2" color="text.secondary">
@@ -386,7 +386,7 @@ export default function PaymentStatusVerification({
                 <Stack direction="row" alignItems="center" spacing={2}>
                   <VerifiedIcon sx={{ color: '#4CAF50'}} />
                   <Box>
-                    <Typography variant="body2" sx={{ fontWeight: 50}}>
+                    <Typography variant="body2" sx={{ fontWeight: 500}}>
                       Medlemskort lagt til i Google Wallet
                     </Typography>
                     <Typography variant="caption" color="text.secondary">

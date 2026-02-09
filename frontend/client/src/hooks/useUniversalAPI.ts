@@ -227,7 +227,7 @@ export function useUniversalAPI(options: UseUniversalAPIOptions = {}) {
 
   const callAnthropic = useCallback(
     async (prompt: string, model: string = 'claude-3-haiku-20240307') => {
-      return call(API_SERVICES.ANTHROPIC'/messages', 'POST', {
+      return call(API_SERVICES.ANTHROPIC, '/messages', 'POST', {
         model,
         max_tokens: 1024,
         messages: [{ role: 'user', content: prompt }],

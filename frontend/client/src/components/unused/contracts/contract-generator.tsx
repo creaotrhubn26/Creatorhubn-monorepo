@@ -142,7 +142,7 @@ export default function ContractGenerator({
   const queryClient = useQueryClient();
   
   // Theming system
-  const theming = useTheming('photographer, ');
+  const theming = useTheming('photographer');
   const professionConfig = getProfessionConfig(profession);
   
   const [activeStep, setActiveStep] = useState(0);

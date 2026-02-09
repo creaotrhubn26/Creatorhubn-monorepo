@@ -163,4 +163,28 @@ export const ENHANCED_NEWSLETTER_TEMPLATES_PART4: NewsletterTemplate[] = [
         </p>
       </td>
     </tr>
+    <!-- CTA -->
+    <tr>
+      <td style="background: #fff; padding: 0 30px 40px; text-align: center;">
+        <a href="{{ctaUrl}}" style="display: inline-block; background: #222; color: #fff; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-weight: bold;">
+          {{ctaPrimary}}
+        </a>
+        <p style="color: #888; font-size: 13px; margin-top: 12px;">{{ctaSecondary}}</p>
+      </td>
+    </tr>
+
+    <!-- Footer -->
+    <tr>
+      <td style="background: #fafafa; padding: 30px; text-align: center; border-top: 1px solid #eee;">
+        <p style="color: #777; font-size: 12px; margin: 0;">{{companyName}} • {{companyAddress}}</p>
+        <p style="color: #999; font-size: 11px; margin-top: 12px;">
+          <a href="{{unsubscribeUrl}}" style="color: #999; text-decoration: none;">Avslutt abonnement</a>
+        </p>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`
+  }
+];
 

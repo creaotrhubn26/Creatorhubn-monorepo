@@ -26,6 +26,7 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
+  DialogContentText,
   DialogActions,
   TextField,
   FormControl,
@@ -140,6 +141,7 @@ export default function GoogleWalletMembershipManager({
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [selectedCard, setSelectedCard] = useState<MembershipCard | null>(null);
   const [loading, setLoading] = useState(false);
+  const [deleteConfirmDialog, setDeleteConfirmDialog] = useState<{ open: boolean; cardId: string | null }>({ open: false, cardId: null });
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -148,7 +150,7 @@ export default function GoogleWalletMembershipManager({
   const user = auth.user;
   
   // Theming system
-  const theming = useTheming('prototype_tester, ');
+  const theming = useTheming('prototype_tester');
 
   // Register component and data flow nodes with MasterIntegrationProvider
   useEffect(() => {
@@ -158,7 +160,7 @@ export default function GoogleWalletMembershipManager({
         category: 'membership'
     });
   } catch (e) {
-      console.log('Component registry not available, ');
+      console.log('Component registry not available');
   }
 
     return () => {
@@ -174,15 +176,15 @@ export default function GoogleWalletMembershipManager({
   useEffect(() => {
     const unsubscribe = communication.onMessage((message: any) => {
       if (message.type === 'project:selected' && message.data) {
-        console.log('🎫 Google Wallet Membership: Project selected, ', message.data);
+        console.log('🎫 Google Wallet Membership: Project selected', message.data);
         // Update membership context based on selected project
     }
       if (message.type === 'client:selected' && message.data) {
-        console.log('🎫 Google Wallet Membership: Client selected, ', message.data);
+        console.log('🎫 Google Wallet Membership: Client selected', message.data);
         // Update membership context based on selected client
     }
       if (message.type === 'data:sync' && message.data.dataKey === 'google-wallet-membership:cards') {
-        console.log('🎫 Google Wallet Membership: Cards synced, ', message.data.data);
+        console.log('🎫 Google Wallet Membership: Cards synced', message.data.data);
     }
   });
     return unsubscribe;
@@ -579,9 +581,7 @@ export default function GoogleWalletMembershipManager({
                         <EditIcon />
                       </IconButton>
                       <IconButton size="small" onClick={() => {
-                        if (window.confirm('Are you sure you want to delete this membership card?')) {
-                          deleteMembershipCardMutation.mutate(card.id);
-                      }
+                        setDeleteConfirmDialog({ open: true, cardId: card.id });
                     }}>
                         <DeleteIcon />
                       </IconButton>
@@ -886,6 +886,36 @@ export default function GoogleWalletMembershipManager({
             sx={theming.getThemedButtonSx()}
           >
             {showCreateDialog ? 'Create Card' : 'Update Card'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog
+        open={deleteConfirmDialog.open}
+        onClose={() => setDeleteConfirmDialog({ open: false, cardId: null })}
+      >
+        <DialogTitle>Confirm Delete</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Are you sure you want to delete this membership card?
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteConfirmDialog({ open: false, cardId: null })}>
+            Cancel
+          </Button>
+          <Button
+            onClick={() => {
+              if (deleteConfirmDialog.cardId) {
+                deleteMembershipCardMutation.mutate(deleteConfirmDialog.cardId);
+              }
+              setDeleteConfirmDialog({ open: false, cardId: null });
+            }}
+            color="error"
+            variant="contained"
+          >
+            Delete
           </Button>
         </DialogActions>
       </Dialog>

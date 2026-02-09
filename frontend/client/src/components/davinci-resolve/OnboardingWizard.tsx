@@ -415,7 +415,7 @@ export default function OnboardingWizard({ open, onComplete, onSkip, userId }: O
       <DialogContent sx={{ p: 4 }}>
         {/* Header */}
         <Box sx={{ mb: 4, textAlign: 'center' }}>
-          <Typography variant="h4" sx={{ fontWeight: 70, mb: 1 }}>
+          <Typography variant="h4" sx={{ fontWeight: 700, mb: 1 }}>
             Welcome to DaVinci Resolve Scripts! 🎬
           </Typography>
           <Typography variant="body1" color="text.secondary">
@@ -512,7 +512,7 @@ export default function OnboardingWizard({ open, onComplete, onSkip, userId }: O
                           })}
                         </Box>
 
-                        <Typography variant="h6" sx={{ fontWeight: 70, mb: 0.5, textAlign: 'center' }}>
+                        <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5, textAlign: 'center' }}>
                           {camera.name}
                         </Typography>
                         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1, textAlign: 'center' }}>
@@ -645,7 +645,7 @@ export default function OnboardingWizard({ open, onComplete, onSkip, userId }: O
                         />
                       )}
                       <CardContent sx={{ p: 0 }}>
-                        <Typography variant="h6" sx={{ fontWeight: 70, mb: 1 }}>
+                        <Typography variant="h6" sx={{ fontWeight: 700, mb: 1 }}>
                           {level.name}
                         </Typography>
                         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -670,7 +670,7 @@ export default function OnboardingWizard({ open, onComplete, onSkip, userId }: O
           {activeStep === 4 && (
             <Box sx={{ textAlign: 'center', py: 4 }}>
               <CheckCircle sx={{ fontSize: 80, color: DAVINCI_COLORS.primary, mb: 3 }} />
-              <Typography variant="h5" sx={{ fontWeight: 70, mb: 2 }}>
+              <Typography variant="h5" sx={{ fontWeight: 700, mb: 2 }}>
                 You're All Set!
               </Typography>
               <Typography variant="body1" color="text.secondary" sx={{ mb: 4 }}>

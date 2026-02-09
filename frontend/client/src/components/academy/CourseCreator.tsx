@@ -495,7 +495,7 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
     });
 
     // Track feature usage
-    features.trackFeatureUsage('course-creation, ','opened', {
+    features.trackFeatureUsage('course-creation', 'opened', {
       timestamp: Date.now(),
       component: 'CourseCreator',
       courseId: courseId,

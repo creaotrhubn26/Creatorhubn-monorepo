@@ -114,7 +114,7 @@ const lightroomTheme = createTheme({
           minHeight: 40,
           padding: '8px 16px',
           fontSize: '13px',
-          fontWeight: 50,
+          fontWeight: 500,
           textTransform: 'none',
           color: '#999999','&:hover': {
             color: '#ffffff',
@@ -129,7 +129,7 @@ const lightroomTheme = createTheme({
         root: {
           textTransform: 'none',
           fontSize: '13px',
-          fontWeight: 50,
+          fontWeight: 500,
           borderRadius: '4px',
           padding: '8px 16px',
         },

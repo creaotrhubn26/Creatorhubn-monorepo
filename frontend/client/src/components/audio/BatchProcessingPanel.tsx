@@ -63,7 +63,8 @@ const BatchProcessingPanel: React.FC<BatchProcessingPanelProps> = ({
 }) => {
   const [jobName, setJobName] = useState('Batch Processing ');
   const [operation, setOperation] = useState<'enhance' | 'restore' | 'mix' | 'normalize'>('enhance');
-  const [settings] = useState<any>({});
+  const [enhancePreset, setEnhancePreset] = useState('auto');
+  const [normalizeTarget, setNormalizeTarget] = useState('-16');
   const [currentJob, setCurrentJob] = useState<BatchJob | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [expandedErrors, setExpandedErrors] = useState(false);
@@ -110,7 +111,10 @@ const BatchProcessingPanel: React.FC<BatchProcessingPanelProps> = ({
           name: jobName,
           files,
           operation,
-          settings
+          settings: {
+            enhancePreset,
+            normalizeTarget
+          }
         })
       });
 
@@ -205,6 +209,32 @@ const BatchProcessingPanel: React.FC<BatchProcessingPanelProps> = ({
                 <strong>{files.length} filer</strong> vil bli behandlet med samme innstillinger.
               </Typography>
             </Alert>
+
+            {operation === 'enhance' && (
+              <FormControl fullWidth sx={{ mb: 2 }}>
+                <InputLabel>Preset</InputLabel>
+                <Select
+                  value={enhancePreset}
+                  onChange={(e) => setEnhancePreset(e.target.value)}
+                  label="Preset"
+                >
+                  <MenuItem value="auto">Auto</MenuItem>
+                  <MenuItem value="podcast">Podcast</MenuItem>
+                  <MenuItem value="music">Music</MenuItem>
+                  <MenuItem value="broadcast">Broadcast</MenuItem>
+                </Select>
+              </FormControl>
+            )}
+
+            {operation === 'normalize' && (
+              <TextField
+                fullWidth
+                label="Target LUFS"
+                value={normalizeTarget}
+                onChange={(e) => setNormalizeTarget(e.target.value)}
+                sx={{ mb: 2 }}
+              />
+            )}
 
             {/* File List */}
             <Box sx={{ maxHeight: 200, overflow: 'auto', border: '1px solid #ddd', borderRadius: 1, p: 1 }}>

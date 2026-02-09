@@ -69,7 +69,7 @@ const AVATAR_COLORS = [
 ];
 
 export default function PersonaBuilder({ persona, onSave, onCancel }: PersonaBuilderProps) {
-  const theming = useTheming('photographer,');
+  const theming = useTheming('photographer');
 
   const [formData, setFormData] = useState<PersonaData>(persona || {
     name: '',
@@ -79,8 +79,8 @@ export default function PersonaBuilder({ persona, onSave, onCancel }: PersonaBui
     family: '',
     income: '',
     bio: '',
-    goals: [', '],
-    frustrations: [', '],
+    goals: [''],
+    frustrations: [''],
     personality: {
       introvert: 50,
       sensing: 50,
@@ -104,7 +104,7 @@ export default function PersonaBuilder({ persona, onSave, onCancel }: PersonaBui
 
   const [newBrand, setNewBrand] = useState('');
 
-  const handleChange = (field: keyof PersonaData, value: any) => {
+  const handleChange = <K extends keyof PersonaData>(field: K, value: PersonaData[K]) => {
     setFormData({ ...formData, [field]: value });
   };
 
@@ -150,7 +150,7 @@ export default function PersonaBuilder({ persona, onSave, onCancel }: PersonaBui
         ...formData,
         preferredBrands: [...formData.preferredBrands, newBrand.trim()],
       });
-      setNewBrand(', ');
+      setNewBrand('');
     }
   };
 
@@ -232,7 +232,7 @@ export default function PersonaBuilder({ persona, onSave, onCancel }: PersonaBui
                       tabIndex={formData.avatarColor === color ? 0 : -1}
                       onClick={() => handleChange('avatarColor', color)}
                       onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ', ') {
+                        if (e.key === 'Enter' || e.key === ' ') {
                           e.preventDefault();
                           handleChange('avatarColor', color);
                         }

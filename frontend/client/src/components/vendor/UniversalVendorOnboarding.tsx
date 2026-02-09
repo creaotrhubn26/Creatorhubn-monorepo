@@ -1,17 +1,12 @@
 import { useTheming } from '../../utils/theming-helper';
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useAuth } from '@/hooks/useAuth';
 import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
 import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
 import { getProfessionIcon } from '@/utils/profession-icons';
 import {
   Box,
   Typography,
-  Stepper,
-  Step,
-  StepLabel,
-  StepContent,
   Button,
   Paper,
   Card,
@@ -33,13 +28,9 @@ import {
 import {
   CheckCircle,
   Store,
-  Business,
   Palette,
-  Upload,
   Settings,
   Launch,
-  Info,
-  Lightbulb,
   Category,
   Payment,
   Security,
@@ -47,13 +38,11 @@ import {
   Analytics,
   Image,
   VerifiedUser,
-  Warning,
   AccountBalance,
   Receipt,
   Sync,
   AutoAwesome
 } from '@mui/icons-material';
-import { motion } from 'framer-motion';
 import { apiRequest } from '@/lib/queryClient';
 import { getVendorTypeConfig, getProductCategories } from '@shared/vendor-type-registry';
 import PlanFeaturePreview from '../subscription/PlanFeaturePreview';
@@ -64,21 +53,117 @@ interface UniversalVendorOnboardingProps {
   userId: string;
   inviteRequestId?: string; // From landing-mobile invite request
   inviteToken?: string; // Token for fetching invite request data
-  onComplete?: (data: any) => void;
+  onComplete?: (data: VendorOnboardingCompleteResponse) => void;
   // Integration props for unified workflow connectivity
-  onMeetingCreate?: (meeting: any) => void;
-  onProjectUpdate?: (project: any) => void;
-  onWorklogCreate?: (worklog: any) => void;
-  onClientSelect?: (client: any) => void;
-  onClientUpdate?: (client: any) => void;
-  onShowcaseCreate?: (showcase: any) => void;
-  onFileUpload?: (file: any) => void;
-  onFileDownload?: (file: any) => void;
-  selectedProject?: any;
-  onProjectSelect?: (project: any) => void;
-  selectedClient?: any;
-  onSettingsUpdate?: (settings: any) => void;
-  onNotificationCreate?: (notification: any) => void
+  onMeetingCreate?: (meeting: VendorMeeting) => void;
+  onProjectUpdate?: (project: VendorProjectUpdate) => void;
+  onWorklogCreate?: (worklog: VendorWorklog) => void;
+  onClientSelect?: (client: VendorClientSelection | null) => void;
+  onClientUpdate?: (client: VendorClientUpdate) => void;
+  onShowcaseCreate?: (showcase: VendorShowcase) => void;
+  onFileUpload?: (file: VendorFileEvent) => void;
+  onFileDownload?: (file: VendorFileEvent) => void;
+  selectedProject?: VendorProjectSelection | null;
+  onProjectSelect?: (project: VendorProjectSelection | null) => void;
+  selectedClient?: VendorClientSelection | null;
+  onSettingsUpdate?: (settings: VendorSettingsUpdate) => void;
+  onNotificationCreate?: (notification: VendorNotification) => void
+}
+
+interface VendorOnboardingCompleteResponse {
+  vendorId?: string;
+  status?: string;
+  [key: string]: unknown;
+}
+
+interface VendorMeeting {
+  id: string;
+  title: string;
+  agenda?: string;
+  scheduledFor?: string;
+  vendorType: string;
+}
+
+interface VendorProjectSelection {
+  id: string;
+  name?: string;
+}
+
+interface VendorProjectUpdate {
+  id: string;
+  vendorType: string;
+  status: string;
+  updatedAt: string;
+}
+
+interface VendorWorklog {
+  id: string;
+  title: string;
+  description?: string;
+  createdAt: string;
+}
+
+interface VendorClientSelection {
+  id: string;
+  name?: string;
+  email?: string;
+  phone?: string;
+}
+
+interface VendorClientUpdate {
+  id: string;
+  note?: string;
+  email?: string;
+  phone?: string;
+  updatedAt: string;
+}
+
+interface VendorShowcase {
+  id: string;
+  title: string;
+  description?: string;
+  categories: string[];
+  createdAt: string;
+}
+
+interface VendorFileEvent {
+  id: string;
+  name: string;
+  size?: number;
+  url?: string;
+  vendorType: string;
+  createdAt: string;
+}
+
+interface VendorSettingsUpdate {
+  vendorType: string;
+  paymentMethods?: string;
+  currency?: string;
+  taxId?: string;
+  fikenEnabled?: boolean;
+  shippingRegions?: string;
+  turnaroundTime?: string;
+  updatedAt: string;
+}
+
+interface VendorNotification {
+  id: string;
+  title: string;
+  message: string;
+  severity: 'info' | 'success' | 'warning' | 'error';
+  createdAt: string;
+}
+
+interface OrgValidationResponse {
+  isValid: boolean;
+  companyName?: string;
+  error?: string;
+}
+
+interface LogoUploadResponse {
+  success?: boolean;
+  logoUrl?: string;
+  fileName?: string;
 }
 
 interface CategoryOption {
@@ -90,7 +175,7 @@ interface CategoryOption {
 interface OnboardingStep {
   label: string;
   description: string;
-  icon: any;
+  icon: React.ElementType;
   required: boolean;
   fields?: {
     name: string;
@@ -131,7 +216,7 @@ export default function UniversalVendorOnboarding({
     isValid: boolean;
     companyName?: string;
     error?: string;
-} | null>(null);
+  } | null>(null);
   
   const queryClient = useQueryClient();
   
@@ -153,18 +238,19 @@ export default function UniversalVendorOnboarding({
   const { data: inviteRequest } = useQuery({
     queryKey: ['/api/invites/request', inviteRequestId, inviteToken],
     queryFn: async () => {
-      const response = await apiRequest(`/api/invites/request/${inviteRequestId}?token=${inviteToken}`);
-      return response.json();
+      return apiRequest(`/api/invites/request/${inviteRequestId}?token=${inviteToken}`);
     },
     enabled: !!inviteRequestId && !!inviteToken
   });
+
+  const inviteOrgNumber = inviteRequest?.orgNumber ?? inviteRequest?.organizationNumber;
 
   // Pre-populate form data from invite request
   useEffect(() => {
     if (inviteRequest) {
       setFormData((prev) => ({
         ...prev,
-        organizationNumber: inviteRequest.orgNumber || prev.organizationNumber,
+        organizationNumber: inviteOrgNumber || prev.organizationNumber,
         businessName: inviteRequest.businessName || prev.businessName,
         contactEmail: inviteRequest.contactEmail || prev.contactEmail,
         phone: inviteRequest.contactPhone || prev.phone,
@@ -172,42 +258,40 @@ export default function UniversalVendorOnboarding({
         description: inviteRequest.businessDescription || prev.description,
       }));
       // If org number is provided, auto-validate
-      if (inviteRequest.orgNumber && !orgValidation) {
+      if (inviteOrgNumber && !orgValidation) {
         setOrgValidation({
           isValid: true,
           companyName: inviteRequest.businessName,
         });
       }
     }
-  }, [inviteRequest]);
+  }, [inviteRequest, inviteOrgNumber, orgValidation]);
 
   // Validate organization number mutation
-  const validateOrgMutation = useMutation({
+  const validateOrgMutation = useMutation<OrgValidationResponse, Error, string>({
     mutationFn: async (orgNumber: string) => {
       return apiRequest('/api/vendor-onboarding/validate-org', {
-        headers: {
-          "Content-Type" : "application/json"
-    },
-        method: 'POS',
-        body: JSON.stringify({ 
+        method: 'POST',
+        body: {
           organizationNumber: orgNumber,
           inviteRequestId
-      })
-    });
-  },
+        }
+      });
+    },
     onSuccess: (data) => {
       setOrgValidation(data);
       if (data.isValid && data.companyName) {
         handleFieldChange('businessName', data.companyName);
-    }
-  },
-    onError: (error) => {
+        handleFieldChange('verifyBrreg', true);
+      }
+    },
+    onError: () => {
       setOrgValidation({
         isValid: false,
         error: 'Kunne ikke validere organisasjonsnummer'
+      });
+    }
   });
-  }
-});
 
   // Get vendor-specific onboarding steps
   const getOnboardingSteps = (): OnboardingStep[] => {
@@ -219,7 +303,7 @@ export default function UniversalVendorOnboarding({
         required: true,
         fields: [
           { name: 'organizationNumber', label: 'Organisasjonsnummer', type: 'text', required: true },
-          { name: 'businessName', label: 'Firmanavn (fra Brønnøysund, )', type: 'text', required: true },
+          { name: 'businessName', label: 'Firmanavn (fra Brønnøysundregistrene)', type: 'text', required: true },
           { name: 'verifyBrreg', label: 'Verifiser mot Brønnøysundregistrene', type: 'checkbox', required: true }
         ]
     },
@@ -277,7 +361,7 @@ export default function UniversalVendorOnboarding({
             fields: [
               { name: 'shippingRegions', label: 'Leveringsområder', type: 'text', required: true },
               { name: 'printingPartners', label: 'Print Partnere', type: 'text',},
-              { name: 'turnaroundTime', label: 'Leveringstid (dager, )', type: 'text', required: true }
+              { name: 'turnaroundTime', label: 'Leveringstid (dager)', type: 'text', required: true }
             ]
         }
         );
@@ -350,7 +434,7 @@ export default function UniversalVendorOnboarding({
             required: true,
             fields: [
               { name: 'productCategories', label: 'Produkt Kategorier', type: 'text', required: true },
-              { name: 'warranty', label: 'Garanti (måneder, )', type: 'text', required: true },
+              { name: 'warranty', label: 'Garanti (måneder)', type: 'text', required: true },
               { name: 'shippingOptions', label: 'Frakt Alternativer', type: 'textarea', required: true }
             ]
         }
@@ -414,32 +498,37 @@ export default function UniversalVendorOnboarding({
     return baseSteps;
 };
 
+  if (!vendorConfig) {
+    return (
+      <Alert severity="error">
+        Ukjent vendor type: {vendorType}
+      </Alert>
+    );
+  }
+
   const steps = getOnboardingSteps();
 
+  const createEventId = useCallback((prefix: string) => {
+    if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+      return `${prefix}-${crypto.randomUUID()}`;
+    }
+    return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  }, []);
+
   // Complete onboarding mutation
-  const completeOnboardingMutation = useMutation({
-    mutationFn: async (data: any) => {
+  const completeOnboardingMutation = useMutation<VendorOnboardingCompleteResponse, Error, Record<string, unknown>>({
+    mutationFn: async (data) => {
       return apiRequest('/api/vendor-onboarding/complete', {
-        headers: {
-          "Content-Type" : "application/json"
-    },
-        method: 'POS',
-        body: JSON.stringify({
+        method: 'POST',
+        body: {
           vendorType,
           vendorName,
           userId,
           onboardingData: data
-    })
-    });
-  },
-    onSuccess: (data) => {
-      console.log('Vendor onboarding completed: ', data);
-      queryClient.invalidateQueries({ queryKey: ['/api/vendor-dashboard', ],});
-      if (onComplete) {
-        onComplete(data);
+        }
+      });
     }
-  }
-});
+  });
 
   const handleNext = () => {
     setCompletedSteps(prev => new Set([...prev, activeStep]));
@@ -460,16 +549,143 @@ export default function UniversalVendorOnboarding({
   const isStepComplete = (stepIndex: number): boolean => {
     const step = steps[stepIndex];
     if (!step.fields) return true;
-    
+
+    const hasValue = (value: unknown) => {
+      if (value === null || value === undefined) return false;
+      if (typeof value === 'boolean') return value;
+      if (Array.isArray(value)) return value.length > 0;
+      if (typeof value === 'string') return value.trim().length > 0;
+      return true;
+    };
+
     return step.fields.every(field => {
       if (!field.required) return true;
-      const value = formData[field.name];
-      return value !== undefined && value !== ', ' && value !== false;
-});
-};
+      return hasValue(formData[field.name]);
+    });
+  };
+
+  const handleImportClient = () => {
+    if (!selectedClient) return;
+    if (!formData.contactEmail && selectedClient.email) {
+      handleFieldChange('contactEmail', selectedClient.email);
+    }
+    if (!formData.phone && selectedClient.phone) {
+      handleFieldChange('phone', selectedClient.phone);
+    }
+    if (!formData.businessName && selectedClient.name) {
+      handleFieldChange('businessName', selectedClient.name);
+    }
+    onClientSelect?.(selectedClient);
+  };
+
+  const handleLinkProject = () => {
+    if (!selectedProject) return;
+    handleFieldChange('linkedProjectId', selectedProject.id);
+    onProjectSelect?.(selectedProject);
+  };
+
+  const handleDownloadSummary = () => {
+    const summaryPayload = {
+      vendorType,
+      vendorName,
+      userId,
+      inviteRequestId,
+      onboardingData: formData,
+      completedSteps: Array.from(completedSteps),
+      generatedAt: new Date().toISOString()
+    };
+    const blob = new Blob([JSON.stringify(summaryPayload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const fileName = `vendor-onboarding-${vendorType}-${new Date().toISOString().slice(0, 10)}.json`;
+
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = fileName;
+    anchor.click();
+
+    onFileDownload?.({
+      id: createEventId('download'),
+      name: fileName,
+      size: blob.size,
+      url,
+      vendorType,
+      createdAt: new Date().toISOString()
+    });
+
+    URL.revokeObjectURL(url);
+  };
+
+  const triggerIntegrationUpdates = (payload: Record<string, unknown>) => {
+    const completedAt = new Date().toISOString();
+
+    onSettingsUpdate?.({
+      vendorType,
+      paymentMethods: typeof payload.paymentMethods === 'string' ? payload.paymentMethods : undefined,
+      currency: typeof payload.currency === 'string' ? payload.currency : undefined,
+      taxId: typeof payload.taxId === 'string' ? payload.taxId : undefined,
+      fikenEnabled: Boolean(payload.fikenEnabled),
+      shippingRegions: typeof payload.shippingRegions === 'string' ? payload.shippingRegions : undefined,
+      turnaroundTime: typeof payload.turnaroundTime === 'string' ? payload.turnaroundTime : undefined,
+      updatedAt: completedAt
+    });
+
+    onNotificationCreate?.({
+      id: createEventId('notification'),
+      title: 'Onboarding fullfort',
+      message: `${vendorName} har fullfort vendor-onboarding for ${vendorType}.`,
+      severity: 'success',
+      createdAt: completedAt
+    });
+
+    onWorklogCreate?.({
+      id: createEventId('worklog'),
+      title: 'Vendor onboarding',
+      description: `Fullfort ${completedSteps.size} av ${steps.length} steg for ${vendorName}.`,
+      createdAt: completedAt
+    });
+
+    if (selectedProject) {
+      onProjectUpdate?.({
+        id: selectedProject.id,
+        vendorType,
+        status: 'vendor_onboarding_completed',
+        updatedAt: completedAt
+      });
+    }
+
+    if (selectedClient) {
+      onClientUpdate?.({
+        id: selectedClient.id,
+        note: `Vendor onboarding fullfort for ${vendorName}.`,
+        email: typeof payload.contactEmail === 'string' ? payload.contactEmail : selectedClient.email,
+        phone: typeof payload.phone === 'string' ? payload.phone : selectedClient.phone,
+        updatedAt: completedAt
+      });
+    }
+
+    if (payload.fikenEnabled) {
+      onMeetingCreate?.({
+        id: createEventId('meeting'),
+        title: 'Fiken-integrasjon',
+        agenda: 'Sette opp regnskapsintegrasjon for ny vendor.',
+        scheduledFor: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
+        vendorType
+      });
+    }
+
+    if (Array.isArray(payload.categories) && payload.categories.length > 0) {
+      onShowcaseCreate?.({
+        id: createEventId('showcase'),
+        title: `${vendorName} - Kategorier`,
+        description: 'Utvalgte produktkategorier fra onboarding.',
+        categories: payload.categories,
+        createdAt: completedAt
+      });
+    }
+  };
 
   const handleCompleteOnboarding = async () => {
-    let finalFormData = { ...formData };
+    let finalFormData: Record<string, unknown> = { ...formData };
     
     // Upload logo if present
     if (logoFile) {
@@ -478,46 +694,55 @@ export default function UniversalVendorOnboarding({
         reader.onload = async (e) => {
           const logoBase64 = e.target?.result as string;
           
-          const logoResponse = await apiRequest('/api/vendor-onboarding/upload-logo', {
-            headers: {
-              "Content-Type" : "application/json"
-            },
+          const logoResponse: LogoUploadResponse = await apiRequest('/api/vendor-onboarding/upload-logo', {
             method: 'POST',
-            body: JSON.stringify({
+            body: {
               userId,
               vendorType,
               logoBase64,
               fileName: logoFile.name
-            })
+            }
           });
 
-          if (logoResponse.success) {
+          if (logoResponse.logoUrl) {
             finalFormData.logoUrl = logoResponse.logoUrl;
-            finalFormData.logoFileName = logoResponse.fileName;
+            if (logoResponse.fileName) {
+              finalFormData.logoFileName = logoResponse.fileName;
+            }
           }
 
-          completeOnboardingMutation.mutate(finalFormData);
+          completeOnboardingMutation.mutate(finalFormData, {
+            onSuccess: (data) => {
+              queryClient.invalidateQueries({ queryKey: ['/api/vendor-dashboard'] });
+              onComplete?.(data);
+              triggerIntegrationUpdates(finalFormData);
+            }
+          });
       };
         reader.readAsDataURL(logoFile);
     } catch (error) {
         console.error('Error uploading logo: ', error);
         // Continue with onboarding even if logo upload fails
-        completeOnboardingMutation.mutate(finalFormData);
+        completeOnboardingMutation.mutate(finalFormData, {
+          onSuccess: (data) => {
+            queryClient.invalidateQueries({ queryKey: ['/api/vendor-dashboard'] });
+            onComplete?.(data);
+            triggerIntegrationUpdates(finalFormData);
+          }
+        });
     }
   } else {
-      completeOnboardingMutation.mutate(finalFormData);
+      completeOnboardingMutation.mutate(finalFormData, {
+        onSuccess: (data) => {
+          queryClient.invalidateQueries({ queryKey: ['/api/vendor-dashboard'] });
+          onComplete?.(data);
+          triggerIntegrationUpdates(finalFormData);
+        }
+      });
   }
 };
 
   const progress = (completedSteps.size / steps.length) * 100;
-
-  if (!vendorConfig) {
-    return (
-      <Alert severity="error">
-        Ukjent vendor type: {vendorType}
-      </Alert>
-    );
-}
 
   return (
     <Box sx={{ p: 3 }}>
@@ -556,9 +781,9 @@ export default function UniversalVendorOnboarding({
 
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
               <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                {React.cloneElement(professionIcon as any, {
-                  sx: { color: professionColor, fontSize: 18 }
-                })}
+                {React.isValidElement(professionIcon)
+                  ? React.cloneElement(professionIcon, { sx: { color: professionColor, fontSize: 18 } })
+                  : null}
               </Box>
               <Typography variant="body2" color="text.secondary">
                 {professionDisplayName} • {professionAdapter.adaptDashboardTitle()}
@@ -629,7 +854,8 @@ export default function UniversalVendorOnboarding({
                       cursor: 'pointer',
                       borderRadius: 2,
                       mb: 1,
-                      bgcolor: activeStep === index ? `${vendorConfig.color}10` : 'transparent','&:hover': { bgcolor: `${vendorConfig.color}05` }
+                      bgcolor: activeStep === index ? `${vendorConfig.color}10` : 'transparent',
+                      '&:hover': { bgcolor: `${vendorConfig.color}05` }
                     }}
                     onClick={() => setActiveStep(index)}
                   >
@@ -652,7 +878,7 @@ export default function UniversalVendorOnboarding({
                       primary={step.label}
                       primaryTypographyProps={{
                         variant: 'body2',
-                        fontWeight: ctiveStep === index ? 600 : 400,
+                        fontWeight: activeStep === index ? 600 : 400,
                         color: activeStep === index ? vendorConfig.color : 'text.primary'
                       }}
                     />
@@ -680,6 +906,29 @@ export default function UniversalVendorOnboarding({
                   </Typography>
                 </Box>
               </Box>
+
+              {(selectedClient || selectedProject) && (
+                <Box sx={{ display: 'flex', gap: 2, mb: 3, flexWrap: 'wrap' }}>
+                  {selectedClient && (
+                    <Button
+                      variant="outlined"
+                      onClick={handleImportClient}
+                      sx={{ borderColor: vendorConfig.color, color: vendorConfig.color }}
+                    >
+                      Importer kontakt fra valgt klient
+                    </Button>
+                  )}
+                  {selectedProject && (
+                    <Button
+                      variant="outlined"
+                      onClick={handleLinkProject}
+                      sx={{ borderColor: vendorConfig.color, color: vendorConfig.color }}
+                    >
+                      Knytt til aktivt prosjekt
+                    </Button>
+                  )}
+                </Box>
+              )}
 
               {steps[activeStep]?.required && (
                 <Chip
@@ -815,7 +1064,7 @@ export default function UniversalVendorOnboarding({
                                     variant="h5"
                                     sx={{
                                       ml: 1,
-                                      fontWeight: 50,
+                                      fontWeight: 500,
                                       color: '#5239BA',
                                       fontFamily: 'system-ui, -apple-system, sans-serif',
                                       letterSpacing: '-0.02em'
@@ -928,6 +1177,13 @@ export default function UniversalVendorOnboarding({
                                 if (file) {
                                   setLogoFile(file);
                                   handleFieldChange(field.name, file.name);
+                                  onFileUpload?.({
+                                    id: createEventId('upload'),
+                                    name: file.name,
+                                    size: file.size,
+                                    vendorType,
+                                    createdAt: new Date().toISOString()
+                                  });
                               }
                             }}
                             />
@@ -968,7 +1224,7 @@ export default function UniversalVendorOnboarding({
                               multiline={field.type === 'textarea'}
                               rows={field.type === 'textarea' ? 4 : 1}
                               required={field.required}
-                              value={formData[field.name] || ', '}
+                              value={formData[field.name] ?? ''}
                               onChange={(e) => {
                                 handleFieldChange(field.name, e.target.value);
                                 // Auto-validate org number
@@ -1012,11 +1268,11 @@ export default function UniversalVendorOnboarding({
                             {/* Invite request matching */}
                             {field.name === 'organizationNumber' && inviteRequest && (
                               <Alert
-                                severity={formData[field.name] === inviteRequest.organizationNumber ? 'success' : 'warning'}
+                                severity={formData[field.name] === inviteOrgNumber ? 'success' : 'warning'}
                                 sx={{ mt: 1, fontSize: '0.8rem' }}
                               >
-                                Sammenligner med invite request: {inviteRequest.organizationNumber}
-                                {formData[field.name] === inviteRequest.organizationNumber ? ' (Match)' : ' (Avvik)'}
+                                Sammenligner med invite request: {inviteOrgNumber}
+                                {formData[field.name] === inviteOrgNumber ? ' (Match)' : ' (Avvik)'}
                               </Alert>
                             )}
                           </Box>
@@ -1034,6 +1290,14 @@ export default function UniversalVendorOnboarding({
                   onClick={handleBack}
                 >
                   Tilbake
+                </Button>
+
+                <Button
+                  variant="outlined"
+                  onClick={handleDownloadSummary}
+                  sx={{ borderColor: vendorConfig.color, color: vendorConfig.color }}
+                >
+                  Last ned sammendrag
                 </Button>
                 
                 {activeStep === steps.length - 1 ? (

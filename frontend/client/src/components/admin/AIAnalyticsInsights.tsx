@@ -165,7 +165,7 @@ export default function AIAnalyticsInsights({
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           <AutoAwesome sx={{ color: '#ff6b35', fontSize: 32 }} />
           <Box>
-            <Typography variant="h5" sx={{ fontWeight: 70, color: '#ffffff' }}>
+            <Typography variant="h5" sx={{ fontWeight: 700, color: '#ffffff' }}>
               AI Analytics Insights
             </Typography>
             <Typography variant="body2" sx={{ color: '#ffa726' }}>

@@ -594,7 +594,7 @@ export default function UniversalOnboarding({ isOpen: open = true, onClose = () 
 });
 
     // Track feature usage
-    features.trackFeatureUsage('universal-onboarding, ','opened', {
+    features.trackFeatureUsage('universal-onboarding', 'opened', {
       timestamp: Date.now(),
       component: 'UniversalOnboarding',
       profession: profession,
@@ -621,13 +621,13 @@ export default function UniversalOnboarding({ isOpen: open = true, onClose = () 
 });
 
     // Listen for onboarding events
-    const unsubscribeProfessionChange = communication.onMessageType('onboarding: profession-change', (data: any) => {
+    const unsubscribeProfessionChange = communication.onMessageType('onboarding:profession-change', (data: any) => {
       if (data.profession) {
         handleProfessionSelect(data.profession);
 }
 });
 
-    const unsubscribeEquipmentAdd = communication.onMessageType('onboarding: equipment-add', (data: any) => {
+    const unsubscribeEquipmentAdd = communication.onMessageType('onboarding:equipment-add', (data: any) => {
       if (data.equipment && data.type) {
         switch (data.type) {
           case 'camera':

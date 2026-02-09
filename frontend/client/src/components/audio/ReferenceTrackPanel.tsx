@@ -187,6 +187,15 @@ const ReferenceTrackPanel: React.FC<ReferenceTrackPanelProps> = ({
     }
   }, [levelMatch, referenceUrl]);
 
+  useEffect(() => {
+    if (mixAudioRef.current) {
+      mixAudioRef.current.volume = mixVolume / 100;
+    }
+    if (refAudioRef.current) {
+      refAudioRef.current.volume = refVolume / 100;
+    }
+  }, [mixVolume, refVolume]);
+
   const getMetricColor = (value: number) => {
     if (value >= 0.8) return 'success';
     if (value >= 0.6) return 'warning';

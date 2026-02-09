@@ -521,7 +521,7 @@ export const PublishingWorkflow: React.FC<PublishingWorkflowProps> = ({
               primary={`v${version.version}`}
               secondary={
                 <Box>
-                  <Typography variant="body2">{version.description as any}</Typography>
+                  <Typography variant="body2">{version.description}</Typography>
                   <Box sx={{ display: 'flex', gap: 1, mt: 0.5}}>
                     <Chip size="small" label={version.type} />
                     <Chip size="small" label={version.status} color={getStatusColor(version.status)} />
@@ -615,7 +615,7 @@ export const PublishingWorkflow: React.FC<PublishingWorkflowProps> = ({
               <StepLabel>
                 <Typography variant="subtitle2">{step.label}</Typography>
                 <Typography variant="caption" color="text.secondary">
-                  {step.description as any}
+                  {step.description}
                 </Typography>
               </StepLabel>
               <StepContent>

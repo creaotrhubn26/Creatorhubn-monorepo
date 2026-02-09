@@ -1,9 +1,6 @@
 import { useTheming } from '../../../utils/theming-helper';
-import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
-import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
-import getProfessionIcon from '@/utils/profession-icons';
-import { useDynamicProfessions } from '../hooks/useDynamicProfessions';
-import React, { useState, useEffect } from 'react';
+import { useAuth } from '@/hooks/useAuth';
+import React, { useMemo, useState } from 'react';
 import {
   Box,
   Card,
@@ -37,7 +34,6 @@ import {
   AccordionSummary,
   AccordionDetails,
   Badge,
-  Tooltip,
   CircularProgress,
   Switch,
   FormControlLabel,
@@ -48,64 +44,32 @@ import {
   TableHead,
   TableRow,
   Avatar,
-  Stepper,
-  Step,
-  StepLabel,
-  StepContent,
-  Calendar,
-  DatePicker,
   InputAdornment,
 } from '@mui/material';
 import {
   Build,
+  CameraAlt,
   Schedule,
   Notifications,
   Security,
-  Warning,
   CheckCircle,
-  Error,
-  Info,
   ExpandMore,
-  Add,
-  Edit,
-  Delete,
-  Refresh,
-  CalendarTodayToday,
-  Assignment,
+  CalendarToday,
   MonetizationOn,
-  Timeline,
   TrendingUp,
   Assessment,
-  CameraAltAlt,
-  Videocamcam,
-  MusicNoteNote,
-  DirectionsBusiness,
+  MusicNote,
   Memory,
-  Storage,
-  BatteryUnknownChargingFull,
   Lens,
-  Tune,
-  CleaningServices,
-  Engineering,
   AutoMode,
-  NotificationImportant,
-  EventNote,
-  Today,
-  DateRange,
   Alarm,
-  Star,
-  PriorityHigh,
-  TaskAlt,
-  PersonPushPin,
-  Phone,
-  Email,
-  LocationOn,
+  NotificationImportant,
   Receipt,
   Lightbulb,
-  SdDirectionsCard,
+  SdCard,
   CameraStand,
-  BoxarScale,
-  FlashOnOn,
+  LinearScale,
+  FlashOn,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
@@ -113,7 +77,7 @@ import { apiRequest } from '@/lib/queryClient';
 interface EquipmentMaintenanceSchedulerProps {
   profession?: 'photographer' | 'videographer' | 'musicproducer' | 'vendor';
   mode?: 'standalone' | 'integrated';
-  onMaintenanceScheduled?: (maintenanceData: any) => void
+  onMaintenanceScheduled?: (maintenanceData: MaintenanceTask[]) => void;
 }
 
 interface Equipment {
@@ -147,7 +111,7 @@ interface Equipment {
   replacementCost: number;
   criticalToOperation: boolean;
   autoSchedule: boolean;
-  maintenanceNotes: string
+  maintenanceNotes: string;
 }
 
 interface MaintenanceTask {
@@ -171,290 +135,306 @@ interface MaintenanceTask {
   partsRequired: string[];
   safetyRequirements: string[];
   reminderSent: boolean;
-  automatedBooking: boolean
+  automatedBooking: boolean;
 }
 
-interface ServiceProvider {
+interface EquipmentApi {
   id: string;
   name: string;
-  specialties: string[];
-  contactPerson: string;
-  phone: string;
-  email: string;
-  address: string;
-  rating: number;
-  responseTime: number; // hours
-  averageCost: number;
-  certified: boolean;
-  preferredPartner: boolean;
-  availableSlots: Date[]
+  brand: string;
+  model: string;
+  serialNumber?: string | null;
+  type: Equipment['type'];
+  purchaseDate?: string | null;
+  warrantyExpiry?: string | null;
+  lastService?: string | null;
+  nextService?: string | null;
+  serviceInterval?: number | null;
+  estimatedLifespan?: number | null;
+  currentAge?: number | null;
+  condition?: Equipment['condition'] | null;
+  usageHours?: number | null;
+  maintenanceCost?: number | null;
+  replacementCost?: number | null;
+  criticalToOperation?: boolean | null;
+  autoSchedule?: boolean | null;
+  maintenanceNotes?: string | null;
 }
 
-interface WarrantyInfo {
+interface MaintenanceTaskApi {
+  id: string;
   equipmentId: string;
-  warrantyType: 'manufacturer' | 'extended' | 'service_plan';
-  provider: string;
-  startDate: Date;
-  endDate: Date;
-  coverage: string[];
-  claimHistory: any[];
-  remainingClaims: number;
-  renewalOption: boolean;
-  renewalCost: number
+  equipmentName: string;
+  taskType: MaintenanceTask['taskType'];
+  title: string;
+  description: string;
+  priority: MaintenanceTask['priority'];
+  scheduledDate: string;
+  estimatedDuration: number;
+  estimatedCost: number;
+  assignedTechnician: string;
+  technicianContact: string;
+  status: MaintenanceTask['status'];
+  completedDate?: string | null;
+  actualCost?: number | null;
+  actualDuration?: number | null;
+  notes: string;
+  partsRequired: string[];
+  safetyRequirements: string[];
+  reminderSent: boolean;
+  automatedBooking: boolean;
 }
-
-const MAINTENANCE_SCHEDULES = {
-  photographer: {
-    camera: {
-      interval: 12,
-      criticalTasks: ['sensor cleaning','shutter count check','calibration'],
-  },
-    lens: {
-      interval: 18,
-      criticalTasks: ['optical cleaning','focus calibration','aperture check'],
-  },
-    accessory: {
-      interval: 6,
-      criticalTasks: ['battery replacement','cleaning','firmware update'],
-  },
-    computer: {
-      interval: 3,
-      criticalTasks: ['thermal cleaning','drive health','backup verification'],
-  },
-},
-  videographer: {
-    camera: {
-      interval: 6,
-      criticalTasks: ['sensor cleaning','stabilization check','recording test'],
-  },
-    lens: {
-      interval: 12,
-      criticalTasks: ['optical cleaning','zoom mechanism','focus accuracy'],
-  },
-    audio: {
-      interval: 3,
-      criticalTasks: ['microphone calibration','cable inspection','noise floor test'],
-  },
-    computer: {
-      interval: 2,
-      criticalTasks: ['thermal management','storage optimization','render testing'],
-  },
-},
-  musicproducer: {
-    audio: {
-      interval: 3,
-      criticalTasks: ['frequency response','noise analysis','connection integrity'],
-  },
-    computer: {
-      interval: 2,
-      criticalTasks: ['latency testing','thermal cleaning','driver updates'],
-  },
-    accessory: {
-      interval: 6,
-      criticalTasks: ['cable testing','controller calibration','power supply check'],
-  },
-},
-  vendor: {
-    computer: {
-      interval: 3,
-      criticalTasks: ['inventory system check','backup verification','security update'],
-  },
-    accessory: {
-      interval: 12,
-      criticalTasks: ['POS system maintenance','scanner calibration','network check'],
-  },
-},
-};
 
 export default function EquipmentMaintenanceScheduler({
-  profession = 'photographer,',
-  mode = 'standalone',
+  profession = 'photographer',
   onMaintenanceScheduled,
 }: EquipmentMaintenanceSchedulerProps) {
+  const { user } = useAuth();
+  const userId = user?.id ?? null;
   const [activeTab, setActiveTab] = useState(0);
-  const [equipment, setEquipment] = useState<Equipment[]>([]);
-  const [maintenanceTasks, setMaintenanceTasks] = useState<MaintenanceTask[]>([]);
-  const [serviceProviders, setServiceProviders] = useState<ServiceProvider[]>([]);
-  const [warrantyInfo, setWarrantyInfo] = useState<WarrantyInfo[]>([]);
   const [selectedEquipment, setSelectedEquipment] = useState<Equipment | null>(null);
   const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false);
   const [newTask, setNewTask] = useState<Partial<MaintenanceTask>>({
     taskType: 'cleaning',
     priority: 'medium',
     scheduledDate: new Date(),
-    estimatedDuration:  1,
-    estimatedCost:  0,
+    estimatedDuration: 1,
+    estimatedCost: 0,
     assignedTechnician: '',
     notes: '',
-    partsRequired:  [],
-    safetyRequirements:  [],
+    partsRequired: [],
+    safetyRequirements: [],
     automatedBooking: false,
-});
+  });
   const [isScheduling, setIsScheduling] = useState(false);
   const [autoSchedulingEnabled, setAutoSchedulingEnabled] = useState(true);
   const queryClient = useQueryClient();
   
   // Theming system
-  const theming = useTheming('photographer,');
+  const theming = useTheming(profession);
 
   const professionColors = {
     photographer: '#ff8c00',
     videographer: '#e74c30',
     musicproducer: '#9b59b0',
-    vendor: '#27ae60' };
+    vendor: '#27ae60',
+  };
 
-  const color = professionColors[profession];
+  const color = professionColors[profession] ?? '#ff8c00';
 
   // Equipment and maintenance queries
-  const { data: equipmentData, isLoading: isLoadingEquipment } = useQuery({
-    queryKey: ['/api/maintenance/equipment', profession],
+  const { data: equipmentData = [], isLoading: isLoadingEquipment } = useQuery<
+    EquipmentApi[]
+  >({
+    queryKey: ['/api/maintenance/equipment', profession, userId],
+    queryFn: async () =>
+      (await apiRequest(
+        `/api/maintenance/equipment?profession=${encodeURIComponent(
+          profession
+        )}&userId=${encodeURIComponent(userId ?? '')}`
+      )) as EquipmentApi[],
     staleTime: 1000 * 60 * 10, // 10 minutes
-});
+    enabled: Boolean(userId),
+  });
 
-  const { data: maintenanceData, isLoading: isLoadingMaintenance } = useQuery({
-    queryKey: ['/api/maintenance/tasks', profession],
-    staleTime: 1000 * 60 *,  5// 5 minutes
-});
+  const { data: maintenanceData = [], isLoading: isLoadingMaintenance } = useQuery<
+    MaintenanceTaskApi[]
+  >({
+    queryKey: ['/api/maintenance/tasks', profession, userId],
+    queryFn: async () =>
+      (await apiRequest(
+        `/api/maintenance/tasks?profession=${encodeURIComponent(
+          profession
+        )}&userId=${encodeURIComponent(userId ?? '')}`
+      )) as MaintenanceTaskApi[],
+    staleTime: 1000 * 60 * 5, // 5 minutes
+    enabled: Boolean(userId),
+  });
 
-  const { data: providersData, isLoading: isLoadingProviders } = useQuery({
-    queryKey: ['/api/maintenance/providers', profession],
-    staleTime: 1000 * 60 * 15, // 15 minutes
-});
+  const equipment = useMemo<Equipment[]>(() => {
+    return equipmentData.map((item) => {
+      const purchaseDate = item.purchaseDate ? new Date(item.purchaseDate) : new Date();
+      const warrantyExpiry = item.warrantyExpiry
+        ? new Date(item.warrantyExpiry)
+        : new Date(purchaseDate.getTime() + 1000 * 60 * 60 * 24 * 365 * 2);
+      const lastService = item.lastService ? new Date(item.lastService) : null;
+      const nextService = item.nextService
+        ? new Date(item.nextService)
+        : new Date();
+      const estimatedLifespan = item.estimatedLifespan ?? 7;
+      const currentAge = item.currentAge ??
+        Math.max(0, (Date.now() - purchaseDate.getTime()) / (1000 * 60 * 60 * 24 * 365));
 
-  const conditionColors = {
+      return {
+        id: item.id,
+        name: item.name,
+        brand: item.brand,
+        model: item.model,
+        serialNumber: item.serialNumber || '',
+        type: item.type,
+        purchaseDate,
+        warrantyExpiry,
+        lastService,
+        nextService,
+        serviceInterval: item.serviceInterval ?? 12,
+        estimatedLifespan,
+        currentAge,
+        condition: item.condition ?? 'good',
+        usageHours: item.usageHours ?? 0,
+        maintenanceCost: item.maintenanceCost ?? 0,
+        replacementCost: item.replacementCost ?? 0,
+        criticalToOperation: Boolean(item.criticalToOperation),
+        autoSchedule: Boolean(item.autoSchedule),
+        maintenanceNotes: item.maintenanceNotes ?? '',
+      };
+    });
+  }, [equipmentData]);
+
+  const mapMaintenanceTask = (task: MaintenanceTaskApi): MaintenanceTask => ({
+    id: task.id,
+    equipmentId: task.equipmentId,
+    equipmentName: task.equipmentName,
+    taskType: task.taskType,
+    title: task.title,
+    description: task.description,
+    priority: task.priority,
+    scheduledDate: new Date(task.scheduledDate),
+    estimatedDuration: task.estimatedDuration,
+    estimatedCost: task.estimatedCost,
+    assignedTechnician: task.assignedTechnician,
+    technicianContact: task.technicianContact,
+    status: task.status,
+    completedDate: task.completedDate ? new Date(task.completedDate) : undefined,
+    actualCost: task.actualCost ?? undefined,
+    actualDuration: task.actualDuration ?? undefined,
+    notes: task.notes,
+    partsRequired: task.partsRequired,
+    safetyRequirements: task.safetyRequirements,
+    reminderSent: task.reminderSent,
+    automatedBooking: task.automatedBooking,
+  });
+
+  const maintenanceTasks = useMemo<MaintenanceTask[]>(() => {
+    return maintenanceData.map(mapMaintenanceTask);
+  }, [maintenanceData]);
+
+  type ConditionColor = 'success' | 'info' | 'warning' | 'error';
+
+  const conditionColors: Record<Equipment['condition'], ConditionColor> = {
     excellent: 'success',
     good: 'info',
     fair: 'warning',
     poor: 'warning',
-    critical: 'error' };
+    critical: 'error',
+  };
 
-  const priorityConfig = {
+  const priorityConfig: Record<MaintenanceTask['priority'], { color: ConditionColor; urgency: string }> = {
     low: { color: 'success', urgency: 'Lav prioritet' },
     medium: { color: 'info', urgency: 'Medium prioritet' },
     high: { color: 'warning', urgency: 'Høy prioritet' },
     critical: { color: 'error', urgency: 'Kritisk prioritet' },
-};
+  };
 
-  const calculateMaintenanceScore = (equipment: Equipment): number => {
-    const ageScore = Math.max, (100 - (equipment.currentAge / equipment.estimatedLifespan) * 100);
+  const autoScheduleMutation = useMutation<MaintenanceTaskApi[], Error, void>({
+    mutationFn: async () =>
+      apiRequest('/api/maintenance/auto-schedule', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, profession }),
+      }),
+    onSuccess: (tasks: MaintenanceTaskApi[]) => {
+      queryClient.invalidateQueries({
+        queryKey: ['/api/maintenance/tasks', profession, userId],
+      });
+      if (onMaintenanceScheduled) {
+        onMaintenanceScheduled(tasks.map(mapMaintenanceTask));
+      }
+    },
+  });
+
+  const scheduleTaskMutation = useMutation<MaintenanceTaskApi, Error, Record<string, unknown>>({
+    mutationFn: async (payload) =>
+      apiRequest('/api/maintenance/tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }),
+    onSuccess: (task: MaintenanceTaskApi) => {
+      queryClient.invalidateQueries({
+        queryKey: ['/api/maintenance/tasks', profession, userId],
+      });
+      if (onMaintenanceScheduled) {
+        onMaintenanceScheduled([mapMaintenanceTask(task)]);
+      }
+    },
+  });
+
+  const calculateMaintenanceScore = (item: Equipment): number => {
+    const ageScore = Math.max(
+      0,
+      100 - (item.currentAge / item.estimatedLifespan) * 100
+    );
     const conditionScore = {
-      excellent: 10,
-      good:  80,
-      fair:  60,
-      poor:  40,
-      critical:  20,
-  }[equipment.condition];
+      excellent: 100,
+      good: 80,
+      fair: 60,
+      poor: 40,
+      critical: 20,
+    }[item.condition];
 
-    const daysSinceService = equipment.lastService
-      ? Math.floor((Date.now() - equipment.lastService.getTime()) / (1000 * 60 * 60 * 24))
+    const daysSinceService = item.lastService
+      ? Math.floor((Date.now() - item.lastService.getTime()) / (1000 * 60 * 60 * 24))
       : 365;
     const serviceScore = Math.max(
       0,
-      100 - (daysSinceService / (equipment.serviceInterval * 30)) * 100,
+      100 - (daysSinceService / (item.serviceInterval * 30)) * 100
     );
 
     return Math.round((ageScore + conditionScore + serviceScore) / 3);
-};
+  };
 
   const generateMaintenanceSchedule = async () => {
     setIsScheduling(true);
     try {
-      const schedule = MAINTENANCE_SCHEDULES[profession];
-      const generatedTasks: MaintenanceTask[] = [];
-
-      equipment.forEach((item) => {
-        const scheduleConfig = schedule[item.type as keyof typeof schedule];
-        if (!scheduleConfig) return;
-
-        const nextServiceDate = new Date();
-        nextServiceDate.setMonth(nextServiceDate.getMonth() + scheduleConfig.interval);
-
-        const maintenanceScore = calculateMaintenanceScore(item);
-        const priority =
-          maintenanceScore < 40
-            ? 'critical'
-            : maintenanceScore < 60
-              ? 'high'
-              : maintenanceScore < 80
-                ? 'medium'
-                : 'low';
-
-        scheduleConfig.criticalTasks.forEach((taskName) => {
-          const task: MaintenanceTask = {
-            id: `task-${Date.now()}-${Math.random()}`,
-            equipmentId: item.d,
-            equipmentName: `${item.brand} ${item.model}`,
-            taskType: taskName.includes('clean')
-              ? 'cleaning'
-              : taskName.includes('calibrat')
-                ? 'calibration'
-                : 'inspection',
-            title: `${taskName} - ${item.name}`,
-            description: `Planlagt ${taskName.toLowerCase()} for ${item.brand} ${item.model}`,
-            priority: priority as any,
-            scheduledDate: nextServiceDate,
-            estimatedDuration: taskName.includes('cleaning')
-              ? 0.5
-              : taskName.includes('calibration')
-                ? 2 : 1,
-            estimatedCost: taskName.includes('cleaning')
-              ? 300
-              : taskName.includes('calibration')
-                ? 800
-                : 50,
-            assignedTechnician: ', ',
-            technicianContact: ', ',
-            status: 'scheduled',
-            notes: `Automatisk generert vedlikeholdsoppgave basert på utstyrets alder og tilstand`,
-            partsRequired:  [],
-            safetyRequirements:  [],
-            reminderSent: false,
-            automatedBooking: autoSchedulingEnabled,
-        };
-
-          generatedTasks.push(task);
-      });
-    });
-
-      setMaintenanceTasks((prev) => [...generatedTasks, ...prev]);
-
-      if (onMaintenanceScheduled) {
-        onMaintenanceScheduled(generatedTasks);
-    }
-  } catch (error) {
+      if (!userId) {
+        throw new Error('Missing user ID for auto-scheduling');
+      }
+      await autoScheduleMutation.mutateAsync();
+    } catch (error) {
       console.error('Error generating maintenance schedule: ', error);
-  } finally {
+    } finally {
       setIsScheduling(false);
-  }
-};
+    }
+  };
 
   const scheduleManualMaintenance = async () => {
     if (!selectedEquipment || !newTask.title) return;
 
     setIsScheduling(true);
     try {
-      const task: MaintenanceTask = {
-        id: `manual-task-${Date.now()}`,
-        equipmentId: selectedEquipment.d,
-        equipmentName: `${selectedEquipment.brand} ${selectedEquipment.model}`,
-        taskType: newTask.taskType!,
-        title: newTask.title!,
-        description: newTask.description || newTask.title!,
-        priority: newTask.priority!,
-        scheduledDate: newTask.scheduledDate!,
-        estimatedDuration: newTask.estimatedDuration!,
-        estimatedCost: newTask.estimatedCost!,
-        assignedTechnician: newTask.assignedTechnician!,
-        technicianContact: newTask.technicianContact ||', ',
-        status: 'scheduled',
-        notes: newTask.notes!,
-        partsRequired: newTask.partsRequired!,
-        safetyRequirements: newTask.safetyRequirements!,
-        reminderSent: false,
-        automatedBooking: newTask.automatedBooking!,
-    };
+      if (!userId) {
+        throw new Error('Missing user ID for scheduling');
+      }
+      const payload = {
+        userId,
+        profession,
+        equipmentId: selectedEquipment.id,
+        taskType: newTask.taskType,
+        title: newTask.title,
+        description: newTask.description || newTask.title,
+        priority: newTask.priority,
+        scheduledDate: (newTask.scheduledDate ?? new Date()).toISOString(),
+        estimatedDuration: newTask.estimatedDuration,
+        estimatedCost: newTask.estimatedCost,
+        assignedTechnician: newTask.assignedTechnician,
+        technicianContact: newTask.technicianContact,
+        notes: newTask.notes,
+        partsRequired: newTask.partsRequired,
+        safetyRequirements: newTask.safetyRequirements,
+        automatedBooking: newTask.automatedBooking,
+      };
 
-      setMaintenanceTasks((prev) => [task, ...prev]);
+      await scheduleTaskMutation.mutateAsync(payload);
       setScheduleDialogOpen(false);
 
       // Reset form
@@ -462,24 +442,24 @@ export default function EquipmentMaintenanceScheduler({
         taskType: 'cleaning',
         priority: 'medium',
         scheduledDate: new Date(),
-        estimatedDuration:  1,
-        estimatedCost:  0,
-        assignedTechnician: ', ',
-        notes: ', ',
-        partsRequired:  [],
-        safetyRequirements:  [],
+        estimatedDuration: 1,
+        estimatedCost: 0,
+        assignedTechnician: '',
+        notes: '',
+        partsRequired: [],
+        safetyRequirements: [],
         automatedBooking: false,
-    });
-  } catch (error) {
+      });
+    } catch (error) {
       console.error('Error scheduling manual maintenance:', error);
-  } finally {
+    } finally {
       setIsScheduling(false);
-  }
-};
+    }
+  };
 
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
     setActiveTab(newValue);
-};
+  };
 
   const renderMaintenanceAutomation = () => (
     <Paper sx={{ p:  3 ,  ...theming.getThemedCardSx() }}>
@@ -497,19 +477,27 @@ export default function EquipmentMaintenanceScheduler({
                 onChange={(e) => setAutoSchedulingEnabled(e.target.checked)}
                 color="primary"
               />
-          }
+            }
             label="Automatisk planlegging"
-            sx={{ mb:  2 }}
+            sx={{ mb: 2 }}
           />
 
           <Button fullWidth
             variant="contained"
             onClick={generateMaintenanceSchedule}
             disabled={isScheduling}
-            startIcon={isScheduling ? <CircularProgress size={20} sx={theming.getThemedButtonSx()}> : theming.getThemedIcon('schedule')}
+            startIcon={
+              isScheduling ? (
+                <CircularProgress size={20} sx={theming.getThemedButtonSx()} />
+              ) : (
+                theming.getThemedIcon('schedule')
+              )
+            }
             sx={{
-              bgcolor: color, '&:hover': { bgcolor: color },
-              mb:  2}}
+              bgcolor: color,
+              '&:hover': { bgcolor: color },
+              mb:  2,
+            }}
           >
             {isScheduling ? 'Genererer...' : 'Generer vedlikeholdsplan'}
           </Button>
@@ -633,7 +621,7 @@ export default function EquipmentMaintenanceScheduler({
                         <Chip
                           size="small"
                           label={item.condition}
-                          color={conditionColors[item.condition] as any}
+                          color={conditionColors[item.condition]}
                         />
                       </Box>
 
@@ -654,12 +642,16 @@ export default function EquipmentMaintenanceScheduler({
                           value={maintenanceScore}
                           sx={{
                             height:  6,
-                            borderRadius: 3, '& .MuiLinearProgress-bar': {
-                              backgroundColor: maintenanceScore >= 70
+                            borderRadius: 3,
+                            '& .MuiLinearProgress-bar': {
+                              backgroundColor:
+                                maintenanceScore >= 70
                                   ? 'success.main'
                                   : maintenanceScore >= 50
                                     ? 'warning.main'
-                                    : 'error.main' }}}
+                                    : 'error.main',
+                            },
+                          }}
                         />
                       </Box>
 
@@ -687,8 +679,11 @@ export default function EquipmentMaintenanceScheduler({
                           <Typography
                             variant="body2"
                             sx={{
-                              fontWeight: 60
-                             , color: item.warrantyExpiry < new Date() ? 'error.main' : 'text.primary' }}
+                              fontWeight: 600,
+                              color: item.warrantyExpiry < new Date()
+                                ? 'error.main'
+                                : 'text.primary',
+                            }}
                           >
                             {item.warrantyExpiry.toLocaleDateString('no-NO')}
                           </Typography>
@@ -702,15 +697,17 @@ export default function EquipmentMaintenanceScheduler({
                         onClick={() => {
                           setSelectedEquipment(item);
                           setScheduleDialogOpen(true);
-                      }}
+                        }}
                         startIcon={theming.getThemedIcon('schedule')}
                         sx={{
                           mt:  2,
                           borderColor: color,
-                          color'&:hover': {
+                          color,
+                          '&:hover': {
                             borderColor: color,
                             bgcolor: `${color}10`,
-                        }}}
+                          },
+                        }}
                       >
                         Planlegg service
                       </Button>
@@ -718,7 +715,7 @@ export default function EquipmentMaintenanceScheduler({
                   </Card>
                 </Grid>
               );
-          })}
+            })}
           </Grid>
         </Box>
       )}
@@ -765,11 +762,11 @@ export default function EquipmentMaintenanceScheduler({
                           {task.scheduledDate.toLocaleDateString('no-NO')} - {task.equipmentName}
                         </Typography>
                         <Typography variant="body2" color="text.secondary">
-                          Estimert tid: {task.estimatedDuration} timer | Kostnad: {', '}
+                          Estimert tid: {task.estimatedDuration} timer | Kostnad:{' '}
                           {task.estimatedCost.toLocaleString('no-NO')} NOK
                         </Typography>
                       </Box>
-                  }
+                    }
                   />
                   <IconButton size="small" color="primary">
                     <Alarm />
@@ -886,12 +883,20 @@ export default function EquipmentMaintenanceScheduler({
                     <Chip
                       size="small"
                       label={
-                        isExpired ? 'Utløpt' : daysUntilExpiry < 30 ? 'Utløper snart' : 'Aktiv'
-                    }
+                        isExpired
+                          ? 'Utløpt'
+                          : daysUntilExpiry < 30
+                            ? 'Utløper snart'
+                            : 'Aktiv'
+                      }
                       color={isExpired ? 'error' : daysUntilExpiry < 30 ? 'warning' : 'success'}
                       icon={
-                        isExpired ? theming.getThemedIcon('error') : daysUntilExpiry < 30 ? theming.getThemedIcon('warning') : theming.getThemedIcon('checkCircle')
-                    }
+                        isExpired
+                          ? theming.getThemedIcon('error')
+                          : daysUntilExpiry < 30
+                            ? theming.getThemedIcon('warning')
+                            : theming.getThemedIcon('checkCircle')
+                      }
                     />
                   </TableCell>
                   <TableCell>
@@ -901,7 +906,7 @@ export default function EquipmentMaintenanceScheduler({
                   </TableCell>
                 </TableRow>
               );
-          })}
+            })}
           </TableBody>
         </Table>
       </TableContainer>
@@ -937,14 +942,12 @@ export default function EquipmentMaintenanceScheduler({
                 textAlign: 'center' }}
             >
               <Typography variant="h6" sx={{  fontWeight: 600}}>
-                {
-                  equipment.filter((e) => {
-                    const days = Math.ceil(
-                      (e.warrantyExpiry.getTime() - Date.now()) / (1000 * 60 * 60 * 24),
-                    );
-                    return days > 0 && days < 90;
-                }).length
-              }
+                {equipment.filter((e) => {
+                  const days = Math.ceil(
+                    (e.warrantyExpiry.getTime() - Date.now()) / (1000 * 60 * 60 * 24)
+                  );
+                  return days > 0 && days < 90;
+                }).length}
               </Typography>
               <Typography variant="body2">Utløper snart</Typography>
             </Box>
@@ -988,7 +991,7 @@ export default function EquipmentMaintenanceScheduler({
     <Paper sx={{ p:  3 ,  ...theming.getThemedCardSx() }}>
       <Typography variant="h6" sx={{  mb:  3, display: 'flex', alignItems: 'center', gap:  1  }}>
         <TrendingUp sx={{ color }} />
-        Erstatatningsplanlegging
+        Erstatningsplanlegging
       </Typography>
 
       <Grid container spacing={3}>
@@ -1054,39 +1057,39 @@ export default function EquipmentMaintenanceScheduler({
                         ) : item.type === 'slider' ? (
                           <LinearScale />
                         ) : (
-                          {theming.getThemedIcon('build')}
+                          theming.getThemedIcon('build')
                         )}
                       </Avatar>
                     </ListItemIcon>
                     <ListItemText
                       primary={
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                           <Typography variant="subtitle1">{item.name}</Typography>
                           <Chip
                             size="small"
                             label={priorityConfig[urgency].urgency}
-                            color={priorityConfig[urgency].color as any}
+                            color={priorityConfig[urgency].color}
                           />
                           {item.criticalToOperation && (
                             <Chip size="small" label="KRITISK" color="error" />
                           )}
                         </Box>
-                    }
+                      }
                       secondary={
                         <Box>
                           <Typography variant="body2">
-                            Alder: {item.currentAe} år av {item.estimatedLifespan} år forventet
+                            Alder: {item.currentAge.toFixed(1)} år av {item.estimatedLifespan} år forventet
                             levetid
                           </Typography>
                           <Typography variant="body2">
                             Tilstand: {item.condition} | Vedlikeholdsscore: {maintenanceScore}%
                           </Typography>
                           <Typography variant="body2" color="text.secondary">
-                            Estimert erstatningskostnad: {', '}
+                            Estimert erstatningskostnad:{' '}
                             {item.replacementCost.toLocaleString('no-NO')} NOK
                           </Typography>
                         </Box>
-                    }
+                      }
                     />
                     <Box sx={{ display: 'flex', flexDirection: 'column', gap:  1 }}>
                       <Button size="small" variant="outlined" startIcon={theming.getThemedIcon('assessment')}>
@@ -1102,7 +1105,7 @@ export default function EquipmentMaintenanceScheduler({
                     </Box>
                   </ListItem>
                 );
-            })}
+              })}
           </List>
         </Grid>
 
@@ -1122,14 +1125,14 @@ export default function EquipmentMaintenanceScheduler({
             <Typography variant="body2" color="text.secondary">
               Estimert årlig kostnad
             </Typography>
-            <Typography variant="h5" sx={{  fontWeight: 600,color  }}>
+            <Typography variant="h5" sx={{ fontWeight: 600, color }}>
               {equipment
                 .filter((item) => {
                   const ageRatio = item.currentAge / item.estimatedLifespan;
                   return ageRatio > 0.8;
-              })
+                  })
                 .reduce((sum, item) => sum + item.replacementCost, 0)
-                .toLocaleString('no-NO')}{','}
+                  .toLocaleString('no-NO')}
               NOK
             </Typography>
           </Box>
@@ -1150,7 +1153,7 @@ export default function EquipmentMaintenanceScheduler({
                 equipment.filter(
                   (item) => item.criticalToOperation && calculateMaintenanceScore(item) < 50,
                 ).length
-            }{', '}
+              }
               enheter
             </Typography>
           </Box>
@@ -1164,7 +1167,7 @@ export default function EquipmentMaintenanceScheduler({
 
           <Button fullWidth
             variant="contained"
-            startIcon={<Box />}
+            startIcon={<Assessment />}
             sx={{ bgcolor: color, '&:hover': { bgcolor: color } }}
           >
             Lag erstatningsplan
@@ -1174,79 +1177,13 @@ export default function EquipmentMaintenanceScheduler({
     </Paper>
   );
 
-  // Initialize with mock data
-  useEffect(() => {
-    const mockEquipment: Equipment[] = [
-      {
-        id: 'eq-',
-        name: 'Primærkamera',
-        brand: 'Canon',
-        model: 'EOS R',
-        serialNumber: 'CR512345678',
-        type: 'camera',
-        purchaseDate: new Date('2022-03-15', ),
-        warrantyExpiry: new Date('2025-03-15', ),
-        lastService: new Date('2024-08-20', ),
-        nextService: new Date('2025-02-20', ),
-        serviceInterval:  12,
-        estimatedLifespan:  7,
-        currentAge: 2.8,
-        condition: 'good',
-        usageHours: 240,
-        maintenanceCost: 150,
-        replacementCost: 4500,
-        criticalToOperation: true,
-        autoSchedule: true,
-        maintenanceNotes: 'Høy bruksintensitet, sjekk shutter count regelmessig' },
-      {
-        id: 'eq-',
-        name: 'Hovedobjektiv',
-        brand: 'Canon',
-        model: 'RF 24-70mm f/2.8',
-        serialNumber: 'RF24702812',
-        type: 'lens',
-        purchaseDate: new Date('2022-03-20', ),
-        warrantyExpiry: new Date('2024-03-20', ),
-        lastService: null,
-        nextService: new Date('2025-03-20', ),
-        serviceInterval:  18,
-        estimatedLifespan:  10,
-        currentAge: 2.8,
-        condition: 'excellent',
-        usageHours: 240,
-        maintenanceCost: 80,
-        replacementCost: 3200,
-        criticalToOperation: true,
-        autoSchedule: true,
-        maintenanceNotes: 'Optisk kvalitet fortsatt utmerket' },
-    ];
-
-    const mockTasks: MaintenanceTask[] = [
-      {
-        id: 'task-',
-        equipmentId: 'eq-',
-        equipmentName: 'Canon EOS R',
-        taskType: 'cleaning',
-        title: 'Sensorrens og kalibrering',
-        description: 'Grundig sensorrens og autofokus-kalibrering',
-        priority: 'high',
-        scheduledDate: new Date('2025-01-15', ),
-        estimatedDuration:  2,
-        estimatedCost: 80,
-        assignedTechnician: 'Canon Service Norge',
-        technicianContact: 'service@canon.no',
-        status: 'scheduled',
-        notes: 'Sjekk også shutter count og mekanisk tilstand',
-        partsRequired:  [],
-        safetyRequirements: ['Antistatisk arbeidsmiljø', ],
-        reminderSent: false,
-        automatedBooking: true,
-    },
-    ];
-
-    setEquipment(mockEquipment);
-    setMaintenanceTasks(mockTasks);
-}, []);
+  if (isLoadingEquipment || isLoadingMaintenance) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+        <CircularProgress sx={{ color }} />
+      </Box>
+    );
+  }
 
   return (
     <Box sx={{ width: '100%' }}>
@@ -1266,7 +1203,7 @@ export default function EquipmentMaintenanceScheduler({
                   Utstyrs vedlikeholdsplanlegger
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Automatisert vedlikehold og garantisporing for{', '}
+                  Automatisert vedlikehold og garantisporing for
                   {profession === 'photographer'
                     ? 'fotografer'
                     : profession === 'videographer'
@@ -1304,19 +1241,23 @@ export default function EquipmentMaintenanceScheduler({
         onChange={handleTabChange}
         variant="fullWidth"
         sx={{
-          mb: 3'& .MuiTab-root': {
+          mb: 3,
+          '& .MuiTab-root': {
             textTransform: 'none',
-            fontWeight: 60
-        }, '& .Mui-selected': {
+            fontWeight: 600,
+          },
+          '& .Mui-selected': {
             color: `${color} !important`,
-        }, '& .MuiTabs-indicator': {
+          },
+          '& .MuiTabs-indicator': {
             backgroundColor: color,
-        }}}
+          },
+        }}
       >
         <Tab icon={<AutoMode />} iconPosition="start" label="Vedlikeholdsautomatisering" />
-        <Tab icon={theming.getThemedIcon('notifications')}} iconPosition="start" label="Servicepåminnelser" />
-        <Tab icon={theming.getThemedIcon('security')}} iconPosition="start" label="Garantisporing" />
-        <Tab icon={theming.getThemedIcon('trendingUp')}} iconPosition="start" label="Erstatningsplanlegging" />
+        <Tab icon={theming.getThemedIcon('notifications')} iconPosition="start" label="Servicepåminnelser" />
+        <Tab icon={theming.getThemedIcon('security')} iconPosition="start" label="Garantisporing" />
+        <Tab icon={theming.getThemedIcon('trendingUp')} iconPosition="start" label="Erstatningsplanlegging" />
       </Tabs>
 
       {activeTab === 0 && renderMaintenanceAutomation()}
@@ -1349,13 +1290,13 @@ export default function EquipmentMaintenanceScheduler({
                   <FormControl fullWidth sx={{ mb:  2 }}>
                     <InputLabel>Type vedlikehold</InputLabel>
                     <Select
-                      value={newTask.taskType}
+                      value={newTask.taskType ?? 'cleaning'}
                       onChange={(e) =>
                         setNewTask((prev) => ({
                           ...prev,
-                          taskType: e.target.value as any,
-                      }))
-                    }
+                          taskType: e.target.value as MaintenanceTask['taskType'],
+                        }))
+                      }
                       label="Type vedlikehold"
                     >
                       <MenuItem value="cleaning">Rengjøring</MenuItem>
@@ -1371,13 +1312,13 @@ export default function EquipmentMaintenanceScheduler({
                   <FormControl fullWidth sx={{ mb:  2 }}>
                     <InputLabel>Prioritet</InputLabel>
                     <Select
-                      value={newTask.priority}
+                      value={newTask.priority ?? 'medium'}
                       onChange={(e) =>
                         setNewTask((prev) => ({
                           ...prev,
-                          priority: e.target.value as any,
-                      }))
-                    }
+                          priority: e.target.value as MaintenanceTask['priority'],
+                        }))
+                      }
                       label="Prioritet"
                     >
                       <MenuItem value="low">Lav</MenuItem>
@@ -1391,7 +1332,7 @@ export default function EquipmentMaintenanceScheduler({
                   <TextField
                     fullWidth
                     label="Tittel"
-                    value={newTask.title}
+                    value={newTask.title ?? ''}
                     onChange={(e) => setNewTask((prev) => ({ ...prev, title: e.target.value }))}
                     sx={{ mb:  2 }}
                   />
@@ -1401,15 +1342,16 @@ export default function EquipmentMaintenanceScheduler({
                     fullWidth
                     label="Estimert tid"
                     type="number"
-                    value={newTask.estimatedDuration}
+                    value={newTask.estimatedDuration ?? ''}
                     onChange={(e) =>
                       setNewTask((prev) => ({
                         ...prev,
-                        estimatedDuration: parseFloat(e.target.value),
-                    }))
-                  }
+                        estimatedDuration: Number(e.target.value),
+                      }))
+                    }
                     InputProps={{
-                      endAdornment: <InputAdornment position="end">timer</InputAdornment>}}
+                      endAdornment: <InputAdornment position="end">timer</InputAdornment>,
+                    }}
                     sx={{ mb:  2 }}
                   />
                 </Grid>
@@ -1418,15 +1360,16 @@ export default function EquipmentMaintenanceScheduler({
                     fullWidth
                     label="Estimert kostnad"
                     type="number"
-                    value={newTask.estimatedCost}
+                    value={newTask.estimatedCost ?? ''}
                     onChange={(e) =>
                       setNewTask((prev) => ({
                         ...prev,
-                        estimatedCost: parseFloat(e.target.value),
-                    }))
-                  }
+                        estimatedCost: Number(e.target.value),
+                      }))
+                    }
                     InputProps={{
-                      endAdornment: <InputAdornment position="end">NOK</InputAdornment>}}
+                      endAdornment: <InputAdornment position="end">NOK</InputAdornment>,
+                    }}
                     sx={{ mb:  2 }}
                   />
                 </Grid>
@@ -1436,7 +1379,7 @@ export default function EquipmentMaintenanceScheduler({
                     label="Notater"
                     multiline
                     rows={3}
-                    value={newTask.notes}
+                    value={newTask.notes ?? ''}
                     onChange={(e) => setNewTask((prev) => ({ ...prev, notes: e.target.value }))}
                     sx={{ mb:  2 }}
                   />
@@ -1446,15 +1389,15 @@ export default function EquipmentMaintenanceScheduler({
               <FormControlLabel
                 control={
                   <Switch
-                    checked={newTask.automatedBooking}
+                    checked={Boolean(newTask.automatedBooking)}
                     onChange={(e) =>
                       setNewTask((prev) => ({
                         ...prev,
                         automatedBooking: e.target.checked,
-                    }))
-                  }
+                      }))
+                    }
                   />
-              }
+                }
                 label="Automatisk booking hos servicepartner"
               />
             </Box>
@@ -1467,8 +1410,11 @@ export default function EquipmentMaintenanceScheduler({
           <Button onClick={scheduleManualMaintenance}
             variant="contained"
             disabled={isScheduling || !newTask.title}
-            sx={{ bgcolor: color'&:hover': { bgcolor: color } }}
-           sx={theming.getThemedButtonSx()}>
+            sx={{
+              ...theming.getThemedButtonSx(),
+              bgcolor: color,
+              '&:hover': { bgcolor: color },
+            }}>
             {isScheduling ? 'Planlegger...': 'Planlegg vedlikehold'}
           </Button>
         </DialogActions>

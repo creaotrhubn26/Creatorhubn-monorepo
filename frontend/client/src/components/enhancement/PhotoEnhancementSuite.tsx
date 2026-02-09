@@ -642,7 +642,7 @@ const PhotoEnhancementSuite: React.FC<PhotoEnhancementSuiteProps> = ({
 	    onSuccess: () => {
 	      // Refresh jobs after cleanup
 	      queryClient.invalidateQueries({ queryKey: ['/api/photo-enhancement/jobs', userId, projectId] });
-	      features.trackFeatureUsage('photo-enhancement-suite, ','quick-action', {
+	      features.trackFeatureUsage('photo-enhancement-suite', 'quick-action', {
 	        action: 'cleanup-temporary-files',
 	      });
 	    },

@@ -196,7 +196,7 @@ export default function ResumeExporter({
                           {/* Pros */}
                           <Box sx={{ flex: 1 }}>
                             <Typography variant="caption" color="success.main" fontWeight={600}>
-                              ✓ Fordeler:
+                              Fordeler:
                             </Typography>
                             <Box component="ul" sx={{ fontSize: '12px', pl: 2, mt: 0.5 }}>
                               {format.pros.map((pro, i) => (

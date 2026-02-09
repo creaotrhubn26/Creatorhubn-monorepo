@@ -18,6 +18,7 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
+  DialogContentText,
   DialogActions,
   TextField,
   MenuItem,
@@ -37,6 +38,8 @@ import {
   ListItem,
   ListItemText,
   ListItemSecondaryAction,
+  Snackbar,
+  Alert,
 } from '@mui/material';
 import { Add, Edit, Delete, Tag, ExpandMore, Rule } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
@@ -68,6 +71,8 @@ export default function ChannelManagement() {
   const [rulesDialogOpen, setRulesDialogOpen] = useState(false);
   const [selectedChannel, setSelectedChannel] = useState<Channel | null>(null);
   const [newRule, setNewRule] = useState('');
+  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'warning' | 'info' }>({ open: false, message: '', severity: 'info' });
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [rulesSupported, setRulesSupported] = useState<boolean | null>(null);
   const [formData, setFormData] = useState({
     group_id: ',',
@@ -185,34 +190,37 @@ export default function ChannelManagement() {
       }) as { success: boolean; message: string };
 
       if (response.success) {
-        alert(response.message);
+        setSnackbar({ open: true, message: response.message, severity: 'success' });
         fetchChannels();
         handleCloseDialog();
       }
     } catch (error) {
       console.error('Error saving channel:', error);
-      alert('Failed to save channel');
+      setSnackbar({ open: true, message: 'Failed to save channel', severity: 'error' });
     }
   };
 
   const handleDelete = async (channelId: string) => {
-    if (!confirm('Are you sure you want to delete this channel?')) {
-      return;
-    }
+    setConfirmDeleteId(channelId);
+  };
+
+  const executeDelete = async () => {
+    if (!confirmDeleteId) return;
 
     try {
-      const response = await apiRequest(`/api/community/admin/channels/${channelId}`, {
+      const response = await apiRequest(`/api/community/admin/channels/${confirmDeleteId}`, {
         method: 'DELETE',
       }) as { success: boolean; message: string };
 
       if (response.success) {
-        alert(response.message);
+        setSnackbar({ open: true, message: response.message, severity: 'success' });
         fetchChannels();
       }
     } catch (error) {
       console.error('Error deleting channel:', error);
-      alert('Failed to delete channel');
+      setSnackbar({ open: true, message: 'Failed to delete channel', severity: 'error' });
     }
+    setConfirmDeleteId(null);
   };
 
   const handleOpenRulesDialog = (channel: Channel) => {
@@ -249,17 +257,17 @@ export default function ChannelManagement() {
       }) as { success?: boolean; message?: string };
 
       if (response?.success) {
-        alert(response.message || 'Rules updated');
+        setSnackbar({ open: true, message: response.message || 'Rules updated', severity: 'success' });
         setRulesDialogOpen(false);
         fetchChannels();
       } else {
         setRulesSupported(false);
-        alert('Channel rules endpoint not available on backend.');
+        setSnackbar({ open: true, message: 'Channel rules endpoint not available on backend.', severity: 'warning' });
       }
     } catch (error) {
       console.error('Error saving rules:', error);
       setRulesSupported(false);
-      alert('Channel rules endpoint not available on backend.');
+      setSnackbar({ open: true, message: 'Channel rules endpoint not available on backend.', severity: 'warning' });
     }
   };
 
@@ -544,6 +552,41 @@ export default function ChannelManagement() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Confirm Delete Dialog */}
+      <Dialog
+        open={!!confirmDeleteId}
+        onClose={() => setConfirmDeleteId(null)}
+      >
+        <DialogTitle>Delete Channel</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Are you sure you want to delete this channel? This action cannot be undone.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmDeleteId(null)}>Cancel</Button>
+          <Button onClick={executeDelete} color="error" variant="contained">
+            Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Snackbar for notifications */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={4000}
+        onClose={() => setSnackbar((prev) => ({ ...prev, open: false }))}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert
+          onClose={() => setSnackbar((prev) => ({ ...prev, open: false }))}
+          severity={snackbar.severity}
+          variant="filled"
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 }

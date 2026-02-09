@@ -1,0 +1,6 @@
+       id        |           title           | category | completed | sort_order 
+-----------------+---------------------------+----------+-----------+------------
+ vendor-b8c7d398 | 📸 Mehndi Ceremony Detail | ceremony | f         |       1000
+ vendor-aff1f567 | 📸 Baraat Procession      | ceremony | f         |       1001
+(2 rows)
+

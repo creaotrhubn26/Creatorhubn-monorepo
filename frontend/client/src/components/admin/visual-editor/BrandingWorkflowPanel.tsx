@@ -24,6 +24,7 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
+  DialogContentText,
   DialogActions,
   TextField,
   Alert,
@@ -78,6 +79,7 @@ const BrandingWorkflowPanel: React.FC<BrandingWorkflowPanelProps> = ({
   // Local state
   const [selectedTab, setSelectedTab] = useState(0);
   const [brandingProfession, setBrandingProfession] = useState<'admin' | 'photographer' | 'videographer' | 'music_producer' | 'vendor'>('photographer');
+  const [confirmDeletePreset, setConfirmDeletePreset] = useState<{ id: string; name: string } | null>(null);
   const [brandingCategory, setBrandingCategory] = useState<string | undefined>(undefined);
   const [customBrandColor, setCustomBrandColor] = useState<string | undefined>(undefined);
   const [darkMode, setDarkMode] = useState(false);
@@ -731,15 +733,8 @@ const BrandingWorkflowPanel: React.FC<BrandingWorkflowPanelProps> = ({
                               size="small"
                               color="error"
                               onClick={() => {
-                                if (confirm(`Delete preset "${preset.name}"?`)) {
-                                  liveBranding.deletePreset(preset.id);
-                                  onNotification?.({
-                                    title: 'Preset Deleted',
-                                    message: `Deleted "${preset.name}"`,
-                                    type: 'info'
-                                });
-                              }
-                            }}
+                                setConfirmDeletePreset({ id: preset.id, name: preset.name });
+                              }}
                             >
                               <DeleteIcon fontSize="small" />
                             </IconButton>
@@ -1049,6 +1044,39 @@ const BrandingWorkflowPanel: React.FC<BrandingWorkflowPanelProps> = ({
             onClick={handleImport}
           >
             Import
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Confirm Delete Preset Dialog */}
+      <Dialog
+        open={!!confirmDeletePreset}
+        onClose={() => setConfirmDeletePreset(null)}
+      >
+        <DialogTitle>Delete Preset</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Delete preset "{confirmDeletePreset?.name}"? This action cannot be undone.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmDeletePreset(null)}>Cancel</Button>
+          <Button
+            onClick={() => {
+              if (confirmDeletePreset) {
+                liveBranding.deletePreset(confirmDeletePreset.id);
+                onNotification?.({
+                  title: 'Preset Deleted',
+                  message: `Deleted "${confirmDeletePreset.name}"`,
+                  type: 'info'
+                });
+                setConfirmDeletePreset(null);
+              }
+            }}
+            color="error"
+            variant="contained"
+          >
+            Delete
           </Button>
         </DialogActions>
       </Dialog>

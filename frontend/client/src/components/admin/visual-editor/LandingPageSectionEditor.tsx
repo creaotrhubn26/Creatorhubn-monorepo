@@ -129,7 +129,7 @@ export function LandingPageSectionEditor({
   // Handle array item changes (for features, testimonials, etc.)
   const handleArrayItemChange = useCallback((arrayField: string, index: number, field: string, value: any) => {
     setLocalSection((prev) => {
-      const array = [...(prev[arrayField] as any[] || [])];
+      const array = [...(prev[arrayField] as unknown[] || [])];
       array[index] = { ...array[index], [field]: value };
       const newSection = { ...prev, [arrayField]: array };
       setHasChanges(true);
@@ -140,7 +140,7 @@ export function LandingPageSectionEditor({
   // Add array item
   const handleAddArrayItem = useCallback((arrayField: string, template: Record<string, any>) => {
     setLocalSection((prev) => {
-      const array = [...(prev[arrayField] as any[] || []), template];
+      const array = [...(prev[arrayField] as unknown[] || []), template];
       return { ...prev, [arrayField]: array };
     });
     setHasChanges(true);
@@ -149,7 +149,7 @@ export function LandingPageSectionEditor({
   // Remove array item
   const handleRemoveArrayItem = useCallback((arrayField: string, index: number) => {
     setLocalSection((prev) => {
-      const array = [...(prev[arrayField] as any[] || [])];
+      const array = [...(prev[arrayField] as unknown[] || [])];
       array.splice(index, 1);
       return { ...prev, [arrayField]: array };
     });

@@ -125,7 +125,7 @@ export default function ProfessionTypeManager() {
   const [previewDialogOpen, setPreviewDialogOpen] = useState(false);
 
   const queryClient = useQueryClient();
-  const theming = useTheming('admin, ');
+  const theming = useTheming('admin');
   const { analytics, performance, debugging, lifecycle, features, auth } = useEnhancedMasterIntegration();
 
   // Dynamic tab filtering using feature access

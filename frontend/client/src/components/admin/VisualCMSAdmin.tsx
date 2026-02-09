@@ -14,6 +14,7 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
+  DialogContentText,
   DialogActions,
   TextField,
   FormControl,
@@ -35,6 +36,7 @@ import {
   LinearProgress,
   Alert,
   Stack,
+  Snackbar,
 } from '@mui/material';
 import {
   AddCircle as Add,
@@ -101,7 +103,7 @@ export default function VisualCMSAdmin() {
   const { auth } = useEnhancedMasterIntegration();
 
   // Theming system
-  const theming = useTheming('prototype_tester, ');
+  const theming = useTheming('prototype_tester');
   
   // Dynamic profession system
   const { getProfessionDisplayName } = useDynamicProfessions();
@@ -115,6 +117,7 @@ export default function VisualCMSAdmin() {
   const [selectedShowcase, setSelectedShowcase] = useState<any>(null);
   const [viralStrategy, setViralStrategy] = useState<any>(null);
   const [creativeToolsOpen, setCreativeToolsOpen] = useState(false);
+  const [confirmDeleteField, setConfirmDeleteField] = useState<{ open: boolean; fieldId: string | null }>({ open: false, fieldId: null });
 
   // Fetch CMS fields
   const { data: cmsFields = [], isLoading: fieldsLoading } = useQuery({
@@ -254,10 +257,15 @@ export default function VisualCMSAdmin() {
 };
 
   const handleDeleteField = (fieldId: string) => {
-    if (confirm('Er du sikker på at du vil slette dette feltet?')) {
-      deleteFieldMutation.mutate(fieldId);
-}
+    setConfirmDeleteField({ open: true, fieldId });
 };
+
+  const confirmFieldDeletion = () => {
+    if (confirmDeleteField.fieldId) {
+      deleteFieldMutation.mutate(confirmDeleteField.fieldId);
+    }
+    setConfirmDeleteField({ open: false, fieldId: null });
+  };
 
   const handleCreateContentType = () => {
     setSelectedContentType(null);
@@ -651,7 +659,7 @@ export default function VisualCMSAdmin() {
                         border: '1px solid #2196f32',
                         textAlign: 'center'}}
                     >
-                      <Typography variant="h4" color="info.main" sx={{  fontWeight: 70 }}>
+                      <Typography variant="h4" color="info.main" sx={{  fontWeight: 700 }}>
                         847
                       </Typography>
                       <Typography variant="body2" color="text.secondary">
@@ -668,7 +676,7 @@ export default function VisualCMSAdmin() {
                         border: '1px solid #4caf502',
                         textAlign: 'center'}}
                     >
-                      <Typography variant="h4" color="success.main" sx={{  fontWeight: 70 }}>
+                      <Typography variant="h4" color="success.main" sx={{  fontWeight: 700 }}>
                         12.4GB
                       </Typography>
                       <Typography variant="body2" color="text.secondary">
@@ -685,7 +693,7 @@ export default function VisualCMSAdmin() {
                         border: '1px solid #ff8c002',
                         textAlign: 'center'}}
                     >
-                      <Typography variant="h4" color="warning.main" sx={{  fontWeight: 70 }}>
+                      <Typography variant="h4" color="warning.main" sx={{  fontWeight: 700 }}>
                         23
                       </Typography>
                       <Typography variant="body2" color="text.secondary">
@@ -702,7 +710,7 @@ export default function VisualCMSAdmin() {
                         border: '1px solid #9c27b02',
                         textAlign: 'center'}}
                     >
-                      <Typography variant="h4" color="secondary.main" sx={{  fontWeight: 70 }}>
+                      <Typography variant="h4" color="secondary.main" sx={{  fontWeight: 700 }}>
                         156
                       </Typography>
                       <Typography variant="body2" color="text.secondary">
@@ -1266,7 +1274,7 @@ export default function VisualCMSAdmin() {
                         borderRadius:  2,
                         border: '1px solid #4caf502'}}
                     >
-                      <Typography variant="h4" color="success.main" sx={{  fontWeight: 70 }}>
+                      <Typography variant="h4" color="success.main" sx={{  fontWeight: 700 }}>
                         0
                       </Typography>
                       <Typography variant="body2" color="text.secondary">
@@ -1286,7 +1294,7 @@ export default function VisualCMSAdmin() {
                         borderRadius:  2,
                         border: '1px solid #2196f32'}}
                     >
-                      <Typography variant="h4" color="info.main" sx={{  fontWeight: 70 }}>
+                      <Typography variant="h4" color="info.main" sx={{  fontWeight: 700 }}>
                         0
                       </Typography>
                       <Typography variant="body2" color="text.secondary">
@@ -1306,7 +1314,7 @@ export default function VisualCMSAdmin() {
                         borderRadius:  2,
                         border: '1px solid #ff8c002'}}
                     >
-                      <Typography variant="h4" color="warning.main" sx={{  fontWeight: 70 }}>
+                      <Typography variant="h4" color="warning.main" sx={{  fontWeight: 700 }}>
                         0
                       </Typography>
                       <Typography variant="body2" color="text.secondary">
@@ -1458,6 +1466,27 @@ export default function VisualCMSAdmin() {
         onSave={(contentTypeData) => contentTypeMutation.mutate(contentTypeData)}
         isLoading={contentTypeMutation.isPending}
       />
+
+      {/* Confirm Delete Field Dialog */}
+      <Dialog
+        open={confirmDeleteField.open}
+        onClose={() => setConfirmDeleteField({ open: false, fieldId: null })}
+      >
+        <DialogTitle>Slett Felt</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Er du sikker på at du vil slette dette feltet? Denne handlingen kan ikke angres.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmDeleteField({ open: false, fieldId: null })}>
+            Avbryt
+          </Button>
+          <Button onClick={confirmFieldDeletion} color="error" variant="contained">
+            Slett
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

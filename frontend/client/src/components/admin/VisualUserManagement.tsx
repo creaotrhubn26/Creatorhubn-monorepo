@@ -121,7 +121,7 @@ const VisualUserManagement: React.FC = () => {
   const queryClient = useQueryClient();
   
   // Theming system
-  const theming = useTheming('prototype_tester, ');
+  const theming = useTheming('prototype_tester');
 
   // Hent brukerdata
   const { data: users, isLoading: usersLoading } = useQuery({

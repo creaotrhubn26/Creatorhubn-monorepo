@@ -260,19 +260,19 @@ const HelpdeskSystem: React.FC<HelpdeskSystemProps> = ({
     });
 
     // Listen for helpdesk events
-    const ticketCreateUnsubscribe = communication.onMessageType('helpdesk: ticket-create', (data: any) => {
+    const ticketCreateUnsubscribe = communication.onMessageType('helpdesk:ticket-create', (data: any) => {
       if (data.ticket) {
         createTicketMutation.mutate(data.ticket);
   }
   });
 
-    const ticketUpdateUnsubscribe = communication.onMessageType('helpdesk: ticket-update', (data: any) => {
+    const ticketUpdateUnsubscribe = communication.onMessageType('helpdesk:ticket-update', (data: any) => {
       if (data.ticketId && data.response) {
         addResponseMutation.mutate({ ticketId: data.ticketd, message: data.response });
     }
   });
 
-    const errorLogUnsubscribe = communication.onMessageType('helpdesk: error-log', (data: any) => {
+    const errorLogUnsubscribe = communication.onMessageType('helpdesk:error-log', (data: any) => {
       if (data.error) {
         logSystemError(data.error, data.component, data.userAction);
     }

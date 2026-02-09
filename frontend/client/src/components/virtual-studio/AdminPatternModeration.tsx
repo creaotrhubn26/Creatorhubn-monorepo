@@ -57,9 +57,9 @@ export const AdminPatternModeration: React.FC = () => {
   const fetchPendingPatterns = async () => {
     setLoading(true);
     try {
-      const response = await apiRequest(
-        , '/api/virtual-studio/custom-patterns/admin/pending'
-      ) as { success: boolean; patterns: Pattern[] };
+      const response = (await apiRequest(
+        '/api/virtual-studio/custom-patterns/admin/pending'
+      )) as { success: boolean; patterns: Pattern[] };
 
       if (response.success) {
         setPatterns(response.patterns);
@@ -86,7 +86,7 @@ export const AdminPatternModeration: React.FC = () => {
         alert(response.message);
         setPatterns(patterns.filter(p => p.id !== patternId));
         setSelectedPattern(null);
-        setModerationNotes(', ');
+        setModerationNotes('');
       }
     } catch (error) {
       console.error('Error approving pattern:', error);

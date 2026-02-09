@@ -469,22 +469,27 @@ class AnalyticsManager {
    * Send events
    */
   private async sendEvents(events: AnalyticsEvent[]): Promise<void> {
-    const response = await fetch(this.config.endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type' : 'application/json',
-        ...(this.config.apiKey && {'Authorization': `Bearer ${this.config.apiKey}` })
-      },
-      body: JSON.stringify({
-        events,
-        session: this.state.currentSession,
-        userId: this.config.userId,
-        timestamp: Date.now()
-      })
-    });
+    try {
+      const response = await fetch(this.config.endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type' : 'application/json',
+          ...(this.config.apiKey && {'Authorization': `Bearer ${this.config.apiKey}` })
+        },
+        body: JSON.stringify({
+          events,
+          session: this.state.currentSession,
+          userId: this.config.userId,
+          timestamp: Date.now()
+        })
+      });
 
-    if (!response.ok) {
-      throw new Error(`Failed to send events: ${response.status}`);
+      if (!response.ok) {
+        console.warn(`Analytics endpoint returned ${response.status}, but continuing normally`);
+      }
+    } catch (error) {
+      // Silently fail analytics - don't break the app if analytics is down
+      console.warn('Failed to send analytics:', error);
     }
   }
 

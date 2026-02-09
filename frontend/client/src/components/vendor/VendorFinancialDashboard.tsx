@@ -12,7 +12,6 @@ import {
   Card,
   CardContent,
   Button,
-  IconButton,
   Chip,
   Dialog,
   DialogTitle,
@@ -34,22 +33,17 @@ import {
   ListItem,
   ListItemText,
   Avatar,
-  useTheme,
-  alpha
+  alpha,
+  TextField
 } from '@mui/material';
 import {
   AttachMoney,
   TrendingUp,
-  Schedule,
   CheckCircle,
-  Refresh,
   Download,
   Receipt,
   AccountBalance,
-  Warning,
-  Info,
-  ArrowForward,
-  Launch
+  Info
 } from '@mui/icons-material';
 import { motion, AnimatePresence } from 'framer-motion';
 import { apiRequest } from '@/lib/queryClient';
@@ -66,10 +60,10 @@ export default function VendorFinancialDashboard({
   vendorName,
   userId
 }: VendorFinancialDashboardProps) {
-  const theme = useTheme();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState(0);
   const [connectDialogOpen, setConnectDialogOpen] = useState(false);
+  const [connectEmail, setConnectEmail] = useState('');
   
   const vendorConfig = getVendorTypeConfig(vendorType);
 
@@ -126,6 +120,17 @@ export default function VendorFinancialDashboard({
       setConnectDialogOpen(false);
     }
   });
+
+  const exportCsv = (rows: string[][], fileName: string) => {
+    const content = rows.map((row) => row.join(',')).join('\n');
+    const blob = new Blob([content], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = fileName;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
 
   if (summaryLoading) {
     return (
@@ -397,9 +402,52 @@ export default function VendorFinancialDashboard({
               <Typography variant="h6" component="h2" sx={{ mb: 2 }}>
                 Finansielle Rapporter
               </Typography>
-              <Alert severity="info">
-                Månedlige og årlige rapporter genereres automatisk og vil vises her.
-              </Alert>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Eksporter provisjoner og utbetalinger for regnskap og rapportering.
+              </Typography>
+              <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                <Button
+                  variant="outlined"
+                  startIcon={<Download />}
+                  onClick={() => {
+                    const rows = [
+                      ['Order', 'Customer', 'Amount', 'Commission', 'Payout', 'Status', 'Date'],
+                      ...(commissionsData?.commissions || []).map((commission: any) => [
+                        commission.order_number,
+                        commission.customer_name,
+                        commission.order_amount,
+                        commission.commission_rate,
+                        commission.vendor_payout_amount,
+                        commission.status,
+                        commission.ordered_at
+                      ])
+                    ];
+                    exportCsv(rows, `commissions-${vendorName}-${Date.now()}.csv`);
+                  }}
+                >
+                  Eksporter provisjoner
+                </Button>
+                <Button
+                  variant="outlined"
+                  startIcon={<Download />}
+                  onClick={() => {
+                    const rows = [
+                      ['Period Start', 'Period End', 'Amount', 'Transactions', 'Status', 'Processed'],
+                      ...(payoutsData?.payouts || []).map((payout: any) => [
+                        payout.period_start,
+                        payout.period_end,
+                        payout.payout_amount,
+                        payout.commission_count,
+                        payout.status,
+                        payout.processed_at || ''
+                      ])
+                    ];
+                    exportCsv(rows, `payouts-${vendorName}-${Date.now()}.csv`);
+                  }}
+                >
+                  Eksporter utbetalinger
+                </Button>
+              </Box>
             </CardContent>
           </Card>
         </Box>
@@ -425,6 +473,14 @@ export default function VendorFinancialDashboard({
           <Typography variant="body2" sx={{ mb: 2 }}>
             For å motta utbetalinger må du koble din bank konto gjennom Stripe Connect.
           </Typography>
+          <TextField
+            fullWidth
+            label="Kontakt e-post"
+            value={connectEmail}
+            onChange={(event) => setConnectEmail(event.target.value)}
+            type="email"
+            sx={{ mb: 2 }}
+          />
           <List>
             <ListItem>
               <ListItemText
@@ -461,8 +517,8 @@ export default function VendorFinancialDashboard({
           </Button>
           <Button
             variant="contained"
-            onClick={() => createConnectMutation.mutate('vendor@example.com')}
-            disabled={createConnectMutation.isPending}
+            onClick={() => createConnectMutation.mutate(connectEmail)}
+            disabled={createConnectMutation.isPending || !connectEmail.trim()}
             sx={{
               bgcolor: '#635bff',
               minHeight: 48,

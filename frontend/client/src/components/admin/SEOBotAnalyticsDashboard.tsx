@@ -40,6 +40,7 @@ import {
   MenuItem,
   FormControl,
   InputLabel,
+  Snackbar,
 } from '@mui/material';
 import {
   BugReport as BotIcon,
@@ -178,7 +179,7 @@ export default function SEOBotAnalyticsDashboard() {
       return res.json();
     },
     onSuccess: () => {
-      alert('Render test completed successfully!');
+      setSnackbar({ open: true, message: 'Render test completed successfully!', severity: 'success' });
     },
   });
 

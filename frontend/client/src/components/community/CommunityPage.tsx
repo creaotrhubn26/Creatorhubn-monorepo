@@ -245,6 +245,7 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
 
   // Search dialog state
   const [searchDialogOpen, setSearchDialogOpen] = useState(false);
+  const [advancedSearchOpen, setAdvancedSearchOpen] = useState(false);
   const [searchScope, setSearchScope] = useState<'all' | 'channel' | 'thread'>('all');
   const [searchScopeId, setSearchScopeId] = useState<string | undefined>();
   const [searchScopeName, setSearchScopeName] = useState<string | undefined>();

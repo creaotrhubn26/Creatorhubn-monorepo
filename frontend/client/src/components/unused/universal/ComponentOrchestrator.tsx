@@ -140,7 +140,7 @@ export default function ComponentOrchestrator({
   const queryClient = useQueryClient();
   
   // Theming system
-  const theming = useTheming('photographer, ');
+  const theming = useTheming('photographer');
   
   // Database connection for ComponentOrchestrator
   const { data: componentData = [], isLoading } = useQuery({

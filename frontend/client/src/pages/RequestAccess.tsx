@@ -70,7 +70,7 @@ export default function RequestAccess() {
             sx={{
               color: theming.colors.primary,
               mb: 2,
-              fontWeight: 30,
+              fontWeight: 300,
             }}>
             Norges mest avanserte plattform for kreative fagpersoner
           </Typography>

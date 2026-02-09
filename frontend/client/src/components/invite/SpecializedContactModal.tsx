@@ -721,7 +721,7 @@ export default function SpecializedContactModal({
                         fontWeight: 60
                     }, '&.Mui-completed': {
                         color: '#10b980',
-                        fontWeight: 5,
+                        fontWeight: 500,
                     },
                   },
                 }, '& .MuiStepIcon-root': {
@@ -1064,7 +1064,7 @@ export default function SpecializedContactModal({
                                   transform: 'translateY(-2px)' },
                             }, '& .MuiInputLabel-root': {
                                 fontSize: '1.2rem',
-                                fontWeight: 7,
+                                fontWeight: 700,
                                 color: '#1f2930',
                                 backgroundColor: 'rgba(25,255,255,0.9)',
                                 padding: '0 8px',
@@ -1082,7 +1082,7 @@ export default function SpecializedContactModal({
                             <InputLabel
                               sx={{
                                 fontSize: '1.2rem',
-                                fontWeight: 7,
+                                fontWeight: 700,
                                 backgroundColor: 'rgba(25,255,255,0.9)',
                                 padding: '0 8px',
                                 borderRadius: '6px' }}
@@ -1116,7 +1116,7 @@ export default function SpecializedContactModal({
                                         transform: 'translateX(4px, )' }, '&.Mui-selected': {
                                         backgroundColor: 'rgba(25,140,0,0.25)',
                                         color: '#1f2930',
-                                        fontWeight: 7,
+                                        fontWeight: 700,
                                         borderLeft: '4px solid #ff8c00','&:hover': {
                                           backgroundColor: 'rgba(25,140,0,0.3)' },
                                     },
@@ -1136,7 +1136,7 @@ export default function SpecializedContactModal({
                                     variant="body1"
                                     sx={{
                                       fontSize: '1.1rem',
-                                      fontWeight: 7,
+                                      fontWeight: 700,
                                       color: '#1f2930',
                                       mb: 0.5,
                                       lineHeight: 1.3}}
@@ -1148,7 +1148,7 @@ export default function SpecializedContactModal({
                                     sx={{
                                       color: '#6b7280',
                                       fontSize: '0.95rem',
-                                      fontWeight: 5,
+                                      fontWeight: 500,
                                       lineHeight: 1.4,
                                       opacity: 0.8}}
                                   >

@@ -67,7 +67,7 @@ export default function AiSceneSimulation({
   const { user } = useAuth();
   
   // Theming system
-  const theming = useTheming('photographer, ');
+  const theming = useTheming('photographer');
   const queryClient = useQueryClient();
   
   const [selectedScene, setSelectedScene] = useState<any>(null);

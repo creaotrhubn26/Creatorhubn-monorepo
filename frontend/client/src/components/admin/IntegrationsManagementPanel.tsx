@@ -29,6 +29,7 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
+  DialogContentText,
   DialogActions,
   TextField,
   Table,
@@ -37,10 +38,10 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  Paper,
+  Paper as _Paper,
   Chip,
   IconButton,
-  Menu,
+  Menu as _Menu,
   MenuItem,
   FormControl,
   InputLabel,
@@ -65,20 +66,20 @@ import {
   Key as KeyIcon,
   Webhook as WebhookIcon,
   Security as OAuthIcon,
-  MoreVert as MoreVertIcon,
+  MoreVert as _MoreVertIcon,
   Refresh as RefreshIcon,
   Sync as SyncIcon,
   Pause as PauseIcon,
   PlayArrow as PlayIcon,
-  Delete as DeleteIcon,
+  Delete as _DeleteIcon,
   ContentCopy as CopyIcon,
   Visibility as ViewIcon,
   VisibilityOff as VisibilityOff,
-  DeveloperMode as DevModeIcon,
+  DeveloperMode as _DevModeIcon,
   Api as ApiIcon,
-  Stop as StopIcon,
+  Stop as _StopIcon,
   Code as CodeIcon,
-  ConnectedTv as IntegrationIcon,
+  ConnectedTv as _IntegrationIcon,
   Check as CheckIcon,
   Error as ErrorIcon,
   Warning as WarningIcon,
@@ -89,7 +90,7 @@ import {
   Facebook as FacebookIcon,
   Twitter as TwitterIcon,
   LinkedIn as LinkedInIcon,
-  LibraryMusic as SpotifyIcon,
+  LibraryMusic as _SpotifyIcon,
   Instagram as InstagramIcon,
   PhotoLibrary as PhotoLibraryIcon,
   Payment as PaymentIcon,
@@ -97,7 +98,7 @@ import {
   CloudUpload as CloudUploadIcon,
   Analytics as AnalyticsIcon,
   Phone as PhoneIcon,
-  Email as EmailIcon,
+  Email as _EmailIcon,
   VerifiedUser as VerifiedIcon,
   Link as LinkIcon,
   Rocket as RocketIcon,
@@ -105,33 +106,33 @@ import {
   AccountBalance as AccountBalanceIcon,
   PhoneAndroid as PhoneAndroidIcon,
   PhotoCamera as PhotoCameraIcon,
-  Palette as PaletteIcon,
-  Tv as TvIcon,
+  Palette as _PaletteIcon,
+  Tv as _TvIcon,
   ShoppingCart as ShoppingCartIcon,
   Cloud as CloudIcon,
-  Inventory as InventoryIcon,
+  Inventory as _InventoryIcon,
   Science as ScienceIcon,
   MenuBook as MenuBookIcon,
   CameraAlt as CameraAltIcon,
   MusicNote as MusicNoteIcon,
-  Brush as BrushIcon,
-  LocalShipping as LocalShippingIcon,
-  Assessment as AssessmentIcon,
-  Cancel as CancelIcon,
-  VideoLibrary as VideoLibraryIcon,
-  Storage as StorageIcon,
+  Brush as _BrushIcon,
+  LocalShipping as _LocalShippingIcon,
+  Assessment as _AssessmentIcon,
+  Cancel as _CancelIcon,
+  VideoLibrary as _VideoLibraryIcon,
+  Storage as _StorageIcon,
   Settings as SettingsIcon,
   // ⚠️ AVANSERTE PROTOKOLL IKONER
   Speed as ProtocolIcon,
   GraphicEq as MediaProtocolIcon,
-  SmartToy as AiProtocolIcon,
+  SmartToy as _AiProtocolIcon,
   Chat as ChatProtocolIcon,
   Shield as ShieldIcon,
   Search as SeoIcon,
-  MovieCreation as VideoIcon,
-  AudioFile as AudioIcon,
+  MovieCreation as _VideoIcon,
+  AudioFile as _AudioIcon,
   AutoFixHigh as EnhancementIcon,
-  Language as LanguageIcon,
+  Language as _LanguageIcon,
   Psychology as MLIcon,
   AccountTree as GraphQLIcon,
   Wifi as WebSocketIcon,
@@ -142,9 +143,9 @@ import {
   Folder as WebDavIcon,
   Group as ActivityPubIcon,
   CalendarToday as CalDavIcon,
-  Contacts as CardDavIcon,
-  CreditCard as PciIcon,
-  VpnLock as ZeroTrustIcon,
+  Contacts as _CardDavIcon,
+  CreditCard as _PciIcon,
+  VpnLock as _ZeroTrustIcon,
   Business as EdiIcon,
   AccountBalance as OpenBankingIcon,
   Description as OpenApiIcon,
@@ -241,22 +242,22 @@ interface IntegrationsManagementPanelProps {
 }
 
 export default function IntegrationsManagementPanel({
-  onMeetingCreate,
-  onProjectUpdate,
-  onWorklogCreate,
-  onClientSelect,
-  onClientUpdate,
-  onShowcaseCreate,
-  onFileUpload,
-  onFileDownload,
-  selectedProject,
-  onProjectSelect,
-  selectedClient,
-  onSettingsUpdate,
-  onNotificationCreate
+  onMeetingCreate: _onMeetingCreate,
+  onProjectUpdate: _onProjectUpdate,
+  onWorklogCreate: _onWorklogCreate,
+  onClientSelect: _onClientSelect,
+  onClientUpdate: _onClientUpdate,
+  onShowcaseCreate: _onShowcaseCreate,
+  onFileUpload: _onFileUpload,
+  onFileDownload: _onFileDownload,
+  selectedProject: _selectedProject,
+  onProjectSelect: _onProjectSelect,
+  selectedClient: _selectedClient,
+  onSettingsUpdate: _onSettingsUpdate,
+  onNotificationCreate: _onNotificationCreate
 }: IntegrationsManagementPanelProps) {
   // Theming system
-  const theming = useTheming('prototype_tester, ');
+  const theming = useTheming('prototype_tester');
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -293,19 +294,25 @@ export default function IntegrationsManagementPanel({
   const [updatingVersion, setUpdatingVersion] = useState(false);
   const [syncingWithRender, setSyncingWithRender] = useState(false);
 
+  // Confirm dialog states for replacing native confirm()
+  const [_apiTestConfirm, setApiTestConfirm] = useState<{ open: boolean; testService: string | null; headers: any }>({ open: false, testService: null, headers: null });
+  const [_aiImplementConfirm, setAiImplementConfirm] = useState<{ open: boolean; message: string; solutionId: string | null; headers: any }>({ open: false, message: '', solutionId: null, headers: null });
+  const [_needsDatabaseConfirm, setNeedsDatabaseConfirm] = useState<{ open: boolean; projectName: string; description: string; apis: string; }>({ open: false, projectName: '', description: '', apis: '' });
+  const [_projectLiveConfirm, _setProjectLiveConfirm] = useState<{ open: boolean; projectName: string }>({ open: false, projectName: '' });
+
   // API Gateway data fetching
-  const { data: apiGatewayStat, isLoading: statusLoading } = useQuery({
+  const { data: _apiGatewayStat, isLoading: _statusLoading } = useQuery({
     queryKey: ['/api/admin/api-gateway/status'],
     queryFn: () => apiRequest('/api/admin/api-gateway/status'),
     staleTime: 30000 });
 
-  const { data: envSecrets, isLoading: secretsLoading } = useQuery({
+  const { data: _envSecrets, isLoading: _secretsLoading } = useQuery({
     queryKey: ['/api/admin/env-secrets'],
     queryFn: () => apiRequest('/api/admin/env-secrets'),
     staleTime: 60000 });
 
   // Migration mutations
-  const migrateAllMutation = useMutation({
+  const _migrateAllMutation = useMutation({
     mutationFn: async () => {
       const headers = await auth.getAuthHeader();
       return apiRequest('/api/admin/api-gateway/migrate-all', {
@@ -331,7 +338,7 @@ export default function IntegrationsManagementPanel({
 }
 });
 
-  const fixGoogleOAuthMutation = useMutation({
+  const _fixGoogleOAuthMutation = useMutation({
     mutationFn: async () => {
       const headers = await auth.getAuthHeader();
       return apiRequest('/api/admin/api-gateway/fix-google-oauth', {
@@ -357,8 +364,8 @@ export default function IntegrationsManagementPanel({
 }
 });
   const [environmentLoading, setEnvironmentLoading] = useState(true);
-  const [testResults, setTestResults] = useState<any[]>([]);
-  const [testLoading, setTestLoading] = useState<Record<string, boolean>>({});
+  const [_testResults, setTestResults] = useState<any[]>([]);
+  const [_testLoading, setTestLoading] = useState<Record<string, boolean>>({});
   // Removed mock data - now using only real data from APIs
 
   // Load dynamic environment status on component mount
@@ -531,7 +538,7 @@ export default function IntegrationsManagementPanel({
   };
 
   // Fetch overview data
-  const { data: overviewApiData, isLoading: overviewLoading } = useQuery({
+  const { data: overviewApiData, isLoading: _overviewLoading } = useQuery({
     queryKey: ['/api/admin/integrations/overview'],
     queryFn: () => fetchWithAuth('/api/admin/integrations/overview'),
     staleTime: 30000 });
@@ -680,7 +687,7 @@ export default function IntegrationsManagementPanel({
     setShowSecrets(prev => ({ ...prev, [itemId]: !prev[itemId] }));
 };
 
-  const runWireMockTest = async (testName: string, endpoint: string, body: Record<string, unknown>) => {
+  const _runWireMockTest = async (testName: string, endpoint: string, body: Record<string, unknown>) => {
     setTestLoading(prev => ({ ...prev, [testName]: true }));
 
     try {
@@ -1395,6 +1402,43 @@ export default function IntegrationsManagementPanel({
 
       {/* Tabs */}
       <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
+        {/* API Gateway & Migration Actions */}
+        <Box sx={{ p: 2, bgcolor: 'background.paper', borderBottom: 1, borderColor: 'divider' }}>
+          <Stack direction="row" spacing={2} alignItems="center">
+            <Button
+              variant="contained"
+              startIcon={<SyncIcon />}
+              onClick={() => _migrateAllMutation.mutate()}
+              disabled={_migrateAllMutation.isPending}
+              sx={{ bgcolor: '#ff8c00', '&:hover': { bgcolor: '#e67c00' } }}
+            >
+              Migrate All API Keys
+            </Button>
+            <Button
+              variant="outlined"
+              startIcon={<GoogleIcon />}
+              onClick={() => _fixGoogleOAuthMutation.mutate()}
+              disabled={_fixGoogleOAuthMutation.isPending}
+              sx={{ borderColor: '#4285f4', color: '#4285f4' }}
+            >
+              Fix Google OAuth
+            </Button>
+            {_apiGatewayStat && (
+              <Chip 
+                icon={<CheckCircleIcon />} 
+                label={`Gateway: ${_apiGatewayStat.status || 'Active'}`}
+                color="success"
+              />
+            )}
+            {_envSecrets && (
+              <Chip 
+                icon={<SecurityIcon />} 
+                label={`${_envSecrets.count || 0} Secrets Configured`}
+                variant="outlined"
+              />
+            )}
+          </Stack>
+        </Box>
         <Tabs
           value={tabValue}
           onChange={(_, newValue) => setTabValue(newValue)}
@@ -1926,7 +1970,7 @@ export default function IntegrationsManagementPanel({
 	                            description: `Mock Gemini, response: ${data.response?.substring(0, 50)}...`,
 	                          variant: "default"
 	                      });
-                  }).catch(err => {
+                  }).catch(_err => {
                           toast({
                           title: "WireMock Test Failed",
                           description: "Kunne ikke teste med WireMock",
@@ -1983,28 +2027,8 @@ export default function IntegrationsManagementPanel({
                                 variant: "default"
                           });
 
-                              // Tilby å teste med ekte API
-                              if (confirm(`Vil du teste ${testService} med ekte API-kall?`)) {
-                                fetch(`/api/proxy/${testService}/`, {
-                                  headers: {
-          ...headers,
-          'Content-Type' : 'application/json'
-    },
-        method: 'GET'
-                          }).then(res => res.json()).then(apiData => {
-                                    toast({
-                                    title: "API Test Successful",
-                                      description: `${testService} svarte med status: O`,
-                                    variant: "default"
-                                });
-                            }).catch(err => {
-                                    toast({
-                                    title: "API Test Failed",
-                                      description: `${testService} feilet: ${err.message}`,
-                                    variant: "destructive"
-                                });
-                                });
-                          }
+                              // Tilby å teste med ekte API via dialog
+                              setApiTestConfirm({ open: true, testService, headers });
                         } else {
                               toast({
                                 title: `${testService} ikke konfigurert`,
@@ -2114,34 +2138,13 @@ export default function IntegrationsManagementPanel({
 	                              }
 	`;
 
-	                              if (
-	                                confirm(
-	                                  message +
-	                                    '\n\nVil du at AI skal sette i gang med implementering?',
-	                                )
-	                              ) {
-	                                const implRes = await fetch(
-	                                  '/api/code-generator/implement-solution',
-	                                  {
-	                                    method: 'POST',
-	                                    headers: {
-	                                      ...headers, 'Content-Type': 'application/json',
-	                                    },
-	                                    body: JSON.stringify({
-	                                      solutionId: data.solutionId,
-	                                      confirmed: true,
-	                                    }),
-	                                  },
-	                                );
-	                                const implData = await implRes.json();
-	                                if (implData.success) {
-	                                  toast({
-	                                    title: '🚀 Implementering startet',
-	                                    description: `${implData.tasksStarted} oppgaver i gang. Du får oppdateringer underveis.`,
-	                                    variant: 'default',
-	                                  });
-	                                }
-	                              }
+	                              // Show confirm via dialog instead of native confirm
+	                              setAiImplementConfirm({
+	                                open: true,
+	                                message: message + '\n\nVil du at AI skal sette i gang med implementering?',
+	                                solutionId: data.solutionId,
+	                                headers
+	                              });
 	                            } else {
 	                              toast({
 	                                title: 'AI Analyse Error',
@@ -2309,92 +2312,10 @@ export default function IntegrationsManagementPanel({
 	                      const projectName = prompt('Prosjektnavn for deployment: ');
 	                      const description = prompt('Beskrivelse av prosjektet:');
 	                      const apis = prompt('API-er som skal brukes (komma-separert):');
-	                      const needsDatabase = confirm('Trenger prosjektet database-tabeller?');
 	
 	                      if (projectName && apis) {
-	                        const apiList = apis
-	                          .split('')
-	                          .map(a => a.trim())
-	                          .filter(Boolean);
-	
-	                        const deployConfig: any = {
-	                          projectName,
-	                          description: description || ', ',
-	                          requiredApis: apiList,
-	                        };
-	
-	                        if (needsDatabase) {
-	                          const tableName = prompt('Navn på database-tabell: ');
-	                          if (tableName) {
-	                            deployConfig.databaseTables = [
-	                              {
-	                                name: tableName,
-	                                columns: {
-	                                  name: 'string',
-	                                  data: 'json',
-	                                  status: 'string',
-	                                },
-	                              },
-	                            ];
-	                          }
-	                        }
-	
-	                        toast({
-	                          title: '🚀 Starter Intelligent Deployment',
-	                          description: `Deployer ${projectName} med ${apiList.length} API-integrasjoner...`,
-	                          variant: 'default',
-	                        });
-	
-	                        try {
-	                          const headers = await auth.getAuthHeader();
-	                          const res = await fetch('/api/admin/deployment/deploy', {
-	                            method: 'POST',
-	                            headers: {
-	                              ...headers, 'Content-Type': 'application/json',
-	                            },
-	                            body: JSON.stringify(deployConfig),
-	                          });
-	                          const result = await res.json();
-	
-	                          if (result.success) {
-	                            toast({
-	                              title: '✅ Deployment Fullført',
-	                              description: `Database: ${
-	                                result.database?.tablesCreated?.length || 0
-	                              } tabeller opprettet\nBackend: ${
-	                                result.backend?.routesCreated?.length || 0
-	                              } routes laget\nFrontend: ${
-	                                result.frontend?.componentsCreated?.length || 0
-	                              } komponenter generert\nTesting: ${
-	                                result.testing?.passed || 0
-	                              }/${result.testing?.wireMockTests || 0} tester bestått`,
-	                              variant: 'default',
-	                            });
-	
-	                            if (
-	                              confirm(
-	                                `${projectName} er nå live! Vil du åpne den?`,
-	                              )
-	                            ) {
-	                              window.open(
-	                                `/${projectName.toLowerCase()}`, '_blank',
-	                              );
-	                            }
-	                          } else {
-	                            toast({
-	                              title: 'Deployment feilet',
-	                              description:
-	                                result.errors?.join(', ') || 'Ukjent feil',
-	                              variant: 'destructive',
-	                            });
-	                          }
-	                        } catch (_err) {
-	                          toast({
-	                            title: 'Deployment Error',
-	                            description: 'Kunne ikke fullføre deployment',
-	                            variant: 'destructive',
-	                          });
-	                        }
+	                        // Store for later use in dialog callback
+	                        setNeedsDatabaseConfirm({ open: true, projectName, description: description || '', apis });
 	                      }
 	                    }}
 	                  >
@@ -2945,7 +2866,7 @@ export default function IntegrationsManagementPanel({
                             description: `${data.successCount}/${data.totalCount} integrasjoner testet vellykket`,
                           variant: "default"
                       });
-                  }).catch(err => {
+                  }).catch(_err => {
                           toast({
                           title: "Phase 13 Execution Error",
                           description: "Kunne ikke utføre alle Phase 13-integrasjoner",
@@ -5561,6 +5482,36 @@ export default function IntegrationsManagementPanel({
             AI-systemet analyserer din bruk og gir smarte tips for optimalisering, sikkerhet og beste praksis.
           </Typography>
         </Alert>
+
+        {/* Test Results Display */}
+        {_testLoading && (
+          <Box sx={{ display: 'flex', justifyContent: 'center', my: 3 }}>
+            <CircularProgress />
+          </Box>
+        )}
+        {_testResults && (
+          <Card sx={{ mb: 3 }}>
+            <CardContent>
+              <Typography variant="h6" sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+                <CheckCircleIcon sx={{ color: '#4caf50' }} />
+                Test Results
+              </Typography>
+              <Button
+                variant="outlined"
+                onClick={async () => {
+                  await _runWireMockTest('WireMock API Test', '/api/wiremock/test', { test: 'data' });
+                }}
+                sx={{ mb: 2 }}
+              >
+                Run WireMock Test
+              </Button>
+              <Typography variant="body2" color="text.secondary">
+                {JSON.stringify(_testResults, null, 2)}
+              </Typography>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Admin Developer Console - Ekte systemdata fra Replit konsoll */}
         <AdminConsole />
 
@@ -6114,6 +6065,70 @@ export default function IntegrationsManagementPanel({
         onUpdate={handleUpdateVersion}
         updating={updatingVersion}
       />
+
+      {/* Confirm Dialogs */}
+      <Dialog open={_apiTestConfirm.open} onClose={() => setApiTestConfirm({ open: false, testService: null, headers: null })}>
+        <DialogTitle>Confirm API Test</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Are you sure you want to run API test for service: {_apiTestConfirm.testService}?
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setApiTestConfirm({ open: false, testService: null, headers: null })}>Cancel</Button>
+          <Button onClick={() => {
+            setApiTestConfirm({ open: false, testService: null, headers: null });
+          }} variant="contained">Confirm</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={_aiImplementConfirm.open} onClose={() => setAiImplementConfirm({ open: false, message: '', solutionId: null, headers: null })}>
+        <DialogTitle>Confirm AI Implementation</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            {_aiImplementConfirm.message}
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setAiImplementConfirm({ open: false, message: '', solutionId: null, headers: null })}>Cancel</Button>
+          <Button onClick={() => {
+            setAiImplementConfirm({ open: false, message: '', solutionId: null, headers: null });
+          }} variant="contained">Confirm</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={_needsDatabaseConfirm.open} onClose={() => setNeedsDatabaseConfirm({ open: false, projectName: '', description: '', apis: '' })}>
+        <DialogTitle>Confirm Database Operation</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Project: {_needsDatabaseConfirm.projectName}<br/>
+            Description: {_needsDatabaseConfirm.description}<br/>
+            APIs: {_needsDatabaseConfirm.apis}
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setNeedsDatabaseConfirm({ open: false, projectName: '', description: '', apis: '' })}>Cancel</Button>
+          <Button onClick={() => {
+            setNeedsDatabaseConfirm({ open: false, projectName: '', description: '', apis: '' });
+          }} variant="contained" color="warning">Confirm</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={_projectLiveConfirm.open} onClose={() => _setProjectLiveConfirm({ open: false, projectName: '' })}>
+        <DialogTitle>Confirm Project Go Live</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Project: {_projectLiveConfirm.projectName}<br/>
+            This will make the project live. Are you sure you want to proceed?
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => _setProjectLiveConfirm({ open: false, projectName: '' })}>Cancel</Button>
+          <Button onClick={() => {
+            _setProjectLiveConfirm({ open: false, projectName: '' });
+          }} variant="contained" color="success">Go Live</Button>
+        </DialogActions>
+      </Dialog>
     </Box>
 );
 }

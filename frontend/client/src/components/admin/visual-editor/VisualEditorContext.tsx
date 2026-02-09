@@ -580,8 +580,8 @@ export function VisualEditorProvider({ children }: { children: React.ReactNode }
     dispatch({ type: 'SET_SELECTED_ELEMENT', payload: id });
     
     // Broadcast to other components
-    communication.sendBroadcast('element: selected', { id });
-    dataFlow.syncData('visual-editor: selectedElement', id);
+    communication.sendBroadcast('element:selected', { id });
+    dataFlow.syncData('visual-editor:selectedElement', id);
 }, [communication, dataFlow]);
 
   const selectElements = useCallback((ids: string[]) => {
@@ -682,8 +682,8 @@ export function VisualEditorProvider({ children }: { children: React.ReactNode }
     dispatch({ type: 'SET_SELECTED_ELEMENTS', payload: [] });
     
     // Broadcast to other components
-    communication.sendBroadcast('project: loaded', { project });
-    dataFlow.syncData('visual-editor: currentProject', project);
+    communication.sendBroadcast('project:loaded', { project });
+    dataFlow.syncData('visual-editor:currentProject', project);
 }, [communication, dataFlow]);
 
   const saveProject = useCallback(() => {
@@ -730,8 +730,8 @@ export function VisualEditorProvider({ children }: { children: React.ReactNode }
       dispatch({ type: 'SET_SELECTED_ELEMENTS', payload: [] });
       
       // Broadcast to other components
-      communication.sendBroadcast('template: loaded', { template });
-      dataFlow.syncData('visual-editor: currentTemplate', template);
+      communication.sendBroadcast('template:loaded', { template });
+      dataFlow.syncData('visual-editor:currentTemplate', template);
   }
 }, [state.templates, communication, dataFlow]);
 

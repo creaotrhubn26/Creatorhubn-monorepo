@@ -420,9 +420,9 @@ class TeamCollaborationManager {
         name: 'Owner',
         description: 'Full access to all team features and settings',
         level:  10,
-        permissions: ['*']// All permissions
-        color: '#ff6b6',
-        icon: '�, �, ',
+        permissions: ['*'], // All permissions
+        color: '#ff6b6b',
+        icon: 'crown',
         isDefault: false,
         isSystem: true
   },
@@ -434,8 +434,8 @@ class TeamCollaborationManager {
         permissions: [
           'canViewProjects','canCreateProjects','canEditProjects','canDeleteProjects','canShareProjects','canArchiveProjects','canViewFiles','canUploadFiles','canDownloadFiles','canDeleteFiles','canShareFiles','canOrganizeFiles','canInviteMembers','canRemoveMembers','canEditMemberRoles','canViewMemberActivity','canManageWorkspaces','canCreateWorkspaces','canSendMessages','canCreateChannels','canManageChannels','canStartMeetings','canJoinMeetings','canRecordMeetings','canManageTeam','canViewAnalytics','canManageIntegrations','canAccessAdminPanel'
         ],
-        color: '#4ecdc',
-        icon: '⚙, ️, ',
+        color: '#4ecdc4',
+        icon: 'settings',
         isDefault: false,
         isSystem: true
   },
@@ -447,8 +447,8 @@ class TeamCollaborationManager {
         permissions: [
           'canViewProjects','canCreateProjects','canEditProjects','canShareProjects','canViewFiles','canUploadFiles','canDownloadFiles','canShareFiles','canOrganizeFiles','canSendMessages','canJoinMeetings','canViewAnalytics'
         ],
-        color: '#45b7d',
-        icon: '✏, ️, ',
+        color: '#45b7d1',
+        icon: 'edit',
         isDefault: true,
         isSystem: true
   },
@@ -460,8 +460,8 @@ class TeamCollaborationManager {
         permissions: [
           'canViewProjects','canViewFiles','canDownloadFiles','canSendMessages','canJoinMeetings'
         ],
-        color: '#96ceb',
-        icon: '👁, ️, ',
+        color: '#96ceb4',
+        icon: 'view',
         isDefault: true,
         isSystem: true
   },

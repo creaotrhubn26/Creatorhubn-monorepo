@@ -10,7 +10,7 @@ interface CameraDiscoverySource {
   url: string;
   parser: (data: any) => VideoCamera[];
   lastChecked: Date;
-  enabled: boolean, ;, 
+  enabled: boolean;
 }
 
 interface CameraDiscoveryConfig {
@@ -18,7 +18,7 @@ interface CameraDiscoveryConfig {
   updateInterval: number; // in hours
   sources: CameraDiscoverySource[];
   maxNewCameras: number;
-  requireApproval: boolean, ;, 
+  requireApproval: boolean;
 }
 
 // Camera discovery sources
@@ -29,42 +29,42 @@ const DISCOVERY_SOURCES: CameraDiscoverySource[] = [
     parser: parseSonyCameras,
     lastChecked: new Date(),
     enabled: true
-,},
+  },
   {
     name: 'Canon Product AP',
     url: 'https://api.canon.com/cameras',
     parser: parseCanonCameras,
     lastChecked: new Date(),
     enabled: true
-,},
+  },
   {
     name: 'Panasonic Product AP',
     url: 'https://api.panasonic.com/cameras',
     parser: parsePanasonicCameras,
     lastChecked: new Date(),
     enabled: true
-,},
+  },
   {
     name: 'Fujifilm Product AP',
     url: 'https://api.fujifilm.com/cameras',
     parser: parseFujifilmCameras,
     lastChecked: new Date(),
     enabled: true
-,},
+  },
   {
     name: 'Nikon Product AP',
     url: 'https://api.nikon.com/cameras',
     parser: parseNikonCameras,
     lastChecked: new Date(),
     enabled: true
-,},
+  },
   {
     name: 'Blackmagic Product AP',
     url: 'https://api.blackmagicdesign.com/cameras',
     parser: parseBlackmagicCameras,
     lastChecked: new Date(),
     enabled: true
-,},
+  },
   {
     name: 'RED Product AP',
     url: 'https://api.red.com/cameras',
@@ -106,25 +106,25 @@ const DISCOVERY_SOURCES: CameraDiscoverySource[] = [
     parser: parseLeicaCameras,
     lastChecked: new Date(),
     enabled: true
-,}
+  }
 ];
 
 // Parser functions for each brand
 function parseSonyCameras(data: any): VideoCamera[] {
   return data.cameras?.map((camera: any) => ({
-    id: `sony-${camera.model.toLowerCase().replace(/\s+, /'-, ')}`,
+    id: `sony-${camera.model.toLowerCase().replace(/\s+/g, '-')}`,
     brand: 'Sony',
     model: camera.model,
     category: camera.category || 'mirrorless',
     logFormats: camera.logFormats || ['S-Log','S-Log3'],
-    resolution: camera.resolution || ['4','1080p'],
+    resolution: camera.resolution || ['4K','1080p'],
     frameRates: camera.frameRates || ['24fps','25fps','30fps','60fps'],
     colorSpace: camera.colorSpace || ['S-Gamut','S-Gamut3.Cine','Rec.709'],
     priceRange: camera.priceRange || 'professional',
     description: camera.description || 'Sony camera with video capabilities',
     features: camera.features || ['4K 60fps','S-Log3'],
     isVideoOptimized: camera.isVideoOptimized || true
-,})) || [];
+  })) || [];
 }
 
 function parseCanonCameras(data: any): VideoCamera[] {
@@ -134,184 +134,184 @@ function parseCanonCameras(data: any): VideoCamera[] {
     model: camera.model,
     category: camera.category || 'mirrorless',
     logFormats: camera.logFormats || ['C-Log','C-Log2','C-Log3'],
-    resolution: camera.resolution || ['4','1080p'],
+    resolution: camera.resolution || ['4K','1080p'],
     frameRates: camera.frameRates || ['24fps','25fps','30fps','60fps'],
     colorSpace: camera.colorSpace || ['Canon Log','Rec.709','Rec.2020'],
     priceRange: camera.priceRange || 'professional',
     description: camera.description || 'Canon camera with video capabilities',
     features: camera.features || ['4K 60fps','C-Log3'],
     isVideoOptimized: camera.isVideoOptimized || true
-,})) || [];
+  })) || [];
 }
 
 function parsePanasonicCameras(data: any): VideoCamera[] {
   return data.cameras?.map((camera: any) => ({
-    id: `panasonic-${camera.model.toLowerCase().replace(/\s+, /'-, ')}`,
+    id: `panasonic-${camera.model.toLowerCase().replace(/\s+/g, '-')}`,
     brand: 'Panasonic',
     model: camera.model,
     category: camera.category || 'mirrorless',
     logFormats: camera.logFormats || ['V-Log','V-LogL'],
-    resolution: camera.resolution || ['4','1080p'],
+    resolution: camera.resolution || ['4K','1080p'],
     frameRates: camera.frameRates || ['24fps','25fps','30fps','60fps'],
     colorSpace: camera.colorSpace || ['V-Gamut','Rec.709','Rec.2020'],
     priceRange: camera.priceRange || 'professional',
     description: camera.description || 'Panasonic camera with video capabilities',
     features: camera.features || ['4K 60fps','V-Log'],
     isVideoOptimized: camera.isVideoOptimized || true
-,})) || [];
+  })) || [];
 }
 
 function parseFujifilmCameras(data: any): VideoCamera[] {
   return data.cameras?.map((camera: any) => ({
-    id: `fujifilm-${camera.model.toLowerCase().replace(/\s+, /'-')}`,
+    id: `fujifilm-${camera.model.toLowerCase().replace(/\s+/g, '-')}`,
     brand: 'Fujifilm',
     model: camera.model,
     category: camera.category || 'mirrorless',
     logFormats: camera.logFormats || ['F-Log','F-Log2'],
-    resolution: camera.resolution || ['4','1080p'],
+    resolution: camera.resolution || ['4K','1080p'],
     frameRates: camera.frameRates || ['24fps','25fps','30fps','60fps'],
     colorSpace: camera.colorSpace || ['F-Gamut','Rec.709','Rec.2020'],
     priceRange: camera.priceRange || 'professional',
     description: camera.description || 'Fujifilm camera with video capabilities',
     features: camera.features || ['4K 60fps','F-Log2'],
     isVideoOptimized: camera.isVideoOptimized || true
-,})) || [];
+  })) || [];
 }
 
 function parseNikonCameras(data: any): VideoCamera[] {
   return data.cameras?.map((camera: any) => ({
-    id: `nikon-${camera.model.toLowerCase().replace(/\s+, /'-')}`,
+    id: `nikon-${camera.model.toLowerCase().replace(/\s+/g, '-')}`,
     brand: 'Nikon',
     model: camera.model,
     category: camera.category || 'mirrorless',
-    logFormats: camera.logFormats || [''],
-    resolution: camera.resolution || ['4','1080p'],
+    logFormats: camera.logFormats || ['N-Log'],
+    resolution: camera.resolution || ['4K','1080p'],
     frameRates: camera.frameRates || ['24fps','25fps','30fps','60fps'],
     colorSpace: camera.colorSpace || ['N-Gamut','Rec.709','Rec.2020'],
     priceRange: camera.priceRange || 'professional',
     description: camera.description || 'Nikon camera with video capabilities',
     features: camera.features || ['4K 60fps','N-Log'],
     isVideoOptimized: camera.isVideoOptimized || true
-,})) || [];
+  })) || [];
 }
 
 function parseBlackmagicCameras(data: any): VideoCamera[] {
   return data.cameras?.map((camera: any) => ({
-    id: `blackmagic-${camera.model.toLowerCase().replace(/\s+, /'-')}`,
+    id: `blackmagic-${camera.model.toLowerCase().replace(/\s+/g, '-')}`,
     brand: 'Blackmagic',
     model: camera.model,
     category: camera.category || 'cinema',
-    logFormats: camera.logFormats || ['BMD Film, ', ],
-    resolution: camera.resolution || ['4','1080p'],
+    logFormats: camera.logFormats || ['BMD Film'],
+    resolution: camera.resolution || ['4K','1080p'],
     frameRates: camera.frameRates || ['24fps','25fps','30fps','60fps'],
     colorSpace: camera.colorSpace || ['Blackmagic Film','Rec.709','Rec.2020'],
     priceRange: camera.priceRange || 'professional',
     description: camera.description || 'Blackmagic camera with video capabilities',
     features: camera.features || ['4K 60fps','BMD Film'],
     isVideoOptimized: camera.isVideoOptimized || true
-,})) || [];
+  })) || [];
 }
 
 function parseREDCameras(data: any): VideoCamera[] {
   return data.cameras?.map((camera: any) => ({
-    id: `red-${camera.model.toLowerCase().replace(/\s+, /'-')}`,
-    brand: 'RE',
+    id: `red-${camera.model.toLowerCase().replace(/\s+/g, '-')}`,
+    brand: 'RED',
     model: camera.model,
     category: camera.category || 'cinema',
     logFormats: camera.logFormats || ['RED LogFilm','RED IPP2'],
-    resolution: camera.resolution || ['4','1080p'],
+    resolution: camera.resolution || ['4K','1080p'],
     frameRates: camera.frameRates || ['24fps','25fps','30fps','60fps'],
     colorSpace: camera.colorSpace || ['RED Wide Gamut','Rec.709','Rec.2020'],
     priceRange: camera.priceRange || 'professional',
     description: camera.description || 'RED camera with video capabilities',
     features: camera.features || ['4K 60fps','RED LogFilm'],
     isVideoOptimized: camera.isVideoOptimized || true
-,})) || [];
+  })) || [];
 }
 
 function parseARRICameras(data: any): VideoCamera[] {
   return data.cameras?.map((camera: any) => ({
-    id: `arri-${camera.model.toLowerCase().replace(/\s+, /'-')}`,
-    brand: 'ARR',
+    id: `arri-${camera.model.toLowerCase().replace(/\s+/g, '-')}`,
+    brand: 'ARRI',
     model: camera.model,
     category: camera.category || 'cinema',
-    logFormats: camera.logFormats || [''],
-    resolution: camera.resolution || ['4','1080p'],
+    logFormats: camera.logFormats || ['LogC'],
+    resolution: camera.resolution || ['4K','1080p'],
     frameRates: camera.frameRates || ['24fps','25fps','30fps','60fps'],
     colorSpace: camera.colorSpace || ['ARRI Wide Gamut','Rec.709','Rec.2020'],
     priceRange: camera.priceRange || 'cinema',
     description: camera.description || 'ARRI camera with video capabilities',
     features: camera.features || ['4K 60fps','LogC'],
     isVideoOptimized: camera.isVideoOptimized || true
-,})) || [];
+  })) || [];
 }
 
 function parseDJICameras(data: any): VideoCamera[] {
   return data.cameras?.map((camera: any) => ({
-    id: `dji-${camera.model.toLowerCase().replace(/\s+, /'-')}`,
-    brand: 'DJ',
+    id: `dji-${camera.model.toLowerCase().replace(/\s+/g, '-')}`,
+    brand: 'DJI',
     model: camera.model,
     category: camera.category || 'drone',
     logFormats: camera.logFormats || ['D-Log','D-LogM'],
-    resolution: camera.resolution || ['4','1080p'],
+    resolution: camera.resolution || ['4K','1080p'],
     frameRates: camera.frameRates || ['24fps','25fps','30fps','60fps'],
     colorSpace: camera.colorSpace || ['D-Gamut','Rec.709'],
     priceRange: camera.priceRange || 'budget',
     description: camera.description || 'DJI camera with video capabilities',
     features: camera.features || ['4K 60fps','D-Log'],
     isVideoOptimized: camera.isVideoOptimized || true
-,})) || [];
+  })) || [];
 }
 
 function parseAppleCameras(data: any): VideoCamera[] {
   return data.cameras?.map((camera: any) => ({
-    id: `apple-${camera.model.toLowerCase().replace(/\s+, /'-')}`,
+    id: `apple-${camera.model.toLowerCase().replace(/\s+/g, '-')}`,
     brand: 'Apple',
     model: camera.model,
     category: camera.category || 'phone',
-    logFormats: camera.logFormats || ['Apple Log, ', ],
-    resolution: camera.resolution || ['4','1080p'],
+    logFormats: camera.logFormats || ['Apple Log'],
+    resolution: camera.resolution || ['4K','1080p'],
     frameRates: camera.frameRates || ['24fps','25fps','30fps','60fps'],
     colorSpace: camera.colorSpace || ['Apple Wide Gamut','Rec.709','Rec.2020'],
     priceRange: camera.priceRange || 'budget',
     description: camera.description || 'Apple camera with video capabilities',
     features: camera.features || ['4K 60fps','Apple Log'],
     isVideoOptimized: camera.isVideoOptimized || true
-,})) || [];
+  })) || [];
 }
 
 function parseSamsungCameras(data: any): VideoCamera[] {
   return data.cameras?.map((camera: any) => ({
-    id: `samsung-${camera.model.toLowerCase().replace(/\s+, /'-')}`,
+    id: `samsung-${camera.model.toLowerCase().replace(/\s+/g, '-')}`,
     brand: 'Samsung',
     model: camera.model,
     category: camera.category || 'phone',
-    logFormats: camera.logFormats || [''],
-    resolution: camera.resolution || ['4','1080p'],
+    logFormats: camera.logFormats || ['HDR10'],
+    resolution: camera.resolution || ['4K','1080p'],
     frameRates: camera.frameRates || ['24fps','25fps','30fps','60fps'],
     colorSpace: camera.colorSpace || ['S-Gamut','Rec.709','Rec.2020'],
     priceRange: camera.priceRange || 'budget',
     description: camera.description || 'Samsung camera with video capabilities',
     features: camera.features || ['4K 60fps','S-Log'],
     isVideoOptimized: camera.isVideoOptimized || true
-,})) || [];
+  })) || [];
 }
 
 function parseLeicaCameras(data: any): VideoCamera[] {
   return data.cameras?.map((camera: any) => ({
-    id: `leica-${camera.model.toLowerCase().replace(/\s+, /'-')}`,
+    id: `leica-${camera.model.toLowerCase().replace(/\s+/g, '-')}`,
     brand: 'Leica',
     model: camera.model,
     category: camera.category || 'mirrorless',
-    logFormats: camera.logFormats || ['Leica Log', ],
-    resolution: camera.resolution || ['4','1080p'],
+    logFormats: camera.logFormats || ['Leica Log'],
+    resolution: camera.resolution || ['4K','1080p'],
     frameRates: camera.frameRates || ['24fps','25fps','30fps','60fps'],
     colorSpace: camera.colorSpace || ['Leica Wide Gamut','Rec.709','Rec.2020'],
     priceRange: camera.priceRange || 'cinema',
     description: camera.description ||'Leica camera with video capabilities',
     features: camera.features || ['4K 60fps','Leica Log'],
     isVideoOptimized: camera.isVideoOptimized || true
-,})) || [];
+  })) || [];
 }
 
 // Camera Discovery Service
@@ -324,7 +324,7 @@ export class CameraDiscoveryService {
     this.config = {
       autoUpdate: true,
       updateInterval:  24, // 24 hours
-      sources: DISCOVERY_SOURCS,
+      sources: DISCOVERY_SOURCES,
       maxNewCameras:  50,
       requireApproval: true,
       ...config

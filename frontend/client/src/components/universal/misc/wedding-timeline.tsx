@@ -295,7 +295,7 @@ export default function WeddingTimeline({
       <CardContent sx={theming.getThemedCardSx()}>
         <Box sx={{ display: 'flex', alignItems: 'center', mb:  3 }}>
           <People sx={{ color, mr: 2, fontSize: 28}} />
-          <Typography variant="h5" sx={{  fontWeight: 7, color: theming.colors.primary }}>
+          <Typography variant="h5" sx={{  fontWeight: 700, color: theming.colors.primary }}>
             Personer & Roller
           </Typography>
           <Box sx={{ ml: 'auto'}}>
@@ -479,7 +479,7 @@ export default function WeddingTimeline({
       <CardContent sx={theming.getThemedCardSx()}>
         <Box sx={{ display: 'flex', alignItems: 'center', mb:  3 }}>
           <LocationOn sx={{ color, mr: 2, fontSize: 28}} />
-          <Typography variant="h5" sx={{  fontWeight: 7, color: theming.colors.primary }}>
+          <Typography variant="h5" sx={{  fontWeight: 700, color: theming.colors.primary }}>
             Lokasjoner
           </Typography>
         </Box>
@@ -494,7 +494,7 @@ export default function WeddingTimeline({
       <CardContent sx={theming.getThemedCardSx()}>
         <Box sx={{ display: 'flex', alignItems: 'center', mb:  3 }}>
           <Schedule sx={{ color, mr: 2, fontSize: 28}} />
-          <Typography variant="h5" sx={{  fontWeight: 7, color: theming.colors.primary }}>
+          <Typography variant="h5" sx={{  fontWeight: 700, color: theming.colors.primary }}>
             Kjøreplan
           </Typography>
           <Box sx={{ ml: 'auto', display: 'flex', gap:  1 }}>
@@ -543,7 +543,7 @@ export default function WeddingTimeline({
       <CardContent sx={theming.getThemedCardSx()}>
         <Box sx={{ display: 'flex', alignItems: 'center', mb:  3 }}>
           <Lightbulb sx={{ color, mr: 2, fontSize: 28}} />
-          <Typography variant="h5" sx={{  fontWeight: 7, color: theming.colors.primary }}>
+          <Typography variant="h5" sx={{  fontWeight: 700, color: theming.colors.primary }}>
             Praktisk Info
           </Typography>
         </Box>
@@ -559,7 +559,7 @@ export default function WeddingTimeline({
         <CardContent sx={theming.getThemedCardSx()}>
           <Box sx={{ display: 'flex', alignItems: 'center', mb:  3 }}>
             <EventNote sx={{ color, mr: 2, fontSize: 28}} />
-            <Typography variant="h5" sx={{  fontWeight: 7, color: theming.colors.primary }}>
+            <Typography variant="h5" sx={{  fontWeight: 700, color: theming.colors.primary }}>
               Wedding Timeline Dashboard
             </Typography>
             <Chip 
@@ -581,7 +581,7 @@ export default function WeddingTimeline({
               variant="fullWidth"
               sx={{
                 '& .MuiTab-root': {
-                  fontWeight: 7,
+                  fontWeight: 700,
                   fontSize: '1.1rem',
                   color: 'rgba(25, 255, 255, 0.7)',
                   padding: '16px 24px', '&:hover': {

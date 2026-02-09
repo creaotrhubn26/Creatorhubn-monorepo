@@ -157,7 +157,7 @@ export class TrialToPaymentBridge {
         await this.grantFeatureAccess(userId, featureId);
 
         // Track conversion
-        this.trackTrialConversion(featureId, userId, selectedPlan 'google-pay');
+        this.trackTrialConversion(featureId, userId, selectedPlan, 'google-pay');
 
         // 🔗 INTEGRATE WITH ADMIN PANELS
         await this.integrateWithAdminPanels({

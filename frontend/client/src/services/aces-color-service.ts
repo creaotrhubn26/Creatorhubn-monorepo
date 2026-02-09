@@ -307,7 +307,7 @@ export class ACESColorService {
   // CAMERA-SPECIFIC IDTs
   // ============================================
   
-  private static sonyS Log3ToACEScg(r: number, g: number, b: number): [number, number, number] {
+  private static sonySLog3ToACEScg(r: number, g: number, b: number): [number, number, number] {
     // Sony S-Log3 to linear
     const toLinear = (x: number): number => {
       if (x >= 171.2102946929 / 1023) {
@@ -390,7 +390,7 @@ export class ACESColorService {
     // ACEScg to Display P3 (simplified)
     // Use ColorScience for gamut mapping
     const [rSRGB, gSRGB, bSRGB] = this.ACEScgToSRGB(r, g, b);
-    return ColorScience.convertColor(rSRGB, gSRGB, bSRGB 'srgb','p3', {
+    return ColorScience.convertColor(rSRGB, gSRGB, bSRGB, 'srgb', 'p3', {
       gamutMapping: { method: 'css' }
     }) as [number, number, number];
   }
@@ -398,7 +398,7 @@ export class ACESColorService {
   private static ACEScgToRec2020(r: number, g: number, b: number): [number, number, number] {
     // ACEScg to Rec.2020 (simplified)
     const [rSRGB, gSRGB, bSRGB] = this.ACEScgToSRGB(r, g, b);
-    return ColorScience.convertColor(rSRGB, gSRGB, bSRGB'srgb','rec2020', {
+    return ColorScience.convertColor(rSRGB, gSRGB, bSRGB, 'srgb', 'rec2020', {
       gamutMapping: { method: 'css' }
     }) as [number, number, number];
   }

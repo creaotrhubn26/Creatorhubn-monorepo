@@ -5,7 +5,7 @@
  */
 
 import React from 'react';
-import { useEnhancedMasterIntegration, useEssentialDependencies } from './EnhancedMasterIntegrationProvider import { useTheming } from '../../utils/theming-helper';
+import { useEnhancedMasterIntegration, useEssentialDependencies } from './EnhancedMasterIntegrationProvider';
 
 // Template interface for components using the integration system
 export interface IntegratedComponentProps {
@@ -18,14 +18,14 @@ export interface IntegratedComponentProps {
 
 // HOC that automatically provides all essential dependencies
 export const withEssentialDependencies = <P extends object>(
-  Component: React.ComponentType<>,
+  Component: React.ComponentType<P>,
   options: {
     componentId?: string;
     componentType?: string;
     enablePerformanceMonitoring?: boolean;
     enableDebugLogging?: boolean;
     enableAnalytics?: boolean;
-,} = {}
+  } = {}
 ) => {
   return React.forwardRef<any, P & IntegratedComponentProps>((props, ref) => {
     const {
@@ -40,8 +40,6 @@ export const withEssentialDependencies = <P extends object>(
     // Get all integration features
     const integration = useEnhancedMasterIntegration();
   
-  // Theming system
-  const theming = useTheming('prototype_tester, ');
     const essentialDeps = useEssentialDependencies();
 
     // Enhanced props that include all dependencies
@@ -75,7 +73,7 @@ export const withEssentialDependencies = <P extends object>(
       enablePerformanceMonitoring,
       enableDebugLogging,
       enableAnalytics
-  } as P & {
+    } as P & {
       // Essential dependencies
       visualEditor: any;
       auth: any;
@@ -118,7 +116,7 @@ export const withEssentialDependencies = <P extends object>(
       enablePerformanceMonitoring: boolean;
       enableDebugLogging: boolean;
       enableAnalytics: boolean;
-  ,};
+    };
 
     return <Component {...enhancedProps} ref={ref} />;
 });
@@ -133,21 +131,21 @@ export const useIntegratedComponent = (componentId?: string, componentType?: str
   React.useEffect(() => {
     if (componentId && componentType) {
       integration.lifecycle.registerComponent({
-        id: componentd,
+        id: componentId,
         type: componentType,
         version: '1.0.0',
         capabilities: {
           data: ['read','write'],
           events: ['emit','listen'],
-          actions: [','],
+          actions: ['execute'],
           ui: ['update','render'],
           system: ['integrate']
-      ,},
+        },
         dependencies:  [],
         lastActive: Date.now(),
         performance: {
-          renderCount:, 0,
-          avgRenderTime:  0,
+          renderCount: 0,
+          avgRenderTime: 0,
           memoryUsage: 0
       }
     });

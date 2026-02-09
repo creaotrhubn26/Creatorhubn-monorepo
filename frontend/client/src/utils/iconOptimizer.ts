@@ -155,17 +155,17 @@ class IconOptimizer {
    */
   private optimizeIconContent(content: string): string {
     // Remove unnecessary whitespace
-    let optimized = content.replace(/\s+, /', ').trim();
+    let optimized = content.replace(/\s+/g, ' ').trim();
     
     // Remove comments
-    optimized = optimized.replace(/<!--[\s\S]*?-->/g, ', ');
+    optimized = optimized.replace(/<!--[\s\S]*?-->/g, '');
     
     // Remove unnecessary attributes
-    optimized = optimized.replace(/\s+(xmlns|version|id)="[^"]*"/g, ', ');
+    optimized = optimized.replace(/\s+(xmlns|version|id)="[^"]*"/g, '');
     
     // Optimize SVG attributes
-    optimized = optimized.replace(/\s+fill="none"/g, ', ');
-    optimized = optimized.replace(/\s+stroke="none"/g, ', ');
+    optimized = optimized.replace(/\s+fill="none"/g, '');
+    optimized = optimized.replace(/\s+stroke="none"/g, '');
     
     return optimized;
 }
@@ -193,11 +193,11 @@ class IconOptimizer {
     
     // Update metadata
     this.iconMetadata.set(iconKey, {
-      name: iconKey.split('/')[],
-      category: iconKey.split('/')[],
+      name: iconKey.split('/')[1] || iconKey,
+      category: iconKey.split('/')[0] || 'default',
       size: content.length,
       format: 'svg',
-      path: this.getIconPath(iconKey.split('/')[], iconKey.split('/')[0]),
+      path: this.getIconPath(iconKey.split('/')[1] || iconKey, iconKey.split('/')[0]),
       loaded: true,
       cached: true,
       lastUsed: Date.now(),
@@ -357,7 +357,7 @@ class IconOptimizer {
    */
   preloadIconsByUsage(): void {
     const sortedIcons = Array.from(this.usageStats.entries())
-      .sort(([, a][b]) => b - a)
+      .sort(([, a], [, b]) => b - a)
       .slice(0, 10); // Top 10 most used icons
 
     sortedIcons.forEach(([iconKey]) => {
@@ -387,7 +387,7 @@ class IconOptimizer {
     const cacheHitRate = totalRequests > 0 ? (cacheHits / totalRequests) * 100 : 0;
 
     const mostUsedIcons = Array.from(this.usageStats.entries())
-      .sort(([, a][b]) => b - a)
+      .sort(([, a], [, b]) => b - a)
       .slice(0, 10)
       .map(([name, count]) => ({ name, count }));
 

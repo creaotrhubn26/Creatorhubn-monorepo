@@ -19,10 +19,10 @@ export interface UseAssetManagementOptions {
   onAssetAdded?: (data: { asset: Asset }) => void;
   onCategoryAdded?: (data: { category: AssetCategory }) => void;
   onTagAdded?: (data: { tag: AssetTag }) => void;
-  onSearchCompleted?: (data: { query: AssetSearchQuery; results: Asset[, ],}) => void;
+  onSearchCompleted?: (data: { query: AssetSearchQuery; results: Asset[] }) => void;
   onSearchFailed?: (data: { query: AssetSearchQuery; error: string }) => void;
   onError?: (error: string) => void;
-  onInitialized?: () => void
+  onInitialized?: () => void;
 }
 
 export interface UseAssetManagementReturn {
@@ -125,7 +125,7 @@ export const useAssetManagement = (options: UseAssetManagementOptions = {}): Use
     }
   };
 
-    const handleSearchCompleted = (data: { query: AssetSearchQuery; results: Asset[, ],}) => {
+    const handleSearchCompleted = (data: { query: AssetSearchQuery; results: Asset[] }) => {
       if (onSearchCompleted) {
         onSearchCompleted(data);
     }
@@ -281,9 +281,9 @@ export const useAssetManagement = (options: UseAssetManagementOptions = {}): Use
     isInitialized: state.isInitialized,
     hasError: state.hasError,
     error: state.error,
-    assets: Array.from(state.assets.values(, ), ),
-    categories: Array.from(state.categories.values(, ), ),
-    tags: Array.from(state.tags.values(, ), ),
+    assets: Array.from(state.assets.values()),
+    categories: Array.from(state.categories.values()),
+    tags: Array.from(state.tags.values()),
     searchResults: state.searchResults,
     lastSearchQuery: state.lastSearchQuery,
     totalAssets: state.totalAssets,

@@ -200,7 +200,7 @@ export default function VendorShowcase({
       {/* Vendor Showcase Header */}
       <Box sx={{ mb:  4 }}>
         <Typography variant="h4" sx={{  
-          fontWeight: 7, 
+          fontWeight: 700, 
           color: '#27ae60',
           display: 'flex', 
           alignItems: 'center',
@@ -219,7 +219,7 @@ export default function VendorShowcase({
           <Grid size={{ xs: 12 }} sm={6} md={3}>
             <Card sx={{ textAlign: 'center', bgcolor: '#9b59b61', border: '1px solid #9b59b630',  ...theming.getThemedCardSx() }}>
               <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h4" sx={{  fontWeight: 7, color: theming.colors.primary }}>
+                <Typography variant="h4" sx={{  fontWeight: 700, color: theming.colors.primary }}>
                   {showcaseStats.totalProducts || 0}
                 </Typography>
                 <Typography variant="body2" sx={{ color: 'text.secondary'}}>
@@ -231,7 +231,7 @@ export default function VendorShowcase({
           <Grid size={{ xs: 12 }} sm={6} md={3}>
             <Card sx={{ textAlign: 'center', bgcolor: '#3498db1', border: '1px solid #3498db30',  ...theming.getThemedCardSx() }}>
               <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h4" sx={{  fontWeight: 7, color: theming.colors.primary }}>
+                <Typography variant="h4" sx={{  fontWeight: 700, color: theming.colors.primary }}>
                   {showcaseStats.totalDownloads || 0}
                 </Typography>
                 <Typography variant="body2" sx={{ color: 'text.secondary'}}>
@@ -243,7 +243,7 @@ export default function VendorShowcase({
           <Grid size={{ xs: 12 }} sm={6} md={3}>
             <Card sx={{ textAlign: 'center', bgcolor: '#e74c3c1', border: '1px solid #e74c3c30',  ...theming.getThemedCardSx() }}>
               <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h4" sx={{  fontWeight: 7, color: theming.colors.primary }}>
+                <Typography variant="h4" sx={{  fontWeight: 700, color: theming.colors.primary }}>
                   {showcaseStats.averageRating?.toFixed(1) || '0.0'}
                 </Typography>
                 <Typography variant="body2" sx={{ color: 'text.secondary'}}>
@@ -255,7 +255,7 @@ export default function VendorShowcase({
           <Grid size={{ xs: 12 }} sm={6} md={3}>
             <Card sx={{ textAlign: 'center', bgcolor: '#27ae601', border: '1px solid #27ae6030',  ...theming.getThemedCardSx() }}>
               <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h4" sx={{  fontWeight: 7, color: theming.colors.primary }}>
+                <Typography variant="h4" sx={{  fontWeight: 700, color: theming.colors.primary }}>
                   {showcaseStats.featuredProducts || 0}
                 </Typography>
                 <Typography variant="body2" sx={{ color: 'text.secondary'}}>
@@ -454,7 +454,7 @@ export default function VendorShowcase({
                     {/* Price and Actions */}
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
                       <Typography variant="h6" sx={{  
-                        fontWeight: 7, 
+                        fontWeight: 700, 
                         color: categoryColors[product.category] 
                    }}>
                         {product.price === 0 ? 'Gratis' : `${product.price} ${product.currency}`}

@@ -125,7 +125,7 @@ export default function AdminFloatingActionButtons({
   const { auth } = useEnhancedMasterIntegration();
 
   // Theming system
-  const theming = useTheming('prototype_tester, ');
+  const theming = useTheming('prototype_tester');
   const [showInfoMessage, setShowInfoMessage] = useState(false);
   const [clickedAction, setClickedAction] = useState<string | null>(null);
   const [focusedIndex, setFocusedIndex] = useState(-1);

@@ -83,7 +83,8 @@ class GoogleChatService {
     const response = await fetch(`${this.baseUrl}${endpoint}`, {
       ...options,
       headers: {
-        'Authorization': `Bearer ${this.accessToken}`'Content-Type' : 'application/json',
+        Authorization: `Bearer ${this.accessToken}`,
+        'Content-Type': 'application/json',
         ...options.headers,
       },
     });

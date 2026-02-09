@@ -2,6 +2,7 @@ import { useTheming } from '../../../utils/theming-helper';
 import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
+import UniversalPrototypeFeedback from '../../prototype-testing/UniversalPrototypeFeedback';
 
 import {
   Fab,
@@ -416,9 +417,9 @@ export default function FloatingActionButtons({
             sx={{
               display: 'flex',
               flexDirection: 'column',
-              gap: 1,
-              mb: 1,
-              alignItems: 'center'
+              gap: 2,
+              mb: 2,
+              alignItems: 'flex-end'
         }}
           >
             {getVisibleActions().map((action, index) => {
@@ -439,22 +440,26 @@ export default function FloatingActionButtons({
                     sx={{
                       position: 'absolute',
                       right: '100%',
-                      mr:  2,
-                      bgcolor: isFocused ? 'rgba(25, 1070.95)' : 'rgba(00, 0.8)',
-                      color: 'white',
-                      px:  2,
-                      py:  1,
-                      borderRadius: '8px',
-                      fontSize: '0.875rem',
+                      mr: 1.5,
+                      bgcolor: 'rgba(255, 255, 255, 0.98)',
+                      color: isFocused ? '#FF6B00' : 'text.primary',
+                      px: 2,
+                      py: 1,
+                      borderRadius: 2,
+                      fontSize: '0.85rem',
                       fontWeight: 600,
                       whiteSpace: 'nowrap',
                       boxShadow: isFocused
-                        ? '0 0 15px rgba(25, 107, 255, 0.6)'
-                        : '0 4px 8px rgba(0, 0, 0, 0.2)',
+                        ? '0 4px 20px rgba(255, 107, 0, 0.4)'
+                        : '0 4px 12px rgba(0, 0, 0, 0.15)',
                       backdropFilter: 'blur(10px)',
-                      border: isFocused ? '2px solid rgba(25, 255, 255, 0.6)' : '1px solid rgba(255, 255, 255, 0.3)',
-                      zIndex: 140,
-                      transition: 'all 0.2s ease-in-out'
+                      border: isFocused ? '2px solid #FF6B00' : '1px solid rgba(0, 0, 0, 0.08)',
+                      zIndex: 1400,
+                      transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                      '&:hover': {
+                        boxShadow: '0 6px 16px rgba(255, 107, 0, 0.3)',
+                        transform: 'translateX(-4px)'
+                      }
                     }}
                   >
                     {action.name.replace(/-/g, ', ').replace(/\b\w/g, l => l.toUpperCase())}
@@ -469,18 +474,24 @@ export default function FloatingActionButtons({
                     sx={{
                       width: 48,
                       height: 48,
-                      bgcolor: isFocused ? '#FF6B00' : 'rgba(25, 107, 255, 0.9)',
+                      bgcolor: isFocused ? '#FF6B00' : '#2563eb',
                       color: 'white',
-                      transform: isClicked ? 'scale(1.1)' : isFocused ? 'scale(1.05)' : 'scale(1)',
-                      transition: 'all 0.2s ease-in-out',
-                      outline: isFocused ? '3px solid rgba(25, 107, 255, 0.5)' : 'none',
-                      outlineOffset: '2px',
+                      transform: isClicked ? 'scale(1.15)' : isFocused ? 'scale(1.08)' : 'scale(1)',
+                      transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                      boxShadow: isFocused 
+                        ? '0 6px 20px rgba(255, 107, 0, 0.4)' 
+                        : '0 4px 12px rgba(37, 99, 235, 0.3)',
+                      outline: 'none',
                       '&:hover': {
-                        bgcolor: '#FF6B00',
-                        transform: 'scale(1.05)'
+                        bgcolor: '#FF8500',
+                        transform: 'scale(1.12)',
+                        boxShadow: '0 8px 24px rgba(255, 107, 0, 0.5)'
+                      },
+                      '&:active': {
+                        transform: 'scale(0.95)'
                       },
                       '&:focus': {
-                        outline: '3px solid rgba(25, 107, 255, 0.7)',
+                        outline: '3px solid rgba(255, 107, 0, 0.3)',
                         outlineOffset: '2px'
                       }
                     }}
@@ -502,29 +513,35 @@ export default function FloatingActionButtons({
             setFocusedIndex(open ? -1 : 0);
           }}
           onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ',') {
+            if (e.key === 'Enter' || e.key === ' ') {
               e.preventDefault();
               setOpen(!open);
               setFocusedIndex(open ? -1 : 0);
             }
           }}
           sx={{
-            width: 70,
-            height: 70,
+            width: 64,
+            height: 64,
             bgcolor: '#FF6B00',
             color: 'white',
             transform: open ? 'rotate(45deg)' : 'rotate(0deg)',
-            transition: 'all 0.3s ease-in-out',
+            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+            boxShadow: '0 8px 24px rgba(255, 107, 0, 0.35)',
             '&:hover': {
-              bgcolor: '#FF8500'
+              bgcolor: '#FF8500',
+              transform: open ? 'rotate(45deg) scale(1.1)' : 'scale(1.1)',
+              boxShadow: '0 12px 32px rgba(255, 107, 0, 0.45)'
+            },
+            '&:active': {
+              transform: open ? 'rotate(45deg) scale(0.95)' : 'scale(0.95)'
             },
             '&:focus': {
-              outline: '3px solid rgba(25, 107, 255, 0.5)',
+              outline: '3px solid rgba(255, 107, 0, 0.4)',
               outlineOffset: '2px'
             }
           }}
         >
-          <Add />
+          <Add sx={{ fontSize: 30 }} />
         </Fab>
 
         {/* Keyframe animations */}
@@ -544,45 +561,14 @@ export default function FloatingActionButtons({
         </style>
       </Box>
 
-      {/* Universal Prototype Feedback Dialog */}
-      {feedbackOpen && (
-        <Dialog
-          open={feedbackOpen}
-          onClose={() => setFeedbackOpen(false)}
-          maxWidth="md"
-          fullWidth
-          slotProps={{
-            paper: {
-              sx: {
-                borderRadius: 3,
-                background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.95))',
-                backdropFilter: 'blur(10px)',
-                border: '1px solid rgba(255, 255, 255, 0.2)'
-              }
-            }
-          }}
-        >
-          <DialogTitle sx={{ textAlign: 'center', pb: 1 }}>
-            <Typography variant="h5" sx={{ fontWeight: 600, color: theming.colors.primary }}>
-              🔬 Prototype Testing
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              Gi tilbakemelding om SpeedDial og handlinger
-            </Typography>
-          </DialogTitle>
-          <DialogContent sx={{ pt: 2 }}>
-            {/* Feedback content placeholder */}
-            <Typography variant="body1">
-              Tilbakemeldingsskjema kommer her
-            </Typography>
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setFeedbackOpen(false)}>
-              Lukk
-            </Button>
-          </DialogActions>
-        </Dialog>
-      )}
+      {/* Universal Prototype Feedback */}
+      <UniversalPrototypeFeedback
+        profession={profession}
+        component="FloatingActionButtons"
+        isFloating={false}
+        open={feedbackOpen}
+        onClose={() => setFeedbackOpen(false)}
+      />
     </Box>
   );
 }

@@ -68,7 +68,7 @@ export const ProgressRing: React.FC<ProgressRingProps> = ({
             variant="h6"
             sx={{
               fontSize: labelSize,
-              fontWeight: 70,
+              fontWeight: 700,
               color: labelColor,
               lineHeight: 1}}>
             {label || `${Math.round(percentage)}%`}

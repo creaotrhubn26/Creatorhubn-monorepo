@@ -17,9 +17,9 @@ export interface UseKeyboardShortcutsOptions {
   onShortcutCreated?: (data: { shortcut: KeyboardShortcut }) => void;
   onShortcutExecuted?: (data: { shortcut: KeyboardShortcut; event?: KeyboardEvent }) => void;
   onShortcutExecutionFailed?: (data: { shortcut: KeyboardShortcut; event?: KeyboardEvent; error: string }) => void;
-  onContextChanged?: (data: { contexts: string[, ],}) => void;
+  onContextChanged?: (data: { contexts: string[] }) => void;
   onError?: (error: string) => void;
-  onInitialized?: () => void
+  onInitialized?: () => void;
 }
 
 export interface UseKeyboardShortcutsReturn {
@@ -117,7 +117,7 @@ export const useKeyboardShortcuts = (options: UseKeyboardShortcutsOptions = {}):
     }
   };
 
-    const handleContextChanged = (data: { contexts: string[, ],}) => {
+    const handleContextChanged = (data: { contexts: string[] }) => {
       if (onContextChanged) {
         onContextChanged(data);
     }
@@ -218,8 +218,8 @@ export const useKeyboardShortcuts = (options: UseKeyboardShortcutsOptions = {}):
     isInitialized: state.isInitialized,
     hasError: state.hasError,
     error: state.error,
-    shortcuts: Array.from(state.shortcuts.values(, ), ),
-    contexts: Array.from(state.contexts.values(, ), ),
+    shortcuts: Array.from(state.shortcuts.values()),
+    contexts: Array.from(state.contexts.values()),
     activeContexts: state.activeContexts,
     recording: state.recording,
     playback: state.playback,

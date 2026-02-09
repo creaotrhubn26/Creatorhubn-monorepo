@@ -56,7 +56,7 @@ export const AITodoListPanel: React.FC<AITodoListPanelProps> = ({
   todoGroupId,
   autoRefresh = false 
 }) => {
-  const theming = useTheming('prototype_tester, ');
+  const theming = useTheming('prototype_tester');
   const { componentRegistry, communication, analytics, auth } = useEnhancedMasterIntegration();
   
   const [todoGroup, setTodoGroup] = useState<any>(null);

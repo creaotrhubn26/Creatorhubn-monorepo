@@ -74,7 +74,7 @@ const MLOptimizationDashboard: React.FC<MLOptimizationDashboardProps> = ({
   const [activeTab, setActiveTab] = useState(0);
   
   // Theming system
-  // const theming = useTheming('prototype_tester, ');
+  // const theming = useTheming('prototype_tester');
   const theming = {
     getThemedCardSx: () => ({ p: 2, m: 1 }),
     getThemedButtonSx: () => ({ mt: 2 }),

@@ -100,7 +100,7 @@ interface EnterpriseInquiriesPanelProps {
 }
 
 export default function EnterpriseInquiriesPanel({ onNavigateToPricing }: EnterpriseInquiriesPanelProps) {
-  const theming = useTheming('photographer, ');
+  const theming = useTheming('photographer');
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [selectedInquiry, setSelectedInquiry] = useState<EnterpriseInquiry | null>(null);

@@ -79,7 +79,7 @@ export default function DetailPlanManager({
   const { user } = useAuth();
   
   // Theming system
-  const theming = useTheming('photographer, ');
+  const theming = useTheming('photographer');
   const queryClient = useQueryClient();
   
   const [selectedItem, setSelectedItem] = useState<DetailPlanItem | null>(null);

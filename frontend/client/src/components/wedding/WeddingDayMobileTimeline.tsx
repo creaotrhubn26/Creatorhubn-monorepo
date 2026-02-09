@@ -93,7 +93,7 @@ export default function WeddingDayMobileTimeline({
   onMarkDelayed
 }: WeddingDayMobileTimelineProps) {
   const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down( , 'md'));
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [expandedEvent, setExpandedEvent] = useState<string | null>(null);
   const [currentTime] = useState(new Date());
   const [currentEventIndexState, setCurrentEventIndexState] = useState(0);
@@ -320,7 +320,7 @@ export default function WeddingDayMobileTimeline({
                       <Typography 
                         variant="h6" 
                         sx={{ 
-                          fontWeight: 70,
+                          fontWeight: 700,
                           fontSize: isCurrent ? '1.1rem' : '1rem',
                           color: isPast ? 'text.secondary' : 'text.primary',
                           textDecoration: isPast ? 'line-through' : 'none'
@@ -401,8 +401,8 @@ export default function WeddingDayMobileTimeline({
                           color="primary"
                           onClick={(e) => {
                             e.stopPropagation();
-                            const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(event.location ||', ')}`;
-                            window.open(mapsUrl'_blank');
+                            const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(event.location || '')}`;
+                            window.open(mapsUrl, '_blank');
                           }}
                           title="Åpne i Google Maps"
                         >

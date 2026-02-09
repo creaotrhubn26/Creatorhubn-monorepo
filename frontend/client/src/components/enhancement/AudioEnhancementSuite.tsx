@@ -215,7 +215,7 @@ const GRMeter: React.FC<{ gr: number }> = ({ gr }) => {
         justifyContent: 'center',
         fontSize: '11px',
         color: 'white',
-        fontWeight: 70,
+        fontWeight: 700,
         textShadow: '0 1px 3px rgba(0,0,0,0.5)'
       }}>
         GR: {gr.toFixed(1)} dB
@@ -793,7 +793,7 @@ const AudioEnhancementSuite: React.FC<AudioEnhancementSuiteProps> = ({
             </Box>
             <Box>
               <Typography variant="h5" sx={{ 
-                fontWeight: 70, 
+                fontWeight: 700, 
                 color: 'white',
                 fontFamily: 'Poppins, sans-serif',
                 letterSpacing: '-0.5px'
@@ -1039,7 +1039,7 @@ const AudioEnhancementSuite: React.FC<AudioEnhancementSuiteProps> = ({
                 background: BRAND_COLORS.gradient,
                 WebkitBackgroundClip: 'text',
                 WebkitTextFillColor: 'transparent',
-                fontWeight: 70,
+                fontWeight: 700,
                 fontSize: '14px'
               }}>
                 🎚️ AI Presets
@@ -1076,7 +1076,7 @@ const AudioEnhancementSuite: React.FC<AudioEnhancementSuiteProps> = ({
                         minWidth: 70,
                         background: `linear-gradient(180deg, ${BRAND_COLORS.green}, #0ea568)`,
                         fontSize: '11px',
-                        fontWeight: 70,
+                        fontWeight: 700,
                         py: 0.5, '&:hover': {
                           boxShadow: `0 0 12px ${BRAND_COLORS.green}60`
                         }, '&:disabled': {
@@ -1154,7 +1154,7 @@ const AudioEnhancementSuite: React.FC<AudioEnhancementSuiteProps> = ({
                   color: BRAND_COLORS.orange,
                   fontSize: '11px',
                   fontFamily: 'monospace',
-                  fontWeight: 70,
+                  fontWeight: 700,
                   textShadow: `0 0 8px ${BRAND_COLORS.orange}80`
                 }}>
                   {isPlaying ? formatTime(currentTime) : formatTime(0)} / {formatTime(duration)}
@@ -1429,7 +1429,7 @@ const AudioEnhancementSuite: React.FC<AudioEnhancementSuiteProps> = ({
                 background: BRAND_COLORS.gradient,
                 WebkitBackgroundClip: 'text',
                 WebkitTextFillColor: 'transparent',
-                fontWeight: 70,
+                fontWeight: 700,
                 mb: 2,
                 textAlign: 'center'
               }}>
@@ -1449,7 +1449,7 @@ const AudioEnhancementSuite: React.FC<AudioEnhancementSuiteProps> = ({
             <CardContent sx={{ p: 2 }}>
               <Typography variant="subtitle2" sx={{ 
                 color: BRAND_COLORS.blue, 
-                fontWeight: 70,
+                fontWeight: 700,
                 mb: 2
               }}>
                 📈 Spectrum Analyzer
@@ -1483,7 +1483,7 @@ const AudioEnhancementSuite: React.FC<AudioEnhancementSuiteProps> = ({
             background: BRAND_COLORS.gradient,
             WebkitBackgroundClip: 'text',
             WebkitTextFillColor: 'transparent',
-            fontWeight: 70,
+            fontWeight: 700,
             mb: 2
           }}>
             ⚙️ Processing Queue ({enhancementJobs.length})
@@ -1564,7 +1564,7 @@ const AudioEnhancementSuite: React.FC<AudioEnhancementSuiteProps> = ({
                         sx={{
                           background: `linear-gradient(180deg, ${BRAND_COLORS.green}, #0ea568)`,
                           fontSize: '11px',
-                          fontWeight: 70,
+                          fontWeight: 700,
                           minWidth: 100, '&:hover': {
                             boxShadow: `0 0 12px ${BRAND_COLORS.green}60`
                           }
@@ -1692,7 +1692,7 @@ const AudioEnhancementSuite: React.FC<AudioEnhancementSuiteProps> = ({
         <DialogTitle sx={{ 
           background: BRAND_COLORS.gradient,
           color: 'white',
-          fontWeight: 70,
+          fontWeight: 700,
           display: 'flex',
           alignItems: 'center',
           gap: 1
@@ -1776,7 +1776,7 @@ const AudioEnhancementSuite: React.FC<AudioEnhancementSuiteProps> = ({
         <DialogTitle sx={{
           background: `linear-gradient(135deg, ${BRAND_COLORS.purple} 0%, #7c3aed 100%)`,
           color: 'white',
-          fontWeight: 70,
+          fontWeight: 700,
           display: 'flex',
           alignItems: 'center',
           gap: 1

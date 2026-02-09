@@ -107,7 +107,7 @@ export const useScrollStories = () => {
         transitionDuration: 100,
         easing: 'ease-in-out',
         backgroundColor: '#ffffff',
-        textColor: '#00000',
+        textColor: '#000000',
         fontFamily: 'Arial, sans-serif',
         fontSize: 16
   },
@@ -125,12 +125,12 @@ export const useScrollStories = () => {
   const updateStory = useCallback((storyId: string, updates: Partial<ScrollStory>) => {
     setStories(prev => prev.map(story => 
       story.id === storyId 
-        ? { ...story, ...updates, updatedAt: new Date().toISOString(, ),}
+        ? { ...story, ...updates, updatedAt: new Date().toISOString() }
         : story
     ));
     
     if (currentStory?.id === storyId) {
-      setCurrentStory(prev => prev ? { ...prev, ...updates, updatedAt: new Date().toISOString(, ),} : null);
+      setCurrentStory(prev => prev ? { ...prev, ...updates, updatedAt: new Date().toISOString() } : null);
   }
 }, [currentStory]);
 
@@ -168,13 +168,13 @@ export const useScrollStories = () => {
   // Delete page
   const deletePage = useCallback((storyId: string, pageId: string) => {
     const updatedPages = currentStory?.pages.filter(page => page.id !== pageId) || [];
-    updateStory(storyd, { pages: updatedPages });
+    updateStory(storyId, { pages: updatedPages });
 }, [currentStory, updateStory]);
 
   // Reorder pages
   const reorderPages = useCallback((storyId: string, pageIds: string[]) => {
-    const reorderedPages = pageIds.map((, idindex) => {
-      const page = currentStory?.pages.find(p => p.id === id);
+    const reorderedPages = pageIds.map((id, index) => {
+      const page = currentStory?.pages.find((p) => p.id === id);
       return page ? { ...page, order: index } : null;
   }).filter(Boolean) as ScrollStoryPage[];
 
@@ -197,7 +197,7 @@ export const useScrollStories = () => {
 }, [currentStory, updatePage]);
 
   // Add trigger to page
-  const addTrigger = useCallback((storyId: string, pageId: string, trigger: Omit<ScrollTrigger, 'id, '>) => {
+  const addTrigger = useCallback((storyId: string, pageId: string, trigger: Omit<ScrollTrigger, 'id'>) => {
     const newTrigger: ScrollTrigger = {
       ...trigger,
       id: `trigger_${Date.now()}`

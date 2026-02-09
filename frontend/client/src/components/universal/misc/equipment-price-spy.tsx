@@ -1,5 +1,5 @@
 import { useTheming } from '../../../utils/theming-helper';
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
 import { 
@@ -63,64 +63,64 @@ export default function EquipmentPriceSpy({ onPriceAlert }: EquipmentPriceSpyPro
   const { user } = useAuth();
   
   // Theming system
-  const theming = useTheming('photographer, ');
+  const theming = useTheming('photographer');
   const queryClient = useQueryClient();
   
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [sortBy, setSortBy] = useState<string>('priceChange');
+  const [alertMessage, setAlertMessage] = useState<string>('');
 
   // Fetch equipment prices
-  const { data: equipmentPrices = [], isLoading } = useQuery({
-    queryKey: ['/api/equipment-prices', searchTerm, categoryFilter],
- return apiRequest('/api/equipment-prices', {
-   headers: {
-          "Content-Type" : "application/json"
-    },
-      headers: {
-  },
-      method: 'POS',
-      body: JSON.stringify({ 
-        search: searchTerm,
-        category: categoryFilter,
-        sortBy 
-    })
-  }),
+  const { data: equipmentPrices = [], isLoading } = useQuery<EquipmentPrice[]>({
+    queryKey: ['/api/equipment-prices', searchTerm, categoryFilter, sortBy],
+    queryFn: () =>
+      apiRequest('/api/equipment-prices', {
+        method: 'POST',
+        body: {
+          search: searchTerm,
+          category: categoryFilter,
+          sortBy,
+          userId: user?.id || undefined,
+        },
+      }),
     retry: false,
-});
+  });
 
   // Refresh prices mutation
   const refreshPrices = useMutation({
     mutationFn: async () => 
-      return apiRequest('/api/equipment-prices/refresh', {
-        headers: {
-          "Content-Type" : "application/json"
-    },
-        headers: {
-    },
-        method: 'POST'
-  }),
+      apiRequest('/api/equipment-prices/refresh', {
+        method: 'POST',
+        body: { userId: user?.id || undefined },
+      }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/equipment-prices", ],});
-  }
-});
+      queryClient.invalidateQueries({ queryKey: ['/api/equipment-prices'] });
+    }
+  });
 
   // Set price alert mutation
   const setPriceAlert = useMutation({
-    mutationFn: async (equipmentId: string, targetPrice: number) => 
-      return apiRequest('/api/equipment-prices/alert', {
-        headers: {
-          "Content-Type" : "application/json"
-    },
-        headers: {
-    },
-        method: 'POS',
-        body: JSON.stringify({ equipmentd, targetPrice })
-    }),
+    mutationFn: async (payload: { equipmentId: string; targetPrice: number; currentPrice: number }) =>
+      apiRequest('/api/equipment-prices/alert', {
+        method: 'POST',
+        body: {
+          equipmentId: payload.equipmentId,
+          targetPrice: payload.targetPrice,
+          currentPrice: payload.currentPrice,
+          userId: user?.id || undefined,
+        },
+      }),
     onSuccess: (data) => {
-      onPriceAlert?.(data.equipment);
-}
-});
+      if (data?.equipment) {
+        onPriceAlert?.(data.equipment);
+        setAlertMessage(`Prisvarsling satt for ${data.equipment.name}.`);
+      }
+    },
+    onError: () => {
+      setAlertMessage('Kunne ikke opprette prisvarsling. Prov igjen.');
+    }
+  });
 
   const handleSearch = useCallback((value: string) => {
     setSearchTerm(value);
@@ -131,7 +131,7 @@ export default function EquipmentPriceSpy({ onPriceAlert }: EquipmentPriceSpyPro
       case 'camera': return <CameraAlt />;
       case 'lens': return <CameraAlt />;
       case 'audio': return <Headphones />;
-      case 'lighting': return theming.getThemedIcon(', ');
+      case 'lighting': return <Videocam />;
       default: return <CameraAlt />;
 }
 };
@@ -143,12 +143,14 @@ export default function EquipmentPriceSpy({ onPriceAlert }: EquipmentPriceSpyPro
 };
 
   const getPriceChangeIcon = (change: number) => {
-    if (change > 0) return theming.getThemedIcon(', ');
+    if (change > 0) return <TrendingUp />;
     if (change < 0) return <TrendingDown />;
     return null;
 };
 
-  const getAvailabilityColor = (availability: string) => {
+  type ChipColor = 'default' | 'primary' | 'secondary' | 'error' | 'info' | 'success' | 'warning';
+
+  const getAvailabilityColor = (availability: string): ChipColor => {
     switch (availability) {
       case 'in-stock': return 'success';
       case 'low-stock': return 'warning';
@@ -158,15 +160,17 @@ export default function EquipmentPriceSpy({ onPriceAlert }: EquipmentPriceSpyPro
 };
 
   const formatPrice = (price: number) => {
-    return new Intl.NumberFormat('no-N', {
+    return new Intl.NumberFormat('no-NO', {
       style: 'currency',
       currency: 'NOK'
 }).format(price);
 };
 
   const formatPriceChange = (change: number, percent: number) => {
-    const sign = change >= 0 ? '+' : ',';
-    return `${sign}${formatPrice(change)} (${sign}${percent.toFixed(1)}%)`;
+    const sign = change >= 0 ? '+' : '-';
+    const absoluteChange = Math.abs(change);
+    const absolutePercent = Math.abs(percent);
+    return `${sign}${formatPrice(absoluteChange)} (${sign}${absolutePercent.toFixed(1)}%)`;
 };
 
   return (
@@ -237,6 +241,15 @@ export default function EquipmentPriceSpy({ onPriceAlert }: EquipmentPriceSpyPro
       </Card>
 
       {/* Results */}
+      {alertMessage && (
+        <Alert
+          severity={alertMessage.startsWith('Kunne ikke') ? 'error' : 'success'}
+          sx={{ mb: 2 }}
+          onClose={() => setAlertMessage('')}
+        >
+          {alertMessage}
+        </Alert>
+      )}
       {isLoading ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', p:  4 }}>
           <CircularProgress />
@@ -260,7 +273,7 @@ export default function EquipmentPriceSpy({ onPriceAlert }: EquipmentPriceSpyPro
             </TableHead>
             <TableBody>
               {equipmentPrices.map((equipment: EquipmentPrice) => (
-                <TableRow key={equipment.d} hover>
+                <TableRow key={equipment.id} hover>
                   <TableCell>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
                       {getCategoryIcon(equipment.category)}
@@ -291,9 +304,9 @@ export default function EquipmentPriceSpy({ onPriceAlert }: EquipmentPriceSpyPro
                     </Box>
                   </TableCell>
                   <TableCell>
-                    <Chip 
-                      label={equipment.availability.replace('-', ', ').toUpperCase()}
-                      color={getAvailabilityColor(equipment.availability) as any}
+                    <Chip
+                      label={equipment.availability.replace('-', ' ').toUpperCase()}
+                      color={getAvailabilityColor(equipment.availability)}
                       size="small"
                     />
                   </TableCell>
@@ -311,7 +324,13 @@ export default function EquipmentPriceSpy({ onPriceAlert }: EquipmentPriceSpyPro
                   <TableCell>
                     <Tooltip title="Set Price Alert">
                       <IconButton
-                        onClick={() => setPriceAlert.mutate(equipment.id, equipment.currentPrice * 0.9)}
+                        onClick={() =>
+                          setPriceAlert.mutate({
+                            equipmentId: equipment.id,
+                            targetPrice: Number((equipment.currentPrice * 0.9).toFixed(0)),
+                            currentPrice: equipment.currentPrice
+                          })
+                        }
                         size="small"
                       >
                         <TrendingDown />

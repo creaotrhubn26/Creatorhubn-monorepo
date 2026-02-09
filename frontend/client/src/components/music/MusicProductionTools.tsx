@@ -104,7 +104,7 @@ const MusicProductionTools: React.FC<MusicProductionToolsProps> = ({
   const [selectedTab, setSelectedTab] = useState(false);
   
   // Theming system
-  const theming = useTheming('photographer, ');
+  const theming = useTheming('photographer');
   const [connectDialog, setConnectDialog] = useState(false);
   const [autoConnecting, setAutoConnecting] = useState(false);
 

@@ -228,7 +228,7 @@ export default function GA4AutomationDashboard() {
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           <Settings sx={{ color: '#ff6b35', fontSize: 32 }} />
           <Box>
-            <Typography variant="h5" sx={{ fontWeight: 70, color: '#ffffff' }}>
+            <Typography variant="h5" sx={{ fontWeight: 700, color: '#ffffff' }}>
               GA4 Automation Dashboard
             </Typography>
             <Typography variant="body2" sx={{ color: '#ffa726' }}>

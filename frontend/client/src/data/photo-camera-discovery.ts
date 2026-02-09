@@ -19,7 +19,7 @@ export interface CameraDiscoveryResult {
   source: string;
   timestamp: string;
   success: boolean;
-  error?: string, ;, 
+  error?: string;
 }
 
 export class PhotoCameraDiscoveryService {
@@ -31,7 +31,7 @@ export class PhotoCameraDiscoveryService {
       lastChecked: '',
       checkInterval:  24,
       priority: 9
-  ,},
+    },
     {
       name: 'Camera Database AP',
       url: 'https://cameradb.com/api/v1/cameras',
@@ -39,7 +39,7 @@ export class PhotoCameraDiscoveryService {
       lastChecked: '',
       checkInterval:  12,
       priority: 8
-  ,},
+    },
     {
       name: 'Photography Blog RS',
       url: 'https://photographyblog.com/rss',
@@ -47,12 +47,12 @@ export class PhotoCameraDiscoveryService {
       lastChecked: '',
       checkInterval:  6,
       priority: 6
-  ,},
+    },
     {
       name: 'Manufacturer API',
       url: 'https://api.manufacturers.com/cameras',
       enabled: true,
-      lastChecked: ', ',
+        lastChecked: '',
       checkInterval:  48,
       priority: 10
   }
@@ -63,7 +63,7 @@ export class PhotoCameraDiscoveryService {
 
   constructor() {
     this.startAutoDiscovery();
-,}
+  }
 
   /**
    * Start automatic camera discovery
@@ -104,7 +104,7 @@ export class PhotoCameraDiscoveryService {
           timestamp: now,
           success: false,
           error: error instanceof Error ? error.message : 'Unknown error'
-      ,});
+        });
     }
   }
 
@@ -122,7 +122,7 @@ export class PhotoCameraDiscoveryService {
     const hoursSinceLastCheck = (currentTime.getTime() - lastChecked.getTime()) / (1000 * 60 * 60);
     
     return hoursSinceLastCheck >= source.checkInterval;
-,}
+  }
 
   /**
    * Fetch cameras from a specific source
@@ -138,7 +138,7 @@ export class PhotoCameraDiscoveryService {
         source: source.name,
         timestamp: new Date().toISOString(),
         success: true
-    ,};
+      };
   } catch (error) {
       return {
         cameras:  [],
@@ -146,7 +146,7 @@ export class PhotoCameraDiscoveryService {
         timestamp: new Date().toISOString(),
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error'
-    ,};
+      };
   }
 }
 
@@ -298,7 +298,7 @@ export class PhotoCameraDiscoveryService {
    */
   onCameraUpdate(callback: (cameras: PhotoCamera[]) => void) {
     this.updateCallbacks.push(callback);
-,}
+  }
 
   /**
    * Unsubscribe from camera updates

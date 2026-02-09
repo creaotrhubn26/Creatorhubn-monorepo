@@ -23,7 +23,7 @@ export interface UsePerformanceProfilerReturn {
   endProfile: (profileId: string) => PerformanceProfile | null;
   measure: <T>(name: string, fn: () => T, category?: PerformanceMetric['category']) => T;
   measureAsync: <T>(name: string, fn: () => Promise<T>, category?: PerformanceMetric['category']) => Promise<T>;
-  recordMetric: (metric: Omit<PerformanceMetric 'id'>) => void;
+  recordMetric: (metric: Omit<PerformanceMetric, 'id'>) => void;
   getMetrics: () => PerformanceMetric[];
   getProfiles: () => PerformanceProfile[];
   getActiveProfiles: () => PerformanceProfile[];

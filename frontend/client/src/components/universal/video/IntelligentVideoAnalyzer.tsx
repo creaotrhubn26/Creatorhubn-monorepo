@@ -99,7 +99,7 @@ export default function IntelligentVideoAnalyzer() {
   const queryClient = useQueryClient();
   
   // Theming system
-  const theming = useTheming('photographer, ');
+  const theming = useTheming('photographer');
 
   // Video analysis mutation
   const analyzeVideoMutation = useMutation({

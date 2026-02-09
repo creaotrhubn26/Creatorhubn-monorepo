@@ -29,7 +29,8 @@ import {
   Checkbox,
   Toolbar,
   Tooltip,
-  Stack
+  Stack,
+  Snackbar,
 } from '@mui/material';
 import {
   CheckCircle,
@@ -70,6 +71,7 @@ export default function RefundRequestsTable() {
   const [rejectionReason, setRejectionReason] = useState('');
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [bulkAction, setBulkAction] = useState<'approve' | 'reject' | null>(null);
+  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string }>({ open: false, message: '' });
 
   // Fetch refund requests
   const { data: refundRequests, isLoading } = useQuery({
@@ -324,7 +326,7 @@ export default function RefundRequestsTable() {
                 color="inherit"
                 onClick={() => {
                   trackEvent('bulk_email_refund_users', { count: selectedIds.length });
-                  alert(`Sender e-post til ${selectedIds.length} brukere...`);
+                  setSnackbar({ open: true, message: `Sender e-post til ${selectedIds.length} brukere...` });
                 }}
               >
                 <Email />
@@ -602,6 +604,22 @@ export default function RefundRequestsTable() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Snackbar Notifications */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={4000}
+        onClose={() => setSnackbar({ open: false, message: '' })}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert
+          onClose={() => setSnackbar({ open: false, message: '' })}
+          severity="info"
+          sx={{ width: '100%' }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </>
   );
 }

@@ -31,6 +31,7 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
+  DialogContentText,
   DialogActions,
   TextField,
   Slider,
@@ -38,6 +39,7 @@ import {
   Switch,
   LinearProgress,
   Divider,
+  Snackbar,
 } from '@mui/material';
 import {
   TrendingUp,
@@ -78,6 +80,8 @@ interface PromotionThresholds {
 
 export default function LightPatternPromotion() {
   const [patterns, setPatterns] = useState<LightPattern[]>([]);
+  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'warning' | 'info' }>({ open: false, message: '', severity: 'info' });
+  const [confirmPromoteId, setConfirmPromoteId] = useState<string | null>(null);
   const [eligiblePatterns, setEligiblePatterns] = useState<LightPattern[]>([]);
   const [promotedPatterns, setPromotedPatterns] = useState<LightPattern[]>([]);
   const [loading, setLoading] = useState(true);
@@ -139,34 +143,37 @@ export default function LightPatternPromotion() {
       }) as { success: boolean; message: string };
 
       if (response.success) {
-        alert(response.message);
+        setSnackbar({ open: true, message: response.message, severity: 'success' });
         setSettingsOpen(false);
         fetchPatterns();
       }
     } catch (error) {
       console.error('Error saving thresholds:', error);
-      alert('Failed to save thresholds');
+      setSnackbar({ open: true, message: 'Failed to save thresholds', severity: 'error' });
     }
   };
 
   const handlePromotePattern = async (patternId: string) => {
-    if (!confirm('Promote this pattern to the Professional Library? This action cannot be undone.')) {
-      return;
-    }
+    setConfirmPromoteId(patternId);
+  };
+
+  const executePromotePattern = async () => {
+    if (!confirmPromoteId) return;
 
     try {
-      const response = await apiRequest(`/api/community/admin/light-patterns/${patternId}/promote`, {
+      const response = await apiRequest(`/api/community/admin/light-patterns/${confirmPromoteId}/promote`, {
         method: 'POST',
       }) as { success: boolean; message: string };
 
       if (response.success) {
-        alert(response.message);
+        setSnackbar({ open: true, message: response.message, severity: 'success' });
         fetchPatterns();
       }
     } catch (error) {
       console.error('Error promoting pattern:', error);
-      alert('Failed to promote pattern');
+      setSnackbar({ open: true, message: 'Failed to promote pattern', severity: 'error' });
     }
+    setConfirmPromoteId(null);
   };
 
   const calculateEligibilityScore = (pattern: LightPattern): number => {
@@ -229,7 +236,7 @@ export default function LightPatternPromotion() {
           <Card sx={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white' }}>
             <CardContent>
               <Typography variant="h6">Eligible for Promotion</Typography>
-              <Typography variant="h3" sx={{ fontWeight: 70, my: 1 }}>
+              <Typography variant="h3" sx={{ fontWeight: 700, my: 1 }}>
                 {eligiblePatterns.length}
               </Typography>
               <Typography variant="body2">Patterns meeting all criteria</Typography>
@@ -241,7 +248,7 @@ export default function LightPatternPromotion() {
           <Card sx={{ background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)', color: 'white' }}>
             <CardContent>
               <Typography variant="h6">Already Promoted</Typography>
-              <Typography variant="h3" sx={{ fontWeight: 70, my: 1 }}>
+              <Typography variant="h3" sx={{ fontWeight: 700, my: 1 }}>
                 {promotedPatterns.length}
               </Typography>
               <Typography variant="body2">In Professional Library</Typography>
@@ -253,7 +260,7 @@ export default function LightPatternPromotion() {
           <Card sx={{ background: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)', color: 'white' }}>
             <CardContent>
               <Typography variant="h6">Total Community Patterns</Typography>
-              <Typography variant="h3" sx={{ fontWeight: 70, my: 1 }}>
+              <Typography variant="h3" sx={{ fontWeight: 700, my: 1 }}>
                 {patterns.length}
               </Typography>
               <Typography variant="body2">User-created patterns</Typography>
@@ -538,6 +545,41 @@ export default function LightPatternPromotion() {
           )}
         </DialogActions>
       </Dialog>
+
+      {/* Confirm Promote Dialog */}
+      <Dialog
+        open={!!confirmPromoteId}
+        onClose={() => setConfirmPromoteId(null)}
+      >
+        <DialogTitle>Promote Pattern</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Promote this pattern to the Professional Library? This action cannot be undone.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmPromoteId(null)}>Cancel</Button>
+          <Button onClick={executePromotePattern} color="primary" variant="contained">
+            Promote
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Snackbar for notifications */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={4000}
+        onClose={() => setSnackbar((prev) => ({ ...prev, open: false }))}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert
+          onClose={() => setSnackbar((prev) => ({ ...prev, open: false }))}
+          severity={snackbar.severity}
+          variant="filled"
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 }

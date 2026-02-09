@@ -55,7 +55,7 @@ export const CollaborationTools: React.FC<CollaborationToolsProps> = ({
   const { analytics, lifecycle, performance, debugging } = useEnhancedMasterIntegration();
   
   // Theming system
-  const theming = useTheming('prototype_tester, ');
+  const theming = useTheming('prototype_tester');
   
   const [isVoiceEnabled, setIsVoiceEnabled] = useState(false);
 

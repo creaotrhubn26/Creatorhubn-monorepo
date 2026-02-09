@@ -32,6 +32,7 @@ import {
   Link,
   CircularProgress,
   Alert,
+  Snackbar,
   Tabs,
   Tab,
 } from '@mui/material';
@@ -40,21 +41,21 @@ import {
   ContentCopy as ContentCopyIcon,
   ChevronRight as ChevronRightIcon,
   SmartToy as SmartToyIcon,
-  Folder as FolderIcon,
+  Folder as _FolderIcon,
   Description as DescriptionIcon,
-  ExpandMore as ExpandMoreIcon,
+  ExpandMore as _ExpandMoreIcon,
   Home as HomeIcon,
   Article as ArticleIcon,
-  MenuBook as MenuBookIcon,
+  MenuBook as _MenuBookIcon,
   Refresh as RefreshIcon,
   Bookmark as BookmarkIcon,
   BookmarkBorder as BookmarkBorderIcon,
   History as HistoryIcon,
   ViewList as ViewListIcon,
   ViewModule as ViewModuleIcon,
-  Sort as SortIcon,
-  TrendingUp as TrendingUpIcon,
-  Share as ShareIcon,
+  Sort as _SortIcon,
+  TrendingUp as _TrendingUpIcon,
+  Share as _ShareIcon,
   GetApp as GetAppIcon,
   Lightbulb as LightbulbIcon,
   QuestionAnswer as QuestionAnswerIcon,
@@ -265,12 +266,14 @@ export default function DocumentationBrowser() {
   const [docSearch, setDocSearch] = useState('');
   const [breadcrumbs, setBreadcrumbs] = useState<string[]>(['Home']);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-  const [sortBy, setSortBy] = useState<'name' | 'recent' | 'category'>('name');
+  const [_sortBy, _setSortBy] = useState<'name' | 'recent' | 'category'>('name');
   const [recentDocs, setRecentDocs] = useState<string[]>([]);
   const [bookmarkedDocs, setBookmarkedDocs] = useState<string[]>([]);
   const [aiAnswer, setAiAnswer] = useState<string>('');
   const [showAIPanel, setShowAIPanel] = useState(false);
   const [relatedDocs, setRelatedDocs] = useState<DocFile[]>([]);
+  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'warning' | 'info' }>({ open: false, message: '', severity: 'info' });
+  const [activeTab, setActiveTab] = useState<'overview' | 'recent' | 'bookmarks' | 'search'>('overview');
   
   // 🎯 Feature Access
   const userProfile = auth.getUserProfile();
@@ -473,7 +476,7 @@ export default function DocumentationBrowser() {
         copied++;
       }
     });
-    alert(`Copied ${copied} code block(s) to clipboard`);
+    setSnackbar({ open: true, message: `Copied ${copied} code block(s) to clipboard`, severity: 'success' });
   };
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -576,103 +579,119 @@ export default function DocumentationBrowser() {
               size="small"
               placeholder="Search documentation..."
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                if (e.target.value) setActiveTab('search');
+              }}
               InputProps={{
                 startAdornment: <SearchIcon sx={{ mr: 1, color: 'text.secondary' }} />
               }}
             />
           </Grid>
           
-          {/* Recent & Bookmarked Docs */}
-          {(recentDocs.length > 0 || bookmarkedDocs.length > 0) && (
+          {/* Tabs for different views */}
+          <Grid item xs={12}>
+            <Paper sx={{ borderBottom: 1, borderColor: 'divider' }}>
+              <Tabs 
+                value={activeTab} 
+                onChange={(_, newValue) => setActiveTab(newValue)}
+                variant="scrollable"
+                scrollButtons="auto"
+              >
+                <Tab label="Overview" value="overview" />
+                <Tab label={`Recent (${recentDocs.length})`} value="recent" />
+                <Tab label={`Bookmarks (${bookmarkedDocs.length})`} value="bookmarks" />
+                {searchQuery && <Tab label="Search Results" value="search" />}
+              </Tabs>
+            </Paper>
+          </Grid>
+          
+          {/* Tab Content: Recent Docs */}
+          {activeTab === 'recent' && recentDocs.length > 0 && (
             <Grid item xs={12}>
-              <Grid container spacing={2}>
-                {/* Recent Docs */}
-                {recentDocs.length > 0 && (
-                  <Grid item xs={12} md={6}>
-                    <Paper sx={{ p: 2 }}>
-                      <Stack direction="row" alignItems="center" spacing={1} mb={2}>
-                        <HistoryIcon color="primary" />
-                        <Typography variant="h6">Recently Viewed</Typography>
-                      </Stack>
-                      <List dense>
-                        {recentDocs.slice(0, 5).map((docPath) => (
-                          <ListItem key={docPath} disablePadding>
-                            <ListItemButton
-                              onClick={() => {
-                                const file = docFiles.find(f => f.path === docPath);
-                                if (file) loadDocument(file);
-                              }}
-                            >
-                              <ListItemIcon>
-                                <DescriptionIcon fontSize="small" color="action" />
-                              </ListItemIcon>
-                              <ListItemText
-                                primary={docPath.split('/').pop()}
-                                secondary={docPath}
-                                primaryTypographyProps={{ variant: 'body2' }}
-                                secondaryTypographyProps={{ variant: 'caption' }}
-                              />
-                            </ListItemButton>
-                          </ListItem>
-                        ))}
-                      </List>
-                    </Paper>
-                  </Grid>
-                )}
-                
-                {/* Bookmarked Docs */}
-                {bookmarkedDocs.length > 0 && (
-                  <Grid item xs={12} md={6}>
-                    <Paper sx={{ p: 2 }}>
-                      <Stack direction="row" alignItems="center" spacing={1} mb={2}>
-                        <BookmarkIcon color="warning" />
-                        <Typography variant="h6">Bookmarks</Typography>
-                      </Stack>
-                      <List dense>
-                        {bookmarkedDocs.slice(0, 5).map((docPath) => (
-                          <ListItem 
-                            key={docPath} 
-                            disablePadding
-                            secondaryAction={
-                              <IconButton 
-                                edge="end" 
-                                size="small"
-                                onClick={() => toggleBookmark(docPath)}
-                              >
-                                <BookmarkIcon fontSize="small" color="warning" />
-                              </IconButton>
-                            }
-                          >
-                            <ListItemButton
-                              onClick={() => {
-                                const file = docFiles.find(f => f.path === docPath);
-                                if (file) loadDocument(file);
-                              }}
-                            >
-                              <ListItemIcon>
-                                <DescriptionIcon fontSize="small" color="action" />
-                              </ListItemIcon>
-                              <ListItemText
-                                primary={docPath.split('/').pop()}
-                                secondary={docPath}
-                                primaryTypographyProps={{ variant: 'body2' }}
-                                secondaryTypographyProps={{ variant: 'caption' }}
-                              />
-                            </ListItemButton>
-                          </ListItem>
-                        ))}
-                      </List>
-                    </Paper>
-                  </Grid>
-                )}
-              </Grid>
+              <Paper sx={{ p: 2 }}>
+                <Stack direction="row" alignItems="center" spacing={1} mb={2}>
+                  <HistoryIcon color="primary" />
+                  <Typography variant="h6">Recently Viewed</Typography>
+                </Stack>
+                <List dense>
+                  {recentDocs.map((docPath) => (
+                    <ListItem key={docPath} disablePadding>
+                      <ListItemButton
+                        onClick={() => {
+                          const file = docFiles.find(f => f.path === docPath);
+                          if (file) loadDocument(file);
+                        }}
+                      >
+                        <ListItemIcon>
+                          <DescriptionIcon fontSize="small" color="action" />
+                        </ListItemIcon>
+                        <ListItemText
+                          primary={docPath.split('/').pop()}
+                          secondary={docPath}
+                          primaryTypographyProps={{ variant: 'body2' }}
+                          secondaryTypographyProps={{ variant: 'caption' }}
+                        />
+                      </ListItemButton>
+                    </ListItem>
+                  ))}
+                </List>
+              </Paper>
             </Grid>
           )}
           
-          <Grid item xs={12}>
-            <Grid container spacing={2}>
-              {DOC_CATEGORIES.map((category) => (
+          {/* Tab Content: Bookmarked Docs */}
+          {activeTab === 'bookmarks' && bookmarkedDocs.length > 0 && (
+            <Grid item xs={12}>
+              <Paper sx={{ p: 2 }}>
+                <Stack direction="row" alignItems="center" spacing={1} mb={2}>
+                  <BookmarkIcon color="warning" />
+                  <Typography variant="h6">Bookmarks</Typography>
+                </Stack>
+                <List dense>
+                  {bookmarkedDocs.map((docPath) => (
+                    <ListItem 
+                      key={docPath} 
+                      disablePadding
+                      secondaryAction={
+                        <IconButton 
+                          edge="end" 
+                          size="small"
+                          onClick={() => toggleBookmark(docPath)}
+                        >
+                          <BookmarkIcon fontSize="small" color="warning" />
+                        </IconButton>
+                      }
+                    >
+                      <ListItemButton
+                        onClick={() => {
+                          const file = docFiles.find(f => f.path === docPath);
+                          if (file) loadDocument(file);
+                        }}
+                      >
+                        <ListItemIcon>
+                          <DescriptionIcon fontSize="small" color="action" />
+                        </ListItemIcon>
+                        <ListItemText
+                          primary={docPath.split('/').pop()}
+                          secondary={docPath}
+                          primaryTypographyProps={{ variant: 'body2' }}
+                          secondaryTypographyProps={{ variant: 'caption' }}
+                        />
+                      </ListItemButton>
+                    </ListItem>
+                  ))}
+                </List>
+              </Paper>
+            </Grid>
+          )}
+          
+          {/* Tab Content: Overview - Category Cards */}
+          {activeTab === 'overview' && (
+            <>
+              <Grid item xs={12}>
+                <Grid container spacing={2}>
+                  {DOC_CATEGORIES.map((category) => (
                 <Grid item xs={12} sm={6} md={4} lg={3} key={category.id}>
                   <Card 
                     sx={{ 
@@ -784,6 +803,41 @@ export default function DocumentationBrowser() {
               </Stack>
             </Paper>
           </Grid>
+            </>
+          )}
+          
+          {/* Tab Content: Search Results */}
+          {activeTab === 'search' && searchQuery && (
+            <Grid item xs={12}>
+              <Paper sx={{ p: 2 }}>
+                <Typography variant="h6" gutterBottom>
+                  Search Results for "{searchQuery}"
+                </Typography>
+                <List>
+                  {filteredDocs.length > 0 ? (
+                    filteredDocs.map((doc) => (
+                      <ListItem key={doc.path} disablePadding>
+                        <ListItemButton onClick={() => loadDocument(doc)}>
+                          <ListItemIcon>
+                            <DescriptionIcon color="primary" />
+                          </ListItemIcon>
+                          <ListItemText
+                            primary={doc.name}
+                            secondary={doc.path}
+                            primaryTypographyProps={{ fontWeight: 500 }}
+                          />
+                        </ListItemButton>
+                      </ListItem>
+                    ))
+                  ) : (
+                    <Typography variant="body2" color="text.secondary" sx={{ p: 2, textAlign: 'center' }}>
+                      No results found for "{searchQuery}"
+                    </Typography>
+                  )}
+                </List>
+              </Paper>
+            </Grid>
+          )}
         </>
       ) : selectedCategory && !selectedFile ? (
         /* File List for Category */
@@ -936,6 +990,7 @@ export default function DocumentationBrowser() {
                           level={sec.level}
                           html={highlightSearch(sec.html, docSearch)}
                           canUseAI={canUseAI}
+                          onCopyCode={(message) => setSnackbar({ open: true, message, severity: 'success' })}
                         />
                       </Paper>
                     ))}
@@ -1104,6 +1159,11 @@ export default function DocumentationBrowser() {
           </Grid>
         </>
       )}
+
+      {/* Snackbar for notifications */}
+      <Snackbar open={snackbar.open} autoHideDuration={4000} onClose={() => setSnackbar((prev) => ({ ...prev, open: false }))} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
+        <Alert onClose={() => setSnackbar((prev) => ({ ...prev, open: false }))} severity={snackbar.severity} variant="filled">{snackbar.message}</Alert>
+      </Snackbar>
     </Grid>
   );
 }
@@ -1116,12 +1176,14 @@ function SectionItem({
   title,
   level,
   html,
-  canUseAI
+  canUseAI,
+  onCopyCode
 }: {
   title: string;
   level: number;
   html: string;
   canUseAI?: boolean;
+  onCopyCode?: (message: string) => void;
 }) {
   const [open, setOpen] = useState(true);
   
@@ -1164,7 +1226,9 @@ function SectionItem({
                     copied++;
                   }
                 });
-                if (copied > 0) alert(`Copied ${copied} code block(s)`);
+                if (copied > 0 && onCopyCode) {
+                  onCopyCode(`Copied ${copied} code block(s)`);
+                }
               }}
             >
               <ContentCopyIcon fontSize="small" />

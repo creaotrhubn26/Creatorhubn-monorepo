@@ -52,6 +52,9 @@ export const AIMetricsDashboard: React.FC = () => {
   const [currentStep, setCurrentStep] = useState(0);
   const [progressPercent, setProgressPercent] = useState(0);
   const [activeTab, setActiveTab] = useState<'metrics' | 'analytics'>('metrics');
+  
+  // Snackbar state
+  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'warning' | 'info' }>({ open: false, message: '', severity: 'info' });
 
   useEffect(() => {
     loadMetrics();
@@ -520,7 +523,7 @@ export const AIMetricsDashboard: React.FC = () => {
 
               <button
                 style={styles.actionButton}
-                onClick={() => alert('Fine-tuning initiated! Check logs for progress.')}
+                onClick={() => setSnackbar({ open: true, message: 'Fine-tuning initiated! Check logs for progress.', severity: 'info' })}
               >
                 🎓 Generate Fine-Tuning Dataset
               </button>

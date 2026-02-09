@@ -67,7 +67,7 @@ export default function UniversalOnboardingButton({ userType }: UniversalOnboard
                 <span
                 style={{
                   fontSize: '0.875rem',
-                  fontWeight: 50,
+                  fontWeight: 500,
                   display: typeof window !== 'undefined' && window.innerWidth < 768 ? 'none' : 'inline' }}
               >
     

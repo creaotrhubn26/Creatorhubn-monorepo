@@ -64,7 +64,7 @@ export default function ExternalCollaboratorOnboarding({
   const { analytics, lifecycle, performance, debugging } = useEnhancedMasterIntegration();
   
   // Theming system
-  const theming = useTheming('photographer, ');
+  const theming = useTheming('photographer');
 
   // Component registration and lifecycle management
   useEffect(() => {

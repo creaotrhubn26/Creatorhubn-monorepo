@@ -1183,7 +1183,7 @@ export default function AssetBrowser({
             '& .MuiTab-root': {
               minHeight: 40,
               fontSize: 12,
-              fontWeight: 50,
+              fontWeight: 500,
             }}}
         >
           <Tab label="Story Arcs" icon={<Timeline fontSize="small" />} iconPosition="start" />
@@ -1422,7 +1422,7 @@ export default function AssetBrowser({
                   '& .MuiTab-root': {
                     minHeight: 36,
                     fontSize: 11,
-                    fontWeight: 50,
+                    fontWeight: 500,
                   }}}
               >
                 <Tab 

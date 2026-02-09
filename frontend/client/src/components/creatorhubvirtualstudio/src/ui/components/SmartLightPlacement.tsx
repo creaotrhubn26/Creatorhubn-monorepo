@@ -156,7 +156,7 @@ export function SmartLightPlacement({
                 <Typography variant="caption" sx={{ color: '#6B7280', display: 'block' }}>
                   Current Angle
                 </Typography>
-                <Typography variant="h6" sx={{ fontSize: 20, fontWeight: 70, color: '#1F2937' }}>
+                <Typography variant="h6" sx={{ fontSize: 20, fontWeight: 700, color: '#1F2937' }}>
                   {detectedPattern.actualAngle}°
                 </Typography>
               </Box>
@@ -164,7 +164,7 @@ export function SmartLightPlacement({
                 <Typography variant="caption" sx={{ color: '#6B7280', display: 'block' }}>
                   Expected
                 </Typography>
-                <Typography variant="h6" sx={{ fontSize: 20, fontWeight: 70, color: '#10B981' }}>
+                <Typography variant="h6" sx={{ fontSize: 20, fontWeight: 700, color: '#10B981' }}>
                   {detectedPattern.expectedAngle}°
                 </Typography>
               </Box>

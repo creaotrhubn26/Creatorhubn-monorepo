@@ -606,7 +606,7 @@ class CollaborationManager {
       type: 'presence',
       data: presence,
       timestamp: Date.now(),
-      userId: this.state.currentUser.d,
+      userId: this.state.currentUser.id,
       sessionId: this.generateSessionId()
 });
 }
@@ -618,9 +618,9 @@ class CollaborationManager {
     if (!this.state.isConnected || !this.state.currentUser) return;
 
     const cursor = {
-      x:  ,  0// Will be set by mouse move handler
-      y:  ,  0// Will be set by mouse move handler
-      elementId: document.activeElement?.d,
+      x: 0, // Will be set by mouse move handler
+      y: 0, // Will be set by mouse move handler
+      elementId: document.activeElement instanceof HTMLElement ? document.activeElement.id : undefined,
       timestamp: Date.now()
 };
 
@@ -629,7 +629,7 @@ class CollaborationManager {
       type: 'cursor',
       data: cursor,
       timestamp: Date.now(),
-      userId: this.state.currentUser.d,
+      userId: this.state.currentUser.id,
       sessionId: this.generateSessionId()
 });
 }

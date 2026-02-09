@@ -84,7 +84,7 @@ export const GoogleWorkspaceStorageInfo: React.FC<GoogleWorkspaceStorageInfoProp
   const { integration: _integration, communication, dataFlow, componentRegistry, auth } = useEnhancedMasterIntegration();
 
   // Theming system
-  const theming = useTheming('photographer, ');
+  const theming = useTheming('photographer');
   const [showDetails, setShowDetails] = useState(false);
 
   // ✅ REAL API CALL: Hent Google Workspace storage informasjon
@@ -167,10 +167,20 @@ export const GoogleWorkspaceStorageInfo: React.FC<GoogleWorkspaceStorageInfoProp
   }, [userId, componentRegistry, dataFlow, communication, refetch]);
 
   const formatStorageSize = (sizeGB: number): string => {
+    if (sizeGB === undefined || sizeGB === null || isNaN(sizeGB)) {
+      return '0 GB';
+    }
     if (sizeGB < 1) {
       return `${Math.round(sizeGB * 1024)} MB`;
     }
     return `${sizeGB.toFixed(1)} GB`;
+  };
+
+  const safePercentage = (value: number | undefined): number => {
+    if (value === undefined || value === null || isNaN(value)) {
+      return 0;
+    }
+    return Math.min(100, Math.max(0, value));
   };
 
   const getStorageStatusColor = (percentage: number) => {
@@ -294,7 +304,7 @@ export const GoogleWorkspaceStorageInfo: React.FC<GoogleWorkspaceStorageInfoProp
 
           <LinearProgress
             variant="determinate"
-            value={data.usagePercentage}
+            value={safePercentage(data.usagePercentage)}
             sx={{
               mt: 1,
               height: 6,
@@ -377,7 +387,7 @@ export const GoogleWorkspaceStorageInfo: React.FC<GoogleWorkspaceStorageInfoProp
                 
                 <LinearProgress
                   variant="determinate"
-                  value={data.usagePercentage}
+                  value={safePercentage(data.usagePercentage)}
                   sx={{
                     height: 12,
                     borderRadius: 6,
@@ -391,7 +401,7 @@ export const GoogleWorkspaceStorageInfo: React.FC<GoogleWorkspaceStorageInfoProp
                 
                 <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mt:  1 }}>
                   <Typography variant="body2" color="text.secondary">
-                    {data.usagePercentage.toFixed(1)}% brukt
+                    {safePercentage(data.usagePercentage).toFixed(1)}% brukt
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
                     {formatStorageSize(data.availableStorageGB)} ledig
@@ -431,7 +441,7 @@ export const GoogleWorkspaceStorageInfo: React.FC<GoogleWorkspaceStorageInfoProp
                   </Stack>
                   <LinearProgress
                     variant="determinate"
-                    value={(data.driveUsageGB / data.totalStorageGB) * 100}
+                    value={safePercentage((data.driveUsageGB || 0) / (data.totalStorageGB || 1) * 100)}
                     sx={{
                       height: 4,
                       mt: 0.5,
@@ -455,7 +465,7 @@ export const GoogleWorkspaceStorageInfo: React.FC<GoogleWorkspaceStorageInfoProp
                   </Stack>
                   <LinearProgress
                     variant="determinate"
-                    value={(data.photosUsageGB / data.totalStorageGB) * 100}
+                    value={safePercentage((data.photosUsageGB || 0) / (data.totalStorageGB || 1) * 100)}
                     sx={{
                       height: 4,
                       mt: 0.5,
@@ -479,7 +489,7 @@ export const GoogleWorkspaceStorageInfo: React.FC<GoogleWorkspaceStorageInfoProp
                   </Stack>
                   <LinearProgress
                     variant="determinate"
-                    value={(data.gmailUsageGB / data.totalStorageGB) * 100}
+                    value={safePercentage((data.gmailUsageGB || 0) / (data.totalStorageGB || 1) * 100)}
                     sx={{
                       height: 4,
                       mt: 0.5,

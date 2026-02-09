@@ -18,6 +18,7 @@ import {
   Chip,
   LinearProgress,
   Alert,
+  Snackbar,
   Tabs,
   Tab,
   List,
@@ -77,7 +78,7 @@ export default function SEOTrendsDashboard() {
   const [activeTab, setActiveTab] = useState(0);
 
   // Theming system
-  const theming = useTheming('prototype_tester, ');
+  const theming = useTheming('prototype_tester');
   const { auth } = useEnhancedMasterIntegration();
   const [profession, setProfession] = useState<'photographer' | 'videographer' | 'music-producer' | 'vendor'>('photographer');
   const [region, setRegion] = useState<'norway' | 'oslo' | 'bergen' | 'trondheim' | 'stavanger'>('norway');
@@ -86,6 +87,7 @@ export default function SEOTrendsDashboard() {
   const [isLoading, setIsLoading] = useState(false);
   const [isApplyingFixes, setIsApplyingFixes] = useState(false);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
+  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'warning' | 'info' }>({ open: false, message: '', severity: 'info' });
 
   // Load data on mount and when profession/region changes
   useEffect(() => {
@@ -137,7 +139,7 @@ export default function SEOTrendsDashboard() {
         timestamp: new Date().toISOString(),
     });
 
-      alert(confirmation);
+      setSnackbar({ open: true, message: confirmation, severity: 'success' });
   } catch (error) {
       console.error('Error applying fixes: ', error);
   } finally {
@@ -487,6 +489,11 @@ export default function SEOTrendsDashboard() {
           </Button>
         </Box>
       )}
+
+      {/* Snackbar for notifications */}
+      <Snackbar open={snackbar.open} autoHideDuration={4000} onClose={() => setSnackbar((prev) => ({ ...prev, open: false }))} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
+        <Alert onClose={() => setSnackbar((prev) => ({ ...prev, open: false }))} severity={snackbar.severity} variant="filled">{snackbar.message}</Alert>
+      </Snackbar>
     </Box>
   );
 }

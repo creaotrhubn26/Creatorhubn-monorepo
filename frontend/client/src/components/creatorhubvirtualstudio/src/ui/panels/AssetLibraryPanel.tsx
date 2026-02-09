@@ -165,7 +165,7 @@ function AssetCard({ asset, isFavorite, onToggleFavorite, onPlaceManually }: Ass
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
             fontSize: 11,
-            fontWeight: 50,
+            fontWeight: 500,
             mb: hasPatterns ? 0.5 : 0}}
         >
           {asset.name}
@@ -190,7 +190,7 @@ function AssetCard({ asset, isFavorite, onToggleFavorite, onPlaceManually }: Ass
                   sx={{
                     height: 16,
                     fontSize: 8,
-                    fontWeight: 50,
+                    fontWeight: 500,
                     bgcolor:
                       pattern.recommendation_strength === 'essential'
                         ? '#10B981'
@@ -222,7 +222,7 @@ function AssetCard({ asset, isFavorite, onToggleFavorite, onPlaceManually }: Ass
               mt: 0.5,
               height: 20,
               fontSize: 9,
-              fontWeight: 50,
+              fontWeight: 500,
               bgcolor: '#F59E0B',
               color: '#fff',
               cursor: 'pointer',

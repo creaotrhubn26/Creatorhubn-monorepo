@@ -35,6 +35,7 @@ import {
   Paper,
   Divider,
   Alert,
+  Snackbar,
   Chip,
   IconButton,
   List,
@@ -348,6 +349,7 @@ export default function CustomerJourneyBuilder({ selectedProfession = 'photograp
     avgConversion: 0,
     totalSteps: 0
 });
+  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'warning' | 'info' }>({ open: false, message: '', severity: 'info' });
 
   // 🆕 Notes Integration
   const [journeyNotes, setJourneyNotes] = useState('');
@@ -425,7 +427,7 @@ export default function CustomerJourneyBuilder({ selectedProfession = 'photograp
       
       // Show success notification
       setTimeout(() => {
-        alert(`✨ Journey "${noteTitle}," created from your note!\n\n🔗 Linked to note - edits will sync automatically.`);
+        setSnackbar({ open: true, message: `✨ Journey "${noteTitle}" created from your note! 🔗 Linked to note - edits will sync automatically.`, severity: 'success' });
       }, 500);
       
       // 🎯 Track event
@@ -1345,7 +1347,7 @@ export default function CustomerJourneyBuilder({ selectedProfession = 'photograp
         profession: params.journey.profession
       });
       
-      alert(`✅ Template "${params.templateName}," saved!\n\nYou can now reuse this journey for similar projects.`);
+      setSnackbar({ open: true, message: `✅ Template "${params.templateName}" saved! You can now reuse this journey for similar projects.`, severity: 'success' });
     }
   });
   
@@ -1404,7 +1406,7 @@ export default function CustomerJourneyBuilder({ selectedProfession = 'photograp
       setTemplateForm(data);
       setOpenDialog(true);
       
-      alert(`🧪 A/B Test Variant Created!\n\nModify this variant and compare performance with the baseline.`);
+      setSnackbar({ open: true, message: `🧪 A/B Test Variant Created! Modify this variant and compare performance with the baseline.`, severity: 'success' });
     }
   });
 
@@ -3275,6 +3277,11 @@ export default function CustomerJourneyBuilder({ selectedProfession = 'photograp
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Snackbar for notifications */}
+      <Snackbar open={snackbar.open} autoHideDuration={4000} onClose={() => setSnackbar((prev) => ({ ...prev, open: false }))} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
+        <Alert onClose={() => setSnackbar((prev) => ({ ...prev, open: false }))} severity={snackbar.severity} variant="filled">{snackbar.message}</Alert>
+      </Snackbar>
     </Box>
   );
 }

@@ -521,15 +521,15 @@ class TableOfContentsService {
     if (titleLower.includes('reference') || titleLower.includes('source')) return 'references';
     
     return 'general';
- }
+  }
 
   /**
    * Highlight search matches
    */
   private highlightMatch(text: string, query: string): string {
-    const regex = new RegExp(`(${query})`'gi');
+    const regex = new RegExp(`(${query})`, 'gi');
     return text.replace(regex, '<strong>$1</strong>');
-}
+  }
 
   /**
    * Get context for search result
@@ -539,15 +539,15 @@ class TableOfContentsService {
     
     if (item.metadata?.category) {
       parts.push(item.metadata.category);
- }
+    }
     
     if (item.wordCount) {
       parts.push(`${item.wordCount} ord`);
-  }
+    }
     
     if (item.readingTime) {
       parts.push(`${item.readingTime} min lesing`);
-  }
+    }
 
     return parts.join(' •');
 }

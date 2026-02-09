@@ -154,10 +154,10 @@ class CanvasInteractionManager {
 
     this.gestureData = {
       type: 'tap',
-      startX:  , x,
-      startY:  , y,
-      currentX:  , x,
-      currentY:  , y,
+      startX: x,
+      startY: y,
+      currentX: x,
+      currentY: y,
       deltaX:  0,
       deltaY:  0,
       scale:  1,
@@ -261,10 +261,10 @@ class CanvasInteractionManager {
 
     this.gestureData = {
       type: 'tap',
-      startX:  , x,
-      startY:  , y,
-      currentX:  , x,
-      currentY:  , y,
+      startX: x,
+      startY: y,
+      currentX: x,
+      currentY: y,
       deltaX:  0,
       deltaY:  0,
       scale:  1,
@@ -292,10 +292,10 @@ class CanvasInteractionManager {
 
     this.gestureData = {
       type: 'tap',
-      startX:  , x,
-      startY:  , y,
-      currentX:  , x,
-      currentY:  , y,
+      startX: x,
+      startY: y,
+      currentX: x,
+      currentY: y,
       deltaX:  0,
       deltaY:  0,
       scale:  1,
@@ -432,10 +432,10 @@ class CanvasInteractionManager {
         data: { ...this.gestureData },
         timestamp: Date.now(),
         performance: {
-          duration:, 0,
-          memoryUsage:  0,
+          duration: 0,
+          memoryUsage: 0,
           cpuUsage: 0
-    }
+        }
     };
 
       // Process based on gesture type
@@ -452,7 +452,7 @@ class CanvasInteractionManager {
         case 'tap':
           this.processTap();
           break;
-        case'longPress':
+        case 'longPress':
           this.processLongPress();
           break;
     }

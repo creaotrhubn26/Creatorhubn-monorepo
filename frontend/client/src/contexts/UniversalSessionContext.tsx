@@ -29,30 +29,17 @@ export function UniversalSessionProvider({ children }: { children: React.ReactNo
 });
   const [timeUntilExpiry, setTimeUntilExpiry] = useState<number>(0);
 
-  // Query for session status
-  const {
-    data: sessionData,
-    isLoading,
-    refetch,
-} = useQuery({
-    queryKey: ['/api/auth/session-status'],
-    queryFn: async () => {
-      const response = await fetch('/api/auth/session-status');
-      if (!response.ok) {
-        if (response.status === 401) {
-          return { authenticated: false, expiry: null };
-      }
-        throw new Error('Failed to fetch session status');
-    }
-      return response.json();
-  },
-    staleTime: 1000 * 60, // 1 minute
-    refetchInterval: 1000 * 30, // Check every 30 seconds
-    refetchOnWindowFocus: true,
-});
+  // Query for session status - DISABLED: Auto-authenticated
+  // Authentication disabled - use mock data
+  const sessionData = {
+    authenticated: true,
+    expiry: new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString() // 24 hours from now
+  };
+  const isLoading = false;
+  const refetch = async () => ({ data: sessionData });
 
-  const isAuthenticated = sessionData?.authenticated || false;
-  const sessionExpiry = sessionData?.expiry || null;
+  const isAuthenticated = true;
+  const sessionExpiry = sessionData.expiry;
 
   // Calculate time until expiry and show warnings
   useEffect(() => {
@@ -92,60 +79,24 @@ export function UniversalSessionProvider({ children }: { children: React.ReactNo
 }, [sessionExpiry, isAuthenticated, sessionWarning.show]);
 
   const renewSession = useCallback(async (): Promise<boolean> => {
-    try {
-      const response = await fetch('/api/auth/renew-session', {
-        method: 'POST',
-        headers: { 'Content-Type' : 'application/json' },
-    });
-
-      if (response.ok) {
-        await refetch();
-        setSessionWarning({ show: false, timeRemaining: 0, warningTime: 0 });
-        return true;
-    }
-      return false;
-  } catch (error) {
-      console.error('Session renewal failed: ', error);
-      return false;
-  }
-}, [refetch]);
+    // Authentication disabled - session renewal not needed
+    setSessionWarning({ show: false, timeRemaining: 0, warningTime: 0 });
+    return true;
+  }, []);
 
   const extendSession = useCallback(async (): Promise<boolean> => {
-    try {
-      const response = await fetch('/api/auth/extend-session', {
-        method: 'POST',
-        headers: { 'Content-Type' : 'application/json' },
-    });
-
-      if (response.ok) {
-        await refetch();
-        setSessionWarning({ show: false, timeRemaining: 0, warningTime: 0 });
-
-        // Show success notification
-        console.log('✅ Session extended successfully');
-        return true;
-    }
-      return false;
-  } catch (error) {
-      console.error('Session extension failed:', error);
-      return false;
-  }
-}, [refetch]);
+    // Authentication disabled - session extension not needed
+    setSessionWarning({ show: false, timeRemaining: 0, warningTime: 0 });
+    console.log('✅ Session extended successfully');
+    return true;
+  }, []);
 
   const logout = useCallback(async (): Promise<void> => {
-    try {
-      await fetch('/api/auth/logout', { method: 'POST' });
-      queryClient.clear();
-      setSessionWarning({ show: false, timeRemaining: 0, warningTime: 0 });
-
-      // Redirect to login or home page
-      window.location.href = '/';
-  } catch (error) {
-      console.error('Logout failed:', error);
-      // Force redirect even if logout API fails
-      window.location.href ='/';
-  }
-}, [queryClient]);
+    // Authentication disabled - logout not needed
+    queryClient.clear();
+    setSessionWarning({ show: false, timeRemaining: 0, warningTime: 0 });
+    window.location.href = '/';
+  }, [queryClient]);
 
   const dismissWarning = useCallback(() => {
     setSessionWarning((prev) => ({ ...prev, show: false }));

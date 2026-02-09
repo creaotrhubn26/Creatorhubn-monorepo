@@ -296,7 +296,10 @@ function AcademyFloatingActionMenu({
   const [showAutoSaveDialog, setShowAutoSaveDialog] = useState(false);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
-  const [autoSaveStatus, setAutoSaveStatus] = useState<'saving' | 'saved' | 'error' | 'idle'>('idle',
+  const [notificationFilter, setNotificationFilter] = useState<'all' | 'unread' | 'starred'>('all');
+  const [notificationSort, setNotificationSort] = useState<'recent' | 'oldest' | 'priority'>('recent');
+  const [showNotificationOptions, setShowNotificationOptions] = useState(false);
+  const [autoSaveStatus, setAutoSaveStatus] = useState<'saving' | 'saved' | 'error' | 'idle'>('idle');
   );
 
   const { analytics, performance, debugging, features } = useEnhancedMasterIntegration();
@@ -631,15 +634,27 @@ function AcademyFloatingActionMenu({
           </Typography>
         </Stack>
         <Stack direction="row" spacing={0.5}>
-          <IconButton size="small" onClick={() => console.log('Filter')}>
-            <FilterList fontSize="small" />
-          </IconButton>
-          <IconButton size="small" onClick={() => console.log('Sort')}>
-            <Sort fontSize="small" />
-          </IconButton>
-          <IconButton size="small" onClick={() => console.log('More')}>
-            <MoreVert fontSize="small" />
-          </IconButton>
+          <Tooltip title="Filter notifications">
+            <IconButton size="small" onClick={() => {
+              setNotificationFilter(prev => prev === 'all' ? 'unread' : prev === 'unread' ? 'starred' : 'all');
+              analytics.trackEvent('notification_filter_changed', { filter: notificationFilter });
+            }}>
+              <FilterList fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Sort notifications">
+            <IconButton size="small" onClick={() => {
+              setNotificationSort(prev => prev === 'recent' ? 'oldest' : prev === 'oldest' ? 'priority' : 'recent');
+              analytics.trackEvent('notification_sort_changed', { sort: notificationSort });
+            }}>
+              <Sort fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="More options">
+            <IconButton size="small" onClick={() => setShowNotificationOptions(!showNotificationOptions)}>
+              <MoreVert fontSize="small" />
+            </IconButton>
+          </Tooltip>
         </Stack>
       </Box>
       

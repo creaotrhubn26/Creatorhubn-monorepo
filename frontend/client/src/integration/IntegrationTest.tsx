@@ -93,8 +93,8 @@ const IntegrationTest: React.FC = () => {
       status: 'active'
 };
 
-    integration.emit('project: selected', { project: mockProject, source: 'integration-test' });
-    communication.sendBroadcast('project: selected', { project: mockProject, source: 'integration-test' });
+    integration.emit('project:selected', { project: mockProject, source: 'integration-test' });
+    communication.sendBroadcast('project:selected', { project: mockProject, source: 'integration-test' });
     dataFlow.syncData('selectedProject', mockProject);
 };
 
@@ -106,8 +106,8 @@ const IntegrationTest: React.FC = () => {
       status: 'active'
 };
 
-    integration.emit('client: selected', { client: mockClient, source: 'integration-test' });
-    communication.sendBroadcast('client: selected', { client: mockClient, source: 'integration-test' });
+    integration.emit('client:selected', { client: mockClient, source: 'integration-test' });
+    communication.sendBroadcast('client:selected', { client: mockClient, source: 'integration-test' });
     dataFlow.syncData('selectedClient', mockClient);
 };
 

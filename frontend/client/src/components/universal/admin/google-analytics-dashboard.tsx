@@ -122,7 +122,7 @@ export default function GoogleAnalyticsDashboard() {
   const [dateRange, setDateRange] = useState(false);
   
   // Theming system
-  const theming = useTheming('prototype_tester, ');'7d');
+  const theming = useTheming('prototype_tester');'7d');
   const [selectedProperty, setSelectedProperty] = useState('GA4,');
   const [refreshing, setRefreshing] = useState(false);
 
@@ -247,7 +247,7 @@ export default function GoogleAnalyticsDashboard() {
         <Typography variant="h4"
           sx={{ 
             color: colors.primary,
-            fontWeight: 7,
+            fontWeight: 700,
             display: 'flex',
             alignItems: 'center',
             gap:  1 }}>
@@ -333,7 +333,7 @@ export default function GoogleAnalyticsDashboard() {
                   justifyContent: 'space-between'}}
               >
                 <Box>
-                  <Typography variant="h4" sx={{  fontWeight: 7, color: colors.primary  }}>
+                  <Typography variant="h4" sx={{  fontWeight: 700, color: colors.primary  }}>
                     {formatNumber(data.overview.totalUsers)}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
@@ -363,7 +363,7 @@ export default function GoogleAnalyticsDashboard() {
                   justifyContent: 'space-between'}}
               >
                 <Box>
-                  <Typography variant="h4" sx={{  fontWeight: 7, color: colors.secondary  }}>
+                  <Typography variant="h4" sx={{  fontWeight: 700, color: colors.secondary  }}>
                     {formatNumber(data.overview.sessions)}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
@@ -393,7 +393,7 @@ export default function GoogleAnalyticsDashboard() {
                   justifyContent: 'space-between'}}
               >
                 <Box>
-                  <Typography variant="h4" sx={{  fontWeight: 7, color: colors.success  }}>
+                  <Typography variant="h4" sx={{  fontWeight: 700, color: colors.success  }}>
                     {formatNumber(data.overview.pageviews)}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
@@ -423,7 +423,7 @@ export default function GoogleAnalyticsDashboard() {
                   justifyContent: 'space-between'}}
               >
                 <Box>
-                  <Typography variant="h4" sx={{  fontWeight: 7, color: colors.info  }}>
+                  <Typography variant="h4" sx={{  fontWeight: 700, color: colors.info  }}>
                     {data.overview.conversions}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">

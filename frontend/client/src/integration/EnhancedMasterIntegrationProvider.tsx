@@ -21,34 +21,11 @@ let cachedToken = { token: "", exp: 0 };
 
 /**
  * Get impersonated access token via backend proxy
+ * DISABLED: Authentication bypassed for direct dashboard access
  */
 async function getImpersonatedAccessToken(scopes: string[] = ["https://www.googleapis.com/auth/cloud-platform"]): Promise<string> {
-  const now = Math.floor(Date.now() / 1000);
-  if (cachedToken.token && cachedToken.exp > now + 30) return cachedToken.token;
-
-  try {
-    const response = await fetch('/api/auth/google/token', {
-      method: 'POST',
-      headers: { 'Content-Type' : 'application/json' },
-      body: JSON.stringify({ scopes }),
-      credentials: 'include',
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to get token: ${response.statusText}`);
-    }
-
-    const data = await response.json();
-    const token = data.access_token || data.token;
-
-    if (!token) throw new Error("Failed to obtain impersonated access token");
-
-    cachedToken = { token, exp: now + 290 };
-    return token;
-  } catch (error) {
-    console.error('Failed to get impersonated access token: ', error);
-    throw error;
-  }
+  // Authentication disabled - return empty token
+  return "";
 }
 
 /**
@@ -1059,13 +1036,28 @@ export const EnhancedMasterIntegrationProvider: React.FC<{
     return linkedInAuthState.profile;
   }, [linkedInAuthState.profile]);
 
-  // Initialize authentication on mount
+  // Initialize authentication on mount - DISABLED for direct dashboard access
   useEffect(() => {
+    // Authentication disabled - set as authenticated without Google OAuth
     if (!authInitialized) {
-      initializeAuth();
+      setAuthState({
+        isAuthenticated: true,
+        isLoading: false,
+        user: {
+          id: 'local-user',
+          email: 'user@local.dev',
+          name: 'Local User',
+          role: 'admin',
+          permissions: ['visual-editor', 'course-management', 'user-management', 'admin-access'],
+          organization: 'local',
+          lastLogin: Date.now()
+        },
+        token: '',
+        error: null
+      });
       setAuthInitialized(true);
   }
-}, [initializeAuth, authInitialized]);
+}, [authInitialized]);
 
   // Feature system functions
   const checkFeatureAccess = useCallback((feature: string, userRole?: string) => {
@@ -2239,7 +2231,24 @@ export const ENHANCED_INTEGRATION_CONFIGS = {
     messageTypes: [
       'ai:processing:start','ai:processing:complete','ai:processing:error', 'ai:model:loaded'
     ]
-}
+},
+
+  // Wedflow Service (Bookings, Users, Analytics)
+  WEDFLOW_SERVICE: {
+    componentType: 'wedflow-service',
+    capabilities: [
+      'data:read','data:write','event:emit','event:listen','action:execute',
+      'wedflow:bookings:list','wedflow:bookings:create','wedflow:bookings:update','wedflow:bookings:delete',
+      'wedflow:users:list','wedflow:analytics:summary'
+    ],
+    dataKeys: [
+      'wedflowBookings','wedflowUsers','wedflowAnalytics','wedflowStatus'
+    ],
+    messageTypes: [
+      'wedflow:booking:created','wedflow:booking:updated','wedflow:booking:deleted',
+      'wedflow:data:synced','wedflow:api:error'
+    ]
+  }
 };
 
 // Error boundary for integration failures

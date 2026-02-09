@@ -5,7 +5,7 @@
 
 import { useTheming } from '../../utils/theming-helper';
 import React, { useState, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
 import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
 import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
@@ -38,23 +38,7 @@ import {
   CloudSync
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
-
-interface ProjectCollaborator {
-  id?: string;
-  name: string;
-  email: string;
-  phone?: string;
-  role: string;
-  isExistingUser?: boolean;
-  invitationStatus?: 'not_sent' | 'sent' | 'accepted' | 'declined' | 'updated';
-  addedBy?: string;
-  addedAt?: string;
-  companyName?: string;
-  notes?: string;
-  googleContactId?: string;
-  source?: 'creatorhub' | 'google_contacts' | 'manual';
-  organizationNumber?: string
-}
+import { ProjectCollaborator } from '@/types/project-collaborator';
 
 interface EditCollaboratorDialogProps {
   open: boolean;
@@ -68,17 +52,18 @@ export default function EditCollaboratorDialog({
   collaborator, 
   onClose, 
   onUpdate 
-}: EditCollaboratorDialogProps) {
+}: EditCollaboratorDialogProps): JSX.Element | null {
   // Dynamic profession system
   const { getProfessionDisplayName } = useDynamicProfessions();
   const [formData, setFormData] = useState<ProjectCollaborator>({
     name: '',
     email: '',
     phone: '',
-    role: 'photographer', // Default role
-    companyName: '',
-    notes: '',
-    organizationNumber: ''
+    role: 'photographer',
+    isExistingUser: false,
+    invitationStatus: 'not_sent',
+    addedBy: '',
+    addedAt: ''
 });
   const [updateGoogleContact, setUpdateGoogleContact] = useState(false);
   const [brregSearchResults, setBrregSearchResults] = useState<any[]>([]);
@@ -87,37 +72,37 @@ export default function EditCollaboratorDialog({
   const queryClient = useQueryClient();
   
   // Theming system
-  const theming = useTheming('photographer,');
+  const theming = useTheming('photographer');
 
   // Oppdater lokale data
   const updateCollaboratorMutation = useMutation({
     mutationFn: async (data: ProjectCollaborator) => {
-      return apiRequest(`/api/projects/collaborators/${collaborator?.d}`, {
+      return apiRequest(`/api/projects/collaborators/${collaborator?.id}`, {
         headers: {
           "Content-Type" : "application/json"
     },
-        method: 'PU',
+        method: 'PUT',
         body: JSON.stringify(data)
   });
   },
     onSuccess: (result) => {
       console.log('Collaborator updated successfully, :', result);
       onUpdate(result.collaborator);
-      queryClient.invalidateQueries({ queryKey: ['/api/projects/collaborators,', ],});
+      queryClient.invalidateQueries({ queryKey: ['/api/projects/collaborators'] });
   }
 });
 
   // Oppdater Google kontakt
   const updateGoogleContactMutation = useMutation({
     mutationFn: async (data: any) => {
-      const [firstName, ...lastNameParts] = data.name.split('');
-      const lastName = lastNameParts.join('');
+      const [firstName, ...lastNameParts] = data.name.split(' ');
+      const lastName = lastNameParts.join(' ');
       
       return apiRequest(`/api/google/people/update-contact/${collaborator?.googleContactId}`, {
         headers: {
           "Content-Type" : "application/json"
     },
-        method: 'PU',
+        method: 'PUT',
         body: JSON.stringify({
           firstName,
           lastName,
@@ -131,9 +116,9 @@ export default function EditCollaboratorDialog({
     });
   },
     onSuccess: () => {
-      console.log('Google contact updated successfully, ');
-}
-});
+      console.log('Google contact updated successfully');
+    }
+  });
 
   // Initialiser form data når collaborator endres
   useEffect(() => {
@@ -275,7 +260,7 @@ export default function EditCollaboratorDialog({
             <TextField
               fullWidth
               label="Telefon"
-              value={formData.phone || ', '}
+              value={formData.phone || ''}
               onChange={(e) => handleInputChange('phone', e.target.value)}
             />
           </Grid>
@@ -300,7 +285,7 @@ export default function EditCollaboratorDialog({
             <TextField
               fullWidth
               label="Bedriftsnavn"
-              value={formData.companyName || ', '}
+              value={formData.companyName || ''}
               onChange={(e) => {
                 handleInputChange('companyName', e.target.value);
                 setBrregSearchQuery(e.target.value);
@@ -309,7 +294,7 @@ export default function EditCollaboratorDialog({
               helperText="Start å skrive for å søke i Brønnøysundregistrene"
             />
             {brregSearchResults.length > 0 && (
-              <Box sx={{ mt: 1, maxHeight: 20, overflow: 'auto', border: 1, borderColor: 'divider', borderRadius:  1 }}>
+              <Box sx={{ mt: 1, maxHeight: 200, overflow: 'auto', border: 1, borderColor: 'divider', borderRadius: 1 }}>
                 {brregSearchResults.map((company, index) => (
                   <Box
                     key={index}
@@ -335,9 +320,9 @@ export default function EditCollaboratorDialog({
             <TextField
               fullWidth
               label="Organisasjonsnummer"
-              value={formData.organizationNumber || ', '}
+              value={formData.organizationNumber || ''}
               onChange={(e) => {
-                const value = e.target.value.replace(/\D/g, ', '); // Kun tall
+                const value = e.target.value.replace(/\D/g, ''); // Kun tall
                 if (value.length <= 9) {
                   handleInputChange('organizationNumber', value);
               }
@@ -355,7 +340,7 @@ export default function EditCollaboratorDialog({
               label="Notater"
               multiline
               rows={3}
-              value={formData.notes ||', '}
+              value={formData.notes || ''}
               onChange={(e) => handleInputChange('notes', e.target.value)}
               placeholder="Tilleggsinfo om samarbeidspartneren..."
             />

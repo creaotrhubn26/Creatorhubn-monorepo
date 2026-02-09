@@ -157,7 +157,7 @@ export default function SplitSheetAnalytics({
 
   return (
     <Box>
-      <Typography variant="h5" sx={{ fontWeight: 70, mb: 3 }}>
+      <Typography variant="h5" sx={{ fontWeight: 700, mb: 3 }}>
         Analytics Dashboard
       </Typography>
 
@@ -172,7 +172,7 @@ export default function SplitSheetAnalytics({
                   Totale Split Sheets
                 </Typography>
               </Stack>
-              <Typography variant="h4" sx={{ fontWeight: 70, color: '#9f7aea' }}>
+              <Typography variant="h4" sx={{ fontWeight: 700, color: '#9f7aea' }}>
                 {analytics.totalSplitSheets}
               </Typography>
             </CardContent>
@@ -187,7 +187,7 @@ export default function SplitSheetAnalytics({
                   Fullført
                 </Typography>
               </Stack>
-              <Typography variant="h4" sx={{ fontWeight: 70, color: '#4caf50' }}>
+              <Typography variant="h4" sx={{ fontWeight: 700, color: '#4caf50' }}>
                 {analytics.completedSplitSheets}
               </Typography>
             </CardContent>
@@ -202,7 +202,7 @@ export default function SplitSheetAnalytics({
                   Totale bidragsytere
                 </Typography>
               </Stack>
-              <Typography variant="h4" sx={{ fontWeight: 70, color: '#2196f3' }}>
+              <Typography variant="h4" sx={{ fontWeight: 700, color: '#2196f3' }}>
                 {analytics.totalContributors}
               </Typography>
             </CardContent>
@@ -217,7 +217,7 @@ export default function SplitSheetAnalytics({
                   Total inntekt
                 </Typography>
               </Stack>
-              <Typography variant="h4" sx={{ fontWeight: 70, color: '#ff9800' }}>
+              <Typography variant="h4" sx={{ fontWeight: 700, color: '#ff9800' }}>
                 {formatCurrency(analytics.totalRevenue)}
               </Typography>
             </CardContent>

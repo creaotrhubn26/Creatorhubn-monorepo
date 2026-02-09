@@ -31,7 +31,14 @@ import {
   InputAdornment,
   Divider,
   Paper,
-  Tooltip
+  Tooltip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  FormControl,
+  InputLabel,
+  Select,
 } from '@mui/material';
 import {
   Send as SendIcon,
@@ -136,7 +143,7 @@ export default function AdminCommunicationPanel({
   const { auth } = useEnhancedMasterIntegration();
 
   // Theming system
-  const theming = useTheming('prototype_tester, ');
+  const theming = useTheming('prototype_tester');
   const userProfession = 'photographer';
 
   // Use dynamic profession system
@@ -149,6 +156,13 @@ export default function AdminCommunicationPanel({
   const [messageText, setMessageText] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+  const [broadcastDialogOpen, setBroadcastDialogOpen] = useState(false);
+  const [broadcastMessage, setBroadcastMessage] = useState('');
+  const [broadcastTitle, setBroadcastTitle] = useState('');
+  const [broadcastType, setBroadcastType] = useState<'info' | 'warning' | 'success'>('info');
+  const [addUserDialogOpen, setAddUserDialogOpen] = useState(false);
+  const [newUserEmail, setNewUserEmail] = useState('');
+  const [newUserName, setNewUserName] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const { toast } = useToast();
@@ -273,13 +287,90 @@ export default function AdminCommunicationPanel({
 };
 
   const handleCreateBroadcast = () => {
-    // Implementation for broadcast creation dialog
-    toast({
-      title: "Broadcast funksjon",
-      description: "Broadcast til alle brukere kommer snart",
-      variant: "default"
-});
-};
+    setBroadcastDialogOpen(true);
+  };
+
+  const handleSendBroadcast = async () => {
+    if (!broadcastTitle.trim() || !broadcastMessage.trim()) {
+      toast({
+        title: "Mangler informasjon",
+        description: "Både tittel og melding er påkrevd",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      const headers = await auth.getAuthHeader();
+      await fetch('/api/admin/communication/broadcast', {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: broadcastTitle,
+          message: broadcastMessage,
+          type: broadcastType,
+          targetAudience: 'all'
+        })
+      });
+
+      toast({
+        title: "Broadcast sendt!",
+        description: `Meldingen "${broadcastTitle}" ble sendt til ${users.length} brukere`,
+        variant: "default"
+      });
+
+      setBroadcastDialogOpen(false);
+      setBroadcastTitle('');
+      setBroadcastMessage('');
+      setBroadcastType('info');
+    } catch {
+      toast({
+        title: "Feil ved sending",
+        description: "Kunne ikke sende broadcast. Prøv igjen.",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleAddUser = async () => {
+    if (!newUserEmail.trim() || !newUserName.trim()) {
+      toast({
+        title: "Mangler informasjon",
+        description: "Både navn og e-post er påkrevd",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      const headers = await auth.getAuthHeader();
+      await fetch('/api/admin/communication/users', {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: newUserEmail,
+          name: newUserName
+        })
+      });
+
+      toast({
+        title: "Bruker lagt til",
+        description: `${newUserName} ble lagt til kommunikasjonslisten`,
+        variant: "default"
+      });
+
+      setAddUserDialogOpen(false);
+      setNewUserEmail('');
+      setNewUserName('');
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/communication/users'] });
+    } catch {
+      toast({
+        title: "Feil ved opprettelse",
+        description: "Kunne ikke legge til bruker. Prøv igjen.",
+        variant: "destructive"
+      });
+    }
+  };
 
   const filteredUsers = users.filter((user: ChatUser) =>
     user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -503,7 +594,7 @@ export default function AdminCommunicationPanel({
                   <Tooltip title="Legg til ny bruker">
                     <IconButton 
                       size="small"
-                      onClick={() => toast({ title: "Legg til bruker", description: "Funksjon kommer snart" })}
+                      onClick={() => setAddUserDialogOpen(true)}
                     >
                       <PersonAddIcon />
                     </IconButton>
@@ -766,6 +857,109 @@ export default function AdminCommunicationPanel({
           Chat innstillinger
         </MenuItem>
       </Menu>
+
+      {/* Broadcast Dialog */}
+      <Dialog 
+        open={broadcastDialogOpen} 
+        onClose={() => setBroadcastDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle sx={{ bgcolor: '#ff8c00', color: 'white' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <NotificationsIcon />
+            Send Broadcast til alle brukere
+          </Box>
+        </DialogTitle>
+        <DialogContent sx={{ pt: 3 }}>
+          <Alert severity="info" sx={{ mb: 2 }}>
+            Denne meldingen vil bli sendt til {users.length} registrerte brukere
+          </Alert>
+          <TextField
+            fullWidth
+            label="Tittel"
+            value={broadcastTitle}
+            onChange={(e) => setBroadcastTitle(e.target.value)}
+            sx={{ mb: 2 }}
+            placeholder="F.eks: Viktig oppdatering, Ny funksjonalitet..."
+          />
+          <FormControl fullWidth sx={{ mb: 2 }}>
+            <InputLabel>Type melding</InputLabel>
+            <Select
+              value={broadcastType}
+              onChange={(e) => setBroadcastType(e.target.value as 'info' | 'warning' | 'success')}
+              label="Type melding"
+            >
+              <MenuItem value="info">Informasjon (blå)</MenuItem>
+              <MenuItem value="success">Positiv nyhet (grønn)</MenuItem>
+              <MenuItem value="warning">Viktig advarsel (gul)</MenuItem>
+            </Select>
+          </FormControl>
+          <TextField
+            fullWidth
+            label="Melding"
+            value={broadcastMessage}
+            onChange={(e) => setBroadcastMessage(e.target.value)}
+            multiline
+            rows={4}
+            placeholder="Skriv meldingen som skal sendes til alle brukere..."
+          />
+        </DialogContent>
+        <DialogActions sx={{ p: 2 }}>
+          <Button onClick={() => setBroadcastDialogOpen(false)}>Avbryt</Button>
+          <Button 
+            variant="contained" 
+            onClick={handleSendBroadcast}
+            startIcon={<SendIcon />}
+            sx={{ bgcolor: '#ff8c00', '&:hover': { bgcolor: '#e67e00' } }}
+          >
+            Send til alle ({users.length})
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Add User Dialog */}
+      <Dialog 
+        open={addUserDialogOpen} 
+        onClose={() => setAddUserDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <PersonAddIcon />
+            Legg til ny bruker
+          </Box>
+        </DialogTitle>
+        <DialogContent sx={{ pt: 3 }}>
+          <TextField
+            fullWidth
+            label="Navn"
+            value={newUserName}
+            onChange={(e) => setNewUserName(e.target.value)}
+            sx={{ mb: 2 }}
+            placeholder="Fullt navn"
+          />
+          <TextField
+            fullWidth
+            label="E-postadresse"
+            type="email"
+            value={newUserEmail}
+            onChange={(e) => setNewUserEmail(e.target.value)}
+            placeholder="bruker@eksempel.no"
+          />
+        </DialogContent>
+        <DialogActions sx={{ p: 2 }}>
+          <Button onClick={() => setAddUserDialogOpen(false)}>Avbryt</Button>
+          <Button 
+            variant="contained" 
+            onClick={handleAddUser}
+            startIcon={<PersonAddIcon />}
+          >
+            Legg til bruker
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

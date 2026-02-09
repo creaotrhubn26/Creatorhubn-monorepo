@@ -68,7 +68,7 @@ export default function ProjectCreationWizard({
   const queryClient = useQueryClient();
   
   // Theming system
-  const theming = useTheming('photographer, ');
+  const theming = useTheming('photographer');
   const { profession, getProjectTypes, getDefaultHourlyRate } = useProfessionAdapter();
 
   const [activeStep, setActiveStep] = useState(0);

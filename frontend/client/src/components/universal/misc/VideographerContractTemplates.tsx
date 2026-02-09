@@ -67,7 +67,7 @@ export default function VideographerContractTemplates({
   const { user } = useAuth();
   
   // Theming system
-  const theming = useTheming('photographer, ');
+  const theming = useTheming('photographer');
   const queryClient = useQueryClient();
   
   const [selectedTemplate, setSelectedTemplate] = useState<ContractTemplate | null>(null);

@@ -34,6 +34,7 @@ import {
   Tab,
   IconButton,
   Tooltip,
+  Snackbar,
 } from '@mui/material';
 import {
   Warning,
@@ -94,6 +95,7 @@ export default function ModerationManagement() {
   
   // Dialog states
   const [warnDialogOpen, setWarnDialogOpen] = useState(false);
+  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'warning' | 'info' }>({ open: false, message: '', severity: 'info' });
   const [actionForm, setActionForm] = useState({
     userId:  ',',
     ruleViolated: 'respect',
@@ -161,13 +163,13 @@ export default function ModerationManagement() {
       }) as { success: boolean; message: string };
 
       if (response.success) {
-        alert(response.message);
+        setSnackbar({ open: true, message: response.message, severity: 'success' });
         setWarnDialogOpen(false);
         loadData();
       }
     } catch (error) {
       console.error('Error issuing warning:', error);
-      alert('Failed to issue warning');
+      setSnackbar({ open: true, message: 'Failed to issue warning', severity: 'error' });
     }
   };
 
@@ -319,6 +321,22 @@ export default function ModerationManagement() {
         setActionForm={setActionForm}
         onSubmit={handleIssueWarning}
       />
+
+      {/* Snackbar for notifications */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={4000}
+        onClose={() => setSnackbar((prev) => ({ ...prev, open: false }))}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert
+          onClose={() => setSnackbar((prev) => ({ ...prev, open: false }))}
+          severity={snackbar.severity}
+          variant="filled"
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 }

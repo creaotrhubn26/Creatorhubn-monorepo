@@ -477,10 +477,10 @@ Return ONLY valid JSON, no explanations.`;
     <Box sx={{ p: 4, maxWidth: 1400, mx: 'auto' }}>
       {/* Header */}
       <Box sx={{ textAlign: 'center', mb: 6 }}>
-        <Typography variant="h3" sx={{ fontWeight: 70, mb: 2 }}>
+        <Typography variant="h3" sx={{ fontWeight: 700, mb: 2 }}>
           Hvordan CreatorHub Virtual Studio
         </Typography>
-        <Typography variant="h3" sx={{ fontWeight: 70, mb: 3, color: brandColors.primary.main }}>
+        <Typography variant="h3" sx={{ fontWeight: 700, mb: 3, color: brandColors.primary.main }}>
           Transformerer Din Arbeidsflyt
         </Typography>
         <Typography variant="h6" color="text.secondary" sx={{ maxWidth: 800, mx: 'auto' }}>
@@ -861,7 +861,7 @@ Return ONLY valid JSON, no explanations.`;
       {/* Success Story */}
       {activeStage === currentPersona.journey.length - 1 && (
         <Paper elevation={3} sx={{ p: 4, mt: 4, bgcolor: brandColors.alpha.light }}>
-          <Typography variant="h5" gutterBottom sx={{ fontWeight: 70, textAlign: 'center' }}>
+          <Typography variant="h5" gutterBottom sx={{ fontWeight: 700, textAlign: 'center' }}>
             🎉 Suksess! {currentPersona.name} Transformerer Sin Virksomhet
           </Typography>
           <Typography

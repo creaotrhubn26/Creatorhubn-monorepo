@@ -170,7 +170,7 @@ const IntegrationAnalyticsDashboard: React.FC = () => {
   const { auth } = useEnhancedMasterIntegration();
   
   // Theming system
-  const theming = useTheming('prototype_tester, ');
+  const theming = useTheming('prototype_tester');
   const [activeTab, setActiveTab] = useState<number>(0);
   const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState<boolean>(true);

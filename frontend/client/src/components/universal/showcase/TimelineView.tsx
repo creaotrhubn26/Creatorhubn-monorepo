@@ -332,7 +332,8 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
             }}
             sx={{
               borderColor: `${accentColor}60`,
-              color: accentColor, '&:hover': { borderColor: accentColor }
+              color: accentColor,
+              '&:hover': { borderColor: accentColor }
             }}
           >
             Add Chapter
@@ -343,7 +344,8 @@ export const TimelineView: React.FC<TimelineViewProps> = ({
             size="small"
             sx={{
               borderColor: `${accentColor}60`,
-              color: accentColor'&:hover': { borderColor: accentColor }
+              color: accentColor,
+              '&:hover': { borderColor: accentColor }
             }}
           >
             Add Clip

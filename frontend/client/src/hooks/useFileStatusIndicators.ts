@@ -3,6 +3,7 @@
  * Provides easy access to status indicators and wrapper components
  */
 
+import { createElement, type ReactNode } from 'react';
 import { useFileManagementStatus } from '../contexts/FileManagementStatusContext';
 import { FileStatusWrapper, FileStatusBadge } from '../components/common/FileStatusIndicators';
 
@@ -52,34 +53,32 @@ export function useFileStatusIndicators() {
     return 'unknown';
 };
 
-  const renderStatusWrapper = (children: React.ReactNode, options?: {
+  const renderStatusWrapper = (children: ReactNode, options?: {
     showFileSystem?: boolean;
     showGoogleDrive?: boolean;
     showGooglePhotos?: boolean;
     size?: 'small' | 'medium' | 'large';
     position?: 'top-right' | 'top-left' | 'bottom-right' | 'bottom-left';
 }) => {
-    return (
-      <FileStatusWrapper
-        showFileSystem={options?.showFileSystem ?? true}
-        showGoogleDrive={options?.showGoogleDrive ?? false}
-        showGooglePhotos={options?.showGooglePhotos ?? false}
-        size={options?.size ?? 'small'}
-        position={options?.position ?? 'top-right'}
-      >
-        {children}
-      </FileStatusWrapper>
+    return createElement(
+      FileStatusWrapper,
+      {
+        showFileSystem: options?.showFileSystem ?? true,
+        showGoogleDrive: options?.showGoogleDrive ?? false,
+        showGooglePhotos: options?.showGooglePhotos ?? false,
+        size: options?.size ?? 'small',
+        position: options?.position ?? 'top-right'
+      },
+      children
     );
 };
 
   const renderStatusBadge = (variant?: 'dot' | 'chip' | 'badge', showAll?: boolean, compact?: boolean) => {
-    return (
-      <FileStatusBadge
-        variant={variant}
-        showAll={showAll}
-        compact={compact}
-      />
-    );
+    return createElement(FileStatusBadge, {
+      variant,
+      showAll,
+      compact
+    });
 };
 
   return {
@@ -113,7 +112,6 @@ export function useFileStatusIndicators() {
     googleDriveMessage: getStatusText('googleDrive'),
     googlePhotosMessage: getStatusText('googlePhotos'),
 };
-}
 
 
 

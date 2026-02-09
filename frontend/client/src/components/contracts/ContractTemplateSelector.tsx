@@ -13,6 +13,7 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
+  DialogContentText,
   DialogActions,
   TextField,
   List,
@@ -153,7 +154,7 @@ const DEFAULT_TEMPLATES: Record<string, ContractTemplate[]> = {
 };
 
 export default function ContractTemplateSelector({
-  profession = 'photographer,',
+  profession = 'photographer',
   onTemplateSelect,
   onTemplateCreate,
 }: ContractTemplateSelectorProps) {
@@ -163,6 +164,10 @@ export default function ContractTemplateSelector({
   const [selectedTemplate, setSelectedTemplate] = useState<ContractTemplate | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteTemplateId, setDeleteTemplateId] = useState<string | null>(null);
+  const [editingTemplate, setEditingTemplate] = useState<ContractTemplate | null>(null);
   const [newTemplate, setNewTemplate] = useState<Partial<ContractTemplate>>({
     name: '',
     description: '',
@@ -172,7 +177,7 @@ export default function ContractTemplateSelector({
 
   // Fetch user's custom templates
   const { data: customTemplates = [] } = useQuery({
-    queryKey: ['/api/contracts/templates,', user?.id],
+    queryKey: ['/api/contracts/templates', user?.id],
     queryFn: () => apiRequest(`/api/contracts/templates?userId=${user?.id}`),
     enabled: !!user?.id,
     retry: false,
@@ -180,7 +185,7 @@ export default function ContractTemplateSelector({
 
   const createTemplateMutation = useMutation({
     mutationFn: async (templateData: Partial<ContractTemplate>) => {
-      return apiRequest('/api/contracts/templates, ', {
+      return apiRequest('/api/contracts/templates', {
         method: 'POST',
         headers: { 'Content-Type' : 'application/json' },
         body: JSON.stringify({ ...templateData, userId: user?.id, profession }),
@@ -189,7 +194,22 @@ export default function ContractTemplateSelector({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/contracts/templates', user?.id] });
       setCreateDialogOpen(false);
-      setNewTemplate({ name: '', description: ',', contractType: ', ', sections: [] });
+      setNewTemplate({ name: '', description: '', contractType: '', sections: [] });
+    },
+  });
+
+  const updateTemplateMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: Partial<ContractTemplate> }) => {
+      return apiRequest(`/api/contracts/templates/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/contracts/templates', user?.id] });
+      setEditDialogOpen(false);
+      setEditingTemplate(null);
     },
   });
 
@@ -273,7 +293,7 @@ export default function ContractTemplateSelector({
                     Inneholder:
                   </Typography>
                   <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                    {template.sections.slice(0, 3).map((section, idx) => (
+                    {template.sections.slice(0, 3).map((section: string, idx: number) => (
                       <Chip
                         key={idx}
                         label={section}
@@ -311,20 +331,34 @@ export default function ContractTemplateSelector({
                   </IconButton>
                 </Tooltip>
                 {template.isCustom && (
-                  <Tooltip title="Slett mal">
-                    <IconButton
-                      size="small"
-                      color="error"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (window.confirm('Er du sikker på at du vil slette denne malen?')) {
-                          deleteTemplateMutation.mutate(template.id);
-                        }
-                      }}
-                    >
-                      <DeleteIcon fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
+                  <>
+                    <Tooltip title="Rediger mal">
+                      <IconButton
+                        size="small"
+                        color="primary"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingTemplate(template);
+                          setEditDialogOpen(true);
+                        }}
+                      >
+                        <EditIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Slett mal">
+                      <IconButton
+                        size="small"
+                        color="error"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDeleteTemplateId(template.id);
+                          setDeleteDialogOpen(true);
+                        }}
+                      >
+                        <DeleteIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  </>
                 )}
                 <Button
                   size="small"
@@ -399,6 +433,98 @@ export default function ContractTemplateSelector({
         </DialogActions>
       </Dialog>
 
+      {/* Edit Template Dialog */}
+      <Dialog open={editDialogOpen} onClose={() => setEditDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Rediger Kontraktmal</DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
+            <TextField
+              label="Navn på mal"
+              value={editingTemplate?.name || ''}
+              onChange={(e) => setEditingTemplate(prev => prev ? { ...prev, name: e.target.value } : null)}
+              fullWidth
+              required
+            />
+            <TextField
+              label="Beskrivelse"
+              value={editingTemplate?.description || ''}
+              onChange={(e) => setEditingTemplate(prev => prev ? { ...prev, description: e.target.value } : null)}
+              fullWidth
+              multiline
+              rows={3}
+            />
+            <TextField
+              label="Kontrakttype"
+              value={editingTemplate?.contractType || ''}
+              onChange={(e) => setEditingTemplate(prev => prev ? { ...prev, contractType: e.target.value } : null)}
+              fullWidth
+            />
+            <TextField
+              label="Seksjoner (kommaseparert)"
+              placeholder="Tjenester, Priser, Levering, Rettigheter"
+              value={editingTemplate?.sections?.join(', ') || ''}
+              onChange={(e) =>
+                setEditingTemplate(prev => prev ? {
+                  ...prev,
+                  sections: e.target.value.split(',').map((s: string) => s.trim()).filter(Boolean),
+                } : null)
+              }
+              fullWidth
+              helperText="Skriv inn seksjoner separert med komma"
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEditDialogOpen(false)}>Avbryt</Button>
+          <Button
+            variant="contained"
+            onClick={() => {
+              if (editingTemplate?.id && editingTemplate.name) {
+                updateTemplateMutation.mutate({
+                  id: editingTemplate.id,
+                  data: {
+                    name: editingTemplate.name,
+                    description: editingTemplate.description,
+                    contractType: editingTemplate.contractType,
+                    sections: editingTemplate.sections,
+                  },
+                });
+              }
+            }}
+            disabled={!editingTemplate?.name || updateTemplateMutation.isPending}
+            sx={{ bgcolor: theming.colors.primary }}
+          >
+            {updateTemplateMutation.isPending ? 'Lagrer...' : 'Lagre Endringer'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)}>
+        <DialogTitle>Bekreft sletting</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Er du sikker på at du vil slette denne malen? Denne handlingen kan ikke angres.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteDialogOpen(false)}>Avbryt</Button>
+          <Button
+            onClick={() => {
+              if (deleteTemplateId) {
+                deleteTemplateMutation.mutate(deleteTemplateId);
+              }
+              setDeleteDialogOpen(false);
+              setDeleteTemplateId(null);
+            }}
+            color="error"
+            variant="contained"
+          >
+            Slett
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       {/* Create Custom Template Dialog */}
       <Dialog open={createDialogOpen} onClose={() => setCreateDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Opprett Egen Kontraktmal</DialogTitle>
@@ -426,17 +552,17 @@ export default function ContractTemplateSelector({
               fullWidth
             />
             <TextField
-              label="Sekjoner (kommaseparert)"
+              label="Seksjoner (kommaseparert)"
               placeholder="Tjenester, Priser, Levering, Rettigheter"
-              value={newTemplate.sections?.join(', ') || ', '}
+              value={newTemplate.sections?.join(', ') || ''}
               onChange={(e) =>
                 setNewTemplate({
                   ...newTemplate,
-                  sections: e.target.value.split('').map((s) => s.trim()).filter(Boolean),
+                  sections: e.target.value.split(',').map((s: string) => s.trim()).filter(Boolean),
                 })
               }
               fullWidth
-              helperText="Skriv inn sekjoner separert med komma"
+              helperText="Skriv inn seksjoner separert med komma"
             />
           </Box>
         </DialogContent>

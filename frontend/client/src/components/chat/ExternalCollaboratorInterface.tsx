@@ -109,7 +109,7 @@ export default function ExternalCollaboratorInterface({
   });
 
     // Track component initialization
-    analytics.trackEvent('external_collaborator_interface_mounted,', {
+    analytics.trackEvent('external_collaborator_interface_mounted', {
       projectId,
       profession,
       isDemoMode,
@@ -117,7 +117,7 @@ export default function ExternalCollaboratorInterface({
   ,});
 
     return () => {
-      lifecycle.unregisterComponent('external-collaborator-interface, ');
+      lifecycle.unregisterComponent('external-collaborator-interface');
       analytics.trackEvent('external_collaborator_interface_unmounted', {
         projectId,
         profession,

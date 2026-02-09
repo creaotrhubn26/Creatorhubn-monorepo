@@ -70,7 +70,7 @@ export function GoogleOAuthSetup({ open, onOpenChange }: GoogleOAuthSetupProps) 
   const { integration, communication, dataFlow, componentRegistry } = useEnhancedMasterIntegration();
   
   // Theming system
-  const theming = useTheming('photographer, ');
+  const theming = useTheming('photographer');
 
   // Initialize Google Identity Services
   useEffect(() => {

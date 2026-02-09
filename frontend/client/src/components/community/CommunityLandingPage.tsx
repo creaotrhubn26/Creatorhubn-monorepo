@@ -59,8 +59,50 @@ import {
 } from '@mui/icons-material';
 import { useLocation } from 'wouter';
 
-// Lazy load Three.js animation component
-const CommunityNetworkAnimation = React.lazy(() => import('./CommunityNetworkAnimation'));
+// Error boundary for lazy components
+class LazyLoadErrorBoundary extends React.Component<
+  { children: React.ReactNode; fallback?: React.ReactNode },
+  { hasError: boolean }
+> {
+  constructor(props: { children: React.ReactNode; fallback?: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error) {
+    console.error('Failed to load lazy component:', error);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        this.props.fallback || (
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', p: 2 }}>
+            <Typography sx={{ color: '#f59e0b' }}>Unable to load animation</Typography>
+          </Box>
+        )
+      );
+    }
+    return this.props.children;
+  }
+}
+
+// Lazy load Three.js animation component with better error handling
+const CommunityNetworkAnimation = React.lazy(() =>
+  import('./CommunityNetworkAnimation').catch(() => ({
+    default: () => (
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', p: 2 }}>
+        <Typography sx={{ color: '#f59e0b', fontSize: '0.875rem' }}>
+          Animation unavailable
+        </Typography>
+      </Box>
+    ),
+  }))
+);
 
 import { apiRequest } from '@/lib/queryClient';
 import { withVisualEditor } from '@/components/admin/visual-editor/withVisualEditor';

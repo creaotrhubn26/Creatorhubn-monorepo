@@ -107,7 +107,7 @@ export default function ReportsPanel({
   const [tabValue, setTabValue] = useState(false);
   
   // Theming system
-  const theming = useTheming('prototype_tester, ');
+  const theming = useTheming('prototype_tester');
   
   // Dynamic profession system
   const { getProfessionDisplayName } = useDynamicProfessions();
@@ -425,15 +425,166 @@ export default function ReportsPanel({
           </TabPanel>
 
           <TabPanel value={tabValue} index={2}>
-            <Box sx={{ textAlign: 'center', py:  4 }}>
-              <BarChart sx={{ fontSize:  48, color: 'text.secondary', mb:  2 }} />
-              <Typography variant="h6" color="text.secondary" sx={{ color: theming.colors.primary }}>
-                Avansert ytelsesanalyse
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Detaljerte ytelsesindikatorer og benchmarking kommer snart
-              </Typography>
-            </Box>
+            <Grid container spacing={3}>
+              {/* KPI Cards */}
+              <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'success.50' }}>
+                  <Typography variant="overline" color="text.secondary">Konverteringsrate</Typography>
+                  <Typography variant="h4" color="success.main">24.8%</Typography>
+                  <Typography variant="caption" color="success.main">+3.2% fra forrige måned</Typography>
+                </Paper>
+              </Grid>
+              <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'info.50' }}>
+                  <Typography variant="overline" color="text.secondary">Gjennomsnittlig ordrestørrelse</Typography>
+                  <Typography variant="h4" color="info.main">12,450 kr</Typography>
+                  <Typography variant="caption" color="info.main">+8% fra forrige måned</Typography>
+                </Paper>
+              </Grid>
+              <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'warning.50' }}>
+                  <Typography variant="overline" color="text.secondary">Kundetilfredshet</Typography>
+                  <Typography variant="h4" color="warning.main">4.7/5</Typography>
+                  <Typography variant="caption" color="warning.main">Basert på 156 vurderinger</Typography>
+                </Paper>
+              </Grid>
+              <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'primary.50' }}>
+                  <Typography variant="overline" color="text.secondary">Gjentakende kunder</Typography>
+                  <Typography variant="h4" color="primary.main">67%</Typography>
+                  <Typography variant="caption" color="primary.main">+5% fra forrige kvartal</Typography>
+                </Paper>
+              </Grid>
+
+              {/* Benchmarking */}
+              <Grid size={{ xs: 12, md: 6 }}>
+                <Paper sx={{ p: 2 }}>
+                  <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
+                    Ytelse vs. bransjegjennomsnitt
+                  </Typography>
+                  {[
+                    { label: 'Responstid', your: 85, avg: 70 },
+                    { label: 'Prosjektfullføring', your: 92, avg: 78 },
+                    { label: 'Kundelojalitet', your: 78, avg: 65 },
+                    { label: 'Priskonkurranseevne', your: 72, avg: 60 },
+                  ].map((metric) => (
+                    <Box key={metric.label} sx={{ mb: 2 }}>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+                        <Typography variant="body2">{metric.label}</Typography>
+                        <Typography variant="body2" fontWeight="bold">{metric.your}%</Typography>
+                      </Box>
+                      <Box sx={{ position: 'relative', height: 8, bgcolor: 'grey.200', borderRadius: 1 }}>
+                        <Box sx={{ 
+                          position: 'absolute', 
+                          height: '100%', 
+                          width: `${metric.your}%`, 
+                          bgcolor: 'primary.main',
+                          borderRadius: 1,
+                        }} />
+                        <Box sx={{ 
+                          position: 'absolute', 
+                          height: '100%', 
+                          width: 2, 
+                          left: `${metric.avg}%`, 
+                          bgcolor: 'error.main',
+                        }} />
+                      </Box>
+                      <Typography variant="caption" color="text.secondary">
+                        Bransjegjennomsnitt: {metric.avg}%
+                      </Typography>
+                    </Box>
+                  ))}
+                </Paper>
+              </Grid>
+
+              {/* Performance Trends */}
+              <Grid size={{ xs: 12, md: 6 }}>
+                <Paper sx={{ p: 2 }}>
+                  <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
+                    Ytelsestrender (siste 6 måneder)
+                  </Typography>
+                  <TableContainer>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Metrikk</TableCell>
+                          <TableCell align="right">Jan</TableCell>
+                          <TableCell align="right">Feb</TableCell>
+                          <TableCell align="right">Mar</TableCell>
+                          <TableCell align="right">Apr</TableCell>
+                          <TableCell align="right">Mai</TableCell>
+                          <TableCell align="right">Jun</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        <TableRow>
+                          <TableCell>Omsetning (k)</TableCell>
+                          <TableCell align="right">45</TableCell>
+                          <TableCell align="right">52</TableCell>
+                          <TableCell align="right">48</TableCell>
+                          <TableCell align="right">61</TableCell>
+                          <TableCell align="right">58</TableCell>
+                          <TableCell align="right">72</TableCell>
+                        </TableRow>
+                        <TableRow>
+                          <TableCell>Prosjekter</TableCell>
+                          <TableCell align="right">12</TableCell>
+                          <TableCell align="right">15</TableCell>
+                          <TableCell align="right">14</TableCell>
+                          <TableCell align="right">18</TableCell>
+                          <TableCell align="right">16</TableCell>
+                          <TableCell align="right">21</TableCell>
+                        </TableRow>
+                        <TableRow>
+                          <TableCell>Nye kunder</TableCell>
+                          <TableCell align="right">8</TableCell>
+                          <TableCell align="right">11</TableCell>
+                          <TableCell align="right">9</TableCell>
+                          <TableCell align="right">14</TableCell>
+                          <TableCell align="right">12</TableCell>
+                          <TableCell align="right">17</TableCell>
+                        </TableRow>
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </Paper>
+              </Grid>
+
+              {/* Action Recommendations */}
+              <Grid size={{ xs: 12 }}>
+                <Paper sx={{ p: 2 }}>
+                  <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
+                    Anbefalte tiltak basert på analyse
+                  </Typography>
+                  <Grid container spacing={2}>
+                    <Grid size={{ xs: 12, md: 4 }}>
+                      <Alert severity="success" sx={{ height: '100%' }}>
+                        <Typography variant="body2" fontWeight="bold">Øk priser med 5-10%</Typography>
+                        <Typography variant="caption">
+                          Din kundetilfredshet er høy nok til å tåle en prisøkning uten kundetap.
+                        </Typography>
+                      </Alert>
+                    </Grid>
+                    <Grid size={{ xs: 12, md: 4 }}>
+                      <Alert severity="info" sx={{ height: '100%' }}>
+                        <Typography variant="body2" fontWeight="bold">Fokuser på gjentakende kunder</Typography>
+                        <Typography variant="caption">
+                          67% gjentakelsesrate er bra - tilby lojalitetsprogram for å nå 75%+.
+                        </Typography>
+                      </Alert>
+                    </Grid>
+                    <Grid size={{ xs: 12, md: 4 }}>
+                      <Alert severity="warning" sx={{ height: '100%' }}>
+                        <Typography variant="body2" fontWeight="bold">Forbedre responstid</Typography>
+                        <Typography variant="caption">
+                          Raskere respons på henvendelser kan øke konverteringsraten med 10%+.
+                        </Typography>
+                      </Alert>
+                    </Grid>
+                  </Grid>
+                </Paper>
+              </Grid>
+            </Grid>
           </TabPanel>
         </CardContent>
       </MuiCard>

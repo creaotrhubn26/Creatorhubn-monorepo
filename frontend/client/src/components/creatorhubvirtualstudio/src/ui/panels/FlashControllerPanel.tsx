@@ -227,7 +227,7 @@ function ControllerSelectorContent({ controllers, selectedId, sceneLights = [], 
                         right: 8,
                         height: 20,
                         fontSize: 10,
-                        fontWeight: 70,
+                        fontWeight: 700,
                         zIndex: 1}}
                     />
                   )}
@@ -510,7 +510,7 @@ function GroupPowerDial({
               alignItems: 'center',
               justifyContent: 'center',
               cursor: 'pointer',
-              fontWeight: 70,
+              fontWeight: 700,
               fontSize: 14,
               color: 'white',
               transition: 'all 0.15s','&:hover': {
@@ -571,7 +571,7 @@ function GroupPowerDial({
           variant="h5"
           sx={{
             color: group.enabled ? accentColor : 'grey.600',
-            fontWeight: 70,
+            fontWeight: 700,
             letterSpacing: 1}}
         >
           {group.powerMode === 'ttl' 
@@ -1680,7 +1680,7 @@ export function FlashControllerWidget() {
               alignItems: 'center',
               justifyContent: 'center',
               fontSize: 10,
-              fontWeight: 70,
+              fontWeight: 700,
               color: 'white'}}
           >
             {g.name}

@@ -289,10 +289,10 @@ export default function BRREGIntegration({
   }
 }, [mode, autoSync, companyData]);
 
-  // Background mode rendering
+  // Background mode rendering - HIDDEN
   if (mode === 'background') {
-    return (
-      <Box sx={{ position: 'fixed', bottom:  16, right: 10, zIndex: 100}}>
+    return null;
+    /* <Box sx={{ position: 'fixed', bottom:  16, right: 10, zIndex: 100}}>
         <Tooltip title="BRREG-integrasjon aktiv">
           <IconButton 
             size="small" 
@@ -304,8 +304,7 @@ export default function BRREGIntegration({
             <Business fontSize="small" />
           </IconButton>
         </Tooltip>
-      </Box>
-    );
+      </Box> */
 }
 
   const renderCompanyVerification = () => (

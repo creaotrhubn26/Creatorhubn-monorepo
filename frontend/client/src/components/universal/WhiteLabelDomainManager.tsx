@@ -28,6 +28,11 @@ import {
   Paper,
   IconButton,
   Tooltip,
+  Snackbar,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from '@mui/material';
 import {
   Language,
@@ -77,6 +82,8 @@ const WhiteLabelDomainManager: React.FC<WhiteLabelDomainManagerProps> = ({
   const queryClient = useQueryClient();
   const [newDomain, setNewDomain] = useState(' , ');
   const [activeStep, setActiveStep] = useState(0);
+  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'info' }>({ open: false, message: '', severity: 'info' });
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   // Fetch existing domain configuration (user-specific)
   const { data: domainConfig, isLoading } = useQuery({
@@ -132,14 +139,14 @@ const WhiteLabelDomainManager: React.FC<WhiteLabelDomainManagerProps> = ({
 
   const handleAddDomain = () => {
     if (!newDomain) {
-      alert('Vennligst skriv inn et domenenavn');
+      setSnackbar({ open: true, message: 'Vennligst skriv inn et domenenavn', severity: 'error' });
       return;
     }
 
     // Validate domain format
     const domainRegex = /^[a-zA-Z0-9][a-zA-Z0-9-]{1,61}[a-zA-Z0-9]\.[a-zA-Z]{2,}$/;
     if (!domainRegex.test(newDomain) {
-      alert('Ugyldig domeneformat. Bruk format: dittdomene.no');
+      setSnackbar({ open: true, message: 'Ugyldig domeneformat. Bruk format: dittdomene.no', severity: 'error' });
       return;
     }
 
@@ -148,7 +155,7 @@ const WhiteLabelDomainManager: React.FC<WhiteLabelDomainManagerProps> = ({
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
-    alert('Kopiert til utklippstavlen!');
+    setSnackbar({ open: true, message: 'Kopiert til utklippstavlen!', severity: 'success' });
   };
 
   const steps = [
@@ -231,11 +238,7 @@ const WhiteLabelDomainManager: React.FC<WhiteLabelDomainManagerProps> = ({
                 size="small"
                 variant="outlined"
                 color="error"
-                onClick={() => {
-                  if (confirm('Er du sikker på at du vil fjerne dette domenet?')) {
-                    deleteDomainMutation.mutate();
-                  }}
-                }
+                onClick={() => setConfirmDelete(true)}
               >
                 Fjern domene
               </Button>
@@ -434,6 +437,43 @@ const WhiteLabelDomainManager: React.FC<WhiteLabelDomainManagerProps> = ({
           </Typography>
         </Box>
       </CardContent>
+
+      {/* Confirm Delete Dialog */}
+      <Dialog open={confirmDelete} onClose={() => setConfirmDelete(false)}>
+        <DialogTitle>Fjern domene</DialogTitle>
+        <DialogContent>
+          <Typography>Er du sikker på at du vil fjerne dette domenet? Denne handlingen kan ikke angres.</Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmDelete(false)}>Avbryt</Button>
+          <Button 
+            variant="contained" 
+            color="error" 
+            onClick={() => {
+              deleteDomainMutation.mutate();
+              setConfirmDelete(false);
+            }}
+          >
+            Fjern domene
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Snackbar */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={4000}
+        onClose={() => setSnackbar(prev => ({ ...prev, open: false }))}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert 
+          onClose={() => setSnackbar(prev => ({ ...prev, open: false }))} 
+          severity={snackbar.severity}
+          variant="filled"
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Card>
   );
 };

@@ -1,8 +1,3 @@
-/**
- * Loudness Meter Component
- * Real-time LUFS and True Peak metering (EBU R128 compliant)
- */
-
 import React, { useEffect, useRef, useState } from 'react';
 import { Box, Typography, Paper, Chip } from '@mui/material';
 import { VolumeUp, Warning } from '@mui/icons-material';
@@ -39,7 +34,6 @@ const LoudnessMeter: React.FC<LoudnessMeterProps> = ({
     loudnessRange: 10
   });
 
-  // Fetch loudness data
   useEffect(() => {
     if (!audioUrl) return;
 
@@ -47,13 +41,12 @@ const LoudnessMeter: React.FC<LoudnessMeterProps> = ({
       try {
         const response = await fetch('/api/audio/loudness', {
           method: 'POST',
-          headers: { 'Content-Type' : 'application/json' },
+          headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
           body: JSON.stringify({ audioUrl, currentTime })
         });
 
         const data = await response.json();
-
         if (data.success) {
           setMetrics(data.metrics);
         }
@@ -64,14 +57,14 @@ const LoudnessMeter: React.FC<LoudnessMeterProps> = ({
 
     fetchLoudness();
 
-    // Update every second when playing
     if (isPlaying) {
       const interval = setInterval(fetchLoudness, 1000);
       return () => clearInterval(interval);
     }
+
+    return undefined;
   }, [audioUrl, isPlaying, currentTime]);
 
-  // Draw meters
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -79,20 +72,13 @@ const LoudnessMeter: React.FC<LoudnessMeterProps> = ({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Clear canvas
     ctx.clearRect(0, 0, width, height);
-
-    // Draw background
     ctx.fillStyle = '#1a1a1a';
     ctx.fillRect(0, 0, width, height);
 
-    // Draw LUFS meter
-    drawLUFSMeter(ctx, 20, 50, 120, 300, metrics.momentaryLUFS'Momentary');
-    drawLUFSMeter(ctx, 160, 50, 120, 300, metrics.shortTermLUFS'Short-term');
-
-    // Draw True Peak meter
+    drawLUFSMeter(ctx, 20, 50, 120, 300, metrics.momentaryLUFS, 'Momentary');
+    drawLUFSMeter(ctx, 160, 50, 120, 300, metrics.shortTermLUFS, 'Short-term');
     drawPeakMeter(ctx, 20, 370, 260, 20, metrics.truePeak);
-
   }, [metrics, width, height]);
 
   const drawLUFSMeter = (
@@ -104,46 +90,37 @@ const LoudnessMeter: React.FC<LoudnessMeterProps> = ({
     value: number,
     label: string
   ) => {
-    // Background
     ctx.fillStyle = '#333';
     ctx.fillRect(x, y, w, h);
 
-    // Scale: -60 LUFS to 0 LUFS
     const minLUFS = -60;
     const maxLUFS = 0;
     const normalizedValue = (value - minLUFS) / (maxLUFS - minLUFS);
-    const barHeight = h * normalizedValue;
+    const barHeight = h * Math.min(1, Math.max(0, normalizedValue));
 
-    // Color gradient based on value
-    let color = '#00ff00'; // Green
-    if (value > -9) color = '#ff0000'; // Red (too loud)
-    else if (value > -16) color = '#ffff00'; // Yellow (broadcast standard)
-    else if (value > -23) color = '#00ff00'; // Green (good)
-    else color = '#0088ff'; // Blue (quiet)
+    let color = '#00ff00';
+    if (value > -9) color = '#ff0000';
+    else if (value > -16) color = '#ffff00';
+    else if (value > -23) color = '#00ff00';
+    else color = '#0088ff';
 
-    // Draw bar
     ctx.fillStyle = color;
     ctx.fillRect(x, y + h - barHeight, w, barHeight);
 
-    // Draw reference lines
     ctx.strokeStyle = '#666';
     ctx.lineWidth = 1;
-
-    // -23 LUFS (EBU R128 target)
     const target23 = y + h * (1 - (-23 - minLUFS) / (maxLUFS - minLUFS));
     ctx.beginPath();
     ctx.moveTo(x, target23);
     ctx.lineTo(x + w, target23);
     ctx.stroke();
 
-    // -16 LUFS (streaming target)
     const target16 = y + h * (1 - (-16 - minLUFS) / (maxLUFS - minLUFS));
     ctx.beginPath();
     ctx.moveTo(x, target16);
     ctx.lineTo(x + w, target16);
     ctx.stroke();
 
-    // Label
     ctx.fillStyle = '#fff';
     ctx.font = '12px Arial';
     ctx.textAlign = 'center';
@@ -159,24 +136,18 @@ const LoudnessMeter: React.FC<LoudnessMeterProps> = ({
     h: number,
     value: number
   ) => {
-    // Background
     ctx.fillStyle = '#333';
     ctx.fillRect(x, y, w, h);
 
-    // Scale: -60 dB to 0 dB
     const minDB = -60;
     const maxDB = 0;
     const normalizedValue = (value - minDB) / (maxDB - minDB);
-    const barWidth = w * normalizedValue;
+    const barWidth = w * Math.min(1, Math.max(0, normalizedValue));
 
-    // Color
     const color = value > -1 ? '#ff0000' : value > -6 ? '#ffff00' : '#00ff00';
-
-    // Draw bar
     ctx.fillStyle = color;
     ctx.fillRect(x, y, barWidth, h);
 
-    // Label
     ctx.fillStyle = '#fff';
     ctx.font = '12px Arial';
     ctx.textAlign = 'left';
@@ -199,21 +170,11 @@ const LoudnessMeter: React.FC<LoudnessMeterProps> = ({
         <VolumeUp />
         <Typography variant="h6">Loudness Meter</Typography>
         {isPeaking && (
-          <Chip
-            icon={<Warning />}
-            label="PEAKING!"
-            color="error"
-            size="small"
-          />
+          <Chip icon={<Warning />} label="PEAKING!" color="error" size="small" />
         )}
       </Box>
 
-      <canvas
-        ref={canvasRef}
-        width={width}
-        height={height}
-        style={{ display: 'block', margin: '0 auto' }}
-      />
+      <canvas ref={canvasRef} width={width} height={height} style={{ display: 'block', margin: '0 auto' }} />
 
       <Box mt={2}>
         <Chip
@@ -221,10 +182,7 @@ const LoudnessMeter: React.FC<LoudnessMeterProps> = ({
           color={getIntegratedColor()}
           sx={{ mr: 1, mb: 1 }}
         />
-        <Chip
-          label={`LRA: ${metrics.loudnessRange.toFixed(1)} LU`}
-          sx={{ mb: 1 }}
-        />
+        <Chip label={`LRA: ${metrics.loudnessRange.toFixed(1)} LU`} sx={{ mb: 1 }} />
       </Box>
 
       <Typography variant="caption" color="text.secondary" display="block" mt={1}>
@@ -235,4 +193,3 @@ const LoudnessMeter: React.FC<LoudnessMeterProps> = ({
 };
 
 export default LoudnessMeter;
-

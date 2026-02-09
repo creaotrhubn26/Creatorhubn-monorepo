@@ -376,7 +376,10 @@ export const createCornerAccent = (
   position: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' = 'top-right',
 ): string => {
   const positions = {
-    'top-left': { transform: 'rotate(0)' } 'top-right': { transform: 'rotate(90)' }'bottom-right': { transform: 'rotate(180)' }'bottom-left': { transform: 'rotate(270)' },
+    'top-left': { transform: 'rotate(0)' },
+    'top-right': { transform: 'rotate(90)' },
+    'bottom-right': { transform: 'rotate(180)' },
+    'bottom-left': { transform: 'rotate(270)' }
   };
 
   const svg = `

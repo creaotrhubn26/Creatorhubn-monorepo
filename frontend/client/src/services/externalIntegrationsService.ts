@@ -13,7 +13,7 @@ export interface ExternalService {
   health: ServiceHealth;
   credentials?: ServiceCredentials;
   features: ServiceFeature[];
-  rateLimit: RateLimit, ;, 
+  rateLimit: RateLimit;
 }
 
 export interface ServiceHealth {
@@ -21,7 +21,7 @@ export interface ServiceHealth {
   lastChecked: string;
   responseTime?: number;
   uptime?: number;
-  errors?: string[], ;, 
+  errors?: string[];
 }
 
 export interface ServiceCredentials {
@@ -40,14 +40,14 @@ export interface ServiceFeature {
   description: string;
   enabled: boolean;
   capabilities: string[];
-  permissions?: Permission[], ;, 
+  permissions?: string[];
 }
 
 export interface RateLimit {
   requests: number;
   period: number; // in seconds
   remaining?: number;
-  resetTime?: string, ;, 
+  resetTime?: string;
 }
 
 export interface Integration {
@@ -60,7 +60,7 @@ export interface Integration {
   lastSyncAt?: string;
   syncInterval: number; // in minutes
   settings: IntegrationSettings;
-  usage: ServiceUsage, ;, 
+  usage: ServiceUsage;
 }
 
 export interface IntegrationSettings {
@@ -76,7 +76,7 @@ export interface ServiceUsage {
   monthlyRequests: number;
   quotaUsage: number;
   lastRequestAt: string;
-  errors: ServiceError[], ;, 
+  errors: ServiceError[];
 }
 
 export interface ServiceError {
@@ -99,7 +99,7 @@ export interface APICall {
   status: 'pending' | 'success' | 'error';
   responseTime?: number;
   response?: any;
-  error?: ServiceError, ;, 
+  error?: ServiceError;
 }
 
 export interface WebhookSubscription {
@@ -110,7 +110,7 @@ export interface WebhookSubscription {
   secret?: string;
   status: 'active' | 'inactive' | 'error';
   createdAt: string;
-  lastTriggeredAt?: string, ;, 
+  lastTriggeredAt?: string;
 }
 
 export interface AuthResult {
@@ -119,7 +119,7 @@ export interface AuthResult {
   refreshToken?: string;
   expiresIn?: number;
   scopes?: string[];
-  error?: string, ;, 
+  error?: string;
 }
 
 class ExternalIntegrationsService {
@@ -133,7 +133,7 @@ class ExternalIntegrationsService {
     this.baseUrl = baseUrl;
     this.initializeDefaultServices();
     this.loadStoredIntegrations();
-,}
+  }
 
   /**
    * Initialize default external services
@@ -145,79 +145,79 @@ class ExternalIntegrationsService {
         name: 'Google Drive',
         type: 'oauth',
         description: 'File storage and collaboration via Google Drive',
-        version: 'v',
-        health: { status: 'healthy', lastChecked: new Date().toISOString(, ),},
+        version: 'v1',
+        health: { status: 'healthy', lastChecked: new Date().toISOString() },
         features: [
           {
             featureId: 'files',
             name: 'File Management',
             description: 'Upload, download, and manage files',
             enabled: true,
-            capabilities: ['read','write','delete']
-      }
+            capabilities: ['read', 'write', 'delete']
+          }
         ],
-        rateLimit: { requests: 100, period: 360,}
-  },
+        rateLimit: { requests: 100, period: 3600 }
+      },
       {
         serviceId: 'google-photos',
         name: 'Google Photos',
         type: 'oauth',
         description: 'Photo storage and organization',
-        version: 'v',
-        health: { status: 'healthy', lastChecked: new Date().toISOString(, ),},
+        version: 'v1',
+        health: { status: 'healthy', lastChecked: new Date().toISOString() },
         features: [
           {
             featureId: 'photos',
             name: 'Photo Management',
             description: 'Upload and manage photos',
             enabled: true,
-            capabilities: ['read','upload','organize']
-      }
+            capabilities: ['read', 'upload', 'organize']
+          }
         ],
-        rateLimit: { requests: 50, period: 360,}
-  },
+        rateLimit: { requests: 50, period: 3600 }
+      },
       {
         serviceId: 'youtube',
         name: 'YouTube',
         type: 'oauth',
         description: 'Video platform integration',
-        version: 'v',
-        health: { status: 'healthy', lastChecked: new Date().toISOString(, ),},
+        version: 'v1',
+        health: { status: 'healthy', lastChecked: new Date().toISOString() },
         features: [
           {
             featureId: 'videos',
             name: 'Video Management',
             description: 'Upload and manage videos',
             enabled: true,
-            capabilities: ['upload','read','edit']
-      }
+            capabilities: ['upload', 'read', 'edit']
+          }
         ],
-        rateLimit: { requests: 1000, period: 360,}
-  },
+        rateLimit: { requests: 1000, period: 3600 }
+      },
       {
         serviceId: 'stripe',
         name: 'Stripe',
         type: 'api',
         description: 'Payment processing',
-        version: '2023-10-1',
-        health: { status: 'healthy', lastChecked: new Date().toISOString(, ),},
+        version: '2023-10-01',
+        health: { status: 'healthy', lastChecked: new Date().toISOString() },
         features: [
           {
             featureId: 'payments',
             name: 'Payment Processing',
             description: 'Process payments and transactions',
             enabled: true,
-            capabilities: ['charge','refund','subscription']
-      }
+            capabilities: ['charge', 'refund', 'subscription']
+          }
         ],
-        rateLimit: { requests: 10, period: 6,}
-  }
+        rateLimit: { requests: 10, period: 60 }
+      }
     ];
 
-    defaultServices.forEach(service => {
+    defaultServices.forEach((service) => {
       this.services.set(service.serviceId, service);
-});
-}
+    });
+  }
 
   /**
    * Connect to an external service
@@ -231,43 +231,43 @@ class ExternalIntegrationsService {
       const service = this.services.get(serviceId);
       if (!service) {
         throw new Error(`Service ${serviceId} not found`);
-  }
+      }
 
       // Validate service health
       const health = await this.checkServiceHealth(serviceId);
       if (health.status === 'unhealthy') {
         throw new Error(`Service ${serviceId} is currently unavailable`);
-  }
+      }
 
       const integrationId = `integration_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       
       const integration: Integration = {
-        integrationd,
+        integrationId,
         serviceId,
         name: `${service.name} Integration`,
         userId,
         status: 'active',
         connectedAt: new Date().toISOString(),
-        syncInterval:  30,
+        syncInterval: 30,
         settings: {
           autoSync: true,
           notifications: true,
           priority: 'medium'
-      ,},
+        },
         usage: {
-          totalRequests:, 0,
-          monthlyRequests:  0,
-          quotaUsage:  0,
+          totalRequests: 0,
+          monthlyRequests: 0,
+          quotaUsage: 0,
           lastRequestAt: new Date().toISOString(),
           errors: []
-      }
-  };
+        }
+      };
 
       // Authenticate with service
       const authResult = await this.authenticateService(serviceId, credentials);
       if (!authResult.success) {
         throw new Error(`Authentication failed: ${authResult.error}`);
-  }
+      }
 
       // Store integration
       this.integrations.set(integrationId, integration);
@@ -276,9 +276,9 @@ class ExternalIntegrationsService {
       // Update service credentials
       if (service.credentials) {
         service.credentials = { ...service.credentials, ...credentials };
-  } else {
+      } else {
         service.credentials = credentials as ServiceCredentials;
-  }
+      }
 
       return integration;
 } catch (error) {
@@ -427,7 +427,7 @@ class ExternalIntegrationsService {
           lastChecked: new Date().toISOString(),
           errors: ['Service not found']
         };
-  }
+      }
 
       const startTime = Date.now();
       
@@ -446,22 +446,22 @@ class ExternalIntegrationsService {
 
         service.health = health;
         return health;
-  } catch (error) {
+      } catch (error) {
         return {
           status: 'unhealthy',
           lastChecked: new Date().toISOString(),
           errors: [`Health check failed: ${error}`]
         };
-  }
-} catch (error) {
+      }
+    } catch (error) {
       console.error(`Health check failed for service ${serviceId}:`, error);
       return {
         status: 'unhealthy',
         lastChecked: new Date().toISOString(),
         errors: [error instanceof Error ? error.message : 'Unknown error']
       };
-}
-}
+    }
+  }
 
   /**
    * Synchronize data with connected services
@@ -480,7 +480,7 @@ class ExternalIntegrationsService {
           
           integration.lastSyncAt = new Date().toISOString();
           this.integrations.set(integration.integrationId, integration);
-    } catch (error) {
+        } catch (error) {
           syncResults.push({
             integrationId: integration.integrationId,
             success: false,
@@ -488,16 +488,16 @@ class ExternalIntegrationsService {
             syncedItems: 0,
             syncTime: new Date().toISOString()
           });
-    }
-  }
+        }
+      }
 
       this.saveIntegrations();
       return syncResults;
-} catch (error) {
+    } catch (error) {
       console.error('Failed to sync services:', error);
       throw error;
-}
-}
+    }
+  }
 
   /**
    * Sync a specific service
@@ -533,7 +533,7 @@ class ExternalIntegrationsService {
         syncedItems,
         syncTime: new Date().toISOString()
       };
-} catch (error) {
+    } catch (error) {
       return {
         integrationId,
         success: false,
@@ -541,8 +541,8 @@ class ExternalIntegrationsService {
         syncedItems: 0,
         syncTime: new Date().toISOString()
       };
-}
-}
+    }
+  }
 
   // Private helper methods
 
@@ -562,14 +562,14 @@ class ExternalIntegrationsService {
         accessToken: credentials.oauthToken || `mock_token_${serviceId}`,
         refreshToken: credentials.refreshToken,
         scopes: ['read', 'write']
-  };
-} catch (error) {
+      };
+    } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message :'Authentication failed'
+        error: error instanceof Error ? error.message : 'Authentication failed'
       };
-}
-}
+    }
+  }
 
   private getAuthenticationHeaders(service: ExternalService): Record<string, string> {
     const headers: Record<string, string> = {};
@@ -577,14 +577,14 @@ class ExternalIntegrationsService {
     if (service.credentials) {
       if (service.credentials.apiKey) {
         headers['Authorization'] = `Bearer ${service.credentials.apiKey}`;
-  }
+      }
       if (service.credentials.oauthToken) {
         headers['Authorization'] = `Bearer ${service.credentials.oauthToken}`;
-  }
-}
+      }
+    }
 
     return headers;
-}
+  }
 
   private async syncGoogleDrive(integrationId: string): Promise<number> {
     // Mock implementation
@@ -617,8 +617,8 @@ class ExternalIntegrationsService {
       }
     } catch (error) {
       console.error('Failed to load stored integrations:', error);
-}
-}
+    }
+  }
 
   private saveIntegrations(): void {
     try {
@@ -626,16 +626,16 @@ class ExternalIntegrationsService {
         integrations: Object.fromEntries(this.integrations)
       };
       localStorage.setItem('externalIntegrations', JSON.stringify(data));
-} catch (error) {
+    } catch (error) {
       console.error('Failed to save integrations:', error);
-}
-}
+    }
+  }
 
   // Public utility methods
 
   getServices(): ExternalService[] {
     return Array.from(this.services.values());
-}
+  }
 
   getService(serviceId: string): ExternalService | undefined {
     return this.services.get(serviceId);
@@ -643,7 +643,7 @@ class ExternalIntegrationsService {
 
   getAPICalls(): APICall[] {
     return [...this.apiCalls];
-}
+  }
 
   setEnabled(enabled: boolean): void {
     this.isEnabled = enabled;
@@ -651,7 +651,7 @@ class ExternalIntegrationsService {
 
   get isServiceEnabled(): boolean {
     return this.isEnabled;
-}
+  }
 }
 
 interface SyncResult {

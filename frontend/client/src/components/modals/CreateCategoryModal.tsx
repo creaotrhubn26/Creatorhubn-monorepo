@@ -27,6 +27,11 @@ import {
   ListItemIcon,
   Divider
 } from '@mui/material';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
+import LabelOutlinedIcon from '@mui/icons-material/LabelOutlined';
+import KeyOutlinedIcon from '@mui/icons-material/KeyOutlined';
+import DescriptionOutlinedIcon from '@mui/icons-material/DescriptionOutlined';
 import {
   Category as CategoryIcon,
   PhotoCamera as PhotoIcon,
@@ -124,7 +129,7 @@ const CreateCategoryModal: React.FC<CreateCategoryModalProps> = ({
   const createCategoryMutation = useMutation({
     mutationFn: async (categoryData: any) => {
       // This would create both the category metadata and initial pricing structures
-      const response = await fetch('/api/price-administration/categories', {
+      const response = await fetch('/api/pricing/categories', {
         method: 'POST',
         headers: {
           ...auth, 'Content-Type' : 'application/json',
@@ -135,8 +140,8 @@ const CreateCategoryModal: React.FC<CreateCategoryModalProps> = ({
       return response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/price-administration/categories', ],});
-      queryClient.invalidateQueries({ queryKey: ['/api/price-administration/packages', ],});
+      queryClient.invalidateQueries({ queryKey: ['/api/pricing/categories'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/pricing/packages'] });
       queryClient.invalidateQueries({ queryKey: ['/api/price-administration/pricing', ],});
       handleClose();
   },
@@ -200,59 +205,147 @@ const CreateCategoryModal: React.FC<CreateCategoryModalProps> = ({
       }
     }}
     >
-      <DialogTitle>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
-          <CategoryIcon color="primary" />
-          <Typography variant="h6" sx={{ color: theming.colors.primary }}>Legg til ny kategori</Typography>
+      <DialogTitle sx={{ borderBottom: '1px solid', borderColor: 'divider', px: 3, py: 2.5 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Box
+            sx={{
+              p: 1.25,
+              borderRadius: 2,
+              bgcolor: 'primary.50',
+              color: 'primary.main',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
+          >
+            <CategoryIcon sx={{ fontSize: 28 }} />
+          </Box>
+          <Typography 
+            variant="h5" 
+            sx={{ 
+              color: theming.colors.primary,
+              fontWeight: 700,
+              letterSpacing: '-0.02em'
+            }}
+          >
+            Legg til ny kategori
+          </Typography>
         </Box>
       </DialogTitle>
 
-      <DialogContent>
+      <DialogContent sx={{ px: 3, py: 4 }}>
         {!selectedTemplate ? (
           <Box>
-            <Typography variant="h6" gutterBottom sx={{  mt:  2  }}>
-              Velg kategori type
-            </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              Velg en forhåndsdefinert kategori med anbefalte priser, eller opprett en tilpasset kategori.
-            </Typography>
+            <Box sx={{ mb: 4, pb: 3, borderBottom: '1px solid', borderColor: 'divider' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1.5 }}>
+                <Box
+                  sx={{
+                    p: 1.25,
+                    borderRadius: 2,
+                    bgcolor: 'primary.50',
+                    color: 'primary.main',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}
+                >
+                  <CategoryIcon sx={{ fontSize: 26 }} />
+                </Box>
+                <Typography 
+                  variant="h6" 
+                  sx={{ 
+                    fontWeight: 700,
+                    color: theming.colors.primary,
+                    fontSize: '1.3rem',
+                    letterSpacing: '-0.01em'
+                  }}
+                >
+                  Velg kategori type
+                </Typography>
+              </Box>
+              <Typography 
+                variant="body2" 
+                color="text.secondary" 
+                sx={{ lineHeight: 1.7, ml: 6.5 }}
+              >
+                Velg en forhåndsdefinert kategori med anbefalte priser, eller opprett en tilpasset kategori.
+              </Typography>
+            </Box>
 
-            <Grid container spacing={2} sx={{ mb: 3 }}>
+            <Grid container spacing={3.5} sx={{ mb: 4 }}>
               {categoryTemplates.map((template) => (
                 <Grid size={{ xs: 12, sm: 6 }} key={template.key}>
                   <Paper
-                    elevation={1}
+                    elevation={0}
                     sx={{
-                      p: 2,
+                      p: 3.5,
                       cursor: 'pointer',
-                      transition: 'all 0.2s',
-                      border: '2px solid transparent',
-                      ...theming.getThemedCardSx(), '&:hover': {
-                        elevation: 3,
+                      transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                      border: '2px solid',
+                      borderColor: 'divider',
+                      borderRadius: 2.5,
+                      background: 'linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%)',
+                      ...theming.getThemedCardSx(),
+                      '&:hover': {
+                        elevation: 4,
                         borderColor: `${template.color}.main`,
-                        transform: 'translateY(-2px)',
-                      }}}
+                        transform: 'translateY(-4px) scale(1.02)',
+                        boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+                        background: `linear-gradient(135deg, #ffffff 0%, ${template.color}.50 100%)`,
+                      }
+                    }}
                     onClick={() => handleTemplateSelect(template)}
                   >
-                    <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
-                      <Box sx={{ color: `${template.color}.main` }}>
+                    <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 3 }}>
+                      <Box 
+                        sx={{ 
+                          color: `${template.color}.main`,
+                          p: 2,
+                          borderRadius: 2.5,
+                          bgcolor: `${template.color}.50`,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          flexShrink: 0,
+                          '& > svg': { fontSize: 36 }
+                        }}
+                      >
                         {template.icon}
                       </Box>
                       <Box sx={{ flex: 1 }}>
-                        <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                        <Typography 
+                          variant="h6" 
+                          sx={{ 
+                            color: theming.colors.primary,
+                            fontWeight: 700,
+                            mb: 1.25,
+                            fontSize: '1.15rem'
+                          }}
+                        >
                           {template.name}
                         </Typography>
-                        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                        <Typography 
+                          variant="body2" 
+                          color="text.secondary" 
+                          sx={{ mb: 2.5, lineHeight: 1.7 }}
+                        >
                           {template.description}
                         </Typography>
-                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
                           {Object.entries(template.suggestedPrices).map(([type, price]) => (
                             <Chip
                               key={type}
                               size="small"
                               label={`${type}: ${formatPrice(price as number)}`}
-                              variant="outlined"
-                              color={template.color}
+                              variant="filled"
+                              sx={{
+                                bgcolor: `${template.color}.100`,
+                                color: `${template.color}.800`,
+                                fontWeight: 600,
+                                borderRadius: 2,
+                                px: 0.5,
+                                fontSize: '0.8rem'
+                              }}
                             />
                           ))}
                         </Box>
@@ -263,28 +356,57 @@ const CreateCategoryModal: React.FC<CreateCategoryModalProps> = ({
               ))}
             </Grid>
 
-            <Divider sx={{ my: 2 }} />
+            <Divider sx={{ my: 4 }} />
 
             <Paper
-              elevation={1}
+              elevation={0}
               sx={{
-                p:  2,
+                p: 3.5,
                 cursor: 'pointer',
-                transition: 'all 0.2',
-                border: '2px dashed #ccc', '&:hover': {
+                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                border: '2px dashed',
+                borderColor: 'divider',
+                borderRadius: 2.5,
+                background: 'linear-gradient(135deg, #fafbfc 0%, #f0f2f5 100%)',
+                '&:hover': {
                   borderColor: 'primary.main',
-                  bgcolor: 'primary.50'
-            },
-            ...theming.getThemedCardSx()
-            }}
-              onClick={handleCustomCategory}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
-                <AddIcon color="primary" />
+                  bgcolor: 'primary.50',
+                  transform: 'translateY(-2px)',
+                  boxShadow: '0 4px 16px rgba(0,0,0,0.1)',
+                },
+                ...theming.getThemedCardSx()
+              }}
+              onClick={handleCustomCategory}
+            >
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                <Box
+                  sx={{
+                    p: 2,
+                    borderRadius: 2.5,
+                    bgcolor: 'primary.50',
+                    color: 'primary.main',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                    '& > svg': { fontSize: 36 }
+                  }}
+                >
+                  <AddIcon />
+                </Box>
                 <Box>
-                  <Typography variant="h6" color="primary" sx={{ color: theming.colors.primary }}>
+                  <Typography 
+                    variant="h6" 
+                    sx={{ 
+                      color: theming.colors.primary,
+                      fontWeight: 700,
+                      mb: 0.75,
+                      fontSize: '1.15rem'
+                    }}
+                  >
                     Tilpasset kategori
                   </Typography>
-                  <Typography variant="body2" color="text.secondary">
+                  <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.7 }}>
                     Opprett en helt ny kategori med egne innstillinger
                   </Typography>
                 </Box>
@@ -293,95 +415,313 @@ const CreateCategoryModal: React.FC<CreateCategoryModalProps> = ({
           </Box>
         ) : (
           <Box>
-            <Alert severity="info" sx={{ mb:  3 }}>
-              {selectedTemplate === 'custom' 
-                ? 'Opprett en tilpasset kategori med dine egne spesifikasjoner.'
-                : `Oppretter kategori basert på ${categoryTemplates.find(t => t.key === selectedTemplate)?.name} malen.`
-            }
-            </Alert>
+            <Box
+              sx={{
+                mb: 4,
+                p: 3,
+                borderRadius: 2,
+                background: 'linear-gradient(135deg, #e3f2fd 0%, #f3e5f5 100%)',
+                border: '1px solid',
+                borderColor: 'primary.200',
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: 2.5
+              }}
+            >
+              <Box
+                sx={{
+                  p: 1.25,
+                  borderRadius: 1.5,
+                  bgcolor: 'primary.main',
+                  color: 'white',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0
+                }}
+              >
+                <CategoryIcon sx={{ fontSize: 24 }} />
+              </Box>
+              <Box sx={{ flex: 1, pt: 0.25 }}>
+                <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 0.75, color: 'primary.dark', fontSize: '1.1rem' }}>
+                  {selectedTemplate === 'custom' ? 'Tilpasset kategori' : categoryTemplates.find(t => t.key === selectedTemplate)?.name}
+                </Typography>
+                <Typography variant="body2" sx={{ color: 'text.secondary', lineHeight: 1.7 }}>
+                  {selectedTemplate === 'custom' 
+                    ? 'Opprett en tilpasset kategori med dine egne spesifikasjoner.'
+                    : `Denne malen inkluderer anbefalte priser og innstillinger for ${categoryTemplates.find(t => t.key === selectedTemplate)?.name.toLowerCase()}.`
+                  }
+                </Typography>
+              </Box>
+            </Box>
 
-            <Grid container spacing={2}>
-              <Grid size={{ xs: 12 }} sm={6}>
-                <TextField
-                  fullWidth
-                  label="Kategorinavn"
-                  value={categoryName}
-                  onChange={(e) => setCategoryName(e.target.value)}
-                  placeholder="f.eks. Familie, Nyfødtfoto, Sport"
-                  required
-                />
+            <Paper
+              elevation={0}
+              sx={{
+                p: 3.5,
+                borderRadius: 2,
+                border: '2px solid',
+                borderColor: 'divider',
+                bgcolor: 'background.paper',
+                '&:hover': {
+                  borderColor: 'primary.light'
+                }
+              }}
+            >
+              <Box sx={{ mb: 3.5, pb: 2.5, borderBottom: '1px solid', borderColor: 'divider' }}>
+                <Typography 
+                  variant="h6" 
+                  sx={{ 
+                    fontWeight: 700,
+                    color: 'text.primary',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 1.5,
+                    fontSize: '1.2rem'
+                  }}
+                >
+                  <LabelOutlinedIcon sx={{ color: 'primary.main', fontSize: 24 }} />
+                  Kategoriinformasjon
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75, ml: 5, lineHeight: 1.6 }}>
+                  Fyll ut informasjonen for den nye kategorien
+                </Typography>
+              </Box>
+              
+              <Grid container spacing={3.5}>
+                <Grid size={{ xs: 12 }}>
+                  <Box sx={{ mb: 2 }}>
+                    <Typography variant="subtitle2" sx={{ mb: 1.25, fontWeight: 600, color: 'text.primary', display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <LabelOutlinedIcon sx={{ fontSize: 18, color: 'primary.main' }} />
+                      Kategorinavn *
+                    </Typography>
+                    <TextField
+                      fullWidth
+                      value={categoryName}
+                      onChange={(e) => setCategoryName(e.target.value)}
+                      placeholder="f.eks. Familie, Nyfødtfoto, Sport"
+                      required
+                      sx={{
+                        '& .MuiOutlinedInput-root': {
+                          borderRadius: 2,
+                          bgcolor: 'grey.50',
+                          fontSize: '1.1rem',
+                          '&:hover': {
+                            bgcolor: 'background.paper',
+                          },
+                          '&.Mui-focused': {
+                            bgcolor: 'background.paper',
+                          }
+                        }
+                      }}
+                    />
+                  </Box>
+                </Grid>
+                
+                <Grid size={{ xs: 12 }}>
+                  <Box sx={{ mb: 2 }}>
+                    <Typography variant="subtitle2" sx={{ mb: 1.25, fontWeight: 600, color: 'text.primary', display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <KeyOutlinedIcon sx={{ fontSize: 18, color: 'primary.main' }} />
+                      Kategorinøkkel *
+                    </Typography>
+                    <TextField
+                      fullWidth
+                      value={categoryKey}
+                      onChange={(e) => setCategoryKey(e.target.value.toLowerCase().replace(/\s+/g, '_'))}
+                      placeholder="f.eks. familie, nyfodt, sport"
+                      helperText="Brukes i systemet - kun små bokstaver og underscore"
+                      required
+                      sx={{
+                        '& .MuiOutlinedInput-root': {
+                          borderRadius: 2,
+                          bgcolor: 'grey.50',
+                          fontFamily: 'monospace',
+                          fontSize: '1rem',
+                          '&:hover': {
+                            bgcolor: 'background.paper',
+                          },
+                          '&.Mui-focused': {
+                            bgcolor: 'background.paper',
+                          }
+                        }
+                      }}
+                    />
+                  </Box>
+                </Grid>
+                
+                <Grid size={{ xs: 12 }}>
+                  <Box>
+                    <Typography variant="subtitle2" sx={{ mb: 1.25, fontWeight: 600, color: 'text.primary', display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <DescriptionOutlinedIcon sx={{ fontSize: 18, color: 'primary.main' }} />
+                      Beskrivelse
+                    </Typography>
+                    <TextField
+                      fullWidth
+                      multiline
+                      rows={4}
+                      value={description}
+                      onChange={(e) => setDescription(e.target.value)}
+                      placeholder="Beskriv denne kategorien og hva den inkluderer..."
+                      sx={{
+                        '& .MuiOutlinedInput-root': {
+                          borderRadius: 2,
+                          bgcolor: 'grey.50',
+                          '&:hover': {
+                            bgcolor: 'background.paper',
+                          },
+                          '&.Mui-focused': {
+                            bgcolor: 'background.paper',
+                          }
+                        }
+                      }}
+                    />
+                  </Box>
+                </Grid>
               </Grid>
-              <Grid size={{ xs: 12 }} sm={6}>
-                <TextField
-                  fullWidth
-                  label="Kategorinøkkel"
-                  value={categoryKey}
-                  onChange={(e) => setCategoryKey(e.target.value.toLowerCase().replace(/\s+/g, '_'))}
-                  placeholder="f.eks. familie, nyfodt, sport"
-                  helperText="Brukes i systemet - kun små bokstaver og underscore"
-                  required
-                />
-              </Grid>
-              <Grid size={{ xs: 12 }}>
-                <TextField
-                  fullWidth
-                  multiline
-                  rows={3}
-                  label="Beskrivelse"
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Beskriv denne kategorien og hva den inkluderer..."
-                />
-              </Grid>
-            </Grid>
+            </Paper>
 
             {selectedTemplate !== 'custom' && (
-              <Box sx={{ mt:  3 }}>
-                <Typography variant="subtitle1" gutterBottom>
-                  Anbefalte startpriser for denne kategorien:
-                </Typography>
-                <List dense>
-                  {Object.entries(
-                    categoryTemplates.find(t => t.key === selectedTemplate)?.suggestedPrices || {}
-                  ).map(([type, price]) => (
-                    <ListItem key={type}>
-                      <ListItemIcon>
-                        <CategoryIcon fontSize="small" />
-                      </ListItemIcon>
-                      <ListItemText
-                        primary={type}
-                        secondary={formatPrice(price as number)}
-                      />
-                    </ListItem>
-                  ))}
-                </List>
-                <Alert severity="info" sx={{ mt: 2 }}>
-                  Du kan justere disse prisene etter at kategorien er opprettet.
-                </Alert>
+              <Box sx={{ mt: 3.5 }}>
+                <Paper
+                  elevation={0}
+                  sx={{
+                    p: 3,
+                    borderRadius: 2,
+                    border: '1px solid',
+                    borderColor: 'divider',
+                    background: 'linear-gradient(135deg, #fafafa 0%, #f5f5f5 100%)'
+                  }}
+                >
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
+                    <Box
+                      sx={{
+                        p: 1.25,
+                        borderRadius: 1.5,
+                        bgcolor: 'success.50',
+                        color: 'success.main',
+                        display: 'flex'
+                      }}
+                    >
+                      <CategoryIcon sx={{ fontSize: 22 }} />
+                    </Box>
+                    <Typography 
+                      variant="subtitle1" 
+                      sx={{ 
+                        fontWeight: 700,
+                        color: 'text.primary',
+                        fontSize: '1.1rem'
+                      }}
+                    >
+                      Anbefalte startpriser for denne kategorien
+                    </Typography>
+                  </Box>
+                  <Grid container spacing={2}>
+                    {Object.entries(
+                      categoryTemplates.find(t => t.key === selectedTemplate)?.suggestedPrices || {}
+                    ).map(([type, price]) => (
+                      <Grid size={{ xs: 12, sm: 6 }} key={type}>
+                        <Paper
+                          elevation={0}
+                          sx={{
+                            p: 2,
+                            borderRadius: 2,
+                            border: '1px solid',
+                            borderColor: 'success.200',
+                            bgcolor: 'background.paper',
+                            transition: 'all 0.2s',
+                            '&:hover': {
+                              boxShadow: 1,
+                              borderColor: 'success.main'
+                            }
+                          }}
+                        >
+                          <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5, fontSize: '0.75rem', textTransform: 'uppercase', fontWeight: 600, letterSpacing: 0.5 }}>
+                            {type}
+                          </Typography>
+                          <Typography variant="h6" sx={{ color: 'success.main', fontWeight: 700 }}>
+                            {formatPrice(price as number)}
+                          </Typography>
+                        </Paper>
+                      </Grid>
+                    ))}
+                  </Grid>
+                  <Box
+                    sx={{
+                      mt: 3,
+                      p: 2.5,
+                      borderRadius: 1.5,
+                      bgcolor: 'info.50',
+                      border: '1px solid',
+                      borderColor: 'info.200',
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      gap: 2
+                    }}
+                  >
+                    <InfoOutlinedIcon sx={{ color: 'info.main', fontSize: 22, mt: 0.25, flexShrink: 0 }} />
+                    <Typography variant="body2" sx={{ color: 'text.secondary', lineHeight: 1.7 }}>
+                      <strong>Tips:</strong> Du kan justere disse prisene etter at kategorien er opprettet.
+                    </Typography>
+                  </Box>
+                </Paper>
               </Box>
             )}
 
-            <Box sx={{ mt: 2, display: 'flex', gap:  1 }}>
+            <Box sx={{ mt: 4, pt: 3, borderTop: '1px solid', borderColor: 'divider', display: 'flex', justifyContent: 'flex-start' }}>
               <Button 
-                variant="outlined" 
+                variant="text" 
                 onClick={() => setSelectedTemplate(null)}
+                startIcon={<ArrowBackIcon />}
+                sx={{ 
+                  borderRadius: 2,
+                  px: 2.5,
+                  py: 1,
+                  color: 'text.secondary',
+                  fontWeight: 500,
+                  '&:hover': {
+                    bgcolor: 'action.hover',
+                    color: 'primary.main'
+                  }
+                }}
               >
-                Tilbake
+                Tilbake til valg
               </Button>
             </Box>
           </Box>
         )}
       </DialogContent>
 
-      <DialogActions>
-        <Button onClick={handleClose}>
+      <DialogActions sx={{ px: 3.5, py: 3, borderTop: '1px solid', borderColor: 'divider', gap: 1.5 }}>
+        <Button 
+          onClick={handleClose}
+          sx={{ 
+            borderRadius: 2,
+            px: 3,
+            py: 1,
+            fontWeight: 500
+          }}
+        >
           Avbryt
         </Button>
         {selectedTemplate && (
-          <Button variant="contained"
+          <Button 
+            variant="contained"
             onClick={handleCreateCategory}
             disabled={!categoryName.trim() || !categoryKey.trim() || createCategoryMutation.isPending}
-           sx={theming.getThemedButtonSx()}>
+            sx={{
+              ...theming.getThemedButtonSx(),
+              borderRadius: 2,
+              px: 4,
+              py: 1.25,
+              fontWeight: 700,
+              textTransform: 'none',
+              boxShadow: 2,
+              fontSize: '1rem',
+              '&:hover': {
+                boxShadow: 4,
+              }
+            }}
+          >
             {createCategoryMutation.isPending ? 'Oppretter...' : 'Opprett kategori'}
           </Button>
         )}

@@ -20,6 +20,11 @@ import {
   Divider,
   Button,
   TextField,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions,
 } from '@mui/material';
 import {
   Layers,
@@ -49,6 +54,7 @@ export const ZIndexManager: React.FC = () => {
 
   const [editingName, setEditingName] = useState<string | null>(null);
   const [newName, setNewName] = useState('');
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   // Sort elements by z-index (highest to lowest)
   const sortedElements = [...state.elements].sort((a, b) => {
@@ -316,10 +322,8 @@ export const ZIndexManager: React.FC = () => {
                               size="small"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                if (confirm(`Delete ${element.id}?`)) {
-                                  deleteElement(element.id);
-                                }}
-                              }
+                                setConfirmDeleteId(element.id);
+                              }}
                               color="error"
                             >
                               <Delete fontSize="small" />
@@ -365,6 +369,34 @@ export const ZIndexManager: React.FC = () => {
           </CardContent>
         </Card>
       )}
+
+      {/* Confirm Delete Dialog */}
+      <Dialog
+        open={!!confirmDeleteId}
+        onClose={() => setConfirmDeleteId(null)}
+      >
+        <DialogTitle>Delete Element</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Delete element "{confirmDeleteId}"? This action cannot be undone.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmDeleteId(null)}>Cancel</Button>
+          <Button
+            onClick={() => {
+              if (confirmDeleteId) {
+                deleteElement(confirmDeleteId);
+                setConfirmDeleteId(null);
+              }
+            }}
+            color="error"
+            variant="contained"
+          >
+            Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

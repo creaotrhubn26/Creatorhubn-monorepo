@@ -37,6 +37,7 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  Snackbar,
 } from '@mui/material';
 import { TrendingUp,
   Search,
@@ -97,6 +98,7 @@ export default function CompleteIntegrationOverview() {
   const [isLoading, setIsLoading] = useState(false);
   const [trendsData, setTrendsData] = useState<any>(null);
   const [analyticsData, setAnalyticsData] = useState<any>(null);
+  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' }>({ open: false, message: '', severity: 'success' });
 
   useEffect(() => {
     loadData();
@@ -119,10 +121,10 @@ export default function CompleteIntegrationOverview() {
   const handleApplySEOFixes = async () => {
     const success = await applySEOFixes('norway');
     if (success) {
-      alert('✅ SEO fixes applied successfully!');
+      setSnackbar({ open: true, message: '✅ SEO fixes applied successfully!', severity: 'success' });
       await trackProfessionActivity('seo_fixes_applied', { profession });
   } else {
-      alert('❌ Error applying SEO fixes');
+      setSnackbar({ open: true, message: '❌ Error applying SEO fixes', severity: 'error' });
   }
 };
 
@@ -488,6 +490,22 @@ export default function CompleteIntegrationOverview() {
           Track View
         </Button>
       </Box>
+
+      {/* Snackbar Notifications */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={5000}
+        onClose={() => setSnackbar({ ...snackbar, open: false })}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert
+          onClose={() => setSnackbar({ ...snackbar, open: false })}
+          severity={snackbar.severity}
+          sx={{ width: '100%' }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 }

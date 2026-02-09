@@ -62,6 +62,7 @@ export interface ProgressSession {
   endTime?: string;
   activities: ActivityRecord[];
   summary: SessionSummary;
+  context?: ProgressContext;
 }
 
 export interface ActivityRecord {
@@ -194,6 +195,14 @@ class ProgressTrackingService {
         activitiesCompleted: 0,
         focusScore: 0,
         productivityScore: 0
+      },
+      context: {
+        userId,
+        category: context?.category ?? 'user',
+        projectId: context?.projectId,
+        sessionId,
+        source: context?.source,
+        tags: context?.tags,
       }
     };
 
@@ -201,7 +210,7 @@ class ProgressTrackingService {
     this.saveToLocalStorage();
     
     return sessionId;
-}
+  }
 
   /**
    * End a progress tracking session
@@ -224,19 +233,19 @@ class ProgressTrackingService {
     this.saveToLocalStorage();
     
     return session.summary;
-}
+  }
 
   /**
    * Record an activity within a session
    */
   async recordActivity(
     sessionId: string,
-    activity: Omit<ActivityRecord 'id' | , 'timestamp'>
+    activity: Omit<ActivityRecord, 'id' | 'timestamp'>
   ): Promise<void> {
     const session = this.sessionData.find(s => s.sessionId === sessionId);
     if (!session) {
       throw new Error(`Session ${sessionId} not found`);
-  }
+    }
 
     const activityRecord: ActivityRecord = {
       id: `activity_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -246,7 +255,7 @@ class ProgressTrackingService {
 
     session.activities.push(activityRecord);
     this.saveToLocalStorage();
-}
+  }
 
   /**
    * Get user achievements and progress
@@ -317,11 +326,11 @@ class ProgressTrackingService {
       this.saveToLocalStorage();
 
       return goalId;
-  } catch (error) {
+      } catch (error) {
       console.error('Goal setting failed:', error);
       throw error;
-  }
-}
+      }
+      }
 
   /**
    * Update progress towards a goal
@@ -333,26 +342,26 @@ class ProgressTrackingService {
         if (key.startsWith('goals_') && Array.isArray(value)) {
           const updatedGoals = value.map((goal: any) => {
             if (goal.goalId === goalId) {
-              const updatedGoal = {
+              return {
                 ...goal,
                 currentValue,
                 percentageComplete: (currentValue / goal.targetValue) * 100,
-                status: currentValue >= goal.targetValue ? 'completed' as const : goal.status,
+                status: currentValue >= goal.targetValue ? 'completed' : goal.status
               };
-              return updatedGoal;
-          }
+            }
+
             return goal;
-        });
+          });
           this.storage.set(key, updatedGoals);
+        }
       }
-    }
       
       this.saveToLocalStorage();
-  } catch (error) {
+    } catch (error) {
       console.error('Goal update failed:', error);
       throw error;
+    }
   }
-}
 
   // Helper methods for local storage operations
 
@@ -391,15 +400,22 @@ class ProgressTrackingService {
     existing.push(data);
     this.storage.set(key, existing);
     this.saveToLocalStorage();
-}
+  }
 
   private getLocalProgress(userId?: string, projectId?: string): ProgressMetrics {
-    const key = `progress_${userId ||'global'}`;
-    const progressData = this.storage.get(key) || [];
+    const key = `progress_${userId || 'global'}`;
+    const progressData: ProgressData[] = this.storage.get(key) || [];
+
+    const filteredData = progressData.filter((entry) => {
+      if (userId && entry.context.userId && entry.context.userId !== userId) return false;
+      if (projectId && entry.context.projectId && entry.context.projectId !== projectId) return false;
+      if (projectId && !entry.context.projectId) return false;
+      return true;
+    });
     
-    const total = progressData.length;
-    const completed = progressData.filter((p: any) => p.value >= 1).length;
-    const inProgress = progressData.filter((p: any) => p.value > 0 && p.value < 1).length;
+    const total = filteredData.length;
+    const completed = filteredData.filter((p) => p.value >= 1).length;
+    const inProgress = filteredData.filter((p) => p.value > 0 && p.value < 1).length;
     
     return {
       total,
@@ -407,7 +423,7 @@ class ProgressTrackingService {
       inProgress,
       percentage: total > 0 ? (completed / total) * 100 : 0,
       lastUpdate:
-        total > 0 ? progressData[progressData.length - 1].timestamp : new Date().toISOString(),
+        total > 0 ? filteredData[filteredData.length - 1].timestamp : new Date().toISOString(),
       trends: [],
     };
   }
@@ -425,11 +441,33 @@ class ProgressTrackingService {
   }
 
   private generateBasicAnalytics(userId?: string): ProgressAnalytics {
+    const key = `progress_${userId || 'global'}`;
+    const progressData: ProgressData[] = this.storage.get(key) || [];
+    const dailyProgress: Record<string, number> = {};
+
+    progressData.forEach((entry) => {
+      const day = entry.timestamp.slice(0, 10);
+      dailyProgress[day] = (dailyProgress[day] || 0) + entry.value;
+    });
+
+    const weeklyTrends: ProgressTrend[] = Object.entries(dailyProgress)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .slice(-14)
+      .map(([date, value]) => ({
+        date,
+        value,
+        category: 'daily'
+      }));
+
+    const learningVelocity = weeklyTrends.length
+      ? weeklyTrends.reduce((sum, trend) => sum + trend.value, 0) / weeklyTrends.length
+      : 0;
+
     return {
-      dailyProgress: {},
-      weeklyTrends: [],
+      dailyProgress,
+      weeklyTrends,
       monthlyGoals: [],
-      learningVelocity: 0,
+      learningVelocity,
       skillProgression: [],
     };
   }
@@ -440,19 +478,19 @@ class ProgressTrackingService {
 
   // Service management
 
-setEnabled(enabled: boolean): void {
+  setEnabled(enabled: boolean): void {
     this.isEnabled = enabled;
   }
 
   get isServiceEnabled(): boolean {
     return this.isEnabled;
-}
+  }
 
   clearAllData(): void {
     this.storage.clear();
     this.sessionData = [];
     localStorage.removeItem('progressTrackingData');
-}
+  }
 }
 
 // Create singleton instance

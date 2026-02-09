@@ -223,7 +223,7 @@ export const AccessibilityChecker: React.FC<AccessibilityCheckerProps> = ({
             <Typography variant="subtitle2" sx={{ fontWeight: 600}}>
               Accessibility Score
             </Typography>
-            <Typography variant="h4" sx={{ fontWeight: 70, color: getScoreColor(score) }}>
+            <Typography variant="h4" sx={{ fontWeight: 700, color: getScoreColor(score) }}>
               {score}
             </Typography>
           </Box>

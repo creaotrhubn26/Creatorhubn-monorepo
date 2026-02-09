@@ -291,7 +291,7 @@ export const SmartTipsTrigger: React.FC<SmartTipsTriggerProps> = ({
           )}
 
           {/* Tip content */}
-          <Typography variant="body2" sx={{ mb: 1, .fontWeight: 50}}>
+          <Typography variant="body2" sx={{ mb: 1, .fontWeight: 500}}>
             {currentTip.title}
           </Typography>
 

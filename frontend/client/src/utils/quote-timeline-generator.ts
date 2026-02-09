@@ -122,7 +122,8 @@ export async function generateQuoteTimeline(
       const response = await apiRequest('/api/timeline/events', {
         method: 'POST',
         headers: {
-          ...auth 'Content-Type' : 'application/json',
+          ...auth,
+          'Content-Type': 'application/json',
         },
         body: JSON.stringify(event),
       });

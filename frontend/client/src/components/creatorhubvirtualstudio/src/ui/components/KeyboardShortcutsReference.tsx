@@ -183,7 +183,7 @@ function ShortcutRow({ shortcutKey, description, theme, categoryColor }: Shortcu
           variant="body2" 
           sx={{ 
             color: isDark ? '#ccc' : '#444',
-            fontWeight: 50}}
+            fontWeight: 500}}
         >
           {description}
         </Typography>

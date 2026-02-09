@@ -22,6 +22,7 @@ import {
   MenuItem,
   Chip,
   Alert,
+  Snackbar,
   Stepper,
   Step,
   StepLabel,
@@ -365,10 +366,11 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
   const { integration, communication, dataFlow, componentRegistry, auth } = useEnhancedMasterIntegration();
   
   // Theming system
-  const theming = useTheming('prototype_tester, ');
+  const theming = useTheming('prototype_tester');
   const [apiName, setApiName] = useState('bring,');
   const [apiNameError, setApiNameError] = useState<string>('');
   const [selectedTarget, setSelectedTarget] = useState<string>('vendor');
+  const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; title: string; message: string; onConfirm: () => void }>({ open: false, title: '', message: '', onConfirm: () => {} });
 
   // Register component with EnhancedMasterIntegrationProvider
   React.useEffect(() => {
@@ -416,29 +418,29 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
 });
 
     // Listen for deployment events
-    const deploymentStartUnsubscribe = communication.onMessageType('deployment: start', (data: any) => {
+    const deploymentStartUnsubscribe = communication.onMessageType('deployment:start', (data: any) => {
       if (data.deploymentData) {
         handleDeploymentStarted(data.deploymentData);
 }
 });
 
-    const deploymentCompleteUnsubscribe = communication.onMessageType('deployment: complete', (data: any) => {
+    const deploymentCompleteUnsubscribe = communication.onMessageType('deployment:complete', (data: any) => {
       if (data.deploymentData) {
         handleDeploymentCompleted(data.deploymentData);
 }
 });
 
-    const deploymentFailUnsubscribe = communication.onMessageType('deployment: fail', (data: any) => {
+    const deploymentFailUnsubscribe = communication.onMessageType('deployment:fail', (data: any) => {
       if (data.deploymentData) {
         handleDeploymentFailed(data.deploymentData);
 }
 });
 
-    const healthCheckUnsubscribe = communication.onMessageType('health: check', () => {
+    const healthCheckUnsubscribe = communication.onMessageType('health:check', () => {
       performQuickHealthCheck();
 });
 
-    const qualityAnalyzeUnsubscribe = communication.onMessageType('quality: analyze', () => {
+    const qualityAnalyzeUnsubscribe = communication.onMessageType('quality:analyze', () => {
       handleRunQualityAnalysis();
 });
 
@@ -462,7 +464,7 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
     console.log('🚀 Deployment Started, :', deploymentData);
     
     // Broadcast deployment start event
-    communication.sendBroadcast('deployment: started', {
+    communication.sendBroadcast('deployment:started', {
       type: 'deployment_started',
       data: deploymentData,
       component: 'CompleteDeploymentManager'
@@ -497,7 +499,7 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
     console.log('✅ Deployment Completed, :', deploymentData);
     
     // Broadcast deployment completed event
-    communication.sendBroadcast('deployment: completed', {
+    communication.sendBroadcast('deployment:completed', {
       type: 'deployment_completed',
       data: deploymentData,
       component: 'CompleteDeploymentManager'
@@ -541,7 +543,7 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
     console.log('❌ Deployment Failed, :', deploymentData);
     
     // Broadcast deployment failed event
-    communication.sendBroadcast('deployment: failed', {
+    communication.sendBroadcast('deployment:failed', {
       type: 'deployment_failed',
       data: deploymentData,
       component: 'CompleteDeploymentManager'
@@ -1153,18 +1155,19 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
       if (preDeploymentAnalysis && preDeploymentAnalysis.overallScore < 7) {
         const criticalIssues = preDeploymentAnalysis.criticalIssues.length;
         if (criticalIssues > 0) {
-          const proceed = window.confirm(
-            `⚠️ Quality Analysis Warning!\n\n` +
-            `Overall Score: ${preDeploymentAnalysis.overallScore}/10\n` +
-            `Critical Issues: ${criticalIssues}\n\n` +
-            `Do you want to proceed with deployment despite quality issues?`
-        );
-          if (!proceed) {
-            setLoading(false);
-            return;
+          setConfirmDialog({
+            open: true,
+            title: '⚠️ Quality Analysis Warning!',
+            message: `Overall Score: ${preDeploymentAnalysis.overallScore}/10\nCritical Issues: ${criticalIssues}\n\nDo you want to proceed with deployment despite quality issues?`,
+            onConfirm: () => {
+              setConfirmDialog(prev => ({ ...prev, open: false }));
+              // Continue deployment
+            }
+          });
+          setLoading(false);
+          return;
       }
     }
-  }
 } catch (error) {
       console.warn('Pre-deployment analysis failed, proceeding with deployment:', error);
 }
@@ -1296,18 +1299,24 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
   };
 
   const handleDeployFeedbackFix = (feedback: FeedbackItem, fixId: string) => {
-    if (window.confirm('Deploy this fix? This will modify the codebase.')) {
-      // Trigger unified workflow events for feedback deployment
-      handleFeedbackDeployment({
-        id: feedback.id,
-        title: feedback.title,
-        feedbackType: feedback.feedbackType,
-        fixId: fixId,
-        timestamp: new Date().toISOString()
-      });
+    setConfirmDialog({
+      open: true,
+      title: 'Deploy Fix',
+      message: 'Deploy this fix? This will modify the codebase.',
+      onConfirm: () => {
+        setConfirmDialog(prev => ({ ...prev, open: false }));
+        // Trigger unified workflow events for feedback deployment
+        handleFeedbackDeployment({
+          id: feedback.id,
+          title: feedback.title,
+          feedbackType: feedback.feedbackType,
+          fixId: fixId,
+          timestamp: new Date().toISOString()
+        });
 
-      deployFeedbackFixMutation.mutate({ feedbackId: feedback.id, fixId });
-    }
+        deployFeedbackFixMutation.mutate({ feedbackId: feedback.id, fixId });
+      }
+    });
   };
 
 
@@ -1432,16 +1441,22 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
   };
 
   const handleRollbackDeployment = async (environment: string, version: string) => {
-    if (window.confirm(`Rollback ${environment} to version ${version}? This will undo recent changes.`)) {
-      try {
-        await rollbackDeploymentMutation.mutateAsync({ environment, version });
-      } catch (error) {
-        const appError = handleError(error);
-        logError(appError, 'Deployment rollback');
-        console.error('Deployment rollback failed:', getErrorMessage(appError));
+    setConfirmDialog({
+      open: true,
+      title: 'Rollback Deployment',
+      message: `Rollback ${environment} to version ${version}? This will undo recent changes.`,
+      onConfirm: async () => {
+        setConfirmDialog(prev => ({ ...prev, open: false }));
+        try {
+          await rollbackDeploymentMutation.mutateAsync({ environment, version });
+        } catch (error) {
+          const appError = handleError(error);
+          logError(appError, 'Deployment rollback');
+          console.error('Deployment rollback failed:', getErrorMessage(appError));
+        }
       }
-}
-};
+    });
+  };
 
   const performQuickHealthCheck = async () => {
     const endpoints = [
@@ -2093,7 +2108,7 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
               icon={<BuildIcon />}
               label="Manual Deployment"
               iconPosition="start"
-              sx={{ textTransform: 'none', fontWeight: 50}}
+              sx={{ textTransform: 'none', fontWeight: 500}}
             />
           </Tooltip>
           <Tooltip title="Feedback Fixes (Ctrl+2)" arrow>
@@ -2108,7 +2123,7 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
                 </Badge>
           }
               iconPosition="start"
-              sx={{ textTransform: 'none', fontWeight: 50}}
+              sx={{ textTransform: 'none', fontWeight: 500}}
             />
           </Tooltip>
           <Tooltip title="Deployment History (Ctrl+3)" arrow>
@@ -2116,7 +2131,7 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
               icon={<ScienceIcon />}
               label="Deployment History"
               iconPosition="start"
-              sx={{ textTransform: 'none', fontWeight: 50}}
+              sx={{ textTransform: 'none', fontWeight: 500}}
             />
           </Tooltip>
           <Tooltip title="200 OK Checker (Ctrl+4)" arrow>
@@ -2131,7 +2146,7 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
                 </Badge>
           }
               iconPosition="start"
-              sx={{ textTransform: 'none', fontWeight: 50}}
+              sx={{ textTransform: 'none', fontWeight: 500}}
             />
           </Tooltip>
           <Tooltip title="Feature Flags (Ctrl+5)" arrow>
@@ -2139,7 +2154,7 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
               icon={<SettingsIcon />}
               label="Feature Flags"
               iconPosition="start"
-              sx={{ textTransform: 'none', fontWeight: 50}}
+              sx={{ textTransform: 'none', fontWeight: 500}}
             />
           </Tooltip>
           <Tooltip title="Quality Analysis (Ctrl+6)" arrow>
@@ -2154,7 +2169,7 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
                 </Badge>
           }
               iconPosition="start"
-              sx={{ textTransform: 'none', fontWeight: 50}}
+              sx={{ textTransform: 'none', fontWeight: 500}}
             />
           </Tooltip>
           <Tooltip title="Deployment Pipeline (Ctrl+7)" arrow>
@@ -2162,7 +2177,7 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
               icon={<CloudUploadIcon />}
               label="Deployment Pipeline"
               iconPosition="start"
-              sx={{ textTransform: 'none', fontWeight: 50}}
+              sx={{ textTransform: 'none', fontWeight: 500}}
             />
           </Tooltip>
         </Tabs>
@@ -2522,7 +2537,7 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
                   {feedbackDeployments.map((deployment) => (
                     <TableRow key={deployment.id}>
                       <TableCell>
-                        <Typography variant="body2" sx={{ fontWeight: 50}}>
+                        <Typography variant="body2" sx={{ fontWeight: 500}}>
                           {feedbackData?.feedback?.find(f => f.id === deployment.feedbackId)?.title || 'Unknown'}
                         </Typography>
                       </TableCell>
@@ -2912,7 +2927,7 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
                       {componentAnalyses.map((analysis, index) => (
                         <TableRow key={index}>
                           <TableCell>
-                            <Typography variant="body2" sx={{ fontWeight: 50}}>
+                            <Typography variant="body2" sx={{ fontWeight: 500}}>
                               {analysis.componentName}
                             </Typography>
                             <Typography variant="caption" color="text.secondary">
@@ -3277,6 +3292,18 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
           >
             {rollbackDeploymentMutation.isPending ? 'Rolling back...': 'Rollback'}
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Confirm Dialog */}
+      <Dialog open={confirmDialog.open} onClose={() => setConfirmDialog(prev => ({ ...prev, open: false }))}>
+        <DialogTitle>{confirmDialog.title}</DialogTitle>
+        <DialogContent>
+          <Typography style={{ whiteSpace: 'pre-line' }}>{confirmDialog.message}</Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmDialog(prev => ({ ...prev, open: false }))}>Cancel</Button>
+          <Button variant="contained" onClick={confirmDialog.onConfirm}>Confirm</Button>
         </DialogActions>
       </Dialog>
       </Box>

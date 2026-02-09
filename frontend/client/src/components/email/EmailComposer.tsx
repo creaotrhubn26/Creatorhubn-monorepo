@@ -255,13 +255,13 @@ export default function EmailComposer({
   });
 
     // Listen for email events
-    communication.onMessageType('email: compose-request', (data: any) => {
+    communication.onMessageType('email:compose-request', (data: any) => {
       if (data.projectId === projectId) {
         setEmailForm(prev => ({ ...prev, ...data.emailData }));
     }
   });
 
-    communication.onMessageType('email: template-apply', (data: any) => {
+    communication.onMessageType('email:template-apply', (data: any) => {
       if (data.template) {
         handleTemplateSelect(data.template);
   }
@@ -379,7 +379,7 @@ export default function EmailComposer({
       onSent?.(data);
       
       // Broadcast email sent event
-      communication.sendBroadcast('email: sent', {
+      communication.sendBroadcast('email:sent', {
         emailData: data, 
         projectId, 
         profession

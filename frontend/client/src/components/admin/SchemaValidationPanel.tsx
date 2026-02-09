@@ -6,6 +6,7 @@
  */
 
 import React, { useState } from 'react';
+import type { SelectChangeEvent } from '@mui/material/Select';
 import {
   Box,
   Card,
@@ -40,9 +41,15 @@ import {
   Step,
   StepLabel,
   StepContent,
+  Snackbar,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
 } from '@mui/material';
 import {
   CheckCircle as CheckIcon,
+  CheckCircle,
   Error as ErrorIcon,
   Warning as WarningIcon,
   Info as InfoIcon,
@@ -88,6 +95,7 @@ export default function SchemaValidationPanel({ initialUrl, initialJsonLd }: Sch
   const [businessName, setBusinessName] = useState('');
   const [showTutorial, setShowTutorial] = useState(true);
   const [tutorialStep, setTutorialStep] = useState(0);
+  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'warning' | 'info' }>({ open: false, message: '', severity: 'info' });
 
   const handleValidateUrl = async () => {
     if (!url) return;
@@ -280,7 +288,7 @@ export default function SchemaValidationPanel({ initialUrl, initialJsonLd }: Sch
       
       if (data.success) {
         setGoogleBusinessData(data.businessData);
-        alert('✅ Google Business data extracted! Check the results below.');
+        setSnackbar({ open: true, message: '✅ Google Business data extracted! Check the results below.', severity: 'success' });
       } else {
         setError(data.error || 'Extraction failed');
       }
@@ -730,7 +738,7 @@ export default function SchemaValidationPanel({ initialUrl, initialJsonLd }: Sch
                       <Select
                         value={aggressiveness}
                         label="Fix Aggressiveness"
-                        onChange={(e) => setAggressiveness(e.target.value as any)}
+                        onChange={(e: SelectChangeEvent<'conservative' | 'moderate' | 'aggressive'>) => setAggressiveness(e.target.value as 'conservative' | 'moderate' | 'aggressive')}
                       >
                         <MenuItem value="conservative">
                           Conservative - Only high-confidence
@@ -878,7 +886,7 @@ export default function SchemaValidationPanel({ initialUrl, initialJsonLd }: Sch
                       },
                     };
                     navigator.clipboard.writeText(JSON.stringify(schemaWithGoogleData, null, 2));
-                    alert('✅ Schema with Google data copied to clipboard!');
+                    setSnackbar({ open: true, message: '✅ Schema with Google data copied to clipboard!', severity: 'success' });
                   }}
                 >
                   Copy Schema with Google Data
@@ -967,11 +975,22 @@ export default function SchemaValidationPanel({ initialUrl, initialJsonLd }: Sch
                 </Typography>
                 
                 <Grid container spacing={2} sx={{ mb: 2 }}>
-                  <Grid item xs={12} md={6}>
+                  <Grid item xs={12} md={4}>
                     <Typography variant="subtitle2">Original Score:</Typography>
                     <Typography variant="h4" color="error.main">{validation.validationScore}</Typography>
                   </Grid>
-                  <Grid item xs={12} md={6}>
+                  <Grid item xs={12} md={4}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <TrendingUp sx={{ fontSize: 40, color: 'success.main' }} />
+                      <Box>
+                        <Typography variant="subtitle2">Score Improvement:</Typography>
+                        <Typography variant="h4" color="success.main">
+                          +{autoFixResult.newValidationScore - validation.validationScore}
+                        </Typography>
+                      </Box>
+                    </Box>
+                  </Grid>
+                  <Grid item xs={12} md={4}>
                     <Typography variant="subtitle2">New Score:</Typography>
                     <Typography variant="h4" color="success.main">{autoFixResult.newValidationScore}</Typography>
                     <Chip 
@@ -1045,7 +1064,7 @@ export default function SchemaValidationPanel({ initialUrl, initialJsonLd }: Sch
                   variant="contained"
                   onClick={() => {
                     navigator.clipboard.writeText(JSON.stringify(autoFixResult.fixedSchema, null, 2));
-                    alert('Fixed schema copied to clipboard!');
+                    setSnackbar({ open: true, message: 'Fixed schema copied to clipboard!', severity: 'success' });
                   }}
                   startIcon={<CodeIcon />}
                   sx={{ mt: 2 }}
@@ -1213,7 +1232,7 @@ export default function SchemaValidationPanel({ initialUrl, initialJsonLd }: Sch
                                         color="error"
                                         onClick={() => {
                                           navigator.clipboard.writeText(error.fix);
-                                          alert('Fix code copied to clipboard!');
+                                          setSnackbar({ open: true, message: 'Fix code copied to clipboard!', severity: 'success' });
                                         }}
                                         startIcon={<CodeIcon />}
                                         sx={{ mb: 1 }}
@@ -1384,6 +1403,18 @@ export default function SchemaValidationPanel({ initialUrl, initialJsonLd }: Sch
               </Card>
             </Box>
           )}
+
+          {/* Snackbar for notifications */}
+          <Snackbar
+            open={snackbar.open}
+            autoHideDuration={6000}
+            onClose={() => setSnackbar({ ...snackbar, open: false })}
+            anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+          >
+            <Alert onClose={() => setSnackbar({ ...snackbar, open: false })} severity={snackbar.severity} sx={{ width: '100%' }}>
+              {snackbar.message}
+            </Alert>
+          </Snackbar>
         </CardContent>
       </Card>
     </Box>

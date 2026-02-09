@@ -51,10 +51,27 @@ export const AssetManager: React.FC<AssetManagerProps> = ({
   const { analytics, lifecycle, performance, debugging, auth } = useEnhancedMasterIntegration();
 
   // Theming system
-  const theming = useTheming('prototype_tester, ');
+  const theming = useTheming('prototype_tester');
   
   // Asset state management
   const [uploadedAssets, setUploadedAssets] = useState<any[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [assetPanelOpen, setAssetPanelOpen] = useState(false);
+  const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
+  const [mediaAssets, setMediaAssets] = useState<{
+    images: any[];
+    videos: any[];
+    audio: any[];
+    documents: any[];
+  }>({
+    images: [],
+    videos: [],
+    audio: [],
+    documents: [],
+  });
+  
+  const [isProcessingMedia, setIsProcessingMedia] = useState(false);
+  const [mediaImportProgress, setMediaImportProgress] = useState(0);
 
   // Component registration and performance monitoring
   useEffect(() => {
@@ -104,27 +121,7 @@ export const AssetManager: React.FC<AssetManagerProps> = ({
   const [uploadProgress, setUploadProgress] = useState(0);
   const [dragOver, setDragOver] = useState(false);
   const [selectedMediaType, setSelectedMediaType] = useState<'all' | 'images' | 'videos' | 'audio' | 'documents'>('all');
-  
-  // Asset panel open state
-  const [assetPanelOpen, setAssetPanelOpen] = useState(false);
-  const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [previewAsset, setPreviewAsset] = useState<any>(null);
-  
-  // Media import state
-  const [mediaAssets, setMediaAssets] = useState<{
-    images: any[];
-    videos: any[];
-    audio: any[];
-    documents: any[];
-  }>({
-    images: [],
-    videos: [],
-    audio: [],
-    documents: [],
-  });
-  
-  const [isProcessingMedia, setIsProcessingMedia] = useState(false);
-  const [mediaImportProgress, setMediaImportProgress] = useState(0);
 
   // File upload handler
   const handleFileUpload = useCallback(async (files: FileList) => {
@@ -170,11 +167,13 @@ export const AssetManager: React.FC<AssetManagerProps> = ({
       });
       
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to upload assets';
+      debugging.logIntegration('error', 'Asset upload failed', { error: errorMessage, projectId: selectedProject?.id });
       onNotificationCreate?.({
         id: `upload_error_${Date.now()}`,
         type: 'error',
         title: 'Upload Failed',
-        message: 'Failed to upload assets',
+        message: errorMessage,
         priority: 'high',
         timestamp: new Date().toISOString(),
         source: 'asset_manager',
@@ -209,10 +208,77 @@ export const AssetManager: React.FC<AssetManagerProps> = ({
     setPreviewAsset(asset);
   }, []);
 
-  // Filter assets by type
+  // Organize media by type
+  const organizeMediaByType = useCallback((assets: any[]) => {
+    const organized = {
+      images: [] as any[],
+      videos: [] as any[],
+      audio: [] as any[],
+      documents: [] as any[],
+    };
+
+    assets.forEach((asset, index) => {
+      if (asset.type?.includes('image')) {
+        organized.images.push({ ...asset, index });
+      } else if (asset.type?.includes('video')) {
+        organized.videos.push({ ...asset, index });
+      } else if (asset.type?.includes('audio')) {
+        organized.audio.push({ ...asset, index });
+      } else {
+        organized.documents.push({ ...asset, index });
+      }
+    });
+
+    return organized;
+  }, []);
+
+  // Handle media import
+  const handleImportMedia = useCallback(async () => {
+    setIsProcessingMedia(true);
+    setMediaImportProgress(0);
+
+    try {
+      const organized = organizeMediaByType(uploadedAssets);
+      setMediaAssets(organized);
+
+      // Simulate processing progress
+      const totalSteps = 100;
+      for (let i = 0; i < totalSteps; i++) {
+        await new Promise(resolve => setTimeout(resolve, 10));
+        setMediaImportProgress(((i + 1) / totalSteps) * 100);
+      }
+
+      analytics.trackEvent('media_imported', {
+        totalAssets: uploadedAssets.length,
+        images: organized.images.length,
+        videos: organized.videos.length,
+        audio: organized.audio.length,
+        documents: organized.documents.length,
+        projectId: selectedProject?.id,
+      });
+
+      onNotificationCreate?.({\n        id: `media_imported_${Date.now()}`,
+        type: 'success',
+        title: 'Media Imported',
+        message: `${uploadedAssets.length} assets organized and imported`,
+        priority: 'low',
+        timestamp: new Date().toISOString(),
+        source: 'asset_manager',
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to import media';
+      debugging.logIntegration('error', 'Media import failed', { error: errorMessage });
+    } finally {
+      setIsProcessingMedia(false);
+      setMediaImportProgress(0);
+    }
+  }, [uploadedAssets, organizeMediaByType, analytics, debugging, onNotificationCreate, selectedProject?.id]);
+
+  // Filter assets by type and search query
   const filteredAssets = uploadedAssets.filter(asset => {
-    if (selectedMediaType === 'all') return true;
-    return asset.type?.includes(selectedMediaType.slice(0, -1)); // Remove 's' for comparison
+    const matchesType = selectedMediaType === 'all' || asset.type?.includes(selectedMediaType.slice(0, -1));
+    const matchesSearch = searchQuery === '' || asset.name?.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesType && matchesSearch;
   });
 
   return (
@@ -278,7 +344,14 @@ export const AssetManager: React.FC<AssetManagerProps> = ({
 
       {/* Asset Library */}
       <Paper sx={{ ...theming.getThemedCardSx(), p: 2 }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, gap: 2 }}>
+          <TextField
+            placeholder="Search assets..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            size="small"
+            sx={{ flex: 1, maxWidth: 300 }}
+          />
           <Tabs value={selectedMediaType} onChange={(_, newValue) => setSelectedMediaType(newValue)}>
             <Tab label="All Assets" value="all" />
             <Tab label="Images" value="images" />
@@ -287,15 +360,18 @@ export const AssetManager: React.FC<AssetManagerProps> = ({
             <Tab label="Documents" value="documents" />
           </Tabs>
 
-          <IconButton onClick={() => setAssetPanelOpen(true)}>
-            <UploadIcon />
+          <IconButton 
+            onClick={() => setUploadDialogOpen(true)}
+            title="Open asset panel"
+          >
+            <Folder />
           </IconButton>
         </Box>
 
         {filteredAssets.length > 0 ? (
           <ImageList sx={{ gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))' }}>
-            {filteredAssets.map((asset) => (
-              <ImageListItem key={asset.id}>
+            {filteredAssets.map((asset, index) => (
+              <ImageListItem key={`${asset.id}-${index}`}>
                 {asset.type?.includes('image') ? (
                   <img src={asset.url} alt={asset.name} />
                 ) : (
@@ -307,7 +383,11 @@ export const AssetManager: React.FC<AssetManagerProps> = ({
                       alignItems: 'center',
                       justifyContent: 'center'}}
                   >
-                    {asset.type?.includes('video') ? theming.getThemedIcon('videoLibrary') : theming.getThemedIcon('folder')}
+                    {asset.type?.includes('video') ? (
+                      <VideoLibrary sx={{ fontSize: 40, color: 'primary.main' }} />
+                    ) : (
+                      <Folder sx={{ fontSize: 40, color: 'primary.main' }} />
+                    )}
                   </Box>
                 )}
                 <ImageListItemBar
@@ -339,6 +419,100 @@ export const AssetManager: React.FC<AssetManagerProps> = ({
         )}
       </Paper>
 
+      {/* Media Import Dialog */}
+      <Dialog
+        open={uploadDialogOpen}
+        onClose={() => setUploadDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          <Box display="flex" alignItems="center" gap={1}>
+            <CloudUpload />
+            Media Import
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ py: 2 }}>
+            <Typography variant="body2" gutterBottom>
+              Organize and import your uploaded assets
+            </Typography>
+            {isProcessingMedia && (
+              <Box sx={{ mt: 2 }}>
+                <Box display="flex" alignItems="center" gap={2}>
+                  <CircularProgress size={30} variant="determinate" value={mediaImportProgress} />
+                  <Typography variant="body2">
+                    Processing: {Math.round(mediaImportProgress)}%
+                  </Typography>
+                </Box>
+              </Box>
+            )}
+            {mediaAssets.images.length > 0 || mediaAssets.videos.length > 0 || mediaAssets.audio.length > 0 || mediaAssets.documents.length > 0 ? (
+              <List sx={{ mt: 2 }}>
+                {mediaAssets.images.length > 0 && (
+                  <ListItem>
+                    <ListItemIcon>
+                      <Image />
+                    </ListItemIcon>
+                    <ListItemText 
+                      primary="Images" 
+                      secondary={`${mediaAssets.images.length} image(s)`}
+                    />
+                  </ListItem>
+                )}
+                {mediaAssets.videos.length > 0 && (
+                  <ListItem>
+                    <ListItemIcon>
+                      <VideoLibrary />
+                    </ListItemIcon>
+                    <ListItemText 
+                      primary="Videos" 
+                      secondary={`${mediaAssets.videos.length} video(s)`}
+                    />
+                  </ListItem>
+                )}
+                {mediaAssets.audio.length > 0 && (
+                  <ListItem>
+                    <ListItemIcon>
+                      <CloudUpload />
+                    </ListItemIcon>
+                    <ListItemText 
+                      primary="Audio" 
+                      secondary={`${mediaAssets.audio.length} audio file(s)`}
+                    />
+                  </ListItem>
+                )}
+                {mediaAssets.documents.length > 0 && (
+                  <ListItem>
+                    <ListItemIcon>
+                      <Folder />
+                    </ListItemIcon>
+                    <ListItemText 
+                      primary="Documents" 
+                      secondary={`${mediaAssets.documents.length} document(s)`}
+                    />
+                  </ListItem>
+                )}
+              </List>
+            ) : (
+              <Typography variant="body2" sx={{ mt: 2, color: 'text.secondary' }}>
+                No media imported yet
+              </Typography>
+            )}
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setUploadDialogOpen(false)}>Cancel</Button>
+          <Button 
+            variant="contained" 
+            onClick={handleImportMedia}
+            disabled={isProcessingMedia || uploadedAssets.length === 0}
+          >
+            Import Media
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       {/* Asset Preview Dialog */}
       <Dialog
         open={!!previewAsset}
@@ -358,7 +532,7 @@ export const AssetManager: React.FC<AssetManagerProps> = ({
               <Grid container spacing={2}>
                 <Grid size={{ xs: 12, sm: 8 }}>
                   {previewAsset.type?.includes('image') ? (
-                    <Box
+                    <Image
                       component="img"
                       src={previewAsset.url}
                       alt={previewAsset.name}
@@ -366,6 +540,23 @@ export const AssetManager: React.FC<AssetManagerProps> = ({
                         maxWidth: '100%',
                         height: 'auto',
                         borderRadius: '8px'}}
+                    />
+                  ) : previewAsset.type?.includes('video') ? (
+                    <Box
+                      component="video"
+                      src={previewAsset.url}
+                      controls
+                      sx={{
+                        maxWidth: '100%',
+                        height: 'auto',
+                        borderRadius: '8px'}}
+                    />
+                  ) : previewAsset.type?.includes('audio') ? (
+                    <Box
+                      component="audio"
+                      src={previewAsset.url}
+                      controls
+                      sx={{ width: '100%' }}
                     />
                   ) : (
                     <Paper sx={{ ...theming.getThemedCardSx(), p: 4, textAlign: 'center' }}>

@@ -119,7 +119,7 @@ const InstallationWizard: React.FC<InstallationWizardProps> = ({
   const [activeStep, setActiveStep] = useState(false);
   
   // Theming system
-  const theming = useTheming('prototype_tester, ');
+  const theming = useTheming('prototype_tester');
   const [steps, setSteps] = useState<InstallationStep[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const [aiAnalysis, setAiAnalysis] = useState<any>(null);

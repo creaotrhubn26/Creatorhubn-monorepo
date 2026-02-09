@@ -82,7 +82,7 @@ export default function PhotoDeliveryGalleryManager() {
   const queryClient = useQueryClient();
   
   // Theming system
-  const theming = useTheming('photographer, ');
+  const theming = useTheming('photographer');
   const [activeTab, setActiveTab] = useState(0);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [selectedGallery, setSelectedGallery] = useState<Gallery | null>(null);

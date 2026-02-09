@@ -99,7 +99,7 @@ export const NoteEditorPanel: React.FC<NoteEditorPanelProps> = ({
       ...selectedProject,
       id: selectedProject?.id || 'unknown',
       name: selectedProject?.name || 'Unknown Project',
-      description: selectedProject?.description as any || 'No description available',
+      description: selectedProject?.description || 'No description available',
       status: selectedProject?.status || 'in-progress',
       clientId: selectedProject?.clientId || 'default',
       dueDate: selectedProject?.dueDate || new Date(),

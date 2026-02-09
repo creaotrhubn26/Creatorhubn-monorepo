@@ -133,7 +133,7 @@ export default function AIVideoAnalysisPanel({
     ctx.drawImage(video, 0, 0);
 
     const blob = await new Promise<Blob>((resolve) => {
-      canvas.toBlob((b) => resolve(b!)'image/jpeg', 0.9);
+      canvas.toBlob((b) => resolve(b!), 'image/jpeg', 0.9);
     });
 
     setAnalyzing(true);
@@ -299,7 +299,7 @@ export default function AIVideoAnalysisPanel({
                     <Typography variant="caption" display="block" gutterBottom>
                       Objects detected: {selectedScene.objects.length}
                     </Typography>
-                    <Box sx={{ display: 'flex', gap: 0.5 flexWrap: 'wrap' }}>
+                    <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
                       {selectedScene.objects.slice(0, 5).map((obj, i) => (
                         <Chip
                           key={i}

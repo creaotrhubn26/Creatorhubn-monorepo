@@ -10,7 +10,7 @@ import { join } from 'path';
 
 const { Pool } = pg;
 
-const DB_URL = process.env.DATABASE_URL || 'postgresql://neondb_owner:npg_cb9HrCJxwg6U@ep-broad-surf-abadxt78-pooler.eu-west-2.aws.neon.tech/neondb?sslmode=require';
+const DB_URL = process.env.DATABASE_URL || 'postgresql://neondb_owner:npg_SM7AZYxyvK4L@ep-weathered-grass-abixeqb0-pooler.eu-west-2.aws.neon.tech/neondb?sslmode=require';
 
 const pool = new Pool({
   connectionString: DB_URL,

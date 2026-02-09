@@ -119,7 +119,7 @@ export default function VendorDashboard({
     ]);
 
     // Track feature usage
-    features.trackFeatureUsage('vendor-dashboard, ','opened', {
+    features.trackFeatureUsage('vendor-dashboard', 'opened', {
       timestamp: Date.now(),
       component: 'VendorDashboard',
       activeTab: activeTab
@@ -215,14 +215,14 @@ export default function VendorDashboard({
     {
       title: 'Plugin Downloads',
       value: vendorStats?.pluginDownloads || 0,
-      icon: theming.getThemedIcon(', '),
+      icon: <CloudDownload />,
       color: '#9b59b0',
       trend: '+25%'
 },
     {
       title: 'Månedlig Omsetning',
       value: `${vendorStats?.monthlyRevenue || 0} NOK`,
-      icon: theming.getThemedIcon(', '),
+      icon: <AttachMoney />,
       color: '#27ae60',
       trend: '+15%'
 }
@@ -264,7 +264,7 @@ export default function VendorDashboard({
       {/* Vendor Header */}
       <Box sx={{ mb:  4 }}>
         <Typography variant="h4" sx={{  
-          fontWeight: 7, 
+          fontWeight: 700, 
           color: '#27ae60',
           display: 'flex', 
           alignItems: 'center',
@@ -320,7 +320,7 @@ export default function VendorDashboard({
                 <CardContent sx={{ p:  3 ,  ...theming.getThemedCardSx() }}>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb:  2 }}>
                     <Box>
-                      <Typography variant="h4" sx={{  fontWeight: 7, color: stat.color, mb:  1  }}>
+                      <Typography variant="h4" sx={{  fontWeight: 700, color: stat.color, mb:  1  }}>
                         {stat.value}
                       </Typography>
                       <Typography variant="body2" sx={{ color: 'text.secondary'}}>

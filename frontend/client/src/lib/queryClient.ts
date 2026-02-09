@@ -12,8 +12,8 @@ async function getAuthHeader(): Promise<Record<string, string>> {
   return {};
 }
 
-// Backend API URL from environment — empty means use relative URLs (Vercel serverless functions)
-const API_BASE_URL = import.meta.env.VITE_API_URL || '';
+// Backend API URL from environment — points to Render backend in production
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://wedflow-api.onrender.com';
 
 // Default fetcher for React Query with OAuth support
 type ApiRequestOptions = Omit<RequestInit, 'body'> & {
@@ -24,12 +24,13 @@ export async function apiRequest(url: string, options?: ApiRequestOptions) {
   // Get auth headers from EnhancedMasterIntegrationProvider
   const authHeaders = await getAuthHeader();
 
-  // Use relative URLs everywhere — Vercel serverless functions handle /api/* in production
+  // In development, use relative URLs (Vite proxy). In production, use full Render backend URL.
+  const isDevelopment = import.meta.env.DEV || window.location.hostname === 'localhost';
   const fullUrl = url.startsWith('http') 
     ? url 
-    : API_BASE_URL
-      ? `${API_BASE_URL}${url}`
-      : url;
+    : isDevelopment 
+      ? url
+      : `${API_BASE_URL}${url}`;
 
   const isFormData = options?.body instanceof FormData;
   const requestOptions: RequestInit = {

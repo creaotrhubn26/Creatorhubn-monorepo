@@ -16,9 +16,7 @@ import {
   CardContent,
   Stack,
   Avatar,
-  IconButton,
   Chip,
-  Divider,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -60,6 +58,7 @@ export default function SplitSheetComments({
   const [replyingTo, setReplyingTo] = useState<Comment | null>(null);
   const [editingComment, setEditingComment] = useState<Comment | null>(null);
   const [editContent, setEditContent] = useState('');
+  const [confirmDeleteComment, setConfirmDeleteComment] = useState<Comment | null>(null);
 
   // Fetch comments
   const { data: commentsData } = useQuery({
@@ -160,11 +159,13 @@ export default function SplitSheetComments({
   };
 
   const handleDelete = (comment: Comment) => {
-    if (window.confirm('Er du sikker på at du vil slette denne kommentaren?')) {
-      if (comment.id) {
-        deleteMutation.mutate(comment.id);
-      }
-    }
+    setConfirmDeleteComment(comment);
+  };
+
+  const executeDelete = () => {
+    if (!confirmDeleteComment?.id) return;
+    deleteMutation.mutate(confirmDeleteComment.id);
+    setConfirmDeleteComment(null);
   };
 
   const handleResolve = (comment: Comment) => {
@@ -273,7 +274,7 @@ export default function SplitSheetComments({
                       size="small"
                       startIcon={<ResolvedIcon />}
                       onClick={() => handleResolve(comment)}
-                      color={comment.is_resolved ? 'success' : 'default'}
+                      color={comment.is_resolved ? 'success' : 'inherit'}
                     >
                       {comment.is_resolved ? 'Marker som uløst' : 'Marker som løst'}
                     </Button>
@@ -385,6 +386,18 @@ export default function SplitSheetComments({
           {topLevelComments.map(comment => renderComment(comment))}
         </Stack>
       )}
+
+      {/* Confirm Delete Comment Dialog */}
+      <Dialog open={!!confirmDeleteComment} onClose={() => setConfirmDeleteComment(null)}>
+        <DialogTitle>Bekreft sletting</DialogTitle>
+        <DialogContent>
+          <Typography>Er du sikker på at du vil slette denne kommentaren? Denne handlingen kan ikke angres.</Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmDeleteComment(null)}>Avbryt</Button>
+          <Button onClick={executeDelete} color="error" variant="contained">Slett</Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

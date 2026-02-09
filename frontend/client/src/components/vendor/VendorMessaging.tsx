@@ -24,17 +24,12 @@ import {
   Paper,
   Divider,
   Button,
-  useTheme,
-  alpha,
-  InputAdornment
+  alpha
 } from '@mui/material';
 import {
   Send,
-  AttachFile,
-  MoreVert,
   ShoppingCart,
-  Person,
-  Circle
+  Person
 } from '@mui/icons-material';
 import { motion, AnimatePresence } from 'framer-motion';
 import { apiRequest } from '@/lib/queryClient';
@@ -51,7 +46,6 @@ export default function VendorMessaging({
   vendorName,
   userId
 }: VendorMessagingProps) {
-  const theme = useTheme();
   const queryClient = useQueryClient();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   

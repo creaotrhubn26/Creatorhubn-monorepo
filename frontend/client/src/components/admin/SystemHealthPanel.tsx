@@ -98,7 +98,7 @@ export default function SystemHealthPanel({
   const [tabValue, setTabValue] = useState(false);
   
   // Theming system
-  const theming = useTheming('prototype_tester, ');
+  const theming = useTheming('prototype_tester');
   const [lastRefresh, setLastRefresh] = useState(new Date());
 
   // Fetch real system health data

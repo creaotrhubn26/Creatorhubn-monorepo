@@ -632,7 +632,7 @@ const queryClient = useQueryClient();
     <Box sx={{ p:  3 }}>
       <Typography variant="h4" gutterBottom sx={{ 
         color: '#2196F0',
-        fontWeight: 7,
+        fontWeight: 700,
         display: 'flex',
         alignItems: 'center',
         gap:  1,

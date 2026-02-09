@@ -176,7 +176,7 @@ const AutomatedBusinessReports: React.FC = () => {
   const { toast } = useToast();
 
   // Theming system
-  const theming = useTheming('prototype_tester, ');
+  const theming = useTheming('prototype_tester');
 
   // Google SSO integration
   const googleSSO = useGoogleSSO();

@@ -3,7 +3,7 @@
  * Shows history timeline with action descriptions and jump-to-point functionality
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Box,
   Card,
@@ -20,6 +20,11 @@ import {
   Tooltip,
   Divider,
   Button,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions,
 } from '@mui/material';
 import {
   History,
@@ -47,14 +52,19 @@ export const HistoryPanel: React.FC = () => {
     getRedoDescription,
   } = useVisualEditor();
 
+  const [confirmClearOpen, setConfirmClearOpen] = useState(false);
+
   const handleJumpTo = (index: number) => {
     jumpToHistory(index);
   };
 
   const handleClearHistory = () => {
-    if (confirm('Clear all history? This cannot be undone.')) {
-      clearHistory();
-    }
+    setConfirmClearOpen(true);
+  };
+
+  const executeClearHistory = () => {
+    clearHistory();
+    setConfirmClearOpen(false);
   };
 
   const undoDescription = getUndoDescription();
@@ -277,6 +287,25 @@ export const HistoryPanel: React.FC = () => {
           </Box>
         </CardContent>
       </Card>
+
+      {/* Confirm Clear History Dialog */}
+      <Dialog
+        open={confirmClearOpen}
+        onClose={() => setConfirmClearOpen(false)}
+      >
+        <DialogTitle>Clear History</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Clear all history? This action cannot be undone.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmClearOpen(false)}>Cancel</Button>
+          <Button onClick={executeClearHistory} color="error" variant="contained">
+            Clear History
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

@@ -23,9 +23,22 @@ interface ExtendedState {
   collaborativeCursors?: Record<string, CollaborativeCursor>;
 }
 
+// Extended Fabric.js object types with custom properties
+interface FabricObjectWithId extends fabric.Object {
+  id?: string;
+}
+
+interface FabricObjectWithCursor extends fabric.Object {
+  isCursor?: boolean;
+}
+
+interface FabricCanvasWithMethods extends fabric.Canvas {
+  sendToBack?: (obj: fabric.Object) => fabric.Canvas;
+}
+
 export const FabricCanvas: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const fabricCanvasRef = useRef<fabric.Canvas | null>(null);
+  const fabricCanvasRef = useRef<FabricCanvasWithMethods | null>(null);
   const { state, updateElement, selectElement, dispatch } = useVisualEditor();
   
   // Extended state with optional properties
@@ -33,11 +46,30 @@ export const FabricCanvas: React.FC = () => {
   
   // Helper functions that may not exist in context
   const addHistoryEntry = (type: string, description: string) => {
-    dispatch({ type: 'ADD_HISTORY', payload: { type, description, timestamp: new Date() } } as any);
+    // Dispatch history entry to track element modifications in the editor
+    dispatch({
+      type: 'ADD_HISTORY_ENTRY',
+      payload: {
+        action: type,
+        description: description,
+        timestamp: new Date().toISOString(),
+      },
+    });
   };
   
   const updateCollaborativeCursor = (cursor: CollaborativeCursor) => {
-    dispatch({ type: 'UPDATE_CURSOR', payload: cursor } as any);
+    // Dispatch collaborative cursor update to sync with other users
+    dispatch({
+      type: 'UPDATE_COLLABORATIVE_CURSORS',
+      payload: {
+        userId: cursor.userId,
+        userName: cursor.userName,
+        userColor: cursor.userColor,
+        x: cursor.x,
+        y: cursor.y,
+        timestamp: cursor.lastUpdate.toISOString(),
+      },
+    });
   };
 
   const [isInitialized, setIsInitialized] = useState(false);
@@ -133,7 +165,8 @@ export const FabricCanvas: React.FC = () => {
 
     if (obj) {
       const elementWithPosition = element as EditorElement & { position?: { locked?: boolean } };
-      obj.set({
+      const fabricObj = obj as FabricObjectWithId;
+      fabricObj.set({
         id: element.id,
         selectable: !elementWithPosition.position?.locked,
         hasControls: true,
@@ -143,7 +176,7 @@ export const FabricCanvas: React.FC = () => {
         lockScalingX: elementWithPosition.position?.locked || false,
         lockScalingY: elementWithPosition.position?.locked || false,
         lockRotation: elementWithPosition.position?.locked || false,
-      } as any);
+      });
     }
 
     return obj;
@@ -177,11 +210,11 @@ export const FabricCanvas: React.FC = () => {
     const canvas = fabricCanvasRef.current;
 
     // Object moved
-    const handleObjectModified = (e: any) => {
-      const obj = e.target;
-      if (!obj || !(obj as any).id) return;
+    const handleObjectModified = (e: fabric.IEvent) => {
+      const obj = e.target as FabricObjectWithId | undefined;
+      if (!obj || !obj.id) return;
 
-      const elementId = (obj as any).id;
+      const elementId = obj.id;
 
       updateElement(elementId, {
         x: obj.left || 0,
@@ -194,10 +227,10 @@ export const FabricCanvas: React.FC = () => {
     };
 
     // Object selected
-    const handleSelection = (e: any) => {
-      const obj = e.selected?.[0];
-      if (obj && (obj as any).id) {
-        selectElement((obj as any).id);
+    const handleSelection = (e: fabric.IEvent) => {
+      const obj = (e.selected?.[0] as FabricObjectWithId) || undefined;
+      if (obj && obj.id) {
+        selectElement(obj.id);
       }
     };
 
@@ -284,7 +317,10 @@ export const FabricCanvas: React.FC = () => {
     });
 
     canvas.add(grid);
-    (canvas as any).sendToBack?.(grid);
+    // Use sendToBack if available (Canvas may not have this method in all versions)
+    if (canvas.sendToBack) {
+      canvas.sendToBack(grid);
+    }
     canvas.renderAll();
 
     return () => {
@@ -320,9 +356,9 @@ export const FabricCanvas: React.FC = () => {
         evented: false,
         originX: 'center',
         originY: 'center',
-      } as any);
+      });
 
-      (cursorCircle as any).isCursor = true;
+      (cursorCircle as FabricObjectWithCursor).isCursor = true;
 
       const cursorLabel = new fabric.FabricText(cursor.userName, {
         left: cursor.x + 12,
@@ -332,9 +368,9 @@ export const FabricCanvas: React.FC = () => {
         backgroundColor: cursor.userColor,
         selectable: false,
         evented: false,
-      } as any);
+      });
 
-      (cursorLabel as any).isCursor = true;
+      (cursorLabel as FabricObjectWithCursor).isCursor = true;
 
       canvas.add(cursorCircle, cursorLabel);
     });

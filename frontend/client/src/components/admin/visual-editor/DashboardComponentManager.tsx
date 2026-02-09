@@ -175,7 +175,7 @@ const DashboardComponentManager: React.FC<DashboardComponentManagerProps> = ({
 
     // Filter by profession
     if (professionFilter !== 'all') {
-      components = components.filter(comp => comp.profession.includes(professionFilter as any));
+      components = components.filter(comp => comp.profession.includes(professionFilter as 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'admin'));
     }
 
     // Filter by category
@@ -187,7 +187,7 @@ const DashboardComponentManager: React.FC<DashboardComponentManagerProps> = ({
     if (searchTerm) {
       components = components.filter(comp =>
         comp.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (comp.description as any)?.toLowerCase().includes(searchTerm.toLowerCase())
+        (comp.description || '').toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
 
@@ -345,7 +345,7 @@ const DashboardComponentManager: React.FC<DashboardComponentManagerProps> = ({
               </Typography>
               <Grid container spacing={2}>
                 {categories.slice(1).map(category => {
-                  const count = getComponentsByCategory(category.id as any).length;
+                  const count = getComponentsByCategory(category.id as string).length;
                   return (
                     <Grid size={{ xs:  6, sm:  4, md:  3 }} key={category.id}>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
@@ -440,7 +440,7 @@ const DashboardComponentManager: React.FC<DashboardComponentManagerProps> = ({
                 </Box>
                 
                 <Typography variant="body2" color="text.secondary" sx={{ mb:  2 }}>
-                  {component.description as any}
+                  {component.description}
                 </Typography>
 
                 <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap'}}>

@@ -159,11 +159,11 @@ export const ShowcaseDriveManager: React.FC<ShowcaseDriveManagerProps> = ({
 });
 
     // Subscribe to events
-    communication.onMessageType('showcase: refresh-folders', () => {
+    communication.onMessageType('showcase:refresh-folders', () => {
       queryClient.invalidateQueries({ queryKey: ['drive-folders', userId] });
   });
     
-    communication.onMessageType('showcase: sync-requested', (data: any) => {
+    communication.onMessageType('showcase:sync-requested', (data: any) => {
       if (data.folderId) {
         syncMappingMutation.mutate(data.folderId);
   }

@@ -176,6 +176,7 @@ const ProductManager: React.FC<ProductManagerProps> = ({
   const [bulkImportOpen, setBulkImportOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [tabValue, setTabValue] = useState(0);
+  const [deleteConfirmProduct, setDeleteConfirmProduct] = useState<Product | null>(null);
 
   const queryClient = useQueryClient();
 
@@ -658,10 +659,8 @@ const ProductManager: React.FC<ProductManagerProps> = ({
                     size="small"
                     color="error"
                     onClick={() => {
-                      if (confirm(`Er du sikker på at du vil slette ${product.brand} ${product.model}?`)) {
-                        deleteMutation.mutate(product.id);
-                    }
-                  }}
+                      setDeleteConfirmProduct(product);
+                    }}
                   >
                     {theming.getThemedIcon('delete')}
                   </IconButton>
@@ -834,6 +833,31 @@ const ProductManager: React.FC<ProductManagerProps> = ({
             disabled={!selectedFile || bulkImportMutation.isPending}
            sx={theming.getThemedButtonSx()}>
             {bulkImportMutation.isPending ? 'Importerer...' : 'Importer'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={!!deleteConfirmProduct} onClose={() => setDeleteConfirmProduct(null)}>
+        <DialogTitle>Slett produkt</DialogTitle>
+        <DialogContent>
+          <Typography>
+            Er du sikker på at du vil slette {deleteConfirmProduct?.brand} {deleteConfirmProduct?.model}?
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteConfirmProduct(null)}>Avbryt</Button>
+          <Button
+            variant="contained"
+            color="error"
+            onClick={() => {
+              if (deleteConfirmProduct) {
+                deleteMutation.mutate(deleteConfirmProduct.id);
+                setDeleteConfirmProduct(null);
+              }
+            }}
+          >
+            Slett
           </Button>
         </DialogActions>
       </Dialog>

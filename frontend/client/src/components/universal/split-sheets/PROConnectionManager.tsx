@@ -21,14 +21,12 @@ import {
   DialogActions,
   TextField,
   Alert,
-  Divider,
-  Grid
+  Grid,
+  Snackbar
 } from '@mui/material';
 import {
-  Add as AddIcon,
   Delete as DeleteIcon,
   CheckCircle as ConnectedIcon,
-  Cancel as DisconnectedIcon,
   Link as LinkIcon,
   AccountBalance as PROIcon
 } from '@mui/icons-material';
@@ -54,6 +52,8 @@ export default function PROConnectionManager({
   const queryClient = useQueryClient();
   const [showConnectDialog, setShowConnectDialog] = useState(false);
   const [selectedPRO, setSelectedPRO] = useState<'tono' | 'stim' | null>(null);
+  const [confirmDisconnect, setConfirmDisconnect] = useState<PROConnection | null>(null);
+  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'info' | 'warning' | 'error' }>({ open: false, message: '', severity: 'info' });
 
   // Fetch connections
   const { data: connectionsData } = useQuery({
@@ -83,10 +83,14 @@ export default function PROConnectionManager({
     setShowConnectDialog(true);
   };
 
-  const handleOAuthFlow = (proName: 'tono' | 'stim') => {
+  const _handleOAuthFlow = (proName: 'tono' | 'stim') => {
     // This would initiate OAuth flow
     // For now, show instructions
-    alert(`For å koble til ${proName.toUpperCase()}:\n\n1. Gå til ${proName === 'tono' ? 'tono.no' : 'stim.se'}\n2. Logg inn med din konto\n3. Autoriser CreatorHub til å få tilgang\n4. Kopier tilgangstoken og lim inn her`);
+    setSnackbar({ 
+      open: true, 
+      message: `For å koble til ${proName.toUpperCase()}: Gå til ${proName === 'tono' ? 'tono.no' : 'stim.se'}, logg inn, autoriser CreatorHub, og kopier tilgangstoken.`,
+      severity: 'info'
+    });
     
     // In a real implementation, this would:
     // 1. Redirect to PRO OAuth URL
@@ -96,11 +100,13 @@ export default function PROConnectionManager({
   };
 
   const handleDisconnect = (connection: PROConnection) => {
-    if (window.confirm(`Er du sikker på at du vil koble fra ${connection.pro_name.toUpperCase()}?`)) {
-      if (connection.id) {
-        disconnectMutation.mutate(connection.id);
-      }
-    }
+    setConfirmDisconnect(connection);
+  };
+
+  const executeDisconnect = () => {
+    if (!confirmDisconnect?.id) return;
+    disconnectMutation.mutate(confirmDisconnect.id);
+    setConfirmDisconnect(null);
   };
 
   const getPRODisplayName = (proName: string) => {
@@ -114,7 +120,7 @@ export default function PROConnectionManager({
     }
   };
 
-  const getPROWebsite = (proName: string) => {
+  const _getPROWebsite = (proName: string) => {
     switch (proName) {
       case 'tono':
         return 'https://tono.no';
@@ -129,7 +135,7 @@ export default function PROConnectionManager({
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Box>
-          <Typography variant="h5" sx={{ fontWeight: 70, mb: 0.5 }}>
+          <Typography variant="h5" sx={{ fontWeight: 700, mb: 0.5 }}>
             PRO-tilkoblinger
           </Typography>
           <Typography variant="body2" color="text.secondary">
@@ -356,6 +362,36 @@ export default function PROConnectionManager({
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Confirm Disconnect Dialog */}
+      <Dialog open={!!confirmDisconnect} onClose={() => setConfirmDisconnect(null)}>
+        <DialogTitle>Bekreft frakobling</DialogTitle>
+        <DialogContent>
+          <Typography>
+            Er du sikker på at du vil koble fra {confirmDisconnect?.pro_name.toUpperCase()}? Du kan koble til igjen senere.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmDisconnect(null)}>Avbryt</Button>
+          <Button onClick={executeDisconnect} color="error" variant="contained">Koble fra</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Snackbar for notifications */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={6000}
+        onClose={() => setSnackbar(prev => ({ ...prev, open: false }))}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert
+          onClose={() => setSnackbar(prev => ({ ...prev, open: false }))}
+          severity={snackbar.severity}
+          sx={{ width: '100%' }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 }

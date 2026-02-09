@@ -34,6 +34,7 @@ import {
   ListItem,
   ListItemText,
   ListItemSecondaryAction,
+  Snackbar,
 } from '@mui/material';
 import {
   Add,
@@ -76,7 +77,9 @@ interface OnboardingConfig {
 export default function OnboardingEditor() {
   const [configs, setConfigs] = useState<OnboardingConfig[]>([]);
   const [selectedConfig, setSelectedConfig] = useState<OnboardingConfig | null>(null);
+  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'warning' | 'info' }>({ open: false, message: '', severity: 'info' });
   const [stepDialogOpen, setStepDialogOpen] = useState(false);
+  const [confirmDeleteStepId, setConfirmDeleteStepId] = useState<string | null>(null);
   const [editingStep, setEditingStep] = useState<OnboardingStep | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [readOnly, setReadOnly] = useState(false);
@@ -108,7 +111,7 @@ export default function OnboardingEditor() {
         setAdminSupported(true);
         return;
       }
-    } catch (error) {
+    } catch (_error) {
       console.warn('Admin onboarding endpoint unavailable, falling back to read-only viewer.');
     }
 
@@ -123,7 +126,7 @@ export default function OnboardingEditor() {
         if (resp.success && resp.config) {
           results.push({ ...resp.config, steps: resp.config.steps || [], profession_type: profession });
         }
-      } catch (e) {
+      } catch (_e) {
         // ignore
       }
     }
@@ -143,12 +146,12 @@ export default function OnboardingEditor() {
       }) as { success: boolean; message: string };
 
       if (response.success) {
-        alert(response.message);
+        setSnackbar({ open: true, message: response.message, severity: 'success' });
         fetchOnboardingConfigs();
       }
-    } catch (error) {
-      console.error('Error saving config: ', error);
-      alert('Failed to save onboarding configuration');
+    } catch (err) {
+      console.error('Error saving config: ', err);
+      setSnackbar({ open: true, message: 'Failed to save onboarding configuration', severity: 'error' });
     }
   };
 
@@ -201,12 +204,17 @@ export default function OnboardingEditor() {
 
   const handleDeleteStep = (stepId: string) => {
     if (!selectedConfig || readOnly) return;
-    if (!confirm('Delete this step?')) return;
+    setConfirmDeleteStepId(stepId);
+  };
+
+  const executeDeleteStep = () => {
+    if (!selectedConfig || !confirmDeleteStepId) return;
 
     setSelectedConfig({
       ...selectedConfig,
-      steps: selectedConfig.steps.filter((s) => s.id !== stepId),
+      steps: selectedConfig.steps.filter((s) => s.id !== confirmDeleteStepId),
     });
+    setConfirmDeleteStepId(null);
   };
 
   const professionTypes = [
@@ -252,6 +260,43 @@ export default function OnboardingEditor() {
           </Button>
         </Box>
       </Box>
+
+      {/* Statistics Panel */}
+      <Paper sx={{ p: 2, mb: 3, bgcolor: 'background.default' }} elevation={1}>
+        <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 'bold', mb: 1 }}>
+          📊 Onboarding Configuration Stats
+        </Typography>
+        <Grid container spacing={2}>
+          <Grid item xs={12} sm={3}>
+            <Box sx={{ textAlign: 'center' }}>
+              <Typography variant="h4" color="primary">{configs.length}</Typography>
+              <Typography variant="caption" color="text.secondary">Total Configs</Typography>
+            </Box>
+          </Grid>
+          <Grid item xs={12} sm={3}>
+            <Box sx={{ textAlign: 'center' }}>
+              <Typography variant="h4" color="success.main">{selectedConfig.steps?.length || 0}</Typography>
+              <Typography variant="caption" color="text.secondary">Active Steps</Typography>
+            </Box>
+          </Grid>
+          <Grid item xs={12} sm={3}>
+            <Box sx={{ textAlign: 'center' }}>
+              <Typography variant="h4" color="warning.main">
+                {selectedConfig.steps?.filter(s => s.is_required).length || 0}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">Required Steps</Typography>
+            </Box>
+          </Grid>
+          <Grid item xs={12} sm={3}>
+            <Box sx={{ textAlign: 'center' }}>
+              <Typography variant="h4" color="info.main">
+                {selectedConfig.is_active ? '✓' : '✗'}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">Config Active</Typography>
+            </Box>
+          </Grid>
+        </Grid>
+      </Paper>
 
       <Card sx={{ mb: 3 }}>
         <CardContent>
@@ -616,6 +661,41 @@ export default function OnboardingEditor() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setPreviewOpen(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Snackbar for notifications */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={4000}
+        onClose={() => setSnackbar((prev) => ({ ...prev, open: false }))}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert
+          onClose={() => setSnackbar((prev) => ({ ...prev, open: false }))}
+          severity={snackbar.severity}
+          variant="filled"
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
+
+      {/* Confirm Delete Step Dialog */}
+      <Dialog
+        open={!!confirmDeleteStepId}
+        onClose={() => setConfirmDeleteStepId(null)}
+      >
+        <DialogTitle>Delete Step</DialogTitle>
+        <DialogContent>
+          <Typography>
+            Are you sure you want to delete this step? This action cannot be undone.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmDeleteStepId(null)}>Cancel</Button>
+          <Button onClick={executeDeleteStep} color="error" variant="contained">
+            Delete
+          </Button>
         </DialogActions>
       </Dialog>
     </Box>

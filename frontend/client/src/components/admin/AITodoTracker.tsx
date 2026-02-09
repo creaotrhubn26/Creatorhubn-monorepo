@@ -55,7 +55,7 @@ interface Todo {
 }
 
 export const AITodoTracker: React.FC = () => {
-  const theming = useTheming('prototype_tester, ');
+  const theming = useTheming('prototype_tester');
   const { communication, componentRegistry } = useEnhancedMasterIntegration();
   
   const [todos, setTodos] = useState<Todo[]>([]);

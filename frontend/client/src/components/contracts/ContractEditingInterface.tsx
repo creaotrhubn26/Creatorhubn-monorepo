@@ -22,6 +22,11 @@ import {
   Accordion,
   AccordionSummary,
   AccordionDetails,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions,
 } from '@mui/material';
 import {
   Save as SaveIcon,
@@ -59,13 +64,13 @@ export default function ContractEditingInterface({
   initialData,
   profession = 'photographer',
 }: ContractEditingInterfaceProps) {
-  const { user } = useAuth();
+  const { user: _user } = useAuth();
   const queryClient = useQueryClient();
   // Theming system - use dynamic profession instead of hardcoded value
   const theming = useTheming(profession);
   const params = useParams();
   const contractId = propsContractId || params.id;
-  const { formatCurrency } = useClientServicePricing();
+  const { formatCurrency: _formatCurrency } = useClientServicePricing();
 
   const [contractData, setContractData] = useState({
     clientName:  '',
@@ -80,6 +85,8 @@ export default function ContractEditingInterface({
 
   const [hasChanges, setHasChanges] = useState(false);
   const [originalData, setOriginalData] = useState<any>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [inlineEditMode, setInlineEditMode] = useState(false);
 
   // Fetch contract data if editing
   const { data: contract, isLoading, error } = useQuery({
@@ -219,20 +226,32 @@ export default function ContractEditingInterface({
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
               <DescriptionIcon sx={{ color: theming.colors.primary, fontSize: 32 }} />
-              <Typography variant="h5" sx={{ color: theming.colors.primary, fontWeight: 600}}>
-                {contractId ? 'Rediger Kontrakt' : 'Opprett Ny Kontrakt'}
-              </Typography>
+              <Box>
+                <Typography variant="h5" sx={{ color: theming.colors.primary, fontWeight: 600}}>
+                  {contractId ? 'Rediger Kontrakt' : 'Opprett Ny Kontrakt'}
+                </Typography>
+                <Chip
+                  label={contractData.status === 'draft' ? 'Utkast' : contractData.status === 'active' ? 'Aktiv' : contractData.status === 'completed' ? 'Fullført' : 'Kansellert'}
+                  size="small"
+                  color={contractData.status === 'completed' ? 'success' : contractData.status === 'active' ? 'primary' : contractData.status === 'cancelled' ? 'error' : 'default'}
+                  sx={{ mt: 0.5 }}
+                />
+              </Box>
             </Box>
             <Box sx={{ display: 'flex', gap: 1 }}>
+              <Tooltip title={inlineEditMode ? 'Disable inline edit' : 'Enable inline edit'}>
+                <IconButton
+                  color={inlineEditMode ? 'primary' : 'default'}
+                  onClick={() => setInlineEditMode(!inlineEditMode)}
+                >
+                  <EditIcon />
+                </IconButton>
+              </Tooltip>
               {contractId && (
                 <Tooltip title="Slett kontrakt">
                   <IconButton
                     color="error"
-                    onClick={() => {
-                      if (window.confirm('Er du sikker på at du vil slette denne kontrakten?')) {
-                        deleteContractMutation.mutate();
-                      }
-                    }}
+                    onClick={() => setDeleteDialogOpen(true)}
                     disabled={deleteContractMutation.isPending}
                   >
                     <DeleteIcon />
@@ -334,6 +353,8 @@ export default function ContractEditingInterface({
               </Accordion>
             </Grid>
 
+            <Divider sx={{ width: '100%', my: 2 }} />
+
             {/* Event Details */}
             <Grid item xs={12}>
               <Accordion>
@@ -365,6 +386,8 @@ export default function ContractEditingInterface({
               </Accordion>
             </Grid>
 
+            <Divider sx={{ width: '100%', my: 2 }} />
+
             {/* Additional Notes */}
             <Grid item xs={12}>
               <Accordion>
@@ -384,6 +407,8 @@ export default function ContractEditingInterface({
                 </AccordionDetails>
               </Accordion>
             </Grid>
+
+            <Divider sx={{ width: '100%', my: 2 }} />
 
             {/* Pricing & Packages */}
             <Grid item xs={12}>
@@ -417,6 +442,29 @@ export default function ContractEditingInterface({
           </Grid>
         </CardContent>
       </Card>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)}>
+        <DialogTitle>Bekreft sletting</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Er du sikker på at du vil slette denne kontrakten? Denne handlingen kan ikke angres.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteDialogOpen(false)}>Avbryt</Button>
+          <Button
+            onClick={() => {
+              deleteContractMutation.mutate();
+              setDeleteDialogOpen(false);
+            }}
+            color="error"
+            variant="contained"
+          >
+            Slett
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

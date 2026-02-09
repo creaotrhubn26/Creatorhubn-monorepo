@@ -4,7 +4,7 @@
  * Now with profession-specific filtering and theming
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import {
@@ -26,19 +26,16 @@ import {
   IconButton,
   Alert,
   Tabs,
-  Tab,
-  alpha
+  Tab
 } from '@mui/material';
 import {
   Add as AddIcon,
   Delete as DeleteIcon,
-  Edit as EditIcon,
   Star as StarIcon,
   Public as PublicIcon,
   Person as PersonIcon
 } from '@mui/icons-material';
-import { useDynamicProfessions } from '../hooks/useDynamicProfessions';
-import getProfessionIcon from '@/utils/profession-icons';
+
 import type { SplitSheetContributor, ContributorRole } from './types';
 
 interface SplitSheetTemplate {
@@ -75,15 +72,10 @@ export default function SplitSheetTemplates({
     profession: profession,
     contributors: []
   });
+  const [confirmDeleteTemplate, setConfirmDeleteTemplate] = useState<SplitSheetTemplate | null>(null);
   
-  // Get profession-specific styling
-  const { getUserProfessionColor, getProfessionDisplayName } = useDynamicProfessions();
-  const professionColor = getUserProfessionColor(profession);
-  const professionDisplayName = getProfessionDisplayName(profession);
-  const professionIcon = getProfessionIcon(profession);
-  
-  // Get profession-specific default roles for templates
-  const getDefaultRolesForProfession = (): ContributorRole[] => {
+  // Get profession-specific roles for templates
+  const _getDefaultRolesForProfession = (): ContributorRole[] => {
     switch (profession) {
       case 'music_producer':
         return ['producer','artist','songwriter','mix_engineer'];
@@ -95,49 +87,9 @@ export default function SplitSheetTemplates({
         return ['collaborator','other'];
     }
   };
-  
-  // Profession-specific template labels
-  const getTemplateLabels = () => {
-    switch (profession) {
-      case 'music_producer':
-        return {
-          title: 'Maler',
-          description: 'Velg en mal for rask opprettelse av split sheets',
-          systemTemplates: 'Systemmaler for musikk',
-          myTemplates: 'Mine maler',
-          createLabel: 'Lag ny mal',
-        };
-      case 'photographer':
-        return {
-          title: 'Prosjektmaler',
-          description: 'Velg en mal for fotoprosjekt-samarbeid',
-          systemTemplates: 'Systemmaler for foto',
-          myTemplates: 'Mine maler',
-          createLabel: 'Lag ny mal',
-        };
-      case 'videographer':
-        return {
-          title: 'Produksjonsmaler',
-          description: 'Velg en mal for videoproduksjon-crew',
-          systemTemplates: 'Systemmaler for video',
-          myTemplates: 'Mine maler',
-          createLabel: 'Lag ny mal',
-        };
-      default:
-        return {
-          title: 'Maler',
-          description: 'Velg en mal',
-          systemTemplates: 'Systemmaler',
-          myTemplates: 'Mine maler',
-          createLabel: 'Lag ny mal',
-        };
-    }
-  };
-  
-  const templateLabels = getTemplateLabels();
 
   // Fetch templates
-  const { data: templatesData, isLoading } = useQuery({
+  const { data: templatesData } = useQuery({
     queryKey: ['split-sheet-templates, '],
     queryFn: async () => {
       const response = await apiRequest('/api/split-sheets/templates?include_public=true');
@@ -149,6 +101,9 @@ export default function SplitSheetTemplates({
   const systemTemplates = templates.filter(t => t.is_system_template);
   const customTemplates = templates.filter(t => !t.is_system_template);
 
+  // Delete mutation
+  // Create mutation (handled via inline mutation below)
+  
   // Delete mutation
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
@@ -197,11 +152,13 @@ export default function SplitSheetTemplates({
   };
 
   const handleDeleteTemplate = (template: SplitSheetTemplate) => {
-    if (window.confirm(`Er du sikker på at du vil slette malen "${template.name},"?`)) {
-      if (template.id) {
-        deleteMutation.mutate(template.id);
-      }
-    }
+    setConfirmDeleteTemplate(template);
+  };
+
+  const executeDeleteTemplate = () => {
+    if (!confirmDeleteTemplate?.id) return;
+    deleteMutation.mutate(confirmDeleteTemplate.id);
+    setConfirmDeleteTemplate(null);
   };
 
   const renderTemplateCard = (template: SplitSheetTemplate) => {
@@ -424,13 +381,27 @@ export default function SplitSheetTemplates({
           <Button
             variant="contained"
             onClick={() => {
-              // This would need full contributor setup - for now just close
-              setShowCreateDialog(false);
+              createMutation.mutate(newTemplate);
             }}
+            disabled={!newTemplate.name || (newTemplate.contributors ?? []).length === 0}
             sx={{ bgcolor: '#9f7aea' }}
           >
             Opprett
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Confirm Delete Template Dialog */}
+      <Dialog open={!!confirmDeleteTemplate} onClose={() => setConfirmDeleteTemplate(null)}>
+        <DialogTitle>Bekreft sletting</DialogTitle>
+        <DialogContent>
+          <Typography>
+            Er du sikker på at du vil slette malen "{confirmDeleteTemplate?.name}"? Denne handlingen kan ikke angres.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmDeleteTemplate(null)}>Avbryt</Button>
+          <Button onClick={executeDeleteTemplate} color="error" variant="contained">Slett</Button>
         </DialogActions>
       </Dialog>
     </Box>

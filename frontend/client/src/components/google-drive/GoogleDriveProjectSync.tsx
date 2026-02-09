@@ -171,7 +171,7 @@ export const GoogleDriveProjectSync: React.FC<GoogleDriveProjectSyncProps> = ({
               <ListItemText
                 primary={
                   <Box display="flex" alignItems="center" gap={1}>
-                    <Typography variant="body2" sx={{ fontWeight: 50}}>
+                    <Typography variant="body2" sx={{ fontWeight: 500}}>
                       {sync.projectName}
                     </Typography>
                     <Chip 

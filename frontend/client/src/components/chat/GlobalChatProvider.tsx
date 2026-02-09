@@ -2,6 +2,7 @@ import { useTheming } from '../../utils/theming-helper';
 import React from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import UniversalChatWidget from './UniversalChatWidget';
+import { CommunicationStatusProvider } from '../../contexts/CommunicationStatusContext';
 
 interface GlobalChatProviderProps {
   children: React.ReactNode
@@ -52,17 +53,19 @@ export default function GlobalChatProvider({ children }: GlobalChatProviderProps
       {children}
       
       {/* Global Chat Widget - Available on all pages */}
-      <UniversalChatWidget 
-        profession={getUserProfession()}
-        userEmail={user.email}
-        userId={user.id}
-        isOpen={false} // Start closed, user can open it
-        // Additional props for global context
-        onNotificationCreate={(notification) => {
-          console.log('Global chat notification created:', notification);
-          // You could integrate with a global notification system here
-      }}
-      />
+      <CommunicationStatusProvider>
+        <UniversalChatWidget 
+          profession={getUserProfession()}
+          userEmail={user.email}
+          userId={user.id}
+          isOpen={false} // Start closed, user can open it
+          // Additional props for global context
+          onNotificationCreate={(notification) => {
+            console.log('Global chat notification created:', notification);
+            // You could integrate with a global notification system here
+        }}
+        />
+      </CommunicationStatusProvider>
     </>
   );
 }

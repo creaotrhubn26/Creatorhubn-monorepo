@@ -83,7 +83,7 @@ export function GooglePayButton({
       setError(null);
 
       // Track payment attempt
-      features.trackFeatureUsage('google-pay-integration, ','payment_initiated', {
+      features.trackFeatureUsage('google-pay-integration', 'payment_initiated', {
         timestamp: Date.now(),
         amount,
         currency,

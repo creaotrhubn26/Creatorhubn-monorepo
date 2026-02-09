@@ -216,7 +216,7 @@ export const MODAL_TEMPLATES = [
 },
   {
     id: 'project-creation-modal',
-    name: 'Project Creation with Memory Cards',
+    name: 'New Project',
     description: 'Advanced project creation modal with step wizard and memory card integration',
     category: 'complex' as const,
     thumbnail: 'data:image/svg+xml;base4,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjEwMCIgdmlld0JveD0iMCAwIDIwMCAxMDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PC9zdmc+',

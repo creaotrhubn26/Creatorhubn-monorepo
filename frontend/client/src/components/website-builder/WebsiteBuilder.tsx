@@ -200,7 +200,7 @@ export default function WebsiteBuilder({ userId, profession, onClose }: WebsiteB
         userId,
         profession,
         name: `${businessName} Website`,
-        subdomain: user?.email?.split('@, ')[0] || 'mysite',
+        subdomain: user?.email?.split('@')[0] || 'mysite',
         domain: domainConfig?.domain,
         pages: [
           {
@@ -227,7 +227,7 @@ export default function WebsiteBuilder({ userId, profession, onClose }: WebsiteB
         seo: {
           metaTitle: `${businessName} - ${profession}`,
           metaDescription: businessInfo.tagline || `Professional ${profession} services`,
-          keywords: [profession'portfolio', businessName],
+          keywords: [`${profession} portfolio`, businessName],
           favicon: logoUrl,
         },
         navigation: {
@@ -435,7 +435,7 @@ export default function WebsiteBuilder({ userId, profession, onClose }: WebsiteB
               variant="outlined"
               color="inherit"
               startIcon={<Preview />}
-              onClick={() => window.open(getWebsiteUrl()'_blank')}
+              onClick={() => window.open(getWebsiteUrl(), '_blank')}
             >
               Preview
             </Button>
@@ -624,8 +624,8 @@ function AddPageDialog({ open, onClose, onAdd }: AddPageDialogProps) {
           onClick={() => {
             if (name && slug) {
               onAdd(name, slug);
-              setName(', ');
-              setSlug(', ');
+              setName('');
+              setSlug('');
             }}
           }
         >
@@ -672,10 +672,10 @@ function PublishDialog({ open, onClose, url, customDomain }: PublishDialogProps)
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose}>Close</Button>
-        <Button variant="contained" onClick={() => window.open(url, ', '_blank')}>
+        <Button variant="contained" onClick={() => window.open(url, '_blank')}>
           Visit Website
         </Button>
       </DialogActions>
     </Dialog>
   );
-}}
+}

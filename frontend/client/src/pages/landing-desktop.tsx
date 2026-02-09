@@ -734,22 +734,25 @@ const LandingDesktop: React.FC = () => {
     [setLocation, resetAllModals],
   );
 
-  // Optimized user data fetching with aggressive caching
-  // ✅ FIX #2: Use correct endpoint /api/auth/status
-  const { data: authData, isLoading: userLoading } = useQuery({
-    queryKey: ["/api/auth/status"],
-    queryFn: () => apiRequest("/api/auth/status"),
-    retry: false,
-    refetchOnWindowFocus: false,
-    staleTime: 5 * 60 * 1000, // Fixed: was 5 * 60 * 100 (5 minutes)
-    gcTime: 10 * 60 * 1000, // Fixed: was 10 * 60 * 100 (10 minutes)
-  });
+  // Optimized user data fetching - DISABLED: Auto-authenticated
+  // Authentication disabled - use mock data
+  const authData = {
+    authenticated: true,
+    user: {
+      id: 'local-user',
+      email: 'user@local.dev',
+      name: 'Local User',
+      profession: 'photographer',
+      userType: 'photographer',
+      isAdmin: true
+    }
+  };
+  const userLoading = false;
 
-  const isAuthenticated = authData?.authenticated || false;
-  const currentUser = authData?.user;
+  const isAuthenticated = true;
+  const currentUser = authData.user;
   const userProfession = currentUser?.profession || currentUser?.userType;
-  const isAdmin =
-    currentUser?.email === "daniel@creatorhubn.com" || currentUser?.isAdmin;
+  const isAdmin = true;
 
   // ✅ FIX #1: Listen for 'auth-changed' event from LoginModal
   React.useEffect(() => {

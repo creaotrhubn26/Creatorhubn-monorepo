@@ -182,7 +182,7 @@ export const AchievementBadgeSVG: React.FC<AchievementBadgeSVGProps> = ({
 
       {/* Badge title */}
       <Box sx={{ textAlign: 'center', maxWidth: size * 1.2 }}>
-        <Typography variant="caption" sx={{ fontWeight: 70, display: 'block' }}>
+        <Typography variant="caption" sx={{ fontWeight: 700, display: 'block' }}>
           {title}
         </Typography>
         <Typography variant="caption" sx={{ fontSize: '0.65rem', color: badgeColor }}>

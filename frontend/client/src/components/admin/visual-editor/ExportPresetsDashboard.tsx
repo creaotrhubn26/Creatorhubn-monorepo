@@ -200,7 +200,7 @@ const ExportPresetsDashboard: React.FC<ExportPresetsDashboardProps> = memo(({
   const [showExportDialog, setShowExportDialog] = useState(false);
   
   // Theming system
-  const theming = useTheming('prototype_tester, ');
+  const theming = useTheming('prototype_tester');
   const [showSettingsDialog, setShowSettingsDialog] = useState(false);
   const [showManagementDialog, setShowManagementDialog] = useState(false);
   const [showMonitoringDialog, setShowMonitoringDialog] = useState(false);

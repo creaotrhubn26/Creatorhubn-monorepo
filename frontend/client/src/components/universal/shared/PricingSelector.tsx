@@ -28,6 +28,7 @@ import {
 } from '@mui/icons-material';
 import { useTheming } from '../../../utils/theming-helper';
 import { useClientServicePricing } from '../../../services/ClientServicePricingService';
+import { useAuth } from '@/hooks/useAuth';
 
 interface PricingSelectorProps {
   onSelectPackage?: (pkg: any) => void;
@@ -44,24 +45,25 @@ export default function PricingSelector({
 }: PricingSelectorProps) {
   const theming = useTheming('photographer');
   const { formatCurrency } = useClientServicePricing();
+  const { user } = useAuth();
   const [showPackages, setShowPackages] = useState(false);
   const [showQuotes, setShowQuotes] = useState(false);
 
-  // Fetch pricing packages
-  const { data: packagesData, isLoading: packagesLoading } = useQuery({
-    queryKey: ['/api/price-administration/packages'],
-    queryFn: () => apiRequest('/api/price-administration/packages'),
+  // Fetch pricing packages from new API
+  const { data: packages = [], isLoading: packagesLoading } = useQuery({
+    queryKey: ['/api/pricing/packages', user?.id],
+    queryFn: () => apiRequest(`/api/pricing/packages/${user?.id}`),
+    enabled: !!user?.id,
     retry: false,
   });
 
-  // Fetch quotes
+  // Fetch quotes (keeping old API for now)
   const { data: quotesData, isLoading: quotesLoading } = useQuery({
     queryKey: ['/api/price-administration/quotes'],
     queryFn: () => apiRequest('/api/price-administration/quotes'),
     retry: false,
   });
 
-  const packages = packagesData?.packages || [];
   const quotes = quotesData?.quotes || [];
 
   const handlePackageSelect = (pkg: any) => {
@@ -138,7 +140,7 @@ export default function PricingSelector({
                     primary={
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                         <Typography variant="subtitle1" sx={{ fontWeight: 600}}>
-                          {pkg.name}
+                          {pkg.package_name || pkg.name}
                         </Typography>
                         {selectedPackageId === pkg.id && (
                           <CheckIcon color="primary" />
@@ -152,10 +154,10 @@ export default function PricingSelector({
                         </Typography>
                         <Box sx={{ display: 'flex', gap: 1, mt: 0.5 }}>
                           <Typography variant="h6" sx={{ color: theming.colors.primary }}>
-                            {formatCurrency(pkg.basePrice || 0)}
+                            {formatCurrency(pkg.base_price || pkg.basePrice || 0)}
                           </Typography>
-                          {pkg.category && (
-                            <Chip label={pkg.category} size="small" variant="outlined" />
+                          {pkg.profession && (
+                            <Chip label={pkg.profession} size="small" variant="outlined" />
                           )}
                         </Box>
                       </Box>

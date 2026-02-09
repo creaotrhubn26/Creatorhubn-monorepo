@@ -29,7 +29,8 @@ import {
   Accordion,
   AccordionSummary,
   AccordionDetails,
-  Tooltip
+  Tooltip,
+  Snackbar
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -64,6 +65,8 @@ export default function SplitSheetLegalReferences({
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedLawId, setSelectedLawId] = useState('');
+  const [confirmDeleteRefId, setConfirmDeleteRefId] = useState<string | null>(null);
+  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'info' | 'warning' | 'error' }>({ open: false, message: '', severity: 'info' });
 
   // Fetch references
   const { data: referencesData } = useQuery({
@@ -119,16 +122,20 @@ export default function SplitSheetLegalReferences({
 
   const handleAddReference = () => {
     if (!selectedLawId) {
-      alert('Vennligst velg en lov');
+      setSnackbar({ open: true, message: 'Vennligst velg en lov', severity: 'warning' });
       return;
     }
     addReferenceMutation.mutate(selectedLawId);
   };
 
   const handleDeleteReference = (referenceId: string) => {
-    if (window.confirm('Er du sikker på at du vil fjerne denne referansen?')) {
-      deleteReferenceMutation.mutate(referenceId);
-    }
+    setConfirmDeleteRefId(referenceId);
+  };
+
+  const executeDeleteReference = () => {
+    if (!confirmDeleteRefId) return;
+    deleteReferenceMutation.mutate(confirmDeleteRefId);
+    setConfirmDeleteRefId(null);
   };
 
   return (
@@ -313,6 +320,34 @@ export default function SplitSheetLegalReferences({
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Confirm Delete Dialog */}
+      <Dialog open={!!confirmDeleteRefId} onClose={() => setConfirmDeleteRefId(null)}>
+        <DialogTitle>Bekreft sletting</DialogTitle>
+        <DialogContent>
+          <Typography>Er du sikker på at du vil fjerne denne juridiske referansen?</Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmDeleteRefId(null)}>Avbryt</Button>
+          <Button onClick={executeDeleteReference} color="error" variant="contained">Fjern</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Snackbar for notifications */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={4000}
+        onClose={() => setSnackbar(prev => ({ ...prev, open: false }))}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert
+          onClose={() => setSnackbar(prev => ({ ...prev, open: false }))}
+          severity={snackbar.severity}
+          sx={{ width: '100%' }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 }

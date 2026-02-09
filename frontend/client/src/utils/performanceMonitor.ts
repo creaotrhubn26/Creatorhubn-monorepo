@@ -574,10 +574,10 @@ class PerformanceMonitor {
 
     return {
       overallScore,
-      performanceScore: Math.max, (performanceScore),
-      accessibilityScore: Math.max, (accessibilityScore),
-      bestPracticesScore: Math.max, (bestPracticesScore),
-      seoScore: Math.max, (seoScore)
+      performanceScore: Math.max(0, performanceScore),
+      accessibilityScore: Math.max(0, accessibilityScore),
+      bestPracticesScore: Math.max(0, bestPracticesScore),
+      seoScore: Math.max(0, seoScore)
   };
 }
 
@@ -647,8 +647,8 @@ class PerformanceMonitor {
     const fps = this.metrics.map(m => m.rendering.fps).filter(f => f > 0);
 
     return {
-      loadTime: loadTimes.slice(-2), // Last 20 measurements
-      memoryUsage: memoryUsage.slice(-2),
+      loadTime: loadTimes.slice(-20), // Last 20 measurements
+      memoryUsage: memoryUsage.slice(-20),
       fps: fps.slice(-20)
 };
 }

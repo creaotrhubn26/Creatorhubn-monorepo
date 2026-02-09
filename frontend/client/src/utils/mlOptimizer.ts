@@ -155,7 +155,7 @@ export class MLOptimizer {
   }, {} as Record<string, number>);
 
     return Object.entries(featureCounts)
-      .sort(([, a][b]) => b - a)
+      .sort(([, a], [, b]) => b - a)
       .slice(0, 5)
       .map(([feature]) => feature);
 }
@@ -178,7 +178,7 @@ export class MLOptimizer {
   }, {} as Record<number, number>);
 
     return Object.entries(hourCounts)
-      .sort(([, a][b]) => b - a)
+      .sort(([, a], [, b]) => b - a)
       .slice(0, 3)
       .map(([hour]) => parseInt(hour));
 }
@@ -196,7 +196,7 @@ export class MLOptimizer {
   }, {} as Record<string, number>);
 
     return Object.entries(deviceCounts)
-      .sort(([, a][b]) => b - a)[0][0];
+      .sort(([, a], [, b]) => b - a)[0][0];
 }
 
   // Resource optimization methods

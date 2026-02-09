@@ -35,6 +35,7 @@ import {
   Tooltip,
   Switch,
   FormControlLabel,
+  Snackbar,
 } from '@mui/material';
 import {
   Computer,
@@ -170,6 +171,8 @@ export default function AILocalModelProvider({
       setStreamResponse(currentConfig.streamResponse);
     }
   }, [currentConfig]);
+
+  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'info' }>({ open: false, message: '', severity: 'info' });
 
   useEffect(() => {
     if (open && enabled) {
@@ -353,9 +356,11 @@ export default function AILocalModelProvider({
   const downloadModel = useCallback(
     async (modelId: string) => {
       if (provider !== 'ollama') {
-        alert(
-          'Model downloading is only supported for Ollama. Please install models manually for other providers.',
-        );
+        setSnackbar({
+          open: true,
+          message: 'Model downloading is only supported for Ollama. Please install models manually for other providers.',
+          severity: 'info'
+        });
         return;
       }
 
@@ -367,15 +372,17 @@ export default function AILocalModelProvider({
         });
 
         if (response.ok) {
-          alert(`Started downloading ${modelId}. This may take a few minutes.`);
+          setSnackbar({ open: true, message: `Started downloading ${modelId}. This may take a few minutes.`, severity: 'success' });
           setTimeout(loadModels, 5000);
         } else {
-          alert('Failed to start download. Make sure Ollama is running.');
+          setSnackbar({ open: true, message: 'Failed to start download. Make sure Ollama is running.', severity: 'error' });
         }
       } catch (error) {
-        alert(
-          'Failed to download model: ' + (error instanceof Error ? error.message : 'Unknown error'),
-        );
+        setSnackbar({
+          open: true,
+          message: 'Failed to download model: ' + (error instanceof Error ? error.message : 'Unknown error'),
+          severity: 'error'
+        });
       }
     },
     [provider, endpoint, loadModels],
@@ -749,6 +756,22 @@ export default function AILocalModelProvider({
           <Button onClick={() => setInstallDialogOpen(false)}>Close</Button>
         </DialogActions>
       </Dialog>
+
+      {/* Snackbar Notifications */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={6000}
+        onClose={() => setSnackbar({ ...snackbar, open: false })}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert
+          onClose={() => setSnackbar({ ...snackbar, open: false })}
+          severity={snackbar.severity}
+          sx={{ width: '100%' }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </>
   );
 }}

@@ -39,7 +39,6 @@ import {
   AutoFixHigh,
   Delete
 } from '@mui/icons-material';
-import { apiRequest } from '@/lib/queryClient';
 
 interface BatchAudioEnhancementDialogProps {
   open: boolean;
@@ -114,21 +113,27 @@ export default function BatchAudioEnhancementDialog({
       try {
         const formData = new FormData();
         formData.append('file', audioFiles[i]);
-        formData.append('preset,', preset);
+        formData.append('preset', preset);
         formData.append('autoDetect', 'true');
 
-        const response = await apiRequest('/api/audio-enhancement/auto-enhance', {
+        const response = await fetch('/api/audio-enhancement/auto-enhance', {
           method: 'POST',
           body: formData
         });
+
+        if (!response.ok) {
+          throw new Error('Enhancement failed');
+        }
+
+        const data = await response.json();
 
         // Update status to success
         setResults(prev => prev.map((r, idx) => 
           idx === i ? {
             ...r,
             status: 'success',
-            enhancedUrl: response.enhancedUrl,
-            metrics: response.metrics
+            enhancedUrl: data.enhancedUrl,
+            metrics: data.metrics
           } : r
         ));
       } catch (error: any) {

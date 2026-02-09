@@ -1,5 +1,5 @@
 import { useTheming } from '../../../utils/theming-helper';
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { 
   Box, 
@@ -101,10 +101,10 @@ export default function ShotListManager({
   const { user } = useAuth();
   
   // Theming system
-  const theming = useTheming('photographer,');
+  const theming = useTheming('photographer');
   const queryClient = useQueryClient();
   const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down(, 'sm,')) || mobileMode;
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm')) || mobileMode;
   
   const [selectedShot, setSelectedShot] = useState<Shot | null>(null);
   const [showDialog, setShowDialog] = useState(false);
@@ -112,65 +112,93 @@ export default function ShotListManager({
   const [filterStatus, setFilterStatus] = useState<string>(isMobile ? 'Planned' : 'All'); // Mobile shows pending by default
   const [filterScene, setFilterScene] = useState<string>('All');
   const [expandedScenes, setExpandedScenes] = useState<Set<string>>(new Set()); // Mobile: collapsible scenes
+  const [shotForm, setShotForm] = useState<Partial<Shot>>({
+    title: '',
+    description: '',
+    scene: '',
+    shotType: 'Wide',
+    duration: 0,
+    status: 'Planned',
+    priority: 'Medium',
+    cameraSettings: '',
+    notes: ''
+  });
+  const [equipmentInput, setEquipmentInput] = useState('');
+
+  const openCreateDialog = () => {
+    setEditingShot(null);
+    setShotForm({
+      title: '',
+      description: '',
+      scene: '',
+      shotType: 'Wide',
+      duration: 0,
+      status: 'Planned',
+      priority: 'Medium',
+      cameraSettings: '',
+      notes: ''
+    });
+    setEquipmentInput('');
+    setShowDialog(true);
+  };
+
+  const openEditDialog = (shot: Shot) => {
+    setEditingShot(shot);
+    setShotForm({ ...shot });
+    setEquipmentInput(shot.equipment?.join(', ') || '');
+    setShowDialog(true);
+  };
+
+  useEffect(() => {
+    if (!showDialog) {
+      setEditingShot(null);
+    }
+  }, [showDialog]);
 
   // Database connection for ShotListManager
-  const { data: shots = [], isLoading } = useQuery({
-    queryKey: ['/api/shot-list, ', projectId || 'default'],
-    queryFn: () => apiRequest(`/api/shot-list/${projectId || 'default'}`, {
-      headers: {
-        "Content-Type" : "application/json"
-  }
-  }),
+  const { data: shots = [], isLoading } = useQuery<Shot[]>({
+    queryKey: ['/api/shot-list', projectId || 'default'],
+    queryFn: () => apiRequest(`/api/shot-list/${projectId || 'default'}`),
     retry: false,
-});
+  });
 
   // Mutation for updating shot data
   const updateShotListManager = useMutation({
-    mutationFn: async (data: any) => 
+    mutationFn: async (data: Shot) =>
       apiRequest('/api/shot-list/update', {
-        headers: {
-          "Content-Type" : "application/json"
-    },
-        method: 'POS',
-        body: JSON.stringify(data)
-  }),
+        method: 'PUT',
+        body: data,
+      }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/shot-list", ],});
-  }
-});
+      queryClient.invalidateQueries({ queryKey: ['/api/shot-list'] });
+    }
+  });
 
   // Create new shot
   const createShot = useMutation({
-    mutationFn: async (shotData: Omit<Shot 
- 'id, '>) => 
+    mutationFn: async (shotData: Omit<Shot, 'id'>) =>
       apiRequest('/api/shot-list/create', {
-        headers: {
-          "Content-Type" : "application/json"
-    },
-        method: 'POS',
-        body: JSON.stringify({ ...shotData, projectId })
-    }),
+        method: 'POST',
+        body: { ...shotData, projectId },
+      }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/shot-list", ],});
+      queryClient.invalidateQueries({ queryKey: ['/api/shot-list'] });
       setShowDialog(false);
       setEditingShot(null);
-  }
-});
+    }
+  });
 
   // Delete shot
   const deleteShot = useMutation({
-    mutationFn: async (shotId: string) => 
-      apiRequest(`/api/shot-list/${shotd}`, {
-        headers: {
-          "Content-Type" : "application/json"
-    },
-        method: 'DELETE'
-  }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/shot-list", ],});
-      onShotDelete?.(selectedShot?.id || '');
-  }
-});
+    mutationFn: async (shotId: string) =>
+      apiRequest(`/api/shot-list/${shotId}`, {
+        method: 'DELETE',
+      }),
+    onSuccess: (_, shotId) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/shot-list'] });
+      onShotDelete?.(shotId);
+    }
+  });
 
   // Handle shot status change (with notification on complete)
   const handleStatusChange = useCallback((shotId: string, newStatus: Shot['status']) => {
@@ -207,12 +235,11 @@ export default function ShotListManager({
 });
 
   // Group shots by scene (for mobile view)
-  const shotsByScene = filteredShots.reduce((acc, shot) => {
+  const shotsByScene = filteredShots.reduce<Record<string, Shot[]>>((acc, shot) => {
     if (!acc[shot.scene]) acc[shot.scene] = [];
     acc[shot.scene].push(shot);
     return acc;
-  }, {} as Record<string 
- Shot[]>);
+  }, {});
 
   // Calculate completion stats
   const totalShots = shots.length;
@@ -233,7 +260,9 @@ export default function ShotListManager({
   };
 
   // Get status color
-  const getStatusColor = (status: Shot['status']) => {
+  type ChipColor = 'default' | 'primary' | 'secondary' | 'error' | 'info' | 'success' | 'warning';
+
+  const getStatusColor = (status: Shot['status']): ChipColor => {
     switch (status) {
       case 'Completed': return 'success';
       case 'In Progress': return 'warning';
@@ -244,7 +273,7 @@ export default function ShotListManager({
 };
 
   // Get priority color
-  const getPriorityColor = (priority: Shot['priority']) => {
+  const getPriorityColor = (priority: Shot['priority']): ChipColor => {
     switch (priority) {
       case 'Critical': return 'error';
       case 'High': return 'warning';
@@ -334,8 +363,9 @@ export default function ShotListManager({
   const generateShotsFromTemplate = useCallback(() => {
     const suggestedShots = generateTemplateShots(template, projectType, culture, estimatedHours);
     // Add shots to the existing shots array
-    suggestedShots.forEach(shot => {
-      createShot.mutate(shot);
+    suggestedShots.forEach((shot) => {
+      const { id: _ignored, ...payload } = shot;
+      createShot.mutate(payload);
   });
 }, [template, projectType, culture, estimatedHours, createShot]);
 
@@ -409,7 +439,7 @@ export default function ShotListManager({
           <Button 
             variant="contained"
             startIcon={theming.getThemedIcon('add')}
-            onClick={() => setShowDialog(true)}
+            onClick={openCreateDialog}
             fullWidth={isMobile}
             size={isMobile ? 'small' : 'medium'}
             sx={theming.getThemedButtonSx()}
@@ -560,7 +590,7 @@ export default function ShotListManager({
                         sx={{
                           py: 2,
                           px: 2,
-                          borderBottom: index < sceneShots.length - 1 ? '1px solid #eee', : 'none',
+                          borderBottom: index < sceneShots.length - 1 ? '1px solid #eee' : 'none',
                           bgcolor: shot.status === 'Completed' ? '#F1F8E9' : 'transparent'
                         }}
                       >
@@ -582,7 +612,7 @@ export default function ShotListManager({
                               <Typography 
                                 variant="body1" 
                                 sx={{ 
-                                  fontWeight: hot.priority === 'Critical' ? 700 : 500,
+                                  fontWeight: shot.priority === 'Critical' ? 700 : 500,
                                   textDecoration: shot.status === 'Completed' ? 'line-through' : 'none',
                                   color: shot.status === 'Completed' ? 'text.secondary' : 'text.primary'
                                 }}
@@ -638,14 +668,14 @@ export default function ShotListManager({
                   primary={
                     <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
                       <Typography variant="h6" sx={{ color: theming.colors.primary }}>{shot.title}</Typography>
-                      <Chip 
-                        label={shot.status} 
-                        color={getStatusColor(shot.status) as any}
+                      <Chip
+                        label={shot.status}
+                        color={getStatusColor(shot.status)}
                         size="small"
                       />
-                      <Chip 
-                        label={shot.priority} 
-                        color={getPriorityColor(shot.priority) as any}
+                      <Chip
+                        label={shot.priority}
+                        color={getPriorityColor(shot.priority)}
                         size="small"
                         variant="outlined"
                       />
@@ -663,10 +693,10 @@ export default function ShotListManager({
                           size="small" 
                           variant="outlined"
                         />
-                        <Chip 
-                          icon={theming.getThemedIcon('schedule')}} 
-                          label={formatDuration(shot.duration)} 
-                          size="small" 
+                        <Chip
+                          icon={<Schedule />}
+                          label={formatDuration(shot.duration)}
+                          size="small"
                           variant="outlined"
                         />
                         <Chip 
@@ -681,12 +711,7 @@ export default function ShotListManager({
                 <ListItemSecondaryAction>
                   <Box sx={{ display: 'flex', gap:  1 }}>
                     <Tooltip title="Edit Shot">
-                      <IconButton
-                        onClick={() => {
-                          setEditingShot(shot);
-                          setShowDialog(true);
-                      }}
-                      >
+                      <IconButton onClick={() => openEditDialog(shot)}>
                         {theming.getThemedIcon('edit')}
                       </IconButton>
                     </Tooltip>
@@ -729,7 +754,8 @@ export default function ShotListManager({
               <TextField
                 fullWidth
                 label="Shot Title"
-                defaultValue={editingShot?.title || ', '}
+                value={shotForm.title || ''}
+                onChange={(e) => setShotForm((prev) => ({ ...prev, title: e.target.value }))}
                 required
               />
             </Grid>
@@ -739,21 +765,26 @@ export default function ShotListManager({
                 label="Description"
                 multiline
                 rows={3}
-                defaultValue={editingShot?.description || ', '}
+                value={shotForm.description || ''}
+                onChange={(e) => setShotForm((prev) => ({ ...prev, description: e.target.value }))}
               />
             </Grid>
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
                 label="Scene"
-                defaultValue={editingShot?.scene || ', '}
+                value={shotForm.scene || ''}
+                onChange={(e) => setShotForm((prev) => ({ ...prev, scene: e.target.value }))}
                 required
               />
             </Grid>
             <Grid item xs={12} sm={6}>
               <FormControl fullWidth>
                 <InputLabel>Shot Type</InputLabel>
-                <Select defaultValue={editingShot?.shotType || 'Wide'}>
+                <Select
+                  value={shotForm.shotType || 'Wide'}
+                  onChange={(e) => setShotForm((prev) => ({ ...prev, shotType: e.target.value as Shot['shotType'] }))}
+                >
                   <MenuItem value="Wide">Wide Shot</MenuItem>
                   <MenuItem value="Medium">Medium Shot</MenuItem>
                   <MenuItem value="Close-up">Close-up</MenuItem>
@@ -767,13 +798,17 @@ export default function ShotListManager({
                 fullWidth
                 label="Duration (seconds)"
                 type="number"
-                defaultValue={editingShot?.duration || 0}
+                value={shotForm.duration ?? 0}
+                onChange={(e) => setShotForm((prev) => ({ ...prev, duration: Number(e.target.value) }))}
               />
             </Grid>
             <Grid item xs={12} sm={6}>
               <FormControl fullWidth>
                 <InputLabel>Priority</InputLabel>
-                <Select defaultValue={editingShot?.priority || 'Medium'}>
+                <Select
+                  value={shotForm.priority || 'Medium'}
+                  onChange={(e) => setShotForm((prev) => ({ ...prev, priority: e.target.value as Shot['priority'] }))}
+                >
                   <MenuItem value="Low">Low</MenuItem>
                   <MenuItem value="Medium">Medium</MenuItem>
                   <MenuItem value="High">High</MenuItem>
@@ -785,14 +820,16 @@ export default function ShotListManager({
               <TextField
                 fullWidth
                 label="Camera Settings"
-                defaultValue={editingShot?.cameraSettings || ', '}
+                value={shotForm.cameraSettings || ''}
+                onChange={(e) => setShotForm((prev) => ({ ...prev, cameraSettings: e.target.value }))}
               />
             </Grid>
             <Grid item xs={12}>
               <TextField
                 fullWidth
                 label="Equipment Needed"
-                defaultValue={editingShot?.equipment?.join('') || ','}
+                value={equipmentInput}
+                onChange={(e) => setEquipmentInput(e.target.value)}
                 helperText="Separate multiple items with commas"
               />
             </Grid>
@@ -802,7 +839,8 @@ export default function ShotListManager({
                 label="Notes"
                 multiline
                 rows={2}
-                defaultValue={editingShot?.notes || ''}
+                value={shotForm.notes || ''}
+                onChange={(e) => setShotForm((prev) => ({ ...prev, notes: e.target.value }))}
               />
             </Grid>
           </Grid>
@@ -813,7 +851,36 @@ export default function ShotListManager({
           </Button>
           <Button variant="contained" 
             onClick={() => {
-              // Handle shot creation/update
+              if (!shotForm.title || !shotForm.scene) return;
+              const equipment = equipmentInput
+                .split(',')
+                .map((item) => item.trim())
+                .filter(Boolean);
+
+              const basePayload: Omit<Shot, 'id'> = {
+                title: shotForm.title,
+                description: shotForm.description || '',
+                scene: shotForm.scene,
+                shotType: shotForm.shotType || 'Wide',
+                duration: Number(shotForm.duration) || 0,
+                status: shotForm.status || 'Planned',
+                priority: shotForm.priority || 'Medium',
+                cameraSettings: shotForm.cameraSettings || '',
+                equipment,
+                notes: shotForm.notes || '',
+                assignedTo: shotForm.assignedTo || user?.id,
+                scheduledTime: shotForm.scheduledTime,
+                completedAt: shotForm.completedAt
+              };
+
+              if (editingShot) {
+                updateShotListManager.mutate({
+                  ...editingShot,
+                  ...basePayload
+                });
+              } else {
+                createShot.mutate(basePayload);
+              }
               setShowDialog(false);
               setEditingShot(null);
           }}

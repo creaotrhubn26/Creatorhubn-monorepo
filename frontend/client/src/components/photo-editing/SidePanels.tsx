@@ -148,7 +148,7 @@ export default function SidePanels({
                     sx={{
                       color: '#e6e6e6',
                       fontSize: '13px',
-                      fontWeight: 50}}
+                      fontWeight: 500}}
                   >
                     {section.title}
                   </Typography>

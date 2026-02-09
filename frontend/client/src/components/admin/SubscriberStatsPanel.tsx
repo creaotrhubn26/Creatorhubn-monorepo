@@ -81,7 +81,7 @@ export default function SubscriberStatsPanel({
   const { auth } = useEnhancedMasterIntegration();
   
   // Theming system
-  const theming = useTheming('prototype_tester, ');
+  const theming = useTheming('prototype_tester');
   const { isDemoMode } = useDemoMode();
   
   const [lastChecked, setLastChecked] = useState<Date>(new Date());

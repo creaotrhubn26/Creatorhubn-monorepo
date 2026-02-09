@@ -23,10 +23,12 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
+  DialogContentText,
   DialogActions,
   FormControlLabel,
   Checkbox,
   Autocomplete,
+  Snackbar,
 } from '@mui/material';
 import { PlayArrow, Stop, Add, Delete, CloudUpload, Assessment } from '@mui/icons-material';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
@@ -282,11 +284,15 @@ export default function StemplingsystemEnhanced() {
           setHourlyRate(v);
           return;
         }
-      } catch {}
+      } catch (err) {
+        console.warn('Failed to load hourly rate from server', err);
+      }
       try {
         const saved = localStorage.getItem('hourlyRate');
         if (saved) setHourlyRate(parseFloat(saved) || 0);
-      } catch {}
+      } catch (err) {
+        console.warn('Failed to read hourly rate from local storage', err);
+      }
     })();
   }, []);
 
@@ -298,6 +304,12 @@ export default function StemplingsystemEnhanced() {
   const [selectedEntries, setSelectedEntries] = useState<string[]>([]);
   const [selectedTravelLogs, setSelectedTravelLogs] = useState<string[]>([]);
 
+  // Snackbar state
+  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'warning' | 'info' }>({ open: false, message: '', severity: 'info' });
+
+  // Confirm delete dialog state
+  const [deleteConfirmDialog, setDeleteConfirmDialog] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
+
   // Persist hourly rate (server-first, local mirror)
   useEffect(() => {
     (async () => {
@@ -307,8 +319,12 @@ export default function StemplingsystemEnhanced() {
           headers: { 'Content-Type' : 'application/json' },
           body: JSON.stringify({ key: 'hourlyRate', value: hourlyRate }),
         });
-      } catch {}
-      try { localStorage.setItem('hourlyRate', String(hourlyRate)); } catch {}
+      } catch (_kverr) {
+        // Silently handle KV error
+      }
+      try { localStorage.setItem('hourlyRate', String(hourlyRate)); } catch (_storageerr) {
+        // Silently handle storage error
+      }
     })();
   }, [hourlyRate]);
 
@@ -327,7 +343,7 @@ export default function StemplingsystemEnhanced() {
   const {
     data: entries = [],
     isLoading: entriesLoading,
-    refetch: refetchEntries,
+    refetch: _refetchEntries,
   } = useQuery({
     queryKey: ['timeEntries', dateRange.startDate, dateRange.endDate],
     queryFn: () => fetchTimeEntries(dateRange.startDate, dateRange.endDate),
@@ -335,7 +351,7 @@ export default function StemplingsystemEnhanced() {
 
   const {
     data: activeSession,
-    refetch: refetchSession,
+    refetch: _refetchSession,
   } = useQuery({
     queryKey: ['activeSession'],
     queryFn: fetchActiveSession,
@@ -421,7 +437,7 @@ const clockInMutation = useMutation({
     mutationFn: createArchive,
     onSuccess: () => {
       setArchiveDialogOpen(false);
-      alert('Arkiv opprettet i Google Drive!');
+      setSnackbar({ open: true, message: 'Arkiv opprettet i Google Drive!', severity: 'success' });
     },
   });
 
@@ -432,14 +448,14 @@ const clockInMutation = useMutation({
       setSelectedEntries([]);
       queryClient.invalidateQueries({ queryKey: ['timeEntries'] });
       queryClient.invalidateQueries({ queryKey: ['uninvoicedEntries'] });
-      alert('Faktura opprettet i Fiken!');
+      setSnackbar({ open: true, message: 'Faktura opprettet i Fiken!', severity: 'success' });
     },
   });
 
   // Handlers
 function handleAddEntry() {
     if (!date || !start || !end || !title.trim()) {
-      alert('Fyll inn Dato, Inn, Ut og Tittel.');
+      setSnackbar({ open: true, message: 'Fyll inn Dato, Inn, Ut og Tittel.', severity: 'warning' });
       return;
     }
 
@@ -461,13 +477,19 @@ function handleAddEntry() {
   }
 
   function handleDelete(id: string) {
-    if (!confirm('Slette denne raden?')) return;
-    deleteMutation.mutate(id);
+    setDeleteConfirmDialog({ open: true, id });
+  }
+
+  function confirmDelete() {
+    if (deleteConfirmDialog.id) {
+      deleteMutation.mutate(deleteConfirmDialog.id);
+    }
+    setDeleteConfirmDialog({ open: false, id: null });
   }
 
 function handleClockIn() {
     if (!title.trim()) {
-      alert('Skriv en tittel før du stempler inn.');
+      setSnackbar({ open: true, message: 'Skriv en tittel før du stempler inn.', severity: 'warning' });
       return;
     }
 
@@ -494,7 +516,7 @@ function handleClockIn() {
 
   function handleCreateFikenInvoice() {
     if (selectedEntries.length === 0) {
-      alert('Velg minst én tidsoppføring.');
+      setSnackbar({ open: true, message: 'Velg minst én tidsoppføring.', severity: 'warning' });
       return;
     }
 
@@ -1072,6 +1094,43 @@ return (
             </Button>
           </DialogActions>
         </Dialog>
+
+        {/* Delete Confirmation Dialog */}
+        <Dialog
+          open={deleteConfirmDialog.open}
+          onClose={() => setDeleteConfirmDialog({ open: false, id: null })}
+        >
+          <DialogTitle>Bekreft sletting</DialogTitle>
+          <DialogContent>
+            <DialogContentText>
+              Slette denne raden?
+            </DialogContentText>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setDeleteConfirmDialog({ open: false, id: null })}>
+              Avbryt
+            </Button>
+            <Button onClick={confirmDelete} color="error" variant="contained">
+              Slett
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Snackbar for notifications */}
+        <Snackbar
+          open={snackbar.open}
+          autoHideDuration={4000}
+          onClose={() => setSnackbar((prev) => ({ ...prev, open: false }))}
+          anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        >
+          <Alert
+            onClose={() => setSnackbar((prev) => ({ ...prev, open: false }))}
+            severity={snackbar.severity}
+            variant="filled"
+          >
+            {snackbar.message}
+          </Alert>
+        </Snackbar>
       </Box>
     </Box>
   );

@@ -179,7 +179,7 @@ class RateLimiter {
     
     return {
       limit: this.config.maxRequests,
-      remaining: Math.max, (this.config.maxRequests - recentRequests.length),
+      remaining: Math.max(0, this.config.maxRequests - recentRequests.length),
       reset: windowStart + this.config.windowMs
 };
 }
@@ -197,7 +197,7 @@ class RateLimiter {
     
     return {
       limit: actionLimit.maxActions,
-      remaining: Math.max, (actionLimit.maxActions - recentActions.length),
+      remaining: Math.max(0, actionLimit.maxActions - recentActions.length),
       reset: windowStart + actionLimit.windowMs
 };
 }
@@ -238,7 +238,7 @@ class RateLimiter {
     return {
       totalRequests,
       activeKeys,
-      windowMs: this.config.windows,
+      windowMs: this.config.windowMs,
       maxRequests: this.config.maxRequests,
       actionLimits: this.actionLimits.size
 };
@@ -257,10 +257,11 @@ class RateLimiter {
       
       if (this.config.standardHeaders) {
         res.set({
-          'X-RateLimit-Limit, ': result.limit.toString() 'X-RateLimit-Remaining': result.remaining.toString(),
+          'X-RateLimit-Limit': result.limit.toString(),
+          'X-RateLimit-Remaining': result.remaining.toString(),
           'X-RateLimit-Reset': new Date(result.reset).toISOString()
-      });
-    }
+        });
+      }
       
       if (this.config.legacyHeaders) {
         res.set({
@@ -294,48 +295,49 @@ export const rateLimiter = new RateLimiter();
 export const DEFAULT_ACTION_LIMITS: Record<string, ActionRateLimit> = {
   'file_upload': {
     actionType: 'file_upload',
-    windowMs: 60 * 100, // 1 minute
+    windowMs: 60 * 1000, // 1 minute
     maxActions:  5,
     burstLimit:  2,
     priority: 'high'
 },
   'api_request': {
     actionType: 'api_request',
-    windowMs: 60 * 100, // 1 minute
+    windowMs: 60 * 1000, // 1 minute
     maxActions:  60,
     burstLimit:  10,
     priority: 'medium'
 },
   'login_attempt': {
     actionType: 'login_attempt',
-    windowMs: 15 * 60 * 100, // 15 minutes
+    windowMs: 15 * 60 * 1000, // 15 minutes
     maxActions:  5,
     burstLimit:  2,
     priority: 'critical'
 },
   'password_reset': {
     actionType: 'password_reset',
-    windowMs: 60 * 60 * 100, // 1 hour
+    windowMs: 60 * 60 * 1000, // 1 hour
     maxActions:  3,
     burstLimit:  1,
     priority: 'critical'
 },
   'email_send': {
     actionType: 'email_send',
-    windowMs: 60 * 100, // 1 minute
+    windowMs: 60 * 1000, // 1 minute
     maxActions:  10,
     burstLimit:  3,
     priority: 'high'
 },
   'data_export': {
     actionType: 'data_export',
-    windowMs: 5 * 60 * 100, // 5 minutes
+    windowMs: 5 * 60 * 1000, // 5 minutes
     maxActions:  2,
     burstLimit:  1,
     priority: 'medium'
-}'search_query': {
+  },
+  'search_query': {
     actionType: 'search_query',
-    windowMs: 60 * 100, // 1 minute
+    windowMs: 60 * 1000, // 1 minute
     maxActions:  30,
     burstLimit:  5,
     priority: 'low'
@@ -394,7 +396,7 @@ export class AdaptiveRateLimiter extends RateLimiter {
   private adaptiveConfig: Map<string, { multiplier: number; lastUpdate: number }> = new Map();
 
   checkAdaptiveRateLimit(key: string, isError: boolean = false): RateLimitResult {
-    const behavior = this.userBehavior.get(key) || { requests:,  0errors:  ,  0lastSeen:  0 };
+    const behavior = this.userBehavior.get(key) || { requests: 0, errors: 0, lastSeen: 0 };
     const now = Date.now();
     
     // Update behavior
@@ -416,7 +418,7 @@ export class AdaptiveRateLimiter extends RateLimiter {
   }
     
     // Apply adaptive multiplier
-    const adaptiveConfig = this.adaptiveConfig.get(key) || { multiplier: 1, .lastUpdate: now };
+    const adaptiveConfig = this.adaptiveConfig.get(key) || { multiplier: 1, lastUpdate: now };
     adaptiveConfig.multiplier = multiplier;
     adaptiveConfig.lastUpdate = now;
     this.adaptiveConfig.set(key, adaptiveConfig);

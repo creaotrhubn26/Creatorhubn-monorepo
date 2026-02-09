@@ -14,6 +14,7 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
+  DialogContentText,
   DialogActions,
   IconButton,
   Chip,
@@ -24,6 +25,8 @@ import {
   Menu,
   MenuItem,
   Tooltip,
+  ListItemIcon,
+  ListItemText,
 } from '@mui/material';
 import {
   Add,
@@ -78,6 +81,7 @@ export default function PresetManager({
   const [presetDescription, setPresetDescription] = useState('');
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [selectedPreset, setSelectedPreset] = useState<Preset | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const categories = ['Portrait','Landscape','Wedding','Commercial','Vintage','Cinematic','Custom'];
 
@@ -116,15 +120,17 @@ export default function PresetManager({
     setEditingPreset(null);
   }, [presetName, presetCategory, presetDescription, editingPreset, onPresetSave]);
 
-  const handleDeletePreset = useCallback(
-    async (presetId: string) => {
-      if (window.confirm('Are you sure you want to delete this preset?')) {
-        await onPresetDelete?.(presetId);
-        setAnchorEl(null);
-      }
-    },
-    [onPresetDelete]
-  );
+  const handleDeletePreset = useCallback((presetId: string) => {
+    setConfirmDeleteId(presetId);
+    setAnchorEl(null);
+  }, []);
+
+  const executeDeletePreset = useCallback(async () => {
+    if (confirmDeleteId) {
+      await onPresetDelete?.(confirmDeleteId);
+      setConfirmDeleteId(null);
+    }
+  }, [confirmDeleteId, onPresetDelete]);
 
   const handleToggleFavorite = useCallback(
     (preset: Preset) => {
@@ -324,6 +330,25 @@ export default function PresetManager({
             <Button onClick={() => setOpenDialog(false)}>Cancel</Button>
             <Button variant="contained" onClick={handleSavePreset} disabled={!presetName.trim()}>
               {editingPreset ? 'Update' : 'Create'}
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Confirm Delete Dialog */}
+        <Dialog
+          open={!!confirmDeleteId}
+          onClose={() => setConfirmDeleteId(null)}
+        >
+          <DialogTitle>Delete Preset</DialogTitle>
+          <DialogContent>
+            <DialogContentText>
+              Are you sure you want to delete this preset? This action cannot be undone.
+            </DialogContentText>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setConfirmDeleteId(null)}>Cancel</Button>
+            <Button onClick={executeDeletePreset} color="error" variant="contained">
+              Delete
             </Button>
           </DialogActions>
         </Dialog>

@@ -81,7 +81,7 @@ export const CombinedCameraDiscoveryManager: React.FC<CombinedCameraDiscoveryMan
   onPhotoCameraUpdate
 }) => {
   // Theming system
-  const theming = useTheming('prototype_tester, ');
+  const theming = useTheming('prototype_tester');
   const [activeTab, setActiveTab] = useState(0);
   const [isDiscovering, setIsDiscovering] = useState(false);
   const [videoResults, setVideoResults] = useState<VideoCameraDiscoveryResult[]>([]);

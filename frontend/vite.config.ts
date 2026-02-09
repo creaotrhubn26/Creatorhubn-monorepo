@@ -120,7 +120,7 @@ export default defineConfig({
     // Optimize build for better performance
     target: 'esnext',
     minify: 'esbuild',
-    sourcemap: process.env.NODE_ENV === 'development',
+    sourcemap: false,
     rollupOptions: {
       external: (id) => {
         // Exclude unused directory from build
@@ -156,7 +156,7 @@ export default defineConfig({
   },
   css: {
     // Optimize CSS
-    devSourcemap: process.env.NODE_ENV === 'development',
+    devSourcemap: false,
   },
   optimizeDeps: {
     include: ['buffer'],

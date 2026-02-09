@@ -13,6 +13,12 @@ import {
   Typography,
   Chip,
   LinearProgress,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions,
+  Button,
 } from '@mui/material';
 import {
   ChevronLeft,
@@ -74,6 +80,7 @@ export default function FilmStrip({
   const stripRef = useRef<HTMLDivElement>(null);
   const [scrollPosition, setScrollPosition] = useState(0);
   const [hoveredPhotoId, setHoveredPhotoId] = useState<string | null>(null);
+  const [confirmDeletePhotoId, setConfirmDeletePhotoId] = useState<string | null>(null);
 
   const scrollLeft = () => {
     if (stripRef.current) {
@@ -119,8 +126,13 @@ export default function FilmStrip({
 
   const handleDeleteClick = (e: React.MouseEvent, photoId: string) => {
     e.stopPropagation();
-    if (window.confirm('Delete this photo?')) {
-      onPhotoDelete?.(photoId);
+    setConfirmDeletePhotoId(photoId);
+  };
+
+  const executeDeletePhoto = () => {
+    if (confirmDeletePhotoId) {
+      onPhotoDelete?.(confirmDeletePhotoId);
+      setConfirmDeletePhotoId(null);
     }
   };
 
@@ -403,6 +415,25 @@ export default function FilmStrip({
           );
         })}
       </Box>
+
+      {/* Confirm Delete Photo Dialog */}
+      <Dialog
+        open={!!confirmDeletePhotoId}
+        onClose={() => setConfirmDeletePhotoId(null)}
+      >
+        <DialogTitle>Delete Photo</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Delete this photo? This action cannot be undone.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmDeletePhotoId(null)}>Cancel</Button>
+          <Button onClick={executeDeletePhoto} color="error" variant="contained">
+            Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Paper>
   );
 }

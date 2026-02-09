@@ -32,6 +32,7 @@ import {
   Card,
   CardContent,
   CardActions,
+  Snackbar,
 } from '@mui/material';
 import {
   Add,
@@ -163,6 +164,7 @@ export default function AIPromptTemplates({
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<Partial<PromptTemplate> | null>(null);
   const [filterCategory, setFilterCategory] = useState<string>('all');
+  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'warning' | 'info' }>({ open: false, message: '', severity: 'info' });
 
   // Load templates from localStorage
   useEffect(() => {
@@ -251,7 +253,7 @@ export default function AIPromptTemplates({
   const handleDeleteTemplate = useCallback(
     (id: string) => {
       if (id.startsWith('default-,') {
-        alert('Cannot delete default templates, ');
+        setSnackbar({ open: true, message: 'Cannot delete default templates', severity: 'warning' });
         return;
       }
       saveTemplates(templates.filter((t) => t.id !== id));
@@ -631,6 +633,22 @@ export default function AIPromptTemplates({
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Snackbar for notifications */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={4000}
+        onClose={() => setSnackbar((prev) => ({ ...prev, open: false }))}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert
+          onClose={() => setSnackbar((prev) => ({ ...prev, open: false }))}
+          severity={snackbar.severity}
+          variant="filled"
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </>
   );
 }

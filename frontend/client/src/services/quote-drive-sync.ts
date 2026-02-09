@@ -118,8 +118,8 @@ class QuoteDriveSyncService {
       // Generate filename with client name
       const sanitizedClientName = job.clientName
         .replace(/[^a-zA-Z0-9æøåÆØÅ\s]/g, '')
-        .replace(/\s+/g'_');
-      const finalSuffix = job.isFinal ? '_GODKJENT' : ',';
+        .replace(/\s+/g, '_');
+      const finalSuffix = job.isFinal ? '_GODKJENT' : '';
       const filename = `${sanitizedClientName}_${job.quoteNumber}${finalSuffix}.pdf`;
 
       const formData = new FormData();

@@ -1,15 +1,3 @@
-/**
- * AI AUDIO ANALYSIS PANEL
- * Integrated AI-powered audio analysis for AudioEnhancementSuite
- *
- * Features: * - Speech detection
- * - Speaker identification (diarization)
- * - Audio scene classification
- * - Music genre detection
- * - Transcript generation
- * - Mood/emotion analysis
- */
-
 import React, { useState, useRef } from 'react';
 import {
   Box,
@@ -25,7 +13,7 @@ import {
   ListItem,
   ListItemText,
   ListItemIcon,
-  Divider,
+  Divider
 } from '@mui/material';
 import {
   GraphicEq,
@@ -35,7 +23,7 @@ import {
   Transcribe,
   Psychology,
   Person,
-  CheckCircle,
+  CheckCircle
 } from '@mui/icons-material';
 import { AIVisionService, AudioSceneAnalysis } from '@/services/ai-vision-service';
 
@@ -53,158 +41,116 @@ interface AIAudioAnalysisPanelProps {
   onTranscriptGenerated?: (transcript: string) => void;
 }
 
+interface TranscriptSegment {
+  start: number;
+  end: number;
+  text: string;
+}
+
 export default function AIAudioAnalysisPanel({
   currentAudio,
   onSpeakersDetected,
   onSceneClassified,
-  onTranscriptGenerated,
+  onTranscriptGenerated
 }: AIAudioAnalysisPanelProps) {
   const [analyzing, setAnalyzing] = useState(false);
   const [audioAnalysis, setAudioAnalysis] = useState<AudioSceneAnalysis | null>(null);
   const [transcript, setTranscript] = useState<string>('');
-  const [speakers, setSpeakers] = useState<
-    Array<{ id: number; segments: Array<{ start: number; end: number; text: string }> }>
-  >([]);
+  const [segments, setSegments] = useState<TranscriptSegment[]>([]);
+  const [error, setError] = useState<string | null>(null);
 
   const audioRef = useRef<HTMLAudioElement>(null);
 
-  /**
-   * Analyze audio file
-   */
   const handleAnalyzeAudio = async () => {
     if (!currentAudio) return;
-
     setAnalyzing(true);
+    setError(null);
+
     try {
-      // Fetch audio as blob
       const response = await fetch(currentAudio.url);
       const blob = await response.blob();
-
-      // Analyze audio
       const analysis = await AIVisionService.analyzeAudioScene(blob, {
         detectSpeakers: true,
-        classifyMusic: true,
+        classifyMusic: true
       });
 
       setAudioAnalysis(analysis);
       onSceneClassified?.(analysis);
-
       if (analysis.speakers) {
         onSpeakersDetected?.(analysis.speakers);
       }
-    } catch (error) {
-      console.error('Audio analysis failed: ', error);
+    } catch (err) {
+      console.error('Audio analysis failed:', err);
+      setError('Kunne ikke analysere lyden.');
     } finally {
       setAnalyzing(false);
     }
   };
 
-  /**
-   * Generate transcript using backend Whisper proxy (secure - API key on server)
-   */
   const handleGenerateTranscript = async () => {
     if (!currentAudio) return;
-
     setAnalyzing(true);
+    setError(null);
+
     try {
-      // Fetch audio as blob
       const response = await fetch(currentAudio.url);
       const audioBlob = await response.blob();
 
-      // Create form data for backend proxy
       const formData = new FormData();
-      formData.append('audio,', audioBlob, currentAudio.name || 'audio.mp3');
-      formData.append('language', audioAnalysis?.language || 'en');
-      formData.append('responseFormat', 'verbose_json'); // Get timestamps
+      formData.append('audio', audioBlob, currentAudio.name || 'audio.mp3');
+      formData.append('language', audioAnalysis?.language || 'no');
 
-      // Call backend Whisper proxy (secure - API key stays on server)
       const whisperResponse = await fetch('/api/ai/transcribe', {
         method: 'POST',
-        body: formData,
+        body: formData
       });
 
       if (!whisperResponse.ok) {
-        const errorData = await whisperResponse.json();
-        throw new Error(`Transcription error: ${errorData.message || whisperResponse.status}`);
+        const errorData = await whisperResponse.json().catch(() => ({}));
+        throw new Error(errorData.message || 'Transcription failed');
       }
 
       const responseData = await whisperResponse.json();
       const transcriptionData = responseData.data || responseData;
-      const transcriptText = transcriptionData.text || ', ';
-
-      // Parse segments for speaker diarization (if available)
-      if (transcriptionData.segments && transcriptionData.segments.length > 0) {
-        const speakerSegments = groupSegmentsBySpeaker(transcriptionData.segments);
-        setSpeakers(speakerSegments);
-      }
+      const transcriptText = transcriptionData.text || '';
+      const transcriptSegments = Array.isArray(transcriptionData.segments)
+        ? transcriptionData.segments.map((segment: any) => ({
+            start: Number(segment.start),
+            end: Number(segment.end),
+            text: String(segment.text || '')
+          }))
+        : [];
 
       setTranscript(transcriptText);
+      setSegments(transcriptSegments);
       onTranscriptGenerated?.(transcriptText);
-    } catch (error) {
-      console.error('Transcript generation failed: ', error);
-      alert(`Transcription failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } catch (err) {
+      console.error('Transcript generation failed:', err);
+      setError(err instanceof Error ? err.message : 'Transkripsjon feilet');
     } finally {
       setAnalyzing(false);
     }
   };
 
-  /**
-   * Group transcript segments by speaker (simple heuristic)
-   */
-  const groupSegmentsBySpeaker = (segments: unknown[]): typeof speakers => {
-    // Simple speaker grouping based on silence gaps
-    const speakerGroups: typeof speakers = [];
-    let currentSpeakerId = 0;
-    let lastEndTime = 0;
-
-    segments.forEach((segment) => {
-      const silenceGap = segment.start - lastEndTime;
-
-      // If gap > 2 seconds, assume new speaker
-      if (silenceGap > 2.0 && speakerGroups.length > 0) {
-        currentSpeakerId++;
-      }
-
-      if (!speakerGroups[currentSpeakerId]) {
-        speakerGroups[currentSpeakerId] = {
-          id: currentSpeakerId,
-          segments: [],
-        };
-      }
-
-      speakerGroups[currentSpeakerId].segments.push({
-        start: segment.start,
-        end: segment.end,
-        text: segment.text,
-      });
-
-      lastEndTime = segment.end;
-    });
-
-    return speakerGroups;
-  };
-
-  /**
-   * Get scene type icon
-   */
   const getSceneIcon = (type: string) => {
     switch (type) {
-      case 'speech': return <RecordVoiceOver />;
-      case 'music': return <MusicNote />;
-      case 'mixed': return <GraphicEq />;
-      default: return <GraphicEq />;
+      case 'speech':
+        return <RecordVoiceOver />;
+      case 'music':
+        return <MusicNote />;
+      case 'mixed':
+        return <GraphicEq />;
+      default:
+        return <GraphicEq />;
     }
   };
 
-  /**
-   * Get mood color
-   */
   const getMoodColor = (mood?: string): string => {
     const colors: Record<string, string> = {
       energetic: '#e74c3c',
       calm: '#3498db',
       emotional: '#9b59b6',
-      joyful: '#f39c12',
+      joyful: '#f39c12'
     };
     return mood ? colors[mood] || '#95a5a6' : '#95a5a6';
   };
@@ -216,7 +162,6 @@ export default function AIAudioAnalysisPanel({
       </Typography>
 
       <Stack spacing={2}>
-        {/* Audio Player */}
         {currentAudio && (
           <Card>
             <CardContent>
@@ -228,7 +173,6 @@ export default function AIAudioAnalysisPanel({
           </Card>
         )}
 
-        {/* Analysis Controls */}
         <Card>
           <CardContent>
             <Stack spacing={2}>
@@ -242,7 +186,8 @@ export default function AIAudioAnalysisPanel({
                   startIcon={<Psychology />}
                   onClick={handleAnalyzeAudio}
                   disabled={!currentAudio || analyzing}
-                  sx={{ bgcolor: '#e74c3c' }}>
+                  sx={{ bgcolor: '#e74c3c' }}
+                >
                   Analyze Audio
                 </Button>
                 <Button
@@ -259,7 +204,7 @@ export default function AIAudioAnalysisPanel({
                 <Box>
                   <LinearProgress sx={{ mb: 1 }} />
                   <Typography variant="caption" color="text.secondary">
-                    Analyzing audio...
+                    Analyserer lyden...
                   </Typography>
                 </Box>
               )}
@@ -267,198 +212,89 @@ export default function AIAudioAnalysisPanel({
           </CardContent>
         </Card>
 
-        {/* Audio Scene Analysis */}
+        {error && <Alert severity="error">{error}</Alert>}
+
         {audioAnalysis && (
           <Card>
             <CardContent>
-              <Typography variant="body2" fontWeight={600} gutterBottom>
-                Scene Analysis
+              <Typography variant="subtitle2" gutterBottom>
+                Analysis Result
               </Typography>
-              <Stack spacing={2}>
-                <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+
+              <Stack direction="row" spacing={1} flexWrap="wrap">
+                <Chip
+                  icon={getSceneIcon(audioAnalysis.type)}
+                  label={`Scene: ${audioAnalysis.type}`}
+                  variant="outlined"
+                />
+                {audioAnalysis.mood && (
                   <Chip
-                    icon={getSceneIcon(audioAnalysis.type)}
-                    label={audioAnalysis.type.toUpperCase()}
-                    sx={{ bgcolor: '#3498db', color: '#fff' }} />
-                  {audioAnalysis.mood && (
-                    <Chip
-                      label={audioAnalysis.mood}
-                      size="small"
-                      sx={{ bgcolor: getMoodColor(audioAnalysis.mood), color: '#fff' }} />
-                  )}
-                  <Chip
-                    label={`${Math.round(audioAnalysis.confidence * 100)}% confidence`}
-                    size="small"
-                    variant="outlined"
+                    icon={<GraphicEq />}
+                    label={`Mood: ${audioAnalysis.mood}`}
+                    sx={{ bgcolor: getMoodColor(audioAnalysis.mood), color: '#fff' }}
                   />
-                </Box>
-
-                <Divider />
-
-                <Stack spacing={1}>
-                  {audioAnalysis.speakers !== undefined && (
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Person fontSize="small" />
-                      <Typography variant="body2">
-                        <strong>Speakers:</strong> {audioAnalysis.speakers}
-                      </Typography>
-                    </Box>
-                  )}
-
-                  {audioAnalysis.language && (
-                    <Typography variant="body2">
-                      <strong>Language:</strong> {audioAnalysis.language}
-                    </Typography>
-                  )}
-
-                  {audioAnalysis.musicGenre && (
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <MusicNote fontSize="small" />
-                      <Typography variant="body2">
-                        <strong>Genre:</strong> {audioAnalysis.musicGenre}
-                      </Typography>
-                    </Box>
-                  )}
-                </Stack>
-
-                {audioAnalysis.type === 'speech' && (
-                  <Alert severity="info">
-                    Speech detected. Use "Generate Transcript" for full transcription.
-                  </Alert>
                 )}
-
-                {audioAnalysis.type === 'music' && audioAnalysis.mood && (
-                  <Alert severity="success">
-                    Music mood: {audioAnalysis.mood}. Consider matching video scenes with similar
-                    energy.
-                  </Alert>
+                {audioAnalysis.language && (
+                  <Chip icon={<RecordVoiceOver />} label={`Language: ${audioAnalysis.language}`} />
+                )}
+                {audioAnalysis.musicGenre && (
+                  <Chip icon={<MusicNote />} label={`Genre: ${audioAnalysis.musicGenre}`} />
                 )}
               </Stack>
+
+              <Divider sx={{ my: 2 }} />
+
+              <List dense>
+                <ListItem>
+                  <ListItemIcon>
+                    <Person />
+                  </ListItemIcon>
+                  <ListItemText
+                    primary="Speakers"
+                    secondary={audioAnalysis.speakers ? `${audioAnalysis.speakers} detected` : 'Not detected'}
+                  />
+                </ListItem>
+                <ListItem>
+                  <ListItemIcon>
+                    <CheckCircle />
+                  </ListItemIcon>
+                  <ListItemText
+                    primary="Confidence"
+                    secondary={`${Math.round(audioAnalysis.confidence * 100)}%`}
+                  />
+                </ListItem>
+              </List>
             </CardContent>
           </Card>
         )}
 
-        {/* Transcript */}
         {transcript && (
           <Card>
             <CardContent>
-              <Typography
-                variant="body2"
-                fontWeight={600}
-                gutterBottom
-                sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Transcribe /> Transcript
+              <Typography variant="subtitle2" gutterBottom>
+                Transcript
               </Typography>
-              <Box
-                sx={{
-                  p: 2,
-                  bgcolor: '#f5f5f5',
-                  borderRadius: 1,
-                  maxHeight: 300,
-                  overflowY: 'auto'}}>
-                <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
-                  {transcript}
-                </Typography>
-              </Box>
-              <Box sx={{ mt: 1, display: 'flex', gap: 1 }}>
-                <Button
-                  size="small"
-                  variant="outlined"
-                  onClick={() => navigator.clipboard.writeText(transcript)}
-                >
-                  Copy
-                </Button>
-                <Button
-                  size="small"
-                  variant="outlined"
-                  onClick={() => {
-                    const blob = new Blob([transcript], { type: 'text/plain' });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = `${currentAudio?.name || 'transcript'}.txt`;
-                    a.click();
-                  }}
-                >
-                  Download
-                </Button>
-              </Box>
+              <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
+                {transcript}
+              </Typography>
+              {segments.length > 0 && (
+                <List dense sx={{ mt: 2 }}>
+                  {segments.map((segment, index) => (
+                    <ListItem key={`${segment.start}-${index}`}>
+                      <ListItemIcon>
+                        <GraphicEq />
+                      </ListItemIcon>
+                      <ListItemText
+                        primary={segment.text}
+                        secondary={`${segment.start.toFixed(1)}s - ${segment.end.toFixed(1)}s`}
+                      />
+                    </ListItem>
+                  ))}
+                </List>
+              )}
             </CardContent>
           </Card>
         )}
-
-        {/* Speaker Segments (if available) */}
-        {speakers.length > 0 && (
-          <Card>
-            <CardContent>
-              <Typography variant="body2" fontWeight={600} gutterBottom>
-                Speaker Diarization ({speakers.length} speakers)
-              </Typography>
-              <List dense>
-                {speakers.map((speaker) => (
-                  <ListItem key={speaker.id}>
-                    <ListItemIcon>
-                      <Person />
-                    </ListItemIcon>
-                    <ListItemText
-                      primary={`Speaker ${speaker.id + 1}`}
-                      secondary={`${speaker.segments.length} segments`}
-                    />
-                  </ListItem>
-                ))}
-              </List>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Recommendations */}
-        {audioAnalysis && (
-          <Card>
-            <CardContent>
-              <Typography variant="body2" fontWeight={600} gutterBottom>
-                💡 Recommendations
-              </Typography>
-              <List dense>
-                {audioAnalysis.type === 'speech' && (
-                  <ListItem>
-                    <ListItemIcon>
-                      <CheckCircle sx={{ color: '#27ae60' }} />
-                    </ListItemIcon>
-                    <ListItemText primary="Apply noise reduction for clearer dialogue" />
-                  </ListItem>
-                )}
-                {audioAnalysis.mood === 'energetic' && (
-                  <ListItem>
-                    <ListItemIcon>
-                      <CheckCircle sx={{ color: '#27ae60' }} />
-                    </ListItemIcon>
-                    <ListItemText primary="Pair with high-energy video scenes" />
-                  </ListItem>
-                )}
-                {audioAnalysis.mood === 'calm' && (
-                  <ListItem>
-                    <ListItemIcon>
-                      <CheckCircle sx={{ color: '#27ae60' }} />
-                    </ListItemIcon>
-                    <ListItemText primary="Use for ambient backgrounds or emotional moments" />
-                  </ListItem>
-                )}
-                {audioAnalysis.musicGenre && (
-                  <ListItem>
-                    <ListItemIcon>
-                      <CheckCircle sx={{ color:'#27ae60' }} />
-                    </ListItemIcon>
-                    <ListItemText
-                      primary={`Consider ${audioAnalysis.musicGenre} themes for video editing`}
-                    />
-                  </ListItem>
-                )}
-              </List>
-            </CardContent>
-          </Card>
-        )}
-
-        {!currentAudio && <Alert severity="info">Load an audio file to start AI analysis</Alert>}
       </Stack>
     </Box>
   );

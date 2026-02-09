@@ -56,7 +56,7 @@ export const ChatWithPrivacy: React.FC<ChatWithPrivacyProps> = ({
   const [consentGiven, setConsentGiven] = useState(false);
   
   // Theming system
-  const theming = useTheming('photographer, ');
+  const theming = useTheming('photographer');
   const [showConsentDialog, setShowConsentDialog] = useState(true);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [newMessage, setNewMessage] = useState('');
@@ -313,7 +313,7 @@ export const ChatWithPrivacy: React.FC<ChatWithPrivacyProps> = ({
                   borderRadius: message.isOperator ? '12px 12px 4px 12px' : '12px 12px 12px 4px'
             }}
                sx={theming.getThemedCardSx()}>
-                <Typography variant="body2" sx={{ fontWeight: 5, mb: 0.5}}>
+                <Typography variant="body2" sx={{ fontWeight: 500, mb: 0.5}}>
                   {message.senderName}
                 </Typography>
                 <Typography variant="body1">{message.content}</Typography>

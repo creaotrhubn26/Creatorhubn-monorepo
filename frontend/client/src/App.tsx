@@ -29,6 +29,7 @@ import { DemoModeProvider } from './contexts/DemoModeContext';
 import { UniversalSessionProvider } from './contexts/UniversalSessionContext';
 import { ClientSessionProvider } from './contexts/ClientSessionContext';
 import { AuthProvider } from './contexts/AuthContext';
+import { ProjectProvider } from './contexts/ProjectContext';
 import UniversalSessionManager from './components/session/UniversalSessionManager';
 import { Toaster } from '@/components/ui/toaster';
 import { useDynamicProfessions } from '@/components/universal/hooks/useDynamicProfessions';
@@ -86,6 +87,7 @@ import AdminInviteSystem from '@/pages/admin-invite-system';
 // import LogoTestSimple from '@/pages/logo-test-simple'; // Removed
 // import PhotoEnhancerTest from '@/pages/PhotoEnhancerTest'; // File deleted
 import UniversalShowcase from '@/components/universal/UniversalShowcase';
+import UniversalDashboard from '@/components/universal/UniversalDashboard';
 // import BackgroundUploadTest from '@/pages/background-upload-test'; // Has syntax errors
 // import DownloadTest from '@/pages/download-test'; // File doesn't exist
 // import UnifiedFileManagerTest from '@/pages/unified-file-manager-test'; // File doesn't exist
@@ -103,6 +105,7 @@ import WireMockDashboard from '@/pages/WireMockDashboard';
 import VisualCMSAdminDashboard from '@/components/admin/VisualCMSAdminDashboard';
 import BringShippingDashboard from '@/components/shipping/BringShippingDashboard';
 import UniversalVendorDashboard from '@/components/vendor/UniversalVendorDashboard';
+import NorthtoneVendorShowcase from '@/components/vendor/NorthtoneVendorShowcase';
 import CompleteDeploymentManager from '@/components/admin/CompleteDeploymentManager';
 import VisualEditorWithPageSelection from '@/components/visual-editor/VisualEditorWithPageSelection';
 import CreatorhubVisualEditorRefactored from '@/components/admin/visual-editor/CreatorhubVisualEditorRefactored';
@@ -136,6 +139,9 @@ import VirtualStudioPage from '@/pages/VirtualStudioPage';
 import { BringPhotographerDashboard } from './components/bring/BringPhotographerDashboard';
 import { EnhancedMasterIntegrationProvider } from './integration/EnhancedMasterIntegrationProvider';
 import IntegrationTest from './integration/IntegrationTest';
+import ResumeBuilder from '@/components/resume/ResumeBuilder';
+import LinkedInCallback from '@/pages/LinkedInCallback';
+import LoginPageSimple from '@/pages/LoginPageSimple';
 // Wrapper components for route compatibility
 const AdminDashboardWrapper = (props: any) => <AdminDashboard {...props} />;
 const CompleteDeploymentManagerWrapper = (props: any) => <CompleteDeploymentManager {...props} />;
@@ -166,28 +172,23 @@ const CommunityLandingPageWrapper = () => {
 // Smart Dynamic Dashboard Route Component
 const SmartDashboardRoute = ({ profession }: { profession?: ValidProfession }) => {
   const { getUserProfession } = useDynamicProfessions();
-  const { data: currentUser } = useQuery<CurrentUser>({
-    queryKey: ['/api/auth/current-user'],
-    retry: false,
-    refetchOnWindowFocus: false,
-    staleTime: 5 * 60 * 1000,
-});
+  
+  // Authentication disabled - use mock data
+  const currentUser = {
+    email: 'admin@local.dev',
+    isAdmin: true,
+    id: 'local-admin'
+  };
 
   // Check if user is admin
   const isAdmin = currentUser?.email === 'user?.id || user?.email || "unknown-user"' || currentUser?.isAdmin;
-
-  // For admin users, use universal dashboard logic
-  if (isAdmin && !profession) {
-    // Admin sees universal dashboard by default
-    return <div>Admin Dashboard</div>;
-}
 
   const userProfession = getUserProfession();
 
   // Use specified profession, user's profession, or default fallback
   const targetProfession = (profession || userProfession || 'photographer') as ValidProfession;
 
-  return <div>Dashboard for {targetProfession}</div>;
+  return <UniversalDashboard profession={targetProfession} />;
 };
 
 // Smart Dynamic Showcase Route Component
@@ -256,8 +257,11 @@ function App() {
                     enablePerformanceMonitoring={true}
                     enableAnalytics={true}
                   >
-                    <GlobalChatProvider>
+                    <ProjectProvider>
+                      <GlobalChatProvider>
                 <Switch>
+                  {/* Login route */}
+                  <Route path="/login" component={LoginPageSimple} />
                   {/* <Route path="/test" component={TestMinimal} /> */}
                   {/* TEMPORARY: Demo route for Wedding Timeline Admin - bypasses auth */}
                   <Route path="/wedding-timeline-admin-demo" component={() => (
@@ -273,6 +277,7 @@ function App() {
                   <Route path="/email-designer" component={EmailDesignerPage} />
                   {/* <Route path="/google-oauth-setup" component={GoogleOAuthSetupPage} /> */}
                   {/* <Route path="/oauth-setup" component={OAuthSetup} /> */}
+                  <Route path="/auth/linkedin/callback" component={LinkedInCallback} />
                   <Route path="/admin" component={AdminDashboardWrapper} />
                   <Route path="/verification-demo" component={VerificationSystemDashboard as React.ComponentType<any>} />
                   <Route path="/visual-cms-admin" component={VisualCMSAdminDashboard as React.ComponentType<any>} />
@@ -330,7 +335,12 @@ function App() {
                     path="/vendor-dashboard"
                     component={() => <SmartDashboardRoute profession="vendor" />}
                   />
+                  <Route
+                    path="/northtone-showcase"
+                    component={() => <NorthtoneVendorShowcase />}
+                  />
                   <Route path="/settings" component={() => <SmartDashboardRoute />} />
+                  <Route path="/resume-builder" component={ResumeBuilder} />
                   <Route path="/showcase-admin" component={ShowcaseAdmin as React.ComponentType<any>} />
                   {/* Plugin management routes removed - file doesn't exist */}
                   <Route path="/request-access" component={RequestAccess as React.ComponentType<any>} />
@@ -471,7 +481,8 @@ function App() {
                 <UniversalSessionManager />
                 <Toaster />
                 <SpeedInsights />
-                    </GlobalChatProvider>
+                      </GlobalChatProvider>
+                    </ProjectProvider>
                   </EnhancedMasterIntegrationProvider>
                 </AuthProvider>
               </ThemeProvider>

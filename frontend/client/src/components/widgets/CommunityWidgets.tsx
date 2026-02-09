@@ -223,7 +223,9 @@ export function ProductRoadmapWidget({ groupId, onViewFull }: ProductRoadmapWidg
                   sx={{ 
                     height: 6, 
                     borderRadius: 3,
-                    bgcolor: `${config.color}20`'& .MuiLinearProgress-bar': { bgcolor: config.color }}}
+                    bgcolor: `${config.color}20`,
+                    '& .MuiLinearProgress-bar': { bgcolor: config.color }
+                  }}
                 />
               </Box>
             );

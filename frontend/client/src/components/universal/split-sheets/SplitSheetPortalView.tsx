@@ -667,9 +667,9 @@ export default function SplitSheetPortalView({
         <DialogActions>
           <Button onClick={() => {
             setShowSignDialog(false);
-            setSignatureName(', ');
-            setSignaturePin(', ');
-            setSignaturePassword(', ');
+            setSignatureName('');
+            setSignaturePin('');
+            setSignaturePassword('');
             setSendEmailCopy(false);
             setEmailForCopy(contributorEmail || '');
           }}>
@@ -685,34 +685,9 @@ export default function SplitSheetPortalView({
               (selectedSplitSheet?.require_password_for_signature && !signaturePassword) ||
               (sendEmailCopy && !emailForCopy)
             }
-            sx={{ bgcolor: brandColor'&:hover': { bgcolor: brandColor } }}
+            sx={{ bgcolor: brandColor, '&:hover': { bgcolor: brandColor } }}
           >
             {signMutation.isPending ? 'Signerer...' : 'Signer'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-                Din andel: <strong>{selectedSplitSheet.percentage}%</strong>
-              </Typography>
-              <TextField
-                fullWidth
-                label="Navn for signatur"
-                value={signatureName}
-                onChange={(e) => setSignatureName(e.target.value)}
-                required
-                sx={{ mt: 2 }}
-              />
-            </Box>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setShowSignDialog(false)}>Avbryt</Button>
-          <Button
-            variant="contained"
-            onClick={handleSign}
-            disabled={!signatureName || signMutation.isPending}
-            sx={{ bgcolor: brandColor }}
-          >
-            {signMutation.isPending ? 'Signerer...' : 'Bekreft signatur'}
           </Button>
         </DialogActions>
       </Dialog>

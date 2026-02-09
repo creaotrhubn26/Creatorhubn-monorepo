@@ -1,7 +1,6 @@
 import { useTheming } from '../../utils/theming-helper';
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useAuth } from '@/hooks/useAuth';
 import {
   Box,
   Typography,
@@ -46,19 +45,85 @@ import { getAllVendorTypes, enableVendorType, VendorTypeConfig } from '@shared/v
 
 interface VendorTypeManagerProps {
   onTypeEnabled?: (typeId: string) => void;
-  onMeetingCreate?: (meeting: any) => void;
-  onProjectUpdate?: (project: any) => void;
-  onWorklogCreate?: (worklog: any) => void;
-  onClientSelect?: (client: any) => void;
-  onClientUpdate?: (client: any) => void;
-  onShowcaseCreate?: (showcase: any) => void;
-  onFileUpload?: (file: any) => void;
-  onFileDownload?: (file: any) => void;
-  selectedProject?: any;
-  onProjectSelect?: (project: any) => void;
-  selectedClient?: any;
-  onSettingsUpdate?: (settings: any) => void;
-  onNotificationCreate?: (notification: any) => void
+  onMeetingCreate?: (meeting: VendorMeeting) => void;
+  onProjectUpdate?: (project: VendorProjectUpdate) => void;
+  onWorklogCreate?: (worklog: VendorWorklog) => void;
+  onClientSelect?: (client: VendorClientSelection | null) => void;
+  onClientUpdate?: (client: VendorClientUpdate) => void;
+  onShowcaseCreate?: (showcase: VendorShowcase) => void;
+  onFileUpload?: (file: VendorFileEvent) => void;
+  onFileDownload?: (file: VendorFileEvent) => void;
+  selectedProject?: VendorProjectSelection | null;
+  onProjectSelect?: (project: VendorProjectSelection | null) => void;
+  selectedClient?: VendorClientSelection | null;
+  onSettingsUpdate?: (settings: VendorSettingsUpdate) => void;
+  onNotificationCreate?: (notification: VendorNotification) => void
+}
+
+interface VendorNotification {
+  id: string;
+  title: string;
+  message: string;
+  severity: 'info' | 'success' | 'warning' | 'error';
+  createdAt: string;
+}
+
+interface VendorProjectSelection {
+  id: string;
+  name?: string;
+}
+
+interface VendorProjectUpdate {
+  id?: string;
+  status?: string;
+  vendorType?: string;
+  updatedAt: string;
+}
+
+interface VendorMeeting {
+  id: string;
+  title: string;
+  agenda?: string;
+  scheduledFor?: string;
+}
+
+interface VendorWorklog {
+  id: string;
+  title: string;
+  description?: string;
+  createdAt: string;
+}
+
+interface VendorClientSelection {
+  id: string;
+  name?: string;
+  email?: string;
+}
+
+interface VendorClientUpdate {
+  id: string;
+  note?: string;
+  updatedAt: string;
+}
+
+interface VendorShowcase {
+  id: string;
+  title: string;
+  productIds: string[];
+  createdAt: string;
+}
+
+interface VendorFileEvent {
+  id: string;
+  name: string;
+  url?: string;
+  createdAt: string;
+}
+
+interface VendorSettingsUpdate {
+  key: string;
+  value: string | number | boolean | string[];
+  updatedAt: string;
 }
 
 // Category type for editing
@@ -92,22 +157,47 @@ export default function VendorTypeManager({
   const [editingType, setEditingType] = useState<VendorTypeConfig | null>(null);
   const [editingCategories, setEditingCategories] = useState<ProductCategory[]>([]);
   const [originalCategories, setOriginalCategories] = useState<ProductCategory[]>([]); // Track original for change detection
-  const [newCategory, setNewCategory] = useState<ProductCategory>({ id: '', label: ',', color: '#2196f3' });
+  const [newCategory, setNewCategory] = useState<ProductCategory>({ id: '', label: '', color: '#2196f3' });
   const [categoryChangeNotice, setCategoryChangeNotice] = useState<string | null>(null);
+  const [importingCategories, setImportingCategories] = useState(false);
   
   const queryClient = useQueryClient();
   
   // Theming system
   const theming = useTheming('vendor');
 
+  const createNotification = useCallback((title: string, message: string, severity: VendorNotification['severity']) => {
+    onNotificationCreate?.({
+      id: `vendor-type-notification-${Date.now()}`,
+      title,
+      message,
+      severity,
+      createdAt: new Date().toISOString()
+    });
+  }, [onNotificationCreate]);
+
+  useEffect(() => {
+    if (selectedProject && onProjectSelect) {
+      onProjectSelect(selectedProject);
+    }
+  }, [onProjectSelect, selectedProject]);
+
+  useEffect(() => {
+    if (selectedClient && onClientSelect) {
+      onClientSelect(selectedClient);
+    }
+  }, [onClientSelect, selectedClient]);
+
   // Fetch current vendor types
-  const { data: vendorTypesData, isLoading } = useQuery({
+  const { data: vendorTypesData, isLoading } = useQuery<{ vendorTypes?: VendorTypeConfig[]; totalTypes?: number }>({
     queryKey: ['/api/vendor-types'],
     queryFn: () => apiRequest('/api/vendor-types')
   });
 
+  const fallbackVendorTypes = useMemo(() => getAllVendorTypes(), []);
+
   // Fetch available expandable types
-  const { data: availableTypes } = useQuery({
+  const { data: availableTypes } = useQuery<{ availableTypes?: VendorTypeConfig[]; count?: number }>({
     queryKey: ['/api/vendor-types/expandable/available'],
     queryFn: () => apiRequest('/api/vendor-types/expandable/available')
   });
@@ -125,10 +215,44 @@ export default function VendorTypeManager({
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['/api/vendor-types']});
       queryClient.invalidateQueries({ queryKey: ['/api/vendor-types/expandable/available']});
+      if (data?.config?.id) {
+        enableVendorType(data.config.id);
+      }
       setEnableDialogOpen(false);
       if (onTypeEnabled) {
         onTypeEnabled(data.config.id);
       }
+      onSettingsUpdate?.({
+        key: 'vendor_type_enabled',
+        value: data.config.id,
+        updatedAt: new Date().toISOString()
+      });
+      onWorklogCreate?.({
+        id: `worklog-type-${data.config.id}`,
+        title: 'Aktiverte vendor type',
+        description: data.config.name,
+        createdAt: new Date().toISOString()
+      });
+      onProjectUpdate?.({
+        id: selectedProject?.id,
+        status: 'vendor_type_enabled',
+        vendorType: data.config.id,
+        updatedAt: new Date().toISOString()
+      });
+      if (selectedClient) {
+        onClientUpdate?.({
+          id: selectedClient.id,
+          note: `Vendor type aktivert: ${data.config.name}`,
+          updatedAt: new Date().toISOString()
+        });
+      }
+      onMeetingCreate?.({
+        id: `meeting-type-${data.config.id}`,
+        title: `Oppstart: ${data.config.name}`,
+        agenda: 'Gjennomgang av nye funksjoner og kategorier.',
+        scheduledFor: new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString()
+      });
+      createNotification('Vendor type aktivert', `${data.config.name} er nå aktiv.`, 'success');
     }
   });
 
@@ -150,6 +274,17 @@ export default function VendorTypeManager({
       setEditingCategories([]);
       setOriginalCategories([]);
       setCategoryChangeNotice(null);
+      onSettingsUpdate?.({
+        key: 'vendor_categories_updated',
+        value: editingType?.id || '',
+        updatedAt: new Date().toISOString()
+      });
+      onWorklogCreate?.({
+        id: `worklog-categories-${Date.now()}`,
+        title: 'Oppdaterte produktkategorier',
+        description: editingType?.name,
+        createdAt: new Date().toISOString()
+      });
     }
   });
 
@@ -174,6 +309,11 @@ export default function VendorTypeManager({
         setEditingCategories(data.categories);
         setOriginalCategories(data.categories);
       }
+      onSettingsUpdate?.({
+        key: 'vendor_category_updated',
+        value: data.categories?.map((cat: ProductCategory) => cat.id) || [],
+        updatedAt: new Date().toISOString()
+      });
     }
   });
 
@@ -191,19 +331,30 @@ export default function VendorTypeManager({
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['/api/vendor-types']});
       if (data.affectedProducts > 0) {
-        setCategoryChangeNotice(`${data.affectedProducts} produkter ble flyttet til "${data.replacementCategory},".`);
+        setCategoryChangeNotice(`${data.affectedProducts} produkter ble flyttet til "${data.replacementCategory}".`);
       }
       // Update local state
       if (data.categories) {
         setEditingCategories(data.categories);
         setOriginalCategories(data.categories);
       }
+      onSettingsUpdate?.({
+        key: 'vendor_category_deleted',
+        value: data.replacementCategory || '',
+        updatedAt: new Date().toISOString()
+      });
     }
   });
 
   const handleEnableType = (type: VendorTypeConfig) => {
     setSelectedType(type);
     setEnableDialogOpen(true);
+    onShowcaseCreate?.({
+      id: `showcase-type-${type.id}`,
+      title: `${type.name} Showcase`,
+      productIds: [],
+      createdAt: new Date().toISOString()
+    });
   };
 
   const confirmEnableType = () => {
@@ -218,7 +369,7 @@ export default function VendorTypeManager({
     const categories = type.productCategories || [];
     setEditingCategories(categories);
     setOriginalCategories(JSON.parse(JSON.stringify(categories))); // Deep copy for change detection
-    setNewCategory({ id: ', ', label: ', ', color: type.color || '#2196f3' });
+    setNewCategory({ id: '', label: '', color: type.color || '#2196f3' });
     setCategoryChangeNotice(null);
     setCategoriesDialogOpen(true);
   };
@@ -227,12 +378,12 @@ export default function VendorTypeManager({
   const handleAddCategory = () => {
     if (newCategory.id && newCategory.label && editingType) {
       // Generate ID from label if not provided
-      const categoryId = newCategory.id || newCategory.label.toLowerCase().replace(/\s+/g, '_, ');
+      const categoryId = newCategory.id || newCategory.label.toLowerCase().replace(/\s+/g, '_');
       const categoryToAdd = { ...newCategory, id: categoryId };
 
       // Add locally first for immediate feedback
       setEditingCategories([...editingCategories, categoryToAdd]);
-      setNewCategory({ id: ', ', label: ', ', color: editingType?.color || '#2196f3' });
+      setNewCategory({ id: '', label: '', color: editingType?.color || '#2196f3' });
 
       // Also add via API for bidirectional sync
       apiRequest(`/api/vendor-types/${editingType.id}/categories`, {
@@ -302,6 +453,64 @@ export default function VendorTypeManager({
     }
   };
 
+  const handleExportCategories = () => {
+    if (!editingType) return;
+    const payload = JSON.stringify(editingCategories, null, 2);
+    const blob = new Blob([payload], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const fileName = `${editingType.id}-categories.json`;
+    onFileDownload?.({
+      id: `download-${editingType.id}-${Date.now()}`,
+      name: fileName,
+      url,
+      createdAt: new Date().toISOString()
+    });
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = fileName;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportCategories = (file: File) => {
+    if (!editingType) return;
+    setImportingCategories(true);
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const parsed = JSON.parse(String(reader.result)) as ProductCategory[];
+        const sanitized = parsed
+          .filter((category) => category.id && category.label)
+          .map((category) => ({
+            id: category.id.toLowerCase().replace(/\s+/g, '_'),
+            label: category.label,
+            color: category.color || editingType.color || '#2196f3'
+          }));
+        setEditingCategories(sanitized);
+        updateTypeMutation.mutate({
+          typeId: editingType.id,
+          updates: { productCategories: sanitized }
+        });
+        onFileUpload?.({
+          id: `upload-${editingType.id}-${Date.now()}`,
+          name: file.name,
+          createdAt: new Date().toISOString()
+        });
+        createNotification('Kategorier importert', `Importererte ${sanitized.length} kategorier.`, 'success');
+      } catch (error) {
+        console.error('Failed to import categories', error);
+        createNotification('Import feilet', 'Kunne ikke importere kategorifil.', 'error');
+      } finally {
+        setImportingCategories(false);
+      }
+    };
+    reader.onerror = () => {
+      setImportingCategories(false);
+      createNotification('Import feilet', 'Kunne ikke lese filen.', 'error');
+    };
+    reader.readAsText(file);
+  };
+
   const getCategoryColor = (category: string) => {
     const colors = {
       creative: '#e91e63',
@@ -354,7 +563,7 @@ export default function VendorTypeManager({
         </Typography>
         
         <Grid container spacing={2}>
-          {vendorTypesData?.vendorTypes?.map((type: VendorTypeConfig) => (
+          {(vendorTypesData?.vendorTypes?.length ? vendorTypesData.vendorTypes : fallbackVendorTypes).map((type: VendorTypeConfig) => (
             <Grid item xs={12} sm={6} md={4} key={type.id}>
               <Card sx={{ 
                 height: '100%',
@@ -570,7 +779,7 @@ export default function VendorTypeManager({
                       <ListItemIcon>
                         <CheckCircle color="success" />
                       </ListItemIcon>
-                      <ListItemText primary={feature.replace('_', ', ')} />
+                      <ListItemText primary={feature.replace(/_/g, ' ')} />
                     </ListItem>
                   ))}
               </List>
@@ -671,6 +880,30 @@ export default function VendorTypeManager({
                     Legg til
                   </Button>
                 </Stack>
+                <Box sx={{ display: 'flex', gap: 1, mt: 2, flexWrap: 'wrap' }}>
+                  <Button variant="outlined" onClick={handleExportCategories}>
+                    Eksporter kategorier
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    component="label"
+                    disabled={importingCategories}
+                  >
+                    {importingCategories ? 'Importerer...' : 'Importer kategorier'}
+                    <input
+                      type="file"
+                      accept="application/json"
+                      hidden
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        if (file) {
+                          handleImportCategories(file);
+                        }
+                        event.target.value = '';
+                      }}
+                    />
+                  </Button>
+                </Box>
               </Paper>
 
               {/* Current Categories */}

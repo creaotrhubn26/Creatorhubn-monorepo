@@ -19,7 +19,7 @@ export default function GoogleDocsIntegration() {
   const { integration, communication, dataFlow, componentRegistry } = useEnhancedMasterIntegration();
   
   // Theming system
-  const theming = useTheming('prototype_tester, ');
+  const theming = useTheming('prototype_tester');
   
   // Database connection for GoogleDocsIntegration
   const { data: componentData = [], isLoading } = useQuery({

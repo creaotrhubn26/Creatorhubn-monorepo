@@ -442,7 +442,7 @@ export function VisualEditor({ enabled = false, onToggle }: VisualEditorProps) {
              sx={theming.getThemedCardSx()}>
               {/* Header */}
               <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
-                <Typography variant="h6" color="primary.main" sx={{  fontWeight: 70 }}>
+                <Typography variant="h6" color="primary.main" sx={{  fontWeight: 700 }}>
                   🎨 Visual Editor
                 </Typography>
                 <IconButton size="small" onClick={toggleVisualEditor}>

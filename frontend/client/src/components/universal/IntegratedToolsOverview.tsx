@@ -71,6 +71,10 @@ const IntegratedToolsOverview: React.FC<IntegratedToolsOverviewProps> = ({
 }) => {
 	  const theming = useTheming(profession);
 	  const [openTool, setOpenTool] = useState<string>('');
+    const { user } = useAuth();
+    const vendorType = profession === 'vendor' ? 'general' : profession;
+    const vendorName = user?.name || 'Vendor';
+    const vendorUserId = user?.id || 'current-user';
 
   const handleToolClick = (toolName: string) => {
     setOpenTool(toolName);
@@ -96,14 +100,20 @@ const IntegratedToolsOverview: React.FC<IntegratedToolsOverviewProps> = ({
         return <ContextualPhotographyTipsOverlay />;
       case 'personalized-news':
 	      window.open('/personalized-news', '_blank');
-        setOpenTool(', ');
+        setOpenTool('');
         return null;
       case 'video-tools':
         return <div>Video Editing Tools - Component Not Available</div>;
       case 'music-tools':
         return <MusicProductionTools />;
       case 'vendor-tools':
-        return <VendorManagementTools />;
+        return (
+          <VendorManagementTools
+            vendorType={vendorType}
+            vendorName={vendorName}
+            userId={vendorUserId}
+          />
+        );
       case 'universal-onboarding':
         return <UniversalOnboarding />;
       case '3d-lighting-simulator':

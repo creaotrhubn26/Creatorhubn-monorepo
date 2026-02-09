@@ -143,7 +143,7 @@ export class TestingQAService {
 
     // Check for common issues
     const parser = new DOMParser();
-    const doc = parser.parseFromString(html 'text/html');
+    const doc = parser.parseFromString(html, 'text/html');
 
     // Check images without alt
     const images = doc.querySelectorAll('img:not([alt])');

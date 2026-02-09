@@ -28,6 +28,7 @@ import {
   FormControlLabel,
   OutlinedInput,
   SelectChangeEvent,
+  Snackbar,
 } from '@mui/material';
 import {
   Visibility as PreviewIcon,
@@ -227,14 +228,14 @@ export default function AnnouncementCreator() {
 
     // Validate file type
     if (!file.type.startsWith('video/')) {
-      alert('Vennligst velg en videofil');
+      setErrorSnackbar({ open: true, message: 'Vennligst velg en videofil' });
       return;
     }
 
     // Validate file size (max 500MB)
     const maxSize = 500 * 1024 * 1024;
     if (file.size > maxSize) {
-      alert('Videofilen er for stor. Maks størrelse er 500MB');
+      setErrorSnackbar({ open: true, message: 'Videofilen er for stor. Maks størrelse er 500MB' });
       return;
     }
 
@@ -286,7 +287,7 @@ export default function AnnouncementCreator() {
       });
 
       xhr.addEventListener('error', () => {
-        alert('Opplasting feilet. Prøv igjen.');
+        setErrorSnackbar({ open: true, message: 'Opplasting feilet. Prøv igjen.' });
         setIsUploading(false);
       });
 
@@ -294,7 +295,7 @@ export default function AnnouncementCreator() {
       xhr.send(formData);
     } catch (error) {
       console.error('Upload error: ', error);
-      alert('Opplasting feilet. Prøv igjen.');
+      setErrorSnackbar({ open: true, message: 'Opplasting feilet. Prøv igjen.' });
       setIsUploading(false);
     }
   };
@@ -754,6 +755,22 @@ export default function AnnouncementCreator() {
           setTimeout(() => setSuccessMessage(''), 3000);
         }}
       />
+
+      {/* Error Snackbar */}
+      <Snackbar
+        open={errorSnackbar.open}
+        autoHideDuration={6000}
+        onClose={() => setErrorSnackbar({ open: false, message: '' })}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert 
+          onClose={() => setErrorSnackbar({ open: false, message: '' })} 
+          severity="error"
+          sx={{ width: '100%' }}
+        >
+          {errorSnackbar.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 }

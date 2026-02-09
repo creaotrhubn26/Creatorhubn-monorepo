@@ -1,7 +1,7 @@
 import { useTheming } from '../../utils/theming-helper';
 import React, { useState } from 'react';
 import { apiRequest } from '@/lib/queryClient';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
 import {
   Box,
@@ -102,7 +102,7 @@ const showcaseTypes = [
 ];
 
 export const ProjectShowcase: React.FC<ProjectShowcaseProps> = ({ 
-  projectd,
+  projectId,
   onMeetingShare,
   onClientAccess,
   onProjectComplete,
@@ -110,6 +110,7 @@ export const ProjectShowcase: React.FC<ProjectShowcaseProps> = ({
   onProjectUpdate
 }) => {
   const theme = useTheme();
+  const { user } = useAuth();
   
   // Theming system
   const theming = useTheming('photographer');
@@ -134,14 +135,19 @@ export const ProjectShowcase: React.FC<ProjectShowcaseProps> = ({
     enableDualUpload: false,
 });
   const [tagInput, setTagInput] = useState('');
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [sortBy, setSortBy] = useState('newest');
 
   // Fetch showcases
   const { data: showcases = [], isLoading } = useQuery({
     queryKey: [`/api/projects/${projectId}/showcases`],
-    enabled: !!projectd,
+    enabled: !!projectId,
     queryFn: async () => {
       return apiRequest(`/api/projects/${projectId}/showcases`, {
-        headers: auth
+        headers: {
+          'x-user-id': user?.id || 'photographer-session',
+          'Authorization': `Bearer ${user?.id}`
+        }
   });
   },
 });
@@ -150,9 +156,12 @@ export const ProjectShowcase: React.FC<ProjectShowcaseProps> = ({
   const createShowcaseMutation = useMutation({
     mutationFn: async (showcaseData: any) => {
       const response = await fetch(`/api/projects/${projectId}/showcases`, {
+        method: 'POST',
         headers: {
-          ...auth, 'Content-Type':'application/json','x-user-id' : 'photographer-session',
-      },
+          'Content-Type':'application/json',
+          'x-user-id': user?.id || 'photographer-session',
+          'Authorization': `Bearer ${user?.id}`
+        },
         body: JSON.stringify(showcaseData),
     });
       if (!response.ok) throw new Error('Failed to create showcase');
@@ -167,40 +176,44 @@ export const ProjectShowcase: React.FC<ProjectShowcaseProps> = ({
 
   // Update showcase mutation
   const updateShowcaseMutation = useMutation({
-    mutationFn: async ({ showcased, showcaseData }: { showcaseId: string; showcaseData: any }) => {
+    mutationFn: async ({ showcaseId, showcaseData }: { showcaseId: string; showcaseData: any }) => {
       const response = await fetch(`/api/projects/${projectId}/showcases/${showcaseId}`, {
+        method: 'PUT',
         headers: {
-          ...auth, 'Content-Type':'application/json','x-user-id' : 'photographer-session',
-      },
-        body: JSON.stringify(showcaseData),
-    });
+          'Content-Type': 'application/json',
+          'x-user-id': user?.id || 'photographer-session',
+          'Authorization': `Bearer ${user?.id}`
+        },
+        body: JSON.stringify(showcaseData)
+      });
       if (!response.ok) throw new Error('Failed to update showcase');
       return response.json();
-  },
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/projects/${projectId}/showcases`] });
       setDialogOpen(false);
       setEditingShowcase(null);
       resetForm();
-  },
-});
+    }
+  });
 
   // Delete showcase mutation
   const deleteShowcaseMutation = useMutation({
     mutationFn: async (showcaseId: string) => {
       const response = await fetch(`/api/projects/${projectId}/showcases/${showcaseId}`, {
+        method: 'DELETE',
         headers: {
-          ...auth'x-user-id' : 'photographer-session',
-      },
-        method: 'DELET',
-    });
+          'x-user-id': user?.id || 'photographer-session',
+          'Authorization': `Bearer ${user?.id}`
+        }
+      });
       if (!response.ok) throw new Error('Failed to delete showcase');
       return response.json();
-  },
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/projects/${projectId}/showcases`] });
-  },
-});
+    }
+  });
 
   // Share showcase in meeting mutation
   const shareInMeetingMutation = useMutation({
@@ -210,11 +223,11 @@ export const ProjectShowcase: React.FC<ProjectShowcaseProps> = ({
         description: `Review av showcase for ${selectedProject?.title || selectedProject?.name}`,
         participants: [selectedProject?.clientEmail || 'client@example.com', ],
         type: 'showcase_review',
-        projectId: projectd,
+        projectId: projectId,
         projectName: selectedProject?.title || selectedProject?.name,
         clientName: selectedProject?.clientName,
-        showcaseId: showcase.d,
-        showcaseUrl: showcase.videoUrl || showcase.youtubeVideoUl,
+        showcaseId: showcase.id,
+        showcaseUrl: showcase.videoUrl || showcase.youtubeVideoUrl,
         notes: `Showcase: ${showcase.title}\nType: ${showcase.showcaseType}\nDescription: ${showcase.description}`
     };
       
@@ -222,13 +235,13 @@ export const ProjectShowcase: React.FC<ProjectShowcaseProps> = ({
         headers: {
           "Content-Type" : "application/json"
     },
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify(meetingData)
   });
       
       return { meeting: response, showcase };
   },
-    onSuccess: (data) => {
+    onSuccess: (data: { meeting: any; showcase: ProjectShowcase }) => {
       // Notify parent component
       if (onMeetingShare) {
         onMeetingShare(data.showcase, data.meeting);
@@ -240,8 +253,8 @@ export const ProjectShowcase: React.FC<ProjectShowcaseProps> = ({
   const grantClientAccessMutation = useMutation({
     mutationFn: async (showcase: ProjectShowcase) => {
       const clientData = {
-        showcaseId: showcase.d,
-        projectId: projectd,
+        showcaseId: showcase.id,
+        projectId: projectId,
         clientEmail: selectedProject?.clientEmail || 'client@example.com',
         clientName: selectedProject?.clientName,
         accessType: 'view',
@@ -254,13 +267,13 @@ export const ProjectShowcase: React.FC<ProjectShowcaseProps> = ({
         headers: {
           "Content-Type" : "application/json"
     },
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify(clientData)
   });
       
       return { access: response, showcase };
   },
-    onSuccess: (data) => {
+    onSuccess: (data: { access: any; showcase: ProjectShowcase }) => {
       // Notify parent component
       if (onClientAccess) {
         onClientAccess(data.showcase, data.access);
@@ -274,21 +287,21 @@ export const ProjectShowcase: React.FC<ProjectShowcaseProps> = ({
       const projectUpdate = {
         status: 'completed',
         completedAt: new Date().toISOString(),
-        showcaseId: showcase.d,
+        showcaseId: showcase.id,
         showcaseUrl: showcase.videoUrl || showcase.youtubeVideoUrl
-  };
+      };
       
       const response = await apiRequest(`/api/projects/${projectId}`, {
         headers: {
           "Content-Type" : "application/json"
     },
-        method: 'PU',
+        method: 'PUT',
         body: JSON.stringify(projectUpdate)
   });
       
       return { project: response, showcase };
   },
-    onSuccess: (data) => {
+    onSuccess: (data: { project: any; showcase: ProjectShowcase }) => {
       // Notify parent component
       if (onProjectComplete) {
         onProjectComplete(data.showcase);
@@ -350,6 +363,59 @@ export const ProjectShowcase: React.FC<ProjectShowcaseProps> = ({
     // Implementation for Drive Analytics viewing
 };
 
+  // Create Google Drive delivery access for clients
+  const handleCreateDeliveryAccess = async () => {
+    try {
+      const response = await fetch(`/api/projects/${projectId}/drive-delivery-access`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': user?.id || 'photographer-session',
+          'Authorization': `Bearer ${user?.id}`
+        },
+        body: JSON.stringify({
+          projectId,
+          clientEmail: selectedProject?.clientEmail,
+          permissions: 'viewer',
+          notifyClient: true
+        })
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log('✅ Leveringslenke opprettet:', data.shareLink);
+        // Optionally show success notification
+      } else {
+        console.error('❌ Feil ved oppretting av leveringslenke');
+      }
+    } catch (error) {
+      console.error('❌ Feil ved oppretting av leveringslenke:', error);
+    }
+  };
+
+  // View delivery analytics
+  const handleViewDeliveryAnalyticsClick = async () => {
+    try {
+      const response = await fetch(`/api/projects/${projectId}/drive-delivery-analytics`, {
+        method: 'GET',
+        headers: {
+          'x-user-id': user?.id || 'photographer-session',
+          'Authorization': `Bearer ${user?.id}`
+        }
+      });
+      
+      if (response.ok) {
+        const analytics = await response.json();
+        console.log('📊 Leveringsanalyse:', analytics);
+        // Optionally display analytics in a dialog
+      } else {
+        console.error('❌ Feil ved henting av analysedata');
+      }
+    } catch (error) {
+      console.error('❌ Feil ved henting av analysedata:', error);
+    }
+  };
+
   const handleSubmit = () => {
     const submitData = {
       ...formData,
@@ -358,7 +424,7 @@ export const ProjectShowcase: React.FC<ProjectShowcaseProps> = ({
 
     if (editingShowcase) {
       updateShowcaseMutation.mutate({
-        showcaseId: editingShowcase.d,
+        showcaseId: editingShowcase.id,
         showcaseData: submitData,
     });
   } else {
@@ -367,10 +433,14 @@ export const ProjectShowcase: React.FC<ProjectShowcaseProps> = ({
 };
 
   const handleDelete = (showcaseId: string) => {
-    if (window.confirm('Er du sikker på at du vil slette denne visningen?')) {
-      deleteShowcaseMutation.mutate(showcaseId);
-}
-};
+    setConfirmDeleteId(showcaseId);
+  };
+
+  const executeDelete = () => {
+    if (!confirmDeleteId) return;
+    deleteShowcaseMutation.mutate(confirmDeleteId);
+    setConfirmDeleteId(null);
+  };
 
   const handleAddTag = () => {
     if (tagInput.trim() && !formData.tags.includes(tagInput.trim())) {
@@ -398,8 +468,32 @@ export const ProjectShowcase: React.FC<ProjectShowcaseProps> = ({
     return showcases.filter((showcase: ProjectShowcase) => showcase.showcaseType === type);
 };
 
+  // Sort showcases
+  const sortShowcases = (showcasesToSort: ProjectShowcase[]) => {
+    const sorted = [...showcasesToSort];
+    
+    switch (sortBy) {
+      case 'newest':
+        return sorted.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      case 'oldest':
+        return sorted.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+      case 'title':
+        return sorted.sort((a, b) => a.title.localeCompare(b.title));
+      case 'views':
+        return sorted.sort((a, b) => (b.viewCount || 0) - (a.viewCount || 0));
+      case 'featured':
+        return sorted.sort((a, b) => {
+          if (a.isFeatured && !b.isFeatured) return -1;
+          if (!a.isFeatured && b.isFeatured) return 1;
+          return 0;
+        });
+      default:
+        return sorted;
+    }
+  };
+
   const tabTypes = ['all', ...showcaseTypes.map(t => t.value)];
-  const filteredShowcases = filterShowcasesByType(currentTab === 0 ? undefined : tabTypes[currentTab]);
+  const filteredShowcases = sortShowcases(filterShowcasesByType(currentTab === 0 ? undefined : tabTypes[currentTab]));
 
   if (isLoading) {
     return (
@@ -438,17 +532,18 @@ export const ProjectShowcase: React.FC<ProjectShowcaseProps> = ({
       if (formData.enableDualUpload) {
         const deliveryUploadResponse = await fetch(`/api/projects/${projectId}/drive-video-delivery`, {
           headers: {
-            ...auth'Content-Type':'application/json','x-user-id' : 'photographer-session',
-        },
-          method: 'POS',
+            'Content-Type': 'application/json',
+            'x-user-id': 'photographer-session'
+          },
+          method: 'POST',
           body: JSON.stringify({
-            youtubeVideoId: video.d,
+            youtubeVideoId: video.id,
             youtubeVideoUrl: video.url,
             videoTitle: video.title,
             videoDescription: video.description,
             projectId: projectId
-      }),
-      });
+          })
+        });
 
         if (deliveryUploadResponse.ok) {
           const deliveryData = await deliveryUploadResponse.json();
@@ -470,15 +565,16 @@ export const ProjectShowcase: React.FC<ProjectShowcaseProps> = ({
     try {
       const response = await fetch(`/api/projects/${projectId}/drive-share-link`, {
         headers: {
-          ...auth'Content-Type':'application/json', 'x-user-id' : 'photographer-session',
-      },
-        method: 'POS',
+          'Content-Type': 'application/json',
+          'x-user-id': 'photographer-session'
+        },
+        method: 'POST',
         body: JSON.stringify({
-          projectd,
+          projectId,
           type: 'download',
           permissions: 'viewer'
-    }),
-    });
+        })
+      });
 
       if (response.ok) {
         const data = await response.json();
@@ -488,23 +584,6 @@ export const ProjectShowcase: React.FC<ProjectShowcaseProps> = ({
     }
   } catch (error) {
       console.error('Feil ved oppretting av delingslenke:', error);
-  }
-};
-
-  const handleViewDeliveryAnalytics = async () => {
-    try {
-      const response = await fetch(`/api/projects/${projectId}/drive-delivery-analytics`, {
-        headers: {
-          ...auth'x-user-id' : 'photographer-session',
-      },
-    });
-
-      if (response.ok) {
-        const analytics = await response.json();
-        console.log('📁 Leveringsmappe-analytikk:', analytics);
-    }
-  } catch (error) {
-      console.error('Feil ved henting av leveringsmappe-analytikk:', error);
   }
 };
 
@@ -549,7 +628,6 @@ export const ProjectShowcase: React.FC<ProjectShowcaseProps> = ({
                 projectId={projectId}
                 onVideoUploaded={handleDualVideoUpload}
                 onPlaylistCreated={handleYouTubePlaylistCreated}
-                enableDriveBackup={formData.enableDualUpload}
               />
             </Box>
           </AccordionDetails>
@@ -581,7 +659,7 @@ export const ProjectShowcase: React.FC<ProjectShowcaseProps> = ({
                 <Button
                   variant="outlined"
                   startIcon={<AnalyticsIcon />}
-                  onClick={() => handleViewDeliveryAnalytics()}
+                  onClick={() => handleViewDeliveryAnalyticsClick()}
                   color="secondary"
                 >
                   Vis leveringsstatistikk
@@ -592,19 +670,40 @@ export const ProjectShowcase: React.FC<ProjectShowcaseProps> = ({
         </Accordion>
       </Box>
 
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb:  3 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb:  3, gap: 2 }}>
         <Typography variant="h6" sx={{  color: theme.palette.primary.main, fontWeight: 600}}>
           🏆 Prosjekt Visning
         </Typography>
-        <Button variant="contained"
-          startIcon={<AddIcon />}
-          onClick={() => handleOpenDialog()}
-          sx={{
-            background: 'linear-gradient(135deg, #1976d2 0%, #42a5f5 100%)',
-            boxShadow: '0 4px 15px rgba(5, 118, 210, 0.3)'}}
-        >
-          Ny visning
-        </Button>
+        
+        {/* Sorting Select */}
+        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+          <FormControl size="small" sx={{ minWidth: 180 }}>
+            <InputLabel id="showcase-sort-label">Sorter etter</InputLabel>
+            <Select
+              labelId="showcase-sort-label"
+              id="showcase-sort-select"
+              value={sortBy}
+              label="Sorter etter"
+              onChange={(e) => setSortBy(e.target.value)}
+            >
+              <MenuItem value="newest">Nyeste først</MenuItem>
+              <MenuItem value="oldest">Eldste først</MenuItem>
+              <MenuItem value="title">Tittel A-Å</MenuItem>
+              <MenuItem value="views">Flest visninger</MenuItem>
+              <MenuItem value="featured">Fremhevet</MenuItem>
+            </Select>
+          </FormControl>
+          
+          <Button variant="contained"
+            startIcon={<AddIcon />}
+            onClick={() => handleOpenDialog()}
+            sx={{
+              background: 'linear-gradient(135deg, #1976d2 0%, #42a5f5 100%)',
+              boxShadow: '0 4px 15px rgba(5, 118, 210, 0.3)'}}
+          >
+            Ny visning
+          </Button>
+        </Box>
       </Box>
 
       {/* Filter Tabs */}
@@ -643,19 +742,21 @@ export const ProjectShowcase: React.FC<ProjectShowcaseProps> = ({
             const typeInfo = getShowcaseTypeInfo(showcase.showcaseType);
 
             return (
-              <Grid size={{ xs: 12 }} md={6} lg={4} key={showcase.id}>
+              <Grid xs={12} md={6} lg={4} key={showcase.id}>
                 <Card 
                   sx={{ 
                     height: '100%',
                     display: 'flex',
                     flexDirection: 'column',
                     border: `2px solid ${alpha(theme.palette.primary.main, 0.2)}`,
-                    position: 'relative', '&:hover': {
-                      boxShadow: theme.shadows[],
-                      transform: 'translateY(-2px)',
-                  },
-                    transition: 'all 0.3s ease-in-out'}}
-                 sx={theming.getThemedCardSx()}>
+                    position: 'relative',
+                    '&:hover': {
+                      boxShadow: theme.shadows[4],
+                      transform: 'translateY(-2px)'
+                    },
+                    transition: 'all 0.3s ease-in-out',
+                    ...theming.getThemedCardSx()
+                  }}>
                   {showcase.isFeatured && (
                     <Box
                       sx={{
@@ -677,36 +778,42 @@ export const ProjectShowcase: React.FC<ProjectShowcaseProps> = ({
                   )}
 
                   {showcase.showcaseType === 'youtube' && showcase.youtubeVideoId ? (
-                    <CardMedia component="iframe"
-                      src={`https: //www.youtube.com/embed/${showcase.youtubeVideod}`}
+                    <CardMedia
+                      component="iframe"
+                      src={`https://www.youtube.com/embed/${showcase.youtubeVideoId}`}
+                      title={showcase.title}
                       sx={{
-                        height: 20,
-                        border: 'none'}}
-                      title={showcase.title} sx={theming.getThemedCardSx()}>
+                        height: 200,
+                        border: 'none',
+                        ...theming.getThemedCardSx()
+                      }}
+                    />
                   ) : showcase.showcaseType === 'video' && showcase.videoUrl ? (
                     <CardMedia
                       component="div"
                       sx={{
-                        height: 20,
+                        height: 200,
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        bgcolor: alpha(theme.palette.primary.main, 0.1)}}
-                     sx={theming.getThemedCardSx()}>
-                      <VideoLibraryIcon sx={{ fontSize:  48, color: theme.palette.primary.main }} />
+                        bgcolor: alpha(theme.palette.primary.main, 0.1),
+                        ...theming.getThemedCardSx()
+                      }}>
+                      <VideoLibraryIcon sx={{ fontSize: 48, color: theme.palette.primary.main }} />
                     </CardMedia>
                   ) : (
                     <CardMedia
                       component="div"
                       sx={{
-                        height: 20,
+                        height: 200,
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        bgcolor: alpha(theme.palette.primary.main, 0.1)}}
-                     sx={theming.getThemedCardSx()}>
-                      <Box sx={{ textAlign: 'center'}}>
-                        <span style={{ fontSize: '48px'}}>{typeInfo.icon}</span>
+                        bgcolor: alpha(theme.palette.primary.main, 0.1),
+                        ...theming.getThemedCardSx()
+                      }}>
+                      <Box sx={{ textAlign: 'center' }}>
+                        {React.createElement(typeInfo.icon, { style: { fontSize: '48px' } })}
                       </Box>
                     </CardMedia>
                   )}
@@ -778,7 +885,7 @@ export const ProjectShowcase: React.FC<ProjectShowcaseProps> = ({
                         sx={{ color: '#2196f3'}}
                         title="Del i møte"
                       >
-                        {theming.getThemedIcon('videoCall')}
+                        <VideoCall />
                       </IconButton>
                       <IconButton 
                         size="small" 
@@ -787,7 +894,7 @@ export const ProjectShowcase: React.FC<ProjectShowcaseProps> = ({
                         sx={{ color: '#4caf50'}}
                         title="Gi klient tilgang"
                       >
-                        {theming.getThemedIcon('person')}
+                        <Person />
                       </IconButton>
                       <IconButton 
                         size="small" 
@@ -796,7 +903,7 @@ export const ProjectShowcase: React.FC<ProjectShowcaseProps> = ({
                         sx={{ color: '#ff9800'}}
                         title="Merk prosjekt som fullført"
                       >
-                        {theming.getThemedIcon('checkCircle')}
+                        <CheckCircle />
                       </IconButton>
                       <IconButton size="small" onClick={() => handleOpenDialog(showcase)}>
                         <EditIcon />
@@ -850,7 +957,7 @@ export const ProjectShowcase: React.FC<ProjectShowcaseProps> = ({
               {showcaseTypes.map((type) => (
                 <MenuItem key={type.value} value={type.value}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
-                    <span>{type.icon}</span>
+                    {React.createElement(type.icon)}
                     <Box>
                       <Typography variant="body2">{type.label}</Typography>
                       <Typography variant="caption" color="text.secondary">
@@ -1040,6 +1147,18 @@ export const ProjectShowcase: React.FC<ProjectShowcaseProps> = ({
            sx={theming.getThemedButtonSx()}>
             {editingShowcase ? 'Oppdater' : 'Opprett'}
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Confirm Delete Dialog */}
+      <Dialog open={!!confirmDeleteId} onClose={() => setConfirmDeleteId(null)}>
+        <DialogTitle>Bekreft sletting</DialogTitle>
+        <DialogContent>
+          <Typography>Er du sikker på at du vil slette denne visningen? Denne handlingen kan ikke angres.</Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmDeleteId(null)}>Avbryt</Button>
+          <Button onClick={executeDelete} color="error" variant="contained">Slett</Button>
         </DialogActions>
       </Dialog>
     </Box>

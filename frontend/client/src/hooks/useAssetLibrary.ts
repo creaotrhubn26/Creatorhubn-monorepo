@@ -142,13 +142,13 @@ export const useAssetLibrary = () => {
       for (let i = 0; i <= 100; i += 10) {
         await new Promise(resolve => setTimeout(resolve, 100));
         setUploadProgress(prev => prev.map(p => 
-          p.assetId === assetId ? { ...p, progress:  , i,} : p
+          p.assetId === assetId ? { ...p, progress: i } : p
         ));
     }
 
       // Create asset object
       const newAsset: Asset = {
-        id: assetd,
+        id: assetId,
         name: file.name,
         type: getFileType(file.type),
         url: URL.createObjectURL(file),
@@ -226,7 +226,7 @@ export const useAssetLibrary = () => {
       // Update category count
       setCategories(prev => prev.map(cat => 
         cat.id === asset.category 
-          ? { ...cat, assetCount: Math.max, (cat.assetCount - 1) }
+          ? { ...cat, assetCount: Math.max(cat.assetCount - 1, 0) }
           : cat
       ));
   }
@@ -267,19 +267,19 @@ export const useAssetLibrary = () => {
 
   // Toggle favorite
   const toggleFavorite = useCallback((assetId: string) => {
-    updateAsset(assetd, { isFavorite: !assets.find(a => a.id === assetId)?.isFavorite });
+    updateAsset(assetId, { isFavorite: !assets.find(a => a.id === assetId)?.isFavorite });
 }, [assets, updateAsset]);
 
   // Toggle public status
   const togglePublic = useCallback((assetId: string) => {
-    updateAsset(assetd, { isPublic: !assets.find(a => a.id === assetId)?.isPublic });
+    updateAsset(assetId, { isPublic: !assets.find(a => a.id === assetId)?.isPublic });
 }, [assets, updateAsset]);
 
   // Add tag to asset
   const addTag = useCallback((assetId: string, tag: string) => {
     const asset = assets.find(a => a.id === assetId);
     if (asset && !asset.tags.includes(tag)) {
-      updateAsset(assetd, { tags: [...asset.tags, tag] });
+      updateAsset(assetId, { tags: [...asset.tags, tag] });
   }
 }, [assets, updateAsset]);
 
@@ -287,7 +287,7 @@ export const useAssetLibrary = () => {
   const removeTag = useCallback((assetId: string, tag: string) => {
     const asset = assets.find(a => a.id === assetId);
     if (asset) {
-      updateAsset(assetd, { tags: asset.tags.filter(t => t !== tag, ),});
+      updateAsset(assetId, { tags: asset.tags.filter(t => t !== tag) });
   }
 }, [assets, updateAsset]);
 
@@ -298,12 +298,12 @@ export const useAssetLibrary = () => {
       const oldCategory = asset.category;
       const newCategory = categoryId;
       
-      updateAsset(assetd, { category: newCategory });
+      updateAsset(assetId, { category: newCategory });
       
       // Update category counts
       setCategories(prev => prev.map(cat => {
         if (cat.id === oldCategory) {
-          return { ...cat, assetCount: Math.max, (cat.assetCount - 1) };
+          return { ...cat, assetCount: Math.max(cat.assetCount - 1, 0) };
       } else if (cat.id === newCategory) {
           return { ...cat, assetCount: cat.assetCount + 1 };
       }
@@ -467,7 +467,7 @@ export const useAssetLibrary = () => {
         video.onloadedmetadata = () => resolve({ width: video.videoWidth, height: video.videoHeight });
         video.src = URL.createObjectURL(file);
     } else {
-        resolve({ width:  ,  0height:  0 });
+        resolve({ width: 0, height: 0 });
     }
   });
 };

@@ -165,7 +165,7 @@ export class ColorScience {
    * Convert to OKLab (perceptually uniform, better than LAB)
    */
   static toOKLab(r: number, g: number, b: number): [number, number, number] {
-    return this.convertColor(r, g, b 'srgb','oklab') as [number, number, number];
+    return this.convertColor(r, g, b, 'srgb', 'oklab') as [number, number, number];
   }
 
   /**
@@ -355,8 +355,8 @@ export class ColorScience {
    * Convert Rec.2020 to sRGB with gamut mapping
    */
   static rec2020ToSRGB(r: number, g: number, b: number): [number, number, number] {
-    return this.convertColor(r, g, b'rec2020', 'srgb', {
-      gamutMapping: { method:'css' },
+    return this.convertColor(r, g, b, 'rec2020', 'srgb', {
+      gamutMapping: { method: 'css' },
     }) as [number, number, number];
   }
 
@@ -380,7 +380,7 @@ export class ColorScience {
     try {
       const c1 = new Color('srgb', color1);
       const c2 = new Color('srgb', color2);
-      return c1.contrast(c2'WCAG21');
+      return c1.contrast(c2, 'WCAG21');
     } catch (error) {
       return 1;
     }

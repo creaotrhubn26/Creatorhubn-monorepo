@@ -263,19 +263,19 @@ export const ThemeProvider: React.FC<{ children: ReactNode,}> = ({ children }) =
       },
         h3: {
           fontSize: '1.75rem',
-          fontWeight: 50,
+          fontWeight: 500,
       },
         h4: {
           fontSize: '1.5rem',
-          fontWeight: 50,
+          fontWeight: 500,
       },
         h5: {
           fontSize: '1.25rem',
-          fontWeight: 50,
+          fontWeight: 500,
       },
         h6: {
           fontSize: '1rem',
-          fontWeight: 50,
+          fontWeight: 500,
       },
     },
       shape: {
@@ -288,7 +288,7 @@ export const ThemeProvider: React.FC<{ children: ReactNode,}> = ({ children }) =
             root: {
               borderRadius: currentConfig.borderRadius,
               textTransform: 'none',
-              fontWeight: 50,
+              fontWeight: 500,
           },
         },
       },
@@ -513,8 +513,42 @@ export const ThemeProvider: React.FC<{ children: ReactNode,}> = ({ children }) =
 export const useTheme = (): ThemeContextType => {
   const context = useContext(ThemeContext);
   if (context === undefined) {
-    throw new Error('useTheme must be used within a ThemeProvider');
-}
+    // Return a safe default context when used outside of ThemeProvider
+    // This allows components to work without being wrapped in a provider
+    console.warn('useTheme: Component using theme outside of ThemeProvider. Using defaults.');
+    
+    // Create a default MUI theme
+    const defaultTheme = createTheme({
+      palette: {
+        mode: 'light',
+        primary: { main: '#1976d2' },
+        secondary: { main: '#dc004e' },
+      },
+    });
+    
+    return {
+      theme: defaultTheme,
+      themeConfig: defaultThemeConfig,
+      setThemeConfig: () => {},
+      toggleMode: () => {},
+      setMode: () => {},
+      setPrimaryColor: () => {},
+      setSecondaryColor: () => {},
+      setAccentColor: () => {},
+      setProfessionTheme: () => {},
+      getProfessionTheme: (profession: string) => defaultThemeConfig.professionThemes[profession as keyof typeof defaultThemeConfig.professionThemes] || {},
+      setComponentTheme: () => {},
+      getComponentTheme: (component: string) => defaultThemeConfig.componentThemes[component as keyof typeof defaultThemeConfig.componentThemes] || {},
+      getColorPalette: generateColorPalette,
+      getContrastColor: () => '#ffffff',
+      getAccessibleColor: () => '#000000',
+      saveTheme: () => {},
+      loadTheme: () => {},
+      resetTheme: () => {},
+      isDarkMode: false,
+      isSystemTheme: false,
+    };
+  }
   return context;
 };
 
