@@ -4630,6 +4630,164 @@ app.get('/api/wedflow/resolve-couple', async (req: any, res: any) => {
 });
 
 // ==============================================================
+// PHOTO SHOTS BRIDGE — Fetch couple's photo plan for vendor's shot list
+// ==============================================================
+app.get('/api/wedflow/photo-shots-bridge', async (req: any, res: any) => {
+  try {
+    const vendor = await getVendorFromSession(req, res);
+    if (!vendor) return;
+
+    const coupleId = req.query.coupleId as string;
+    if (!coupleId) {
+      return res.status(400).json({ error: 'coupleId er påkrevd' });
+    }
+
+    // Verify vendor has access via conversation
+    const convCheck = await pool.query(
+      'SELECT id FROM conversations WHERE vendor_id = $1 AND couple_id = $2 LIMIT 1',
+      [vendor.id, coupleId]
+    );
+    if (!convCheck.rows.length) {
+      return res.status(403).json({ error: 'Ingen tilgang til dette paret' });
+    }
+
+    // Fetch couple's photo shots from wedflow table
+    const result = await pool.query(
+      `SELECT id, title, description, category, completed, sort_order, created_at
+       FROM couple_photo_shots
+       WHERE couple_id = $1
+       ORDER BY sort_order, created_at`,
+      [coupleId]
+    );
+
+    // Map wedflow categories → CreatorHub scene/shotType
+    const CATEGORY_TO_SCENE: Record<string, string> = {
+      ceremony: 'Ceremony',
+      portraits: 'Portraits',
+      group: 'Group Photos',
+      details: 'Details',
+      reception: 'Reception',
+    };
+
+    const CATEGORY_TO_SHOT_TYPE: Record<string, string> = {
+      ceremony: 'Wide',
+      portraits: 'Medium',
+      group: 'Wide',
+      details: 'Close-up',
+      reception: 'Wide',
+    };
+
+    const mappedShots = result.rows.map((shot: any) => ({
+      id: `wedflow-${shot.id}`,
+      scene: CATEGORY_TO_SCENE[shot.category] || 'Other',
+      title: shot.title,
+      description: shot.description || '',
+      shotType: CATEGORY_TO_SHOT_TYPE[shot.category] || 'Wide',
+      priority: shot.completed ? 'nice_to_have' : 'must_have',
+      status: shot.completed ? 'Completed' : 'Planned',
+      source: 'wedflow-couple',
+      originalCategory: shot.category,
+      sortOrder: shot.sort_order,
+    }));
+
+    // Get couple info for context
+    const coupleResult = await pool.query(
+      `SELECT display_name, selected_traditions FROM couple_profiles WHERE id = $1`,
+      [coupleId]
+    );
+    const couple = coupleResult.rows[0] || {};
+
+    res.json({
+      coupleId,
+      coupleName: couple.display_name || '',
+      traditions: couple.selected_traditions || [],
+      shots: mappedShots,
+      totalShots: mappedShots.length,
+      completedShots: mappedShots.filter((s: any) => s.status === 'Completed').length,
+    });
+  } catch (error) {
+    console.error('Photo shots bridge error:', error);
+    res.status(500).json({ error: 'Kunne ikke hente parets fotoliste' });
+  }
+});
+
+// ==============================================================
+// PUSH VENDOR SHOTS TO COUPLE — Sync vendor's planned shots back to couple
+// ==============================================================
+app.post('/api/wedflow/photo-shots-bridge/push', async (req: any, res: any) => {
+  try {
+    const vendor = await getVendorFromSession(req, res);
+    if (!vendor) return;
+
+    const { coupleId, shots } = req.body;
+    if (!coupleId || !Array.isArray(shots)) {
+      return res.status(400).json({ error: 'coupleId og shots[] er påkrevd' });
+    }
+
+    // Verify vendor has access via conversation
+    const convCheck = await pool.query(
+      'SELECT id FROM conversations WHERE vendor_id = $1 AND couple_id = $2 LIMIT 1',
+      [vendor.id, coupleId]
+    );
+    if (!convCheck.rows.length) {
+      return res.status(403).json({ error: 'Ingen tilgang til dette paret' });
+    }
+
+    // Map CreatorHub shots → wedflow photo_shots format
+    const SCENE_TO_CATEGORY: Record<string, string> = {
+      'Ceremony': 'ceremony',
+      'Pre-Ceremony': 'ceremony',
+      'Post-Ceremony': 'ceremony',
+      'Portraits': 'portraits',
+      'Getting Ready': 'portraits',
+      'Group Photos': 'group',
+      'Family Photos': 'group',
+      'Details': 'details',
+      'Reception': 'reception',
+      'Pre-Wedding': 'ceremony',
+      'Wedding Day': 'ceremony',
+    };
+
+    // Clear existing vendor-pushed shots (they have id prefix 'vendor-')
+    await pool.query(
+      `DELETE FROM couple_photo_shots WHERE couple_id = $1 AND id LIKE 'vendor-%'`,
+      [coupleId]
+    );
+
+    // Insert vendor shots
+    let inserted = 0;
+    for (const shot of shots) {
+      const category = SCENE_TO_CATEGORY[shot.scene] || 'details';
+      const id = `vendor-${crypto.randomUUID().slice(0, 8)}`;
+
+      await pool.query(
+        `INSERT INTO couple_photo_shots (id, couple_id, title, description, category, completed, sort_order, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())`,
+        [
+          id,
+          coupleId,
+          `📸 ${shot.title || shot.scene}`,
+          shot.description ? `Fra fotograf: ${shot.description}` : `Planlagt av ${vendor.business_name}`,
+          category,
+          shot.status === 'Completed',
+          1000 + inserted, // sort after couple's own shots
+        ]
+      );
+      inserted++;
+    }
+
+    res.json({
+      success: true,
+      message: `${inserted} bilder synkronisert til parets fotoliste`,
+      pushedCount: inserted,
+    });
+  } catch (error) {
+    console.error('Push vendor shots error:', error);
+    res.status(500).json({ error: 'Kunne ikke synkronisere fotolisten' });
+  }
+});
+
+// ==============================================================
 // UPDATE EXPECTED GUESTS — Set guest count on couple profile
 // ==============================================================
 app.put('/api/wedflow/couple/guests', async (req: any, res: any) => {

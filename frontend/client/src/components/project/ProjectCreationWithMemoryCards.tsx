@@ -134,6 +134,7 @@ import {
   Close as CloseIcon,
   VideoLibrary,
   LibraryMusic,
+  CameraAlt,
 } from '@mui/icons-material';
 import MemoryCardIcon from '../ui/MemoryCardIcon';
 import MemoryCardSelector from '../memory-card/MemoryCardSelector';
@@ -1311,6 +1312,73 @@ export default function ProjectCreationWithMemoryCards({
     fetchTraditions();
   }, [wedflowCoupleId]);
   // ======= END TRADITIONS BRIDGE =======
+
+  // ======= PHOTO SHOTS BRIDGE =======
+  // Auto-fetch couple's photo plan from wedflow and merge into project shotList
+  const [wedflowPhotoShotsBridge, setWedflowPhotoShotsBridge] = useState<{
+    shots: any[];
+    coupleName: string;
+    totalShots: number;
+    completedShots: number;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!wedflowCoupleId) return;
+    
+    const fetchCouplePhotoShots = async () => {
+      try {
+        const data = await apiRequest(`/api/wedflow/photo-shots-bridge?coupleId=${encodeURIComponent(wedflowCoupleId)}`);
+        if (data?.shots?.length > 0) {
+          setWedflowPhotoShotsBridge(data);
+          
+          // Merge couple's shots into projectData.shotList (avoid duplicates by checking wedflow- prefix)
+          setProjectData(prev => {
+            const existingWedflowIds = new Set(
+              prev.shotList
+                .filter((s: any) => s.id?.startsWith('wedflow-'))
+                .map((s: any) => s.id)
+            );
+            
+            const newShots = data.shots.filter((s: any) => !existingWedflowIds.has(s.id));
+            if (newShots.length === 0) return prev;
+            
+            return {
+              ...prev,
+              shotList: [...prev.shotList, ...newShots],
+            };
+          });
+          
+          console.log(`📸 Photo shots bridge: ${data.totalShots} shots from couple (${data.completedShots} completed)`, data);
+        }
+      } catch (error) {
+        console.warn('Wedflow photo shots bridge fetch failed (non-critical):', error);
+      }
+    };
+    
+    fetchCouplePhotoShots();
+  }, [wedflowCoupleId]);
+
+  // Push vendor's planned shots back to couple's wedflow photo plan
+  const pushShotsToCouple = useCallback(async () => {
+    if (!wedflowCoupleId || !projectData.shotList?.length) return;
+    
+    try {
+      const vendorShots = projectData.shotList.filter((s: any) => !s.id?.startsWith('wedflow-'));
+      if (vendorShots.length === 0) return;
+      
+      const result = await apiRequest('/api/wedflow/photo-shots-bridge/push', {
+        method: 'POST',
+        body: { coupleId: wedflowCoupleId, shots: vendorShots },
+      });
+      
+      if (result?.success) {
+        console.log(`📸 Pushed ${result.pushedCount} vendor shots to couple's photo plan`);
+      }
+    } catch (error) {
+      console.warn('Failed to push shots to couple (non-critical):', error);
+    }
+  }, [wedflowCoupleId, projectData.shotList]);
+  // ======= END PHOTO SHOTS BRIDGE =======
   
 // Load meeting preferences from server (replaces localStorage)
 useEffect(() => {
@@ -2713,6 +2781,60 @@ useEffect(() => {
             </Button>
           </Stack>
         </Alert>
+      )}
+
+      {/* Wedflow Photo Shots Bridge — Show couple's photo wishes from wedflow */}
+      {wedflowPhotoShotsBridge && wedflowPhotoShotsBridge.shots.length > 0 && (
+        <Card sx={{ mt: 3, background: 'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)', color: '#1a1a1a' }}>
+          <CardContent>
+            <Stack direction="row" spacing={2} alignItems="center">
+              <Avatar sx={{ bgcolor: 'rgba(0,0,0,0.1)', width: 56, height: 56 }}>
+                <CameraAlt sx={{ fontSize: 32, color: '#1a1a1a' }} />
+              </Avatar>
+              <Box sx={{ flex: 1 }}>
+                <Typography variant="h6" fontWeight={600}>
+                  📸 Parets fotoliste fra Wedflow
+                </Typography>
+                <Typography variant="body2" sx={{ opacity: 0.85 }}>
+                  {wedflowPhotoShotsBridge.coupleName} har {wedflowPhotoShotsBridge.totalShots} ønskede bilder
+                  {wedflowPhotoShotsBridge.completedShots > 0 && ` (${wedflowPhotoShotsBridge.completedShots} allerede tatt)`}
+                </Typography>
+                <Typography variant="caption" sx={{ opacity: 0.7, display: 'block', mt: 0.5 }}>
+                  Automatisk importert i din shotliste — par og fotograf ser den samme planen
+                </Typography>
+              </Box>
+              <Button
+                variant="contained"
+                size="small"
+                onClick={pushShotsToCouple}
+                disabled={!projectData.shotList?.filter((s: any) => !s.id?.startsWith('wedflow-')).length}
+                sx={{
+                  bgcolor: 'rgba(0,0,0,0.15)',
+                  color: '#1a1a1a',
+                  fontWeight: 600,
+                  '&:hover': { bgcolor: 'rgba(0,0,0,0.25)' },
+                }}
+              >
+                Synk tilbake
+              </Button>
+            </Stack>
+            <Stack direction="row" spacing={1} sx={{ mt: 1.5, flexWrap: 'wrap', gap: 0.5 }}>
+              {['Ceremony','Portraits','Group Photos','Details','Reception']
+                .map(scene => {
+                  const count = wedflowPhotoShotsBridge.shots.filter((s: any) => s.scene === scene).length;
+                  return count > 0 ? (
+                    <Chip
+                      key={scene}
+                      label={`${scene}: ${count}`}
+                      size="small"
+                      sx={{ bgcolor: 'rgba(0,0,0,0.1)', color: '#1a1a1a', fontWeight: 500 }}
+                    />
+                  ) : null;
+                })
+                .filter(Boolean)}
+            </Stack>
+          </CardContent>
+        </Card>
       )}
 
       {/* Project Type Selection with Dynamic Types */}
