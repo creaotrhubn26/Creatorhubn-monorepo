@@ -415,16 +415,21 @@ export default function WeddingTimeline({
       case 'libanesisk':
         return getPakistaniWeddingTimeline(); // Islamic traditions share similar structure
       case 'tyrkisk':
+        return getTurkishWeddingTimeline();
       case 'iransk':
         return getPakistaniWeddingTimeline(); // Similar multi-day structure
       case 'etiopisk':
+        return getEthiopianWeddingTimeline();
       case 'nigeriansk':
-      case 'filipino':
         return getNorwegianWeddingTimeline(); // Adaptable single-day base
+      case 'filipino':
+        return getFilipinoWeddingTimeline();
       case 'kinesisk':
+        return getChineseWeddingTimeline();
       case 'koreansk':
+        return getKoreanWeddingTimeline();
       case 'thai':
-        return getIndianWeddingTimeline(); // Asian traditions share ceremony structure
+        return getIndianWeddingTimeline(); // Thai ceremonies share structure
       case 'norsk':
       case 'annet':
       default:
@@ -1254,6 +1259,254 @@ export default function WeddingTimeline({
       sortOrder:  3,
       notifications_sent: false,
   },
+  ];
+
+  // Tyrkisk bryllup timeline — Kına Gecesi → Nikah → Düğün
+  const getTurkishWeddingTimeline = (): TimelineEvent[] => [
+    {
+      id: 'tr-1',
+      eventId: 'kina-gecesi',
+      time: '18:00-22:00',
+      activity: 'Kına Gecesi — Henna-kveld med tradisjonell dans og musikk',
+      location: 'Familiens hjem eller festlokale',
+      creatorType: 'Fotograf',
+      hasPhoto: true,
+      hasVideo: true,
+      sortOrder: 1,
+      notifications_sent: false,
+    },
+    {
+      id: 'tr-2',
+      eventId: 'gelin-alma',
+      time: '11:00-12:00',
+      activity: 'Gelin Alma — Hente bruden med musikk og dans',
+      location: 'Brudens hjem',
+      creatorType: 'Fotograf',
+      hasPhoto: true,
+      hasVideo: true,
+      sortOrder: 2,
+      notifications_sent: false,
+    },
+    {
+      id: 'tr-3',
+      eventId: 'nikah-seremoni',
+      time: '13:00-14:00',
+      activity: 'Nikah — Vielsesseremoni',
+      location: 'Moské eller vielseslokale',
+      creatorType: 'Fotograf',
+      hasPhoto: true,
+      hasVideo: true,
+      sortOrder: 3,
+      notifications_sent: false,
+    },
+    {
+      id: 'tr-4',
+      eventId: 'taki-toreni',
+      time: '15:00-16:00',
+      activity: 'Takı Töreni — Gull og gaveseremoni fra gjestene',
+      location: 'Bryllupslokale',
+      creatorType: 'Fotograf',
+      hasPhoto: true,
+      hasVideo: false,
+      sortOrder: 4,
+      notifications_sent: false,
+    },
+    {
+      id: 'tr-5',
+      eventId: 'dugun-feiring',
+      time: '17:00-23:00',
+      activity: 'Düğün — Bryllupsfest med Halay-dans og middag',
+      location: 'Bryllupslokale',
+      creatorType: 'Fotograf',
+      hasPhoto: true,
+      hasVideo: true,
+      sortOrder: 5,
+      notifications_sent: false,
+    },
+  ];
+
+  // Kinesisk bryllup timeline — Te-seremoni → Door Games → Bankett
+  const getChineseWeddingTimeline = (): TimelineEvent[] => [
+    {
+      id: 'cn-1',
+      eventId: 'door-games',
+      time: '09:00-10:00',
+      activity: 'Door Games — Brudgommen henter bruden med utfordringer',
+      location: 'Brudens hjem',
+      creatorType: 'Fotograf',
+      hasPhoto: true,
+      hasVideo: true,
+      sortOrder: 1,
+      notifications_sent: false,
+    },
+    {
+      id: 'cn-2',
+      eventId: 'te-seremoni-brud',
+      time: '10:30-11:30',
+      activity: 'Te-seremoni — Serverer te til brudens foreldre',
+      location: 'Brudens hjem',
+      creatorType: 'Fotograf',
+      hasPhoto: true,
+      hasVideo: false,
+      sortOrder: 2,
+      notifications_sent: false,
+    },
+    {
+      id: 'cn-3',
+      eventId: 'te-seremoni-groom',
+      time: '12:00-13:00',
+      activity: 'Te-seremoni — Serverer te til brudgommens foreldre',
+      location: 'Brudgommens hjem',
+      creatorType: 'Fotograf',
+      hasPhoto: true,
+      hasVideo: false,
+      sortOrder: 3,
+      notifications_sent: false,
+    },
+    {
+      id: 'cn-4',
+      eventId: 'bankett',
+      time: '18:00-22:00',
+      activity: 'Bryllupsbankett — Middag med Dobbelt Lykke-dekor',
+      location: 'Restaurant eller hotell',
+      creatorType: 'Fotograf',
+      hasPhoto: true,
+      hasVideo: true,
+      sortOrder: 4,
+      notifications_sent: false,
+    },
+  ];
+
+  // Etiopisk bryllup timeline — Telosh → Kaffiseremoni → Melse
+  const getEthiopianWeddingTimeline = (): TimelineEvent[] => [
+    {
+      id: 'et-1',
+      eventId: 'telosh',
+      time: '10:00-12:00',
+      activity: 'Telosh — Førbryllupsseremoni med familiene',
+      location: 'Familiens hjem',
+      creatorType: 'Fotograf',
+      hasPhoto: true,
+      hasVideo: false,
+      sortOrder: 1,
+      notifications_sent: false,
+    },
+    {
+      id: 'et-2',
+      eventId: 'kaffe-seremoni',
+      time: '13:00-14:00',
+      activity: 'Tradisjonell kaffe-seremoni med røkelse og velsignelse',
+      location: 'Seremonistedet',
+      creatorType: 'Fotograf',
+      hasPhoto: true,
+      hasVideo: false,
+      sortOrder: 2,
+      notifications_sent: false,
+    },
+    {
+      id: 'et-3',
+      eventId: 'tilf-velsignelse',
+      time: '14:30-15:30',
+      activity: 'Tilf-velsignelse fra eldre i familien',
+      location: 'Kirkelig seremoni eller familiens hjem',
+      creatorType: 'Fotograf',
+      hasPhoto: true,
+      hasVideo: true,
+      sortOrder: 3,
+      notifications_sent: false,
+    },
+    {
+      id: 'et-4',
+      eventId: 'melse-feiring',
+      time: '17:00-23:00',
+      activity: 'Melse — Bryllupsfest med Injera, Eskista-dans og musikk',
+      location: 'Festlokale',
+      creatorType: 'Fotograf',
+      hasPhoto: true,
+      hasVideo: true,
+      sortOrder: 4,
+      notifications_sent: false,
+    },
+  ];
+
+  // Filipino bryllup timeline — Church → Veil/Cord → Resepsjon
+  const getFilipinoWeddingTimeline = (): TimelineEvent[] => [
+    {
+      id: 'ph-1',
+      eventId: 'kirkeseremoni',
+      time: '14:00-15:00',
+      activity: 'Katolsk kirkeseremoni — Vielse med Arras og Veil & Cord',
+      location: 'Katolsk kirke',
+      creatorType: 'Fotograf',
+      hasPhoto: true,
+      hasVideo: true,
+      sortOrder: 1,
+      notifications_sent: false,
+    },
+    {
+      id: 'ph-2',
+      eventId: 'unity-candle',
+      time: '15:00-15:30',
+      activity: 'Unity Candle-seremoni og Arras (13 mynter)',
+      location: 'Kirken',
+      creatorType: 'Fotograf',
+      hasPhoto: true,
+      hasVideo: false,
+      sortOrder: 2,
+      notifications_sent: false,
+    },
+    {
+      id: 'ph-3',
+      eventId: 'resepsjon',
+      time: '17:00-22:00',
+      activity: 'Resepsjon med Lechon, Money Dance og tradisjonell feiring',
+      location: 'Festlokale',
+      creatorType: 'Fotograf',
+      hasPhoto: true,
+      hasVideo: true,
+      sortOrder: 3,
+      notifications_sent: false,
+    },
+  ];
+
+  // Koreansk bryllup timeline — Seremoni → Pyebaek
+  const getKoreanWeddingTimeline = (): TimelineEvent[] => [
+    {
+      id: 'kr-1',
+      eventId: 'seremoni',
+      time: '12:00-13:00',
+      activity: 'Bryllupsseremoni — Vielse i bryllupshall',
+      location: 'Bryllupshall (Wedding Hall)',
+      creatorType: 'Fotograf',
+      hasPhoto: true,
+      hasVideo: true,
+      sortOrder: 1,
+      notifications_sent: false,
+    },
+    {
+      id: 'kr-2',
+      eventId: 'pyebaek',
+      time: '13:30-14:30',
+      activity: 'Pyebaek — Tradisjonell seremoni i Hanbok med jujube og kastanjer',
+      location: 'Pyebaek-rom',
+      creatorType: 'Fotograf',
+      hasPhoto: true,
+      hasVideo: false,
+      sortOrder: 2,
+      notifications_sent: false,
+    },
+    {
+      id: 'kr-3',
+      eventId: 'bankett',
+      time: '15:00-18:00',
+      activity: 'Bryllupsmiddag med familie og gjester',
+      location: 'Bryllupshall',
+      creatorType: 'Fotograf',
+      hasPhoto: true,
+      hasVideo: false,
+      sortOrder: 3,
+      notifications_sent: false,
+    },
   ];
 
   // Query for timeline data with real API - prioritize project-based timeline

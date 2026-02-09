@@ -4581,6 +4581,289 @@ app.get('/api/wedflow/traditions-bridge', async (req: any, res: any) => {
   }
 });
 
+// ==============================================================
+// RESOLVE COUPLE — Auto-map selectedClient email → wedflow couple profile
+// ==============================================================
+app.get('/api/wedflow/resolve-couple', async (req: any, res: any) => {
+  try {
+    const vendor = await getVendorFromSession(req, res);
+    if (!vendor) return;
+
+    const email = (req.query.email as string || '').trim().toLowerCase();
+    if (!email) {
+      return res.status(400).json({ error: 'email parameter er påkrevd' });
+    }
+
+    // Look up couple_profiles by email
+    const result = await pool.query(
+      `SELECT id, display_name, email, wedding_date, selected_traditions, expected_guests
+       FROM couple_profiles WHERE LOWER(email) = $1 LIMIT 1`,
+      [email]
+    );
+
+    if (!result.rows.length) {
+      return res.status(404).json({ error: 'Ingen parprofil funnet for denne e-posten' });
+    }
+
+    const profile = result.rows[0];
+
+    // Map traditions to CreatorHub culturalType
+    const traditions: string[] = profile.selected_traditions || [];
+    const primaryCulturalType = traditions.length > 0
+      ? (WEDFLOW_TO_CREATORHUB_CULTURE[traditions[0]] || 'annet')
+      : 'norsk';
+
+    res.json({
+      coupleId: profile.id,
+      displayName: profile.display_name,
+      email: profile.email,
+      weddingDate: profile.wedding_date,
+      expectedGuests: profile.expected_guests || 0,
+      selectedTraditions: traditions,
+      primaryCulturalType,
+      allCulturalTypes: [...new Set(traditions.map((t: string) => WEDFLOW_TO_CREATORHUB_CULTURE[t] || 'annet'))],
+    });
+  } catch (error) {
+    console.error('Wedflow resolve-couple error:', error);
+    res.status(500).json({ error: 'Kunne ikke finne parprofil' });
+  }
+});
+
+// ==============================================================
+// UPDATE EXPECTED GUESTS — Set guest count on couple profile
+// ==============================================================
+app.put('/api/wedflow/couple/guests', async (req: any, res: any) => {
+  try {
+    const vendor = await getVendorFromSession(req, res);
+    if (!vendor) return;
+
+    const { coupleId, expectedGuests } = req.body;
+    if (!coupleId || expectedGuests === undefined) {
+      return res.status(400).json({ error: 'coupleId og expectedGuests er påkrevd' });
+    }
+
+    // Verify vendor has access via conversation
+    const convCheck = await pool.query(
+      'SELECT id FROM conversations WHERE vendor_id = $1 AND couple_id = $2 LIMIT 1',
+      [vendor.id, coupleId]
+    );
+    if (!convCheck.rows.length) {
+      return res.status(403).json({ error: 'Ingen tilgang til dette paret' });
+    }
+
+    await pool.query(
+      'UPDATE couple_profiles SET expected_guests = $1, updated_at = NOW() WHERE id = $2',
+      [parseInt(expectedGuests) || 0, coupleId]
+    );
+
+    res.json({ success: true, expectedGuests: parseInt(expectedGuests) || 0 });
+  } catch (error) {
+    console.error('Update expected guests error:', error);
+    res.status(500).json({ error: 'Kunne ikke oppdatere gjestetall' });
+  }
+});
+
+// ==============================================================
+// SEED TRADITION CHECKLIST ITEMS — Insert tradition-specific tasks
+// ==============================================================
+app.post('/api/wedflow/checklist/seed-traditions', async (req: any, res: any) => {
+  try {
+    const vendor = await getVendorFromSession(req, res);
+    if (!vendor) return;
+
+    const { coupleId } = req.body;
+    if (!coupleId) {
+      return res.status(400).json({ error: 'coupleId er påkrevd' });
+    }
+
+    // Verify vendor has access via conversation
+    const convCheck = await pool.query(
+      'SELECT id FROM conversations WHERE vendor_id = $1 AND couple_id = $2 LIMIT 1',
+      [vendor.id, coupleId]
+    );
+    if (!convCheck.rows.length) {
+      return res.status(403).json({ error: 'Ingen tilgang til dette paret' });
+    }
+
+    // Get couple's selected traditions
+    const coupleResult = await pool.query(
+      'SELECT selected_traditions FROM couple_profiles WHERE id = $1',
+      [coupleId]
+    );
+    if (!coupleResult.rows.length || !coupleResult.rows[0].selected_traditions?.length) {
+      return res.status(400).json({ error: 'Ingen tradisjoner valgt for dette paret' });
+    }
+
+    const selectedTraditions: string[] = coupleResult.rows[0].selected_traditions;
+
+    // Import tradition checklist data
+    const { TRADITION_CHECKLIST_ITEMS } = await import('./tradition-checklists');
+
+    // Get existing task titles to avoid duplicates
+    const existing = await pool.query(
+      'SELECT title FROM checklist_tasks WHERE couple_id = $1',
+      [coupleId]
+    );
+    const existingTitles = new Set(existing.rows.map((r: any) => r.title));
+
+    // Get current max sort_order
+    const maxOrder = await pool.query(
+      'SELECT COALESCE(MAX(sort_order), 0) as max_order FROM checklist_tasks WHERE couple_id = $1',
+      [coupleId]
+    );
+    let sortOrder = (maxOrder.rows[0]?.max_order || 0) + 1;
+
+    const inserted: any[] = [];
+    for (const tradition of selectedTraditions) {
+      const items = TRADITION_CHECKLIST_ITEMS[tradition];
+      if (!items) continue;
+      for (const item of items) {
+        if (existingTitles.has(item.title)) continue;
+        const result = await pool.query(
+          `INSERT INTO checklist_tasks (couple_id, title, months_before, category, is_default, is_tradition_item, sort_order)
+           VALUES ($1, $2, $3, $4, true, true, $5) RETURNING *`,
+          [coupleId, item.title, item.monthsBefore, item.category, sortOrder++]
+        );
+        inserted.push(result.rows[0]);
+        existingTitles.add(item.title);
+      }
+    }
+
+    res.json({
+      message: inserted.length > 0
+        ? `${inserted.length} tradisjonsoppgaver lagt til`
+        : 'Alle tradisjonsoppgaver finnes allerede',
+      tasks: inserted,
+      count: inserted.length,
+    });
+  } catch (error) {
+    console.error('Seed tradition checklist error:', error);
+    res.status(500).json({ error: 'Kunne ikke legge til tradisjonsoppgaver' });
+  }
+});
+
+// ==============================================================
+// SEED TRADITION BUDGET ITEMS — Insert tradition-specific budget items
+// ==============================================================
+app.post('/api/wedflow/budget/seed-traditions', async (req: any, res: any) => {
+  try {
+    const vendor = await getVendorFromSession(req, res);
+    if (!vendor) return;
+
+    const { coupleId } = req.body;
+    if (!coupleId) {
+      return res.status(400).json({ error: 'coupleId er påkrevd' });
+    }
+
+    // Verify vendor has access via conversation
+    const convCheck = await pool.query(
+      'SELECT id FROM conversations WHERE vendor_id = $1 AND couple_id = $2 LIMIT 1',
+      [vendor.id, coupleId]
+    );
+    if (!convCheck.rows.length) {
+      return res.status(403).json({ error: 'Ingen tilgang til dette paret' });
+    }
+
+    // Get couple's selected traditions
+    const coupleResult = await pool.query(
+      'SELECT selected_traditions FROM couple_profiles WHERE id = $1',
+      [coupleId]
+    );
+    if (!coupleResult.rows.length || !coupleResult.rows[0].selected_traditions?.length) {
+      return res.status(400).json({ error: 'Ingen tradisjoner valgt for dette paret' });
+    }
+
+    const selectedTraditions: string[] = coupleResult.rows[0].selected_traditions;
+
+    // Import tradition budget data
+    const { TRADITION_BUDGET_ITEMS } = await import('./tradition-checklists');
+
+    // Get existing budget item labels to avoid duplicates
+    const existing = await pool.query(
+      'SELECT label FROM budget_items WHERE couple_id = $1',
+      [coupleId]
+    );
+    const existingLabels = new Set(existing.rows.map((r: any) => r.label));
+
+    // Get current max sort_order
+    const maxOrder = await pool.query(
+      'SELECT COALESCE(MAX(sort_order), 0) as max_order FROM budget_items WHERE couple_id = $1',
+      [coupleId]
+    );
+    let sortOrder = (maxOrder.rows[0]?.max_order || 0) + 1;
+
+    const inserted: any[] = [];
+    for (const tradition of selectedTraditions) {
+      const items = TRADITION_BUDGET_ITEMS[tradition];
+      if (!items) continue;
+      for (const item of items) {
+        if (existingLabels.has(item.label)) continue;
+        const result = await pool.query(
+          `INSERT INTO budget_items (couple_id, category, label, estimated_cost, is_tradition_item, sort_order)
+           VALUES ($1, $2, $3, $4, true, $5) RETURNING *`,
+          [coupleId, item.category, item.label, item.estimatedCost, sortOrder++]
+        );
+        inserted.push(result.rows[0]);
+        existingLabels.add(item.label);
+      }
+    }
+
+    res.json({
+      message: inserted.length > 0
+        ? `${inserted.length} tradisjonsbudsjettposter lagt til`
+        : 'Alle tradisjonsbudsjettposter finnes allerede',
+      items: inserted,
+      count: inserted.length,
+    });
+  } catch (error) {
+    console.error('Seed tradition budget error:', error);
+    res.status(500).json({ error: 'Kunne ikke legge til tradisjonsbudsjettposter' });
+  }
+});
+
+// ==============================================================
+// CHECKLIST & BUDGET CRUD — Basic CRUD for couple checklist/budget items
+// ==============================================================
+app.get('/api/wedflow/checklist/:coupleId', async (req: any, res: any) => {
+  try {
+    const vendor = await getVendorFromSession(req, res);
+    if (!vendor) return;
+    const { coupleId } = req.params;
+    const convCheck = await pool.query(
+      'SELECT id FROM conversations WHERE vendor_id = $1 AND couple_id = $2 LIMIT 1',
+      [vendor.id, coupleId]
+    );
+    if (!convCheck.rows.length) return res.status(403).json({ error: 'Ingen tilgang' });
+    const result = await pool.query(
+      'SELECT * FROM checklist_tasks WHERE couple_id = $1 ORDER BY sort_order ASC',
+      [coupleId]
+    );
+    res.json(result.rows);
+  } catch (error) {
+    res.status(500).json({ error: 'Kunne ikke hente sjekkliste' });
+  }
+});
+
+app.get('/api/wedflow/budget/:coupleId', async (req: any, res: any) => {
+  try {
+    const vendor = await getVendorFromSession(req, res);
+    if (!vendor) return;
+    const { coupleId } = req.params;
+    const convCheck = await pool.query(
+      'SELECT id FROM conversations WHERE vendor_id = $1 AND couple_id = $2 LIMIT 1',
+      [vendor.id, coupleId]
+    );
+    if (!convCheck.rows.length) return res.status(403).json({ error: 'Ingen tilgang' });
+    const result = await pool.query(
+      'SELECT * FROM budget_items WHERE couple_id = $1 ORDER BY sort_order ASC',
+      [coupleId]
+    );
+    res.json(result.rows);
+  } catch (error) {
+    res.status(500).json({ error: 'Kunne ikke hente budsjett' });
+  }
+});
+
 // Generic Wedflow API proxy — forwards /api/wedflow/* → Wedflow API /api/*
 // MUST be AFTER all specific /api/wedflow/planning/* routes to avoid shadowing
 app.all('/api/wedflow/*', async (req, res) => {
@@ -7816,17 +8099,35 @@ app.get('/api/clients', async (req, res) => {
       `SELECT DISTINCT client_email AS email, name AS "projectName" FROM legacy.projects WHERE user_id = $1 AND client_email IS NOT NULL`,
       [userId]
     );
-    const clients = result.rows.map((r: any, i: number) => ({
-      id: (i + 1).toString(),
-      name: r.email,
-      email: r.email,
-      projectName: r.projectName
-    }));
-    // Also check couple_profiles
-    const couples = await pool.query('SELECT id, email, display_name FROM couple_profiles LIMIT 20');
+    // First get couple_profiles so we can use stable UUIDs
+    const couples = await pool.query('SELECT id, email, display_name FROM couple_profiles LIMIT 50');
+    const coupleByEmail: Record<string, any> = {};
     for (const c of couples.rows) {
-      if (!clients.find((cl: any) => cl.email === c.email)) {
-        clients.push({ id: c.id, name: c.display_name || c.email, email: c.email });
+      if (c.email) coupleByEmail[c.email.toLowerCase()] = c;
+    }
+
+    const seenEmails = new Set<string>();
+    const clients: any[] = [];
+
+    // Map project clients using couple_profiles UUID when available
+    for (const r of result.rows) {
+      if (!r.email || seenEmails.has(r.email.toLowerCase())) continue;
+      seenEmails.add(r.email.toLowerCase());
+      const couple = coupleByEmail[r.email.toLowerCase()];
+      clients.push({
+        id: couple?.id || r.email, // Use couple UUID if available, else email as stable ID
+        name: couple?.display_name || r.email,
+        email: r.email,
+        projectName: r.projectName,
+        coupleId: couple?.id || null, // Explicit coupleId field for bridge
+      });
+    }
+
+    // Add remaining couples not in projects
+    for (const c of couples.rows) {
+      if (c.email && !seenEmails.has(c.email.toLowerCase())) {
+        seenEmails.add(c.email.toLowerCase());
+        clients.push({ id: c.id, name: c.display_name || c.email, email: c.email, coupleId: c.id });
       }
     }
     res.json(clients);

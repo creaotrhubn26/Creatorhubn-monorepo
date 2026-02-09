@@ -9,6 +9,7 @@ interface AdministrationHubProps {
   userId: string;
   profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
   selectedClient?: any;
+  wedflowCoupleId?: string;
   onPricingUpdate?: () => void;
 }
 
@@ -16,6 +17,7 @@ export default function AdministrationHub({
   userId, 
   profession, 
   selectedClient,
+  wedflowCoupleId,
   onPricingUpdate 
 }: AdministrationHubProps) {
   const [activeTab, setActiveTab] = useState(0);
@@ -130,7 +132,7 @@ export default function AdministrationHub({
         {/* Tab 2: Wedflow Tilbud & Kontrakter */}
         {activeTab === 2 && (
           <Box>
-            <WedflowOfferManager />
+            <WedflowOfferManager wedflowCoupleId={wedflowCoupleId} />
           </Box>
         )}
       </Box>

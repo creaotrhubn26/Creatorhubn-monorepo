@@ -69,7 +69,11 @@ interface Contact {
   conversation_id: string;
 }
 
-export default function WedflowOfferManager() {
+interface WedflowOfferManagerProps {
+  wedflowCoupleId?: string;
+}
+
+export default function WedflowOfferManager({ wedflowCoupleId }: WedflowOfferManagerProps) {
   const [offers, setOffers] = useState<Offer[]>([]);
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
@@ -92,6 +96,16 @@ export default function WedflowOfferManager() {
   useEffect(() => {
     fetchData();
   }, []);
+
+  // Auto-select couple from wedflowCoupleId when available
+  useEffect(() => {
+    if (wedflowCoupleId && contacts.length > 0) {
+      const match = contacts.find(c => c.id === wedflowCoupleId);
+      if (match && !selectedCoupleId) {
+        setSelectedCoupleId(match.id);
+      }
+    }
+  }, [wedflowCoupleId, contacts]);
 
   const fetchData = async () => {
     setLoading(true);
