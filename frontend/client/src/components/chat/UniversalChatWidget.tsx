@@ -6,6 +6,7 @@ import { useTheming } from '../../utils/theming-helper';
 import { useCommunicationStatus } from '../../contexts/CommunicationStatusContext';
 import { usePushNotifications } from '../../hooks/usePushNotifications';
 import { PushNotificationSettings } from '../shared/PushNotificationSettings';
+import QuickMessageTemplates from './QuickMessageTemplates';
 import { chatMessageSchema, webSocketMessageSchema, type ChatMessageType, type WebSocketMessageType } from '../../../../shared/communication-schema';
 import RichTextEditor from '../RichTextEditor';
 import 'quill/dist/quill.snow.css';
@@ -389,27 +390,87 @@ export default function UniversalChatWidget({
       'message:send','message:receive','event:emit','event:listen','ui:update'
     ]);
 
+    // Register in component registry for discoverability
+    componentRegistry.registerComponent({
+      id: 'universal-chat-widget',
+      name: 'UniversalChatWidget',
+      type: 'widget',
+      category: 'communication',
+      profession: profession,
+      version: '2.1',
+      capabilities: ['chat', 'email', 'feedback', 'wedflow-bridge', 'ticket-creation'],
+      props: { profession, userEmail, userId },
+    });
+
+    // Register integration actions for cross-component communication
+    integration.registerAction('chat:sendMessage', (msg: Record<string, unknown>) => {
+      if (msg.content && typeof msg.content === 'string') {
+        setMessageInput(msg.content);
+        setIsOpen(true);
+        setIsExpanded(true);
+      }
+    });
+    integration.registerAction('chat:openConversation', (data: Record<string, unknown>) => {
+      if (data.conversationId && typeof data.conversationId === 'string') {
+        setSelectedChat(data.conversationId);
+        setIsOpen(true);
+        setIsExpanded(true);
+      }
+    });
+
+    // Register data flow node for chat data syncing
+    const chatNodeId = dataFlow.registerNode({
+      componentId: 'universal-chat-widget',
+      type: 'both',
+      dataKey: 'chat-messages',
+      label: 'Chat Widget Data',
+    });
+
     return () => {
       communication.unregisterComponent('universal-chat-widget');
+      componentRegistry.unregisterComponent('universal-chat-widget');
+      dataFlow.unregisterNode(chatNodeId);
 };
-}, [communication]);
+}, [communication, componentRegistry, integration, dataFlow, profession, userEmail, userId]);
 
   // Listen to global events and update accordingly
   useEffect(() => {
-    const unsubscribe = communication.onMessage((message: any) => {
-      if (message.type === 'project:selected' && message.data) {
-        console.log('Chat received project selection: ', message.data);
+    const unsubscribe = communication.onMessage((message: Record<string, unknown>) => {
+      const msgType = message.type as string;
+      const msgData = message.data as Record<string, unknown> | undefined;
+      if (msgType === 'project:selected' && msgData) {
+        console.log('Chat received project selection: ', msgData);
+        if (onProjectSelect) onProjectSelect(msgData);
+        if (onProjectUpdate) onProjectUpdate(msgData);
       }
-      if (message.type === 'client:selected' && message.data) {
-        console.log('Chat received client selection: ', message.data);
+      if (msgType === 'client:selected' && msgData) {
+        console.log('Chat received client selection: ', msgData);
+        if (onClientSelect) onClientSelect(msgData);
+        if (onClientUpdate) onClientUpdate(msgData);
       }
-      if (message.type === 'chat:prefill' && message.data?.message) {
+      if (msgType === 'meeting:created' && msgData && onMeetingCreate) {
+        onMeetingCreate(msgData);
+      }
+      if (msgType === 'worklog:created' && msgData && onWorklogCreate) {
+        onWorklogCreate(msgData);
+      }
+      if (msgType === 'showcase:created' && msgData && onShowcaseCreate) {
+        onShowcaseCreate(msgData);
+      }
+      if (msgType === 'file:uploaded' && msgData && onFileUpload) {
+        onFileUpload(msgData);
+      }
+      if (msgType === 'file:downloaded' && msgData && onFileDownload) {
+        onFileDownload(msgData);
+      }
+      if (msgType === 'chat:prefill' && (message.data as Record<string, unknown>)?.message) {
         try {
           setIsOpen(true);
           setIsExpanded(true);
-          setMessageInput(message.data.message);
-          if (message.data.selectConversationId) {
-            setSelectedChat(message.data.selectConversationId);
+          const prefillData = message.data as Record<string, unknown>;
+          setMessageInput(prefillData.message as string);
+          if (prefillData.selectConversationId) {
+            setSelectedChat(prefillData.selectConversationId as string);
           }
         } catch (e) {
           console.warn('Failed to prefill chat:', e);
@@ -418,7 +479,7 @@ export default function UniversalChatWidget({
     });
 
     return unsubscribe;
-}, [communication]);
+}, [communication, onProjectSelect, onProjectUpdate, onClientSelect, onClientUpdate, onMeetingCreate, onWorklogCreate, onShowcaseCreate, onFileUpload, onFileDownload]);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   // queryClient is now imported from lib/queryClient
@@ -428,6 +489,7 @@ export default function UniversalChatWidget({
   const [autoResponseEnabled, setAutoResponseEnabled] = useState(false);
   const [googleChatMenuAnchor, setGoogleChatMenuAnchor] = useState<null | HTMLElement>(null);
   const [pushSettingsOpen, setPushSettingsOpen] = useState(false);
+  const [chatSettingsOpen, setChatSettingsOpen] = useState(false);
   
   // Push notifications
   const { user } = useAuth();
@@ -483,6 +545,59 @@ export default function UniversalChatWidget({
       setIsExpanded(false);
 }
 }, [propIsOpen]);
+
+  // Wire context prop for prefilling ticket/note content
+  useEffect(() => {
+    if (context) {
+      if (context.emailSubject || context.emailBody) {
+        setTicketFormData(prev => ({
+          ...prev,
+          title: context.emailSubject || prev.title,
+          description: context.emailBody || prev.description,
+        }));
+      }
+      if (context.noteContent && onCreateNote) {
+        // Auto-create note when context provides note content
+        onCreateNote(context.noteContent);
+      }
+    }
+  }, [context, onCreateNote]);
+
+  // Wire settings update callback when email/auto-response settings change
+  useEffect(() => {
+    if (onSettingsUpdate) {
+      onSettingsUpdate({
+        emailIntegrationEnabled,
+        autoResponseEnabled,
+        pushEnabled,
+        pushSettingsOpen,
+        profession,
+        timestamp: new Date().toISOString(),
+      });
+    }
+  }, [emailIntegrationEnabled, autoResponseEnabled, pushEnabled, pushSettingsOpen, onSettingsUpdate, profession]);
+
+  // Sync selected project/client via data flow
+  useEffect(() => {
+    if (selectedProject) {
+      dataFlow.syncData('chat-selected-project', selectedProject);
+      integration.setData('selectedProject', selectedProject);
+    }
+  }, [selectedProject, dataFlow, integration]);
+
+  useEffect(() => {
+    if (selectedClient) {
+      dataFlow.syncData('chat-selected-client', selectedClient);
+      integration.setData('selectedClient', selectedClient);
+    }
+  }, [selectedClient, dataFlow, integration]);
+
+  // Auto-scroll to bottom when new messages arrive
+  useEffect(() => {
+    if (messagesEndRef.current && messages.length > 0) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages]);
 
   // ⚠️ CHAT & COMMUNICATION PROTOKOLL: WebSocket connection with automatic reconnection
   useEffect(() => {
@@ -570,12 +685,13 @@ export default function UniversalChatWidget({
   
   const handleWebSocketMessage = (message: WebSocketMessageType) => {
     switch (message.type) {
-      case 'chat_message':
+      case 'chat_message': {
         const validatedChatMessage = chatMessageSchema.safeParse(message.payload);
         if (validatedChatMessage.success) {
           setMessages(prev => [...prev, validatedChatMessage.data]);
     }
         break;
+      }
         
       case 'typing_indicator':
         if (message.payload.isTyping) {
@@ -880,22 +996,22 @@ export default function UniversalChatWidget({
         if (!cw) {
           const savedSize = localStorage.getItem('chat-widget-size');
           if (savedSize) {
-            try { setWidgetSize(JSON.parse(savedSize)); } catch {}
+            try { setWidgetSize(JSON.parse(savedSize)); } catch (e) { console.warn('Invalid saved chat widget size:', e); }
           }
           const savedPosition = localStorage.getItem('chat-widget-position');
           if (savedPosition) {
-            try { setWidgetPosition(JSON.parse(savedPosition)); } catch {}
+            try { setWidgetPosition(JSON.parse(savedPosition)); } catch (e) { console.warn('Invalid saved chat widget position:', e); }
           }
         }
       })
       .catch(() => {
         const savedSize = localStorage.getItem('chat-widget-size');
         if (savedSize) {
-          try { setWidgetSize(JSON.parse(savedSize)); } catch {}
+          try { setWidgetSize(JSON.parse(savedSize)); } catch (e) { console.warn('Invalid saved chat widget size:', e); }
         }
         const savedPosition = localStorage.getItem('chat-widget-position');
         if (savedPosition) {
-          try { setWidgetPosition(JSON.parse(savedPosition)); } catch {}
+          try { setWidgetPosition(JSON.parse(savedPosition)); } catch (e) { console.warn('Invalid saved chat widget position:', e); }
         }
       });
   }, []);
@@ -1197,6 +1313,8 @@ export default function UniversalChatWidget({
 
   const handleQuickReply = () => {
     if (messageInput.trim() && selectedChat) {
+      // Also send via WebSocket for real-time delivery
+      sendMessage();
       if (activeTab === 1 && emailIntegrationEnabled) {
         // Send as email
         sendEmailMessage.mutate({
@@ -1306,6 +1424,17 @@ export default function UniversalChatWidget({
       default: return <Help />;
 }
 };
+
+  // Get priority icon for high/critical priorities
+  const getPriorityIcon = (priority: string) => {
+    switch (priority) {
+      case 'critical': return <ErrorIcon sx={{ color: '#d32f2f' }} />;
+      case 'high': return <PriorityHigh sx={{ color: '#f57c00' }} />;
+      case 'medium': return <Warning sx={{ color: '#1976d2' }} />;
+      case 'low': return <CheckCircle sx={{ color: '#388e3c' }} />;
+      default: return <Schedule sx={{ color: '#757575' }} />;
+    }
+  };
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
@@ -1684,7 +1813,63 @@ export default function UniversalChatWidget({
             }}>
               {activeTab === 0 ? (
                 // Internal Chat Tab
-                chatPreviews.length > 0 ? (
+                <>
+                  {/* Selected project/client context display */}
+                  {selectedProject && (
+                    <Box sx={{ px: 2, py: 1, bgcolor: '#f5f5f5', borderBottom: '1px solid', borderColor: 'divider', display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Assignment fontSize="small" sx={{ color: professionColor }} />
+                      <Typography variant="caption" sx={{ fontWeight: 600 }}>
+                        Prosjekt: {selectedProject?.name || 'Valgt prosjekt'}
+                      </Typography>
+                      <CalendarToday sx={{ fontSize: 14, ml: 'auto', color: 'text.secondary' }} />
+                    </Box>
+                  )}
+                  {selectedClient && (
+                    <Box sx={{ px: 2, py: 1, bgcolor: '#f5f5f5', borderBottom: '1px solid', borderColor: 'divider', display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <BadgeIcon fontSize="small" sx={{ color: professionColor }} />
+                      <Typography variant="caption" sx={{ fontWeight: 600 }}>
+                        Klient: {selectedClient?.name || 'Valgt klient'}
+                      </Typography>
+                      <Category sx={{ fontSize: 14, ml: 'auto', color: 'text.secondary' }} />
+                    </Box>
+                  )}
+                  {/* Quick Actions when chat selected */}
+                  {selectedChat && (
+                    <Box sx={{ px: 2, py: 1, bgcolor: `${professionColor}08`, borderBottom: '1px solid', borderColor: 'divider', display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                      <Tooltip title="E-post">
+                        <IconButton size="small" onClick={() => { if (onFileUpload) onFileUpload({ type: 'email', chatId: selectedChat }); }}>
+                          <Email fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Ring">
+                        <IconButton size="small" onClick={() => { if (onMeetingCreate) onMeetingCreate({ type: 'call', chatId: selectedChat }); }}>
+                          <Phone fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Videosamtale">
+                        <IconButton size="small" onClick={() => { if (onMeetingCreate) onMeetingCreate({ type: 'video', chatId: selectedChat }); }}>
+                          <VideoCall fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                      <Divider orientation="vertical" flexItem />
+                      <Tooltip title="Favoritt">
+                        <IconButton size="small">
+                          <Star fontSize="small" sx={{ color: '#ff9800' }} />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Flagg">
+                        <IconButton size="small">
+                          <Flag fontSize="small" sx={{ color: '#f44336' }} />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Opprett notat">
+                        <IconButton size="small" onClick={() => { if (onCreateNote) onCreateNote(`Notat fra samtale ${selectedChat}`); }}>
+                          <Assignment fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    </Box>
+                  )}
+                  {chatPreviews.length > 0 ? (
                 <List sx={{ p: 0 }}>
                   {chatPreviews.map((chat: ChatPreview) => (
                     <ListItem
@@ -1767,7 +1952,43 @@ export default function UniversalChatWidget({
                       Ingen nye meldinger
                     </Typography>
                   </Box>
-                )
+                )}
+                  {/* WebSocket real-time messages */}
+                  {selectedChat && messages.length > 0 && (
+                    <Box sx={{ px: 2, py: 1 }}>
+                      <Divider sx={{ mb: 1 }}>
+                        <Chip icon={<Chat />} label="Live meldinger" size="small" />
+                      </Divider>
+                      {messages.slice(-5).map((msg) => (
+                        <Box key={msg.id} sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, mb: 1 }}>
+                          <Avatar sx={{ width: 24, height: 24, bgcolor: professionColor }}>
+                            {msg.senderId === userEmail ? <Person sx={{ fontSize: 14 }} /> : <Group sx={{ fontSize: 14 }} />}
+                          </Avatar>
+                          <Box sx={{ flex: 1 }}>
+                            <Typography variant="caption" sx={{ fontWeight: 600 }}>{msg.senderName}</Typography>
+                            <Typography variant="body2">{msg.content}</Typography>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.5 }}>
+                              <Schedule sx={{ fontSize: 12, color: 'text.secondary' }} />
+                              <Typography variant="caption" color="text.secondary">{formatTime(msg.timestamp)}</Typography>
+                              {msg.status === 'delivered' && <Visibility sx={{ fontSize: 12, color: '#4caf50' }} />}
+                              {msg.status === 'sent' && <CheckCircle sx={{ fontSize: 12, color: 'text.secondary' }} />}
+                            </Box>
+                          </Box>
+                        </Box>
+                      ))}
+                    </Box>
+                  )}
+                  {/* Typing indicator */}
+                  {typingUsers.length > 0 && (
+                    <Box sx={{ px: 2, py: 0.5, display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <MinimizeRounded sx={{ fontSize: 14, color: 'text.secondary' }} />
+                      <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                        {typingUsers.join(', ')} skriver...
+                      </Typography>
+                    </Box>
+                  )}
+                  <div ref={messagesEndRef} />
+                </>
               ) : activeTab === 1 ? (
                 // Google Chat Tab
                 <Box sx={{ p:  3 }}>
@@ -1786,6 +2007,51 @@ export default function UniversalChatWidget({
                     </Button>
                   </Box>
                   
+                  {/* Email & Auto-Response Settings */}
+                  <Box sx={{ mb: 2, border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
+                    <Box
+                      sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', p: 1.5, '&:hover': { bgcolor: 'rgba(0,0,0,0.04)' } }}
+                      onClick={() => setChatSettingsOpen(prev => !prev)}
+                    >
+                      <Typography variant="subtitle2" sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Settings fontSize="small" />
+                        Kommunikasjonsinnstillinger
+                      </Typography>
+                      {chatSettingsOpen ? <ExpandLess /> : <ExpandMore />}
+                    </Box>
+                    <Collapse in={chatSettingsOpen}>
+                      <Box sx={{ px: 2, pb: 2 }}>
+                        <FormControlLabel
+                          control={
+                            <Switch
+                              checked={emailIntegrationEnabled}
+                              onChange={(e) => setEmailIntegrationEnabled(e.target.checked)}
+                              color="primary"
+                            />
+                          }
+                          label="E-post integrasjon"
+                        />
+                        <FormControlLabel
+                          control={
+                            <Switch
+                              checked={autoResponseEnabled}
+                              onChange={(e) => setAutoResponseEnabled(e.target.checked)}
+                              color="primary"
+                            />
+                          }
+                          label="Automatisk svar"
+                        />
+                        {autoResponseEnabled && (
+                          <Alert severity="info" sx={{ mt: 1 }}>
+                            <Typography variant="caption">
+                              Automatisk svar er aktivert. Innkommende meldinger vil motta et standardsvar.
+                            </Typography>
+                          </Alert>
+                        )}
+                      </Box>
+                    </Collapse>
+                  </Box>
+
                   {/* Google Chat API Status */}
                   <Box sx={{
                     p: 2,
@@ -2197,12 +2463,18 @@ export default function UniversalChatWidget({
             {/* Quick Reply */}
             {selectedChat && (
               <Box sx={{ p: 2, borderTop: 1, borderColor: 'divider'}}>
+                <QuickMessageTemplates
+                  onSelectTemplate={(msg) => setMessageInput(msg)}
+                  profession={profession}
+                  storageKey={`quick-msg-universal-${user?.id || 'anon'}`}
+                  compact
+                />
                 <TextField
                   fullWidth
                   size="small"
                   placeholder="Skriv et raskt svar..."
                   value={messageInput}
-                  onChange={(e) => setMessageInput(e.target.value)}
+                  onChange={(e) => { setMessageInput(e.target.value); handleTyping(); }}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {
                       e.preventDefault();
@@ -2233,6 +2505,31 @@ export default function UniversalChatWidget({
             )}
 
             <Divider />
+            {/* WebSocket connection status */}
+            <Box sx={{ px: 2, py: 0.5, display: 'flex', alignItems: 'center', justifyContent: 'space-between', bgcolor: wsConnection.isConnected ? '#e8f5e9' : '#fff3e0' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                {wsConnection.isConnected ? (
+                  <CheckCircle sx={{ fontSize: 12, color: '#4caf50' }} />
+                ) : (
+                  <Warning sx={{ fontSize: 12, color: '#ff9800' }} />
+                )}
+                <Typography variant="caption" color="text.secondary">
+                  {wsConnection.isConnected ? 'Tilkoblet' : 'Frakoblet'}
+                </Typography>
+              </Box>
+              <Box sx={{ display: 'flex', gap: 0.5 }}>
+                <Tooltip title="Flere valg">
+                  <IconButton size="small" onClick={(e) => setAnchorEl(e.currentTarget)}>
+                    <MoreVert sx={{ fontSize: 14 }} />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title="Lukk">
+                  <IconButton size="small" onClick={() => { onClose?.(); setIsExpanded(false); setIsOpen(false); }}>
+                    <Close sx={{ fontSize: 14 }} />
+                  </IconButton>
+                </Tooltip>
+              </Box>
+            </Box>
             <Box sx={{ p: 1, position: 'relative' }}>
               <Button
                 fullWidth
@@ -2436,42 +2733,42 @@ export default function UniversalChatWidget({
                   <InputLabel>Kategori</InputLabel>
                   <Select
                     value={ticketFormData.category}
-                    onChange={(e) => setTicketFormData({ ...ticketFormData, category: e.target.value as any })}
+                    onChange={(e) => setTicketFormData({ ...ticketFormData, category: e.target.value as TicketFormData['category'] })}
                     label="Kategori"
                   >
                     <MenuItem value="bug">
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <BugReport />
+                        {getCategoryIcon('bug')}
                         Feil/Problem
                       </Box>
                     </MenuItem>
                     <MenuItem value="feature_request">
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Lightbulb />
+                        {getCategoryIcon('feature_request')}
                         Forespørsel om ny funksjonalitet
                       </Box>
                     </MenuItem>
                     <MenuItem value="technical_issue">
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        {theming.getThemedIcon('assignment')}
+                        {getCategoryIcon('technical_issue')}
                         Teknisk problem
                       </Box>
                     </MenuItem>
                     <MenuItem value="account">
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Help />
+                        {getCategoryIcon('account')}
                         Konto/Tilgang
                       </Box>
                     </MenuItem>
                     <MenuItem value="question">
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Help />
+                        {getCategoryIcon('question')}
                         Generelt spørsmål
                       </Box>
                     </MenuItem>
                     <MenuItem value="other">
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Help />
+                        {getCategoryIcon('other')}
                         Annet
                       </Box>
                     </MenuItem>
@@ -2482,30 +2779,30 @@ export default function UniversalChatWidget({
                   <InputLabel>Prioritet</InputLabel>
                   <Select
                     value={ticketFormData.priority}
-                    onChange={(e) => setTicketFormData({ ...ticketFormData, priority: e.target.value as any })}
+                    onChange={(e) => setTicketFormData({ ...ticketFormData, priority: e.target.value as TicketFormData['priority'] })}
                     label="Prioritet"
                   >
                     <MenuItem value="low">
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Box sx={{ width:  12, height:  12, borderRadius: '50, %', bgcolor: '#388e3c'}} />
+                        {getPriorityIcon('low')}
                         Lav
                       </Box>
                     </MenuItem>
                     <MenuItem value="medium">
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Box sx={{ width:  12, height:  12, borderRadius: '50, %', bgcolor: '#1976d2'}} />
+                        {getPriorityIcon('medium')}
                         Medium
                       </Box>
                     </MenuItem>
                     <MenuItem value="high">
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Box sx={{ width:  12, height:  12, borderRadius: '50, %', bgcolor: '#f57c00'}} />
+                        {getPriorityIcon('high')}
                         Høy
                       </Box>
                     </MenuItem>
                     <MenuItem value="critical">
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Box sx={{ width:  12, height:  12, borderRadius: '50, %', bgcolor: '#d32f2f'}} />
+                        {getPriorityIcon('critical')}
                         Kritisk
                       </Box>
                     </MenuItem>
@@ -3072,6 +3369,62 @@ export default function UniversalChatWidget({
         profession={profession}
         userEmail={userEmail}
       />
+
+      {/* Push Notification Settings Dialog */}
+      <Dialog
+        open={pushSettingsOpen}
+        onClose={() => setPushSettingsOpen(false)}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: { borderRadius: 3, border: `2px solid ${professionColor}` }
+        }}
+      >
+        <DialogTitle sx={{
+          bgcolor: professionColor,
+          color: 'white',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+        }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <NotificationsActive />
+            Push-varsler innstillinger
+          </Box>
+          <IconButton size="small" sx={{ color: 'white' }} onClick={() => setPushSettingsOpen(false)}>
+            <Close />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent sx={{ p: 3 }}>
+          <PushNotificationSettings
+            userId={currentUserId}
+            contextId={selectedChat || undefined}
+            showDescription={true}
+          />
+        </DialogContent>
+        <DialogActions sx={{ p: 2 }}>
+          <Button onClick={() => setPushSettingsOpen(false)}>Lukk</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Floating Action Button - Chat Toggle */}
+      {!isOpen && !isFullscreen && (
+        <Fab
+          color="primary"
+          aria-label="Åpne chat"
+          onClick={() => { setIsOpen(true); setIsExpanded(true); }}
+          sx={{
+            position: 'fixed',
+            bottom: 24,
+            left: 24,
+            bgcolor: professionColor,
+            '&:hover': { bgcolor: professionColor, filter: 'brightness(0.9)' },
+            zIndex: 1000,
+          }}
+        >
+          <Chat />
+        </Fab>
+      )}
     </>
   );
 }

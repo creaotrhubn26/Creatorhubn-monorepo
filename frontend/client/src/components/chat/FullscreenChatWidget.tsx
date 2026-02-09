@@ -1,4 +1,5 @@
 import { useTheming } from '../../utils/theming-helper';
+import QuickMessageTemplates from './QuickMessageTemplates';
 import * as React from 'react';
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { apiRequest } from '../../lib/queryClient';
@@ -1787,6 +1788,13 @@ export default function FullscreenChatWidget({
                       </Box>
                     </Box>
                   )}
+
+                  {/* Quick Message Templates */}
+                  <QuickMessageTemplates
+                    onSelectTemplate={(msg) => handleMessageInputChange(msg)}
+                    profession={userProfession}
+                    storageKey={`quick-msg-fullscreen-${user?.id || 'anon'}`}
+                  />
 
 	                  <Box sx={{ 
 	                    position: 'relative',
