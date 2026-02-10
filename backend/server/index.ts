@@ -4949,7 +4949,10 @@ app.get('/api/wedflow/photo-shots', async (req: any, res: any) => {
 
     // Check if couple_photo_shots table exists and has data
     const result = await pool.query(`
-      SELECT id, couple_id, title, description, category, completed, sort_order, created_at
+      SELECT id, couple_id, title, description, category, completed, sort_order,
+             location_name, location_lat, location_lng, location_notes,
+             weather_tip, travel_from_venue, image_uri, scouted,
+             created_at
       FROM couple_photo_shots
       WHERE couple_id = $1
       ORDER BY sort_order, created_at
@@ -5198,7 +5201,9 @@ app.get('/api/wedflow/photo-shots-bridge', async (req: any, res: any) => {
 
     // Fetch couple's photo shots from wedflow table
     const result = await pool.query(
-      `SELECT id, title, description, category, completed, sort_order, created_at
+      `SELECT id, title, description, category, completed, sort_order, created_at,
+              location_name, location_lat, location_lng, location_notes,
+              weather_tip, travel_from_venue, image_uri, scouted
        FROM couple_photo_shots
        WHERE couple_id = $1
        ORDER BY sort_order, created_at`,
@@ -5233,6 +5238,15 @@ app.get('/api/wedflow/photo-shots-bridge', async (req: any, res: any) => {
       source: 'wedflow-couple',
       originalCategory: shot.category,
       sortOrder: shot.sort_order,
+      // Location scouting data
+      locationName: shot.location_name || null,
+      locationLat: shot.location_lat ? parseFloat(shot.location_lat) : null,
+      locationLng: shot.location_lng ? parseFloat(shot.location_lng) : null,
+      locationNotes: shot.location_notes || null,
+      weatherTip: shot.weather_tip || null,
+      travelFromVenue: shot.travel_from_venue || null,
+      imageUri: shot.image_uri || null,
+      scouted: shot.scouted || false,
     }));
 
     // Get couple info for context
@@ -5299,15 +5313,17 @@ app.post('/api/wedflow/photo-shots-bridge/push', async (req: any, res: any) => {
       [coupleId]
     );
 
-    // Insert vendor shots
+    // Insert vendor shots with location scouting data
     let inserted = 0;
     for (const shot of shots) {
       const category = SCENE_TO_CATEGORY[shot.scene] || 'details';
       const id = `vendor-${crypto.randomUUID().slice(0, 8)}`;
 
       await pool.query(
-        `INSERT INTO couple_photo_shots (id, couple_id, title, description, category, completed, sort_order, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())`,
+        `INSERT INTO couple_photo_shots (id, couple_id, title, description, category, completed, sort_order,
+         location_name, location_lat, location_lng, location_notes, weather_tip, travel_from_venue, image_uri, scouted,
+         created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW(), NOW())`,
         [
           id,
           coupleId,
@@ -5316,6 +5332,14 @@ app.post('/api/wedflow/photo-shots-bridge/push', async (req: any, res: any) => {
           category,
           shot.status === 'Completed',
           1000 + inserted, // sort after couple's own shots
+          shot.locationName || null,
+          shot.locationLat || null,
+          shot.locationLng || null,
+          shot.locationNotes || null,
+          shot.weatherTip || null,
+          shot.travelFromVenue || null,
+          shot.imageUri || null,
+          shot.scouted || false,
         ]
       );
       inserted++;

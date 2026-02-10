@@ -1380,12 +1380,25 @@ export default function ProjectCreationWithMemoryCards({
     fetchCouplePhotoShots();
   }, [wedflowCoupleId]);
 
-  // Push vendor's planned shots back to couple's wedflow photo plan
+  // Push vendor's planned shots back to couple's wedflow photo plan (with location scouting data)
   const pushShotsToCouple = useCallback(async () => {
     if (!wedflowCoupleId || !projectData.shotList?.length) return;
     
     try {
-      const vendorShots = projectData.shotList.filter((s: any) => !s.id?.startsWith('wedflow-'));
+      const vendorShots = projectData.shotList
+        .filter((s: any) => !s.id?.startsWith('wedflow-'))
+        .map((s: any) => ({
+          ...s,
+          // Include location scouting data if present
+          locationName: s.locationName || s.location?.name || null,
+          locationLat: s.locationLat || s.location?.lat || null,
+          locationLng: s.locationLng || s.location?.lng || null,
+          locationNotes: s.locationNotes || null,
+          weatherTip: s.weatherTip || null,
+          travelFromVenue: s.travelFromVenue || null,
+          imageUri: s.imageUri || null,
+          scouted: s.scouted || false,
+        }));
       if (vendorShots.length === 0) return;
       
       const result = await apiRequest('/api/wedflow/photo-shots-bridge/push', {
@@ -1394,7 +1407,7 @@ export default function ProjectCreationWithMemoryCards({
       });
       
       if (result?.success) {
-        console.log(`📸 Pushed ${result.pushedCount} vendor shots to couple's photo plan`);
+        console.log(`📸 Pushed ${result.pushedCount} vendor shots to couple's photo plan (with location data)`);
       }
     } catch (error) {
       console.warn('Failed to push shots to couple (non-critical):', error);
