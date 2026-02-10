@@ -64,7 +64,7 @@ interface ProjectSelectorModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onProjectSelected?: (project: Project) => Promise<any>;
-  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor'
+  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise'
 }
 
 const professionConfig = {

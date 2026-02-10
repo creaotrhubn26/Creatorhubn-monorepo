@@ -6,7 +6,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 
 interface ContractManagerProps {
-  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
 }
 
 export default function ContractManager({ 

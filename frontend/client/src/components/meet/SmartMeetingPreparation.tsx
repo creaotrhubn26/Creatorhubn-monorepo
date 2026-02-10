@@ -125,7 +125,7 @@ interface EquipmentItem {
 
 interface SmartMeetingPreparationProps {
   meetingId: string;
-  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
   userId: string;
   compact?: boolean
 }

@@ -65,7 +65,7 @@ interface ActivityEvent {
 interface ActivityFeedProps {
   open: boolean;
   onClose: () => void;
-  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
   accentColor: string;
 }
 

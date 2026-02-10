@@ -16,7 +16,7 @@ import {
 
 interface GoogleDriveIntegrationProps {
   userId: string;
-  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor'
+  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise'
 }
 
 interface DriveFileInfo {

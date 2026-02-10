@@ -69,11 +69,11 @@ interface Contact {
   conversation_id: string;
 }
 
-interface WedflowOfferManagerProps {
-  wedflowCoupleId?: string;
+interface EvendiOfferManagerProps {
+  evendiCoupleId?: string;
 }
 
-export default function WedflowOfferManager({ wedflowCoupleId }: WedflowOfferManagerProps) {
+export default function WedflowOfferManager({ evendiCoupleId }: EvendiOfferManagerProps) {
   const [offers, setOffers] = useState<Offer[]>([]);
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
@@ -97,23 +97,23 @@ export default function WedflowOfferManager({ wedflowCoupleId }: WedflowOfferMan
     fetchData();
   }, []);
 
-  // Auto-select couple from wedflowCoupleId when available
+  // Auto-select couple from evendiCoupleId when available
   useEffect(() => {
-    if (wedflowCoupleId && contacts.length > 0) {
-      const match = contacts.find(c => c.id === wedflowCoupleId);
+    if (evendiCoupleId && contacts.length > 0) {
+      const match = contacts.find(c => c.id === evendiCoupleId);
       if (match && !selectedCoupleId) {
         setSelectedCoupleId(match.id);
       }
     }
-  }, [wedflowCoupleId, contacts]);
+  }, [evendiCoupleId, contacts]);
 
   const fetchData = async () => {
     setLoading(true);
     try {
       const [offersRes, contractsRes, contactsRes] = await Promise.all([
-        apiRequest('/api/wedflow/offers').catch(() => ({ offers: [] })),
-        apiRequest('/api/wedflow/contracts').catch(() => ({ contracts: [] })),
-        apiRequest('/api/wedflow/contacts').catch(() => ({ contacts: [] }))
+        apiRequest('/api/evendi/offers').catch(() => ({ offers: [] })),
+        apiRequest('/api/evendi/contracts').catch(() => ({ contracts: [] })),
+        apiRequest('/api/evendi/contacts').catch(() => ({ contacts: [] }))
       ]);
       setOffers(offersRes.offers || []);
       setContracts(contractsRes.contracts || []);
@@ -176,7 +176,7 @@ export default function WedflowOfferManager({ wedflowCoupleId }: WedflowOfferMan
     setSubmitting(true);
     try {
       const contact = contacts.find(c => c.id === selectedCoupleId);
-      await apiRequest('/api/wedflow/offers', {
+      await apiRequest('/api/evendi/offers', {
         method: 'POST',
         body: JSON.stringify({
           coupleId: selectedCoupleId,
@@ -200,7 +200,7 @@ export default function WedflowOfferManager({ wedflowCoupleId }: WedflowOfferMan
 
   const handleDeleteOffer = async (offerId: string) => {
     try {
-      await apiRequest(`/api/wedflow/offers/${offerId}`, { method: 'DELETE' });
+      await apiRequest(`/api/evendi/offers/${offerId}`, { method: 'DELETE' });
       fetchData();
     } catch (e: any) {
       setError(e.message);
@@ -219,7 +219,7 @@ export default function WedflowOfferManager({ wedflowCoupleId }: WedflowOfferMan
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 300 }}>
         <CircularProgress />
-        <Typography sx={{ ml: 2 }}>Laster Wedflow-data...</Typography>
+        <Typography sx={{ ml: 2 }}>Laster Evendi-data...</Typography>
       </Box>
     );
   }
@@ -232,9 +232,9 @@ export default function WedflowOfferManager({ wedflowCoupleId }: WedflowOfferMan
       <Paper sx={{ p: 3, mb: 3, borderRadius: 3, border: '2px solid #E91E63', background: 'linear-gradient(135deg, #FCE4EC 0%, #fff 100%)' }}>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <img src="/wedflow-logo.png" alt="Wedflow" style={{ height: 36 }} />
+            <img src="/wedflow-logo.png" alt="Evendi" style={{ height: 36 }} />
             <Typography variant="h5" sx={{ fontWeight: 700, color: '#E91E63' }}>
-              Wedflow Tilbud & Kontrakter
+              Evendi Tilbud & Kontrakter
             </Typography>
           </Box>
           <Button
@@ -302,7 +302,7 @@ export default function WedflowOfferManager({ wedflowCoupleId }: WedflowOfferMan
               <Receipt sx={{ fontSize: 64, color: 'grey.400', mb: 2 }} />
               <Typography variant="h6" color="text.secondary">Ingen tilbud ennå</Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                Opprett ditt første tilbud til et par via Wedflow
+                Opprett ditt første tilbud til et par via Evendi
               </Typography>
               <Button variant="contained" startIcon={<Add />} onClick={() => setCreateDialogOpen(true)}
                 sx={{ bgcolor: '#E91E63', '&:hover': { bgcolor: '#C2185B' } }}>

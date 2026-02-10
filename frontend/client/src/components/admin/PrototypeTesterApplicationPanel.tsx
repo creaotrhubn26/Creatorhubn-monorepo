@@ -54,7 +54,7 @@ interface PrototypeTesterApplication {
   name: string;
   email: string;
   company?: string;
-  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'other';
+  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'other' | 'enterprise';
   testingAreas: string[];
   experience: 'beginner' | 'intermediate' | 'advanced' | 'expert';
   feedback: string;

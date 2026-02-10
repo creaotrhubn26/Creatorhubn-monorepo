@@ -401,7 +401,7 @@ export default function WeddingTimeline({
   };
 
   // Kulturspesifikke bryllupskjøreplaner - Use culturalType from props
-  // Keys synced with wedflow TraditionsScreen via traditions bridge
+  // Keys synced with Evendi TraditionsScreen via traditions bridge
   const getCulturalTimelineData = (): TimelineEvent[] => {
     switch (culturalType) {
       case 'sikh':
@@ -437,7 +437,7 @@ export default function WeddingTimeline({
     }
   };
   
-  // Cultural timeline display label — synced with wedflow traditions keys
+  // Cultural timeline display label — synced with Evendi traditions keys
   const culturalLabels: Record<string, string> = {
     norsk: '',
     sikh: ' (Sikh-tradisjon)',

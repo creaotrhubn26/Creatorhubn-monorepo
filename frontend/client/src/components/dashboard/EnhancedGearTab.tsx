@@ -68,7 +68,7 @@ import ComprehensiveGearDatabase from './ComprehensiveGearDatabase';
 import KeyboardShortcutsTools from '../tools/KeyboardShortcutsToolsNew';
 
 interface EnhancedGearTabProps {
-  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
   className?: string;
   // Integration props for universal connectivity
   onEquipmentUpdate?: (equipment: any) => void;

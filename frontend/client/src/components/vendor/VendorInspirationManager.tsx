@@ -284,10 +284,10 @@ export default function VendorInspirationManager({ vendorType, vendorName, userI
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Box>
           <Typography variant="h5" sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
-            <AutoAwesome color="primary" /> Inspirasjon
+            <AutoAwesome color="primary" /> Inspirasjon — {vendorName}
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Vis frem arbeidet ditt og inspirer bryllupspar — {inspirations.length} oppslag, {approvedCount} godkjente
+            {vendorType === 'photographer' ? 'Vis frem bildene dine' : vendorType === 'videographer' ? 'Vis frem filmene dine' : 'Vis frem arbeidet ditt'} og inspirer bryllupspar — {inspirations.length} oppslag, {approvedCount} godkjente
           </Typography>
         </Box>
         <Button
@@ -364,6 +364,7 @@ export default function VendorInspirationManager({ vendorType, vendorName, userI
                           <Chip
                             size="small"
                             variant="outlined"
+                            icon={<Category fontSize="small" />}
                             label={`${categoryIcons[inspiration.category_icon || ''] || '📌'} ${inspiration.category_name}`}
                             sx={{ mb: 1 }}
                           />
@@ -378,15 +379,20 @@ export default function VendorInspirationManager({ vendorType, vendorName, userI
                         )}
                       </CardContent>
                       <CardActions sx={{ px: 2, pb: 2, justifyContent: 'space-between' }}>
-                        <Button size="small" startIcon={<Visibility />} onClick={() => setDetailInspiration(inspiration.id)}>
-                          Detaljer
-                        </Button>
+                        <Tooltip title="Vis detaljer">
+                          <Button size="small" startIcon={<Visibility />} onClick={() => setDetailInspiration(inspiration.id)}>
+                            Detaljer
+                          </Button>
+                        </Tooltip>
                         <Box>
                           {inspiration.status === 'draft' && (
-                            <Button size="small" color="success" startIcon={<Send />} onClick={() => updateMutation.mutate({ id: inspiration.id, data: { status: 'approved' } })}>
-                              Publiser
-                            </Button>
+                            <Tooltip title="Publiser oppslaget">
+                              <Button size="small" color="success" startIcon={<Send />} onClick={() => updateMutation.mutate({ id: inspiration.id, data: { status: 'approved' } })}>
+                                Publiser
+                              </Button>
+                            </Tooltip>
                           )}
+                          <Tooltip title="Rediger">
                           <IconButton size="small" onClick={() => {
                             setEditInspiration(inspiration);
                             setFormData({
@@ -408,9 +414,12 @@ export default function VendorInspirationManager({ vendorType, vendorName, userI
                           }}>
                             <Edit fontSize="small" />
                           </IconButton>
-                          <IconButton size="small" color="error" onClick={() => { if (window.confirm('Slett dette oppslaget?')) deleteMutation.mutate(inspiration.id); }}>
-                            <Delete fontSize="small" />
-                          </IconButton>
+                          </Tooltip>
+                          <Tooltip title="Slett oppslaget">
+                            <IconButton size="small" color="error" onClick={() => { if (window.confirm('Slett dette oppslaget?')) deleteMutation.mutate(inspiration.id); }}>
+                              <Delete fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
                         </Box>
                       </CardActions>
                     </Card>
@@ -570,6 +579,51 @@ export default function VendorInspirationManager({ vendorType, vendorName, userI
               <Typography variant="body1" sx={{ mb: 2 }}>{detailData.description}</Typography>
               {(detailData.price_min > 0 || detailData.price_max > 0) && (
                 <Chip label={`${detailData.price_min?.toLocaleString('nb-NO')} – ${detailData.price_max?.toLocaleString('nb-NO')} ${detailData.currency || 'NOK'}`} color="success" sx={{ mb: 2 }} />
+              )}
+
+              {/* Contact details list */}
+              {(detailData.inquiry_email || detailData.inquiry_phone || detailData.website_url) && (
+                <List dense sx={{ bgcolor: alpha(theme.palette.primary.main, 0.04), borderRadius: 2, mb: 2 }}>
+                  {detailData.inquiry_email && (
+                    <ListItem>
+                      <ListItemIcon><Email color="primary" /></ListItemIcon>
+                      <ListItemText primary={detailData.inquiry_email} secondary="Forespørsels-epost" />
+                      <ListItemSecondaryAction>
+                        <Tooltip title="Send e-post">
+                          <IconButton size="small" component="a" href={`mailto:${detailData.inquiry_email}`}>
+                            <Send fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      </ListItemSecondaryAction>
+                    </ListItem>
+                  )}
+                  {detailData.inquiry_phone && (
+                    <ListItem>
+                      <ListItemIcon><Phone color="primary" /></ListItemIcon>
+                      <ListItemText primary={detailData.inquiry_phone} secondary="Telefon" />
+                      <ListItemSecondaryAction>
+                        <Tooltip title="Ring">
+                          <IconButton size="small" component="a" href={`tel:${detailData.inquiry_phone}`}>
+                            <Phone fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      </ListItemSecondaryAction>
+                    </ListItem>
+                  )}
+                  {detailData.website_url && (
+                    <ListItem>
+                      <ListItemIcon><Language color="primary" /></ListItemIcon>
+                      <ListItemText primary={detailData.website_url} secondary="Nettside" />
+                      <ListItemSecondaryAction>
+                        <Tooltip title="Åpne nettside">
+                          <IconButton size="small" component="a" href={detailData.website_url} target="_blank">
+                            <Language fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      </ListItemSecondaryAction>
+                    </ListItem>
+                  )}
+                </List>
               )}
 
               <Divider sx={{ my: 2 }} />

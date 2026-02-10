@@ -217,6 +217,11 @@ interface OnboardingData {
 
 // Onboarding steps configuration
 const getStepsForProfession = (profession: string) => {
+  if (profession === 'enterprise') {
+    return [
+      'Profesjonsvalg', 'Team-profil', 'Teammedlemmer', 'Kamera- og Utstyrssystem', 'Cloud Integrering', 'Sosiale Medier', 'Branding Setup', 'Arbeidsflyt Konfigurasjon', 'Velg Abonnement'
+    ];
+  }
   const baseSteps = [
     'Profesjonsvalg', 'Profildetaljer', 'Kamera- og Utstyrssystem', 'Cloud Integrering', 'Sosiale Medier', 'Branding Setup', 'Arbeidsflyt Konfigurasjon', 'Velg Abonnement' // New payment/subscription step
   ];
@@ -1010,17 +1015,20 @@ export default function UniversalOnboarding({ isOpen: open = true, onClose = () 
       case 0: return onboardingData.profession !== ', ';
       case 1: return onboardingData.firstName && onboardingData.lastName && onboardingData.email;
       case 2: 
+        // Enterprise: team members step (always proceed)
+        if (onboardingData.profession === 'enterprise') return true;
         // Different equipment requirements based on profession
         if (onboardingData.profession === 'music_producer') {
           return onboardingData.selectedAudioInterfaces.length > 0; // Audio interface er påkrevd for musikk produsenter
   } else {
           return onboardingData.selectedCameras.length > 0; // Kamera er påkrevd for foto/video
     }
-      case 3: return onboardingData.cloudProvider !== ', ';
+      case 3: return onboardingData.profession === 'enterprise' ? true : onboardingData.cloudProvider !== ', '; // Enterprise: equipment optional
       case 4: return true; // Social media er valgfritt
       case 5: return true; // Branding er valgfritt
       case 6: return true; // Workflow preferences er valgfritt
       case 7: return true; // Payment is optional (can start with trial)
+      case 8: return true; // Enterprise summary
       default: return false;
 }
 };
@@ -1413,14 +1421,51 @@ export default function UniversalOnboarding({ isOpen: open = true, onClose = () 
           </Fade>
       );
 
-      case 1: // Profildetaljer
+      case 1: // Profildetaljer / Team-profil (enterprise)
         return (
           <Fade in>
             <Box>
+              {/* Enterprise Team Profile Header */}
+              {onboardingData.profession === 'enterprise' && (
+                <Box sx={{ mb: 4 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
+                    <Box 
+                      component="img" 
+                      src="/norwed.png" 
+                      alt="Norwedfilm" 
+                      sx={{ width: 64, height: 64, borderRadius: 2, mr: 2, objectFit: 'contain', bgcolor: '#f5f5f5', p: 0.5 }}
+                    />
+                    <Box>
+                      <Typography variant="h5" sx={{ color: '#6c3483', fontWeight: 700 }}>
+                        Enterprise Team-profil
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Kombiner foto og video i ett team-dashbord
+                      </Typography>
+                    </Box>
+                  </Box>
+                  
+                  <Paper sx={{ p: 3, mb: 3, border: '2px solid #6c3483', borderRadius: 3 }}>
+                    <Typography variant="h6" gutterBottom sx={{ fontWeight: 600, color: '#6c3483' }}>
+                      Kombinerte profesjoner
+                    </Typography>
+                    <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+                      <Chip icon={<CameraIcon />} label="Fotograf" color="success" variant="outlined" />
+                      <Chip icon={<Box component="span" sx={{ display: 'flex' }}><CameraIcon sx={{ fontSize: 18 }} /></Box>} label="Videograf" color="primary" variant="outlined" />
+                    </Box>
+                    <Typography variant="body2" color="text.secondary">
+                      Ditt team vil ha tilgang til alle funksjoner for både fotografer og videografer,
+                      inkludert delt utstyrshåndtering, felles prosjektstyring og samordnet leveranse.
+                    </Typography>
+                  </Paper>
+                </Box>
+              )}
+
+              {/* Standard profile details */}
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
                 <PersonIcon sx={{ color: (selectedProfession as any)?.color, mr: 2, fontSize: 32 }} />
                 <Typography variant="h5" sx={{ color: theming.colors.primary }}>
-                  {pendingData ? 'Bekreft din informasjon' : 'Profildetaljer'}
+                  {onboardingData.profession === 'enterprise' ? 'Bedriftsinformasjon' : (pendingData ? 'Bekreft din informasjon' : 'Profildetaljer')}
                 </Typography>
               </Box>
               
@@ -1673,7 +1718,96 @@ export default function UniversalOnboarding({ isOpen: open = true, onClose = () 
           </Fade>
       );
 
-      case 2: // Utstyrssystem
+      case 2: // Teammedlemmer (enterprise) or Utstyrssystem (standard)
+        if (onboardingData.profession === 'enterprise') {
+          return (
+            <Fade in>
+              <Box>
+                <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
+                  <BusinessIcon sx={{ color: '#6c3483', mr: 2, fontSize: 32 }} />
+                  <Typography variant="h5" sx={{ color: '#6c3483', fontWeight: 700 }}>
+                    Teammedlemmer
+                  </Typography>
+                </Box>
+                
+                <Typography variant="body1" color="textSecondary" sx={{ mb: 3 }}>
+                  Legg til teammedlemmene dine. Hvert medlem får tilgang til dashbordet og kan tildeles som fotograf eller videograf.
+                </Typography>
+
+                <Paper sx={{ p: 3, mb: 3, border: '1px solid', borderColor: 'divider', borderRadius: 3 }}>
+                  <Typography variant="h6" gutterBottom sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <AddIcon /> Legg til teammedlem
+                  </Typography>
+                  
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} sm={6}>
+                      <TextField fullWidth label="E-post" placeholder="medlem@bedrift.no" size="small" />
+                    </Grid>
+                    <Grid item xs={12} sm={3}>
+                      <FormControl fullWidth size="small">
+                        <InputLabel>Rolle</InputLabel>
+                        <Select label="Rolle" defaultValue="member">
+                          <MenuItem value="admin">Admin</MenuItem>
+                          <MenuItem value="member">Medlem</MenuItem>
+                          <MenuItem value="photographer">Fotograf</MenuItem>
+                          <MenuItem value="videographer">Videograf</MenuItem>
+                        </Select>
+                      </FormControl>
+                    </Grid>
+                    <Grid item xs={12} sm={3}>
+                      <Button variant="contained" fullWidth sx={{ bgcolor: '#6c3483', '&:hover': { bgcolor: '#5b2d70' }, height: 40 }}>
+                        Inviter
+                      </Button>
+                    </Grid>
+                  </Grid>
+                </Paper>
+
+                {/* Pre-populated Norwedfilm team members */}
+                <Paper sx={{ p: 3, border: '1px solid', borderColor: 'divider', borderRadius: 3 }}>
+                  <Typography variant="h6" gutterBottom sx={{ fontWeight: 600 }}>
+                    Team ({3} medlemmer)
+                  </Typography>
+                  
+                  <List>
+                    {[
+                      { email: 'admin@norwedfilm.no', role: 'Admin', status: 'Aktiv', avatar: 'A' },
+                      { email: 'fotograf@norwedfilm.no', role: 'Fotograf', status: 'Aktiv', avatar: 'F' },
+                      { email: 'videograf@norwedfilm.no', role: 'Videograf', status: 'Aktiv', avatar: 'V' },
+                    ].map((member) => (
+                      <ListItem key={member.email} sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2, mb: 1 }}>
+                        <ListItemAvatar>
+                          <Avatar sx={{ bgcolor: '#6c3483' }}>{member.avatar}</Avatar>
+                        </ListItemAvatar>
+                        <ListItemText 
+                          primary={member.email} 
+                          secondary={
+                            <Box sx={{ display: 'flex', gap: 1, mt: 0.5 }}>
+                              <Chip label={member.role} size="small" color="primary" variant="outlined" />
+                              <Chip label={member.status} size="small" color="success" variant="outlined" />
+                            </Box>
+                          } 
+                        />
+                        <ListItemSecondaryAction>
+                          <IconButton edge="end">
+                            <DeleteIcon />
+                          </IconButton>
+                        </ListItemSecondaryAction>
+                      </ListItem>
+                    ))}
+                  </List>
+
+                  <Alert severity="info" sx={{ mt: 2 }}>
+                    <Typography variant="body2">
+                      Teammedlemmer vil motta en invitasjons-e-post og får tilgang til dashbordet etter registrering.
+                      Hvert medlem kan bruke Academy og Community med sin egen konto.
+                    </Typography>
+                  </Alert>
+                </Paper>
+              </Box>
+            </Fade>
+          );
+        }
+        // Fall through to standard equipment step for non-enterprise
         return (
           <Fade in>
             <Box>
@@ -2383,8 +2517,63 @@ export default function UniversalOnboarding({ isOpen: open = true, onClose = () 
               </Typography>
               
               <Typography variant="body1" color="textSecondary" sx={{ textAlign: 'center', mb: 4 }}>
-                Start med 14 dagers gratis prøveperiode - ingen binding
+                {onboardingData.profession === 'enterprise' 
+                  ? 'Enterprise-abonnement inkluderer team-dashbord, foto og video' 
+                  : 'Start med 14 dagers gratis prøveperiode - ingen binding'}
               </Typography>
+
+              {/* Enterprise Subscription Summary */}
+              {onboardingData.profession === 'enterprise' && (
+                <Paper sx={{ p: 3, mb: 4, border: '2px solid #6c3483', borderRadius: 3, bgcolor: 'rgba(108,52,131,0.03)' }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                    <Box component="img" src="/norwed.png" alt="Norwedfilm" sx={{ width: 48, height: 48, borderRadius: 2, objectFit: 'contain', bgcolor: '#f5f5f5', p: 0.5 }} />
+                    <Box>
+                      <Typography variant="h6" sx={{ fontWeight: 700, color: '#6c3483' }}>
+                        Enterprise Team Plan
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Foto + Video kombinert • Teammedlemmer inkludert
+                      </Typography>
+                    </Box>
+                  </Box>
+                  
+                  <Grid container spacing={2} sx={{ mb: 2 }}>
+                    <Grid item xs={6} sm={3}>
+                      <Paper sx={{ p: 2, textAlign: 'center', bgcolor: '#6c348308' }}>
+                        <Typography variant="h4" sx={{ fontWeight: 700, color: '#6c3483' }}>1 999</Typography>
+                        <Typography variant="caption" color="text.secondary">NOK/mnd inkl. mva</Typography>
+                      </Paper>
+                    </Grid>
+                    <Grid item xs={6} sm={3}>
+                      <Paper sx={{ p: 2, textAlign: 'center', bgcolor: '#6c348308' }}>
+                        <Typography variant="h4" sx={{ fontWeight: 700, color: '#6c3483' }}>5</Typography>
+                        <Typography variant="caption" color="text.secondary">Teammedlemmer inkl.</Typography>
+                      </Paper>
+                    </Grid>
+                    <Grid item xs={6} sm={3}>
+                      <Paper sx={{ p: 2, textAlign: 'center', bgcolor: '#6c348308' }}>
+                        <Typography variant="h4" sx={{ fontWeight: 700, color: '#6c3483' }}>436</Typography>
+                        <Typography variant="caption" color="text.secondary">NOK/ekstra bruker</Typography>
+                      </Paper>
+                    </Grid>
+                    <Grid item xs={6} sm={3}>
+                      <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'success.light' }}>
+                        <Typography variant="h4" sx={{ fontWeight: 700, color: 'success.dark' }}>14</Typography>
+                        <Typography variant="caption" color="text.secondary">Dager gratis prøve</Typography>
+                      </Paper>
+                    </Grid>
+                  </Grid>
+
+                  <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 600 }}>Inkludert i Enterprise:</Typography>
+                  <Grid container spacing={1}>
+                    {['Team Management', 'Photo Suite', 'Video Suite', 'Showcase Galleri', 'Analytics', 'Academy', 'Community', 'Wedding Timeline', 'AI Enhancement', 'Equipment Sharing'].map((f) => (
+                      <Grid item key={f}>
+                        <Chip label={f} size="small" color="primary" variant="outlined" icon={<CheckCircleIcon />} />
+                      </Grid>
+                    ))}
+                  </Grid>
+                </Paper>
+              )}
 
               {/* Pricing Plans */}
               {!platformPricingLoading && subscriptionPlans && subscriptionPlans.length > 0 ? (

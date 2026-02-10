@@ -83,7 +83,7 @@ interface MaskToolbarProps {
   imageHeight?: number;
   onMaskChange?: (masks: Mask[]) => void;
   initialMasks?: Mask[];
-  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
 }
 
 export default function MaskToolbar({

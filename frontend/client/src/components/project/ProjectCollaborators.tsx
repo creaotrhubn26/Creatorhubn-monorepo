@@ -64,7 +64,7 @@ interface ExistingUser {
 interface ProjectCollaboratorsProps {
   projectData: any;
   onCollaboratorsChange: (collaborators: ProjectCollaborator[]) => void;
-  currentUserProfession: 'photographer' | 'videographer' | 'music_producer' | 'vendor'
+  currentUserProfession: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise'
 }
 
 export default function ProjectCollaborators({

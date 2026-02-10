@@ -17,7 +17,7 @@ interface CurrentUser {
 }
 
 // Valid profession types
-type ValidProfession = 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+type ValidProfession = 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
 
 // Valid profession types for file manager (subset of ValidProfession)
 type FileManagerProfession = 'photographer' | 'videographer' | 'music_producer' | 'designer';

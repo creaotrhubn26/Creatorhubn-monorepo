@@ -78,7 +78,7 @@ const BrandingWorkflowPanel: React.FC<BrandingWorkflowPanelProps> = ({
 
   // Local state
   const [selectedTab, setSelectedTab] = useState(0);
-  const [brandingProfession, setBrandingProfession] = useState<'admin' | 'photographer' | 'videographer' | 'music_producer' | 'vendor'>('photographer');
+  const [brandingProfession, setBrandingProfession] = useState<'admin' | 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise'>('photographer');
   const [confirmDeletePreset, setConfirmDeletePreset] = useState<{ id: string; name: string } | null>(null);
   const [brandingCategory, setBrandingCategory] = useState<string | undefined>(undefined);
   const [customBrandColor, setCustomBrandColor] = useState<string | undefined>(undefined);

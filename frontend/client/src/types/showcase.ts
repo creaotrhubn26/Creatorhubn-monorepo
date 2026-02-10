@@ -1,4 +1,4 @@
-export type ProfessionType = 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+export type ProfessionType = 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
 
 export interface SearchQuery {
   text?: string;

@@ -310,7 +310,7 @@ function TabPanel(props: TabPanelProps) {
 }
 
 interface UniversalDashboardDesktopProps {
-  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'admin';
+  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'admin' | 'enterprise';
   // Integration props for unified workflow connectivity
   onMeetingCreate?: (meeting: any) => void;
   onProjectUpdate?: (project: any) => void;

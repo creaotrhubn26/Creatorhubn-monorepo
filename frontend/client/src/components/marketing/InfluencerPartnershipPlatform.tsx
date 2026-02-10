@@ -194,7 +194,7 @@ interface Partnership {
 }
 
 interface InfluencerPartnershipPlatformProps {
-  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
 }
 
 const InfluencerPartnershipPlatform: React.FC<InfluencerPartnershipPlatformProps> = ({ 

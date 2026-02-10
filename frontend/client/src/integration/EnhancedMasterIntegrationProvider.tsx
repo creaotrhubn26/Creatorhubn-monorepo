@@ -405,7 +405,12 @@ export const EnhancedMasterIntegrationProvider: React.FC<{
     'course-creation', 'course-management','lesson-creation','content-management','media-upload','course-publishing','course-analytics','collaboration','video-processing','annotation-editing','chapter-management','lower-thirds','cta-overlays','module-management','academy-dashboard','floating-action-menu','asset-browser','settings-panel','video-player','analytics-dashboard','visual-editor','visual-editing','drag-drop-editor',
     
     // Resume Builder features
-    'resume-builder','resume-templates','resume-export','resume-analytics','ats-optimization','google-drive-integration','portfolio-management','resume-versioning','resume-auto-save','ai-resume-writing','ai-content-suggestions','job-application-tracking','norwegian-job-portals','resume-sharing','resume-collaboration'
+    'resume-builder','resume-templates','resume-export','resume-analytics','ats-optimization','google-drive-integration','portfolio-management','resume-versioning','resume-auto-save','ai-resume-writing','ai-content-suggestions','job-application-tracking','norwegian-job-portals','resume-sharing','resume-collaboration',
+    
+    // Enterprise Team features
+    'enterprise-team-management','enterprise-team-members','enterprise-team-roles','enterprise-combined-projects',
+    'enterprise-photo-suite','enterprise-video-suite','enterprise-team-analytics','enterprise-team-portfolio',
+    'enterprise-billing','enterprise-subscription','enterprise-workload-balance','enterprise-equipment-sharing'
   ]));
   
 	  // Fetch dynamic features from profession configurations (shared matrix + backend API)
@@ -2233,20 +2238,41 @@ export const ENHANCED_INTEGRATION_CONFIGS = {
     ]
 },
 
-  // Wedflow Service (Bookings, Users, Analytics)
-  WEDFLOW_SERVICE: {
-    componentType: 'wedflow-service',
+  // Evendi Service (Bookings, Users, Analytics)
+  EVENDI_SERVICE: {
+    componentType: 'evendi-service',
     capabilities: [
       'data:read','data:write','event:emit','event:listen','action:execute',
-      'wedflow:bookings:list','wedflow:bookings:create','wedflow:bookings:update','wedflow:bookings:delete',
-      'wedflow:users:list','wedflow:analytics:summary'
+      'evendi:bookings:list','evendi:bookings:create','evendi:bookings:update','evendi:bookings:delete',
+      'evendi:users:list','evendi:analytics:summary'
     ],
     dataKeys: [
-      'wedflowBookings','wedflowUsers','wedflowAnalytics','wedflowStatus'
+      'evendiBookings','evendiUsers','evendiAnalytics','evendiStatus'
     ],
     messageTypes: [
-      'wedflow:booking:created','wedflow:booking:updated','wedflow:booking:deleted',
-      'wedflow:data:synced','wedflow:api:error'
+      'evendi:booking:created','evendi:booking:updated','evendi:booking:deleted',
+      'evendi:data:synced','evendi:api:error'
+    ]
+  },
+
+  // Enterprise Team Service (Combined Photo+Video, Team Management)
+  ENTERPRISE_SERVICE: {
+    componentType: 'enterprise-service',
+    capabilities: [
+      'data:read','data:write','event:emit','event:listen','action:execute',
+      'enterprise:team:manage','enterprise:team:members','enterprise:team:roles',
+      'enterprise:projects:combined','enterprise:photo:suite','enterprise:video:suite',
+      'enterprise:analytics:team','enterprise:showcase:portfolio',
+      'enterprise:billing:manage','enterprise:subscription:manage'
+    ],
+    dataKeys: [
+      'enterpriseTeam','enterpriseMembers','enterpriseProjects',
+      'enterpriseAnalytics','enterpriseSubscription','enterpriseBilling'
+    ],
+    messageTypes: [
+      'enterprise:team:updated','enterprise:member:added','enterprise:member:removed',
+      'enterprise:project:assigned','enterprise:billing:changed',
+      'enterprise:subscription:updated','enterprise:api:error'
     ]
   }
 };

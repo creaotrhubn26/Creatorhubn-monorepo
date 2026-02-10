@@ -1,6 +1,6 @@
 // Tradition-specific budget templates and contextual hints
 // Used by CreatorHub frontend components for tradition-aware planning
-// All 17 synced cultural keys matching wedflow ↔ CreatorHub bridge
+// All 17 synced cultural keys matching Evendi ↔ CreatorHub bridge
 
 export interface TraditionBudgetItem {
   category: string;

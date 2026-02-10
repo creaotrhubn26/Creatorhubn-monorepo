@@ -100,7 +100,7 @@ const priorityColors = {
   urgent: '#8E44A0' } as const;
 
 interface SubmissionsOverviewProps {
-  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
   // Integration props
   onMeetingCreate?: (meeting: any) => void;
   onProjectUpdate?: (project: any) => void;

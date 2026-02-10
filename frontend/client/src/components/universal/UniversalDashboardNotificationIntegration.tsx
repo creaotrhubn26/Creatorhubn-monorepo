@@ -45,7 +45,7 @@ import GoogleMeetIntegration from '../meet/GoogleMeetIntegration';
 import SmartMeetingPreparation from '../meet/SmartMeetingPreparation';
 
 interface UniversalDashboardNotificationIntegrationProps {
-  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
   userId: string;
   currentProject?: string;
   dashboardTab?: string

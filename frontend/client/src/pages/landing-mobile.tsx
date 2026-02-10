@@ -323,7 +323,8 @@ const LandingMobile: React.FC = () => {
       { role: 'photographer', label: getProfessionDisplayName('photographer'), icon: <CameraAlt sx={{ fontSize: 32}} />, color: '#2e7d32', description: 'Bryllup, portrett, events og mer', gradient: 'linear-gradient(135deg, rgba(46,125,50,0.1) 0%, rgba(46,125,50,0.05) 100%)', isStatic: false },
       { role: 'videographer', label: getProfessionDisplayName('videographer'), icon: <VideoLibrary sx={{ fontSize: 32}} />, color: '#1565c0', description: 'Produksjon, redigering og levering', gradient: 'linear-gradient(135deg, rgba(21,101,192,0.1) 0%, rgba(21,101,192,0.05) 100%)', isStatic: false },
       { role: 'music_producer', label: getProfessionDisplayName('music_producer'), icon: <LibraryMusic sx={{ fontSize: 32}} />, color: '#7b1fa2', description: 'Opptak, miksing og mastering', gradient: 'linear-gradient(135deg, rgba(123,31,162,0.1) 0%, rgba(123,31,162,0.05) 100%)', isStatic: false },
-      { role: 'vendor', label: getProfessionDisplayName('vendor'), icon: <Business sx={{ fontSize: 32}} />, color: '#ff8c00', description: 'Utstyr, tjenester og produkter', gradient: 'linear-gradient(135deg, rgba(255,140,0,0.1) 0%, rgba(255,140,0,0.05) 100%)', isStatic: false }
+      { role: 'vendor', label: getProfessionDisplayName('vendor'), icon: <Business sx={{ fontSize: 32}} />, color: '#ff8c00', description: 'Utstyr, tjenester og produkter', gradient: 'linear-gradient(135deg, rgba(255,140,0,0.1) 0%, rgba(255,140,0,0.05) 100%)', isStatic: false },
+      { role: 'enterprise', label: 'Enterprise Team', icon: <Group sx={{ fontSize: 32}} />, color: '#6c3483', description: 'Kombiner foto og video i ett team-dashbord', gradient: 'linear-gradient(135deg, rgba(108,52,131,0.1) 0%, rgba(108,52,131,0.05) 100%)', isStatic: false, badge: <Box component="span" sx={{ display: 'inline-flex', gap: 0.5, ml: 1 }}><CameraAlt sx={{ fontSize: 14 }} /><VideoLibrary sx={{ fontSize: 14 }} /></Box> }
     ];
     
     // Prototype Tester - ALWAYS included as meta-profession (admin-controlled)
@@ -2866,8 +2867,16 @@ const LandingMobile: React.FC = () => {
                     fontWeight: 700,
                     color: '#fff',
                     mb: 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
                   }}>
                     {item.label}
+                    {(item as any).badge && (
+                      <Box sx={{ ml: 1, display: 'inline-flex', gap: 0.3, color: 'rgba(255,255,255,0.7)' }}>
+                        {(item as any).badge}
+                      </Box>
+                    )}
                   </Typography>
 
                   <Typography variant="body2" sx={{

@@ -54,7 +54,7 @@ interface ShowcaseItem {
 interface ComparisonViewProps {
   open: boolean;
   items: ShowcaseItem[];
-  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
   accentColor: string;
   onClose: () => void;
   onPrefer?: (itemId: string) => void;

@@ -13,7 +13,7 @@ async function getAuthHeader(): Promise<Record<string, string>> {
 }
 
 // Backend API URL from environment — points to Render backend in production
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://wedflow-api.onrender.com';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://evendi.onrender.com';
 
 // Default fetcher for React Query with OAuth support
 type ApiRequestOptions = Omit<RequestInit, 'body'> & {

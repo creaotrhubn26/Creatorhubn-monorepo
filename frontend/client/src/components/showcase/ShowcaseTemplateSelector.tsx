@@ -51,7 +51,7 @@ interface ShowcaseTemplateSelectorProps {
   open: boolean;
   onClose: () => void;
   onSelectTemplate: (template: Template) => void;
-  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'admin'
+  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'admin' | 'enterprise'
 }
 
 const ShowcaseTemplateSelector: React.FC<ShowcaseTemplateSelectorProps> = ({

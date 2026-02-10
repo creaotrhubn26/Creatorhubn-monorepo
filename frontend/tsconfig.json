@@ -26,7 +26,7 @@
     "moduleResolution": "bundler",
     "baseUrl": ".",
     "types": ["node", "vite/client"],
-    "typeRoots": ["./node_modules/@types", "./client/src/types"],
+    "typeRoots": ["./node_modules/@types", "../node_modules/@types", "./client/src/types"],
     "paths": {
       "@/*": ["client/src/components/creatorhubvirtualstudio/src/*", "client/src/*"],
       "@shared/*": ["shared/*"]

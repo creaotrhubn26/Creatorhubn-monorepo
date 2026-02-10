@@ -111,6 +111,18 @@ function getEditingSoftwareOptions(profession: string) {
         ...baseOptions,
       ];
 
+    case 'enterprise':
+      return [
+        { id: 'lightroom', name: 'Adobe Lightroom', popular: true },
+        { id: 'capture-one', name: 'Capture One', popular: true },
+        { id: 'davinci', name: 'DaVinci Resolve', popular: true },
+        { id: 'premiere', name: 'Adobe Premiere Pro', popular: true },
+        { id: 'final-cut', name: 'Final Cut Pro', popular: false },
+        { id: 'photoshop', name: 'Adobe Photoshop', popular: false },
+        { id: 'after-effects', name: 'Adobe After Effects', popular: false },
+        ...baseOptions,
+      ];
+
     default: return baseOptions;
 }
 }

@@ -46,7 +46,7 @@ interface SplitSheetListProps {
   onDelete: (splitSheet: SplitSheet) => void;
   viewMode?: 'list' | 'grid';
   onViewModeChange?: (mode: 'list' | 'grid') => void;
-  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
 }
 
 export default function SplitSheetList({

@@ -73,7 +73,7 @@ import { PushNotificationSettings } from '../shared/PushNotificationSettings';
 interface WeddingTimelineAdminProps {
   projectId?: string; // Optional - hvis null/undefined = generell bryllupstidslinje-administrasjon
   weddingId?: string; // Spesifikk bryllup-ID hvis det finnes
-  wedflowCoupleId?: string; // Optional: auto-fetch cultural type from wedflow couple traditions bridge
+  evendiCoupleId?: string; // Optional: auto-fetch cultural type from Evendi couple traditions bridge
   projectIntegration?: {
     projectId?: string;
     weddingTimelineIntegrated?: boolean;
@@ -229,7 +229,7 @@ const DEMO_TIMELINE: WeddingTimeline = {
 export default function WeddingTimelineAdmin({ 
   projectId, 
   weddingId, 
-  wedflowCoupleId,
+  evendiCoupleId,
   projectIntegration,
   onMeetingCreate,
   onProjectUpdate,
@@ -325,28 +325,28 @@ export default function WeddingTimelineAdmin({
     enabled: !!selectedProjectId
 });
 
-  // ======= WEDFLOW TRADITIONS BRIDGE =======
-  const [wedflowCulturalType, setWedflowCulturalType] = React.useState<string | null>(null);
+  // ======= EVENDI TRADITIONS BRIDGE =======
+  const [evendiCulturalType, setEvendiCulturalType] = React.useState<string | null>(null);
   
   React.useEffect(() => {
-    if (!wedflowCoupleId) return;
+    if (!evendiCoupleId) return;
     const fetchTraditions = async () => {
       try {
-        const data = await apiRequest(`/api/wedflow/traditions-bridge?coupleId=${encodeURIComponent(wedflowCoupleId)}`);
+        const data = await apiRequest(`/api/evendi/traditions-bridge?coupleId=${encodeURIComponent(evendiCoupleId)}`);
         if (data?.primaryCulturalType) {
-          setWedflowCulturalType(data.primaryCulturalType);
-          console.log(`🌍 WeddingTimeline traditions bridge: ${wedflowCoupleId} → ${data.primaryCulturalType}`);
+          setEvendiCulturalType(data.primaryCulturalType);
+          console.log(`🌍 WeddingTimeline traditions bridge: ${evendiCoupleId} → ${data.primaryCulturalType}`);
         }
       } catch (error) {
-        console.warn('Wedflow traditions bridge fetch failed (non-critical):', error);
+        console.warn('Evendi traditions bridge fetch failed (non-critical):', error);
       }
     };
     fetchTraditions();
-  }, [wedflowCoupleId]);
+  }, [evendiCoupleId]);
   // ======= END TRADITIONS BRIDGE =======
 
-  // Automatisk kulturtilpasning basert på valgt prosjekt (wedflow bridge → project → integration → default)
-  const culturalType = wedflowCulturalType || currentProject?.culturalType || projectIntegration?.culturalType || 'norsk';
+  // Automatisk kulturtilpasning basert på valgt prosjekt (evendi bridge → project → integration → default)
+  const culturalType = evendiCulturalType || currentProject?.culturalType || projectIntegration?.culturalType || 'norsk';
   
   // Client access settings state
   const [clientSettings, setClientSettings] = useState({
@@ -1020,7 +1020,7 @@ export default function WeddingTimelineAdmin({
         </Box>
       )}
 
-      {/* Deltakere & Leverandører Tab — Wedflow Important People Bridge */}
+      {/* Deltakere & Leverandører Tab — Evendi Important People Bridge */}
       {activeTab === 2 && (
         <Box>
           <WedflowImportantPeople />

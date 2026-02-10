@@ -36,7 +36,7 @@ interface Contract {
 }
 
 interface ContractSigningProps {
-  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
 }
 
 const ContractSigning: React.FC<ContractSigningProps> = ({ 

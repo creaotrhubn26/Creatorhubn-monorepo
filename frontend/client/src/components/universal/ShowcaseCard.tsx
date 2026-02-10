@@ -84,8 +84,8 @@ export interface ShowcaseCardProps {
   setNewProjectState: (state: 'delivered' | 'in_review') => void;
   setProjectStateUpdateOpen: (open: boolean) => void;
   setShowProToolsDialog?: (show: boolean) => void;
-  setSelectedItemForWedflow?: (item: ShowcaseItem | null) => void;
-  setShowPublishToWedflowDialog?: (show: boolean) => void;
+  setSelectedItemForEvendi?: (item: ShowcaseItem | null) => void;
+  setShowPublishToEvendiDialog?: (show: boolean) => void;
 }
 
 const ShowcaseCard = React.memo(({
@@ -119,8 +119,8 @@ const ShowcaseCard = React.memo(({
   setNewProjectState,
   setProjectStateUpdateOpen,
   setShowProToolsDialog,
-  setSelectedItemForWedflow,
-  setShowPublishToWedflowDialog
+  setSelectedItemForEvendi,
+  setShowPublishToEvendiDialog
 }: ShowcaseCardProps) => {
   const [contextMenu, setContextMenu] = React.useState<{
     mouseX: number;
@@ -969,12 +969,12 @@ const ShowcaseCard = React.memo(({
           <ListItemText>Del til Community</ListItemText>
         </MenuItem>
 
-        {setSelectedItemForWedflow && setShowPublishToWedflowDialog && (
+        {setSelectedItemForEvendi && setShowPublishToEvendiDialog && (
           <>
             <Divider sx={{ my: 1 }} />
             <MenuItem onClick={() => {
-              setSelectedItemForWedflow(item);
-              setShowPublishToWedflowDialog(true);
+              setSelectedItemForEvendi(item);
+              setShowPublishToEvendiDialog(true);
               handleClose();
             }}>
               <ListItemIcon>
@@ -982,7 +982,7 @@ const ShowcaseCard = React.memo(({
               </ListItemIcon>
               <ListItemText>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  Publiser til Wedflow
+                  Publiser til Evendi
                   <Chip label="DELIVERY" size="small" sx={{ height: 16, fontSize: '0.6rem', bgcolor: '#E91E63', color: 'white' }} />
                 </Box>
               </ListItemText>

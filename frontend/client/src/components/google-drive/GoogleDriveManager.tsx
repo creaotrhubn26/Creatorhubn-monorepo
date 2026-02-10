@@ -80,7 +80,7 @@ import { apiRequest } from '@/lib/queryClient';
 
 interface GoogleDriveManagerProps {
   userId: string;
-  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
   // Integration props for universal workflow connectivity
   onFileUpload?: (file: any) => void;
   onFileDownload?: (file: any) => void;

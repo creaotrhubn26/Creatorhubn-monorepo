@@ -101,7 +101,7 @@ interface UniversalFileUploadProps {
   uploadEndpoint?: string;
   additionalMetadata?: Record<string, any>;
   className?: string;
-  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
   enableBackgroundUpload?: boolean; // NEW: Enable background upload
   maxRetries?: number; // NEW: Max retry attempts
   // Enhanced queue management props

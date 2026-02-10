@@ -164,40 +164,40 @@ export default function FullscreenChatWidget({
   const [showContactInfo, setShowContactInfo] = useState(false);
   const [activeTab, setActiveTab] = useState(initialChatType === 'support,' ? 2 : 0); // Default to support tab if support ticket
 
-  // Wedflow Chat Bridge State
-  const [wedflowConvs, setWedflowConvs] = useState<any[]>([]);
-  const [selWedflowConv, setSelWedflowConv] = useState<string | null>(null);
-  const [wedflowMsgs, setWedflowMsgs] = useState<any[]>([]);
-  const [wedflowInput, setWedflowInput] = useState('');
-  const [wedflowBusy, setWedflowBusy] = useState(false);
+  // Evendi Chat Bridge State
+  const [evendiConvs, setEvendiConvs] = useState<any[]>([]);
+  const [selEvendiConv, setSelEvendiConv] = useState<string | null>(null);
+  const [evendiMsgs, setEvendiMsgs] = useState<any[]>([]);
+  const [evendiInput, setEvendiInput] = useState('');
+  const [evendiBusy, setEvendiBusy] = useState(false);
 
-  const fetchWedflowConvsFull = async () => {
+  const fetchEvendiConvsFull = async () => {
     try {
-      setWedflowBusy(true);
-      const data = await apiRequest('/api/wedflow/conversations');
-      setWedflowConvs(data.conversations || []);
-    } catch { setWedflowConvs([]); }
-    finally { setWedflowBusy(false); }
+      setEvendiBusy(true);
+      const data = await apiRequest('/api/evendi/conversations');
+      setEvendiConvs(data.conversations || []);
+    } catch { setEvendiConvs([]); }
+    finally { setEvendiBusy(false); }
   };
-  const fetchWedflowMsgsFull = async (cid: string) => {
+  const fetchEvendiMsgsFull = async (cid: string) => {
     try {
-      setWedflowBusy(true);
-      const data = await apiRequest(`/api/wedflow/conversations/${cid}/messages`);
-      setWedflowMsgs(data.messages || []);
-      setSelWedflowConv(cid);
+      setEvendiBusy(true);
+      const data = await apiRequest(`/api/evendi/conversations/${cid}/messages`);
+      setEvendiMsgs(data.messages || []);
+      setSelEvendiConv(cid);
     } catch {}
-    finally { setWedflowBusy(false); }
+    finally { setEvendiBusy(false); }
   };
-  const sendWedflowMsgFull = async () => {
-    if (!wedflowInput.trim() || !selWedflowConv) return;
+  const sendEvendiMsgFull = async () => {
+    if (!evendiInput.trim() || !selEvendiConv) return;
     try {
-      await apiRequest(`/api/wedflow/conversations/${selWedflowConv}/messages`, {
-        method: 'POST', body: JSON.stringify({ body: wedflowInput.trim() }),
+      await apiRequest(`/api/evendi/conversations/${selEvendiConv}/messages`, {
+        method: 'POST', body: JSON.stringify({ body: evendiInput.trim() }),
         headers: { 'Content-Type': 'application/json' }
       });
-      setWedflowInput('');
-      fetchWedflowMsgsFull(selWedflowConv);
-      fetchWedflowConvsFull();
+      setEvendiInput('');
+      fetchEvendiMsgsFull(selEvendiConv);
+      fetchEvendiConvsFull();
     } catch {}
   };
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
@@ -1321,9 +1321,9 @@ export default function FullscreenChatWidget({
                     )}
                   </Box>
 
-                  {/* Wedflow Tab */}
+                  {/* Evendi Tab */}
                   <Box
-                    onClick={() => { setActiveTab(2); if (!wedflowConvs.length) fetchWedflowConvsFull(); }}
+                    onClick={() => { setActiveTab(2); if (!evendiConvs.length) fetchEvendiConvsFull(); }}
                     sx={{
                       flex: 1,
                       display: 'flex',
@@ -1343,7 +1343,7 @@ export default function FullscreenChatWidget({
                   >
                     <img src="/wedflow-logo.png" alt="" style={{ width: 20, height: 20, borderRadius: '50%', opacity: activeTab === 2 ? 1 : 0.6 }} />
                     <Typography variant="body2" sx={{ fontWeight: 'inherit', fontSize: '0.95rem' }}>
-                      Wedflow
+                      Evendi
                     </Typography>
                   </Box>
                 </Box>
@@ -1363,7 +1363,7 @@ export default function FullscreenChatWidget({
                     ? 'Sanntids chat med øyeblikkelig levering'
                     : activeTab === 1
                     ? 'Profesjonell e-postkorrespondanse'
-                    : 'Meldinger fra par på wedflow.no'
+                    : 'Meldinger fra par på evendi.no'
               }
                 </Typography>
               </Box>
@@ -1566,26 +1566,26 @@ export default function FullscreenChatWidget({
                 <div ref={messagesEndRef} />
               </Box>
 
-              {/* Wedflow Chat Bridge - Tab 2 */}
+              {/* Evendi Chat Bridge - Tab 2 */}
               {activeTab === 2 && (
                 <Box sx={{ flex: 1, overflow: 'auto', p: 2 }}>
-                  {wedflowBusy && !wedflowConvs.length ? (
+                  {evendiBusy && !evendiConvs.length ? (
                     <Box sx={{ p: 4, textAlign: 'center' }}>
-                      <Typography variant="body2" color="text.secondary">Laster Wedflow-samtaler...</Typography>
+                      <Typography variant="body2" color="text.secondary">Laster Evendi-samtaler...</Typography>
                     </Box>
-                  ) : selWedflowConv ? (
+                  ) : selEvendiConv ? (
                     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, pb: 1, borderBottom: '1px solid', borderColor: 'divider' }}>
-                        <IconButton size="small" onClick={() => { setSelWedflowConv(null); setWedflowMsgs([]); }}>
+                        <IconButton size="small" onClick={() => { setSelEvendiConv(null); setEvendiMsgs([]); }}>
                           <Close fontSize="small" />
                         </IconButton>
                         <img src="/wedflow-logo.png" alt="" style={{ width: 22, height: 22, borderRadius: '50%' }} />
                         <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-                          {wedflowConvs.find((c: any) => c.id === selWedflowConv)?.couple_name || 'Samtale'}
+                          {evendiConvs.find((c: any) => c.id === selEvendiConv)?.couple_name || 'Samtale'}
                         </Typography>
                       </Box>
                       <Box sx={{ flex: 1, overflow: 'auto', mb: 2 }}>
-                        {wedflowMsgs.map((msg: any) => (
+                        {evendiMsgs.map((msg: any) => (
                           <Box key={msg.id} sx={{ display: 'flex', justifyContent: msg.sender_type === 'vendor' ? 'flex-end' : 'flex-start', mb: 1 }}>
                             <Paper elevation={0} sx={{
                               p: 1.5, maxWidth: '75%', borderRadius: 2,
@@ -1603,13 +1603,13 @@ export default function FullscreenChatWidget({
                       <Box sx={{ display: 'flex', gap: 1 }}>
                         <TextField
                           fullWidth size="small" placeholder="Skriv svar..."
-                          value={wedflowInput}
-                          onChange={(e) => setWedflowInput(e.target.value)}
-                          onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendWedflowMsgFull(); } }}
+                          value={evendiInput}
+                          onChange={(e) => setEvendiInput(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendEvendiMsgFull(); } }}
                         />
                         <IconButton
-                          onClick={sendWedflowMsgFull}
-                          disabled={!wedflowInput.trim()}
+                          onClick={sendEvendiMsgFull}
+                          disabled={!evendiInput.trim()}
                           sx={{ bgcolor: '#E91E63', color: 'white', '&:hover': { bgcolor: '#C2185B' }, '&:disabled': { bgcolor: 'grey.300' } }}
                         >
                           <Send sx={{ fontSize: 18 }} />
@@ -1621,16 +1621,16 @@ export default function FullscreenChatWidget({
                       <Box sx={{ mb: 2, p: 1.5, bgcolor: '#fce4ec', borderRadius: 2, border: '1px solid #E91E6330' }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
                           <img src="/wedflow-logo.png" alt="" style={{ width: 22, height: 22, borderRadius: '50%' }} />
-                          <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#880E4F' }}>Wedflow Meldinger</Typography>
+                          <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#880E4F' }}>Evendi Meldinger</Typography>
                         </Box>
                         <Typography variant="caption" color="text.secondary">
-                          Chat med par fra wedflow.no — leveransevarsler, meldinger og mer
+                          Chat med par fra evendi.no — leveransevarsler, meldinger og mer
                         </Typography>
                       </Box>
-                      {wedflowConvs.length > 0 ? (
+                      {evendiConvs.length > 0 ? (
                         <List sx={{ p: 0 }}>
-                          {wedflowConvs.map((conv: any) => (
-                            <ListItem key={conv.id} component="div" onClick={() => fetchWedflowMsgsFull(conv.id)}
+                          {evendiConvs.map((conv: any) => (
+                            <ListItem key={conv.id} component="div" onClick={() => fetchEvendiMsgsFull(conv.id)}
                               sx={{ cursor: 'pointer', borderRadius: 1, mb: 0.5, '&:hover': { bgcolor: '#fce4ec' },
                                 borderLeft: conv.vendor_unread_count > 0 ? '3px solid #E91E63' : 'none' }}>
                               <ListItemAvatar>
@@ -1656,7 +1656,7 @@ export default function FullscreenChatWidget({
                         </List>
                       ) : (
                         <Box sx={{ p: 3, textAlign: 'center' }}>
-                          <Typography variant="body2" color="text.secondary">Ingen Wedflow-samtaler ennå</Typography>
+                          <Typography variant="body2" color="text.secondary">Ingen Evendi-samtaler ennå</Typography>
                         </Box>
                       )}
                     </Box>

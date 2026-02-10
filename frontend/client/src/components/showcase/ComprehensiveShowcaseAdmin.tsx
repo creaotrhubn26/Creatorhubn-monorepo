@@ -123,7 +123,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 interface ShowcaseConfiguration {
   id?: string;
-  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'admin';
+  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'admin' | 'enterprise';
   userId: string;
   configName: string;
   isActive: boolean;
@@ -200,7 +200,7 @@ interface ShowcaseConfiguration {
 }
 
 interface ComprehensiveShowcaseAdminProps {
-  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'admin';
+  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'admin' | 'enterprise';
   userId?: string
 }
 

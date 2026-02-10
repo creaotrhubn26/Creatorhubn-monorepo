@@ -324,7 +324,7 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
       name: 'Daniel Qazi',
       avatar: '/avatars/daniel-qazi.jpg',
       bio: 'Award-winning photographer with 15+ years experience',
-      profession: 'photographer' as 'photographer' | 'videographer' | 'music_producer' | 'vendor',
+      profession: 'photographer' as 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise',
     },
     thumbnail: '',
     videoUrl: '',

@@ -41,7 +41,7 @@ interface SidePanelsProps {
   leftPanelWidth?: number;
   rightPanelWidth?: number;
   children: React.ReactNode; // Main content area
-  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
 }
 
 export default function SidePanels({

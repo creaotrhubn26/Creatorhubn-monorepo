@@ -1406,7 +1406,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
             {/* Original GoogleDriveManager Component */}
             <GoogleDriveManager 
               userId={userId}
-              profession={profession as 'photographer' | 'videographer' | 'music_producer' | 'vendor'}
+              profession={profession as 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise'}
             />
           </MuiCardContent>
         </MuiCard>

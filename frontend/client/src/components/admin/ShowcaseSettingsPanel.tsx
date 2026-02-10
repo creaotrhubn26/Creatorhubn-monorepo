@@ -326,7 +326,7 @@ const getProfessionWatermarkDefaults = (profession: string): Partial<ShowcaseSet
 };
 
 interface ShowcaseSettingsPanelProps {
-  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
 }
 
 export function ShowcaseSettingsPanel({ profession = 'photographer,' }: ShowcaseSettingsPanelProps) {

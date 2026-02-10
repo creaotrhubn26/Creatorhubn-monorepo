@@ -50,7 +50,7 @@ import LightingSimulator3D from './misc/LightingSimulator3D';
 // import LightingComparisonTool from './misc/lighting-comparison-tool'; // Module not found
 
 interface IntegratedToolsOverviewProps {
-  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
   compact?: boolean;
   // Integration props for universal workflow connectivity
   onMeetingCreate?: (meeting: any) => void;

@@ -32,7 +32,7 @@ import getProfessionIcon from '@/utils/profession-icons';
 interface SplitSheetAnalyticsProps {
   userId: string;
   currency?: string;
-  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
 }
 
 export default function SplitSheetAnalytics({

@@ -57,7 +57,7 @@ import PluginDetectionInterface from '../plugins/PluginDetectionInterface';
 import EquipmentCatalogBrowser from './EquipmentCatalogBrowser';
 
 interface EquipmentManagementProps {
-  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
   userId: string
 }
 
@@ -130,6 +130,7 @@ const PROFESSION_COLORS = {
   videographer: '#9C27B0',
   music_producer: '#FF5722',
   vendor: '#2196F3',
+  enterprise: '#6c3483',
 };
 
 const EquipmentManagement: React.FC<EquipmentManagementProps> = ({ profession, userId }) => {
@@ -184,6 +185,7 @@ const EquipmentManagement: React.FC<EquipmentManagementProps> = ({ profession, u
   const getBenefitsForProfession = (update: FirmwareUpdate) => {
     switch (profession) {
       case 'photographer':
+      case 'enterprise':
         return update.firmwareUpdate.photographerBenefits || [];
       case 'videographer':
         return update.firmwareUpdate.videographerBenefits || [];
@@ -195,6 +197,7 @@ const EquipmentManagement: React.FC<EquipmentManagementProps> = ({ profession, u
   const getRecommendationForProfession = (update: FirmwareUpdate) => {
     switch (profession) {
       case 'photographer':
+      case 'enterprise':
         return update.firmwareUpdate.photographerRecommendation;
       case 'videographer':
         return update.firmwareUpdate.videographerRecommendation;

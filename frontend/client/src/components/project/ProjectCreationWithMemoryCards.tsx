@@ -840,15 +840,15 @@ const getDefaultProjectType = (profession: string): string => {
 const getProjectTimeEstimate = (projectType: string, profession: string): number => {
   const estimates = {
     'wedding': {
-      'photographer': 8, 'videographer': 12, 'music_producer': 4, 'vendor': 6
+      'photographer': 8, 'videographer': 12, 'music_producer': 4, 'vendor': 6, 'enterprise': 14
     }, 'portrait': {
-      'photographer': 3, 'videographer': 4, 'music_producer': 2, 'vendor': 2
+      'photographer': 3, 'videographer': 4, 'music_producer': 2, 'vendor': 2, 'enterprise': 5
     }, 'event': {
-      'photographer': 6, 'videographer': 8, 'music_producer': 3, 'vendor': 4
+      'photographer': 6, 'videographer': 8, 'music_producer': 3, 'vendor': 4, 'enterprise': 10
     }, 'song': {
-      'photographer': 2, 'videographer': 3, 'music_producer': 20, 'vendor': 1
+      'photographer': 2, 'videographer': 3, 'music_producer': 20, 'vendor': 1, 'enterprise': 3
     }, 'commercial': {
-      'photographer': 4, 'videographer': 6, 'music_producer': 3, 'vendor': 5
+      'photographer': 4, 'videographer': 6, 'music_producer': 3, 'vendor': 5, 'enterprise': 8
     }
   };
 
@@ -1008,7 +1008,7 @@ interface ProjectCreationWithMemoryCardsProps {
   userId?: string;
   onProjectCreated?: (projectData: any) => void;
   initialData?: any; // Pre-filled data from submission or other source
-  wedflowCoupleId?: string; // Optional: auto-fetch cultural type from wedflow couple traditions
+  evendiCoupleId?: string; // Optional: auto-fetch cultural type from Evendi couple traditions
   // Integration props for universal workflow connectivity
   onMeetingCreate?: (meeting: any) => void;
   onProjectUpdate?: (project: any) => void;
@@ -1052,7 +1052,7 @@ export default function ProjectCreationWithMemoryCards({
   profession,
   userId,
   initialData, // Pre-filled data from submission
-  wedflowCoupleId, // Optional wedflow couple ID for traditions bridge
+  evendiCoupleId, // Optional Evendi couple ID for traditions bridge
   onProjectCreated,
   onMeetingCreate,
   onProjectUpdate,
@@ -1302,18 +1302,18 @@ export default function ProjectCreationWithMemoryCards({
     backupFrequency: 'realtime'
   });
 
-  // ======= WEDFLOW TRADITIONS BRIDGE =======
-  // Auto-fetch couple's cultural type from wedflow when wedflowCoupleId is provided
-  const [wedflowTraditionsBridge, setWedflowTraditionsBridge] = useState<any>(null);
+  // ======= EVENDI TRADITIONS BRIDGE =======
+  // Auto-fetch couple's cultural type from Evendi when evendiCoupleId is provided
+  const [evendiTraditionsBridge, setEvendiTraditionsBridge] = useState<any>(null);
   
   useEffect(() => {
-    if (!wedflowCoupleId) return;
+    if (!evendiCoupleId) return;
     
     const fetchTraditions = async () => {
       try {
-        const data = await apiRequest(`/api/wedflow/traditions-bridge?coupleId=${encodeURIComponent(wedflowCoupleId)}`);
+        const data = await apiRequest(`/api/evendi/traditions-bridge?coupleId=${encodeURIComponent(evendiCoupleId)}`);
         if (data?.primaryCulturalType) {
-          setWedflowTraditionsBridge(data);
+          setEvendiTraditionsBridge(data);
           // Auto-set weddingCulture from couple's traditions
           setProjectData(prev => ({
             ...prev,
@@ -1324,20 +1324,20 @@ export default function ProjectCreationWithMemoryCards({
               (_, i) => i + 1
             ),
           }));
-          console.log(`🌍 Traditions bridge: Couple ${wedflowCoupleId} → culturalType: ${data.primaryCulturalType}`, data);
+          console.log(`🌍 Traditions bridge: Couple ${evendiCoupleId} → culturalType: ${data.primaryCulturalType}`, data);
         }
       } catch (error) {
-        console.warn('Wedflow traditions bridge fetch failed (non-critical):', error);
+        console.warn('Evendi traditions bridge fetch failed (non-critical):', error);
       }
     };
     
     fetchTraditions();
-  }, [wedflowCoupleId]);
+  }, [evendiCoupleId]);
   // ======= END TRADITIONS BRIDGE =======
 
   // ======= PHOTO SHOTS BRIDGE =======
-  // Auto-fetch couple's photo plan from wedflow and merge into project shotList
-  const [wedflowPhotoShotsBridge, setWedflowPhotoShotsBridge] = useState<{
+  // Auto-fetch couple's photo plan from Evendi and merge into project shotList
+  const [evendiPhotoShotsBridge, setEvendiPhotoShotsBridge] = useState<{
     shots: any[];
     coupleName: string;
     totalShots: number;
@@ -1345,23 +1345,23 @@ export default function ProjectCreationWithMemoryCards({
   } | null>(null);
 
   useEffect(() => {
-    if (!wedflowCoupleId) return;
+    if (!evendiCoupleId) return;
     
     const fetchCouplePhotoShots = async () => {
       try {
-        const data = await apiRequest(`/api/wedflow/photo-shots-bridge?coupleId=${encodeURIComponent(wedflowCoupleId)}`);
+        const data = await apiRequest(`/api/evendi/photo-shots-bridge?coupleId=${encodeURIComponent(evendiCoupleId)}`);
         if (data?.shots?.length > 0) {
-          setWedflowPhotoShotsBridge(data);
+          setEvendiPhotoShotsBridge(data);
           
-          // Merge couple's shots into projectData.shotList (avoid duplicates by checking wedflow- prefix)
+          // Merge couple's shots into projectData.shotList (avoid duplicates by checking evendi- prefix)
           setProjectData(prev => {
-            const existingWedflowIds = new Set(
+            const existingEvendiIds = new Set(
               prev.shotList
-                .filter((s: any) => s.id?.startsWith('wedflow-'))
+                .filter((s: any) => s.id?.startsWith('evendi-'))
                 .map((s: any) => s.id)
             );
             
-            const newShots = data.shots.filter((s: any) => !existingWedflowIds.has(s.id));
+            const newShots = data.shots.filter((s: any) => !existingEvendiIds.has(s.id));
             if (newShots.length === 0) return prev;
             
             return {
@@ -1373,20 +1373,20 @@ export default function ProjectCreationWithMemoryCards({
           console.log(`📸 Photo shots bridge: ${data.totalShots} shots from couple (${data.completedShots} completed)`, data);
         }
       } catch (error) {
-        console.warn('Wedflow photo shots bridge fetch failed (non-critical):', error);
+        console.warn('Evendi photo shots bridge fetch failed (non-critical):', error);
       }
     };
     
     fetchCouplePhotoShots();
-  }, [wedflowCoupleId]);
+  }, [evendiCoupleId]);
 
-  // Push vendor's planned shots back to couple's wedflow photo plan (with location scouting data)
+  // Push vendor's planned shots back to couple's Evendi photo plan (with location scouting data)
   const pushShotsToCouple = useCallback(async () => {
-    if (!wedflowCoupleId || !projectData.shotList?.length) return;
+    if (!evendiCoupleId || !projectData.shotList?.length) return;
     
     try {
       const vendorShots = projectData.shotList
-        .filter((s: any) => !s.id?.startsWith('wedflow-'))
+        .filter((s: any) => !s.id?.startsWith('evendi-'))
         .map((s: any) => ({
           ...s,
           // Include location scouting data if present
@@ -1401,9 +1401,9 @@ export default function ProjectCreationWithMemoryCards({
         }));
       if (vendorShots.length === 0) return;
       
-      const result = await apiRequest('/api/wedflow/photo-shots-bridge/push', {
+      const result = await apiRequest('/api/evendi/photo-shots-bridge/push', {
         method: 'POST',
-        body: { coupleId: wedflowCoupleId, shots: vendorShots },
+        body: { coupleId: evendiCoupleId, shots: vendorShots },
       });
       
       if (result?.success) {
@@ -1412,7 +1412,7 @@ export default function ProjectCreationWithMemoryCards({
     } catch (error) {
       console.warn('Failed to push shots to couple (non-critical):', error);
     }
-  }, [wedflowCoupleId, projectData.shotList]);
+  }, [evendiCoupleId, projectData.shotList]);
   // ======= END PHOTO SHOTS BRIDGE =======
   
 // Load meeting preferences from server (replaces localStorage)
@@ -1966,10 +1966,10 @@ useEffect(() => {
       const forecast = await getWeatherForecast(location.lat, location.lng, projectData.eventDate).catch(() => null);
       if (forecast) setWeatherData((prev: any) => ({ ...prev, forecast }));
 
-      // Sync location intelligence to Wedflow bridge (couple timeline gets weather + travel data)
+      // Sync location intelligence to Evendi bridge (couple timeline gets weather + travel data)
       if (currentProject?.id && location.lat && location.lng) {
         try {
-          await apiRequest(`/api/wedflow/weather-location/sync-from-project/${currentProject.id}`, {
+          await apiRequest(`/api/evendi/weather-location/sync-from-project/${currentProject.id}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -1979,9 +1979,9 @@ useEffect(() => {
               travelData: { ...travel, fuelPrices: fuel },
             }),
           });
-          console.log('📍 Location synced to Wedflow bridge');
+          console.log('📍 Location synced to Evendi bridge');
         } catch (syncErr) {
-          console.warn('Wedflow location sync skipped:', syncErr);
+          console.warn('Evendi location sync skipped:', syncErr);
         }
       }
     } catch (err) {
@@ -2405,15 +2405,15 @@ useEffect(() => {
     }
   }, [projectData.projectName, projectData.clientName, projectData.projectType]);
 
-  // Wire wedflow traditions bridge display
+  // Wire evendi traditions bridge display
   const traditionsInfo = useMemo(() => {
-    if (!wedflowTraditionsBridge) return null;
+    if (!evendiTraditionsBridge) return null;
     return {
-      culturalType: wedflowTraditionsBridge.primaryCulturalType,
-      traditions: wedflowTraditionsBridge.traditions || [],
-      displayName: WEDDING_CULTURES[wedflowTraditionsBridge.primaryCulturalType as keyof typeof WEDDING_CULTURES]?.name || '',
+      culturalType: evendiTraditionsBridge.primaryCulturalType,
+      traditions: evendiTraditionsBridge.traditions || [],
+      displayName: WEDDING_CULTURES[evendiTraditionsBridge.primaryCulturalType as keyof typeof WEDDING_CULTURES]?.name || '',
     };
-  }, [wedflowTraditionsBridge]);
+  }, [evendiTraditionsBridge]);
 
   // Wire show preview toggle
   const handleTogglePreview = useCallback(() => {
@@ -2558,7 +2558,8 @@ useEffect(() => {
   const canOpenVideoEditor = useMemo(() => {
     const isVideoProject = projectData.projectType === 'video' ||
                           projectData.projectType === 'wedding' ||
-                          userProfession === 'videographer';
+                          userProfession === 'videographer' ||
+                          userProfession === 'enterprise';
     const hasBasicInfo = projectData.projectName && projectData.clientName;
     const isPostProduction = projectData.currentPhase === 'post-production' || projectData.currentPhase === 'production';
 
@@ -2573,7 +2574,7 @@ useEffect(() => {
    * - User must have purchased Virtual Studio from marketplace (2495 NOK)
    */
   const canOpenVirtualStudio = useMemo(() => {
-    const isPhotographer = userProfession === 'photographer';
+    const isPhotographer = userProfession === 'photographer' || userProfession === 'enterprise';
     const isNonWeddingProject = projectData.projectType !== 'wedding';
     const hasBasicInfo = projectData.projectName && projectData.clientName;
 
@@ -3387,7 +3388,7 @@ useEffect(() => {
       )}
 
       {/* Virtual Studio Info Card - Show marketplace offer for photographers without access */}
-      {userProfession === 'photographer' &&
+      {(userProfession === 'photographer' || userProfession === 'enterprise') &&
        projectData.projectType !== 'wedding' &&
        projectData.projectName &&
        projectData.clientName &&
@@ -3431,8 +3432,8 @@ useEffect(() => {
         </Alert>
       )}
 
-      {/* Wedflow Photo Shots Bridge — Show couple's photo wishes from wedflow */}
-      {wedflowPhotoShotsBridge && wedflowPhotoShotsBridge.shots.length > 0 && (
+      {/* Evendi Photo Shots Bridge — Show couple's photo wishes from Evendi */}
+      {evendiPhotoShotsBridge && evendiPhotoShotsBridge.shots.length > 0 && (
         <Card sx={{ mt: 3, background: 'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)', color: '#1a1a1a' }}>
           <CardContent>
             <Stack direction="row" spacing={2} alignItems="center">
@@ -3441,11 +3442,11 @@ useEffect(() => {
               </Avatar>
               <Box sx={{ flex: 1 }}>
                 <Typography variant="h6" fontWeight={600}>
-                  📸 Parets fotoliste fra Wedflow
+                  📸 Parets fotoliste fra Evendi
                 </Typography>
                 <Typography variant="body2" sx={{ opacity: 0.85 }}>
-                  {wedflowPhotoShotsBridge.coupleName} har {wedflowPhotoShotsBridge.totalShots} ønskede bilder
-                  {wedflowPhotoShotsBridge.completedShots > 0 && ` (${wedflowPhotoShotsBridge.completedShots} allerede tatt)`}
+                  {evendiPhotoShotsBridge.coupleName} har {evendiPhotoShotsBridge.totalShots} ønskede bilder
+                  {evendiPhotoShotsBridge.completedShots > 0 && ` (${evendiPhotoShotsBridge.completedShots} allerede tatt)`}
                 </Typography>
                 <Typography variant="caption" sx={{ opacity: 0.7, display: 'block', mt: 0.5 }}>
                   Automatisk importert i din shotliste — par og fotograf ser den samme planen
@@ -3455,7 +3456,7 @@ useEffect(() => {
                 variant="contained"
                 size="small"
                 onClick={pushShotsToCouple}
-                disabled={!projectData.shotList?.filter((s: any) => !s.id?.startsWith('wedflow-')).length}
+                disabled={!projectData.shotList?.filter((s: any) => !s.id?.startsWith('evendi-')).length}
                 sx={{
                   bgcolor: 'rgba(0,0,0,0.15)',
                   color: '#1a1a1a',
@@ -3469,7 +3470,7 @@ useEffect(() => {
             <Stack direction="row" spacing={1} sx={{ mt: 1.5, flexWrap: 'wrap', gap: 0.5 }}>
               {['Ceremony','Portraits','Group Photos','Details','Reception']
                 .map(scene => {
-                  const count = wedflowPhotoShotsBridge.shots.filter((s: any) => s.scene === scene).length;
+                  const count = evendiPhotoShotsBridge.shots.filter((s: any) => s.scene === scene).length;
                   return count > 0 ? (
                     <Chip
                       key={scene}

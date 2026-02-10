@@ -136,7 +136,7 @@ const CreatorhubVisualEditorContent: React.FC<CreatorhubVisualEditorProps> = ({
   const theming = useTheming('prototype_tester');
   
   // CreatorHub Branding system (Optional) if you want to add a branding. If you don't want to add a branding, you can leave it blank. If you want to add a description, you can add it here. If you don't want to add a description, you can leave it blank.
-  const [brandingProfession, setBrandingProfession] = useState<'admin' | 'photographer' | 'videographer' | 'music_producer' | 'vendor'>('photographer');
+  const [brandingProfession, setBrandingProfession] = useState<'admin' | 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise'>('photographer');
   const [brandingCategory, setBrandingCategory] = useState<string | undefined>(undefined);
   const [customBrandColor, setCustomBrandColor] = useState<string | undefined>(undefined);
   const branding = useCreatorHubBranding({

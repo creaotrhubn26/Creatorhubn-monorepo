@@ -76,7 +76,7 @@ interface SmartCollection {
 
 interface SmartCollectionsProps {
   items: ShowcaseItem[];
-  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
   accentColor: string;
   onCollectionSelect?: (collection: SmartCollection) => void;
   onItemSelect?: (item: ShowcaseItem) => void;

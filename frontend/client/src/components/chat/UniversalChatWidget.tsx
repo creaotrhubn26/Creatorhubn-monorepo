@@ -398,7 +398,7 @@ export default function UniversalChatWidget({
       category: 'communication',
       profession: profession,
       version: '2.1',
-      capabilities: ['chat', 'email', 'feedback', 'wedflow-bridge', 'ticket-creation'],
+      capabilities: ['chat', 'email', 'feedback', 'evendi-bridge', 'ticket-creation'],
       props: { profession, userEmail, userId },
     });
 
@@ -484,7 +484,7 @@ export default function UniversalChatWidget({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   // queryClient is now imported from lib/queryClient
   // Tab states for enhanced functionality
-  const [activeTab, setActiveTab] = useState(0); // 0 = Internal Chat, 1 = Google Chat, 2 = Feedback Management, 3 = Wedflow
+  const [activeTab, setActiveTab] = useState(0); // 0 = Internal Chat, 1 = Google Chat, 2 = Feedback Management, 3 = Evendi
   const [emailIntegrationEnabled, setEmailIntegrationEnabled] = useState(true);
   const [autoResponseEnabled, setAutoResponseEnabled] = useState(false);
   const [googleChatMenuAnchor, setGoogleChatMenuAnchor] = useState<null | HTMLElement>(null);
@@ -516,15 +516,15 @@ export default function UniversalChatWidget({
   const [newFeedbackStatus, setNewFeedbackStatus] = useState('');
   const [adminNotes, setAdminNotes] = useState('');
   
-  // Wedflow Chat Bridge State
-  const [wedflowConversations, setWedflowConversations] = useState<any[]>([]);
-  const [selectedWedflowConv, setSelectedWedflowConv] = useState<string | null>(null);
-  const [wedflowMessages, setWedflowMessages] = useState<any[]>([]);
-  const [wedflowReplyInput, setWedflowReplyInput] = useState('');
-  const [wedflowLoading, setWedflowLoading] = useState(false);
-  const [wedflowVendorName, setWedflowVendorName] = useState('');
+  // Evendi Chat Bridge State
+  const [evendiConversations, setEvendiConversations] = useState<any[]>([]);
+  const [selectedEvendiConv, setSelectedEvendiConv] = useState<string | null>(null);
+  const [evendiMessages, setEvendiMessages] = useState<any[]>([]);
+  const [evendiReplyInput, setEvendiReplyInput] = useState('');
+  const [evendiLoading, setEvendiLoading] = useState(false);
+  const [evendiVendorName, setEvendiVendorName] = useState('');
   // Delivery notification state
-  const [wedflowDeliveries, setWedflowDeliveries] = useState<any[]>([]);
+  const [evendiDeliveries, setEvendiDeliveries] = useState<any[]>([]);
   const [showDeliveryNotify, setShowDeliveryNotify] = useState(false);  
   // ⚠️ CHAT & COMMUNICATION PROTOKOLL: Real-time WebSocket state
   const [wsConnection, setWsConnection] = useState<WebSocketConnection>({
@@ -853,85 +853,85 @@ export default function UniversalChatWidget({
     staleTime: 0 // Always fetch fresh data
   });
 
-  // Fetch Wedflow conversations for vendor users
+  // Fetch Evendi conversations for vendor users
   useEffect(() => {
     if (activeTab === 3) {
-      fetchWedflowConversations();
+      fetchEvendiConversations();
     }
   }, [activeTab]);
 
-  const fetchWedflowConversations = async () => {
+  const fetchEvendiConversations = async () => {
     try {
-      setWedflowLoading(true);
-      const data = await apiRequest('/api/wedflow/conversations');
-      setWedflowConversations(data.conversations || []);
-      setWedflowVendorName(data.vendorName || '');
+      setEvendiLoading(true);
+      const data = await apiRequest('/api/evendi/conversations');
+      setEvendiConversations(data.conversations || []);
+      setEvendiVendorName(data.vendorName || '');
     } catch (err) {
-      console.warn('Wedflow conversations not available:', err);
-      setWedflowConversations([]);
+      console.warn('Evendi conversations not available:', err);
+      setEvendiConversations([]);
     } finally {
-      setWedflowLoading(false);
+      setEvendiLoading(false);
     }
   };
 
-  const fetchWedflowMessages = async (conversationId: string) => {
+  const fetchEvendiMessages = async (conversationId: string) => {
     try {
-      setWedflowLoading(true);
-      const data = await apiRequest(`/api/wedflow/conversations/${conversationId}/messages`);
-      setWedflowMessages(data.messages || []);
-      setSelectedWedflowConv(conversationId);
+      setEvendiLoading(true);
+      const data = await apiRequest(`/api/evendi/conversations/${conversationId}/messages`);
+      setEvendiMessages(data.messages || []);
+      setSelectedEvendiConv(conversationId);
     } catch (err) {
-      console.error('Failed to fetch wedflow messages:', err);
+      console.error('Failed to fetch evendi messages:', err);
     } finally {
-      setWedflowLoading(false);
+      setEvendiLoading(false);
     }
   };
 
-  const sendWedflowMessage = async () => {
-    if (!wedflowReplyInput.trim() || !selectedWedflowConv) return;
+  const sendEvendiMessage = async () => {
+    if (!evendiReplyInput.trim() || !selectedEvendiConv) return;
     try {
-      await apiRequest(`/api/wedflow/conversations/${selectedWedflowConv}/messages`, {
+      await apiRequest(`/api/evendi/conversations/${selectedEvendiConv}/messages`, {
         method: 'POST',
-        body: JSON.stringify({ body: wedflowReplyInput.trim() }),
+        body: JSON.stringify({ body: evendiReplyInput.trim() }),
         headers: { 'Content-Type': 'application/json' }
       });
-      setWedflowReplyInput('');
+      setEvendiReplyInput('');
       // Refresh messages
-      fetchWedflowMessages(selectedWedflowConv);
+      fetchEvendiMessages(selectedEvendiConv);
       // Refresh conversation list to update last message
-      fetchWedflowConversations();
+      fetchEvendiConversations();
     } catch (err) {
-      console.error('Failed to send wedflow message:', err);
+      console.error('Failed to send evendi message:', err);
     }
   };
 
   // Send delivery notification via chat
   const sendDeliveryNotification = async (deliveryId: string) => {
     try {
-      setWedflowLoading(true);
-      const result = await apiRequest('/api/wedflow/delivery-notify-chat', {
+      setEvendiLoading(true);
+      const result = await apiRequest('/api/evendi/delivery-notify-chat', {
         method: 'POST',
         body: JSON.stringify({ deliveryId }),
         headers: { 'Content-Type': 'application/json' }
       });
       setShowDeliveryNotify(false);
       // Refresh conversations to show the new message
-      fetchWedflowConversations();
+      fetchEvendiConversations();
       if (result.conversationId) {
-        fetchWedflowMessages(result.conversationId);
+        fetchEvendiMessages(result.conversationId);
       }
     } catch (err) {
       console.error('Failed to send delivery notification:', err);
     } finally {
-      setWedflowLoading(false);
+      setEvendiLoading(false);
     }
   };
 
   // Fetch deliveries list for notification picker
-  const fetchWedflowDeliveries = async () => {
+  const fetchEvendiDeliveries = async () => {
     try {
-      const data = await apiRequest('/api/wedflow/delivery-project-bridge');
-      setWedflowDeliveries(data.deliveries || []);
+      const data = await apiRequest('/api/evendi/delivery-project-bridge');
+      setEvendiDeliveries(data.deliveries || []);
     } catch (err) {
       console.warn('Could not fetch deliveries:', err);
     }
@@ -1612,7 +1612,7 @@ export default function UniversalChatWidget({
                     activeTab === 3 ? <img src="/wedflow-logo.png" alt="" style={{ width: 16, height: 16, borderRadius: '50%' }} /> :
                     undefined
                   }
-                  label={activeTab === 0 ? "CREATORHUB" : activeTab === 1 ? "GOOGLE CHAT" : activeTab === 2 ? "FEEDBACK" : "WEDFLOW"}
+                  label={activeTab === 0 ? "CREATORHUB" : activeTab === 1 ? "GOOGLE CHAT" : activeTab === 2 ? "FEEDBACK" : "EVENDI"}
                   size="small"
                   sx={{
                     bgcolor: activeTab === 0 ? '#FF5722' : activeTab === 1 ? '#4285F4' : activeTab === 2 ? '#9C27B0' : '#E91E63',
@@ -1798,8 +1798,8 @@ export default function UniversalChatWidget({
                   sx={{ textTransform: 'none' }}
                 />
                 <Tab
-                  icon={<img src="/wedflow-logo.png" alt="Wedflow" style={{ width: 24, height: 24, borderRadius: '50%' }} />}
-                  label="WEDFLOW"
+                  icon={<img src="/wedflow-logo.png" alt="Evendi" style={{ width: 24, height: 24, borderRadius: '50%' }} />}
+                  label="EVENDI"
                   iconPosition="start"
                   sx={{ textTransform: 'none' }}
                 />
@@ -2241,31 +2241,31 @@ export default function UniversalChatWidget({
                   )}
                 </Box>
               ) : (
-                // Wedflow Chat Bridge Tab
+                // Evendi Chat Bridge Tab
                 <Box sx={{ p: 2, height: '100%' }}>
-                  {wedflowLoading && !wedflowConversations.length ? (
+                  {evendiLoading && !evendiConversations.length ? (
                     <Box sx={{ p: 3, textAlign: 'center' }}>
                       <Typography variant="body2" color="text.secondary">
-                        Laster Wedflow-samtaler...
+                        Laster Evendi-samtaler...
                       </Typography>
                     </Box>
-                  ) : selectedWedflowConv ? (
+                  ) : selectedEvendiConv ? (
                     // Message view for selected conversation
                     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
                       {/* Back button + conversation header */}
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, pb: 1, borderBottom: '1px solid', borderColor: 'divider' }}>
-                        <IconButton size="small" onClick={() => { setSelectedWedflowConv(null); setWedflowMessages([]); }}>
+                        <IconButton size="small" onClick={() => { setSelectedEvendiConv(null); setEvendiMessages([]); }}>
                           <Reply sx={{ transform: 'scaleX(-1)' }} />
                         </IconButton>
-                        <img src="/wedflow-logo.png" alt="Wedflow" style={{ width: 22, height: 22, borderRadius: '50%' }} />
+                        <img src="/wedflow-logo.png" alt="Evendi" style={{ width: 22, height: 22, borderRadius: '50%' }} />
                         <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-                          {wedflowConversations.find(c => c.id === selectedWedflowConv)?.couple_name || 'Samtale'}
+                          {evendiConversations.find(c => c.id === selectedEvendiConv)?.couple_name || 'Samtale'}
                         </Typography>
                       </Box>
 
                       {/* Messages list */}
                       <Box sx={{ flex: 1, overflow: 'auto', mb: 2 }}>
-                        {wedflowMessages.map((msg: any) => (
+                        {evendiMessages.map((msg: any) => (
                           <Box
                             key={msg.id}
                             sx={{
@@ -2307,18 +2307,18 @@ export default function UniversalChatWidget({
                           fullWidth
                           size="small"
                           placeholder="Skriv svar til paret..."
-                          value={wedflowReplyInput}
-                          onChange={(e) => setWedflowReplyInput(e.target.value)}
+                          value={evendiReplyInput}
+                          onChange={(e) => setEvendiReplyInput(e.target.value)}
                           onKeyDown={(e) => {
                             if (e.key === 'Enter' && !e.shiftKey) {
                               e.preventDefault();
-                              sendWedflowMessage();
+                              sendEvendiMessage();
                             }
                           }}
                         />
                         <IconButton
-                          onClick={sendWedflowMessage}
-                          disabled={!wedflowReplyInput.trim()}
+                          onClick={sendEvendiMessage}
+                          disabled={!evendiReplyInput.trim()}
                           sx={{ bgcolor: '#E91E63', color: 'white', '&:hover': { bgcolor: '#C2185B' }, '&:disabled': { bgcolor: 'grey.300' } }}
                         >
                           <Send sx={{ fontSize: 18 }} />
@@ -2330,13 +2330,13 @@ export default function UniversalChatWidget({
                     <>
                       <Box sx={{ mb: 2, p: 1.5, bgcolor: '#fce4ec', borderRadius: 2, border: '1px solid #E91E6330' }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-                          <img src="/wedflow-logo.png" alt="Wedflow" style={{ width: 22, height: 22, borderRadius: '50%' }} />
+                          <img src="/wedflow-logo.png" alt="Evendi" style={{ width: 22, height: 22, borderRadius: '50%' }} />
                           <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#880E4F' }}>
-                            Wedflow Meldinger
+                            Evendi Meldinger
                           </Typography>
                         </Box>
                         <Typography variant="caption" color="text.secondary">
-                          Meldinger fra par på wedflow.no {wedflowVendorName && `• ${wedflowVendorName}`}
+                          Meldinger fra par på evendi.no {evendiVendorName && `• ${evendiVendorName}`}
                         </Typography>
                       </Box>
 
@@ -2349,7 +2349,7 @@ export default function UniversalChatWidget({
                           startIcon={<span style={{ fontSize: 16 }}>📦</span>}
                           onClick={() => {
                             setShowDeliveryNotify(!showDeliveryNotify);
-                            if (!showDeliveryNotify) fetchWedflowDeliveries();
+                            if (!showDeliveryNotify) fetchEvendiDeliveries();
                           }}
                           sx={{
                             borderColor: '#E91E6340',
@@ -2362,9 +2362,9 @@ export default function UniversalChatWidget({
                           Send leveransebeskjed
                         </Button>
 
-                        {showDeliveryNotify && wedflowDeliveries.length > 0 && (
+                        {showDeliveryNotify && evendiDeliveries.length > 0 && (
                           <Box sx={{ mt: 1, p: 1, bgcolor: '#f5f5f5', borderRadius: 1, maxHeight: 200, overflow: 'auto' }}>
-                            {wedflowDeliveries.filter((d: any) => !d.chat_notified).map((d: any) => (
+                            {evendiDeliveries.filter((d: any) => !d.chat_notified).map((d: any) => (
                               <Box
                                 key={d.id}
                                 sx={{
@@ -2381,7 +2381,7 @@ export default function UniversalChatWidget({
                                 <Chip label="Varsle" size="small" sx={{ bgcolor: '#E91E63', color: 'white', height: 22, fontSize: '0.65rem' }} />
                               </Box>
                             ))}
-                            {wedflowDeliveries.filter((d: any) => !d.chat_notified).length === 0 && (
+                            {evendiDeliveries.filter((d: any) => !d.chat_notified).length === 0 && (
                               <Typography variant="caption" color="text.secondary" sx={{ p: 1 }}>
                                 Alle leveranser er allerede varslet ✓
                               </Typography>
@@ -2390,13 +2390,13 @@ export default function UniversalChatWidget({
                         )}
                       </Box>
 
-                      {wedflowConversations.length > 0 ? (
+                      {evendiConversations.length > 0 ? (
                         <List sx={{ p: 0 }}>
-                          {wedflowConversations.map((conv: any) => (
+                          {evendiConversations.map((conv: any) => (
                             <ListItem
                               key={conv.id}
                               component="div"
-                              onClick={() => fetchWedflowMessages(conv.id)}
+                              onClick={() => fetchEvendiMessages(conv.id)}
                               sx={{
                                 cursor: 'pointer',
                                 borderRadius: 1,
@@ -2407,7 +2407,7 @@ export default function UniversalChatWidget({
                             >
                               <ListItemAvatar>
                                 <Avatar sx={{ bgcolor: '#fce4ec', width: 36, height: 36 }}>
-                                  <img src="/wedflow-logo.png" alt="Wedflow" style={{ width: 24, height: 24, borderRadius: '50%' }} />
+                                  <img src="/wedflow-logo.png" alt="Evendi" style={{ width: 24, height: 24, borderRadius: '50%' }} />
                                 </Avatar>
                               </ListItemAvatar>
                               <ListItemText
@@ -2445,12 +2445,12 @@ export default function UniversalChatWidget({
                         </List>
                       ) : (
                         <Box sx={{ p: 3, textAlign: 'center' }}>
-                          <img src="/wedflow-logo.png" alt="Wedflow" style={{ width: 48, height: 48, borderRadius: '50%', opacity: 0.5, marginBottom: 8 }} />
+                          <img src="/wedflow-logo.png" alt="Evendi" style={{ width: 48, height: 48, borderRadius: '50%', opacity: 0.5, marginBottom: 8 }} />
                           <Typography variant="body2" color="text.secondary">
-                            Ingen Wedflow-samtaler ennå
+                            Ingen Evendi-samtaler ennå
                           </Typography>
                           <Typography variant="caption" color="text.secondary">
-                            Par som kontakter deg via wedflow.no vil vises her
+                            Par som kontakter deg via evendi.no vil vises her
                           </Typography>
                         </Box>
                       )}

@@ -60,7 +60,7 @@ interface Collection {
 
 interface DragDropCollectionsProps {
   items: ShowcaseItem[];
-  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
   accentColor: string;
   onCollectionCreate?: (collection: Collection) => void;
   onCollectionUpdate?: (collection: Collection) => void;

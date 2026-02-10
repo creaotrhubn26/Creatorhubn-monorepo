@@ -144,7 +144,7 @@ interface PhotographerPhotoSuiteProps {
   onPhotoProcessed?: (processedPhotos: any[]) => void;
   showcaseItems?: any[];
   onRefreshShowcase?: () => void;
-  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
 }
 
 export default function PhotographerPhotoSuite({ 

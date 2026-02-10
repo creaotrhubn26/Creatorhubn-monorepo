@@ -55,7 +55,7 @@ interface VendorStatus {
 }
 
 interface UniversalOAuthIntegrationProps {
-  userProfession: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  userProfession: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
   compact?: boolean;
   showAutoConnect?: boolean;
   showManualConnect?: boolean;

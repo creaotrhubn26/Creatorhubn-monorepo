@@ -49,7 +49,7 @@ interface CalendarConflictCheckerProps {
   open: boolean;
   onClose: () => void;
   onConfirm: (option: 'new_project' | 'link_existing' | 'continue_anyway') => void;
-  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
 }
 
 export default function CalendarConflictChecker({

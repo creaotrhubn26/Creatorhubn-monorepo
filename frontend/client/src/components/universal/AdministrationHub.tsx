@@ -3,13 +3,13 @@ import { Box, Tabs as MuiTabs, Tab, Paper, Typography } from '@mui/material';
 import { Article, Payments, AdminPanelSettings } from '@mui/icons-material';
 import PriceAdministration from '../PriceAdministration';
 import UniversalContractHub from './contracts/UniversalContractHub';
-import WedflowOfferManager from '../wedflow/WedflowOfferManager';
+import EvendiOfferManager from '../wedflow/WedflowOfferManager';
 
 interface AdministrationHubProps {
   userId: string;
-  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
   selectedClient?: any;
-  wedflowCoupleId?: string;
+  evendiCoupleId?: string;
   onPricingUpdate?: () => void;
 }
 
@@ -17,7 +17,7 @@ export default function AdministrationHub({
   userId, 
   profession, 
   selectedClient,
-  wedflowCoupleId,
+  evendiCoupleId,
   onPricingUpdate 
 }: AdministrationHubProps) {
   const [activeTab, setActiveTab] = useState(0);
@@ -100,7 +100,7 @@ export default function AdministrationHub({
           />
           <Tab 
             icon={<img src="/wedflow-logo.png" alt="" style={{ height: 28 }} />} 
-            label="WEDFLOW TILBUD" 
+            label="EVENDI TILBUD" 
             iconPosition="start"
           />
         </MuiTabs>
@@ -129,10 +129,10 @@ export default function AdministrationHub({
           </Box>
         )}
 
-        {/* Tab 2: Wedflow Tilbud & Kontrakter */}
+        {/* Tab 2: Evendi Tilbud & Kontrakter */}
         {activeTab === 2 && (
           <Box>
-            <WedflowOfferManager wedflowCoupleId={wedflowCoupleId} />
+            <EvendiOfferManager evendiCoupleId={evendiCoupleId} />
           </Box>
         )}
       </Box>

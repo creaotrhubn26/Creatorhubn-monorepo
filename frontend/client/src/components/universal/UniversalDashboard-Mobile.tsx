@@ -305,7 +305,7 @@ const localProfessionConfigs = {
 };
 
 interface UniversalDashboardMobileProps {
-  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'admin';
+  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'admin' | 'enterprise';
   // Integration props for unified workflow connectivity
   onMeetingCreate?: (meeting: any) => void;
   onProjectUpdate?: (project: any) => void;

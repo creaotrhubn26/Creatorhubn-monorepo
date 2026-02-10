@@ -88,7 +88,7 @@ interface SystemComponent {
   name: string;
   type: 'page' | 'component' | 'feature';
   status: 'active' | 'inactive' | 'maintenance';
-  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'all';
+  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'all' | 'enterprise';
   lastModified: string;
   usage: number
 }

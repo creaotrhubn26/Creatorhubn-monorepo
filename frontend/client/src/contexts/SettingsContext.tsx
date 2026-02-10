@@ -30,7 +30,7 @@ export interface UserSettings {
   
   // Profession-specific settings
   profession: {
-    type: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+    type: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
     specialties: string[];
     experience: 'beginner' | 'intermediate' | 'advanced' | 'expert';
     preferences: {

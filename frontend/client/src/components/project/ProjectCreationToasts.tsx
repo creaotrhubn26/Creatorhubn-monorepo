@@ -5,7 +5,7 @@ import { useVisualEditor } from '../admin/visual-editor/VisualEditorContext';
 
 // Profession-specific toast configurations
 export interface ProfessionToastConfig {
-  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
   icons: {
     success: string;
     error: string;

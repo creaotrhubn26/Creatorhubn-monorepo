@@ -99,7 +99,7 @@ interface ClientActivity {
 }
 
 interface ClientActivityPanelProps {
-  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
   accentColor: string;
   userId?: string;
   onActivityClick?: (activity: ClientActivity) => void;

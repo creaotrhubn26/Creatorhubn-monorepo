@@ -67,7 +67,7 @@ interface Meeting {
 }
 
 interface GoogleMeetIntegrationProps {
-  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
   userId: string;
   currentProject?: string;
   compact?: boolean

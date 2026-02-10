@@ -197,7 +197,7 @@ function TabPanel(props: TabPanelProps) {
 }
 
 interface ShowcaseAdminProps {
-  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
   userId: string;
   // Integration props for universal connectivity
   _onShowcaseCreate?: (showcase: any) => void;
@@ -227,7 +227,7 @@ export default function ShowcaseAdmin({
 	const { integration, communication, dataFlow, componentRegistry, features, auth } = useEnhancedMasterIntegration();
   
   // Theming system
-  const theming = useTheming('photographer,');
+  const theming = useTheming(profession || 'photographer');
 
   // Client service pricing service integration
   const { 

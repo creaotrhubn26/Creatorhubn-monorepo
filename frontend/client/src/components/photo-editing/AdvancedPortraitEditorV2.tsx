@@ -116,7 +116,7 @@ interface AdvancedPortraitEditorV2Props {
   imageUrl?: string;
   onEnhancementComplete?: (result: PortraitResult) => void;
   onError?: (error: string) => void;
-  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
 }
 
 export const AdvancedPortraitEditorV2: React.FC<AdvancedPortraitEditorV2Props> = ({

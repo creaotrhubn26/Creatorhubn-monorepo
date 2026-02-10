@@ -50,7 +50,7 @@ import getProfessionIcon from '@/utils/profession-icons';
 
 interface SplitSheetReportsProps {
   userId: string;
-  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
 }
 
 interface Report {

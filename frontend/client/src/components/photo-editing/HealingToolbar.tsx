@@ -52,7 +52,7 @@ interface HealingToolbarProps {
   imageHeight?: number;
   onHealingChange?: (points: HealingPoint[]) => void;
   initialPoints?: HealingPoint[];
-  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
 }
 
 export default function HealingToolbar({

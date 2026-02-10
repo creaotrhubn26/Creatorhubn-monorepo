@@ -591,7 +591,8 @@ const LandingDesktop: React.FC = () => {
       { role: 'photographer', label: getProfessionDisplayName('photographer'), icon: <PhotoCamera />, color: '#2e7d32', description: 'Bryllup, portrett, events og mer', isStatic: false },
       { role: 'videographer', label: getProfessionDisplayName('videographer'), icon: <VideoLibrary />, color: '#1565c0', description: 'Produksjon, redigering og levering', isStatic: false },
       { role: 'music_producer', label: getProfessionDisplayName('music_producer'), icon: <LibraryMusic />, color: '#7b1fa2', description: 'Opptak, miksing og mastering', isStatic: false },
-      { role: 'vendor', label: getProfessionDisplayName('vendor'), icon: <Business />, color: '#ff8c00', description: 'Utstyr, tjenester og produkter', isStatic: false }
+      { role: 'vendor', label: getProfessionDisplayName('vendor'), icon: <Business />, color: '#ff8c00', description: 'Utstyr, tjenester og produkter', isStatic: false },
+      { role: 'enterprise', label: 'Enterprise Team', icon: <Group />, color: '#6c3483', description: 'Kombiner foto og video i ett team-dashbord', isStatic: false, badge: <Box component="span" sx={{ display: 'inline-flex', gap: 0.5, ml: 1 }}><PhotoCamera sx={{ fontSize: 14 }} /><VideoLibrary sx={{ fontSize: 14 }} /></Box> }
     ];
     
     // Prototype Tester - ALWAYS included as meta-profession (admin-controlled)
@@ -2740,8 +2741,16 @@ const LandingDesktop: React.FC = () => {
                     fontWeight: 700,
                     color: '#fff',
                     mb: 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
                   }}>
                     {item.label}
+                    {(item as any).badge && (
+                      <Box sx={{ ml: 1, display: 'inline-flex', gap: 0.3, color: 'rgba(255,255,255,0.7)' }}>
+                        {(item as any).badge}
+                      </Box>
+                    )}
                   </Typography>
 
                   <Typography variant="body2" sx={{

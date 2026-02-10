@@ -62,7 +62,7 @@ interface HealthCheckIssue {
 
 interface ProjectHealthCheckProps {
   projectData: any;
-  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
   open: boolean;
   onClose: () => void;
   onContinue: () => void;

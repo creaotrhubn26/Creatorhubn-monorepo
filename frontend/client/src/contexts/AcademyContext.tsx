@@ -20,7 +20,7 @@ export interface Course {
     name: string;
     avatar: string;
     bio: string;
-    profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+    profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
 };
   thumbnail: string;
   videoUrl: string;

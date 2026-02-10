@@ -3,7 +3,7 @@ import { useGoogleSSO } from './useGoogleSSO';
 import type { GoogleUser } from '../services/GoogleSSOService';
 
 // Backend API URL — points to Render backend in production
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://wedflow-api.onrender.com';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://evendi.onrender.com';
 const isDev = typeof window !== 'undefined' && (import.meta.env.DEV || window.location.hostname === 'localhost');
 
 /** Build absolute URL for auth endpoints */

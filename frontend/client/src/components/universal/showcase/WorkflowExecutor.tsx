@@ -69,7 +69,7 @@ interface Workflow {
 interface WorkflowExecutorProps {
   open: boolean;
   onClose: () => void;
-  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
   selectedItems: string[];
   onWorkflowComplete?: (workflowId: string) => void;
 }

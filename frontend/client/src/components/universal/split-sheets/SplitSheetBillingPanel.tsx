@@ -54,7 +54,7 @@ import getProfessionIcon from '@/utils/profession-icons';
 
 interface SplitSheetBillingPanelProps {
   userId: string;
-  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
 }
 
 interface Invoice {

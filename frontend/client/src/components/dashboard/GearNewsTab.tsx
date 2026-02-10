@@ -47,7 +47,7 @@ import {
 } from '@mui/icons-material';
 
 interface GearNewsTabProps {
-  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
   className?: string
 }
 

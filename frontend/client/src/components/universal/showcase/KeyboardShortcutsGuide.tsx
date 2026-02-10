@@ -68,7 +68,7 @@ interface KeyboardShortcut {
 interface KeyboardShortcutsGuideProps {
   open: boolean;
   onClose: () => void;
-  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
 }
 
 export const KeyboardShortcutsGuide: React.FC<KeyboardShortcutsGuideProps> = ({

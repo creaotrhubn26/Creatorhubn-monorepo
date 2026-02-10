@@ -58,7 +58,7 @@ import {
 } from '@mui/icons-material';
 
 interface ContextualActionBarProps {
-  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
   selectedCount: number;
   accentColor: string;
   onClearSelection: () => void;

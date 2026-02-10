@@ -25,7 +25,7 @@ import {
 } from '@mui/material';
 import {
   Add,
-  CalendarTodayToday,
+  CalendarToday,
   Person,
   Category,
   Description,
@@ -41,7 +41,7 @@ interface ProjectCreationModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSubmit?: (data: any) => Promise<any>;
-  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor'
+  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise'
 }
 
 export function ProjectCreationModal({
@@ -53,7 +53,17 @@ export function ProjectCreationModal({
   const [loading, setLoading] = useState(false);
   
   // Theming system
-  const theming = useTheming('photographer');
+  const theming = useTheming(profession || 'photographer');
+
+  // Dynamic profession system integration
+  const { user } = useAuth();
+  const { professionConfigs } = useProfessionConfigs();
+  const professionAdapter = useProfessionAdapter();
+  const { professionConfigs: dynamicConfigs } = useDynamicProfessions();
+  const professionIcon = getProfessionIcon(profession);
+  const currentConfig = professionConfigs[profession] || dynamicConfigs[profession];
+  const professionDisplayName = currentConfig?.displayName || professionAdapter.adaptDashboardTitle();
+  const professionColor = currentConfig?.iconColor || '#ff8c00';
   const [formData, setFormData] = useState({
     title: ',',
     description: '',
@@ -63,7 +73,9 @@ export function ProjectCreationModal({
           ? 'bryllupsvideo'
           : profession === 'music_producer'
             ? 'sang'
-            : 'utstyr',
+            : profession === 'enterprise'
+              ? 'bryllup_komplett'
+              : 'utstyr',
     clientId: '',
     scheduledDate: '',
     duration:  60,
@@ -127,6 +139,19 @@ export function ProjectCreationModal({
           { value: 'service', label: 'Service',},
           { value: 'konsulenting', label: 'Konsultering',},
           { value: 'support', label: 'Support',},
+        ];
+      case 'enterprise':
+        return [
+          { value: 'bryllup_komplett', label: 'Bryllup (Foto + Video)',},
+          { value: 'bryllup_foto', label: 'Bryllup Foto',},
+          { value: 'bryllup_video', label: 'Bryllup Video',},
+          { value: 'bedrift_komplett', label: 'Bedrift (Foto + Video)',},
+          { value: 'event_komplett', label: 'Event (Foto + Video)',},
+          { value: 'portrett', label: 'Portrett',},
+          { value: 'dokumentar', label: 'Dokumentar',},
+          { value: 'reklame', label: 'Reklame / Kommersiell',},
+          { value: 'sosiale_medier', label: 'Sosiale Medier',},
+          { value: 'team_prosjekt', label: 'Teamprosjekt',},
         ];
   }
 };
@@ -218,23 +243,25 @@ export function ProjectCreationModal({
           display: 'flex',
           alignItems: 'center',
           color: '#1a1f20',
-          fontWeight: 60
+          fontWeight: 600,
           fontSize: '1.5rem',
           pb:  1}}
       >
-        <Add sx={{ mr: 1, .color: '#ff8c00'}} />
-        Opprett nytt{', '}
-        {profession === 'photographer'
+        {professionIcon ? React.cloneElement(professionIcon, { sx: { mr: 1, color: professionColor, fontSize: 28 } }) : <Add sx={{ mr: 1, color: professionColor }} />}
+        Opprett nytt{' '}
+        {professionAdapter.adaptProjectTypeLabel(profession === 'photographer'
           ? 'fotoprosjekt'
           : profession === 'videographer'
             ? 'videoprosjekt'
             : profession === 'music_producer'
               ? 'musikkprosjekt'
-              : 'prosjekt'}
+              : profession === 'enterprise'
+                ? 'teamprosjekt'
+                : 'prosjekt')}
       </DialogTitle>
 
-      <Typography sx={{ color: 'rgba(6,31,46,0.7)', mb:  3, px:  3 }}>
-        Oppretter prosjekt, arbeidsområde og Google Drive integrasjon automatisk
+      <Typography sx={{ color: 'rgba(6,31,46,0.7)', mb: 3, px: 3 }}>
+        Oppretter prosjekt for {professionDisplayName} — arbeidsområde og Google Drive integrasjon automatisk
       </Typography>
 
       <DialogContent>
@@ -287,6 +314,25 @@ export function ProjectCreationModal({
               </MenuItem>
             ))}
           </TextField>
+
+          <TextField
+            label="Klient / Oppdragsgiver"
+            value={formData.clientId}
+            onChange={(e) => setFormData((prev) => ({ ...prev, clientId: e.target.value }))}
+            placeholder={user?.email || 'Velg eller skriv inn klient-ID'}
+            fullWidth
+            variant="outlined"
+            InputProps={{
+              startAdornment: <Person sx={{ color: '#ff8c00', mr: 1 }} />,
+            }}
+            sx={{
+              '& .MuiOutlinedInput-root': {
+                bgcolor: 'rgba(255,255,255,0.9)',
+                '&:hover fieldset': { borderColor: '#ff8c00' },
+                '&.Mui-focused fieldset': { borderColor: '#ff8c00' },
+              },
+            }}
+          />
 
           <TextField
             label="Beskrivelse"
@@ -389,13 +435,14 @@ export function ProjectCreationModal({
             )}
           </Box>
 
-          {/* FASE 2: Showcase Gallery Security Settings , *, /}
+          {/* FASE 2: Showcase Gallery Security Settings */}
           <Card
             sx={{
-              background: 'linear-gradient(135deg, rgba(2, 5, 5,140,0,0.05) 0%, rgba(2, 5, 5,248,235,0.05) 100%)',
-              border: '1px solid rgba(25,140,0,0.2)',
-              borderRadius:  2}}
-           sx={theming.getThemedCardSx()}>
+              background: 'linear-gradient(135deg, rgba(255,140,0,0.05) 0%, rgba(255,248,235,0.05) 100%)',
+              border: '1px solid rgba(255,140,0,0.2)',
+              borderRadius: 2,
+              ...theming.getThemedCardSx(),
+            }}>
             <CardContent sx={theming.getThemedCardSx()}>
               <Box sx={{ display: 'flex', alignItems: 'center', mb:  2 }}>
                 <PhotoLibrary sx={{ color: '#ff8c00', mr: 1.5}} />
@@ -434,8 +481,8 @@ export function ProjectCreationModal({
                     variant="subtitle2"
                     sx={{
                       color: '#1a1f20',
-                      fontWeight: 60
-                     , mb:  2,
+                      fontWeight: 600,
+                      mb: 2,
                       display: 'flex',
                       alignItems: 'center'}}
                   >
@@ -450,7 +497,7 @@ export function ProjectCreationModal({
                       onChange={(e) =>
                         setFormData((prev) => ({
                           ...prev,
-                          galleryPin: e.target.value.replace(/\D, /'').slice(0, 6),
+                          galleryPin: e.target.value.replace(/\D/g, '').slice(0, 6),
                       }))
                     }
                       placeholder="4-6 siffer"
@@ -601,15 +648,19 @@ export function ProjectCreationModal({
               sx={{
                 background: 'linear-gradient(45deg, #ff8c00, #ff6b35)',
                 color: 'white',
-                fontWeight: 60
-                py: 1.5, '&:hover': { background: 'linear-gradient(45deg, #ff6b35, #ff8c00)',
+                fontWeight: 600,
+                py: 1.5,
+                '&:hover': {
+                  background: 'linear-gradient(45deg, #ff6b35, #ff8c00)',
                   transform: 'translateY(-1px)',
-                  boxShadow: '0 6px 20px rgba(25,140,0,0.3)',
-              }, '&:disabled': {
+                  boxShadow: '0 6px 20px rgba(255,140,0,0.3)',
+                },
+                '&:disabled': {
                   background: 'rgba(6,31,46,0.3)',
                   color: 'rgba(6,31,46,0.5)',
-              }}}
-             sx={theming.getThemedButtonSx()}>
+                },
+                ...theming.getThemedButtonSx(),
+              }}>
               {loading ? 'Oppretter...' : 'Opprett prosjekt'}
             </Button>
           </Box>

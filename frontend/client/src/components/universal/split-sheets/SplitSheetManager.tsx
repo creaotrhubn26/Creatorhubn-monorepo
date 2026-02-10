@@ -103,7 +103,7 @@ function TabPanel(props: TabPanelProps) {
 }
 
 interface SplitSheetManagerProps {
-  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
   userId?: string;
   projectId?: string;
   trackId?: string;

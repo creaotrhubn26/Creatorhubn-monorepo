@@ -45,7 +45,7 @@ interface SplitSheetTemplate {
   description?: string | null;
   is_system_template?: boolean;
   is_public?: boolean;
-  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
   contributors: Omit<SplitSheetContributor, 'id' | 'split_sheet_id' | 'created_at' | 'updated_at'>[];
   usage_count?: number;
   created_at?: string;
@@ -54,7 +54,7 @@ interface SplitSheetTemplate {
 interface SplitSheetTemplatesProps {
   onSelectTemplate?: (template: SplitSheetTemplate) => void;
   showCreateButton?: boolean;
-  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
 }
 
 export default function SplitSheetTemplates({

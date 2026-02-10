@@ -55,7 +55,7 @@ import {
 import { cn } from '@/lib/utils';
 
 interface SuperSmartWritingInterfaceProps {
-  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
   meetingId?: string;
   projectId?: string;
   clientId?: string;

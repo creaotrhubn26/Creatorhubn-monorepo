@@ -284,7 +284,7 @@ interface AutomationTemplate {
 }
 
 interface AdvancedMarketingAutomationEngineProps {
-  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
 }
 
 const AdvancedMarketingAutomationEngine: React.FC<AdvancedMarketingAutomationEngineProps> = ({ 

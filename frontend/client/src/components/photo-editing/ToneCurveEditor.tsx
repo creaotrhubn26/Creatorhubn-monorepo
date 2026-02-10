@@ -36,7 +36,7 @@ interface ToneCurveEditorProps {
   imageUrl?: string;
   onCurveChange?: (curves: Partial<ToneCurve>) => void;
   initialCurves?: Partial<ToneCurve>;
-  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
 }
 
 export default function ToneCurveEditor({

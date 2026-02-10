@@ -90,7 +90,7 @@ interface CommandPaletteProps {
   open: boolean;
   onClose: () => void;
   onCommand: (command: string) => void;
-  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor'
+  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise'
 }
 
 const CommandPalette: React.FC<CommandPaletteProps> = ({

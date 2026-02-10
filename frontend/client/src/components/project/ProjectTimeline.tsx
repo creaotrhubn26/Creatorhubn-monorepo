@@ -116,7 +116,7 @@ interface ProjectTimelineProps {
   onWorklogCreate?: (worklog: any) => void;
   selectedProject?: any;
   onProjectUpdate?: (project: any) => void;
-  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
 }
 
 export const ProjectTimeline: React.FC<ProjectTimelineProps> = ({

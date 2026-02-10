@@ -1,8 +1,8 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { apiRequest, queryClient } from '@/lib/queryClient';
-import { getWedflowBookings, getWedflowAnalyticsSummary, wedflowQueryKeys } from '@/lib/wedflow-api';
-import type { WedflowBooking, WedflowAnalyticsSummary } from '@/lib/wedflow-api';
+import { getEvendiBookings, getEvendiAnalyticsSummary, evendiQueryKeys } from '@/lib/evendi-api';
+import type { EvendiBooking, EvendiAnalyticsSummary } from '@/lib/evendi-api';
 import { useLocation } from 'wouter';
 import { trackButtonClick } from '@/hooks/useActionTracker';
 import { useDemoMode } from '@/contexts/DemoModeContext';
@@ -117,7 +117,8 @@ import {
   AccountBalance,
   AutoAwesome,
   AdminPanelSettings,
-  Close
+  Close,
+  VideoLibrary
 } from '@mui/icons-material';
 
 // Import profession-specific components
@@ -406,7 +407,44 @@ const localProfessionConfigs: ProfessionConfigs = {
       { key: 'revenue', label: 'Månedens Inntekt', icon: <AttachMoney /> },
       { key: 'inventory', label: 'Lagerstatus', icon: <Storage /> }
     ]
-}
+},
+  enterprise: {
+    name: 'Enterprise',
+    displayName: 'Enterprise Team',
+    color: '#6c3483',
+    iconColor: '#6c3483',
+    icon: <Business />,
+    tabs: [
+      { id: 'overview', label: 'Team Oversikt', icon: <Assessment /> },
+      { id: 'projects', label: 'Prosjekter', icon: <Folder /> },
+      { id: 'academy', label: 'Academy', icon: <School /> },
+      { id: 'wedding-timeline', label: 'Bryllupstidslinje', icon: <Event /> },
+      { id: 'showcase-admin', label: 'Showcase Admin', icon: <Collections /> },
+      { id: 'showcase-viewer', label: 'Showcase Viewer', icon: <Visibility /> },
+      { id: 'downloads', label: 'Downloads', icon: <GetApp /> },
+      { id: 'file-upload', label: 'File Upload', icon: <CloudUpload /> },
+      { id: 'ai-enhancement', label: 'AI Forbedring', icon: <AutoFixHigh /> },
+      { id: 'video-enhancement', label: 'Video AI', icon: <MovieCreation /> },
+      { id: 'email-center', label: 'E-post', icon: <Email /> },
+      { id: 'worklog', label: 'Worklog', icon: <AccessTime /> },
+      { id: 'clients', label: 'Kunder', icon: <Group /> },
+      { id: 'team-management', label: 'Team', icon: <Group /> },
+      { id: 'equipment', label: 'Utstyr', icon: <CameraAlt /> },
+      { id: 'files', label: 'Filer', icon: <FolderOpen /> },
+      { id: 'support', label: 'Support', icon: <HelpCenter /> },
+      { id: 'settings', label: 'Innstillinger', icon: <Settings /> },
+      { id: 'administration', label: 'Administrasjon', icon: <AdminPanelSettings /> },
+      { id: 'communication', label: 'Kommunikasjon', icon: <Chat /> },
+      { id: 'integration-test', label: 'Integration Test', icon: <Build /> }
+    ],
+    projectTypes: ['bryllup','corporate','event','musikkvideo','portrett','reklame'],
+    stats: [
+      { key: 'projects', label: 'Aktive Prosjekter', icon: <Folder /> },
+      { key: 'team_members', label: 'Teammedlemmer', icon: <Group /> },
+      { key: 'revenue', label: 'Månedens Inntekt', icon: <AttachMoney /> },
+      { key: 'bookings', label: 'Bookinger', icon: <CalendarToday /> }
+    ]
+  }
 };
 
 interface Project {
@@ -490,7 +528,7 @@ function TabPanel(props: TabPanelProps) {
 }
 
 interface UniversalDashboardProps {
-  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'admin';
+  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'admin' | 'enterprise';
 }
 
 // Internal component that uses the context
@@ -513,15 +551,15 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
   const { getProfessionDisplayName, getUserProfessionColor, getProfessionIcon } = useDynamicProfessions();
   const { adaptDashboardTitle: _adaptDashboardTitle, adaptTabLabels: _adaptTabLabels } = useProfessionAdapter();
   
-  // Helper function to convert admin profession to photographer for components that don't support admin
+  // Helper function to convert admin profession to photographer for components that don't support it
   const getComponentProfession = (prof: string, targetType: 'standard' | 'musicproducer' = 'standard') => {
     if (prof === 'admin') return 'photographer';
     if (targetType === 'musicproducer') {
       if (prof === 'music_producer') return 'musicproducer';
-      return prof as 'photographer' | 'videographer' | 'vendor' | 'musicproducer';
+      return prof as 'photographer' | 'videographer' | 'vendor' | 'musicproducer' | 'enterprise';
     }
     if (prof === 'music_producer') return 'music_producer';
-    return prof as 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+    return prof as 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
 };
   
   // Master integration system for "everything interacts with everything"
@@ -669,7 +707,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
       const featureMap: Record<string, boolean> = {
         'overview': true, // Always available
         'projects': true, // Always available
-        'academy': isMentor, // Academy only for mentors/instructors
+        'academy': isMentor || profession === 'enterprise', // Academy for mentors/instructors and enterprise teams
         'split-sheets': false, // Split sheets moved to Prisadministrasjon sub-tab for all professions
         'wedding-timeline': true, // Always available
         'showcase-admin': true, // Always available
@@ -684,6 +722,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
         'worklog': true,
         'clients': true, // Always available
         'client-management': true, // Always available
+        'team-management': profession === 'enterprise', // Enterprise only
         'equipment': true, // Always available
         'files': true,
         'support': true,
@@ -1170,22 +1209,22 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
   const setShowDeleteProjectDialog = (value: boolean) => updateModalStateLocal('showDeleteProjectDialog', value);
 
   // ==============================================================
-  // WEDFLOW COUPLE AUTO-RESOLUTION
-  // Auto-maps selectedClient.email → wedflow couple profile UUID
-  // Used to pass wedflowCoupleId to WeddingTimelineAdmin, ProjectCreation, AdministrationHub
+  // EVENDI COUPLE AUTO-RESOLUTION
+  // Auto-maps selectedClient.email → Evendi couple profile UUID
+  // Used to pass evendiCoupleId to WeddingTimelineAdmin, ProjectCreation, AdministrationHub
   // ==============================================================
-  const [wedflowCoupleId, setWedflowCoupleId] = useState<string | null>(null);
+  const [evendiCoupleId, setEvendiCoupleId] = useState<string | null>(null);
 
   useEffect(() => {
     const clientEmail = selectedClient?.email;
     if (!clientEmail) {
-      setWedflowCoupleId(null);
+      setEvendiCoupleId(null);
       return;
     }
 
     // If client already has a coupleId from /api/clients, use it directly
     if ((selectedClient as any)?.coupleId) {
-      setWedflowCoupleId((selectedClient as any).coupleId);
+      setEvendiCoupleId((selectedClient as any).coupleId);
       return;
     }
 
@@ -1193,13 +1232,13 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
     let cancelled = false;
     (async () => {
       try {
-        const data = await apiRequest(`/api/wedflow/resolve-couple?email=${encodeURIComponent(clientEmail)}`);
+        const data = await apiRequest(`/api/evendi/resolve-couple?email=${encodeURIComponent(clientEmail)}`);
         if (!cancelled && data?.coupleId) {
-          setWedflowCoupleId(data.coupleId);
+          setEvendiCoupleId(data.coupleId);
         }
       } catch {
         // No couple profile for this client — graceful degradation
-        if (!cancelled) setWedflowCoupleId(null);
+        if (!cancelled) setEvendiCoupleId(null);
       }
     })();
     return () => { cancelled = true; };
@@ -1566,17 +1605,17 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
   // Get the user's vendor type from their profile, default to 'print'
   const _userVendorType = vendorProfile?.vendorType || 'print';
 
-  // Fetch Wedflow bookings & analytics (wired via wedflow-api.ts)
-  const { data: wedflowBookings = [] } = useQuery<WedflowBooking[]>({
-    queryKey: wedflowQueryKeys.bookings(),
-    queryFn: () => getWedflowBookings(),
+  // Fetch Evendi bookings & analytics (wired via evendi-api.ts)
+  const { data: evendiBookings = [] } = useQuery<EvendiBooking[]>({
+    queryKey: evendiQueryKeys.bookings(),
+    queryFn: () => getEvendiBookings(),
     enabled: !!userId && userId !== 'guest',
     staleTime: 60_000,
   });
 
-  const { data: wedflowAnalytics } = useQuery<WedflowAnalyticsSummary>({
-    queryKey: wedflowQueryKeys.analytics(),
-    queryFn: () => getWedflowAnalyticsSummary(),
+  const { data: evendiAnalytics } = useQuery<EvendiAnalyticsSummary>({
+    queryKey: evendiQueryKeys.analytics(),
+    queryFn: () => getEvendiAnalyticsSummary(),
     enabled: !!userId && userId !== 'guest',
     staleTime: 60_000,
   });
@@ -1708,6 +1747,48 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
     const completed = splitSheets.filter((ss: any) => ss.status === 'completed').length;
     return { total, draft, pending, completed };
   }, [splitSheets]);
+
+  const evendiBookingSummary = useMemo(() => {
+    const fallbackTotal = evendiBookings.length;
+    const fallbackRevenue = evendiBookings.reduce((sum, booking) => sum + (booking.totalAmount || 0), 0);
+    const totalBookings = evendiAnalytics?.totalBookings ?? fallbackTotal;
+    const totalRevenue = evendiAnalytics?.totalRevenue ?? fallbackRevenue;
+    const upcomingEvents = evendiAnalytics?.upcomingEvents ?? evendiBookings.filter((booking) => {
+      const eventDate = new Date(booking.eventDate);
+      if (Number.isNaN(eventDate.getTime())) return false;
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      return eventDate >= today && booking.status !== 'cancelled';
+    }).length;
+
+    const statusCounts = evendiAnalytics?.bookingsByStatus?.length
+      ? evendiAnalytics.bookingsByStatus
+      : (['pending', 'confirmed', 'completed', 'cancelled'] as EvendiBooking['status'][]).map((status) => ({
+          status,
+          count: evendiBookings.filter((booking) => booking.status === status).length,
+        }));
+
+    return {
+      totalBookings,
+      totalRevenue,
+      upcomingEvents,
+      statusCounts,
+    };
+  }, [evendiAnalytics, evendiBookings]);
+
+  const evendiUpcomingBookings = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    return [...evendiBookings]
+      .filter((booking) => {
+        const eventDate = new Date(booking.eventDate);
+        if (Number.isNaN(eventDate.getTime())) return false;
+        return eventDate >= today && booking.status !== 'cancelled';
+      })
+      .sort((a, b) => new Date(a.eventDate).getTime() - new Date(b.eventDate).getTime())
+      .slice(0, 3);
+  }, [evendiBookings]);
 
   // Calculate real stats from database data
   // Mock data removed - using database connection
@@ -2029,7 +2110,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                     <ProjectProvider>
                       <ProjectCreationWithMemoryCards
                         profession={getComponentProfession(profession)}
-                        wedflowCoupleId={wedflowCoupleId || undefined}
+                        evendiCoupleId={evendiCoupleId || undefined}
                         initialData={{
                           projectName: uiSettings.submissionProjectData?.projectName,
                           clientName: uiSettings.submissionProjectData?.clientName,
@@ -2196,7 +2277,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
           </DialogTitle>
           <DialogContent dividers sx={{ p: { xs: 2, md: 3 } }}>
             <ClientActivityPanel
-              profession={profession as 'photographer' | 'videographer' | 'music_producer' | 'vendor'}
+              profession={profession as 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise'}
               accentColor={customBranding.color}
               userId={userId}
               onActivityClick={(activity) => {
@@ -2610,6 +2691,16 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                     >
                       Velkommen tilbake, {typeof customBranding.businessName === 'string' ? customBranding.businessName : 'bruker'}!
                     </Typography>
+                    {/* Enterprise: Show Norwedfilm logo + combined profession badges */}
+                    {profession === 'enterprise' && (
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <img src="/norwed.png" alt="Norwedfilm" style={{ width: 36, height: 36, borderRadius: 6, objectFit: 'contain', background: '#f5f5f5', padding: 2 }} />
+                        <Box sx={{ display: 'flex', gap: 0.5, color: 'text.secondary' }}>
+                          <PhotoCamera sx={{ fontSize: 16 }} />
+                          <VideoLibrary sx={{ fontSize: 16 }} />
+                        </Box>
+                      </Box>
+                    )}
                     {customBranding.customLogo && (
                       <img 
                         src={customBranding.customLogo}
@@ -3185,7 +3276,121 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
           </Grid2>
         </Grid2>
 
+        {(evendiBookings.length > 0 || evendiAnalytics) && (
+          <MuiCard
+            sx={{
+              mb: { xs: 3, md: 4 },
+              background: 'rgba(255, 255, 255, 0.92)',
+              backdropFilter: 'blur(16px)',
+              WebkitBackdropFilter: 'blur(16px)',
+              border: '1px solid rgba(255, 255, 255, 0.5)',
+              borderRadius: 4,
+              overflow: 'hidden',
+            }}
+          >
+            <MuiCardContent sx={{ p: { xs: 2, sm: 3 } }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+                <CalendarToday sx={{ color: customBranding.color }} />
+                <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                  Evendi Bookinger
+                </Typography>
+              </Box>
 
+              <Grid2 container spacing={{ xs: 1.5, md: 2 }} sx={{ mb: 2 }}>
+                <Grid2 size={{ xs: 12, sm: 4 }}>
+                  <Paper sx={{ p: 2, borderRadius: 3, bgcolor: `${customBranding.color}10` }}>
+                    <Typography variant="subtitle2" color="text.secondary">
+                      Totale bookinger
+                    </Typography>
+                    <Typography variant="h5" sx={{ fontWeight: 700 }}>
+                      {evendiBookingSummary.totalBookings}
+                    </Typography>
+                  </Paper>
+                </Grid2>
+                <Grid2 size={{ xs: 12, sm: 4 }}>
+                  <Paper sx={{ p: 2, borderRadius: 3, bgcolor: 'rgba(16, 185, 129, 0.12)' }}>
+                    <Typography variant="subtitle2" color="text.secondary">
+                      Inntekt (Evendi)
+                    </Typography>
+                    <Typography variant="h5" sx={{ fontWeight: 700 }}>
+                      {evendiBookingSummary.totalRevenue.toLocaleString('no-NO')} kr
+                    </Typography>
+                  </Paper>
+                </Grid2>
+                <Grid2 size={{ xs: 12, sm: 4 }}>
+                  <Paper sx={{ p: 2, borderRadius: 3, bgcolor: 'rgba(99, 102, 241, 0.12)' }}>
+                    <Typography variant="subtitle2" color="text.secondary">
+                      Kommende eventer
+                    </Typography>
+                    <Typography variant="h5" sx={{ fontWeight: 700 }}>
+                      {evendiBookingSummary.upcomingEvents}
+                    </Typography>
+                  </Paper>
+                </Grid2>
+              </Grid2>
+
+              <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" sx={{ mb: 2 }}>
+                {evendiBookingSummary.statusCounts.map((status) => {
+                  const statusColor: 'default' | 'success' | 'warning' | 'error' | 'info' =
+                    status.status === 'confirmed'
+                      ? 'success'
+                      : status.status === 'pending'
+                        ? 'warning'
+                        : status.status === 'cancelled'
+                          ? 'error'
+                          : 'info';
+                  return (
+                    <Chip
+                      key={status.status}
+                      label={`${status.status}: ${status.count}`}
+                      color={statusColor}
+                      size="small"
+                      variant="outlined"
+                    />
+                  );
+                })}
+              </Stack>
+
+              {evendiUpcomingBookings.length > 0 && (
+                <Box>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>
+                    Neste bookinger
+                  </Typography>
+                  <List dense disablePadding>
+                    {evendiUpcomingBookings.map((booking, idx) => (
+                      <React.Fragment key={booking.id}>
+                        <ListItem sx={{ px: 0 }}>
+                          <ListItemIcon sx={{ minWidth: 32 }}>
+                            <Event sx={{ color: customBranding.color }} />
+                          </ListItemIcon>
+                          <ListItemText
+                            primary={booking.title || booking.clientName}
+                            secondary={`${booking.clientName} • ${new Date(booking.eventDate).toLocaleDateString('no-NO')}`}
+                          />
+                          <Chip
+                            size="small"
+                            label={booking.status}
+                            color={
+                              booking.status === 'confirmed'
+                                ? 'success'
+                                : booking.status === 'pending'
+                                  ? 'warning'
+                                  : booking.status === 'completed'
+                                    ? 'info'
+                                    : 'error'
+                            }
+                            variant="outlined"
+                          />
+                        </ListItem>
+                        {idx < evendiUpcomingBookings.length - 1 && <Divider />}
+                      </React.Fragment>
+                    ))}
+                  </List>
+                </Box>
+              )}
+            </MuiCardContent>
+          </MuiCard>
+        )}
 
         {/* Pro Editor Mode Toggle - Only for Videographers */}
         {profession === 'videographer' && (
@@ -4138,7 +4343,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
               {projectsTabValue === 2 && (
                 <SubmissionsOverview 
                   userId={userId}
-                  profession={profession as 'photographer' | 'videographer' | 'music_producer' | 'vendor'}
+                  profession={profession as 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise'}
                 />
               )}
               
@@ -4586,7 +4791,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                           <ProjectTimeline
                             selectedProject={selectedProject}
                             projectId={selectedProject?.id || userId}
-                            profession={profession as 'photographer' | 'videographer' | 'music_producer' | 'vendor'}
+                            profession={profession as 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise'}
                           />
                         </ProjectProvider>
                       )}
@@ -4613,6 +4818,75 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
           {profession !== 'vendor' && (
             <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'community')}>
               <CommunityHub userId={userId} profession={profession} />
+            </TabPanel>
+          )}
+
+          {/* Enterprise Team Management Tab */}
+          {profession === 'enterprise' && (
+            <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'team-management')}>
+              <Box sx={{ maxWidth: 1200, mx: 'auto' }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
+                  <Box component="img" src="/norwed.png" alt="Norwedfilm" sx={{ width: 48, height: 48, borderRadius: 2, objectFit: 'contain', bgcolor: '#f5f5f5', p: 0.5 }} />
+                  <Box>
+                    <Typography variant="h5" sx={{ fontWeight: 700, color: '#6c3483' }}>Teamadministrasjon</Typography>
+                    <Typography variant="body2" color="text.secondary">Administrer teammedlemmer, roller og tilganger</Typography>
+                  </Box>
+                </Box>
+
+                <Grid2 container spacing={3}>
+                  <Grid2 size={{ xs: 12, md: 4 }}>
+                    <Paper sx={{ p: 3, textAlign: 'center', border: '1px solid', borderColor: 'divider', borderRadius: 3 }}>
+                      <Typography variant="h3" sx={{ fontWeight: 700, color: '#6c3483' }}>3</Typography>
+                      <Typography variant="body2" color="text.secondary">Aktive medlemmer</Typography>
+                    </Paper>
+                  </Grid2>
+                  <Grid2 size={{ xs: 12, md: 4 }}>
+                    <Paper sx={{ p: 3, textAlign: 'center', border: '1px solid', borderColor: 'divider', borderRadius: 3 }}>
+                      <Box sx={{ display: 'flex', justifyContent: 'center', gap: 1, mb: 1 }}>
+                        <PhotoCamera sx={{ color: '#2e7d32' }} />
+                        <VideoLibrary sx={{ color: '#1565c0' }} />
+                      </Box>
+                      <Typography variant="body2" color="text.secondary">Foto + Video Team</Typography>
+                    </Paper>
+                  </Grid2>
+                  <Grid2 size={{ xs: 12, md: 4 }}>
+                    <Paper sx={{ p: 3, textAlign: 'center', border: '1px solid', borderColor: 'divider', borderRadius: 3 }}>
+                      <Typography variant="h3" sx={{ fontWeight: 700, color: 'success.main' }}>Aktiv</Typography>
+                      <Typography variant="body2" color="text.secondary">Enterprise abonnement</Typography>
+                    </Paper>
+                  </Grid2>
+                </Grid2>
+
+                <Paper sx={{ p: 3, mt: 3, border: '1px solid', borderColor: 'divider', borderRadius: 3 }}>
+                  <Typography variant="h6" gutterBottom sx={{ fontWeight: 600 }}>Teammedlemmer</Typography>
+                  <Box component="table" sx={{ width: '100%', borderCollapse: 'collapse', '& td, & th': { p: 1.5, borderBottom: '1px solid', borderColor: 'divider' } }}>
+                    <thead>
+                      <tr>
+                        <Box component="th" sx={{ textAlign: 'left', fontWeight: 600 }}>Medlem</Box>
+                        <Box component="th" sx={{ textAlign: 'left', fontWeight: 600 }}>Rolle</Box>
+                        <Box component="th" sx={{ textAlign: 'left', fontWeight: 600 }}>Status</Box>
+                        <Box component="th" sx={{ textAlign: 'left', fontWeight: 600 }}>Academy</Box>
+                        <Box component="th" sx={{ textAlign: 'left', fontWeight: 600 }}>Community</Box>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[
+                        { email: 'admin@norwedfilm.no', role: 'Admin', status: 'Aktiv' },
+                        { email: 'fotograf@norwedfilm.no', role: 'Fotograf', status: 'Aktiv' },
+                        { email: 'videograf@norwedfilm.no', role: 'Videograf', status: 'Aktiv' },
+                      ].map((m) => (
+                        <tr key={m.email}>
+                          <td>{m.email}</td>
+                          <td><Chip label={m.role} size="small" color={m.role === 'Admin' ? 'primary' : 'default'} variant="outlined" /></td>
+                          <td><Chip label={m.status} size="small" color="success" variant="outlined" /></td>
+                          <td><Chip label="Aktiv" size="small" color="info" variant="outlined" /></td>
+                          <td><Chip label="Aktiv" size="small" color="info" variant="outlined" /></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </Box>
+                </Paper>
+              </Box>
             </TabPanel>
           )}
 
@@ -4671,7 +4945,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                   {selectedTimelineTab === 0 && (
                     <WeddingTimelineAdmin 
                       projectId={projects?.[0]?.id || userId}
-                      wedflowCoupleId={wedflowCoupleId || undefined}
+                      evendiCoupleId={evendiCoupleId || undefined}
                       projectIntegration={{
                         projectId: projects?.[0]?.id,
                         weddingTimelineIntegrated: true,
@@ -5460,7 +5734,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                         userId={userId}
                         profession={profession}
                         selectedClient={selectedClient}
-                        wedflowCoupleId={wedflowCoupleId || undefined}
+                        evendiCoupleId={evendiCoupleId || undefined}
                         onPricingUpdate={() => {
                           console.log('Pricing updated');
                         }}
@@ -5677,7 +5951,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                 <UniversalWorklog 
                   projectId={userId}
                   userId={userId}
-                  profession={getComponentProfession(profession) as any}
+                  profession={getComponentProfession(profession, 'musicproducer') as any}
                 />
               </TabPanel>
 
@@ -5990,14 +6264,14 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                   userId={userId}
                   profession={profession}
                   selectedClient={selectedClient}
-                  wedflowCoupleId={wedflowCoupleId || undefined}
+                  evendiCoupleId={evendiCoupleId || undefined}
                   onPricingUpdate={() => {
                     console.log('Pricing updated');
                   }}
                 />
               </TabPanel>
 
-              {/* Tab 13: Integration Test */}
+              {/* Tab 13: Integration Test */>
               <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'integration-test')}>
                 <UniversalDashboardIntegrationTest />
               </TabPanel>
@@ -6009,7 +6283,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                 <UniversalWorklog 
                   projectId={userId}
                   userId={userId}
-                  profession={getComponentProfession(profession) as any}
+                  profession={getComponentProfession(profession, 'musicproducer') as any}
                 />
               </TabPanel>
 
@@ -6094,7 +6368,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
               <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'settings') >= 0 ? availableTabs.findIndex(tab => tab.id === 'settings') : 7}>
                 <GoogleDriveManager 
                   userId={userId} 
-                  profession={getComponentProfession(profession) as 'photographer' | 'music_producer' | 'videographer' | 'vendor'}
+                  profession={getComponentProfession(profession) as 'photographer' | 'music_producer' | 'videographer' | 'vendor' | 'enterprise'}
                   onProjectUpdate={(project: any) => updateProject(project.id, project)}
                   selectedProject={selectedProject ?? undefined}
                   onProjectSelect={setSelectedProject}
@@ -6150,9 +6424,9 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
               <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'administration') >= 0 ? availableTabs.findIndex(tab => tab.id === 'administration') : 9}>
                 <AdministrationHub
                   userId={userId}
-                  profession={getComponentProfession(profession) as 'photographer' | 'music_producer' | 'videographer' | 'vendor'}
+                  profession={getComponentProfession(profession) as 'photographer' | 'music_producer' | 'videographer' | 'vendor' | 'enterprise'}
                   selectedClient={selectedClient}
-                  wedflowCoupleId={wedflowCoupleId || undefined}
+                  evendiCoupleId={evendiCoupleId || undefined}
                   onPricingUpdate={() => {
                     console.log('Pricing updated');
                   }}
@@ -6411,7 +6685,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
                               Tilpass tastatursnarveier for dine favorittverktøy og programmer.
                             </Typography>
-                            <UniversalKeyboardShortcuts profession={profession as 'photographer' | 'videographer' | 'music_producer' | 'vendor'} />
+                            <UniversalKeyboardShortcuts profession={profession as 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise'} />
                           </Box>
                           
                           <Divider sx={{ my: 3 }} />
@@ -6811,7 +7085,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                       <ProjectCreationWithMemoryCards
                         profession={profession as any}
                         userId={userId}
-                        wedflowCoupleId={wedflowCoupleId || undefined}
+                        evendiCoupleId={evendiCoupleId || undefined}
                         initialData={uiSettings.submissionProjectData} // Pass submission data to pre-fill
                         onProjectCreated={async (_projectData) => {
                           // Real project created in database
@@ -7225,7 +7499,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                     <ProjectCreationWithMemoryCards 
                       profession={profession}
                       userId={userId}
-                      wedflowCoupleId={wedflowCoupleId || undefined}
+                      evendiCoupleId={evendiCoupleId || undefined}
                       onProjectCreated={async (_projectData) => {
                         // Project successfully created with real data
                         setShowProjectCreation(false);
@@ -7796,7 +8070,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
             </Button>
           </Box>
           <UniversalShowcase 
-            profession={profession as 'photographer' | 'videographer' | 'music_producer' | 'vendor'}
+            profession={profession as 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise'}
             userId={userId}
             isOwner={true}
             adminMode={false}

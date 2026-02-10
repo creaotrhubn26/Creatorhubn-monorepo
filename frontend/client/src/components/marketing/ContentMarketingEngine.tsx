@@ -128,7 +128,7 @@ interface ContentCalendarEvent {
 }
 
 interface ContentMarketingEngineProps {
-  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
 }
 
 const ContentMarketingEngine: React.FC<ContentMarketingEngineProps> = ({ 

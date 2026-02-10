@@ -52,7 +52,7 @@ import { apiRequest } from '@/lib/queryClient';
 
 interface SmartMeetingNotesEditorProps {
   meetingId: string;
-  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
   projectId?: string;
   weddingTimelineId?: string;
   onNotesChange?: (notes: any) => void

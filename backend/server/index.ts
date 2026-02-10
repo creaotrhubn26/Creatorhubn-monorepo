@@ -1268,11 +1268,23 @@ app.get('/api/admin/gdpr-settings', (req, res) => {
   });
 });
 
-app.get('/api/admin/profession-types', (req, res) => {
+app.get('/api/admin/profession-types', async (req, res) => {
+  try {
+    const result = await pool.query(
+      "SELECT name AS id, display_name AS name, is_active AS enabled, sort_order AS \"sortOrder\", description, category FROM profession_types WHERE is_active = true ORDER BY sort_order"
+    );
+    if (result.rows.length > 0) {
+      return res.json(result.rows);
+    }
+  } catch (err) {
+    console.warn('profession_types DB read failed, using fallback:', (err as any).message);
+  }
+  // Fallback
   res.json([
     { id: 'photographer', name: 'Fotograf', enabled: true },
     { id: 'videographer', name: 'Videograf', enabled: true },
-    { id: 'music_producer', name: 'Musikk Produsent', enabled: true }
+    { id: 'music_producer', name: 'Musikk Produsent', enabled: true },
+    { id: 'enterprise', name: 'Enterprise', enabled: true }
   ]);
 });
 
@@ -1286,30 +1298,128 @@ app.post('/api/user/kv/:key', (req, res) => {
 });
 
 // Professions endpoints
-app.get('/api/professions/all', (req, res) => {
-  res.json([
-    { 
-      id: 'photographer', 
-      name: 'Fotograf', 
-      description: 'Profesjonell fotograf',
-      features: ['Showcase Galleri', 'Klienthåndtering', 'Academy', 'Community'],
-      enabled: true 
-    },
-    { 
-      id: 'videographer', 
-      name: 'Videograf', 
-      description: 'Profesjonell videograf',
-      features: ['StoryArc Studio', 'Smart Redigering', 'NLE-eksport', 'Academy'],
-      enabled: true 
-    },
-    { 
-      id: 'music_producer', 
-      name: 'Musikk Produsent', 
-      description: 'Profesjonell musikk produsent',
-      features: ['Audio Suite', 'Mastering', 'Distribution', 'Academy'],
-      enabled: true 
+app.get('/api/professions/all', async (req, res) => {
+  try {
+    const result = await pool.query(
+      "SELECT profession AS id, display_name AS name, configuration->>'description' AS description, features, is_active AS enabled FROM profession_configurations WHERE is_active = true ORDER BY profession"
+    );
+    if (result.rows.length > 0) {
+      return res.json({ professions: result.rows });
     }
-  ]);
+  } catch (err) {
+    console.warn('profession_configurations DB read failed, using fallback:', (err as any).message);
+  }
+  // Fallback
+  res.json({ professions: [
+    { id: 'photographer', name: 'Fotograf', description: 'Profesjonell fotograf',
+      features: ['Showcase Galleri', 'Klienthåndtering', 'Academy', 'Community'], enabled: true },
+    { id: 'videographer', name: 'Videograf', description: 'Profesjonell videograf',
+      features: ['StoryArc Studio', 'Smart Redigering', 'NLE-eksport', 'Academy'], enabled: true },
+    { id: 'music_producer', name: 'Musikk Produsent', description: 'Profesjonell musikk produsent',
+      features: ['Audio Suite', 'Mastering', 'Distribution', 'Academy'], enabled: true },
+    { id: 'enterprise', name: 'Enterprise', description: 'Team- og bedriftskonto med foto og video',
+      features: ['Team Management', 'Photo Suite', 'Video Suite', 'Showcase Galleri', 'Analytics'], enabled: true }
+  ]});
+});
+
+// Dashboard config per profession — serves tabs, project types, stats from DB
+app.get('/api/professions/:id/dashboard-config', async (req, res) => {
+  const professionId = req.params.id;
+  try {
+    // Fetch dashboard layout
+    const dashResult = await pool.query(
+      "SELECT layout_template, header_config, sidebar_config, grid_layout, custom_sections FROM profession_dashboard_configs WHERE profession = $1 AND is_active = true",
+      [professionId]
+    );
+
+    // Fetch tabs
+    const tabsResult = await pool.query(
+      "SELECT tab_id, label, icon, sort_order, is_enabled, is_default, required_features, config FROM profession_tabs WHERE profession = $1 AND is_enabled = true ORDER BY sort_order",
+      [professionId]
+    );
+
+    // Fetch project types
+    const ptResult = await pool.query(
+      "SELECT type_id, display_name, description, icon, color FROM profession_project_types WHERE profession = $1 AND is_enabled = true ORDER BY sort_order",
+      [professionId]
+    );
+
+    // Fetch stats
+    const statsResult = await pool.query(
+      "SELECT stat_id, display_name, icon, color, data_source, format, trend_enabled FROM profession_stats WHERE profession = $1 AND is_enabled = true ORDER BY sort_order",
+      [professionId]
+    );
+
+    // Fetch configuration
+    const configResult = await pool.query(
+      "SELECT display_name, configuration, features FROM profession_configurations WHERE profession = $1",
+      [professionId]
+    );
+
+    if (configResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Profession not found' });
+    }
+
+    const config = configResult.rows[0];
+    const dashConfig = dashResult.rows[0] || {};
+
+    res.json({
+      professionId,
+      displayName: config.display_name,
+      configuration: config.configuration,
+      features: config.features,
+      dashboardLayout: {
+        layoutTemplate: dashConfig.layout_template || 'expanded',
+        headerConfig: dashConfig.header_config || {},
+        sidebarConfig: dashConfig.sidebar_config || {},
+        gridLayout: dashConfig.grid_layout || { columns: 12, gap: 2 },
+        customSections: dashConfig.custom_sections || [],
+      },
+      tabs: tabsResult.rows.map((t: any) => ({
+        id: t.tab_id,
+        label: t.label,
+        icon: t.icon,
+        sortOrder: t.sort_order,
+        isDefault: t.is_default,
+        requiredFeatures: t.required_features,
+        config: t.config,
+      })),
+      projectTypes: ptResult.rows.map((pt: any) => ({
+        id: pt.type_id,
+        label: pt.display_name,
+        description: pt.description,
+        icon: pt.icon,
+        color: pt.color,
+      })),
+      stats: statsResult.rows.map((s: any) => ({
+        key: s.stat_id,
+        label: s.display_name,
+        icon: s.icon,
+        color: s.color,
+        dataSource: s.data_source,
+        format: s.format,
+        trendEnabled: s.trend_enabled,
+      })),
+    });
+  } catch (err) {
+    console.error('Dashboard config fetch error:', (err as any).message);
+    res.status(500).json({ error: 'Failed to fetch dashboard config' });
+  }
+});
+
+// Enterprise team members endpoint
+app.get('/api/enterprise/team/:organizationId/members', async (req, res) => {
+  const { organizationId } = req.params;
+  try {
+    const result = await pool.query(
+      "SELECT id, email, role, status, invited_at, joined_at FROM enterprise_team_members WHERE organization_id = $1 ORDER BY role, email",
+      [organizationId]
+    );
+    res.json({ organizationId, members: result.rows, total: result.rows.length });
+  } catch (err) {
+    console.error('Enterprise team fetch error:', (err as any).message);
+    res.status(500).json({ error: 'Failed to fetch team members' });
+  }
 });
 
 // Platform stats
@@ -2076,6 +2186,218 @@ app.get('/api/admin/users/recently-approved', async (req, res) => {
 // User onboarding status check
 app.get('/api/user/onboarding-status', (req, res) => {
   res.json({ needsOnboarding: false, completed: true, step: 0 });
+});
+
+// ============================================================
+// ADMIN PROVISIONING API (AdminContext user management)
+// ============================================================
+
+// GET /api/admin-provisioning/users — all users from invite_requests
+app.get('/api/admin-provisioning/users', async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT id, email, first_name, last_name, profession, company_name,
+              organization_number, status, created_at, updated_at, user_journey_status,
+              phone_number, website, admin_notes, processed_at, onboarding_completed_at
+       FROM invite_requests ORDER BY created_at DESC`
+    );
+    const users = result.rows.map((r: any) => ({
+      id: r.id,
+      email: r.email,
+      firstName: r.first_name || '',
+      lastName: r.last_name || '',
+      profession: r.profession,
+      companyName: r.company_name || '',
+      organizationNumber: r.organization_number || '',
+      userType: r.profession,
+      role: r.profession === 'enterprise' ? 'enterprise_admin' : r.profession === 'vendor' ? 'vendor' : 'user',
+      isActive: r.status === 'approved',
+      status: r.status,
+      createdAt: r.created_at,
+      approvedAt: r.processed_at,
+      onboardingCompleted: r.onboarding_completed_at !== null,
+      lastLoginAt: r.updated_at,
+    }));
+    res.json(users);
+  } catch (error) {
+    console.error('Error fetching provisioning users:', error);
+    res.status(500).json({ error: 'Could not fetch users' });
+  }
+});
+
+// GET /api/admin-provisioning/pending-approvals
+app.get('/api/admin-provisioning/pending-approvals', async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT id, email, first_name, last_name, profession, company_name,
+              organization_number, status, created_at
+       FROM invite_requests WHERE status = 'pending' ORDER BY created_at DESC`
+    );
+    res.json(result.rows.map((r: any) => ({
+      id: r.id,
+      email: r.email,
+      firstName: r.first_name,
+      lastName: r.last_name,
+      profession: r.profession,
+      companyName: r.company_name || '',
+      organizationNumber: r.organization_number || '',
+      status: r.status,
+      createdAt: r.created_at,
+    })));
+  } catch (error) {
+    console.error('Error fetching pending approvals:', error);
+    res.status(500).json({ error: 'Could not fetch pending approvals' });
+  }
+});
+
+// POST /api/admin-provisioning/approve-music-producer — approve any user type
+app.post('/api/admin-provisioning/approve-music-producer', async (req, res) => {
+  try {
+    const { userId, userType, enableIntegrations } = req.body;
+    
+    // Update invite request status
+    const result = await pool.query(
+      `UPDATE invite_requests 
+       SET status = 'approved', processed_at = NOW(), user_journey_status = 'approved', updated_at = NOW()
+       WHERE id = $1 RETURNING *`,
+      [userId]
+    );
+    
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const user = result.rows[0];
+    
+    // If enterprise, auto-create team membership entry
+    if (user.profession === 'enterprise' && user.company_name) {
+      const orgId = user.company_name.toLowerCase().replace(/[^a-z0-9]/g, '');
+      try {
+        await pool.query(
+          `INSERT INTO enterprise_team_members (organization_id, email, role, status, invited_at, joined_at)
+           VALUES ($1, $2, 'admin', 'active', NOW(), NOW())
+           ON CONFLICT DO NOTHING`,
+          [orgId, user.email]
+        );
+        console.log(`✅ Enterprise team created for ${orgId} with admin ${user.email}`);
+      } catch (teamErr) {
+        console.warn('Could not auto-create enterprise team:', (teamErr as any).message);
+      }
+    }
+    
+    console.log(`✅ User ${userId} approved as ${userType || user.profession}`);
+    res.json({ success: true, user: { id: user.id, email: user.email, profession: user.profession } });
+  } catch (error) {
+    console.error('Error approving user:', error);
+    res.status(500).json({ error: 'Could not approve user' });
+  }
+});
+
+// POST /api/admin-provisioning/create-user
+app.post('/api/admin-provisioning/create-user', async (req, res) => {
+  try {
+    const { email, firstName, lastName, role, userType, businessName, sendInvite } = req.body;
+    
+    const result = await pool.query(
+      `INSERT INTO invite_requests (email, first_name, last_name, profession, company_name, status, user_journey_status, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, 'approved', 'approved', NOW(), NOW())
+       RETURNING id`,
+      [email, firstName, lastName, userType || role, businessName || '']
+    );
+    
+    console.log(`✅ User created: ${email} as ${userType || role}`);
+    res.json({ success: true, userId: result.rows[0].id });
+  } catch (error) {
+    console.error('Error creating user:', error);
+    res.status(500).json({ error: 'Could not create user' });
+  }
+});
+
+// POST /api/admin-provisioning/reject-user
+app.post('/api/admin-provisioning/reject-user', async (req, res) => {
+  try {
+    const { userId, reason } = req.body;
+    
+    const result = await pool.query(
+      `UPDATE invite_requests SET status = 'rejected', admin_notes = $1, processed_at = NOW(), 
+       user_journey_status = 'rejected', updated_at = NOW()
+       WHERE id = $2 RETURNING email`,
+      [reason || '', userId]
+    );
+    
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    console.log(`❌ User ${userId} rejected: ${reason}`);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error rejecting user:', error);
+    res.status(500).json({ error: 'Could not reject user' });
+  }
+});
+
+// Enterprise pricing config
+app.get('/api/enterprise/pricing/config', (req, res) => {
+  res.json({
+    basePrice: 1599,
+    basePriceAnnual: 15990,
+    pricePerUser: 349,
+    pricePerUserAnnual: 3490,
+    basePriceInclMva: 1999,
+    basePriceAnnualInclMva: 19988,
+    pricePerUserInclMva: 436,
+    pricePerUserAnnualInclMva: 4363,
+    mvaRate: 0.25,
+    mvaPercent: 25,
+    includedUsers: 5,
+    volumeDiscounts: [
+      { minUsers: 10, discount: 5 },
+      { minUsers: 25, discount: 12 },
+      { minUsers: 50, discount: 18 },
+      { minUsers: 100, discount: 25 },
+    ],
+    currency: 'NOK'
+  });
+});
+
+// Enterprise team invite member
+app.post('/api/enterprise/team/:organizationId/invite', async (req, res) => {
+  const { organizationId } = req.params;
+  const { email, role } = req.body;
+  try {
+    const result = await pool.query(
+      `INSERT INTO enterprise_team_members (organization_id, email, role, status, invited_at)
+       VALUES ($1, $2, $3, 'invited', NOW())
+       ON CONFLICT DO NOTHING
+       RETURNING id, email, role, status`,
+      [organizationId, email, role || 'member']
+    );
+    if (result.rowCount === 0) {
+      return res.json({ success: true, message: 'Member already exists' });
+    }
+    res.json({ success: true, member: result.rows[0] });
+  } catch (error) {
+    console.error('Enterprise team invite error:', error);
+    res.status(500).json({ error: 'Could not invite team member' });
+  }
+});
+
+// Enterprise subscription
+app.post('/api/enterprise/subscription', async (req, res) => {
+  const { organizationId, plan, teamSize } = req.body;
+  console.log(`✅ Enterprise subscription created: org=${organizationId}, plan=${plan}, teamSize=${teamSize}`);
+  res.json({
+    success: true,
+    subscription: {
+      organizationId,
+      plan: plan || 'enterprise',
+      teamSize: teamSize || 5,
+      status: 'active',
+      startDate: new Date().toISOString(),
+      features: ['team-management', 'photo-suite', 'video-suite', 'analytics', 'showcase', 'academy', 'community'],
+    }
+  });
 });
 
 // ============================================================
@@ -3006,10 +3328,33 @@ app.get('/api/wedding/timeline/templates', async (req, res) => {
 });
 
 // ============================================================================
-// WEDFLOW API PROXY + PLANNING TIMELINES
+// EVENDI API PROXY + PLANNING TIMELINES
+// (formerly WEDFLOW — rebranded to Evendi event ecosystem)
 // ============================================================================
 
-const WEDFLOW_API_URL = process.env.WEDFLOW_API_URL || 'https://wedflow-api.onrender.com';
+// Dual-route middleware: /api/evendi/* → rewrite to /api/wedflow/* internally
+// so all existing route handlers work without modification.
+// Both /api/evendi/* and /api/wedflow/* are accepted by the client.
+app.use('/api/evendi', (req, _res, next) => {
+  req.url = req.url; // keep url as-is
+  req.baseUrl; // keep baseUrl
+  // Re-route through /api/wedflow by rewriting the path
+  const originalUrl = req.originalUrl;
+  req.url = originalUrl.replace('/api/evendi', '/api/wedflow');
+  next('route');
+});
+// Alternative: register /api/evendi/* as a mirror of /api/wedflow/*
+app.all('/api/evendi/*', (req, res, next) => {
+  // Rewrite the path from /api/evendi/... to /api/wedflow/...
+  req.url = req.url.replace('/api/evendi', '/api/wedflow');
+  req.originalUrl = req.originalUrl.replace('/api/evendi', '/api/wedflow');
+  // Re-dispatch through Express router
+  req.app.handle(req, res, next);
+});
+
+const EVENDI_API_URL = process.env.EVENDI_API_URL || process.env.WEDFLOW_API_URL || 'https://evendi.onrender.com';
+/** @deprecated Use EVENDI_API_URL */
+const WEDFLOW_API_URL = EVENDI_API_URL;
 const CREATORHUB_API_KEY = process.env.CREATORHUB_API_KEY || '';
 
 // ── Couple Planning Timelines (MUST be registered BEFORE the wildcard proxy) ──
@@ -4344,7 +4689,7 @@ app.get('/api/inspirations/:vendorId/inquiries/all', async (req, res) => {
 });
 
 // ============================================================================
-// WEDFLOW CHAT BRIDGE — Couple ↔ Vendor messaging from wedflow.no
+// EVENDI CHAT BRIDGE — Couple ↔ Vendor messaging from evendi.no
 // These MUST be BEFORE the generic /api/wedflow/* proxy to avoid shadowing
 // ============================================================================
 
@@ -6798,12 +7143,13 @@ app.get('/api/wedflow/budget/:coupleId', async (req: any, res: any) => {
   }
 });
 
-// Generic Wedflow API proxy — forwards /api/wedflow/* → Wedflow API /api/*
+// Generic Evendi API proxy — forwards /api/wedflow/* → Evendi API /api/*
+// /api/evendi/* is rewritten to /api/wedflow/* by the middleware above
 // MUST be AFTER all specific /api/wedflow/planning/* routes to avoid shadowing
 app.all('/api/wedflow/*', async (req, res) => {
   try {
     const wedflowPath = req.path.replace('/api/wedflow', '/api');
-    const url = `${WEDFLOW_API_URL}${wedflowPath}`;
+    const url = `${EVENDI_API_URL}${wedflowPath}`;
     
     const fetchOpts: any = {
       method: req.method,
@@ -6824,10 +7170,10 @@ app.all('/api/wedflow/*', async (req, res) => {
       res.status(response.status).json(data);
     } else {
       const text = await response.text();
-      // If Wedflow returned HTML (404 page), return JSON error
+      // If Evendi returned HTML (404 page), return JSON error
       if (text.includes('<!DOCTYPE') || text.includes('<html')) {
         res.status(response.status).json({ 
-          error: 'Wedflow endpoint not found', 
+          error: 'Evendi endpoint not found', 
           path: wedflowPath,
           status: response.status 
         });
@@ -6836,8 +7182,8 @@ app.all('/api/wedflow/*', async (req, res) => {
       }
     }
   } catch (error: any) {
-    console.error('Wedflow proxy error:', error.message);
-    res.status(502).json({ error: 'Kunne ikke nå Wedflow API', details: error.message });
+    console.error('Evendi proxy error:', error.message);
+    res.status(502).json({ error: 'Kunne ikke nå Evendi API', details: error.message });
   }
 });
 

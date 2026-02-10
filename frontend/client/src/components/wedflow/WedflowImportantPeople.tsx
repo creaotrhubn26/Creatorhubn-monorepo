@@ -69,7 +69,7 @@ interface CoupleContact {
   couple_name: string;
 }
 
-interface WedflowImportantPeopleProps {
+interface EvendiImportantPeopleProps {
   coupleId?: string;
   coupleName?: string;
 }
@@ -122,7 +122,7 @@ function getRoleColor(role: string): string {
   return colors[role?.toLowerCase()] || '#9E9E9E';
 }
 
-export default function WedflowImportantPeople({ coupleId: propCoupleId, coupleName: propCoupleName }: WedflowImportantPeopleProps) {
+export default function WedflowImportantPeople({ coupleId: propCoupleId, coupleName: propCoupleName }: EvendiImportantPeopleProps) {
   const [people, setPeople] = useState<ImportantPerson[]>([]);
   const [contacts, setContacts] = useState<CoupleContact[]>([]);
   const [selectedCoupleId, setSelectedCoupleId] = useState(propCoupleId || '');
@@ -159,7 +159,7 @@ export default function WedflowImportantPeople({ coupleId: propCoupleId, coupleN
 
   async function loadContacts() {
     try {
-      const data = await apiRequest('/api/wedflow/contacts');
+      const data = await apiRequest('/api/evendi/contacts');
       setContacts(data.contacts || []);
       if (data.contacts?.length === 1 && !selectedCoupleId) {
         setSelectedCoupleId(data.contacts[0].couple_id);
@@ -174,7 +174,7 @@ export default function WedflowImportantPeople({ coupleId: propCoupleId, coupleN
     setLoading(true);
     setError('');
     try {
-      const data = await apiRequest(`/api/wedflow/important-people?coupleId=${selectedCoupleId}`);
+      const data = await apiRequest(`/api/evendi/important-people?coupleId=${selectedCoupleId}`);
       setPeople(data.people || []);
     } catch (err) {
       console.error('Failed to load important people:', err);
@@ -209,7 +209,7 @@ export default function WedflowImportantPeople({ coupleId: propCoupleId, coupleN
 
     try {
       if (editPerson) {
-        await apiRequest(`/api/wedflow/important-people/${editPerson.id}`, {
+        await apiRequest(`/api/evendi/important-people/${editPerson.id}`, {
           method: 'PATCH',
           body: {
             name: formName.trim(),
@@ -220,7 +220,7 @@ export default function WedflowImportantPeople({ coupleId: propCoupleId, coupleN
           },
         });
       } else {
-        await apiRequest('/api/wedflow/important-people', {
+        await apiRequest('/api/evendi/important-people', {
           method: 'POST',
           body: {
             coupleId: selectedCoupleId,
@@ -242,7 +242,7 @@ export default function WedflowImportantPeople({ coupleId: propCoupleId, coupleN
   async function handleDelete(id: string) {
     if (!confirm('Slette denne personen?')) return;
     try {
-      await apiRequest(`/api/wedflow/important-people/${id}`, { method: 'DELETE' });
+      await apiRequest(`/api/evendi/important-people/${id}`, { method: 'DELETE' });
       loadPeople();
     } catch (err) {
       console.error('Failed to delete person:', err);
@@ -272,12 +272,12 @@ export default function WedflowImportantPeople({ coupleId: propCoupleId, coupleN
       {/* Header */}
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <img src="/wedflow-logo.png" alt="Wedflow" style={{ width: 28, height: 28 }} />
+          <img src="/wedflow-logo.png" alt="Evendi" style={{ width: 28, height: 28 }} />
           <Typography variant="h6" sx={{ fontWeight: 700 }}>
             Deltakere & Leverandører
           </Typography>
           <Chip
-            label="WEDFLOW"
+            label="EVENDI"
             size="small"
             sx={{ bgcolor: '#E91E63', color: '#fff', fontWeight: 700, fontSize: '0.65rem', height: 20 }}
           />
@@ -522,7 +522,7 @@ export default function WedflowImportantPeople({ coupleId: propCoupleId, coupleN
       {/* Add/Edit Dialog */}
       <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <img src="/wedflow-logo.png" alt="Wedflow" style={{ width: 24, height: 24 }} />
+          <img src="/wedflow-logo.png" alt="Evendi" style={{ width: 24, height: 24 }} />
           {editPerson ? 'Rediger person' : 'Legg til person'}
         </DialogTitle>
         <DialogContent>

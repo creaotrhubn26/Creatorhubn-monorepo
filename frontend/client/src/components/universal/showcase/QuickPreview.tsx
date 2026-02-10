@@ -59,7 +59,7 @@ interface QuickPreviewProps {
   open: boolean;
   items: ShowcaseItem[];
   currentIndex: number;
-  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
   accentColor: string;
   onClose: () => void;
   onNavigate: (direction: 'next' | 'prev') => void;

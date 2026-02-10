@@ -76,7 +76,7 @@ interface TransformPanelProps {
   imageHeight?: number;
   onTransformChange?: (settings: TransformSettings) => void;
   initialSettings?: TransformSettings;
-  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
 }
 
 const ASPECT_RATIOS = [

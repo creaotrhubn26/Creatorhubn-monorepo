@@ -5,7 +5,7 @@
  */
 
 import * as React from 'react';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Box,
   Card,
@@ -95,7 +95,7 @@ interface DashboardComponentManagerProps {
   selectedProject?: any;
   onProjectUpdate?: (project: any) => void;
   onNotificationCreate?: (notification: any) => void;
-  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'admin';
+  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'admin' | 'enterprise';
 }
 
 interface ComponentCustomization {
@@ -135,6 +135,22 @@ const DashboardComponentManager: React.FC<DashboardComponentManagerProps> = ({
   const [professionFilter, setProfessionFilter] = useState<string>(profession);
   const [showPreview, setShowPreview] = useState(false);
   const [previewMode, setPreviewMode] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
+  const [showComponentDialog, setShowComponentDialog] = useState(false);
+  const [dialogComponent, setDialogComponent] = useState<ComponentMetadata | null>(null);
+  const [sortOrder, setSortOrder] = useState<'name' | 'category'>('name');
+  const [showFilters, setShowFilters] = useState(false);
+  const [undoStack, setUndoStack] = useState<ComponentCustomization[][]>([]);
+  const [redoStack, setRedoStack] = useState<ComponentCustomization[][]>([]);
+  const [componentEnabled, setComponentEnabled] = useState<Record<string, boolean>>({});
+  const [fontSize, setFontSize] = useState(14);
+  const [spacing, setSpacing] = useState(8);
+
+  // Performance tracking
+  const performanceData = useMemo(() => ({
+    renderCount: performance?.renderCount ?? 0,
+    avgRenderTime: performance?.avgRenderTime ?? 0,
+    memoryUsage: performance?.memoryUsage ?? 0
+  }), [performance]);
 
   // Component registration
   useEffect(() => {
@@ -175,7 +191,7 @@ const DashboardComponentManager: React.FC<DashboardComponentManagerProps> = ({
 
     // Filter by profession
     if (professionFilter !== 'all') {
-      components = components.filter(comp => comp.profession.includes(professionFilter as 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'admin'));
+      components = components.filter(comp => comp.profession.includes(professionFilter as 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'admin' | 'enterprise'));
     }
 
     // Filter by category
@@ -191,36 +207,44 @@ const DashboardComponentManager: React.FC<DashboardComponentManagerProps> = ({
       );
     }
 
+    // Sort
+    if (sortOrder === 'name') {
+      components = [...components].sort((a, b) => a.name.localeCompare(b.name));
+    } else {
+      components = [...components].sort((a, b) => a.category.localeCompare(b.category));
+    }
+
     return components;
-  }, [searchTerm, categoryFilter, professionFilter]);
+  }, [searchTerm, categoryFilter, professionFilter, sortOrder]);
 
   // Get component categories
   const categories = [
     { id: 'all', label: 'All Components', icon: <Dashboard /> },
-    { id: 'orchestrator', label: 'Orchestrators', icon: theming.getThemedIcon(',') },
+    { id: 'orchestrator', label: 'Orchestrators', icon: <Settings /> },
     { id: 'management', label: 'Management', icon: <SettingsIcon /> },
-    { id: 'communication', label: 'Communication', icon: theming.getThemedIcon(',') },
-    { id: 'showcase', label: 'Showcase', icon: theming.getThemedIcon(',') },
+    { id: 'communication', label: 'Communication', icon: <Chat /> },
+    { id: 'showcase', label: 'Showcase', icon: <Star /> },
     { id: 'settings', label: 'Settings', icon: <SettingsIcon /> },
-    { id: 'integration', label: 'Integration', icon: theming.getThemedIcon(',') },
-    { id: 'ai', label: 'AI Enhancement', icon: theming.getThemedIcon(',') },
-    { id: 'file', label: 'File Management', icon: theming.getThemedIcon(',') },
-    { id: 'equipment', label: 'Equipment', icon: theming.getThemedIcon(',') },
-    { id: 'contract', label: 'Contracts', icon: theming.getThemedIcon(',') },
-    { id: 'crm', label: 'CRM', icon: theming.getThemedIcon(',') },
-    { id: 'tutorial', label: 'Tutorials', icon: theming.getThemedIcon(',') },
-    { id: 'modal', label: 'Modals', icon: theming.getThemedIcon(',') }
+    { id: 'integration', label: 'Integration', icon: <Code /> },
+    { id: 'ai', label: 'AI Enhancement', icon: <AutoFixHigh /> },
+    { id: 'file', label: 'File Management', icon: <Folder /> },
+    { id: 'equipment', label: 'Equipment', icon: <Build /> },
+    { id: 'contract', label: 'Contracts', icon: <Article /> },
+    { id: 'crm', label: 'CRM', icon: <Group /> },
+    { id: 'tutorial', label: 'Tutorials', icon: <Email /> },
+    { id: 'modal', label: 'Modals', icon: <Layout /> }
   ];
 
   // Get profession icons
   const getProfessionIcon = (prof: string) => {
     switch (prof) {
-      case 'photographer': return theming.getThemedIcon(',');
-      case 'videographer': return theming.getThemedIcon('videocam');
-      case 'music_producer': return theming.getThemedIcon('libraryMusic');
-      case 'vendor': return theming.getThemedIcon('store');
+      case 'photographer': return <PhotoCamera />;
+      case 'videographer': return <VideoCall />;
+      case 'music_producer': return <LibraryMusic />;
+      case 'vendor': return <Store />;
       case 'admin': return <SettingsIcon />;
-      default: return theming.getThemedIcon(', ');
+      case 'enterprise': return <Group />;
+      default: return <Dashboard />;
     }
   };
 
@@ -242,8 +266,20 @@ const DashboardComponentManager: React.FC<DashboardComponentManagerProps> = ({
     });
   }, [analytics, debugging, profession]);
 
-  // Handle customization save
+  // Handle component detail dialog
+  const handleComponentDetail = useCallback((componentId: string) => {
+    const component = getComponentById(componentId);
+    if (component) {
+      setDialogComponent(component);
+      setShowComponentDialog(true);
+    }
+  }, []);
+
+  // Handle customization save with undo support
   const handleCustomizationSave = useCallback((customization: ComponentCustomization) => {
+    setUndoStack(prev => [...prev, customizations]);
+    setRedoStack([]);
+
     setCustomizations(prev => {
       const existing = prev.find(c => c.id === customization.id);
       if (existing) {
@@ -252,6 +288,15 @@ const DashboardComponentManager: React.FC<DashboardComponentManagerProps> = ({
         return [...prev, customization];
       }
     });
+
+    // Update project if linked
+    if (selectedProject && onProjectUpdate) {
+      onProjectUpdate({
+        ...selectedProject,
+        customizations: [...(selectedProject.customizations || []), customization],
+        updatedAt: new Date().toISOString()
+      });
+    }
 
     analytics.trackEvent('customization_saved', {
       componentId: customization.componentId,
@@ -268,7 +313,37 @@ const DashboardComponentManager: React.FC<DashboardComponentManagerProps> = ({
       source: 'dashboard_component_manager',
       timestamp: new Date().toISOString()
     });
-  }, [analytics, onNotificationCreate, profession, selectedComponent]);
+  }, [analytics, onNotificationCreate, profession, selectedComponent, customizations, selectedProject, onProjectUpdate]);
+
+  // Undo / Redo
+  const handleUndo = useCallback(() => {
+    if (undoStack.length === 0) return;
+    const prev = undoStack[undoStack.length - 1];
+    setRedoStack(r => [...r, customizations]);
+    setCustomizations(prev);
+    setUndoStack(u => u.slice(0, -1));
+  }, [undoStack, customizations]);
+
+  const handleRedo = useCallback(() => {
+    if (redoStack.length === 0) return;
+    const next = redoStack[redoStack.length - 1];
+    setUndoStack(u => [...u, customizations]);
+    setCustomizations(next);
+    setRedoStack(r => r.slice(0, -1));
+  }, [redoStack, customizations]);
+
+  // Toggle component enabled/disabled
+  const handleToggleComponent = useCallback((componentId: string, enabled: boolean) => {
+    setComponentEnabled(prev => ({ ...prev, [componentId]: enabled }));
+    analytics.trackEvent('component_toggled', { componentId, enabled });
+  }, [analytics]);
+
+  // Delete customization
+  const handleDeleteCustomization = useCallback((customizationId: string) => {
+    setUndoStack(prev => [...prev, customizations]);
+    setRedoStack([]);
+    setCustomizations(prev => prev.filter(c => c.id !== customizationId));
+  }, [customizations]);
 
   // Render component overview
   const renderOverview = () => (
@@ -282,14 +357,38 @@ const DashboardComponentManager: React.FC<DashboardComponentManagerProps> = ({
         This tool provides comprehensive editing capabilities for every dashboard component.
       </Alert>
 
+      {/* Performance Stats */}
+      <Paper sx={{ p: 2, mb: 3 }}>
+        <Stack direction="row" spacing={3} alignItems="center">
+          <Chip icon={<Behavior />} label={`Renders: ${performanceData.renderCount}`} variant="outlined" />
+          <Chip icon={<Code />} label={`Avg Render: ${performanceData.avgRenderTime.toFixed(1)}ms`} variant="outlined" />
+          <Chip icon={<Palette />} label={`Memory: ${(performanceData.memoryUsage / 1024).toFixed(1)}KB`} variant="outlined" />
+        </Stack>
+      </Paper>
+
+      {/* Project context */}
+      {selectedProject && (
+        <Paper sx={{ p: 2, mb: 3 }}>
+          <Stack direction="row" spacing={2} alignItems="center">
+            <Folder color="primary" />
+            <Typography variant="subtitle1">
+              Project: <strong>{selectedProject.name || selectedProject.id}</strong>
+            </Typography>
+            <Chip label={selectedProject.status || 'active'} size="small" color="success" />
+          </Stack>
+        </Paper>
+      )}
+
       <Grid container spacing={3}>
         {/* Statistics Cards */}
         <Grid size={{ xs:  12, md:  3 }}>
           <Card sx={theming.getThemedCardSx()}>
             <CardContent sx={theming.getThemedCardSx()}>
-              <Typography variant="h6" color="primary" sx={{ color: theming.colors.primary }}>
-                {UNIVERSAL_DASHBOARD_COMPONENTS.length}
-              </Typography>
+              <Badge badgeContent={UNIVERSAL_DASHBOARD_COMPONENTS.length} color="primary">
+                <Typography variant="h6" color="primary" sx={{ color: theming.colors.primary }}>
+                  {UNIVERSAL_DASHBOARD_COMPONENTS.length}
+                </Typography>
+              </Badge>
               <Typography variant="body2" color="text.secondary">
                 Total Components
               </Typography>
@@ -300,9 +399,11 @@ const DashboardComponentManager: React.FC<DashboardComponentManagerProps> = ({
         <Grid size={{ xs:  12, md:  3 }}>
           <Card sx={theming.getThemedCardSx()}>
             <CardContent sx={theming.getThemedCardSx()}>
-              <Typography variant="h6" color="success.main" sx={{ color: theming.colors.primary }}>
-                {getEditableComponents().length}
-              </Typography>
+              <Badge badgeContent={getEditableComponents().length} color="success">
+                <Typography variant="h6" color="success.main" sx={{ color: theming.colors.primary }}>
+                  {getEditableComponents().length}
+                </Typography>
+              </Badge>
               <Typography variant="body2" color="text.secondary">
                 Editable Components
               </Typography>
@@ -368,13 +469,14 @@ const DashboardComponentManager: React.FC<DashboardComponentManagerProps> = ({
   // Render component list
   const renderComponents = () => (
     <Box>
-      <Box sx={{ mb:  3, display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center'}}>
+      <Stack direction="row" spacing={2} sx={{ mb: 3 }} flexWrap="wrap" alignItems="center">
         <TextField
           placeholder="Search components..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           size="small"
-          sx={{ minWidth: 200}}
+          sx={{ minWidth: 200 }}
+          InputProps={{ startAdornment: <Search sx={{ mr: 1, color: 'text.secondary' }} /> }}
         />
         
         <FormControl size="small" sx={{ minWidth: 150}}>
@@ -403,22 +505,82 @@ const DashboardComponentManager: React.FC<DashboardComponentManagerProps> = ({
             label="Profession"
           >
             <MenuItem value="all">All Professions</MenuItem>
-            <MenuItem value="photographer">Photographer</MenuItem>
-            <MenuItem value="videographer">Videographer</MenuItem>
-            <MenuItem value="music_producer">Music Producer</MenuItem>
-            <MenuItem value="vendor">Vendor</MenuItem>
-            <MenuItem value="admin">Admin</MenuItem>
+            <MenuItem value="photographer"><PhotoCamera sx={{ mr: 1 }} /> Photographer</MenuItem>
+            <MenuItem value="videographer"><VideoCall sx={{ mr: 1 }} /> Videographer</MenuItem>
+            <MenuItem value="music_producer"><LibraryMusic sx={{ mr: 1 }} /> Music Producer</MenuItem>
+            <MenuItem value="vendor"><Store sx={{ mr: 1 }} /> Vendor</MenuItem>
+            <MenuItem value="enterprise"><Group sx={{ mr: 1 }} /> Enterprise</MenuItem>
+            <MenuItem value="admin"><SettingsIcon sx={{ mr: 1 }} /> Admin</MenuItem>
           </Select>
         </FormControl>
-      </Box>
 
-      <Grid container spacing={2}>
+        <Tooltip title="Toggle Filters">
+          <IconButton onClick={() => setShowFilters(!showFilters)}>
+            <FilterList />
+          </IconButton>
+        </Tooltip>
+
+        <Tooltip title={`Sort by ${sortOrder === 'name' ? 'category' : 'name'}`}>
+          <IconButton onClick={() => setSortOrder(sortOrder === 'name' ? 'category' : 'name')}>
+            <Sort />
+          </IconButton>
+        </Tooltip>
+
+        <Tooltip title="Add Custom Component">
+          <IconButton color="primary" onClick={() => setShowComponentDialog(true)}>
+            <Add />
+          </IconButton>
+        </Tooltip>
+
+        <Chip 
+          label={`${filteredComponents().length} results`} 
+          variant="outlined" 
+          size="small" 
+        />
+      </Stack>
+
+      {/* Advanced Filters */}
+      {showFilters && (
+        <Paper sx={{ p: 2, mb: 2 }}>
+          <Stack direction="row" spacing={3} alignItems="center">
+            <FormControlLabel
+              control={<Switch defaultChecked />}
+              label="Show Editable Only"
+            />
+            <Box sx={{ width: 200 }}>
+              <Typography variant="caption">Font Size: {fontSize}px</Typography>
+              <Slider
+                value={fontSize}
+                onChange={(_, val) => setFontSize(val as number)}
+                min={10}
+                max={24}
+                size="small"
+              />
+            </Box>
+            <Box sx={{ width: 200 }}>
+              <Typography variant="caption">Spacing: {spacing}px</Typography>
+              <Slider
+                value={spacing}
+                onChange={(_, val) => setSpacing(val as number)}
+                min={4}
+                max={24}
+                size="small"
+              />
+            </Box>
+          </Stack>
+        </Paper>
+      )}
+
+      <Grid container spacing={spacing / 4}>
         {filteredComponents().map((component) => (
           <Grid size={{ xs:  12, sm:  6, md:  4 }} key={component.id}>
             <Card
               sx={{
                 cursor: 'pointer',
-                transition: 'all 0.2s ease-in-out','&:hover': {
+                transition: 'all 0.2s ease-in-out',
+                fontSize: `${fontSize}px`,
+                opacity: componentEnabled[component.id] === false ? 0.5 : 1,
+                '&:hover': {
                   transform: 'translateY(-2px)',
                   boxShadow: 4
                 }
@@ -430,6 +592,15 @@ const DashboardComponentManager: React.FC<DashboardComponentManagerProps> = ({
                   <Typography variant="h6" sx={{ flexGrow: 1, color: theming.colors.primary }}>
                     {component.name}
                   </Typography>
+                  <Switch
+                    size="small"
+                    checked={componentEnabled[component.id] !== false}
+                    onChange={(e) => {
+                      e.stopPropagation();
+                      handleToggleComponent(component.id, e.target.checked);
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                  />
                   {component.visualEditor.editable && (
                     <Chip
                       label="Editable"
@@ -465,12 +636,21 @@ const DashboardComponentManager: React.FC<DashboardComponentManagerProps> = ({
                   
                   <Box sx={{ display: 'flex', gap: 0.5}}>
                     <Tooltip title="Edit Component">
-                      <IconButton size="small" onClick={() => handleComponentSelect(component)}>
-                        {theming.getThemedIcon('edit')}
+                      <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleComponentSelect(component); }}>
+                        <Edit />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Component Details">
+                      <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleComponentDetail(component.id); }}>
+                        <Visibility />
                       </IconButton>
                     </Tooltip>
                     <Tooltip title="Preview Component">
-                      <IconButton size="small">
+                      <IconButton size="small" onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedComponent(component);
+                        setShowPreview(true);
+                      }}>
                         <Preview />
                       </IconButton>
                     </Tooltip>
@@ -498,8 +678,8 @@ const DashboardComponentManager: React.FC<DashboardComponentManagerProps> = ({
 
     return (
       <Box>
-        <Box sx={{ mb:  3, display: 'flex', alignItems: 'center', gap:  2 }}>
-          <Typography variant="h5" sx={{ color: theming.colors.primary }}>
+        <Stack direction="row" spacing={2} sx={{ mb: 3 }} alignItems="center">
+          <Typography variant="h5" sx={{ color: theming.colors.primary, flexGrow: 1 }}>
             Customize: {selectedComponent.name}
           </Typography>
           <Chip 
@@ -507,12 +687,38 @@ const DashboardComponentManager: React.FC<DashboardComponentManagerProps> = ({
             color="primary" 
             variant="outlined"
           />
-        </Box>
+          <Tooltip title="Undo">
+            <span>
+              <IconButton onClick={handleUndo} disabled={undoStack.length === 0}>
+                <Undo />
+              </IconButton>
+            </span>
+          </Tooltip>
+          <Tooltip title="Redo">
+            <span>
+              <IconButton onClick={handleRedo} disabled={redoStack.length === 0}>
+                <Redo />
+              </IconButton>
+            </span>
+          </Tooltip>
+          <Tooltip title="Delete Customization">
+            <IconButton 
+              color="error" 
+              onClick={() => {
+                const existing = customizations.find(c => c.componentId === selectedComponent.id);
+                if (existing) handleDeleteCustomization(existing.id);
+              }}
+            >
+              <Delete />
+            </IconButton>
+          </Tooltip>
+        </Stack>
 
         <Grid container spacing={3}>
           <Grid size={{ xs:  12, md:  8 }}>
             <Accordion defaultExpanded>
               <AccordionSummary expandIcon={<ExpandMore />}>
+                <Settings sx={{ mr: 1 }} />
                 <Typography variant="h6" sx={{ color: theming.colors.primary }}>Component Properties</Typography>
               </AccordionSummary>
               <AccordionDetails>
@@ -544,6 +750,7 @@ const DashboardComponentManager: React.FC<DashboardComponentManagerProps> = ({
 
             <Accordion>
               <AccordionSummary expandIcon={<ExpandMore />}>
+                <Palette sx={{ mr: 1 }} />
                 <Typography variant="h6" sx={{ color: theming.colors.primary }}>Style Customization</Typography>
               </AccordionSummary>
               <AccordionDetails>
@@ -564,6 +771,7 @@ const DashboardComponentManager: React.FC<DashboardComponentManagerProps> = ({
 
             <Accordion>
               <AccordionSummary expandIcon={<ExpandMore />}>
+                <Layout sx={{ mr: 1 }} />
                 <Typography variant="h6" sx={{ color: theming.colors.primary }}>Layout Customization</Typography>
               </AccordionSummary>
               <AccordionDetails>
@@ -584,6 +792,7 @@ const DashboardComponentManager: React.FC<DashboardComponentManagerProps> = ({
 
             <Accordion>
               <AccordionSummary expandIcon={<ExpandMore />}>
+                <Behavior sx={{ mr: 1 }} />
                 <Typography variant="h6" sx={{ color: theming.colors.primary }}>Behavior Customization</Typography>
               </AccordionSummary>
               <AccordionDetails>
@@ -644,25 +853,25 @@ const DashboardComponentManager: React.FC<DashboardComponentManagerProps> = ({
                 <List dense>
                   <ListItem>
                     <ListItemIcon>
-                      {selectedComponent.visualEditor.editable ? theming.getThemedIcon('visibility') : theming.getThemedIcon('visibilityOff')}
+                      {selectedComponent.visualEditor.editable ? <Visibility color="success" /> : <VisibilityOff color="disabled" />}
                     </ListItemIcon>
                     <ListItemText primary="Editable" />
                   </ListItem>
                   <ListItem>
                     <ListItemIcon>
-                      {selectedComponent.visualEditor.previewable ? theming.getThemedIcon('visibility') : theming.getThemedIcon('visibilityOff')}
+                      {selectedComponent.visualEditor.previewable ? <Visibility color="success" /> : <VisibilityOff color="disabled" />}
                     </ListItemIcon>
                     <ListItemText primary="Previewable" />
                   </ListItem>
                   <ListItem>
                     <ListItemIcon>
-                      {selectedComponent.visualEditor.templateable ? theming.getThemedIcon('visibility') : theming.getThemedIcon('visibilityOff')}
+                      {selectedComponent.visualEditor.templateable ? <Visibility color="success" /> : <VisibilityOff color="disabled" />}
                     </ListItemIcon>
                     <ListItemText primary="Templateable" />
                   </ListItem>
                   <ListItem>
                     <ListItemIcon>
-                      {selectedComponent.visualEditor.propsEditable ? theming.getThemedIcon('visibility') : theming.getThemedIcon('visibilityOff')}
+                      {selectedComponent.visualEditor.propsEditable ? <Visibility color="success" /> : <VisibilityOff color="disabled" />}
                     </ListItemIcon>
                     <ListItemText primary="Props Editable" />
                   </ListItem>
@@ -674,6 +883,16 @@ const DashboardComponentManager: React.FC<DashboardComponentManagerProps> = ({
                     startIcon={<Save />}
                     fullWidth
                     sx={theming.getThemedButtonSx()}
+                    onClick={() => handleCustomizationSave({
+                      id: `custom_${selectedComponent.id}_${Date.now()}`,
+                      componentId: selectedComponent.id,
+                      props: {},
+                      styles: {},
+                      layout: {},
+                      behavior: {},
+                      enabled: true,
+                      visible: true
+                    })}
                   >
                     Save Changes
                   </Button>
@@ -692,7 +911,108 @@ const DashboardComponentManager: React.FC<DashboardComponentManagerProps> = ({
         </Grid>
       </Box>
     );
-};
+  };
+
+  // Render preview panel
+  const renderPreview = () => (
+    <Box>
+      <Stack direction="row" spacing={2} sx={{ mb: 3 }} alignItems="center">
+        <Typography variant="h5" sx={{ color: theming.colors.primary, flexGrow: 1 }}>
+          Component Preview
+        </Typography>
+        <FormControl size="small" sx={{ minWidth: 150 }}>
+          <InputLabel>Preview Mode</InputLabel>
+          <Select
+            value={previewMode}
+            onChange={(e) => setPreviewMode(e.target.value as 'desktop' | 'tablet' | 'mobile')}
+            label="Preview Mode"
+          >
+            <MenuItem value="desktop">Desktop</MenuItem>
+            <MenuItem value="tablet">Tablet</MenuItem>
+            <MenuItem value="mobile">Mobile</MenuItem>
+          </Select>
+        </FormControl>
+      </Stack>
+
+      <Paper
+        sx={{
+          p: 3,
+          border: '2px dashed',
+          borderColor: 'divider',
+          minHeight: 400,
+          maxWidth: previewMode === 'desktop' ? '100%' : previewMode === 'tablet' ? 768 : 375,
+          mx: 'auto',
+          transition: 'max-width 0.3s ease'
+        }}
+      >
+        {selectedComponent ? (
+          <Box>
+            <Alert severity="info" sx={{ mb: 2 }}>
+              Previewing: <strong>{selectedComponent.name}</strong> in {previewMode} mode
+            </Alert>
+            <Typography variant="body2" color="text.secondary">
+              {selectedComponent.description}
+            </Typography>
+            <Divider sx={{ my: 2 }} />
+            <Stack spacing={1}>
+              <Chip label={`Category: ${selectedComponent.category}`} icon={<Palette />} />
+              <Chip label={`Tab Index: ${selectedComponent.tabIndex ?? 'N/A'}`} icon={<Code />} />
+              <Chip label={`Professions: ${selectedComponent.profession.join(', ')}`} icon={<Group />} />
+            </Stack>
+          </Box>
+        ) : (
+          <Box sx={{ textAlign: 'center', py: 4 }}>
+            <Typography variant="h6" color="text.secondary">
+              Select a component to preview
+            </Typography>
+          </Box>
+        )}
+      </Paper>
+    </Box>
+  );
+
+  // Render export panel
+  const renderExport = () => (
+    <Box>
+      <Typography variant="h5" sx={{ color: theming.colors.primary, mb: 3 }}>
+        Export Configuration
+      </Typography>
+
+      <Paper sx={{ p: 3, mb: 3 }}>
+        <Typography variant="h6" gutterBottom>Active Customizations ({customizations.length})</Typography>
+        {customizations.length === 0 ? (
+          <Alert severity="info">No customizations to export. Customize components first.</Alert>
+        ) : (
+          <List>
+            {customizations.map(c => {
+              const comp = getComponentById(c.componentId);
+              return (
+                <ListItem key={c.id}>
+                  <ListItemIcon><Star color="primary" /></ListItemIcon>
+                  <ListItemText
+                    primary={comp?.name || c.componentId}
+                    secondary={`ID: ${c.id} | Enabled: ${c.enabled} | Visible: ${c.visible}`}
+                  />
+                </ListItem>
+              );
+            })}
+          </List>
+        )}
+      </Paper>
+
+      <Stack direction="row" spacing={2}>
+        <Button variant="contained" startIcon={<Launch />} sx={theming.getThemedButtonSx()}>
+          Export as JSON
+        </Button>
+        <Button variant="outlined" startIcon={<Code />}>
+          Export as Code
+        </Button>
+        <Button variant="outlined" startIcon={<Article />}>
+          Export Documentation
+        </Button>
+      </Stack>
+    </Box>
+  );
 
   return (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -715,7 +1035,7 @@ const DashboardComponentManager: React.FC<DashboardComponentManagerProps> = ({
           scrollButtons="auto"
         >
           <Tab label="Overview" value="overview" icon={<Dashboard />} />
-          <Tab label="Components" value="components" icon={<Build />} />
+          <Tab label={<Badge badgeContent={filteredComponents().length} color="primary">Components</Badge>} value="components" icon={<Build />} />
           <Tab label="Customize" value="customize" icon={<Edit />} />
           <Tab label="Preview" value="preview" icon={<Preview />} />
           <Tab label="Export" value="export" icon={<Launch />} />
@@ -727,21 +1047,106 @@ const DashboardComponentManager: React.FC<DashboardComponentManagerProps> = ({
         {activeTab === 'overview' && renderOverview()}
         {activeTab === 'components' && renderComponents()}
         {activeTab === 'customize' && renderCustomize()}
-        {activeTab === 'preview' && (
-          <Box sx={{ textAlign: 'center', py: 4 }}>
-            <Typography variant="h6" color="text.secondary" sx={{ color: theming.colors.primary }}>
-              Preview functionality coming soon
-            </Typography>
-          </Box>
-        )}
-        {activeTab === 'export' && (
-          <Box sx={{ textAlign: 'center', py: 4 }}>
-            <Typography variant="h6" color="text.secondary" sx={{ color: theming.colors.primary }}>
-              Export functionality coming soon
-            </Typography>
-          </Box>
-        )}
+        {activeTab === 'preview' && renderPreview()}
+        {activeTab === 'export' && renderExport()}
       </Box>
+
+      {/* Preview Dialog */}
+      <Dialog
+        open={showPreview && !!selectedComponent}
+        onClose={() => setShowPreview(false)}
+        maxWidth="lg"
+        fullWidth
+      >
+        <DialogTitle>
+          <Stack direction="row" spacing={2} alignItems="center">
+            <Preview />
+            <Typography variant="h6">Preview: {selectedComponent?.name}</Typography>
+            <FormControl size="small" sx={{ ml: 'auto', minWidth: 120 }}>
+              <Select
+                value={previewMode}
+                onChange={(e) => setPreviewMode(e.target.value as 'desktop' | 'tablet' | 'mobile')}
+                size="small"
+              >
+                <MenuItem value="desktop">Desktop</MenuItem>
+                <MenuItem value="tablet">Tablet</MenuItem>
+                <MenuItem value="mobile">Mobile</MenuItem>
+              </Select>
+            </FormControl>
+          </Stack>
+        </DialogTitle>
+        <DialogContent>
+          <Paper
+            sx={{
+              p: 3,
+              minHeight: 300,
+              maxWidth: previewMode === 'desktop' ? '100%' : previewMode === 'tablet' ? 768 : 375,
+              mx: 'auto',
+              border: '1px dashed',
+              borderColor: 'divider'
+            }}
+          >
+            <Alert severity="info">
+              Live preview of <strong>{selectedComponent?.name}</strong> ({previewMode} view)
+            </Alert>
+          </Paper>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowPreview(false)}>Close</Button>
+          <Button variant="contained" startIcon={<Save />} sx={theming.getThemedButtonSx()}>Apply</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Component Detail Dialog */}
+      <Dialog
+        open={showComponentDialog && !!dialogComponent}
+        onClose={() => { setShowComponentDialog(false); setDialogComponent(null); }}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          <Stack direction="row" spacing={2} alignItems="center">
+            <Email />
+            <Typography variant="h6">{dialogComponent?.name}</Typography>
+          </Stack>
+        </DialogTitle>
+        <DialogContent>
+          {dialogComponent && (
+            <Box>
+              <Typography variant="body1" sx={{ mb: 2 }}>{dialogComponent.description}</Typography>
+              <Divider sx={{ my: 2 }} />
+              <Typography variant="subtitle2" gutterBottom>Professions:</Typography>
+              <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
+                {dialogComponent.profession.map(prof => (
+                  <Chip key={prof} label={prof} icon={getProfessionIcon(prof)} />
+                ))}
+              </Stack>
+              <Typography variant="subtitle2" gutterBottom>Dependencies:</Typography>
+              <Stack direction="row" spacing={1} flexWrap="wrap">
+                {dialogComponent.dependencies.map(dep => (
+                  <Chip key={dep} label={dep} variant="outlined" size="small" />
+                ))}
+              </Stack>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => { setShowComponentDialog(false); setDialogComponent(null); }}>Close</Button>
+          <Button
+            variant="contained"
+            startIcon={<Edit />}
+            onClick={() => {
+              if (dialogComponent) {
+                handleComponentSelect(dialogComponent);
+                setShowComponentDialog(false);
+                setDialogComponent(null);
+              }
+            }}
+          >
+            Customize
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

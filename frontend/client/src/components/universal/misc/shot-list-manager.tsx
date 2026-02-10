@@ -107,6 +107,7 @@ export default function ShotListManager({
   const isMobile = useMediaQuery(theme.breakpoints.down('sm')) || mobileMode;
   
   const [selectedShot, setSelectedShot] = useState<Shot | null>(null);
+  const [showDetailsDialog, setShowDetailsDialog] = useState(false);
   const [showDialog, setShowDialog] = useState(false);
   const [editingShot, setEditingShot] = useState<Shot | null>(null);
   const [filterStatus, setFilterStatus] = useState<string>(isMobile ? 'Planned' : 'All'); // Mobile shows pending by default
@@ -148,6 +149,11 @@ export default function ShotListManager({
     setEquipmentInput(shot.equipment?.join(', ') || '');
     setShowDialog(true);
   };
+
+  const openDetailsDialog = useCallback((shot: Shot) => {
+    setSelectedShot(shot);
+    setShowDetailsDialog(true);
+  }, []);
 
   useEffect(() => {
     if (!showDialog) {
@@ -272,6 +278,21 @@ export default function ShotListManager({
 }
 };
 
+  const getStatusIcon = (status: Shot['status']) => {
+    switch (status) {
+      case 'Completed':
+        return <CheckCircle sx={{ color: '#4CAF50' }} />;
+      case 'In Progress':
+        return <PlayArrow sx={{ color: '#FF9800' }} />;
+      case 'Review':
+        return <VideoLibrary sx={{ color: '#2196F3' }} />;
+      case 'Planned':
+        return <Pause sx={{ color: '#9E9E9E' }} />;
+      default:
+        return <Pause sx={{ color: '#9E9E9E' }} />;
+    }
+  };
+
   // Get priority color
   const getPriorityColor = (priority: Shot['priority']): ChipColor => {
     switch (priority) {
@@ -356,7 +377,38 @@ export default function ShotListManager({
       );
   }
     
-    return baseShots;
+    const priorityWeight: Record<Shot['priority'], number> = {
+      Critical: 4,
+      High: 3,
+      Medium: 2,
+      Low: 1,
+    };
+
+    const targetShots = Math.max(4, Math.round(hours * 1.5));
+    const sortedShots = [...baseShots].sort(
+      (a, b) => priorityWeight[b.priority] - priorityWeight[a.priority]
+    );
+
+    if (sortedShots.length >= targetShots) {
+      return sortedShots.slice(0, targetShots);
+    }
+
+    const fillerScene = projectType === 'wedding' ? 'B-roll' : 'Coverage';
+    const fillersNeeded = targetShots - sortedShots.length;
+    const fillerShots: Shot[] = Array.from({ length: fillersNeeded }, (_, index) => ({
+      id: `auto-${projectType}-${index}`,
+      title: `Extra ${projectType} shot ${index + 1}`,
+      description: `Additional coverage to match ${hours}h schedule`,
+      scene: fillerScene,
+      shotType: 'Wide',
+      duration: 15,
+      status: 'Planned',
+      priority: 'Low',
+      equipment: ['Camera'],
+      notes: 'Auto-generated to match estimated hours'
+    }));
+
+    return [...sortedShots, ...fillerShots];
 };
 
   // Auto-generate shots based on template and project details
@@ -423,6 +475,16 @@ export default function ShotListManager({
             ⏰ {upcomingEventTime}
           </Alert>
         )}
+
+          {timelineIntegration && (
+            <Alert
+              severity="info"
+              icon={<Schedule />}
+              sx={{ width: '100%', mb: 1, fontSize: '0.9rem' }}
+            >
+              Timeline sync aktiv: {completedShots}/{totalShots} ferdige shots
+            </Alert>
+          )}
         
         <Box sx={{ display: 'flex', gap: isMobile ? 1 : 2, width: isMobile ? '100%' : 'auto' }}>
           {!isMobile && (
@@ -435,6 +497,16 @@ export default function ShotListManager({
             >
               {isMobile ? 'Template' : 'Generate from Template'}
             </Button>
+          )}
+          {!isMobile && (
+            <Tooltip title="Quick add">
+              <IconButton
+                onClick={openCreateDialog}
+                sx={{ border: `1px solid ${theming.colors.primary}30` }}
+              >
+                <Add />
+              </IconButton>
+            </Tooltip>
           )}
           <Button 
             variant="contained"
@@ -594,6 +666,9 @@ export default function ShotListManager({
                           bgcolor: shot.status === 'Completed' ? '#F1F8E9' : 'transparent'
                         }}
                       >
+                        <ListItemIcon sx={{ minWidth: 36 }}>
+                          {getStatusIcon(shot.status)}
+                        </ListItemIcon>
                         {/* Large Touch-Friendly Checkbox */}
                         <Checkbox
                           checked={shot.status === 'Completed'}
@@ -634,6 +709,30 @@ export default function ShotListManager({
                               <Typography variant="caption" color="text.secondary">
                                 {shot.shotType} • {formatDuration(shot.duration)}
                               </Typography>
+                              <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
+                                <Tooltip title="Edit">
+                                  <IconButton size="small" onClick={() => openEditDialog(shot)}>
+                                    <Edit fontSize="small" />
+                                  </IconButton>
+                                </Tooltip>
+                                <Tooltip title="Delete">
+                                  <IconButton
+                                    size="small"
+                                    color="error"
+                                    onClick={() => {
+                                      setSelectedShot(shot);
+                                      deleteShot.mutate(shot.id);
+                                    }}
+                                  >
+                                    <Delete fontSize="small" />
+                                  </IconButton>
+                                </Tooltip>
+                                <Tooltip title="Details">
+                                  <IconButton size="small" onClick={() => openDetailsDialog(shot)}>
+                                    <MoreVert fontSize="small" />
+                                  </IconButton>
+                                </Tooltip>
+                              </Box>
                             </Box>
                           }
                         />
@@ -657,6 +756,9 @@ export default function ShotListManager({
                   mb: 1, '&:hover': { bgcolor: 'action.hover',}
               }}
               >
+                <ListItemIcon sx={{ minWidth: 36 }}>
+                  {getStatusIcon(shot.status)}
+                </ListItemIcon>
                 <Checkbox
                   checked={shot.status === 'Completed'}
                   onChange={(e) => handleStatusChange(
@@ -712,7 +814,7 @@ export default function ShotListManager({
                   <Box sx={{ display: 'flex', gap:  1 }}>
                     <Tooltip title="Edit Shot">
                       <IconButton onClick={() => openEditDialog(shot)}>
-                        {theming.getThemedIcon('edit')}
+                        <Edit />
                       </IconButton>
                     </Tooltip>
                     <Tooltip title="Delete Shot">
@@ -723,7 +825,12 @@ export default function ShotListManager({
                       }}
                         color="error"
                       >
-                        {theming.getThemedIcon('delete')}
+                        <Delete />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Details">
+                      <IconButton onClick={() => openDetailsDialog(shot)}>
+                        <MoreVert />
                       </IconButton>
                     </Tooltip>
                   </Box>
@@ -887,6 +994,80 @@ export default function ShotListManager({
           >
             {editingShot ? 'Update Shot' : 'Create Shot'}
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={showDetailsDialog && !!selectedShot}
+        onClose={() => setShowDetailsDialog(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Shot Details</DialogTitle>
+        <DialogContent>
+          {selectedShot && (
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                {getStatusIcon(selectedShot.status)}
+                <Typography variant="h6">{selectedShot.title}</Typography>
+              </Box>
+              <Typography variant="body2" color="text.secondary">
+                {selectedShot.description}
+              </Typography>
+              <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                <Chip label={selectedShot.scene} size="small" variant="outlined" />
+                <Chip label={selectedShot.shotType} size="small" variant="outlined" />
+                <Chip label={selectedShot.priority} size="small" color={getPriorityColor(selectedShot.priority)} />
+                <Chip label={selectedShot.status} size="small" color={getStatusColor(selectedShot.status)} />
+              </Stack>
+              <Typography variant="body2" color="text.secondary">
+                Duration: {formatDuration(selectedShot.duration)}
+              </Typography>
+              {selectedShot.cameraSettings && (
+                <Typography variant="body2" color="text.secondary">
+                  Camera: {selectedShot.cameraSettings}
+                </Typography>
+              )}
+              {selectedShot.equipment?.length ? (
+                <Typography variant="body2" color="text.secondary">
+                  Equipment: {selectedShot.equipment.join(', ')}
+                </Typography>
+              ) : null}
+              {selectedShot.notes && (
+                <Typography variant="body2" color="text.secondary">
+                  Notes: {selectedShot.notes}
+                </Typography>
+              )}
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowDetailsDialog(false)}>
+            Close
+          </Button>
+          {selectedShot && (
+            <Button
+              onClick={() => {
+                openEditDialog(selectedShot);
+                setShowDetailsDialog(false);
+              }}
+              startIcon={<Edit />}
+            >
+              Edit
+            </Button>
+          )}
+          {selectedShot && (
+            <Button
+              color="error"
+              onClick={() => {
+                deleteShot.mutate(selectedShot.id);
+                setShowDetailsDialog(false);
+              }}
+              startIcon={<Delete />}
+            >
+              Delete
+            </Button>
+          )}
         </DialogActions>
       </Dialog>
     </Box>

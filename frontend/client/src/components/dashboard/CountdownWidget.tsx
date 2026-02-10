@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 
 interface CountdownWidgetProps {
-  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
   className?: string
 }
 

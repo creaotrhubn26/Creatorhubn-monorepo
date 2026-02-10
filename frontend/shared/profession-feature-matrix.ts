@@ -56,6 +56,7 @@ function generateProfessionFeatureMatrix(): Record<string, ProfessionFeatureConf
     'videographer',
     'music_producer',
     'vendor',
+    'enterprise',
     'pet_hotel',
     'yoga_studio',
     'tattoo_artist',
@@ -94,6 +95,7 @@ function generateProfessionFeatureMatrix(): Record<string, ProfessionFeatureConf
       videographer: 'videographer',
       musicproducer: 'music_producer',
       vendor: 'vendor',
+      enterprise: 'enterprise',
       admin: 'admin',
     };
 
@@ -110,6 +112,21 @@ function generateProfessionFeatureMatrix(): Record<string, ProfessionFeatureConf
           plan: feature.requiredPlan,
           beta: feature.metadata?.betaFeature || false,
         };
+      }
+
+      // Enterprise inherits photographer + videographer features
+      if ((normalizedProf === 'photographer' || normalizedProf === 'videographer') && matrix['enterprise']) {
+        if (!matrix['enterprise'].availableFeatures[feature.id]) {
+          matrix['enterprise'].availableFeatures[feature.id] = {
+            enabled: feature.isCore,
+            optional: !feature.isCore,
+            required: feature.isCore,
+            description: feature.description,
+            impact: impactLevel,
+            plan: feature.requiredPlan,
+            beta: feature.metadata?.betaFeature || false,
+          };
+        }
       }
     });
   });

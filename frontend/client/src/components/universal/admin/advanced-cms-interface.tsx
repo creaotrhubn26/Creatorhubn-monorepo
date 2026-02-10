@@ -79,7 +79,7 @@ interface CMSComponent {
   name: string;
   type: 'page' | 'component' | 'widget' | 'layout' | 'feature';
   category: string;
-  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'all';
+  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'all' | 'enterprise';
   status: 'active' | 'inactive' | 'draft' | 'maintenance';
   isEditable: boolean;
   hasSettings: boolean;

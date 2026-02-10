@@ -20,7 +20,7 @@ import NotificationCenter from './NotificationCenter';
 import { useUniversalNotificationContext } from '../universal/UniversalNotificationProvider';
 
 interface NotificationFloatingButtonProps {
-  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
   userId: string;
   position?: {
     bottom?: number;

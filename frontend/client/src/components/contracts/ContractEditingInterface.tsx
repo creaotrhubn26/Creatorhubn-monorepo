@@ -54,7 +54,7 @@ interface ContractEditingInterfaceProps {
     status?: string;
     projectId?: string;
   };
-  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
 }
 
 export default function ContractEditingInterface({

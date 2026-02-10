@@ -40,7 +40,7 @@ export function useUniversalNotificationContext() {
 interface UniversalNotificationProviderProps {
   children: React.ReactNode;
   userId?: string;
-  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor'
+  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise'
 }
 
 export default function UniversalNotificationProvider({

@@ -213,10 +213,13 @@ export default function VendorDeliveryManager({ vendorType, vendorName, userId, 
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Box>
           <Typography variant="h5" sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
-            <LocalShipping color="primary" /> Leveranser
+            <Badge badgeContent={activeCount} color="success">
+              <LocalShipping color="primary" />
+            </Badge>
+            {' '}Leveranser — {vendorName}
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Administrer og del leveranser med klienter — {deliveries.length} totalt, {activeCount} aktive, {draftCount} under arbeid
+            {vendorType === 'photographer' ? 'Bildepakker' : vendorType === 'videographer' ? 'Videopakker' : 'Leveranser'} — {deliveries.length} totalt, {activeCount} aktive, {draftCount} under arbeid
           </Typography>
         </Box>
         <Button
@@ -384,8 +387,11 @@ export default function VendorDeliveryManager({ vendorType, vendorName, userId, 
 
       {/* Create/Edit Dialog */}
       <Dialog open={createOpen || !!editDelivery} onClose={() => { setCreateOpen(false); setEditDelivery(null); resetForm(); }} maxWidth="sm" fullWidth>
-        <DialogTitle>
+        <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           {editDelivery ? 'Rediger leveranse' : 'Ny leveranse'}
+          <IconButton size="small" onClick={() => { setCreateOpen(false); setEditDelivery(null); resetForm(); }}>
+            <Close />
+          </IconButton>
         </DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ pt: 1 }}>
@@ -450,7 +456,12 @@ export default function VendorDeliveryManager({ vendorType, vendorName, userId, 
 
       {/* Add Item Dialog */}
       <Dialog open={!!addItemDeliveryId} onClose={() => { setAddItemDeliveryId(null); setItemForm({ type: 'file', label: '', url: '', description: '' }); }} maxWidth="sm" fullWidth>
-        <DialogTitle>Legg til element</DialogTitle>
+        <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          Legg til element
+          <IconButton size="small" onClick={() => { setAddItemDeliveryId(null); setItemForm({ type: 'file', label: '', url: '', description: '' }); }}>
+            <Close />
+          </IconButton>
+        </DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ pt: 1 }}>
             <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
@@ -481,6 +492,25 @@ export default function VendorDeliveryManager({ vendorType, vendorName, userId, 
               placeholder="https://..."
               InputProps={{
                 startAdornment: <InputAdornment position="start"><LinkIcon fontSize="small" /></InputAdornment>,
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <Tooltip title="Last opp fil">
+                      <IconButton size="small" component="label">
+                        <CloudUpload fontSize="small" />
+                        <input type="file" hidden onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            setItemForm(prev => ({
+                              ...prev,
+                              label: prev.label || file.name,
+                              url: URL.createObjectURL(file)
+                            }));
+                          }
+                        }} />
+                      </IconButton>
+                    </Tooltip>
+                  </InputAdornment>
+                ),
               }}
             />
             <TextField

@@ -298,6 +298,48 @@ export const ENHANCED_PERSONAS: Record<string, PersonaProfile> = {
     },
     
     components: getDefaultComponentsForProfession('vendor')
+  },
+
+  enterprise: {
+    id: 'enterprise',
+    name: 'enterprise',
+    displayName: 'Enterprise Team',
+    description: 'Team-basert kreativ produksjon — foto og video kombinert',
+    iconColor: '#6c3483',
+    isActive: true,
+    sortOrder: 5,
+    icon: getProfessionIcon('enterprise'),
+    
+    personaImage: '/norwed.png',
+    personaDescription: 'Profesjonelle team som kombinerer fotografi og videoproduksjon under ett dashbord. Felles prosjekter, delt utstyr og samordnet leveranse.',
+    typicalProjects: [
+      'Bryllup (foto+video)','Bedriftsfilmer med stillbilder','Eventdokumentasjon','Markedsføringspakker','Merkevare-innhold','Produkt-lansering'
+    ],
+    targetClients: [
+      'Brudgom og brud','Bedrifter','Byrå-kunder','Eventarrangører','E-handelsselskaper','Destinasjonsbryllup'
+    ],
+    equipmentFocus: ['cameras','video_equipment','lenses','flash_systems','audio_interfaces','microphones','lighting'],
+    businessModel: 'Team-based project pricing',
+    marketSize: 'medium',
+    averageProjectValue: '40,000 - 250,000 NOK',
+    workEnvironment: ['Studio','Outdoor locations','Event venues','Client premises','Destination shoots'],
+    skills: ['Team coordination','Photography','Videography','Post-production','Client management','Business administration'],
+    challenges: [
+      'Team-koordinering','Delt utstyrshåndtering','Prosjektledelse','Kostnadsfordeling','Leveransesynkronisering'
+    ],
+    opportunities: [
+      'Alt-i-ett kreative pakker','Høyere prosjektverdi','Stordriftsfordeler','Premium bryllupspakker','Bedriftskontrakter'
+    ],
+    
+    norwegianMarket: {
+      demand: 'high',
+      competition: 'low',
+      seasonality: ['Bryllupssesong mai-september','Bedrift hele året','Events vår/høst'],
+      keyEvents: ['Bryllup','Firmafester','Produktlanseringer','Konferanser','Julebord'],
+      pricingRange: '35,000 - 300,000 NOK'
+    },
+    
+    components: getDefaultComponentsForProfession('enterprise')
   }
 };
 
@@ -308,6 +350,7 @@ const PROFESSION_TO_SSB_CODE: Record<string, string> = {
   music_producer: '90.01', // Sceneproduksjon
   pet_groomer: '96.09', // Andre personlige tjenester
   vendor: '46.90', // Uspesifisert engroshandel
+  enterprise: '74.20', // Fotografering + videoproduksjon (combined)
 };
 
 // Map profession to Proff.no industry names
@@ -317,6 +360,7 @@ const PROFESSION_TO_PROFF_INDUSTRY: Record<string, string> = {
   music_producer: 'Lydopptakstjenester',
   pet_groomer: 'Hundeklippesalonger',
   vendor: 'Engroshandel',
+  enterprise: 'Kreativ medieproduksjon',
 };
 
 export function useEnhancedPersonas() {

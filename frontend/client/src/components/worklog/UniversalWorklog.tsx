@@ -105,7 +105,7 @@ interface WorklogEntry {
 interface UniversalWorklogProps {
   projectId: string;
   userId?: string;
-  profession: 'photographer' | 'videographer' | 'musicproducer' | 'vendor';
+  profession: 'photographer' | 'videographer' | 'musicproducer' | 'vendor' | 'enterprise';
   onMeetingCreated?: (meeting: any) => void;
   onProjectUpdate?: (project: any) => void;
   selectedProject?: any;
@@ -193,6 +193,27 @@ const getProfessionConfig = (profession: string) => {
           { value: 'general', label: 'Generelt', icon: Notes }
         ]
     };
+    case 'enterprise':
+      return {
+        icon: Group,
+        color: '#6c3483',
+        title: 'Enterprise Team Worklog',
+        categories: [
+          { value: 'shooting', label: 'Fotografering', icon: PhotoCamera },
+          { value: 'filming', label: 'Filming', icon: Videocam },
+          { value: 'editing', label: 'Redigering', icon: Edit },
+          { value: 'color_grading', label: 'Fargekorrigering', icon: TrendingUp },
+          { value: 'sound_design', label: 'Lyddesign', icon: LibraryMusic },
+          { value: 'client_meeting', label: 'Kundemøte', icon: Group },
+          { value: 'planning', label: 'Planlegging', icon: CalendarToday },
+          { value: 'equipment', label: 'Utstyr', icon: PhotoCamera },
+          { value: 'delivery', label: 'Levering', icon: Store },
+          { value: 'marketing', label: 'Markedsføring', icon: TrendingUp },
+          { value: 'administration', label: 'Administrasjon', icon: CalendarToday },
+          { value: 'learning', label: 'Læring', icon: Assessment },
+          { value: 'general', label: 'Generelt', icon: Notes }
+        ]
+    };
     default: 
       return {
         icon: Notes,
@@ -239,6 +260,9 @@ const getDailyPrompts = (profession: string) => {
     ],
     vendor: [
       "Hvilke kundesamtaler gikk særlig bra?","Hvilke produkter hadde høyest interesse?","Hva lærte du om markedet i dag?","Hvilke forbedringer kan gjøres i salgsrutinene?","Hvilke nye muligheter så du?"
+    ],
+    enterprise: [
+      "Hvordan fungerte teamsamarbeidet i dag?","Hvilke prosjekter ble levert til kunder?","Hvordan fordelte dere oppgavene i teamet?","Hva kan forbedres i arbeidsflyten mellom foto og video?","Hvilke kunder ga god tilbakemelding?"
     ]
 };
 

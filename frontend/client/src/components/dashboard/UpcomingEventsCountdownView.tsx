@@ -46,7 +46,7 @@ import {
 } from 'lucide-react';
 
 interface UpcomingEventsCountdownViewProps {
-  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
   isOpen: boolean;
   onClose: () => void
 }

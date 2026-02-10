@@ -83,7 +83,7 @@ interface BulkFolderUploadProps {
   open: boolean;
   onClose: () => void;
   onCreateCollections: (folders: FolderUploadItem[], settings: CollectionSettings) => Promise<void>;
-  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
   accentColor: string;
   parentFolderId?: string;
 }

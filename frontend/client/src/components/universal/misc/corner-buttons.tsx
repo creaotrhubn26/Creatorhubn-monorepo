@@ -28,7 +28,7 @@ import DemoModeToggle from '@/components/DemoModeToggle';
 import FullscreenChatWidget from '../../chat/FullscreenChatWidget';
 
 interface CornerButtonsProps {
-  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
   userId: string;
   onNewProject?: () => void;
   onMeetingNotes?: () => void;

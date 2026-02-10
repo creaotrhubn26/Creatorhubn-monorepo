@@ -58,7 +58,7 @@ interface SplitSheetEditorProps {
   projectId?: string;
   trackId?: string;
   initialContributors?: SplitSheetContributor[];
-  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
   onSave: (splitSheet: SplitSheet) => void;
   onCancel: () => void;
 }

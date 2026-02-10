@@ -39,7 +39,7 @@ import {
 } from '@mui/icons-material';
 
 interface FloatingActionButtonsProps {
-  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
   onMeetingNotesOpen?: () => void;
   onAnalyticsOpen?: () => void;
   onDriveOpen?: () => void;

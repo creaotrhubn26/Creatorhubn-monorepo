@@ -71,7 +71,7 @@ import {
 import { apiRequest } from '@/lib/queryClient';
 
 interface FilesTabProps {
-  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
   userId?: string;
   // Integration props for universal connectivity
   onFileUpload?: (file: any) => void;

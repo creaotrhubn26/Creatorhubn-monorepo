@@ -65,7 +65,7 @@ interface AutoCullingPanelProps {
   photos: PhotoForCulling[];
   onCullingComplete?: (result: CullingResult) => void;
   onPhotosFiltered?: (keepers: string[], rejected: string[], maybes: string[]) => void;
-  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
 }
 
 export default function AutoCullingPanel({

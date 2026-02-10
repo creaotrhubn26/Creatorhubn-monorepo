@@ -41,7 +41,7 @@ import { STATUS_DISPLAY_NAMES as STATUS_NAMES, STATUS_COLORS as STATUS_COL } fro
 interface ContributorDashboardProps {
   contributorEmail?: string;
   contributorUserId?: string;
-  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
 }
 
 export default function ContributorDashboard({

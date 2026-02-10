@@ -30,7 +30,7 @@ import {
 import { apiRequest } from '@/lib/queryClient';
 
 interface ContractSystemStatusProps {
-  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
 }
 
 export default function ContractSystemStatus({ 

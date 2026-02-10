@@ -69,7 +69,7 @@ interface SplitSheetViewerProps {
   onClose?: () => void;
   onViewContract?: (contract: any) => void;
   onCreateContract?: () => void;
-  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
 }
 
 export default function SplitSheetViewer({

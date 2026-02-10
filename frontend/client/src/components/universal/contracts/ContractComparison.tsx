@@ -48,7 +48,7 @@ interface Contract {
 interface ContractComparisonProps {
   contracts: Contract[];
   onClose?: () => void;
-  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
 }
 
 export default function ContractComparison({ 

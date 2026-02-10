@@ -55,7 +55,7 @@ import { apiRequest } from '@/lib/queryClient';
 interface QuickMeetingNotesModalProps {
   isOpen: boolean;
   onClose: () => void;
-  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
   preselectedProjectId?: string;
   // Integration props for universal workflow connectivity
   onMeetingCreate?: (meeting: any) => void;

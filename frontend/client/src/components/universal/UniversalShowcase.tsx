@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
-import { getWedflowBookings, getWedflowAnalyticsSummary, wedflowQueryKeys } from '@/lib/wedflow-api';
-import type { WedflowBooking, WedflowAnalyticsSummary } from '@/lib/wedflow-api';
+import { getEvendiBookings, getEvendiAnalyticsSummary, evendiQueryKeys } from '@/lib/evendi-api';
+import type { EvendiBooking, EvendiAnalyticsSummary } from '@/lib/evendi-api';
 import { useAuth } from '@/hooks/useAuth';
 import type { 
   ShowcaseCategory, 
@@ -736,6 +736,62 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
   const mediaUploadAccess = features.checkFeatureAccess('media-upload');
   const showcasePublishingAccess = features.checkFeatureAccess('showcase-publishing');
   const showcaseAnalyticsAccess = features.checkFeatureAccess('showcase-analytics');
+
+  const { data: evendiBookings = [] } = useQuery<EvendiBooking[]>({
+    queryKey: evendiQueryKeys.bookings(),
+    queryFn: () => getEvendiBookings(),
+    enabled: !!user?.id,
+    staleTime: 60_000,
+  });
+
+  const { data: evendiAnalytics } = useQuery<EvendiAnalyticsSummary>({
+    queryKey: evendiQueryKeys.analytics(),
+    queryFn: () => getEvendiAnalyticsSummary(),
+    enabled: !!user?.id,
+    staleTime: 60_000,
+  });
+
+  const evendiSummary = useMemo(() => {
+    const fallbackTotal = evendiBookings.length;
+    const fallbackRevenue = evendiBookings.reduce((sum, booking) => sum + (booking.totalAmount || 0), 0);
+    const totalBookings = evendiAnalytics?.totalBookings ?? fallbackTotal;
+    const totalRevenue = evendiAnalytics?.totalRevenue ?? fallbackRevenue;
+    const upcomingEvents = evendiAnalytics?.upcomingEvents ?? evendiBookings.filter((booking) => {
+      const eventDate = new Date(booking.eventDate);
+      if (Number.isNaN(eventDate.getTime())) return false;
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      return eventDate >= today && booking.status !== 'cancelled';
+    }).length;
+
+    const statusCounts = evendiAnalytics?.bookingsByStatus?.length
+      ? evendiAnalytics.bookingsByStatus
+      : (['pending', 'confirmed', 'completed', 'cancelled'] as EvendiBooking['status'][]).map((status) => ({
+          status,
+          count: evendiBookings.filter((booking) => booking.status === status).length,
+        }));
+
+    return {
+      totalBookings,
+      totalRevenue,
+      upcomingEvents,
+      statusCounts,
+    };
+  }, [evendiAnalytics, evendiBookings]);
+
+  const evendiUpcomingBookings = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    return [...evendiBookings]
+      .filter((booking) => {
+        const eventDate = new Date(booking.eventDate);
+        if (Number.isNaN(eventDate.getTime())) return false;
+        return eventDate >= today && booking.status !== 'cancelled';
+      })
+      .sort((a, b) => new Date(a.eventDate).getTime() - new Date(b.eventDate).getTime())
+      .slice(0, 3);
+  }, [evendiBookings]);
   
   // New context hooks
   const { 
@@ -929,12 +985,12 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
   // Share to Community Dialog States
   const [showShareToCommunityDialog, setShowShareToCommunityDialog] = useState(false);
 
-  // Publish to Wedflow Dialog States
-  const [showPublishToWedflowDialog, setShowPublishToWedflowDialog] = useState(false);
-  const [selectedItemForWedflow, setSelectedItemForWedflow] = useState<ShowcaseItem | null>(null);
-  const [wedflowDeliveryForm, setWedflowDeliveryForm] = useState({ coupleName: '', coupleEmail: '', weddingDate: '', title: '', description: '' });
-  const [wedflowPublishing, setWedflowPublishing] = useState(false);
-  const [wedflowResult, setWedflowResult] = useState<{ accessCode: string; deliveryId: string; itemCount: number } | null>(null);
+  // Publish to Evendi Dialog States
+  const [showPublishToEvendiDialog, setShowPublishToEvendiDialog] = useState(false);
+  const [selectedItemForEvendi, setSelectedItemForEvendi] = useState<ShowcaseItem | null>(null);
+  const [evendiDeliveryForm, setEvendiDeliveryForm] = useState({ coupleName: '', coupleEmail: '', weddingDate: '', title: '', description: '' });
+  const [evendiPublishing, setEvendiPublishing] = useState(false);
+  const [evendiResult, setEvendiResult] = useState<{ accessCode: string; deliveryId: string; itemCount: number } | null>(null);
   const [showProToolsDialog, setShowProToolsDialog] = useState(false);
   const [proToolsSessionId, setProToolsSessionId] = useState<string | undefined>();
   const [selectedItemForCommunityShare, setSelectedItemForCommunityShare] = useState<ShowcaseItem | null>(null);
@@ -2650,7 +2706,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
   const transformedShowcaseItems = showcases.map((showcase: { id: string; title: string; url: string; type: string; createdAt: string; thumbnailUrl?: string; fileUrl?: string; description?: string; clientName?: string; category?: string; isFeatured?: boolean; viewCount?: number; likeCount?: number; downloadCount?: number; tags?: string[]; brandLogoUrl?: string }) => ({
     id: showcase.id,
     title: showcase.title,
-    fileType: profession === 'photographer' ? 'photo' : profession === 'videographer' ? 'video' : profession === 'music_producer' ? 'audio' : 'document',
+    fileType: profession === 'photographer' || profession === 'enterprise' ? 'photo' : profession === 'videographer' ? 'video' : profession === 'music_producer' ? 'audio' : 'document',
     thumbnailUrl: showcase.thumbnailUrl,
     fileUrl: showcase.fileUrl,
     description: showcase.description,
@@ -4072,11 +4128,12 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                         profession === 'videographer' ? 'Alle videoer' :
                         profession === 'music_producer' ? 'Alle låter' : 'Alle elementer';
 
-      const professionCategories = {
+      const professionCategories: Record<string, string[]> = {
         photographer: [baseCategory, 'Fremhevet','Bryllup','Portretter','Events','Kommersielt'],
         videographer: [baseCategory, 'Fremhevet','Bryllup','Bedrift','Dokumentar','Reklame'],
         music_producer: [baseCategory, 'Fremhevet','Album','Single','Reklame','Soundtrack'],
-        vendor: [baseCategory, 'Fremhevet','Utstyr','Tjenester','Portfolio']
+        vendor: [baseCategory, 'Fremhevet','Utstyr','Tjenester','Portfolio'],
+        enterprise: [baseCategory, 'Fremhevet','Bryllup','Bedrift','Events','Portretter','Dokumentar','Kommersielt']
     };
 
     return professionCategories[profession] || professionCategories.photographer;
@@ -6553,7 +6610,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                   bgcolor: accentColor,
                   animation: 'pulse 2s infinite'
                 }} />
-                {items.length} {profession === 'photographer' ? 'bilder' : profession === 'videographer' ? 'videoer' : profession === 'music_producer' ? 'låter' : 'elementer'} tilgjengelig
+                {items.length} {profession === 'photographer' || profession === 'enterprise' ? 'bilder' : profession === 'videographer' ? 'videoer' : profession === 'music_producer' ? 'låter' : 'elementer'} tilgjengelig
                 
                 {/* Real-time Collaboration Indicator */}
                 {enableRealTimeSync && collaborationSessionId && (
@@ -7895,8 +7952,8 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                   setSelectedItemForStateUpdate={setSelectedItemForStateUpdate}
                   setNewProjectState={setNewProjectState}
                   setProjectStateUpdateOpen={setProjectStateUpdateOpen}
-                  setSelectedItemForWedflow={setSelectedItemForWedflow}
-                  setShowPublishToWedflowDialog={setShowPublishToWedflowDialog}
+                  setSelectedItemForEvendi={setSelectedItemForEvendi}
+                  setShowPublishToEvendiDialog={setShowPublishToEvendiDialog}
                 />
               ))}
             </Box>
@@ -8080,7 +8137,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                     <Box sx={{ flex: { xs: '1 1 100%', md: '1 1 33.333%' }, maxWidth: { xs: '100%', md: '33.333%' } }} key={pkg.id}>
                       <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'background.default' }}>
                         <Typography variant="subtitle1" fontWeight="bold">
-                          {profession === 'photographer' ? `${pkg.images} bilder` : `${pkg.minutes || pkg.tracks} ${profession === 'videographer' ? 'minutter' : 'låter'}`}
+                          {profession === 'photographer' || profession === 'enterprise' ? `${pkg.images} bilder` : `${pkg.minutes || pkg.tracks} ${profession === 'videographer' ? 'minutter' : 'låter'}`}
                         </Typography>
                         <Typography variant="h6" color="primary">
                           {pkg.price} NOK
@@ -10500,6 +10557,95 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
             </Box>
           </Box>
 
+          {(evendiBookings.length > 0 || evendiAnalytics) && (
+            <>
+              <Typography variant="h6" sx={{ mt: 4, mb: 2 }}>Evendi Booking Insights</Typography>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+                <Box sx={{ flex: { xs: '1 1 100%', md: '1 1 33.333%' }, maxWidth: { xs: '100%', md: '33.333%' } }}>
+                  <Paper sx={{ p: 2, textAlign: 'center' }}>
+                    <Typography variant="h4" color="primary">
+                      {evendiSummary.totalBookings}
+                    </Typography>
+                    <Typography variant="body2">Totale bookinger</Typography>
+                  </Paper>
+                </Box>
+                <Box sx={{ flex: { xs: '1 1 100%', md: '1 1 33.333%' }, maxWidth: { xs: '100%', md: '33.333%' } }}>
+                  <Paper sx={{ p: 2, textAlign: 'center' }}>
+                    <Typography variant="h4" color="success.main">
+                      {evendiSummary.totalRevenue.toLocaleString('no-NO')} kr
+                    </Typography>
+                    <Typography variant="body2">Inntekt fra Evendi</Typography>
+                  </Paper>
+                </Box>
+                <Box sx={{ flex: { xs: '1 1 100%', md: '1 1 33.333%' }, maxWidth: { xs: '100%', md: '33.333%' } }}>
+                  <Paper sx={{ p: 2, textAlign: 'center' }}>
+                    <Typography variant="h4" color="warning.main">
+                      {evendiSummary.upcomingEvents}
+                    </Typography>
+                    <Typography variant="body2">Kommende eventer</Typography>
+                  </Paper>
+                </Box>
+              </Box>
+
+              <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" sx={{ mt: 2 }}>
+                {evendiSummary.statusCounts.map((status) => {
+                  const statusColor: 'default' | 'success' | 'warning' | 'error' | 'info' =
+                    status.status === 'confirmed'
+                      ? 'success'
+                      : status.status === 'pending'
+                        ? 'warning'
+                        : status.status === 'cancelled'
+                          ? 'error'
+                          : 'info';
+                  return (
+                    <Chip
+                      key={status.status}
+                      label={`${status.status}: ${status.count}`}
+                      color={statusColor}
+                      size="small"
+                      variant="outlined"
+                    />
+                  );
+                })}
+              </Stack>
+
+              {evendiUpcomingBookings.length > 0 && (
+                <Box sx={{ mt: 2 }}>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>
+                    Neste bookinger
+                  </Typography>
+                  <List dense>
+                    {evendiUpcomingBookings.map((booking, idx) => (
+                      <React.Fragment key={booking.id}>
+                        <ListItem>
+                          <ListItemText
+                            primary={booking.title || booking.clientName}
+                            secondary={`${booking.clientName} • ${new Date(booking.eventDate).toLocaleDateString('no-NO')}`}
+                          />
+                          <Chip
+                            size="small"
+                            label={booking.status}
+                            color={
+                              booking.status === 'confirmed'
+                                ? 'success'
+                                : booking.status === 'pending'
+                                  ? 'warning'
+                                  : booking.status === 'completed'
+                                    ? 'info'
+                                    : 'error'
+                            }
+                            variant="outlined"
+                          />
+                        </ListItem>
+                        {idx < evendiUpcomingBookings.length - 1 && <Divider />}
+                      </React.Fragment>
+                    ))}
+                  </List>
+                </Box>
+              )}
+            </>
+          )}
+
           <Typography variant="h6" sx={{ mt: 3, mb: 2 }}>Kvalitetsmetrikker</Typography>
           <List>
             <ListItem>
@@ -10920,14 +11066,14 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
         }}
       />
 
-      {/* Publish to Wedflow Dialog */}
+      {/* Publish to Evendi Dialog */}
       <Dialog
-        open={showPublishToWedflowDialog}
+        open={showPublishToEvendiDialog}
         onClose={() => {
-          setShowPublishToWedflowDialog(false);
-          setSelectedItemForWedflow(null);
-          setWedflowResult(null);
-          setWedflowDeliveryForm({ coupleName: '', coupleEmail: '', weddingDate: '', title: '', description: '' });
+          setShowPublishToEvendiDialog(false);
+          setSelectedItemForEvendi(null);
+          setEvendiResult(null);
+          setEvendiDeliveryForm({ coupleName: '', coupleEmail: '', weddingDate: '', title: '', description: '' });
         }}
         maxWidth="sm"
         fullWidth
@@ -10942,30 +11088,30 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
       >
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, color: '#E91E63' }}>
           <Box component="span" sx={{ fontSize: '1.5rem' }}>📦</Box>
-          Publiser til Wedflow
+          Publiser til Evendi
           <Chip label="DELIVERY" size="small" sx={{ ml: 'auto', bgcolor: '#E91E63', color: 'white', fontSize: '0.65rem', height: 20 }} />
         </DialogTitle>
         <DialogContent>
-          {wedflowResult ? (
+          {evendiResult ? (
             <Box sx={{ textAlign: 'center', py: 3 }}>
               <Typography variant="h6" sx={{ color: '#4CAF50', mb: 2 }}>✅ Leveranse opprettet!</Typography>
               <Box sx={{ bgcolor: 'rgba(233, 30, 99, 0.1)', borderRadius: 2, p: 3, mb: 2, border: '1px solid rgba(233, 30, 99, 0.3)' }}>
                 <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.6)', mb: 1 }}>Tilgangskode</Typography>
                 <Typography variant="h4" sx={{ color: '#E91E63', fontFamily: 'monospace', letterSpacing: 4, fontWeight: 700 }}>
-                  {wedflowResult.accessCode}
+                  {evendiResult.accessCode}
                 </Typography>
                 <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', mt: 1, display: 'block' }}>
                   Del denne koden med brudeparet for å gi tilgang
                 </Typography>
               </Box>
               <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)' }}>
-                {wedflowResult.itemCount} elementer publisert til leveransen
+                {evendiResult.itemCount} elementer publisert til leveransen
               </Typography>
               <Button
                 variant="outlined"
                 sx={{ mt: 2, color: '#E91E63', borderColor: '#E91E63' }}
                 onClick={() => {
-                  navigator.clipboard.writeText(wedflowResult.accessCode);
+                  navigator.clipboard.writeText(evendiResult.accessCode);
                   addNotification({ type: 'success', message: 'Tilgangskode kopiert!' });
                 }}
               >
@@ -10975,32 +11121,32 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
           ) : (
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
               <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)', mb: 1 }}>
-                Opprett en Wedflow-leveranse fra showcase-elementet <strong>{selectedItemForWedflow?.title}</strong>.
-                Brudeparet kan hente denne med en tilgangskode i Wedflow-appen.
+                Opprett en Evendi-leveranse fra showcase-elementet <strong>{selectedItemForEvendi?.title}</strong>.
+                Kunden kan hente denne med en tilgangskode i Evendi-appen.
               </Typography>
 
               <TextField
                 label="Leveransetittel"
-                value={wedflowDeliveryForm.title}
-                onChange={(e) => setWedflowDeliveryForm(p => ({ ...p, title: e.target.value }))}
+                value={evendiDeliveryForm.title}
+                onChange={(e) => setEvendiDeliveryForm(p => ({ ...p, title: e.target.value }))}
                 fullWidth
                 size="small"
-                placeholder={`Leveranse fra ${selectedItemForWedflow?.title || 'showcase'}`}
+                placeholder={`Leveranse fra ${selectedItemForEvendi?.title || 'showcase'}`}
                 sx={{ '& .MuiOutlinedInput-root': { color: 'white' }, '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.5)' }, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' } }}
               />
               <TextField
-                label="Brudepar (navn)"
-                value={wedflowDeliveryForm.coupleName}
-                onChange={(e) => setWedflowDeliveryForm(p => ({ ...p, coupleName: e.target.value }))}
+                label="Kunde (navn)"
+                value={evendiDeliveryForm.coupleName}
+                onChange={(e) => setEvendiDeliveryForm(p => ({ ...p, coupleName: e.target.value }))}
                 fullWidth
                 size="small"
                 placeholder="F.eks. Daniel & Maria"
                 sx={{ '& .MuiOutlinedInput-root': { color: 'white' }, '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.5)' }, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' } }}
               />
               <TextField
-                label="E-post til brudeparet"
-                value={wedflowDeliveryForm.coupleEmail}
-                onChange={(e) => setWedflowDeliveryForm(p => ({ ...p, coupleEmail: e.target.value }))}
+                label="E-post til kunden"
+                value={evendiDeliveryForm.coupleEmail}
+                onChange={(e) => setEvendiDeliveryForm(p => ({ ...p, coupleEmail: e.target.value }))}
                 fullWidth
                 size="small"
                 type="email"
@@ -11008,9 +11154,9 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                 sx={{ '& .MuiOutlinedInput-root': { color: 'white' }, '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.5)' }, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' } }}
               />
               <TextField
-                label="Bryllupsdato"
-                value={wedflowDeliveryForm.weddingDate}
-                onChange={(e) => setWedflowDeliveryForm(p => ({ ...p, weddingDate: e.target.value }))}
+                label="Eventdato"
+                value={evendiDeliveryForm.weddingDate}
+                onChange={(e) => setEvendiDeliveryForm(p => ({ ...p, weddingDate: e.target.value }))}
                 fullWidth
                 size="small"
                 type="date"
@@ -11019,8 +11165,8 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
               />
               <TextField
                 label="Beskrivelse"
-                value={wedflowDeliveryForm.description}
-                onChange={(e) => setWedflowDeliveryForm(p => ({ ...p, description: e.target.value }))}
+                value={evendiDeliveryForm.description}
+                onChange={(e) => setEvendiDeliveryForm(p => ({ ...p, description: e.target.value }))}
                 fullWidth
                 size="small"
                 multiline
@@ -11034,40 +11180,40 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button
             onClick={() => {
-              setShowPublishToWedflowDialog(false);
-              setSelectedItemForWedflow(null);
-              setWedflowResult(null);
-              setWedflowDeliveryForm({ coupleName: '', coupleEmail: '', weddingDate: '', title: '', description: '' });
+              setShowPublishToEvendiDialog(false);
+              setSelectedItemForEvendi(null);
+              setEvendiResult(null);
+              setEvendiDeliveryForm({ coupleName: '', coupleEmail: '', weddingDate: '', title: '', description: '' });
             }}
             sx={{ color: 'rgba(255,255,255,0.5)' }}
           >
-            {wedflowResult ? 'Lukk' : 'Avbryt'}
+            {evendiResult ? 'Lukk' : 'Avbryt'}
           </Button>
-          {!wedflowResult && (
+          {!evendiResult && (
             <Button
               variant="contained"
-              disabled={wedflowPublishing || !wedflowDeliveryForm.coupleName.trim()}
+              disabled={evendiPublishing || !evendiDeliveryForm.coupleName.trim()}
               onClick={async () => {
-                if (!selectedItemForWedflow) return;
-                setWedflowPublishing(true);
+                if (!selectedItemForEvendi) return;
+                setEvendiPublishing(true);
                 try {
                   const token = localStorage.getItem('auth_token') || '';
-                  const response = await fetch('/api/wedflow/showcase-create-delivery', {
+                  const response = await fetch('/api/evendi/showcase-create-delivery', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                     body: JSON.stringify({
-                      showcaseItemIds: [selectedItemForWedflow.id],
-                      coupleName: wedflowDeliveryForm.coupleName,
-                      coupleEmail: wedflowDeliveryForm.coupleEmail || undefined,
-                      weddingDate: wedflowDeliveryForm.weddingDate || undefined,
-                      title: wedflowDeliveryForm.title || undefined,
-                      description: wedflowDeliveryForm.description || undefined,
-                      projectId: (selectedItemForWedflow as any).projectId || undefined,
+                      showcaseItemIds: [selectedItemForEvendi.id],
+                      coupleName: evendiDeliveryForm.coupleName,
+                      coupleEmail: evendiDeliveryForm.coupleEmail || undefined,
+                      weddingDate: evendiDeliveryForm.weddingDate || undefined,
+                      title: evendiDeliveryForm.title || undefined,
+                      description: evendiDeliveryForm.description || undefined,
+                      projectId: (selectedItemForEvendi as any).projectId || undefined,
                     }),
                   });
                   const data = await response.json();
                   if (data.success) {
-                    setWedflowResult({
+                    setEvendiResult({
                       accessCode: data.delivery.accessCode,
                       deliveryId: data.delivery.id,
                       itemCount: data.delivery.itemCount,
@@ -11077,14 +11223,15 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                     addNotification({ type: 'error', message: data.error || 'Kunne ikke opprette leveranse' });
                   }
                 } catch (err) {
-                  addNotification({ type: 'error', message: 'Nettverksfeil. Prøv igjen.' });
+                  const errorMessage = err instanceof Error ? err.message : 'Nettverksfeil. Prøv igjen.';
+                  addNotification({ type: 'error', message: errorMessage });
                 } finally {
-                  setWedflowPublishing(false);
+                  setEvendiPublishing(false);
                 }
               }}
               sx={{ bgcolor: '#E91E63', '&:hover': { bgcolor: '#C2185B' } }}
             >
-              {wedflowPublishing ? 'Oppretter...' : '📦 Publiser til Wedflow'}
+              {evendiPublishing ? 'Oppretter...' : '📦 Publiser til Evendi'}
             </Button>
           )}
         </DialogActions>

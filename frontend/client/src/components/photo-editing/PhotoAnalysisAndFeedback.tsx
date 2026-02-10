@@ -81,7 +81,7 @@ interface PhotoAnalysisAndFeedbackProps {
   imageUrl?: string;
   onAnalysisComplete?: (analysis: PhotoAnalysis) => void;
   onSuggestionApplied?: (suggestion: Suggestion) => void;
-  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
 }
 
 export default function PhotoAnalysisAndFeedback({ 

@@ -25,7 +25,7 @@ interface ComponentTestResult {
 }
 
 interface UniversalDashboardIntegrationTestProps {
-  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
 }
 
 const UniversalDashboardIntegrationTest: React.FC<UniversalDashboardIntegrationTestProps> = ({ 
