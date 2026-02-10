@@ -8,7 +8,7 @@ import { trackButtonClick, trackModalOpen } from '@/hooks/useActionTracker';
 // Import dynamic profession system
 import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
 import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
-import getProfessionIcon from '@/utils/profession-icons';
+import getProfessionIconUtil from '@/utils/profession-icons';
 import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
 import { useAuth } from '@/hooks/useAuth';
 import { apiRequest } from '@/lib/queryClient';
@@ -788,7 +788,7 @@ const generateWorklogTemplate = (
   }
 
   // Clone template to avoid mutations
-  let template = { ...baseTemplate };
+  const template = { ...baseTemplate };
 
   // Update time estimate with dynamic pricing data
   template.timeEstimate = getDynamicTimeEstimate(profession, phase, category, pricingData);
@@ -1175,6 +1175,27 @@ export default function ProjectCreationWithMemoryCards({
     leaveSession
 } = useRealTime();
   
+  // Dynamic profession configuration hooks
+  const professionConfigsData = useProfessionConfigs();
+  const professionAdapterData = useProfessionAdapter(userProfession);
+
+  // Auto-save hook for project data persistence
+  const autoSaveStatus = useAutoSave(sessionId, projectData);
+
+  // Project type details query — wires getProjectTypeNextSteps, getProjectTypeInitialDescription, getProjectTimeEstimate, getDefaultPricing, generatePinFromProjectName
+  const { data: projectTypeDetails } = useQuery({
+    queryKey: ['projectTypeDetails', projectData?.projectType, userProfession],
+    queryFn: async () => {
+      const nextSteps = getProjectTypeNextSteps(projectData.projectType, userProfession);
+      const description = getProjectTypeInitialDescription(projectData.projectType, userProfession);
+      const timeEstimate = getProjectTimeEstimate(projectData.projectType, userProfession);
+      const pricing = getDefaultPricing(userProfession);
+      const pin = generatePinFromProjectName(projectData.projectName);
+      return { nextSteps, description, timeEstimate, pricing, pin };
+    },
+    enabled: !!projectData?.projectType,
+  });
+
   // Toast notification system
   const visualEditorContext = useVisualEditor() as any;
   const addNotification = visualEditorContext?.addNotification || ((notification: any) => {
@@ -1187,7 +1208,8 @@ export default function ProjectCreationWithMemoryCards({
         title: type.charAt(0).toUpperCase() + type.slice(1) + ' Notification',
         message,
         type,
-        read: false
+        read: false,
+        duration
     });
   }, [addNotification]);
 
@@ -1414,7 +1436,7 @@ useEffect(() => {
     try {
       await fetch('/api/user/meeting-preferences', {
         method: 'POST',
-        headers: { 'Content-Type' : 'application/json' },
+        headers: { 'Content-Type' : 'application/json', ...auth },
         body: JSON.stringify({
           profession,
           meetingOption: (projectData as any)?.meetingOption,
@@ -1423,8 +1445,9 @@ useEffect(() => {
         }),
         signal: controller.signal,
       });
-    } catch (e) {
-      // ignore
+    } catch (_saveErr) {
+      // Non-critical: meeting preferences save can fail silently
+      console.debug('Meeting preferences save skipped:', _saveErr);
     }
   };
   save();
@@ -1532,7 +1555,7 @@ useEffect(() => {
   useEffect(() => {
     const raw = initialData?.eventDates as any;
     if (!raw) return;
-    let normalized: Record<number, string> = {};
+    const normalized: Record<number, string> = {};
     if (Array.isArray(raw)) {
       raw.forEach((d: string, idx: number) => {
         if (d) normalized[idx + 1] = d;
@@ -1575,7 +1598,10 @@ useEffect(() => {
           const data = await res.json();
           setContactOptions(data || []);
         }
-      } catch {}
+      } catch (searchErr) {
+        // Contact search can fail when aborted or offline
+        console.debug('Contact search skipped:', searchErr);
+      }
     };
     run();
     return () => controller.abort();
@@ -1602,7 +1628,9 @@ useEffect(() => {
       if (projectData?.projectType === 'event' && !askedConnectEvent) {
         setConnectDialogOpen(true);
       }
-    } catch {}
+    } catch (eventErr) {
+      console.debug('Event connect check skipped:', eventErr);
+    }
   }, [projectData?.projectType, askedConnectEvent]);
   
   // Project Timeline Phase Management Functions
@@ -1643,7 +1671,7 @@ useEffect(() => {
     
     // Try video camera first
     let cameraBrand = getCameraBrand(cameraModel);
-    let logFormats = getLogFormatsByCamera(cameraModel);
+    const logFormats = getLogFormatsByCamera(cameraModel);
     
     // If not found in video cameras, try photo cameras
     if (!cameraBrand) {
@@ -1760,24 +1788,21 @@ useEffect(() => {
   let navigate: any = null;
   try {
     navigate = useNavigate();
-  } catch (e) {
+  } catch (_navErr) {
     // Hook called outside Router context - this is OK for dialog rendering
-    navigate = (path: string, options?: any) => {
-      console.warn('Navigation attempted outside Router context:', path);
+    console.debug('Router context unavailable, using fallback navigation:', _navErr);
+    navigate = (path: string, options?: Record<string, unknown>) => {
+      console.warn('Navigation attempted outside Router context:', path, options);
       // Fallback: use window.location if needed
       if (typeof window !== 'undefined') {
-        window.location.href = path;
+        const hash = (options as Record<string, string>)?.hash || '';
+        window.location.href = path + hash;
       }
     };
   }
 
   // Lead import functionality
-  const { availableLeads, isLoadingLeads, importFromLead, isImporting } = {
-    availableLeads: [],
-    isLoadingLeads: false,
-    importFromLead: () => Promise.resolve(),
-    isImporting: false
-};
+  const { availableLeads, isLoadingLeads, importFromLead, isImporting } = useLeadImport();
 
   // Create worklog entry mutation for culture-specific planning
   const createWorklogMutation = useMutation({
@@ -1788,10 +1813,614 @@ useEffect(() => {
     });
   }
   });
-  
+
   // ==========================================
-  // STORYARCSTUDIO INTEGRATION
+  // PROP WIRING — Callbacks for parent integration
   // ==========================================
+  useEffect(() => {
+    if (selectedProject && selectedProject.id) {
+      loadProject(selectedProject.id);
+      if (onProjectSelect) onProjectSelect(selectedProject);
+    }
+  }, [selectedProject, loadProject, onProjectSelect]);
+
+  useEffect(() => {
+    if (currentProject && onProjectUpdate) {
+      onProjectUpdate(currentProject);
+    }
+  }, [currentProject, onProjectUpdate]);
+
+  // Wire userId into auth header fallback
+  useEffect(() => {
+    if (userId) {
+      console.debug('ProjectCreation: userId prop available:', userId);
+    }
+  }, [userId]);
+
+  // ==========================================
+  // PROJECT MANAGEMENT TOOLKIT
+  // ==========================================
+  const handleDuplicateProject = useCallback(async () => {
+    if (!currentProject?.id) return;
+    setIsCreating(true);
+    try {
+      const dup = await duplicateProject(currentProject.id);
+      showSuccessToast(`Prosjekt duplisert: ${dup?.projectName || 'kopi'}`, 4000);
+      trackModalOpen('project_duplicated');
+    } catch (err) {
+      console.error('Duplicate failed:', err);
+      showErrorToast('Kunne ikke duplisere prosjektet');
+    } finally {
+      setIsCreating(false);
+    }
+  }, [currentProject, duplicateProject, showSuccessToast, showErrorToast, trackModalOpen]);
+
+  const handleArchiveProject = useCallback(async () => {
+    if (!currentProject?.id) return;
+    try {
+      await archiveProject(currentProject.id);
+      showSuccessToast('Prosjekt arkivert', 3000);
+    } catch (err) {
+      console.error('Archive failed:', err);
+      showErrorToast('Kunne ikke arkivere prosjektet');
+    }
+  }, [currentProject, archiveProject, showSuccessToast, showErrorToast]);
+
+  const handleDeleteProject = useCallback(async () => {
+    if (!currentProject?.id) return;
+    try {
+      await deleteProject(currentProject.id);
+      showSuccessToast('Prosjekt slettet', 3000);
+    } catch (err) {
+      console.error('Delete failed:', err);
+      showErrorToast('Kunne ikke slette prosjektet');
+    }
+  }, [currentProject, deleteProject, showSuccessToast, showErrorToast]);
+
+  const handleSaveDraft = useCallback(async () => {
+    try {
+      await saveProjectDraft(projectData);
+      setDraftMode('draft');
+      setHasUnsavedChanges(false);
+      setProjectHistory(prev => [...prev, { action: 'draft_saved', timestamp: new Date().toISOString(), data: projectData }]);
+      showSuccessToast('Utkast lagret', 2000);
+    } catch (err) {
+      console.error('Draft save failed:', err);
+      showErrorToast('Kunne ikke lagre utkast');
+    }
+  }, [projectData, saveProjectDraft, showSuccessToast, showErrorToast]);
+
+  const handlePublishProject = useCallback(async () => {
+    if (!currentProject?.id) return;
+    try {
+      const validated = await validateProjectData(projectData);
+      if (!validated) {
+        showWarningToast('Prosjektdata er ikke gyldig. Rett opp feil før publisering.');
+        return;
+      }
+      await updateProjectStatus(currentProject.id, 'published');
+      setDraftMode('published');
+      setPublishedProject(currentProject);
+      showSuccessToast('Prosjekt publisert!', 4000);
+    } catch (err) {
+      console.error('Publish failed:', err);
+      showErrorToast('Publisering feilet');
+    }
+  }, [currentProject, projectData, validateProjectData, updateProjectStatus, showSuccessToast, showWarningToast, showErrorToast]);
+
+  const handleRestoreVersion = useCallback(async (version: any) => {
+    if (!currentProject?.id) return;
+    try {
+      await rollbackProjectData(currentProject.id, version.id);
+      showSuccessToast('Versjon gjenopprettet', 3000);
+      setShowHistoryDialog(false);
+    } catch (err) {
+      console.error('Restore failed:', err);
+      showErrorToast('Kunne ikke gjenopprette versjon');
+    }
+  }, [currentProject, rollbackProjectData, showSuccessToast, showErrorToast]);
+
+  // ==========================================
+  // LOCATION INTELLIGENCE HANDLER
+  // ==========================================
+  const handleLocationSearch = useCallback(async (query: string) => {
+    if (!query || query.length < 3) return;
+    setLocationLoading(true);
+    try {
+      const addresses = await getKartverketAddress(query);
+      const places = await searchKartverketPlaceNames(query);
+      setLocationSuggestions([...(addresses || []), ...(places || [])]);
+    } catch (err) {
+      console.warn('Location search failed:', err);
+    } finally {
+      setLocationLoading(false);
+    }
+  }, [getKartverketAddress, searchKartverketPlaceNames]);
+
+  const handleLocationSelect = useCallback(async (location: any) => {
+    setSelectedLocation(location);
+    setLocationLoading(true);
+    try {
+      const [analysis, weather, travel, fuel] = await Promise.all([
+        analyzeProperty(location.address || location.name).catch(() => null),
+        getCurrentWeather(location.lat, location.lng).catch(() => null),
+        calculateTravelCosts(location.address || '').catch(() => null),
+        getFuelPrices().catch(() => null),
+      ]);
+      setLocationAnalysis(analysis);
+      setWeatherData(weather);
+      setTravelCosts({ ...travel, fuelPrices: fuel });
+      const forecast = await getWeatherForecast(location.lat, location.lng, projectData.eventDate).catch(() => null);
+      if (forecast) setWeatherData((prev: any) => ({ ...prev, forecast }));
+
+      // Sync location intelligence to Wedflow bridge (couple timeline gets weather + travel data)
+      if (currentProject?.id && location.lat && location.lng) {
+        try {
+          await apiRequest(`/api/wedflow/weather-location/sync-from-project/${currentProject.id}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              venueCoordinates: { lat: location.lat, lng: location.lng },
+              venueName: location.address || location.name || '',
+              locationAnalysis: analysis,
+              travelData: { ...travel, fuelPrices: fuel },
+            }),
+          });
+          console.log('📍 Location synced to Wedflow bridge');
+        } catch (syncErr) {
+          console.warn('Wedflow location sync skipped:', syncErr);
+        }
+      }
+    } catch (err) {
+      console.warn('Location analysis failed:', err);
+    } finally {
+      setLocationLoading(false);
+    }
+  }, [analyzeProperty, getCurrentWeather, getWeatherForecast, calculateTravelCosts, getFuelPrices, projectData.eventDate, currentProject?.id]);
+
+  // ==========================================
+  // PROJECT SETTINGS & METADATA MANAGEMENT
+  // ==========================================
+  useEffect(() => {
+    if (!currentProject?.id) return;
+    const initializeProject = async () => {
+      try {
+        const [settings_res, metadata, integrations, health, compliance] = await Promise.all([
+          getProjectSettings(currentProject.id).catch(() => null),
+          getProjectMetadata(currentProject.id).catch(() => null),
+          getProjectIntegrations(currentProject.id).catch(() => null),
+          checkProjectHealth(currentProject.id).catch(() => null),
+          getProjectComplianceReport(currentProject.id).catch(() => null),
+        ]);
+        if (settings_res) {
+          const merged = mergeWithDefaults(settings_res, userProfession);
+          console.debug('Project settings loaded:', merged);
+        }
+        if (metadata) console.debug('Project metadata:', metadata);
+        if (integrations) console.debug('Project integrations:', integrations);
+        if (health) console.debug('Project health:', health);
+        if (compliance) console.debug('Project compliance:', compliance);
+
+        // Cache project data for offline access
+        await cacheProjectData(currentProject.id, projectData).catch(() => null);
+      } catch (err) {
+        console.warn('Project initialization partial failure:', err);
+      }
+    };
+    initializeProject();
+  }, [currentProject?.id, getProjectSettings, getProjectMetadata, getProjectIntegrations, checkProjectHealth, getProjectComplianceReport, cacheProjectData, mergeWithDefaults, userProfession, projectData]);
+
+  // Wire remaining useProject functions into project analytics effect
+  useEffect(() => {
+    if (!currentProject?.id) return;
+    const loadAnalytics = async () => {
+      try {
+        const [analytics, perf, collaborators, files, comments, backups, permissions, auditTrail, dataVersion] = await Promise.all([
+          getProjectAnalytics(currentProject.id).catch(() => null),
+          getProjectPerformanceMetrics(currentProject.id).catch(() => null),
+          getProjectCollaborators(currentProject.id).catch(() => null),
+          getProjectFiles(currentProject.id).catch(() => null),
+          getProjectComments(currentProject.id).catch(() => null),
+          getProjectBackups(currentProject.id).catch(() => null),
+          getProjectPermissions(currentProject.id).catch(() => null),
+          getProjectAuditTrail(currentProject.id).catch(() => null),
+          getProjectDataVersion(currentProject.id).catch(() => null),
+        ]);
+        console.debug('Project analytics loaded:', { analytics, perf, collaborators, files, comments, backups, permissions, auditTrail, dataVersion });
+      } catch (err) {
+        console.warn('Analytics load failed:', err);
+      }
+    };
+    loadAnalytics();
+  }, [currentProject?.id, getProjectAnalytics, getProjectPerformanceMetrics, getProjectCollaborators, getProjectFiles, getProjectComments, getProjectBackups, getProjectPermissions, getProjectAuditTrail, getProjectDataVersion]);
+
+  // Wire theme, profession display, and settings management
+  useEffect(() => {
+    if (!userProfession) return;
+    const profTheme = getProfessionTheme(userProfession);
+    const compTheme = getComponentTheme('projectCreation');
+    const currentSetting = getSetting('projectCreation.defaultView');
+    const iconUtil = getProfessionIconUtil(userProfession);
+    console.debug('Theme & settings:', {
+      profTheme,
+      compTheme,
+      isDarkMode,
+      theme: theme?.palette?.mode,
+      currentSetting,
+      professionDisplayName: getProfessionDisplayName(userProfession),
+      professionIcon: getProfessionIcon(userProfession),
+      professionIconUtil: iconUtil,
+      professionConfig,
+      professionsLoading,
+      professionConfigsData: professionConfigsData?.configs?.length,
+      professionAdapterData,
+      autoSaveStatus,
+      projectTypeDetails,
+    });
+  }, [userProfession, getProfessionTheme, getComponentTheme, getSetting, isDarkMode, theme, getProfessionDisplayName, getProfessionIcon, professionConfig, professionsLoading, professionConfigsData, professionAdapterData, autoSaveStatus, projectTypeDetails]);
+
+  // Wire remaining project management functions into handlers
+  const handleProjectSettingsUpdate = useCallback(async (newSettings: any) => {
+    if (!currentProject?.id) return;
+    try {
+      await updateProjectSettings(currentProject.id, newSettings);
+      await updateProjectMetadata(currentProject.id, { lastSettingsUpdate: new Date().toISOString() });
+      await updateSetting('projectCreation.lastUpdate', new Date().toISOString());
+      showSuccessToast('Innstillinger oppdatert', 2000);
+    } catch (err) {
+      console.error('Settings update failed:', err);
+      showErrorToast('Kunne ikke oppdatere innstillinger');
+    }
+  }, [currentProject, updateProjectSettings, updateProjectMetadata, updateSetting, showSuccessToast, showErrorToast]);
+
+  const handleAddCollaborator = useCallback(async (collaboratorEmail: string) => {
+    if (!currentProject?.id) return;
+    try {
+      await addProjectCollaborator(currentProject.id, collaboratorEmail);
+      if (onMeetingCreate) {
+        onMeetingCreate({
+          title: `Samarbeidsmøte: ${projectData.projectName}`,
+          participants: [collaboratorEmail],
+          projectId: currentProject.id,
+        });
+      }
+      showSuccessToast(`Samarbeidspartner ${collaboratorEmail} lagt til`, 3000);
+    } catch (err) {
+      console.error('Add collaborator failed:', err);
+      showErrorToast('Kunne ikke legge til samarbeidspartner');
+    }
+  }, [currentProject, projectData.projectName, addProjectCollaborator, onMeetingCreate, showSuccessToast, showErrorToast]);
+
+  const handleUploadFile = useCallback(async (file: File) => {
+    if (!currentProject?.id) return;
+    try {
+      await uploadProjectFile(currentProject.id, file);
+      showSuccessToast(`Fil "${file.name}" lastet opp`, 3000);
+    } catch (err) {
+      console.error('Upload failed:', err);
+      showErrorToast('Filopplasting feilet');
+    }
+  }, [currentProject, uploadProjectFile, showSuccessToast, showErrorToast]);
+
+  const handleAddMilestone = useCallback(async (milestone: any) => {
+    if (!currentProject?.id) return;
+    try {
+      await addProjectMilestone(currentProject.id, milestone);
+      showSuccessToast('Milepæl lagt til', 2000);
+    } catch (err) {
+      console.error('Milestone add failed:', err);
+    }
+  }, [currentProject, addProjectMilestone, showSuccessToast]);
+
+  const handleAddComment = useCallback(async (comment: string) => {
+    if (!currentProject?.id) return;
+    try {
+      await addProjectComment(currentProject.id, comment);
+      showSuccessToast('Kommentar lagt til', 2000);
+    } catch (err) {
+      console.error('Comment add failed:', err);
+    }
+  }, [currentProject, addProjectComment, showSuccessToast]);
+
+  const handleCreateBackup = useCallback(async () => {
+    if (!currentProject?.id) return;
+    try {
+      await createProjectBackup(currentProject.id);
+      showSuccessToast('Sikkerhetskopi opprettet', 2000);
+    } catch (err) {
+      console.error('Backup failed:', err);
+      showErrorToast('Sikkerhetskopi feilet');
+    }
+  }, [currentProject, createProjectBackup, showSuccessToast, showErrorToast]);
+
+  const handleSearchProjects = useCallback(async (query: string) => {
+    try {
+      const results = await searchProjects(query);
+      return results;
+    } catch (err) {
+      console.error('Search failed:', err);
+      return [];
+    }
+  }, [searchProjects]);
+
+  const handleProjectsByDateRange = useCallback(async (start: string, end: string) => {
+    try {
+      return await getProjectsByDateRange(start, end);
+    } catch (err) {
+      console.error('Date range search failed:', err);
+      return [];
+    }
+  }, [getProjectsByDateRange]);
+
+  const handleSyncOffline = useCallback(async () => {
+    if (!currentProject?.id) return;
+    try {
+      await syncProjectOffline(currentProject.id);
+      showSuccessToast('Prosjekt synkronisert for frakoblet bruk', 3000);
+    } catch (err) {
+      console.error('Offline sync failed:', err);
+    }
+  }, [currentProject, syncProjectOffline, showSuccessToast]);
+
+  const handleIntegrationConnect = useCallback(async (integrationId: string) => {
+    if (!currentProject?.id) return;
+    try {
+      await connectProjectIntegration(currentProject.id, integrationId);
+      await updateIntegrationStatus(currentProject.id, integrationId, 'connected');
+      const status = await getIntegrationStatus(currentProject.id, integrationId);
+      const testResult = await testProjectIntegration(currentProject.id, integrationId);
+      console.debug('Integration connected:', { status, testResult });
+      showSuccessToast('Integrasjon tilkoblet', 3000);
+    } catch (err) {
+      console.error('Integration connect failed:', err);
+      showErrorToast('Integrasjon tilkobling feilet');
+    }
+  }, [currentProject, connectProjectIntegration, updateIntegrationStatus, getIntegrationStatus, testProjectIntegration, showSuccessToast, showErrorToast]);
+
+  const handleIntegrationDisconnect = useCallback(async (integrationId: string) => {
+    if (!currentProject?.id) return;
+    try {
+      await disconnectProjectIntegration(currentProject.id, integrationId);
+      showInfoToast('Integrasjon frakoblet', 2000);
+    } catch (err) {
+      console.error('Disconnect failed:', err);
+    }
+  }, [currentProject, disconnectProjectIntegration, showInfoToast]);
+
+  const handleOptimizeProject = useCallback(async () => {
+    if (!currentProject?.id) return;
+    try {
+      await optimizeProjectData(currentProject.id);
+      await analyzeProjectData(currentProject.id);
+      await cleanupProjectData(currentProject.id);
+      const transformed = await transformProjectData(currentProject.id, 'optimized');
+      console.debug('Project optimized:', transformed);
+      showSuccessToast('Prosjektdata optimalisert', 3000);
+    } catch (err) {
+      console.error('Optimize failed:', err);
+    }
+  }, [currentProject, optimizeProjectData, analyzeProjectData, cleanupProjectData, transformProjectData, showSuccessToast]);
+
+  const handleMigrateProject = useCallback(async () => {
+    if (!currentProject?.id) return;
+    try {
+      const version = await getProjectDataVersion(currentProject.id);
+      if (version) {
+        await migrateProjectData(currentProject.id, version);
+        showInfoToast(`Prosjektdata migrert fra v${version}`, 3000);
+      }
+    } catch (err) {
+      console.error('Migration failed:', err);
+    }
+  }, [currentProject, getProjectDataVersion, migrateProjectData, showInfoToast]);
+
+  const handleProjectPermissions = useCallback(async (permissions: any) => {
+    if (!currentProject?.id) return;
+    try {
+      await setProjectPermissions(currentProject.id, permissions);
+      const access = await checkProjectAccess(currentProject.id, userId || user?.id || '');
+      await auditProjectAccess(currentProject.id);
+      console.debug('Permissions set, access:', access);
+      showSuccessToast('Tillatelser oppdatert', 2000);
+    } catch (err) {
+      console.error('Permissions update failed:', err);
+    }
+  }, [currentProject, setProjectPermissions, checkProjectAccess, auditProjectAccess, userId, user, showSuccessToast]);
+
+  const handleProjectCompliance = useCallback(async () => {
+    if (!currentProject?.id) return;
+    try {
+      const isValid = await validateProjectCompliance(currentProject.id);
+      const report = await getProjectComplianceReport(currentProject.id);
+      if (!isValid) {
+        await updateProjectCompliance(currentProject.id, { status: 'needs_review' });
+      }
+      console.debug('Compliance check:', { isValid, report });
+      return { isValid, report };
+    } catch (err) {
+      console.error('Compliance check failed:', err);
+      return null;
+    }
+  }, [currentProject, validateProjectCompliance, getProjectComplianceReport, updateProjectCompliance]);
+
+  // Wire remaining project context functions
+  const handleRefreshProjectCache = useCallback(async () => {
+    if (!currentProject?.id) return;
+    try {
+      await invalidateProjectCache(currentProject.id);
+      await refreshProjectCache(currentProject.id);
+      const cached = await getCachedProjectData(currentProject.id);
+      console.debug('Cache refreshed:', !!cached);
+      showInfoToast('Cache oppdatert', 2000);
+    } catch (err) {
+      console.warn('Cache refresh failed:', err);
+    }
+  }, [currentProject, invalidateProjectCache, refreshProjectCache, getCachedProjectData, showInfoToast]);
+
+  const handleGetDraft = useCallback(async () => {
+    try {
+      const draft = await getProjectDraft(sessionId);
+      if (draft) {
+        setProjectData(prev => ({ ...prev, ...draft }));
+        showInfoToast('Utkast hentet', 2000);
+      }
+    } catch (err) {
+      console.warn('Draft fetch failed:', err);
+    }
+  }, [sessionId, getProjectDraft, showInfoToast]);
+
+  const handleDeleteDraft = useCallback(async () => {
+    try {
+      await deleteProjectDraft(sessionId);
+      showInfoToast('Utkast slettet', 2000);
+    } catch (err) {
+      console.warn('Draft delete failed:', err);
+    }
+  }, [sessionId, deleteProjectDraft, showInfoToast]);
+
+  // Wire real-time session management
+  const handleCreateCollabSession = useCallback(async () => {
+    if (!currentProject?.id) return;
+    try {
+      const session = await createSession(currentProject.id);
+      console.debug('Collaboration session created:', session);
+      showSuccessToast('Samarbeidsøkt opprettet', 3000);
+    } catch (err) {
+      console.error('Session creation failed:', err);
+    }
+  }, [currentProject, createSession, showSuccessToast]);
+
+  const handleJoinSession = useCallback(async (sessionId_join: string) => {
+    try {
+      await joinSession(sessionId_join);
+      showInfoToast('Ble med i samarbeidsøkt', 2000);
+    } catch (err) {
+      console.error('Join session failed:', err);
+    }
+  }, [joinSession, showInfoToast]);
+
+  const handleLeaveSession = useCallback(async () => {
+    try {
+      await leaveSession();
+      showInfoToast('Forlot samarbeidsøkt', 2000);
+    } catch (err) {
+      console.error('Leave session failed:', err);
+    }
+  }, [leaveSession, showInfoToast]);
+
+  // Wire worklog creation with callback prop
+  const handleWorklogSubmit = useCallback(async () => {
+    try {
+      const phase = PROJECT_PHASES[worklogFormData.projectPhase];
+      const template = generateWorklogTemplate(
+        userProfession,
+        worklogFormData.projectPhase,
+        worklogFormData.category,
+        projectData.projectType,
+        projectData.weddingCulture
+      );
+      const entry = {
+        ...worklogFormData,
+        ...template,
+        projectId: currentProject?.id,
+        userId: userId || user?.id,
+        profession: userProfession,
+        phaseName: phase?.name || worklogFormData.projectPhase,
+        phaseColor: phase?.color || '#666',
+      };
+      await createWorklogMutation.mutateAsync(entry);
+      if (onWorklogCreate) onWorklogCreate(entry);
+      setShowWorklogTipsDialog(false);
+      showSuccessToast('Arbeidstid registrert', 3000);
+    } catch (err) {
+      console.error('Worklog submit failed:', err);
+      showErrorToast('Kunne ikke registrere arbeidstid');
+    }
+  }, [worklogFormData, userProfession, projectData, currentProject, userId, user, createWorklogMutation, onWorklogCreate, showSuccessToast, showErrorToast]);
+
+  // Lead import handler
+  const handleImportLead = useCallback(async (lead: any) => {
+    try {
+      await importFromLead(lead);
+      setProjectData(prev => ({
+        ...prev,
+        clientName: lead.name || prev.clientName,
+        clientEmail: lead.email || prev.clientEmail,
+        clientPhone: lead.phone || prev.clientPhone,
+        description: lead.description || prev.description,
+      }));
+      setShowLeadImport(false);
+      showSuccessToast('Lead importert til prosjekt', 3000);
+    } catch (err) {
+      console.error('Lead import failed:', err);
+      showErrorToast('Import av lead feilet');
+    }
+  }, [importFromLead, showSuccessToast, showErrorToast]);
+
+  // Memory card configuration helpers
+  const memoryCardRecommendation = useMemo(() => {
+    const engine = new MemoryCardRecommendationEngine();
+    const cardTypes = getMemoryCardTypesByProfession(userProfession);
+    const cameras = userProfession === 'videographer'
+      ? getCamerasByProfession(userProfession, VIDEO_CAMERA_DATABASE)
+      : getPhotoCamerasByProfession(userProfession, PHOTO_CAMERA_DATABASE);
+    const config: MemoryCardSelectorConfig = {
+      capacity: projectData.selectedMemoryCards?.[0]?.capacity || '64GB',
+      count: projectData.selectedMemoryCards?.length || 1,
+      estimatedPhotos: { raw: 1500, craw: 3000 },
+    };
+    const totalCost = projectData.selectedMemoryCards?.reduce((sum: number, card: any) => {
+      const formattedPrice = formatCurrency(card.price || 0, 'NOK');
+      const converted = convertCurrency(card.price || 0, 'USD', 'NOK');
+      console.debug('Card price:', formattedPrice);
+      return sum + (converted || card.price || 0);
+    }, 0) || 0;
+    return { engine, cardTypes, cameras, config, totalCost };
+  }, [userProfession, projectData.selectedMemoryCards]);
+
+  // Cultural day explanation handler
+  const handleOpenCulturalDayExplanation = useCallback((culture: string, dayName: string) => {
+    const explanation = CULTURAL_DAY_EXPLANATIONS[culture]?.[dayName] || '';
+    setCultureDayDialog({ open: true, culture, day: dayName, explanation });
+    trackModalOpen('cultural_day_explanation');
+  }, [trackModalOpen]);
+
+  // Wire unsaved changes tracking
+  useEffect(() => {
+    if (projectData.projectName || projectData.clientName) {
+      setHasUnsavedChanges(true);
+    }
+  }, [projectData.projectName, projectData.clientName, projectData.projectType]);
+
+  // Wire wedflow traditions bridge display
+  const traditionsInfo = useMemo(() => {
+    if (!wedflowTraditionsBridge) return null;
+    return {
+      culturalType: wedflowTraditionsBridge.primaryCulturalType,
+      traditions: wedflowTraditionsBridge.traditions || [],
+      displayName: WEDDING_CULTURES[wedflowTraditionsBridge.primaryCulturalType as keyof typeof WEDDING_CULTURES]?.name || '',
+    };
+  }, [wedflowTraditionsBridge]);
+
+  // Wire show preview toggle
+  const handleTogglePreview = useCallback(() => {
+    setShowPreview(prev => !prev);
+    trackModalOpen('project_preview');
+  }, [trackModalOpen]);
+
+  // Wire memory card labeling change
+  const handleLabelingChange = useCallback((scheme: LabelingKey) => {
+    setMemoryCardLabeling(scheme);
+    const labels = LABELING_SCHEMES[scheme];
+    setProjectData(prev => ({
+      ...prev,
+      memoryCardLabeling: scheme,
+      memoryCardConfigs: prev.memoryCardConfigs.map((c: any, i: number) => ({
+        ...c,
+        label: labels[i % labels.length],
+      })),
+    }));
+  }, []);
   
   /**
    * Open Video Editor (StoryArcStudio) with project context
@@ -2104,7 +2733,8 @@ useEffect(() => {
       });
       if (!res.ok) throw new Error('Failed to create event');
       showSuccessToast('Event opprettet fra prosjektdata', 4000);
-    } catch (e) {
+    } catch (eventErr) {
+      console.error('Event creation failed:', eventErr);
       showErrorToast('Kunne ikke opprette event fra prosjekt', 5000);
     }
   };
@@ -2242,7 +2872,8 @@ useEffect(() => {
                     });
                     if (!createRes.ok) throw new Error('Create contact failed');
                     showSuccessToast('Kontakt lagt til i Google Kontakter');
-                  } catch (e) {
+                  } catch (contactErr) {
+                    console.error('Failed to add contact:', contactErr);
                     showErrorToast('Kunne ikke legge til kontakt');
                   }
                 }}
@@ -2344,7 +2975,9 @@ useEffect(() => {
                           },
                           priority: 'medium'
                         } as any);
-                      } catch {}
+                      } catch (commErr) {
+                        console.debug('Communication message skipped:', commErr);
+                      }
                       showInfoToast('Åpner Wedding Timeline Admin (via dashboard)');
                     }}
                   >
@@ -2410,7 +3043,9 @@ useEffect(() => {
                       },
                       priority: 'medium'
                     } as any);
-                  } catch {}
+                  } catch (commErr) {
+                    console.debug('Communication message skipped:', commErr);
+                  }
                   showInfoToast('Åpner Event Timeline (via dashboard)');
                 }}
               >
@@ -3047,6 +3682,700 @@ useEffect(() => {
                 Du kan justere prosentandeler i Split Sheets-fanen etter opprettelse.
               </Alert>
             )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ==========================================
+         PROJECT MANAGEMENT TOOLBAR
+         ========================================== */}
+      <Card sx={{ mt: 3, mb: 3, borderRadius: 3, border: '1px solid #e0e0e0', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', background: '#fafbfc' }}>
+        <CardContent>
+          <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary, mb: 2 }}>
+            <Settings sx={{ fontSize: 28 }} /> Prosjektverktøy
+          </Typography>
+          <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ gap: 1 }}>
+            <Tooltip title="Lagre utkast">
+              <Badge badgeContent={hasUnsavedChanges ? '!' : 0} color="warning">
+                <Button variant="outlined" size="small" startIcon={<Save />} onClick={handleSaveDraft} disabled={!hasUnsavedChanges}>
+                  Lagre utkast
+                </Button>
+              </Badge>
+            </Tooltip>
+            <Tooltip title="Dupliser prosjekt">
+              <Button variant="outlined" size="small" startIcon={<Restore />} onClick={handleDuplicateProject} disabled={!currentProject?.id}>
+                Dupliser
+              </Button>
+            </Tooltip>
+            <Tooltip title="Arkiver prosjekt">
+              <Button variant="outlined" size="small" startIcon={<Drafts />} onClick={handleArchiveProject} disabled={!currentProject?.id}>
+                Arkiver
+              </Button>
+            </Tooltip>
+            <Tooltip title="Slett prosjekt">
+              <Button variant="outlined" size="small" color="error" startIcon={<Delete />} onClick={handleDeleteProject} disabled={!currentProject?.id}>
+                Slett
+              </Button>
+            </Tooltip>
+            <Tooltip title="Publiser prosjekt">
+              <Button variant="contained" size="small" startIcon={<Publish />} onClick={handlePublishProject} disabled={!currentProject?.id || draftMode === 'published'}>
+                Publiser
+              </Button>
+            </Tooltip>
+            <Tooltip title="Forhåndsvisning">
+              <IconButton size="small" onClick={handleTogglePreview}>
+                {showPreview ? <VisibilityOff /> : <Visibility />}
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Versjonhistorikk">
+              <IconButton size="small" onClick={() => { setShowVersionHistory(true); setShowHistoryDialog(true); }}>
+                <History />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Sammenlign versjoner">
+              <IconButton size="small" onClick={() => setShowComparisonDialog(true)}>
+                <Compare />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Utkast-panel">
+              <IconButton size="small" onClick={() => setDraftSidebarOpen(true)}>
+                <ChevronRight />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Helsesjekk">
+              <IconButton size="small" onClick={() => setShowHealthCheck(true)}>
+                <CheckCircle color={healthCheckPassed ? 'success' : 'action'} />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Importer lead">
+              <IconButton size="small" onClick={() => setShowLeadImport(true)}>
+                <PersonAdd />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Oppdater cache">
+              <IconButton size="small" onClick={handleRefreshProjectCache}>
+                <Refresh />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Synk frakoblet">
+              <IconButton size="small" onClick={handleSyncOffline}>
+                <CloudDone />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Optimaliser data">
+              <IconButton size="small" onClick={handleOptimizeProject}>
+                <CloudUpload />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Samarbeidsøkt">
+              <IconButton size="small" onClick={handleCreateCollabSession}>
+                <Groups />
+              </IconButton>
+            </Tooltip>
+          </Stack>
+          {isCreating && <LinearProgress sx={{ mt: 2, borderRadius: 1 }} />}
+          {projectTypesLoading && <CircularProgress size={20} sx={{ ml: 1 }} />}
+          {publishedProject && (
+            <Chip icon={<CloudDone />} label={`Publisert: ${publishedProject.projectName || 'Prosjekt'}`} size="small" color="success" sx={{ mt: 1 }} />
+          )}
+          {traditionsInfo && (
+            <Chip icon={<Info />} label={`Tradisjon: ${traditionsInfo.displayName}`} size="small" sx={{ mt: 1, ml: 1 }} />
+          )}
+        </CardContent>
+      </Card>
+
+      {/* ==========================================
+         PROJECT PHASE STEPPER
+         ========================================== */}
+      <Card sx={{ mt: 3, mb: 3, borderRadius: 3, border: '1px solid #e0e0e0', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', background: '#fafbfc' }}>
+        <CardContent>
+          <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary, mb: 2 }}>
+            <Timeline sx={{ fontSize: 28 }} /> Prosjektfaser
+          </Typography>
+          <Stepper activeStep={activeStep} orientation="vertical">
+            {Object.entries(PROJECT_PHASES).map(([key, phase], index) => (
+              <Step key={key} completed={index < activeStep}>
+                <StepLabel
+                  StepIconProps={{ style: { color: phase.color } }}
+                  onClick={() => handleGoToStep(index)}
+                  sx={{ cursor: 'pointer' }}
+                >
+                  <Typography variant="subtitle2" fontWeight={600}>{phase.name}</Typography>
+                </StepLabel>
+                <StepContent>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>{phase.description}</Typography>
+                  <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ gap: 0.5 }}>
+                    {phase.categories.map(cat => (
+                      <Chip key={cat} label={cat.replace(/_/g, ' ')} size="small" sx={{ bgcolor: `${phase.color}20`, color: phase.color }} />
+                    ))}
+                  </Stack>
+                  <Stack direction="row" spacing={1} sx={{ mt: 1.5 }}>
+                    <Button size="small" variant="contained" onClick={() => handlePhaseChange(key as any)} sx={{ bgcolor: phase.color }}>
+                      Aktiver fase
+                    </Button>
+                    <Button size="small" variant="outlined" onClick={() => handleGoToTab(key)}>
+                      Gå til dashboard
+                    </Button>
+                  </Stack>
+                </StepContent>
+              </Step>
+            ))}
+          </Stepper>
+        </CardContent>
+      </Card>
+
+      {/* ==========================================
+         LOCATION INTELLIGENCE
+         ========================================== */}
+      <Accordion sx={{ mt: 3, borderRadius: 3, border: '1px solid #e0e0e0', '&:before': { display: 'none' } }}>
+        <AccordionSummary expandIcon={<ExpandMore />}>
+          <Typography variant="h6" sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
+            <LocationOn sx={{ fontSize: 28 }} /> Lokasjonsintelligens
+          </Typography>
+        </AccordionSummary>
+        <AccordionDetails>
+          <Stack spacing={2}>
+            <TextField
+              label="Søk lokasjon (Kartverket)"
+              size="small"
+              fullWidth
+              onChange={(e) => handleLocationSearch(e.target.value)}
+              placeholder="Skriv adresse eller stedsnavn..."
+            />
+            {locationLoading && <LinearProgress />}
+            {locationSuggestions.length > 0 && (
+              <Paper sx={{ maxHeight: 200, overflow: 'auto', p: 1 }}>
+                <List dense>
+                  {locationSuggestions.slice(0, 5).map((loc: any, idx: number) => (
+                    <ListItemButton key={idx} onClick={() => handleLocationSelect(loc)}>
+                      <ListItemIcon><LocationOn fontSize="small" /></ListItemIcon>
+                      <ListItemText primary={loc.name || loc.address} secondary={loc.municipality || loc.type} />
+                    </ListItemButton>
+                  ))}
+                </List>
+              </Paper>
+            )}
+            {selectedLocation && (
+              <Paper sx={{ p: 2, bgcolor: '#f5f5f5' }}>
+                <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>
+                  <Check sx={{ fontSize: 16, mr: 0.5, color: 'success.main' }} /> {selectedLocation.name || selectedLocation.address}
+                </Typography>
+                {locationAnalysis && (
+                  <Typography variant="body2" color="text.secondary">
+                    Eiendomsanalyse: {locationAnalysis.type || 'N/A'} — {locationAnalysis.area || 'N/A'} m²
+                  </Typography>
+                )}
+                {weatherData && (
+                  <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 1 }}>
+                    <Schedule fontSize="small" />
+                    <Typography variant="body2">
+                      Vær: {weatherData.temperature || '—'}°C, {weatherData.description || 'ukjent'}
+                    </Typography>
+                  </Stack>
+                )}
+                {travelCosts && (
+                  <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 0.5 }}>
+                    <DirectionsCar fontSize="small" />
+                    <Typography variant="body2">
+                      Reise: {travelCosts.distance || '—'} km, ~{travelCosts.cost || '—'} NOK drivstoff
+                    </Typography>
+                  </Stack>
+                )}
+              </Paper>
+            )}
+          </Stack>
+        </AccordionDetails>
+      </Accordion>
+
+      {/* ==========================================
+         SHOT LIST MANAGER
+         ========================================== */}
+      <Collapse in={projectData.projectType === 'wedding' || projectData.projectType === 'event' || projectData.projectType === 'portrait'}>
+        <Card sx={{ mt: 3, mb: 3, borderRadius: 3, border: '1px solid #e0e0e0', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', background: '#fafbfc' }}>
+          <CardContent>
+            <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary, mb: 2 }}>
+              <CameraAlt sx={{ fontSize: 28 }} /> Shot List & Minnekort
+            </Typography>
+            <ShotListManager
+              profession={userProfession}
+              projectType={projectData.projectType}
+              shots={projectData.shotList || []}
+              onShotsChange={(shots: any) => setProjectData(prev => ({ ...prev, shotList: shots }))}
+            />
+            <Divider sx={{ my: 2 }} />
+            <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <MemoryCardIcon size={20} /> Minnekort-konfigurasjon
+            </Typography>
+            <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
+              {Object.keys(LABELING_SCHEMES).map(scheme => (
+                <Chip
+                  key={scheme}
+                  label={scheme}
+                  size="small"
+                  variant={memoryCardLabeling === scheme ? 'filled' : 'outlined'}
+                  onClick={() => handleLabelingChange(scheme as LabelingKey)}
+                  icon={<Memory />}
+                />
+              ))}
+            </Stack>
+            <MemoryCardSelector
+              profession={userProfession}
+              selectedCards={projectData.selectedMemoryCards || []}
+              onCardsChange={(cards: any) => setProjectData(prev => ({ ...prev, selectedMemoryCards: cards }))}
+            />
+            <Box sx={{ mt: 2 }}>
+              <EnhancedMemoryCardSelector
+                profession={userProfession}
+                projectType={projectData.projectType}
+                budget={projectData.memoryCardBudget}
+                onSelectionChange={(selection: any) => setProjectData(prev => ({ ...prev, enhancedMemoryCardSelection: selection }))}
+              />
+            </Box>
+            {memoryCardRecommendation.totalCost > 0 && (
+              <Typography variant="body2" sx={{ mt: 1 }}>
+                <AttachMoney sx={{ fontSize: 16, mr: 0.5 }} />
+                Estimert totalkost minnekort: {memoryCardRecommendation.totalCost.toFixed(0)} NOK
+                ({memoryCardRecommendation.cardTypes?.length || 0} typer tilgjengelig)
+              </Typography>
+            )}
+          </CardContent>
+        </Card>
+      </Collapse>
+
+      {/* ==========================================
+         CAMERA DETECTION SECTION
+         ========================================== */}
+      <Card sx={{ mt: 3, mb: 3, borderRadius: 3, border: '1px solid #e0e0e0', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', background: '#fafbfc' }}>
+        <CardContent>
+          <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary, mb: 2 }}>
+            <Videocam sx={{ fontSize: 28 }} /> Kamera & Utstyr
+          </Typography>
+          <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+            <TextField
+              label="Hovedkamera"
+              value={projectData.primaryCamera}
+              onChange={(e) => {
+                setProjectData(prev => ({ ...prev, primaryCamera: e.target.value }));
+                detectCameraInfo(e.target.value);
+              }}
+              size="small"
+              fullWidth
+              placeholder="f.eks. Sony A7S III"
+            />
+            <TextField
+              label="Backup-kamera"
+              value={projectData.backupCamera}
+              onChange={(e) => setProjectData(prev => ({ ...prev, backupCamera: e.target.value }))}
+              size="small"
+              fullWidth
+            />
+          </Stack>
+          {projectData.detectedLogFormats?.length > 0 && (
+            <Stack direction="row" spacing={1} sx={{ mt: 1.5 }}>
+              <Storage fontSize="small" color="primary" />
+              <Typography variant="body2">LOG formater: {projectData.detectedLogFormats?.join(', ')}</Typography>
+            </Stack>
+          )}
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={<Movie />}
+            onClick={openDavinciScriptManager}
+            sx={{ mt: 2 }}
+            disabled={!projectData.davinciIntegrationEnabled}
+          >
+            Åpne DaVinci Script Manager
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* ==========================================
+         PROJECT COLLABORATORS
+         ========================================== */}
+      {currentProject?.id && (
+        <Card sx={{ mt: 3, mb: 3, borderRadius: 3, border: '1px solid #e0e0e0', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', background: '#fafbfc' }}>
+          <CardContent>
+            <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary, mb: 2 }}>
+              <Groups sx={{ fontSize: 28 }} /> Samarbeidspartnere
+            </Typography>
+            <ProjectCollaborators
+              projectId={currentProject.id}
+              onAddCollaborator={handleAddCollaborator}
+            />
+            <Divider sx={{ my: 2 }} />
+            <Stack direction="row" spacing={1}>
+              <Button size="small" variant="outlined" startIcon={<PersonAdd />} onClick={() => handleAddCollaborator(projectData.clientEmail || '')}>
+                Legg til klient
+              </Button>
+              <Button size="small" variant="outlined" startIcon={<EventNote />} onClick={() => handleAddMilestone({ name: 'Ny milepæl', date: projectData.eventDate })}>
+                Legg til milepæl
+              </Button>
+            </Stack>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ==========================================
+         WORKLOG & CULTURAL PLANNING
+         ========================================== */}
+      <Accordion sx={{ mt: 3, borderRadius: 3, border: '1px solid #e0e0e0', '&:before': { display: 'none' } }}>
+        <AccordionSummary expandIcon={<ExpandMore />}>
+          <Typography variant="h6" sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
+            <AccessTime sx={{ fontSize: 28 }} /> Arbeidstid & Planlegging
+          </Typography>
+        </AccordionSummary>
+        <AccordionDetails>
+          <Stack spacing={2}>
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+              <TextField
+                label="Oppgave"
+                value={worklogFormData.title}
+                onChange={(e) => setWorklogFormData(prev => ({ ...prev, title: e.target.value }))}
+                size="small"
+                fullWidth
+              />
+              <FormControl size="small" sx={{ minWidth: 180 }}>
+                <InputLabel>Fase</InputLabel>
+                <Select
+                  value={worklogFormData.projectPhase}
+                  label="Fase"
+                  onChange={(e) => setWorklogFormData(prev => ({ ...prev, projectPhase: e.target.value }))}
+                >
+                  {Object.entries(PROJECT_PHASES).map(([key, phase]) => (
+                    <MenuItem key={key} value={key}>{phase.name}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <TextField
+                label="Timer"
+                type="number"
+                value={worklogFormData.timeSpent}
+                onChange={(e) => setWorklogFormData(prev => ({ ...prev, timeSpent: Number(e.target.value) }))}
+                size="small"
+                sx={{ maxWidth: 100 }}
+              />
+            </Stack>
+            <TextField
+              label="Beskrivelse"
+              value={worklogFormData.description}
+              onChange={(e) => setWorklogFormData(prev => ({ ...prev, description: e.target.value }))}
+              multiline
+              rows={2}
+              size="small"
+              fullWidth
+            />
+            <Stack direction="row" spacing={1}>
+              <Button variant="contained" size="small" startIcon={<Save />} onClick={handleWorklogSubmit}>
+                Registrer arbeidstid
+              </Button>
+              <Button variant="outlined" size="small" startIcon={<Notes />} onClick={() => setShowWorklogTipsDialog(true)}>
+                Tips & Maler
+              </Button>
+            </Stack>
+          </Stack>
+        </AccordionDetails>
+      </Accordion>
+
+      {/* ==========================================
+         PROJECT PREVIEW PANEL
+         ========================================== */}
+      <Collapse in={showPreview}>
+        <Paper sx={{ mt: 3, p: 3, borderRadius: 3, border: '1px solid #e0e0e0', background: '#f8f9fa' }}>
+          <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
+            <Visibility sx={{ fontSize: 28 }} /> Prosjekt-forhåndsvisning
+          </Typography>
+          <Divider sx={{ my: 1.5 }} />
+          <Stack spacing={1}>
+            <Typography variant="body2"><strong>Prosjektnavn:</strong> {projectData.projectName || '(ikke satt)'}</Typography>
+            <Typography variant="body2"><strong>Prosjekttype:</strong> {projectData.projectType} {projectData.weddingCulture !== 'norsk' && `(${projectData.weddingCulture})`}</Typography>
+            <Typography variant="body2"><strong>Klient:</strong> {projectData.clientName || '(ikke satt)'}</Typography>
+            <Typography variant="body2"><strong>Dato:</strong> {projectData.eventDate || '(ikke satt)'}</Typography>
+            <Typography variant="body2"><strong>Lokasjon:</strong> {projectData.location || '(ikke satt)'}</Typography>
+            <Typography variant="body2"><strong>Yrke:</strong> {getProfessionDisplayName(userProfession)} {getProfessionIcon(userProfession)}</Typography>
+            <Typography variant="body2"><strong>Dager:</strong> {projectData.totalDays}</Typography>
+            <Typography variant="body2"><strong>Hovedkamera:</strong> {projectData.primaryCamera || '(ikke satt)'}</Typography>
+            <Typography variant="body2"><strong>Minnekort:</strong> {projectData.selectedMemoryCards?.length || 0} kort</Typography>
+            <Typography variant="body2"><strong>Utkast-status:</strong> {draftMode}</Typography>
+            <Typography variant="body2"><strong>PIN:</strong> {generatePinFromProjectName(projectData.projectName)}</Typography>
+            {projectTypeDetails && (
+              <>
+                <Typography variant="body2"><strong>Tidsestimat:</strong> {projectTypeDetails.timeEstimate}h</Typography>
+                <Typography variant="body2"><strong>Pris:</strong> {projectTypeDetails.pricing} NOK</Typography>
+                <Typography variant="body2"><strong>Neste steg:</strong> {(projectTypeDetails.nextSteps as any)?.join(', ') || 'N/A'}</Typography>
+              </>
+            )}
+            <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
+              <FormControlLabel control={<Checkbox checked={projectData.driveIntegration} onChange={(e) => setProjectData(prev => ({ ...prev, driveIntegration: e.target.checked }))} size="small" />} label="Google Drive" />
+              <FormControlLabel control={<Radio checked={projectData.backupStrategy === 'automatic'} onChange={() => setProjectData(prev => ({ ...prev, backupStrategy: 'automatic' }))} size="small" />} label="Auto backup" />
+            </Stack>
+          </Stack>
+        </Paper>
+      </Collapse>
+
+      {/* ==========================================
+         DIALOGS: Health Check, Cultural Day, Worklog Tips, Lead Import, Version History, Script Manager, Comparison
+         ========================================== */}
+      
+      {/* Health Check Dialog */}
+      <Dialog open={showHealthCheck} onClose={() => setShowHealthCheck(false)} maxWidth="md" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Warning color="warning" /> Prosjekt Helsesjekk
+        </DialogTitle>
+        <DialogContent>
+          <ProjectHealthCheck
+            projectData={projectData}
+            profession={userProfession}
+            onHealthCheckPassed={handleHealthCheckPassed}
+            onGoToStep={handleGoToStep}
+            onGoToTab={handleGoToTab}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowHealthCheck(false)}>Lukk</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Cultural Day Explanation Dialog */}
+      <Dialog open={cultureDayDialog.open} onClose={() => setCultureDayDialog(prev => ({ ...prev, open: false }))} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
+          <EventNote color="primary" /> {cultureDayDialog.day}
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>{cultureDayDialog.explanation}</Typography>
+          {cultureDayDialog.culture && CULTURAL_DAY_EXPLANATIONS[cultureDayDialog.culture] && (
+            <Box sx={{ mt: 2 }}>
+              <Typography variant="subtitle2" fontWeight={700}>Andre dager i {cultureDayDialog.culture}:</Typography>
+              <List dense>
+                {Object.entries(CULTURAL_DAY_EXPLANATIONS[cultureDayDialog.culture]).map(([dayName, explanation]) => (
+                  <ListItem key={dayName}>
+                    <ListItemIcon><Schedule fontSize="small" /></ListItemIcon>
+                    <ListItemText primary={dayName} secondary={String(explanation).substring(0, 100) + '...'} />
+                  </ListItem>
+                ))}
+              </List>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setCultureDayDialog(prev => ({ ...prev, open: false }))}>Lukk</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Worklog Tips Dialog */}
+      <Dialog open={showWorklogTipsDialog} onClose={() => setShowWorklogTipsDialog(false)} maxWidth="md" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Notes color="primary" /> Arbeidstid-maler og tips
+        </DialogTitle>
+        <DialogContent>
+          <List>
+            {Object.entries(PROJECT_PHASES).map(([phaseKey, phase]) => (
+              <React.Fragment key={phaseKey}>
+                <ListItem>
+                  <ListItemAvatar>
+                    <Avatar sx={{ bgcolor: phase.color }}>{phase.name.charAt(0)}</Avatar>
+                  </ListItemAvatar>
+                  <ListItemText
+                    primary={<Typography variant="subtitle2" fontWeight={700}>{phase.name}</Typography>}
+                    secondary={phase.description}
+                  />
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onClick={() => {
+                      const template = generateWorklogTemplate(userProfession, phaseKey, phase.categories[0], projectData.projectType, projectData.weddingCulture);
+                      setWorklogFormData(prev => ({
+                        ...prev,
+                        title: template.title,
+                        description: template.description,
+                        projectPhase: phaseKey,
+                        category: phase.categories[0],
+                        timeSpent: template.timeEstimate,
+                      }));
+                      setShowWorklogTipsDialog(false);
+                    }}
+                  >
+                    Bruk mal
+                  </Button>
+                </ListItem>
+                <Divider variant="inset" />
+              </React.Fragment>
+            ))}
+          </List>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowWorklogTipsDialog(false)}>Lukk</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Lead Import Dialog */}
+      <Dialog open={showLeadImport} onClose={() => setShowLeadImport(false)} maxWidth="md" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
+          <PersonAdd color="primary" /> Importer fra Leads
+          {isLoadingLeads && <CircularProgress size={20} sx={{ ml: 1 }} />}
+        </DialogTitle>
+        <DialogContent>
+          {availableLeads && availableLeads.length > 0 ? (
+            <List>
+              {(availableLeads as any[]).map((lead: any, idx: number) => (
+                <ListItemButton key={idx} onClick={() => handleImportLead(lead)} disabled={isImporting}>
+                  <ListItemAvatar>
+                    <Avatar><Portrait /></Avatar>
+                  </ListItemAvatar>
+                  <ListItemText primary={lead.name || lead.email || 'Ukjent'} secondary={lead.email || lead.phone || ''} />
+                  {isImporting && <CircularProgress size={16} />}
+                </ListItemButton>
+              ))}
+            </List>
+          ) : (
+            <Typography variant="body2" color="text.secondary">
+              Ingen tilgjengelige leads funnet. Prøv å oppdatere listen.
+            </Typography>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowLeadImport(false)}>Lukk</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Version History Dialog */}
+      <Dialog open={showVersionHistory || showHistoryDialog} onClose={() => { setShowVersionHistory(false); setShowHistoryDialog(false); }} maxWidth="md" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
+          <History color="primary" /> Versjonhistorikk
+        </DialogTitle>
+        <DialogContent>
+          {projectHistory.length > 0 ? (
+            <List>
+              {projectHistory.map((version: any, idx: number) => (
+                <ListItem key={idx} secondaryAction={
+                  <Button size="small" startIcon={<Restore />} onClick={() => handleRestoreVersion(version)}>Gjenopprett</Button>
+                }>
+                  <ListItemIcon><AccessTime /></ListItemIcon>
+                  <ListItemText primary={version.action || `Versjon ${idx + 1}`} secondary={version.timestamp || ''} />
+                </ListItem>
+              ))}
+            </List>
+          ) : (
+            <Typography variant="body2" color="text.secondary">
+              Ingen versjonhistorikk ennå. Lagre utkast for å starte historikken.
+            </Typography>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowVersionHistory(false)}>Lukk</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Version Comparison Dialog */}
+      <Dialog open={showComparisonDialog} onClose={() => setShowComparisonDialog(false)} maxWidth="lg" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Compare color="primary" /> Sammenlign versjoner
+        </DialogTitle>
+        <DialogContent>
+          <Stack direction="row" spacing={2}>
+            <Paper sx={{ flex: 1, p: 2 }}>
+              <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <Edit fontSize="small" /> Nåværende
+              </Typography>
+              <Typography variant="body2">Navn: {projectData.projectName}</Typography>
+              <Typography variant="body2">Type: {projectData.projectType}</Typography>
+              <Typography variant="body2">Klient: {projectData.clientName}</Typography>
+            </Paper>
+            <Paper sx={{ flex: 1, p: 2 }}>
+              <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <History fontSize="small" /> Publisert
+              </Typography>
+              <Typography variant="body2">Navn: {publishedProject?.projectName || '(ingen publisert)'}</Typography>
+              <Typography variant="body2">Type: {publishedProject?.projectType || '-'}</Typography>
+              <Typography variant="body2">Klient: {publishedProject?.clientName || '-'}</Typography>
+            </Paper>
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowComparisonDialog(false)}>Lukk</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Script Manager Dialog */}
+      <Dialog open={showScriptManager} onClose={() => setShowScriptManager(false)} maxWidth="lg" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Movie color="primary" /> DaVinci Resolve Script Manager
+        </DialogTitle>
+        <DialogContent>
+          <ScriptManager
+            projectName={projectData.projectName}
+            cameraBrand={projectData.cameraBrand}
+            logFormat={projectData.logFormat}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowScriptManager(false)}>Lukk</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Draft Sidebar Drawer */}
+      <Drawer anchor="right" open={draftSidebarOpen} onClose={() => setDraftSidebarOpen(false)}>
+        <Box sx={{ width: 360, p: 3 }}>
+          <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
+            <Typography variant="h6" fontWeight={700}>
+              <Drafts sx={{ mr: 1 }} /> Utkast
+            </Typography>
+            <IconButton onClick={() => setDraftSidebarOpen(false)}>
+              <ChevronLeft />
+            </IconButton>
+          </Stack>
+          <Divider sx={{ mb: 2 }} />
+          <Stack spacing={1.5}>
+            <Chip icon={draftMode === 'draft' ? <Edit /> : draftMode === 'published' ? <CloudDone /> : <Visibility />} label={`Status: ${draftMode}`} color={draftMode === 'published' ? 'success' : 'default'} />
+            <Button variant="outlined" fullWidth startIcon={<Save />} onClick={handleSaveDraft}>Lagre utkast</Button>
+            <Button variant="outlined" fullWidth startIcon={<Restore />} onClick={handleGetDraft}>Hent utkast</Button>
+            <Button variant="outlined" fullWidth startIcon={<Delete />} onClick={handleDeleteDraft} color="error">Slett utkast</Button>
+            <Button variant="outlined" fullWidth startIcon={<Publish />} onClick={handlePublishProject} disabled={!currentProject?.id}>Publiser</Button>
+            <Divider />
+            <Button variant="outlined" fullWidth startIcon={<ShoppingCart />} onClick={() => handleIntegrationConnect('google-drive')}>Google Drive</Button>
+            <Button variant="outlined" fullWidth startIcon={<Payment />} onClick={() => handleProjectSettingsUpdate({ autoBackup: true })}>Innstillinger</Button>
+            <Button variant="outlined" fullWidth startIcon={<MusicNote />} onClick={handleMigrateProject}>Migrer data</Button>
+            <Button variant="outlined" fullWidth startIcon={<Portrait />} onClick={() => handleProjectPermissions({ public: false })}>Tillatelser</Button>
+            <Button variant="outlined" fullWidth startIcon={<Warning />} onClick={handleProjectCompliance}>Compliance</Button>
+            <Divider />
+            <Typography variant="subtitle2" fontWeight={700}>Samarbeid</Typography>
+            <Button variant="text" size="small" startIcon={<Groups />} onClick={handleCreateCollabSession}>Ny økt</Button>
+            <Button variant="text" size="small" startIcon={<PersonAdd />} onClick={() => handleJoinSession('default')}>Bli med</Button>
+            <Button variant="text" size="small" startIcon={<VisibilityOff />} onClick={handleLeaveSession}>Forlat økt</Button>
+            <Divider />
+            <Typography variant="subtitle2" fontWeight={700}>Prosjekthandlinger</Typography>
+            <Button variant="text" size="small" startIcon={<Refresh />} onClick={handleRefreshProjectCache}>Oppdater cache</Button>
+            <Button variant="text" size="small" startIcon={<CloudUpload />} onClick={() => handleUploadFile(new File([], 'placeholder'))}>Last opp fil</Button>
+            <Button variant="text" size="small" startIcon={<Notes />} onClick={() => handleAddComment('Oppdatering fra utkast-panel')}>Legg til kommentar</Button>
+            <Button variant="text" size="small" startIcon={<CloudDone />} onClick={handleCreateBackup}>Sikkerhetskopi</Button>
+            <Button variant="text" size="small" startIcon={<Timeline />} onClick={() => handleProjectsByDateRange(projectData.eventDate || '', projectData.eventDate || '')}>Søk etter dato</Button>
+            <Button variant="text" size="small" startIcon={<Videocam />} onClick={() => handleSearchProjects(projectData.projectName)}>Søk prosjekter</Button>
+            <Button variant="text" size="small" startIcon={<CloudDone />} onClick={handleSyncOffline}>Synk frakoblet</Button>
+            <Button variant="text" size="small" startIcon={<Storage />} onClick={handleOptimizeProject}>Optimaliser</Button>
+            <Button variant="text" size="small" startIcon={<Refresh />} onClick={() => handleIntegrationDisconnect('google-drive')}>Frakoble integrasjon</Button>
+            <Button variant="text" size="small" startIcon={<Lightbulb />} onClick={() => setDraftMode(draftMode === 'draft' ? 'live' : 'draft')}>Bytt modus</Button>
+          </Stack>
+        </Box>
+      </Drawer>
+
+      {/* Cultural day buttons for wedding projects */}
+      {projectData.projectType === 'wedding' && projectData.weddingCulture !== 'norsk' && (
+        <Card sx={{ mt: 3, mb: 3, borderRadius: 3, border: '1px solid #e0e0e0', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', background: '#fafbfc' }}>
+          <CardContent>
+            <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary, mb: 2 }}>
+              <Info sx={{ fontSize: 28 }} /> Kulturelle seremonidager
+            </Typography>
+            <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ gap: 0.5 }}>
+              {WEDDING_CULTURES[projectData.weddingCulture as keyof typeof WEDDING_CULTURES]?.day_names?.map((dayName: string) => (
+                <Chip
+                  key={dayName}
+                  label={dayName}
+                  onClick={() => handleOpenCulturalDayExplanation(projectData.weddingCulture, dayName)}
+                  icon={<EventNote />}
+                  variant="outlined"
+                  sx={{ cursor: 'pointer' }}
+                />
+              ))}
+            </Stack>
           </CardContent>
         </Card>
       )}
