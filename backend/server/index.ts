@@ -216,6 +216,35 @@ function readStringArray(value: unknown): string[] {
   return [];
 }
 
+const EVENDI_EVENT_TYPES = new Set([
+  'wedding',
+  'confirmation',
+  'birthday',
+  'anniversary',
+  'engagement',
+  'baby_shower',
+  'conference',
+  'seminar',
+  'kickoff',
+  'summer_party',
+  'christmas_party',
+  'team_building',
+  'product_launch',
+  'trade_fair',
+  'corporate_anniversary',
+  'awards_night',
+  'employee_day',
+  'onboarding_day',
+  'corporate_event',
+]);
+
+function normalizeEventType(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) return null;
+  return EVENDI_EVENT_TYPES.has(normalized) ? normalized : null;
+}
+
 function isValidNorwegianOrgNumber(value: string): boolean {
   if (!/^[0-9]{9}$/.test(value)) return false;
   const digits = value.split('').map((digit) => Number(digit));
@@ -4387,7 +4416,7 @@ app.get('/api/deliveries/access/:accessCode', async (req, res) => {
   try {
     const { accessCode } = req.params;
     const delivery = await pool.query(
-      'SELECT id, couple_name, title, description, wedding_date, status, created_at FROM deliveries WHERE access_code = $1 AND status = $2',
+      'SELECT id, couple_name, title, description, wedding_date, status, event_type, created_at FROM deliveries WHERE access_code = $1 AND status = $2',
       [accessCode, 'active']
     );
     if (!delivery.rowCount) {
@@ -4450,16 +4479,20 @@ app.get('/api/deliveries/:vendorId/:deliveryId', async (req, res) => {
 app.post('/api/deliveries/:vendorId', async (req, res) => {
   try {
     const { vendorId } = req.params;
-    const { couple_name, couple_email, title, description, wedding_date, status: deliveryStatus } = req.body;
+    const { couple_name, couple_email, title, description, wedding_date, status: deliveryStatus, event_type } = req.body;
+    const normalizedEventType = normalizeEventType(event_type);
+    if (event_type && !normalizedEventType) {
+      return res.status(400).json({ error: 'Ugyldig event_type' });
+    }
     const id = crypto.randomUUID();
     const accessCode = Math.random().toString(36).substring(2, 8).toUpperCase();
     const now = new Date().toISOString();
     await pool.query(
-      `INSERT INTO deliveries (id, vendor_id, couple_name, couple_email, access_code, title, description, wedding_date, status, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::timestamp, $11::timestamp)`,
-      [id, vendorId, couple_name || '', couple_email || '', accessCode, title || 'Ny leveranse', description || '', wedding_date || '', deliveryStatus || 'draft', now, now]
+      `INSERT INTO deliveries (id, vendor_id, couple_name, couple_email, access_code, title, description, wedding_date, status, event_type, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::timestamp, $12::timestamp)`,
+      [id, vendorId, couple_name || '', couple_email || '', accessCode, title || 'Ny leveranse', description || '', wedding_date || '', deliveryStatus || 'draft', normalizedEventType || null, now, now]
     );
-    res.status(201).json({ id, vendor_id: vendorId, couple_name, couple_email, access_code: accessCode, title, description, wedding_date, status: deliveryStatus || 'draft', created_at: now, updated_at: now });
+    res.status(201).json({ id, vendor_id: vendorId, couple_name, couple_email, access_code: accessCode, title, description, wedding_date, status: deliveryStatus || 'draft', event_type: normalizedEventType || null, created_at: now, updated_at: now });
   } catch (error) {
     console.error('Error creating delivery:', error);
     res.status(500).json({ error: 'Kunne ikke opprette leveranse' });
@@ -4471,7 +4504,14 @@ app.patch('/api/deliveries/:vendorId/:deliveryId', async (req, res) => {
   try {
     const { vendorId, deliveryId } = req.params;
     const updates = req.body;
-    const allowedFields = ['couple_name', 'couple_email', 'title', 'description', 'wedding_date', 'status'];
+    const allowedFields = ['couple_name', 'couple_email', 'title', 'description', 'wedding_date', 'status', 'event_type'];
+    if (updates.event_type !== undefined) {
+      const normalizedEventType = normalizeEventType(updates.event_type);
+      if (!normalizedEventType) {
+        return res.status(400).json({ error: 'Ugyldig event_type' });
+      }
+      updates.event_type = normalizedEventType;
+    }
     const setClauses: string[] = [];
     const values: any[] = [];
     let paramIdx = 1;
@@ -6387,8 +6427,13 @@ app.post('/api/evendi/showcase-create-delivery', async (req: any, res: any) => {
     const vendor = await getVendorFromSession(req, res);
     if (!vendor) return;
 
-    const { showcaseItemIds, coupleId, projectId, timelineId, coupleName, coupleEmail, weddingDate, title, description } = req.body;
+    const { showcaseItemIds, coupleId, projectId, timelineId, coupleName, coupleEmail, weddingDate, title, description, eventType } = req.body;
     if (!showcaseItemIds?.length) return res.status(400).json({ error: 'Velg minst ett showcase-element' });
+
+    const normalizedEventType = normalizeEventType(eventType);
+    if (eventType && !normalizedEventType) {
+      return res.status(400).json({ error: 'Ugyldig eventType' });
+    }
 
     // Resolve vendor → user ID
     const tokenSCD = req.headers.authorization?.replace('Bearer ', '');
@@ -6416,8 +6461,8 @@ app.post('/api/evendi/showcase-create-delivery', async (req: any, res: any) => {
 
     await pool.query(
       `INSERT INTO deliveries (id, vendor_id, title, description, couple_name, couple_email, wedding_date,
-       access_code, status, project_id, timeline_id, couple_id, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7::date, $8, 'active', $9, $10, $11, $12::timestamp, $13::timestamp)`,
+       access_code, status, project_id, timeline_id, couple_id, event_type, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7::date, $8, 'active', $9, $10, $11, $12, $13::timestamp, $14::timestamp)`,
       [
         deliveryId, vendor.id,
         title || `Leveranse fra ${vendor.business_name}`,
@@ -6427,6 +6472,7 @@ app.post('/api/evendi/showcase-create-delivery', async (req: any, res: any) => {
         weddingDate || null,
         accessCode,
         projectId || null, timelineId || null, coupleId || null,
+        normalizedEventType || null,
         now, now
       ]
     );
@@ -6536,6 +6582,7 @@ app.post('/api/evendi/showcase-create-delivery', async (req: any, res: any) => {
         id: deliveryId,
         accessCode,
         title: title || `Leveranse fra ${vendor.business_name}`,
+        eventType: normalizedEventType || null,
         itemCount: deliveryItems.length,
         items: deliveryItems,
       },
@@ -6561,7 +6608,7 @@ app.get('/api/evendi/showcase-delivery-status/:showcaseItemId', async (req: any,
 
     // Check if this showcase item has been published as a delivery
     const deliveriesRes = await pool.query(
-      `SELECT d.id, d.title, d.couple_name, d.access_code, d.status, d.created_at
+      `SELECT d.id, d.title, d.couple_name, d.access_code, d.status, d.event_type, d.created_at
        FROM deliveries d
        JOIN delivery_items di ON di.delivery_id = d.id
        JOIN showcase_items si ON si.delivery_id = d.id
@@ -6572,7 +6619,7 @@ app.get('/api/evendi/showcase-delivery-status/:showcaseItemId', async (req: any,
 
     // Also check direct delivery_id link on showcase_items
     const directRes = await pool.query(
-      `SELECT d.id, d.title, d.couple_name, d.access_code, d.status, d.created_at
+      `SELECT d.id, d.title, d.couple_name, d.access_code, d.status, d.event_type, d.created_at
        FROM showcase_items si
        JOIN deliveries d ON d.id = si.delivery_id
        WHERE si.id = $1 AND d.vendor_id = $2`,
@@ -6622,6 +6669,7 @@ app.get('/api/evendi/delivery-access-by-id/:deliveryId', async (req: any, res: a
         title: delivery.title,
         description: delivery.description,
         weddingDate: delivery.wedding_date,
+        eventType: delivery.event_type || null,
         accessCode: delivery.access_code,
         items: itemsRes.rows,
       },

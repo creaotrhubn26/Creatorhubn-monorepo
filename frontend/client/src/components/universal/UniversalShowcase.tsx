@@ -794,16 +794,18 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
   }, [evendiBookings]);
   
   // New context hooks
-  const { 
-    currentProject, 
-    updateProject, 
+  const {
+    currentProject,
+    projects,
+    loadProjects,
+    updateProject,
     updateProjectSettings,
     getProjectSettings,
     updateProjectMetadata,
     getProjectMetadata: _getProjectMetadata,
     updateIntegrationStatus,
-    getIntegrationStatus
-} = useProject();
+    getIntegrationStatus,
+  } = useProject();
   
   const {
     settings: userSettings, 
@@ -843,6 +845,32 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
       setShowcaseSettings(prev => ({ ...prev, ...(userSettings.showcase as any) }));
     }
   }, [currentProject, userSettings]);
+
+  useEffect(() => {
+    if (!projects.length) {
+      loadProjects().catch((error) => {
+        console.warn('[UniversalShowcase] Failed to load projects:', error);
+      });
+    }
+  }, [projects.length, loadProjects]);
+
+  useEffect(() => {
+    if (!showPublishToEvendiDialog) return;
+    if (!evendiProjectId && selectedItemForEvendi?.projectId) {
+      setEvendiProjectId(selectedItemForEvendi.projectId);
+    }
+    if (!evendiEventType && selectedItemForEvendi?.projectType) {
+      setEvendiEventType(selectedItemForEvendi.projectType);
+    }
+  }, [showPublishToEvendiDialog, selectedItemForEvendi, evendiProjectId, evendiEventType]);
+
+  useEffect(() => {
+    if (!evendiProjectId || evendiEventType) return;
+    const matchedProject = projects.find((project) => project.id === evendiProjectId);
+    if (matchedProject?.projectType) {
+      setEvendiEventType(matchedProject.projectType);
+    }
+  }, [evendiProjectId, evendiEventType, projects]);
 
   // Real-time event handling
   useEffect(() => {
@@ -989,6 +1017,8 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
   const [showPublishToEvendiDialog, setShowPublishToEvendiDialog] = useState(false);
   const [selectedItemForEvendi, setSelectedItemForEvendi] = useState<ShowcaseItem | null>(null);
   const [evendiDeliveryForm, setEvendiDeliveryForm] = useState({ coupleName: '', coupleEmail: '', weddingDate: '', title: '', description: '' });
+  const [evendiProjectId, setEvendiProjectId] = useState<string>('');
+  const [evendiEventType, setEvendiEventType] = useState<string>('');
   const [evendiPublishing, setEvendiPublishing] = useState(false);
   const [evendiResult, setEvendiResult] = useState<{ accessCode: string; deliveryId: string; itemCount: number } | null>(null);
   const [showProToolsDialog, setShowProToolsDialog] = useState(false);
@@ -4150,6 +4180,10 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
 });
 
   const filteredItems = items.filter((item: ShowcaseItem) => {
+    if (showPublishToEvendiDialog) {
+      if (evendiProjectId && item.projectId !== evendiProjectId) return false;
+      if (evendiEventType && item.projectType !== evendiEventType) return false;
+    }
     if (filter === 'all') return true;
     if (filter === 'featured') return item.featured;
     if (filter === 'favorites') return favorites.has(item.id);
@@ -11074,6 +11108,8 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
           setSelectedItemForEvendi(null);
           setEvendiResult(null);
           setEvendiDeliveryForm({ coupleName: '', coupleEmail: '', weddingDate: '', title: '', description: '' });
+          setEvendiProjectId('');
+          setEvendiEventType('');
         }}
         maxWidth="sm"
         fullWidth
@@ -11124,6 +11160,43 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                 Opprett en Evendi-leveranse fra showcase-elementet <strong>{selectedItemForEvendi?.title}</strong>.
                 Kunden kan hente denne med en tilgangskode i Evendi-appen.
               </Typography>
+
+              <FormControl fullWidth size="small">
+                <InputLabel>Relatert prosjekt</InputLabel>
+                <Select
+                  value={evendiProjectId}
+                  onChange={(e) => setEvendiProjectId(e.target.value)}
+                  label="Relatert prosjekt"
+                  sx={{ '& .MuiOutlinedInput-root': { color: 'white' }, '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.5)' }, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' } }}
+                >
+                  <MenuItem value="">Ingen valgt</MenuItem>
+                  {projects.map((project) => (
+                    <MenuItem key={project.id} value={project.id}>
+                      {project.name || project.clientName || project.id}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+
+              <FormControl fullWidth size="small">
+                <InputLabel>Event type</InputLabel>
+                <Select
+                  value={evendiEventType}
+                  onChange={(e) => setEvendiEventType(e.target.value)}
+                  label="Event type"
+                  sx={{ '& .MuiOutlinedInput-root': { color: 'white' }, '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.5)' }, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' } }}
+                >
+                  <MenuItem value="">Ingen valgt</MenuItem>
+                  <MenuItem value="wedding">Bryllup</MenuItem>
+                  <MenuItem value="portrait">Portrett</MenuItem>
+                  <MenuItem value="event">Event</MenuItem>
+                  <MenuItem value="commercial">Kommersielt</MenuItem>
+                  <MenuItem value="video">Video</MenuItem>
+                  <MenuItem value="music">Musikk</MenuItem>
+                  <MenuItem value="family">Familie</MenuItem>
+                  <MenuItem value="product">Produkt</MenuItem>
+                </Select>
+              </FormControl>
 
               <TextField
                 label="Leveransetittel"
@@ -11184,6 +11257,8 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
               setSelectedItemForEvendi(null);
               setEvendiResult(null);
               setEvendiDeliveryForm({ coupleName: '', coupleEmail: '', weddingDate: '', title: '', description: '' });
+              setEvendiProjectId('');
+              setEvendiEventType('');
             }}
             sx={{ color: 'rgba(255,255,255,0.5)' }}
           >
@@ -11208,7 +11283,8 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
                       weddingDate: evendiDeliveryForm.weddingDate || undefined,
                       title: evendiDeliveryForm.title || undefined,
                       description: evendiDeliveryForm.description || undefined,
-                      projectId: (selectedItemForEvendi as any).projectId || undefined,
+                      projectId: evendiProjectId || (selectedItemForEvendi as any).projectId || undefined,
+                      eventType: evendiEventType || (selectedItemForEvendi as any).projectType || undefined,
                     }),
                   });
                   const data = await response.json();
