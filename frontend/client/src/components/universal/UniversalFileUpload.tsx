@@ -179,6 +179,8 @@ export const UniversalFileUpload: React.FC<UniversalFileUploadProps> = ({
   selectedProject,
   onProjectSelect
 }) => {
+  const { user } = useAuth();
+  const effectiveUserId = userId || user?.id || user?.email || 'current-user';
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
@@ -218,7 +220,14 @@ export const UniversalFileUpload: React.FC<UniversalFileUploadProps> = ({
   const { 
     connectionState, 
     isConnected 
-} = usePhotoEnhancementWebSocket({ userId });
+} = usePhotoEnhancementWebSocket({ userId: effectiveUserId });
+
+  const { data: fileManagementStats = {}, isLoading: isFileStatsLoading } = useQuery({
+    queryKey: ['/api/file-management/stats', effectiveUserId],
+    queryFn: () => apiRequest('/api/file-management/stats'),
+    retry: false,
+    refetchInterval: 20000
+  });
 
   // Queue statistics
   const queueStats = uploadQueue.getQueueStats();
@@ -227,6 +236,20 @@ export const UniversalFileUpload: React.FC<UniversalFileUploadProps> = ({
   const [googleDriveSyncStatus, setGoogleDriveSyncStatus] = useState<'idle' | 'syncing' | 'success' | 'error'>('idle');
   const [googleDriveItems, setGoogleDriveItems] = useState<any[]>([]);
   const [syncProgress, setSyncProgress] = useState(0);
+
+  React.useEffect(() => {
+    const percent = Number(
+      fileManagementStats?.storageUsedPercent ??
+      fileManagementStats?.storagePercent ??
+      fileManagementStats?.usedPercent ??
+      0
+    );
+    if (Number.isFinite(percent) && percent >= 90) {
+      setStorageWarning(`Lagring er ${percent.toFixed(0)}% brukt`);
+    } else if (storageWarning) {
+      setStorageWarning(null);
+    }
+  }, [fileManagementStats, storageWarning]);
 
   // Google Drive Integration - Sync Function with Comprehensive Folder Structure
   const syncToGoogleDrive = React.useCallback(async () => {
@@ -240,7 +263,7 @@ export const UniversalFileUpload: React.FC<UniversalFileUploadProps> = ({
       const authHeader = await auth.getAuthHeader();
 
       // Get current upload items
-      const uploadItems = integration.getData(`universal-file-upload-${userId}:items`) || [];
+      const uploadItems = integration.getData(`universal-file-upload-${effectiveUserId}:items`) || [];
 
       // Get current project context from UniversalDashboard
       const currentProject = integration.getData(`universal-dashboard-${userId}:selectedProject`);
@@ -254,7 +277,7 @@ export const UniversalFileUpload: React.FC<UniversalFileUploadProps> = ({
         body: JSON.stringify({
           items: uploadItems,
           profession,
-          userId,
+          userId: effectiveUserId,
           projectId: currentProject?.id,
           projectName: currentProject?.title || currentProject?.name,
           clientName: currentProject?.clientName,
@@ -313,7 +336,7 @@ export const UniversalFileUpload: React.FC<UniversalFileUploadProps> = ({
       // Broadcast sync completion to other components
       communication.sendMessage({
         type: 'uploads-synced-to-drive',
-        from: `universal-file-upload-${userId}`,
+        from: `universal-file-upload-${effectiveUserId}`,
         to: 'all',
         priority: 'medium',
         data: {
@@ -332,7 +355,7 @@ export const UniversalFileUpload: React.FC<UniversalFileUploadProps> = ({
   } finally {
       setSyncProgress(100);
   }
-}, [enableGoogleDriveSync, googleDriveFolderId, profession, userId, componentRegistry, communication, onGoogleDriveSync]);
+}, [enableGoogleDriveSync, googleDriveFolderId, profession, effectiveUserId, componentRegistry, communication, onGoogleDriveSync, auth, integration, projectId]);
 
   // Register component with MasterIntegrationProvider
   React.useEffect(() => {
@@ -412,7 +435,7 @@ export const UniversalFileUpload: React.FC<UniversalFileUploadProps> = ({
       unsubscribeClear();
       unsubscribeValidate();
   };
-}, [componentRegistry, dataFlow, communication, features, profession, userId]);
+}, [componentRegistry, dataFlow, communication, features, profession, effectiveUserId]);
 
   // Get profession-specific colors
   const getProfessionColors = () => {
@@ -431,7 +454,8 @@ export const UniversalFileUpload: React.FC<UniversalFileUploadProps> = ({
   const handleFileSelect = useCallback(async (files: FileList | null) => {
     if (!files) return;
 
-    const fileArray = Array.from(files).slice(0, maxFiles);
+    const limit = enableMultipleFiles ? maxFiles : 1;
+    const fileArray = Array.from(files).slice(0, limit);
     
     // Validate files against camera database
     const validation = await validateFiles(fileArray);
@@ -443,21 +467,63 @@ export const UniversalFileUpload: React.FC<UniversalFileUploadProps> = ({
       onFilesSelected(validation.valid);
   }
 
+    if (!selectedProject && onProjectSelect) {
+      onProjectSelect({
+        id: `upload-${Date.now()}`,
+        name: 'Opplastingsprosjekt',
+        createdAt: new Date().toISOString()
+      });
+    }
+
+    onProjectUpdate?.({
+      ...(selectedProject || {}),
+      lastUploadAt: new Date().toISOString(),
+      pendingFiles: validation.valid.length
+    });
+
+    onWorklogCreate?.({
+      projectId: selectedProject?.id,
+      description: `Valgte ${validation.valid.length} filer for opplasting`,
+      loggedAt: new Date().toISOString(),
+      metadata: {
+        enableAIAnalysis,
+        enableAutoTagging,
+        enableSmartCollections,
+        integrationContext
+      }
+    });
+
+    integration.setData(`universal-file-upload-${effectiveUserId}:items`, validation.valid);
+    communication.sendMessage({
+      type: 'file-upload:selected',
+      from: `universal-file-upload-${effectiveUserId}`,
+      to: 'all',
+      priority: 'low',
+      data: {
+        fileCount: validation.valid.length,
+        projectId: selectedProject?.id,
+        collaborationSessionId,
+        enableRealTimeSync
+      }
+    });
+
     // Show validation results
     if (validation.invalid.length > 0) {
       console.warn('Noen filer ble avvist:', validation.invalid);
   }
-}, [maxFiles, onFilesSelected]);
+}, [enableMultipleFiles, maxFiles, onFilesSelected, selectedProject, onProjectSelect, onProjectUpdate, onWorklogCreate, enableAIAnalysis, enableAutoTagging, enableSmartCollections, integrationContext, integration, communication, effectiveUserId, collaborationSessionId, enableRealTimeSync]);
 
   // Handle drag and drop
   const handleDrop = useCallback((event: React.DragEvent) => {
+    if (!enableDragDrop) return;
     event.preventDefault();
     handleFileSelect(event.dataTransfer.files);
-}, [handleFileSelect]);
+}, [handleFileSelect, enableDragDrop]);
 
   const handleDragOver = useCallback((event: React.DragEvent) => {
+    if (!enableDragDrop) return;
     event.preventDefault();
-}, []);
+}, [enableDragDrop]);
 
   // Remove file from selection
   const removeFile = useCallback((index: number) => {
@@ -471,6 +537,23 @@ export const UniversalFileUpload: React.FC<UniversalFileUploadProps> = ({
   // Enhanced upload files with advanced queue management
   const uploadFiles = useCallback(async () => {
     if (selectedFiles.length === 0) return;
+
+    const uploadMetadata = {
+      ...additionalMetadata,
+      integrationContext,
+      projectId,
+      collaborationSessionId,
+      enableAIAnalysis,
+      enableAutoTagging,
+      enableSmartCollections
+    };
+
+    onWorklogCreate?.({
+      projectId: selectedProject?.id,
+      description: `Starter opplasting av ${selectedFiles.length} filer`,
+      loggedAt: new Date().toISOString(),
+      metadata: uploadMetadata
+    });
 
     // Storage validation check
     if (showStorageInfo && storageWarning) {
@@ -515,9 +598,25 @@ export const UniversalFileUpload: React.FC<UniversalFileUploadProps> = ({
           status: 'queued',
           queuePosition: queueStats.queued + index + 1,
           success: true,
-          message: `Lagt til i opplastingskø (posisjon ${queueStats.queued + index + 1})`
+          message: `Lagt til i opplastingskø (posisjon ${queueStats.queued + index + 1})`,
+          metadata: uploadMetadata
         }));
         onUploadComplete(queuedResults);
+      }
+
+      onProjectUpdate?.({
+        ...(selectedProject || {}),
+        lastUploadAt: new Date().toISOString(),
+        lastUploadCount: uploadIds.length
+      });
+
+      if (enableAIAnalysis) {
+        onMeetingCreate?.({
+          title: 'AI gjennomgang av opplastinger',
+          projectId: selectedProject?.id,
+          scheduledAt: new Date().toISOString(),
+          context: uploadMetadata
+        });
       }
 
     } else if (enableBackgroundUpload) {
@@ -525,7 +624,7 @@ export const UniversalFileUpload: React.FC<UniversalFileUploadProps> = ({
       const taskIds = backgroundUploadService.addFiles(
         selectedFiles,
         uploadEndpoint,
-        additionalMetadata,
+        uploadMetadata,
         maxRetries
       );
 
@@ -586,13 +685,13 @@ export const UniversalFileUpload: React.FC<UniversalFileUploadProps> = ({
           formData.append('file', file);
           
           // Add metadata
-          Object.entries(additionalMetadata).forEach(([key, value]) => {
+          Object.entries(uploadMetadata).forEach(([key, value]) => {
             formData.append(key, JSON.stringify(value));
         });
 
           try {
             const response = await fetch(uploadEndpoint, {
-              method: 'POS',
+              method: 'POST',
               headers: {
                 ...auth
           },
@@ -619,7 +718,13 @@ export const UniversalFileUpload: React.FC<UniversalFileUploadProps> = ({
 
         if (onUploadComplete) {
           onUploadComplete(results);
-      }
+        }
+
+        onProjectUpdate?.({
+          ...(selectedProject || {}),
+          lastUploadAt: new Date().toISOString(),
+          lastUploadCount: results.length
+        });
 
         // Clear successful uploads
         const failedFiles = results
@@ -632,10 +737,19 @@ export const UniversalFileUpload: React.FC<UniversalFileUploadProps> = ({
         setUploadProgress({});
     }
   }
-}, [selectedFiles, uploadEndpoint, additionalMetadata, onUploadComplete, onUploadError, enableBackgroundUpload, maxRetries, onFilesSelected, enableAdvancedQueue, enhancementType, queuePriority, maxFiles, profession, projectId, showStorageInfo, storageWarning, uploadQueue, queueStats]);
+}, [selectedFiles, uploadEndpoint, additionalMetadata, integrationContext, onUploadComplete, onUploadError, onProjectUpdate, onWorklogCreate, onMeetingCreate, enableBackgroundUpload, maxRetries, onFilesSelected, enableAdvancedQueue, enhancementType, queuePriority, maxFiles, profession, projectId, showStorageInfo, storageWarning, uploadQueue, queueStats, selectedProject, collaborationSessionId, enableAIAnalysis, enableAutoTagging, enableSmartCollections]);
 
   // Get supported formats for display
   const supportedFormats = getSupportedExtensions();
+  const databaseSupportedFormats = universalFileFormatSupport.getSupportedExtensions().length;
+  const storagePercent = Number(
+    fileManagementStats?.storageUsedPercent ??
+    fileManagementStats?.storagePercent ??
+    fileManagementStats?.usedPercent ??
+    0
+  );
+  const storageUsed = fileManagementStats?.storageUsed ?? fileManagementStats?.usedBytes ?? fileManagementStats?.used;
+  const storageTotal = fileManagementStats?.storageTotal ?? fileManagementStats?.totalBytes ?? fileManagementStats?.total;
 
   return (
     <Box className={className}>
@@ -658,6 +772,41 @@ export const UniversalFileUpload: React.FC<UniversalFileUploadProps> = ({
           variant="outlined"
           sx={{ fontSize: '10px', height: 18}}
         />
+        {isFileStatsLoading ? (
+          <Chip size="small" label="Laster lagring..." variant="outlined" />
+        ) : (
+          <Chip
+            size="small"
+            label={storagePercent ? `Lagring ${storagePercent.toFixed(0)}%` : 'Lagring ok'}
+            color={storagePercent >= 90 ? 'warning' : 'default'}
+            icon={storagePercent >= 90 ? <WarningIcon /> : <StorageIcon />}
+            variant="outlined"
+          />
+        )}
+        <Chip
+          size="small"
+          label={`Formater: ${databaseSupportedFormats}`}
+          variant="outlined"
+          icon={<InfoIcon />}
+        />
+      </Box>
+
+      <Stack direction="row" spacing={1} sx={{ mb: 2, flexWrap: 'wrap' }}>
+        <Chip size="small" label="Universal" color={universalFileUploadAccess ? 'success' : 'default'} />
+        <Chip size="small" label="File upload" color={fileUploadAccess ? 'success' : 'default'} />
+        <Chip size="small" label="Background" color={backgroundUploadAccess ? 'success' : 'default'} />
+        <Chip size="small" label="Drive" color={googleDriveUploadAccess ? 'success' : 'default'} />
+        <Chip size="small" label="Queue" color={uploadQueueAccess ? 'success' : 'default'} />
+        <Chip size="small" label="Progress" color={uploadProgressAccess ? 'success' : 'default'} />
+        <Chip size="small" label="Analytics" color={uploadAnalyticsAccess ? 'success' : 'default'} />
+        <Chip size="small" label="Scheduling" color={uploadSchedulingAccess ? 'success' : 'default'} />
+        <Chip size="small" label={`Sync: ${enableRealTimeSync ? 'Pa' : 'Av'}`} variant="outlined" />
+        {collaborationSessionId && (
+          <Chip size="small" label={`Session: ${collaborationSessionId}`} variant="outlined" />
+        )}
+        {enableAIAnalysis && <Chip size="small" label="AI analyse" color="primary" />}
+        {enableAutoTagging && <Chip size="small" label="Auto-tag" color="primary" />}
+        {enableSmartCollections && <Chip size="small" label="Smart collections" color="primary" />}
       </Box>
 
       {/* Google Workspace Storage Information */}
@@ -683,11 +832,12 @@ export const UniversalFileUpload: React.FC<UniversalFileUploadProps> = ({
                   Opplastingskø
                 </Typography>
                 <Chip
-                  label={connectionState === 'connected' ? 'Tilkoblet' : 'Frakoblet'}
+                  label={connectionState === 'connected' || isConnected ? 'Tilkoblet' : 'Frakoblet'}
                   size="small"
-                  color={connectionState === 'connected' ? 'success' : 'warning'}
+                  color={connectionState === 'connected' || isConnected ? 'success' : 'warning'}
                   variant="outlined"
                 />
+                <Chip size="small" label={`Prioritet: ${queuePriority}`} variant="outlined" />
               </Stack>
               <Stack direction="row" spacing={1}>
                 {queueStats.uploading > 0 && (
@@ -755,11 +905,19 @@ export const UniversalFileUpload: React.FC<UniversalFileUploadProps> = ({
         </Alert>
       )}
 
+      {(storageUsed || storageTotal) && (
+        <Alert severity={storagePercent >= 90 ? 'warning' : 'info'} sx={{ mb: 2 }}>
+          <Typography variant="body2">
+            Lagring brukt: {storageUsed || 'ukjent'} / {storageTotal || 'ukjent'}
+          </Typography>
+        </Alert>
+      )}
+
       {/* File Drop Zone */}
       <Paper
         elevation={2}
-        onDrop={handleDrop}
-        onDragOver={handleDragOver}
+        onDrop={enableDragDrop ? handleDrop : undefined}
+        onDragOver={enableDragDrop ? handleDragOver : undefined}
         sx={{
           border: `2px dashed ${colors.primary}`,
           borderRadius:  2,
@@ -788,7 +946,7 @@ export const UniversalFileUpload: React.FC<UniversalFileUploadProps> = ({
         <input
           ref={fileInputRef}
           type="file"
-          multiple
+          multiple={enableMultipleFiles}
           accept={getFileAcceptAttribute()}
           style={{ display: 'none' }}
           onChange={(e) => handleFileSelect(e.target.files)}
@@ -1062,6 +1220,60 @@ export const UniversalFileUpload: React.FC<UniversalFileUploadProps> = ({
             />
           )}
         </Box>
+      )}
+
+      {enableGoogleDriveSync && googleDriveItems.length > 0 && (
+        <Card sx={{ mt: 2 }}>
+          <CardContent>
+            <Typography variant="subtitle2" sx={{ mb: 1 }}>
+              Synkroniserte filer ({googleDriveItems.length})
+            </Typography>
+            <List dense>
+              {googleDriveItems.slice(0, 5).map((item, index) => (
+                <ListItem key={item.id || index} divider>
+                  <ListItemIcon>
+                    <SuccessIcon color="success" />
+                  </ListItemIcon>
+                  <ListItemText
+                    primary={item.name || item.fileName || `Fil ${index + 1}`}
+                    secondary={item.id || item.fileId || 'Ukjent ID'}
+                  />
+                  <Stack direction="row" spacing={1}>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={() => onItemSelect?.(item)}
+                    >
+                      Velg
+                    </Button>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={() => onItemUpdate?.({
+                        ...item,
+                        updatedAt: new Date().toISOString()
+                      })}
+                    >
+                      Oppdater
+                    </Button>
+                    <IconButton
+                      size="small"
+                      color="error"
+                      onClick={() => onItemDelete?.(item)}
+                    >
+                      <DeleteIcon />
+                    </IconButton>
+                  </Stack>
+                </ListItem>
+              ))}
+            </List>
+            {googleDriveItems.length > 5 && (
+              <Typography variant="caption" color="text.secondary">
+                Viser 5 av {googleDriveItems.length} filer.
+              </Typography>
+            )}
+          </CardContent>
+        </Card>
       )}
     </Box>
   );

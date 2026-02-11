@@ -125,8 +125,8 @@ export const PROFESSION_DASHBOARD_CONFIG: Record<string, ProfessionDashboardConf
         enabled: true,
         required: true, // Required for photographers
         order: 2,
-        description: 'Bryllupsplanlegging med kulturtilpasning',
-        component: 'WeddingTimelineAdmin',
+        description: 'Arrangementsplanlegging med kulturtilpasning',
+        component: 'EvendiTimelineAdmin',
         features: {
           timeline_editor: {
             enabled: true,
@@ -393,8 +393,8 @@ export const PROFESSION_DASHBOARD_CONFIG: Record<string, ProfessionDashboardConf
         enabled: false, // ⭐ CAN BE ENABLED BY ADMIN
         required: false,
         order: 2,
-        description: 'Bryllupsplanlegging for videografer',
-        component: 'WeddingTimelineAdmin',
+        description: 'Arrangementsplanlegging for videografer',
+        component: 'EvendiTimelineAdmin',
         features: {
           timeline_editor: {
             enabled: true,
@@ -969,8 +969,8 @@ export const PROFESSION_DASHBOARD_CONFIG: Record<string, ProfessionDashboardConf
         enabled: true,
         required: true,
         order: 2,
-        description: 'Bryllupsplanlegging for foto + video team',
-        component: 'WeddingTimelineAdmin',
+        description: 'Arrangementsplanlegging for foto + video team',
+        component: 'EvendiTimelineAdmin',
         features: {
           timeline_editor: {
             enabled: true,

@@ -35,7 +35,7 @@ function IntegrationArea({ icon: Icon, title, description, features, status }: I
       <CardContent sx={{ pt:  0 ,  ...theming.getThemedCardSx() }}>
         <Box component="ul" sx={{ listStyle: 'none', p: 0, m:  0 }}>
           {features.map((feature, index) => (
-            <Box component="li" key={index} sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0, .fontSize: '0.875rem'}}>
+            <Box component="li" key={index} sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0, fontSize: '0.875rem'}}>
               <Box sx={{ width:  12, height:  12, color: '#059660', flexShrink:  0 }}>✓</Box>
               {feature}
             </Box>
@@ -52,9 +52,23 @@ export function AIWritingIntegrationGuide() {
   const theming = useTheming('photographer');
   // Mock data removed - using database connection
   const keyFeatures = language === 'no' ? [
-    'Tospråklig støtte (Norsk/Engelsk)','Automatisk språkgjenkjenning''Kontekstspesifikk forbedring','Sanntids grammatikk-kontroll','Profesjonell omformulering','CreatorHub Norge branding','Ingen eksterne avhengigheter','Integrert i alle tekstfelt'
+    'Tospraklig stotte (Norsk/Engelsk)',
+    'Automatisk sprakkjenkjenning',
+    'Kontekstspesifikk forbedring',
+    'Sanntids grammatikk-kontroll',
+    'Profesjonell omformulering',
+    'CreatorHub Norge branding',
+    'Ingen eksterne avhengigheter',
+    'Integrert i alle tekstfelt'
   ] : [
-    'Bilingual support (Norwegian/English)','Automatic language detection','Context-specific improvement','Real-time grammar checking''Professional paraphrasing','CreatorHub Norge branding','No external dependencies','Integrated in all text fields'
+    'Bilingual support (Norwegian/English)',
+    'Automatic language detection',
+    'Context-specific improvement',
+    'Real-time grammar checking',
+    'Professional paraphrasing',
+    'CreatorHub Norge branding',
+    'No external dependencies',
+    'Integrated in all text fields'
   ];
   return (
     <div className="flex flex-col items-center justify-center min-h-screen">

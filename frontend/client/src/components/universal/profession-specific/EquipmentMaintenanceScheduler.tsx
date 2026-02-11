@@ -611,7 +611,7 @@ export default function EquipmentMaintenanceScheduler({
                           )}
                         </Avatar>
                         <Box sx={{ flex:  1 }}>
-                          <Typography variant="subtitle2" sx={{ fontWeight: 600}>
+                          <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
                             {item.name}
                           </Typography>
                           <Typography variant="body2" color="text.secondary">
@@ -633,7 +633,7 @@ export default function EquipmentMaintenanceScheduler({
                             mb:  1}}
                         >
                           <Typography variant="body2">Vedlikeholdsscore</Typography>
-                          <Typography variant="body2" sx={{ fontWeight: 600}>
+                          <Typography variant="body2" sx={{ fontWeight: 600 }}>
                             {maintenanceScore}%
                           </Typography>
                         </Box>
@@ -664,7 +664,7 @@ export default function EquipmentMaintenanceScheduler({
                           <Typography variant="body2" color="text.secondary">
                             Neste service
                           </Typography>
-                          <Typography variant="body2" sx={{ fontWeight: 600}>
+                          <Typography variant="body2" sx={{ fontWeight: 600 }}>
                             {item.nextService.toLocaleDateString('no-NO')}
                           </Typography>
                         </Box>
@@ -849,7 +849,7 @@ export default function EquipmentMaintenanceScheduler({
                 <TableRow key={item.id}>
                   <TableCell>
                     <Box>
-                      <Typography variant="body2" sx={{ fontWeight: 600}>
+                      <Typography variant="body2" sx={{ fontWeight: 600 }}>
                         {item.name}
                       </Typography>
                       <Typography variant="caption" color="text.secondary">

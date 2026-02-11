@@ -11,6 +11,7 @@ import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
 import getProfessionIconUtil from '@/utils/profession-icons';
 import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
 import { useAuth } from '@/hooks/useAuth';
+import { WorkflowIntegrationService } from '@/services/WorkflowIntegrationService';
 import { apiRequest } from '@/lib/queryClient';
 import ShotListManager from '@/components/universal/misc/shot-list-manager';
 import { getProjectTypeNextSteps, getProjectTypeInitialDescription } from '@/utils/project-worklog-helpers';
@@ -1757,6 +1758,9 @@ useEffect(() => {
     // Proceed with project creation
     try {
       const newProject = await createProjectContext(projectData as any);
+      if (newProject) {
+        await WorkflowIntegrationService.orchestrateCompleteWorkflow(newProject as any);
+      }
       // Call callback to notify parent component
       if (onProjectCreated && newProject) {
         onProjectCreated(newProject);
@@ -4428,6 +4432,9 @@ useEffect(() => {
                   showInfoToast('Oppretter prosjekt...', 2000);
                   const newProject = await createProjectContext(projectData as any);
                   showSuccessToast(`Prosjekt "${projectData.projectName}" opprettet!`, 4000);
+                  if (newProject) {
+                    await WorkflowIntegrationService.orchestrateCompleteWorkflow(newProject as any);
+                  }
                   if (onProjectCreated && newProject) {
                     onProjectCreated(newProject);
                   }

@@ -29,7 +29,9 @@ interface ClientAccessSettingsProps {
   settings: any;
   onSettingChange: (key: string, value: any) => void;
   title?: string;
-  description?: string
+  description?: string;
+  projectId?: string;
+  onViewTimeline?: () => void;
 }
 
 const ClientAccessSettings: React.FC<ClientAccessSettingsProps> = ({ 

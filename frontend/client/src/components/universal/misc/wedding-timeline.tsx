@@ -118,9 +118,9 @@ export default function WeddingTimeline({
   // Glassmorphism effect for professional design
   const glassEffect = `
     linear-gradient(135deg, 
-      rgba(2, 5, 5, 255, 255, 0.1) 0%, 
-      rgba(2, 5, 5, 255, 255, 0.05) 50%, 
-      rgba(2, 5, 5, 255, 255, 0.02) 100%
+      rgba(2, 5, 5, 0.1) 0%, 
+      rgba(2, 5, 5, 0.05) 50%, 
+      rgba(2, 5, 5, 0.02) 100%
     )
   `;
   // State management - Original 4 Tab Structure
@@ -159,23 +159,24 @@ export default function WeddingTimeline({
   const updateEventsMutation = useMutation({
     mutationFn: async (events: TimelineEvent[]) => {
       return apiRequest(`/api/wedding-timeline/timelines/${weddingId}/events`, {
-        method: 'PU',
-        body: { events }
-    });
-  },
-      onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/component", ],});
-  }
-});
-    // Toast notification removed for Zero Toast Policy
-  },
-    // Toast notification removed for Zero Toast Policy
-  }
-});
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ events })
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/wedding-timeline/timelines", weddingId] });
+    }
+  });
   const addEventMutation = useMutation({
     mutationFn: async (eventData: any) => {
       return apiRequest(`/api/wedding-timeline/timelines/${weddingId}/events`, {
-        method: 'POS',
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
         body: {
           ...eventData,
           id: `event-${Date.now()}`,
@@ -185,29 +186,24 @@ export default function WeddingTimeline({
     });
   },
       onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/component", ],});
-  }
-});
+      queryClient.invalidateQueries({ queryKey: ["/api/wedding-timeline/timelines", weddingId] });
       setOpenAddEventDialog(false);
       setNewEvent({
         activity: '',
-        location: ', ',
+        location: '',
         activityType: 'photo',
         hasPhoto: true,
         hasVideo: false
-  });
-    // Toast notification removed for Zero Toast Policy
+      });
   }
 });
   const syncGoogleDriveMutation = useMutation({
     mutationFn: async () => {
       return apiRequest(`/api/wedding-timeline/timelines/${weddingId}/sync-google-drive`, {
         method: 'POST'
+      });
+    }
   });
-  },
-    // Toast notification removed for Zero Toast Policy
-  }
-});
   // Get events with VIP system integration
   const events: TimelineEvent[] = timeline?.events || [];
   // VIP contact management
@@ -238,9 +234,9 @@ export default function WeddingTimeline({
     updateEventsMutation.mutate(updatedEvents);
     // Reset form
     setNewPerson({
-      role: ', ',
-      email: ', ',
-      phone: ', ',
+      role: '',
+      email: '',
+      phone: '',
       priority: 'medium',
       is_vip: false
 });
@@ -251,7 +247,7 @@ export default function WeddingTimeline({
     addEventMutation.mutate(newEvent);
 };
   const triggerVIPNotification = (event: TimelineEvent, newPerson: VIPContact) => {
-    console.log('🚨 VIP NOTIFICATION TRIGGERED, :', {
+    console.log('🚨 VIP NOTIFICATION TRIGGERED:', {
       event: event.activity,
       priority: newPerson.priority,
       vipContacts: event.persons_involved?.filter(p => p.is_vip || p.priority === 'critical')
@@ -299,10 +295,11 @@ export default function WeddingTimeline({
             Personer & Roller
           </Typography>
           <Box sx={{ ml: 'auto'}}>
-            <Button variant="contained"
+            <Button
+              variant="contained"
               startIcon={theming.getThemedIcon('add')}
-              sx={{ bgcolor: color }}
-             sx={theming.getThemedButtonSx()}>
+              sx={{ bgcolor: color, ...theming.getThemedButtonSx() }}
+            >
               Legg til person
             </Button>
           </Box>
@@ -337,8 +334,8 @@ export default function WeddingTimeline({
                           size="small"
                           sx={{ ml: 1, height: 20}}
                         />
-                        {event.hasPhoto && <Chip label="📸 Foto" size="small" sx={{ ml: 0, .height: 20}} />}
-                        {event.hasVideo && <Chip label="🎥 Video" size="small" sx={{ ml: 0, .height: 20}} />}
+                        {event.hasPhoto && <Chip label="📸 Foto" size="small" sx={{ ml: 0, height: 20}} />}
+                        {event.hasVideo && <Chip label="🎥 Video" size="small" sx={{ ml: 0, height: 20}} />}
                       </Typography>
                     </Box>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
@@ -347,23 +344,24 @@ export default function WeddingTimeline({
                           label="Varslet"
                           color="success"
                           size="small"
-                          icon={theming.getThemedIcon('checkCircle')}}
+                          icon={theming.getThemedIcon('checkCircle')}
                         />
                       ) : (
                         <Chip 
                           label="Venter varsling"
                           color="warning"
                           size="small"
-                          icon={theming.getThemedIcon('warning')}}
+                          icon={theming.getThemedIcon('warning')}
                         />
                       )}
                       <Button
                         size="small"
                         variant="outlined"
                         startIcon={theming.getThemedIcon('add')}
+                        onClick={() => {
                           setSelectedEventId(event.id || event.eventId);
                           setOpenAddPersonDialog(true);
-                      }}
+                        }}
                       >
                         Legg til person
                       </Button>
@@ -566,7 +564,7 @@ export default function WeddingTimeline({
               label="VIP-system aktivt"
               color="warning"
               size="small"
-              icon={theming.getThemedIcon('priorityHigh')}}
+              icon={theming.getThemedIcon('priorityHigh')}
             />
           </Box>
           {/* Navigation Tabs - Original 4 Tab Structure */}
@@ -574,8 +572,8 @@ export default function WeddingTimeline({
             mb:  3, 
             background: 'rgba(25, 255, 255, 0.08)',
             backdropFilter: 'blur(10px)',
-            borderRadius: '12px'
-      ,  ...theming.getThemedCardSx() }}>
+            borderRadius: '12px',
+            ...theming.getThemedCardSx() }}>
             <Tabs 
               value={activeTab} 
               variant="fullWidth"

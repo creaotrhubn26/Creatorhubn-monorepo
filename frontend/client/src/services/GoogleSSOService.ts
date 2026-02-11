@@ -9,6 +9,7 @@ import { getAllProfessionFeatures } from '../../../shared/profession-feature-mat
 
 export interface GoogleUser {
   id: string;
+  sub?: string;
   email: string;
   name: string;
   picture: string;

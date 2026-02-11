@@ -79,7 +79,7 @@ interface ShotListManagerProps {
   
   // Mobile & Timeline Integration
   mobileMode?: boolean; // Mobile-optimized view for wedding day
-  timelineIntegration?: boolean; // Connect to WeddingTimelineAdmin
+  timelineIntegration?: boolean; // Connect to EvendiTimelineAdmin
   upcomingEventTime?: string; // Next scheduled event (e.g. "First Dance in 15 min")
   onShotCompleteNotify?: (shot: Shot) => void // Notify when shot is completed
 }

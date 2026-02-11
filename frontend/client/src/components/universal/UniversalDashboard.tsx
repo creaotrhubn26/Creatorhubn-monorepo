@@ -140,7 +140,7 @@ import MemoryCardPricingAdmin from '../admin/MemoryCardPricingAdmin';
 // Import Tutorial & FAQ System
 import { TutorialFAQIntegration } from '../tutorial/TutorialFAQIntegration';
 import UniversalDashboardIntegrationTest from './UniversalDashboardIntegrationTest';
-import WeddingTimelineAdmin from '../wedding/WeddingTimelineAdmin';
+import EvendiTimelineAdmin from '../wedding/WeddingTimelineAdmin';
 
 // Import Academy Dashboard
 import AcademyDashboard from '../academy/AcademyDashboard';
@@ -842,7 +842,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
           setSelectedProject(tempProject);
           setUniversalSelectedProject(tempProject);
         }
-        // Store prefill for WeddingTimelineAdmin consumers
+        // Store prefill for EvendiTimelineAdmin consumers
         try {
           updateSettings({ weddingTimelinePrefill: message.data } as any);
           dataFlow.syncData('wedding-timeline:prefill', message.data);
@@ -1211,7 +1211,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
   // ==============================================================
   // EVENDI COUPLE AUTO-RESOLUTION
   // Auto-maps selectedClient.email → Evendi couple profile UUID
-  // Used to pass evendiCoupleId to WeddingTimelineAdmin, ProjectCreation, AdministrationHub
+  // Used to pass evendiCoupleId to EvendiTimelineAdmin, ProjectCreation, AdministrationHub
   // ==============================================================
   const [evendiCoupleId, setEvendiCoupleId] = useState<string | null>(null);
 
@@ -4943,11 +4943,12 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                   </Box>
 
                   {selectedTimelineTab === 0 && (
-                    <WeddingTimelineAdmin 
-                      projectId={projects?.[0]?.id || userId}
+                    <EvendiTimelineAdmin 
+                      projectId={selectedProject?.id || projects?.[0]?.id || userId}
                       evendiCoupleId={evendiCoupleId || undefined}
+                      eventType={selectedProject?.eventType || selectedProject?.projectType || projects?.[0]?.eventType || projects?.[0]?.projectType}
                       projectIntegration={{
-                        projectId: projects?.[0]?.id,
+                        projectId: selectedProject?.id || projects?.[0]?.id,
                         weddingTimelineIntegrated: true,
                       }}
                     />
@@ -6271,7 +6272,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
                 />
               </TabPanel>
 
-              {/* Tab 13: Integration Test */>
+              {/* Tab 13: Integration Test */}
               <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'integration-test')}>
                 <UniversalDashboardIntegrationTest />
               </TabPanel>

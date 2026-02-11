@@ -2,7 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import multer from 'multer';
-import * as pdfParseModule from 'pdf-parse';
+const pdfParseModule: any = require('pdf-parse');
 import mammoth from 'mammoth';
 import crypto from 'crypto';
 import fs from 'fs/promises';
@@ -64,7 +64,7 @@ const audioUpload = multer({
 });
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT = Number(process.env.PORT) || 3001;
 
 const tableColumnsCache = new Map<string, Set<string>>();
 
@@ -2882,7 +2882,7 @@ function mapTimelineRow(r: any) {
     timelineData: r.timeline_data || {},
     timelineItems: r.timeline_items || [],
     clientSettings: r.client_settings || {},
-    events: [], // filled separately
+    events: [] as any[], // filled separately
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
@@ -2908,6 +2908,51 @@ function mapTimelineEventRow(r: any) {
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
+}
+
+function buildTimelineIcal(timeline: any, events: any[]) {
+  const sanitize = (value: string) =>
+    value
+      .replace(/\\/g, '\\\\')
+      .replace(/,/g, '\\,')
+      .replace(/;/g, '\\;')
+      .replace(/\n/g, '\\n');
+
+  const formatUtc = (date: Date) =>
+    date.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
+
+  const calendarName = sanitize(timeline?.coupleName || timeline?.title || 'Wedding Timeline');
+
+  const eventBlocks = events.map((evt) => {
+    const startDate = evt.event_time ? new Date(evt.event_time) : null;
+    const endDate = startDate && evt.duration_minutes
+      ? new Date(startDate.getTime() + evt.duration_minutes * 60000)
+      : null;
+
+    const lines = [
+      'BEGIN:VEVENT',
+      `UID:${evt.id}@creatorhubn`,
+      `DTSTAMP:${formatUtc(new Date())}`,
+      startDate ? `DTSTART:${formatUtc(startDate)}` : '',
+      endDate ? `DTEND:${formatUtc(endDate)}` : '',
+      `SUMMARY:${sanitize(evt.title || 'Timeline Event')}`,
+      evt.location ? `LOCATION:${sanitize(evt.location)}` : '',
+      evt.description ? `DESCRIPTION:${sanitize(evt.description)}` : '',
+      'END:VEVENT',
+    ];
+
+    return lines.filter(Boolean).join('\n');
+  });
+
+  return [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//CreatorHubN//Wedding Timeline//EN',
+    'CALSCALE:GREGORIAN',
+    `X-WR-CALNAME:${calendarName}`,
+    ...eventBlocks,
+    'END:VCALENDAR',
+  ].join('\n');
 }
 
 // GET /api/wedding/timeline/project/:projectId — get timeline for a project
@@ -2942,6 +2987,108 @@ app.get('/api/wedding/timeline/project/:projectId', async (req, res) => {
   }
 });
 
+// GET /api/wedding/timeline/:timelineId/ical — iCal export for a timeline (token required)
+app.get('/api/wedding/timeline/:timelineId/ical', async (req, res) => {
+  try {
+    const { timelineId } = req.params;
+    const token = typeof req.query.token === 'string' ? req.query.token : '';
+
+    const tlResult = await pool.query(
+      'SELECT * FROM wedding_timelines WHERE id = $1 LIMIT 1',
+      [timelineId]
+    );
+
+    if (tlResult.rowCount === 0) {
+      return res.status(404).json({ error: 'Tidslinje ikke funnet' });
+    }
+
+    const timeline = tlResult.rows[0];
+    if (!timeline.client_access_enabled || !token || token !== timeline.client_access_token) {
+      return res.status(403).json({ error: 'Ingen tilgang' });
+    }
+    const eventsResult = await pool.query(
+      'SELECT * FROM wedding_timeline_events WHERE timeline_id = $1 ORDER BY event_time ASC',
+      [timelineId]
+    );
+
+    const ical = buildTimelineIcal(timeline, eventsResult.rows);
+    res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="timeline-${timelineId}.ics"`);
+    res.send(ical);
+  } catch (error) {
+    console.error('Error generating timeline iCal:', error);
+    res.status(500).json({ error: 'Kunne ikke generere iCal' });
+  }
+});
+
+// GET /api/wedding/timeline/ical/:accessToken — iCal export by access token
+app.get('/api/wedding/timeline/ical/:accessToken', async (req, res) => {
+  try {
+    const { accessToken } = req.params;
+
+    const tlResult = await pool.query(
+      'SELECT * FROM wedding_timelines WHERE client_access_token = $1 LIMIT 1',
+      [accessToken]
+    );
+
+    if (tlResult.rowCount === 0) {
+      return res.status(404).json({ error: 'Tidslinje ikke funnet' });
+    }
+
+    const timeline = tlResult.rows[0];
+    if (!timeline.client_access_enabled) {
+      return res.status(403).json({ error: 'Ingen tilgang' });
+    }
+
+    const eventsResult = await pool.query(
+      'SELECT * FROM wedding_timeline_events WHERE timeline_id = $1 ORDER BY event_time ASC',
+      [timeline.id]
+    );
+
+    const ical = buildTimelineIcal(timeline, eventsResult.rows);
+    res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="timeline-${timeline.id}.ics"`);
+    res.send(ical);
+  } catch (error) {
+    console.error('Error generating token timeline iCal:', error);
+    res.status(500).json({ error: 'Kunne ikke generere iCal' });
+  }
+});
+
+// GET /api/wedding/timeline/project/:projectId/ical — iCal export for a project timeline (token required)
+app.get('/api/wedding/timeline/project/:projectId/ical', async (req, res) => {
+  try {
+    const { projectId } = req.params;
+    const token = typeof req.query.token === 'string' ? req.query.token : '';
+
+    const tlResult = await pool.query(
+      'SELECT * FROM wedding_timelines WHERE project_id = $1 ORDER BY created_at DESC LIMIT 1',
+      [projectId]
+    );
+
+    if (tlResult.rowCount === 0) {
+      return res.status(404).json({ error: 'Tidslinje ikke funnet' });
+    }
+
+    const timeline = tlResult.rows[0];
+    if (!timeline.client_access_enabled || !token || token !== timeline.client_access_token) {
+      return res.status(403).json({ error: 'Ingen tilgang' });
+    }
+    const eventsResult = await pool.query(
+      'SELECT * FROM wedding_timeline_events WHERE timeline_id = $1 ORDER BY event_time ASC',
+      [timeline.id]
+    );
+
+    const ical = buildTimelineIcal(timeline, eventsResult.rows);
+    res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="timeline-${timeline.id}.ics"`);
+    res.send(ical);
+  } catch (error) {
+    console.error('Error generating project timeline iCal:', error);
+    res.status(500).json({ error: 'Kunne ikke generere iCal' });
+  }
+});
+
 // POST /api/wedding/timeline/project/:projectId — create timeline for a project
 app.post('/api/wedding/timeline/project/:projectId', async (req, res) => {
   try {
@@ -2955,7 +3102,7 @@ app.post('/api/wedding/timeline/project/:projectId', async (req, res) => {
     if (pubCheck.rowCount === 0) {
       // Copy from legacy.projects or create a minimal record
       const legacyProj = await pool.query('SELECT * FROM legacy.projects WHERE id = $1', [projectId]);
-      if (legacyProj.rowCount > 0) {
+      if ((legacyProj.rowCount ?? 0) > 0) {
         const lp = legacyProj.rows[0];
         await pool.query(
           `INSERT INTO public.projects (id, title, slug, category, description, location, date, featured, published)
@@ -3343,7 +3490,7 @@ app.use('/api/wedflow', (req, _res, next) => {
 app.all('/api/wedflow/*', (req, res, next) => {
   req.url = req.url.replace('/api/wedflow', '/api/evendi');
   req.originalUrl = req.originalUrl.replace('/api/wedflow', '/api/evendi');
-  req.app.handle(req, res, next);
+  (req.app as any).handle(req, res, next);
 });
 
 const EVENDI_API_URL = process.env.EVENDI_API_URL || process.env.WEDFLOW_API_URL || 'https://evendi.onrender.com';
@@ -7242,7 +7389,7 @@ app.post('/api/firmware/check', async (req, res) => {
       await db
         .update(schema.firmwareUpdates)
         .set({ lastChecked: checkedAt })
-        .where(inArray(schema.firmwareUpdates.id, updates.map((u) => u.id)));
+        .where(inArray(schema.firmwareUpdates.id, updates.map((u) => u!.id)));
     }
 
     res.json({ updates, devices, history, checkedAt });
@@ -7577,13 +7724,13 @@ app.post('/api/maintenance/tasks', async (req, res) => {
         maintenanceType: normalizeTaskType(readString(taskType) || null),
         description: readString(description) || readString(title) || String(title),
         serviceProvider: readString(assignedTechnician),
-        cost: readNumber(estimatedCost),
+        cost: String(readNumber(estimatedCost) ?? 0),
         scheduledDate: toDateOnly(scheduledDateValue),
         nextScheduledDate: scheduledDateValue.toISOString(),
         partsReplaced: metadata,
-        laborHours: readNumber(estimatedDuration),
+        laborHours: String(readNumber(estimatedDuration) ?? 0),
         serviceNotes: readString(notes),
-      })
+      } as any)
       .returning();
 
     const equipmentRow = await db
@@ -7732,13 +7879,13 @@ app.post('/api/maintenance/auto-schedule', async (req, res) => {
           maintenanceType: taskType,
           description,
           serviceProvider: readString(settings.preferredProvider),
-          cost: readNumber(settings.maintenanceCost),
+          cost: String(readNumber(settings.maintenanceCost) ?? 0),
           scheduledDate: toDateOnly(scheduledDateBase),
           nextScheduledDate: scheduledDateBase.toISOString(),
           partsReplaced: metadata,
-          laborHours: readNumber(settings.estimatedDuration) ?? 1,
+          laborHours: String(readNumber(settings.estimatedDuration) ?? 1),
           serviceNotes: readString(settings.maintenanceNotes),
-        })
+        } as any)
         .returning();
 
       inserts.push(inserted);
@@ -8713,7 +8860,6 @@ app.get('/api/analytics/equipment/usage', async (req, res) => {
     const maintenanceRows = await db
       .select({
         equipmentId: schema.equipmentMaintenance.equipmentId,
-        status: schema.equipmentMaintenance.status,
         nextScheduledDate: schema.equipmentMaintenance.nextScheduledDate
       })
       .from(schema.equipmentMaintenance)
@@ -8723,7 +8869,7 @@ app.get('/api/analytics/equipment/usage', async (req, res) => {
     maintenanceRows.forEach((row) => {
       const key = String(row.equipmentId);
       const existing = maintenanceByEquipment.get(key) || { scheduled: false, lastScheduled: null };
-      if (row.status === 'scheduled') existing.scheduled = true;
+      existing.scheduled = true;
       if (row.nextScheduledDate) existing.lastScheduled = row.nextScheduledDate;
       maintenanceByEquipment.set(key, existing);
     });
@@ -8872,7 +9018,6 @@ app.get('/api/analytics/equipment/maintenance', async (req, res) => {
         scheduledDate: schema.equipmentMaintenance.scheduledDate,
         nextScheduledDate: schema.equipmentMaintenance.nextScheduledDate,
         cost: schema.equipmentMaintenance.cost,
-        status: schema.equipmentMaintenance.status
       })
       .from(schema.equipmentMaintenance)
       .where(eq(schema.equipmentMaintenance.userId, userId));
@@ -8886,8 +9031,8 @@ app.get('/api/analytics/equipment/maintenance', async (req, res) => {
         nextMaintenance: nextDate,
         maintenanceType: normalizeTaskType(row.maintenanceType),
         cost: toNumberValue(row.cost),
-        status: normalizeStatus(row.status) || 'scheduled',
-        urgency: normalizePriority(row.status)
+        status: normalizeStatus(row.maintenanceType) || 'scheduled',
+        urgency: normalizePriority(row.maintenanceType)
       };
     });
 
@@ -9016,8 +9161,7 @@ app.post('/api/equipment/schedule-maintenance', async (req, res) => {
         maintenanceType: normalizeTaskType(type),
         description: `Planned ${type || 'maintenance'}`,
         scheduledDate,
-        status: 'scheduled'
-      })
+      } as any)
       .returning();
 
     res.json({ success: true, maintenance: row });
@@ -9481,12 +9625,13 @@ app.post('/api/ai/analyze-audio', audioUpload.single('audio'), async (req, res) 
 app.post('/api/ai/transcribe', audioUpload.single('audio'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'Missing audio' });
-    const durationSeconds = Math.max(30, Math.round(req.file.buffer.length / 16000));
-    const text = `Transcription generated for ${req.file.originalname}. Estimated duration ${durationSeconds} seconds.`;
+    const file = req.file!;
+    const durationSeconds = Math.max(30, Math.round(file.buffer.length / 16000));
+    const text = `Transcription generated for ${file.originalname}. Estimated duration ${durationSeconds} seconds.`;
     const segments = Array.from({ length: 3 }, (_, i) => ({
       start: i * (durationSeconds / 3),
       end: (i + 1) * (durationSeconds / 3),
-      text: `Segment ${i + 1} from ${req.file.originalname}`
+      text: `Segment ${i + 1} from ${file.originalname}`
     }));
     res.json({
       data: {
@@ -12983,8 +13128,9 @@ app.post('/api/admin/seo-projects', async (req, res) => {
       .values({
         domain,
         userId,
-        targetKeywords: targetKeywords || [],
-        status: 'active'
+        name: domain,
+        userType: profession || 'photographer',
+        isActive: true,
       })
       .returning();
     
@@ -13375,8 +13521,8 @@ app.post('/api/vendor/update', async (req, res) => {
         .insert(schema.vendors)
         .values({
           id: resolvedVendorId,
-          userId,
-          vendorName: vendorName || vendorId,
+          userId: userId!,
+          vendorName: vendorName || vendorId!,
           vendorType,
           contactInfo: {},
           businessInfo: nextBusinessInfo,

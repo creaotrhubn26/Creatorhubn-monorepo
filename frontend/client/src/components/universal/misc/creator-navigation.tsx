@@ -7,9 +7,9 @@ interface CreatorNavigationProps {
   onNavigate: (path: string) => void; 
 }
 
-export default function
+export default function CreatorNavigation({ onNavigate }: CreatorNavigationProps) {
   // Theming system
-  const theming = useTheming('photographer'); CreatorNavigation({ onNavigate }: CreatorNavigationProps) {
+  const theming = useTheming('photographer');
   return (
     <Box sx={{ py:  8, background: 'linear-gradient(135deg, #f8fafc 0%, #ffffff 100%)' }}>
       <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '50vh'}}>
@@ -37,16 +37,16 @@ export default function
               <p style={{ color: '#374150', textAlign: 'center', marginBottom: '1.5rem'}}>
                 Manage your photos, share with clients, and book more weddings
               </p>
-              <Box component="ul, " sx={{ listStyle: 'none', p: 0, mb: 4 }}>
-                <Box component="li" sx={{ display: 'flex', alignItems: 'center', mb: 1, .fontSize: '0.875rem'}}>
+              <Box component="ul" sx={{ listStyle: 'none', p: 0, mb: 4 }}>
+                <Box component="li" sx={{ display: 'flex', alignItems: 'center', mb: 1, fontSize: '0.875rem'}}>
                   <CheckCircle sx={{ fontSize:  20, color: '#10b980', mr:  1 }} />
                   Share Photos with Couples
                 </Box>
-                <Box component="li" sx={{ display: 'flex', alignItems: 'center', mb: 1, .fontSize: '0.875rem'}}>
+                <Box component="li" sx={{ display: 'flex', alignItems: 'center', mb: 1, fontSize: '0.875rem'}}>
                   <CheckCircle sx={{ fontSize:  20, color: '#10b980', mr:  1 }} />
                   Schedule Appointments
                 </Box>
-                <Box component="li" sx={{ display: 'flex', alignItems: 'center', mb: 1, .fontSize: '0.875rem'}}>
+                <Box component="li" sx={{ display: 'flex', alignItems: 'center', mb: 1, fontSize: '0.875rem'}}>
                   <CheckCircle sx={{ fontSize:  20, color: '#10b980', mr:  1 }} />
                   Showcase Your Best Work
                 </Box>
@@ -79,15 +79,15 @@ export default function
                 Create amazing wedding videos and share them easily with couples
               </p>
               <Box component="ul" sx={{ listStyle: 'none', p: 0, mb: 4 }}>
-                <Box component="li" sx={{ display: 'flex', alignItems: 'center', mb: 1, .fontSize: '0.875rem'}}>
+                <Box component="li" sx={{ display: 'flex', alignItems: 'center', mb: 1, fontSize: '0.875rem'}}>
                   <CheckCircle sx={{ fontSize:  20, color: '#10b980', mr:  1 }} />
                   Video Editing Tools
                 </Box>
-                <Box component="li" sx={{ display: 'flex', alignItems: 'center', mb: 1, .fontSize: '0.875rem'}}>
+                <Box component="li" sx={{ display: 'flex', alignItems: 'center', mb: 1, fontSize: '0.875rem'}}>
                   <CheckCircle sx={{ fontSize:  20, color: '#10b980', mr:  1 }} />
                   Live Wedding Streaming
                 </Box>
-                <Box component="li" sx={{ display: 'flex', alignItems: 'center', mb: 1, .fontSize: '0.875rem'}}>
+                <Box component="li" sx={{ display: 'flex', alignItems: 'center', mb: 1, fontSize: '0.875rem'}}>
                   <CheckCircle sx={{ fontSize:  20, color: '#10b980', mr:  1 }} />
                   Easy Video Sharing
                 </Box>
@@ -120,15 +120,15 @@ export default function
                 Create perfect wedding music and work together with other professionals
               </p>
               <Box component="ul" sx={{ listStyle: 'none', p: 0, mb: 4 }}>
-                <Box component="li" sx={{ display: 'flex', alignItems: 'center', mb: 1, .fontSize: '0.875rem'}}>
+                <Box component="li" sx={{ display: 'flex', alignItems: 'center', mb: 1, fontSize: '0.875rem'}}>
                   <CheckCircle sx={{ fontSize:  20, color: '#10b980', mr:  1 }} />
                   Music Creation Tools
                 </Box>
-                <Box component="li" sx={{ display: 'flex', alignItems: 'center', mb: 1, .fontSize: '0.875rem'}}>
+                <Box component="li" sx={{ display: 'flex', alignItems: 'center', mb: 1, fontSize: '0.875rem'}}>
                   <CheckCircle sx={{ fontSize:  20, color: '#10b980', mr:  1 }} />
                   Work with Other Artists
                 </Box>
-                <Box component="li" sx={{ display: 'flex', alignItems: 'center', mb: 1, .fontSize: '0.875rem'}}>
+                <Box component="li" sx={{ display: 'flex', alignItems: 'center', mb: 1, fontSize: '0.875rem'}}>
                   <CheckCircle sx={{ fontSize:  20, color: '#10b980', mr:  1 }} />
                   Share Music with Couples
                 </Box>

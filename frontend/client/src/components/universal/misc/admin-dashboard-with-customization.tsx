@@ -189,7 +189,7 @@ export default function AdminDashboardWithCustomization() {
           sx={{
             px:  3,
             color: 'rgba(25,255,255,0.6)',
-            fontWeight: 60
+            fontWeight: 600,
             textTransform: 'uppercase',
             letterSpacing:  1}}
         >
@@ -206,8 +206,8 @@ export default function AdminDashboardWithCustomization() {
                 sx={{
                   mb: 0.5,
                   borderRadius: 2, '&.Mui-selected': {
-                    backgroundColor: 'rgba(25, 1010.2)', '&:hover': {
-                      backgroundColor: 'rgba(25, 1010.3)',
+                    backgroundColor: 'rgba(255, 255, 255, 0.12)', '&:hover': {
+                      backgroundColor: 'rgba(255, 255, 255, 0.2)',
                   },
                 }, '&:hover': {
                     backgroundColor: 'rgba(25,255,255,0.05)',
@@ -224,7 +224,7 @@ export default function AdminDashboardWithCustomization() {
                   primary={item.title}
                   sx={{
                     '& .MuiListItemText-primary': {
-                      fontWeight: electedView === item.id ? 600 : 40,
+                      fontWeight: selectedView === item.id ? 600 : 400,
                       color: selectedView === item.id ? 'white' : 'rgba(25,255,255,0.8)',
                       fontSize: '14px',
                   }}}
@@ -238,7 +238,7 @@ export default function AdminDashboardWithCustomization() {
           sx={{
             px:  3,
             color: 'rgba(25,255,255,0.6)',
-            fontWeight: 60
+            fontWeight: 600,
             textTransform: 'uppercase',
             letterSpacing:  1,
             mt:  2,

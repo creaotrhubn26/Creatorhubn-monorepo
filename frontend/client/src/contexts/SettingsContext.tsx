@@ -79,6 +79,19 @@ export interface UserSettings {
     autoCreateMeeting: boolean;
     autoCreateShowcase: boolean;
     autoCreateWeddingTimeline: boolean;
+    timelinePrefill: {
+      projectName: boolean;
+      clientName: boolean;
+      clientEmail: boolean;
+      clientPhone: boolean;
+      eventDate: boolean;
+      venue: boolean;
+      eventType: boolean;
+      guestCount: boolean;
+      location: boolean;
+      culturalType: boolean;
+      evendiCoupleId: boolean;
+    };
     defaultMemoryCardLabeling: 'ABCD' | 'EFGH' | 'NUMERIC';
     defaultBackupStrategy: 'automatic' | 'manual' | 'scheduled';
     defaultBackupFrequency: 'realtime' | 'hourly' | 'daily' | 'weekly';
@@ -118,6 +131,46 @@ export interface UserSettings {
       defaultCulture: string;
 };
 };
+
+  weddingTimeline: {
+    autoCreateOnProject: boolean;
+    template: {
+      defaultTemplate: 'standard' | 'wedding' | 'corporate' | 'personal';
+      autoApplyTemplate: boolean;
+      allowTemplateSave: boolean;
+      templateScope: 'global' | 'project' | 'profession';
+    };
+    notifications: {
+      clientChanges: boolean;
+      timelineUpdates: boolean;
+      autoAdjustments: boolean;
+      accessGenerated: boolean;
+    };
+    autoAdjust: {
+      enabled: boolean;
+      minDelayMinutes: number;
+      requireReason: boolean;
+      excludeCompleted: boolean;
+    };
+    privacy: {
+      clientAccessDefault: 'off' | 'read' | 'comment';
+      allowDownload: boolean;
+      allowSave: boolean;
+      allowRightClick: boolean;
+      requireApproval: boolean;
+    };
+    sync: {
+      enableGoogleDriveBackup: boolean;
+      enableCalendarSync: boolean;
+      calendarProvider: 'google' | 'outlook' | 'none';
+      twoWaySync: boolean;
+    };
+    viewDefaults: {
+      defaultTab: 'overview' | 'events' | 'people' | 'client' | 'settings';
+      showClientNotes: boolean;
+      showSpeechMarkers: boolean;
+    };
+  };
   
   // UI/UX settings
   ui: {
@@ -261,6 +314,19 @@ const defaultSettings: UserSettings = {
     autoCreateMeeting: true,
     autoCreateShowcase: true,
     autoCreateWeddingTimeline: false,
+    timelinePrefill: {
+      projectName: true,
+      clientName: true,
+      clientEmail: true,
+      clientPhone: true,
+      eventDate: true,
+      venue: true,
+      eventType: true,
+      guestCount: true,
+      location: true,
+      culturalType: true,
+      evendiCoupleId: true,
+    },
     defaultMemoryCardLabeling: 'ABCD',
     defaultBackupStrategy: 'automatic',
     defaultBackupFrequency: 'realtime',
@@ -298,6 +364,45 @@ const defaultSettings: UserSettings = {
       defaultCulture: 'norsk',
   },
 },
+  weddingTimeline: {
+    autoCreateOnProject: false,
+    template: {
+      defaultTemplate: 'standard',
+      autoApplyTemplate: true,
+      allowTemplateSave: true,
+      templateScope: 'profession',
+    },
+    notifications: {
+      clientChanges: true,
+      timelineUpdates: true,
+      autoAdjustments: true,
+      accessGenerated: true,
+    },
+    autoAdjust: {
+      enabled: true,
+      minDelayMinutes: 10,
+      requireReason: true,
+      excludeCompleted: true,
+    },
+    privacy: {
+      clientAccessDefault: 'read',
+      allowDownload: false,
+      allowSave: false,
+      allowRightClick: false,
+      requireApproval: true,
+    },
+    sync: {
+      enableGoogleDriveBackup: true,
+      enableCalendarSync: false,
+      calendarProvider: 'none',
+      twoWaySync: false,
+    },
+    viewDefaults: {
+      defaultTab: 'overview',
+      showClientNotes: true,
+      showSpeechMarkers: true,
+    },
+  },
   ui: {
     theme: 'auto',
     primaryColor: '#1976d2',

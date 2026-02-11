@@ -73,14 +73,14 @@ export default function WeddingDashboard({ weddingId }: WeddingDashboardProps) {
                 {wedding.venue} • {new Date(wedding.date).toLocaleDateString()}
               </p>
             </div>
-            <Button className="bg-amber-600 hover: bg-amber-700">
+            <Button className="bg-amber-600 hover:bg-amber-700">
               <NotificationsActive className="w-5 h-5 mr-2" />
               Notifications
             </Button>
           </div>
         </div>
 
-        {/* Countdown Timer , *, /}
+        {/* Countdown Timer */}
         <MuiCard className="mb-8 bg-gradient-to-r from-amber-600 to-orange-600 text-gray-800 dark: text-white">
           <CardContent className="p-8" sx={theming.getThemedCardSx()}>
             <div className="flex flex-col items-center justify-center min-h-screen">
@@ -109,7 +109,7 @@ export default function WeddingDashboard({ weddingId }: WeddingDashboardProps) {
 
         <div className="flex flex-col items-center justify-center min-h-screen">
           {/* Progress Overview */}
-          <MuiCard className="lg: col-span-2">
+          <MuiCard className="lg:col-span-2">
             <CardHeader sx={theming.getThemedCardSx()}>
               <Typography className="flex items-center gap-2">
                 <Target className="w-5 h-5 text-amber-600" />
@@ -134,7 +134,7 @@ export default function WeddingDashboard({ weddingId }: WeddingDashboardProps) {
                         <Schedule className="w-5 h-5 text-gray-400" />
                       )}
                       <div>
-                        <p className={`font-medium ${task.completed ? 'line-through text-gray-500' : ','}`}>
+                        <p className={`font-medium ${task.completed ? 'line-through text-gray-500' : 'text-gray-900'}`}>
                           {task.title}
                         </p>
                         <p className="text-sm text-gray-500">Due: {task.dueDate}</p>

@@ -2,10 +2,7 @@ import { useTheming } from '../../utils/theming-helper';
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
-import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
 import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
-import getProfessionIcon from '@/utils/profession-icons';
-import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
 import {
   Box,
   Typography,
@@ -36,32 +33,24 @@ import {
 import {
   Event,
   Settings,
-  AddCircle as Add,
   Edit,
-  Delete,
   Schedule,
   People,
   LocationOn,
   Camera,
   Notifications,
-  CloudDone,
   RecordVoiceOver,
   Mic,
   AccessTime,
-  RestorePage,
-  Warning,
-  Check,
   CalendarToday,
   Lightbulb,
   Pending,
-  CheckCircle,
-  Cancel as CancelIcon,
   Key,
   ContentCopy,
-  QrCode,
   HelpOutline
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
+import { useSettings } from '@/contexts/SettingsContext';
 import ClientAccessSettings from '@/components/shared/ClientAccessSettings';
 import WeddingTimeline from '../wedding-timeline';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
@@ -69,11 +58,13 @@ import WeddingTimelineHelp from './WeddingTimelineHelp';
 import EvendiImportantPeople from '../evendi/EvendiImportantPeople';
 import { usePushNotifications } from '../../hooks/usePushNotifications';
 import { PushNotificationSettings } from '../shared/PushNotificationSettings';
+import { EventType, getEventTypeLabel, getEventCategory } from '@/lib/evendi-api';
 
-interface WeddingTimelineAdminProps {
-  projectId?: string; // Optional - hvis null/undefined = generell bryllupstidslinje-administrasjon
+interface EvendiTimelineAdminProps {
+  projectId?: string; // Optional - hvis null/undefined = generell tidslinje-administrasjon
   weddingId?: string; // Spesifikk bryllup-ID hvis det finnes
   evendiCoupleId?: string; // Optional: auto-fetch cultural type from Evendi couple traditions bridge
+  eventType?: string; // Event type from Evendi (wedding, birthday, corporate, etc.)
   projectIntegration?: {
     projectId?: string;
     weddingTimelineIntegrated?: boolean;
@@ -103,6 +94,7 @@ interface TimelineEvent {
   participants?: string[];
   equipment?: string[];
   notes?: string;
+  clientNotes?: string; // Client-submitted notes/changes
   status: 'planned' | 'confirmed' | 'completed' | 'cancelled';
   hasSpeech: boolean; // Ny egenskap for å indikere tale
   speechDetails?: string; // Detaljer om talen
@@ -118,118 +110,141 @@ interface TimelineEvent {
   updatedAt: string
 }
 
-interface WeddingTimeline {
+interface EvendiTimeline {
   id: string;
-  weddingDate: string;
+  eventDate: string;
   venue: string;
-  coupleName: string;
+  clientName: string;
+  eventType?: EventType;
   events: TimelineEvent[];
+  clientAccessEnabled?: boolean;
+  lastClientActivity?: string;
   createdAt: string;
   updatedAt: string
 }
 
-// Demo data for when API is unavailable or in demo mode
-const DEMO_TIMELINE: WeddingTimeline = {
-  id: 'demo-timeline-001',
-  weddingDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 30 days from now
-  venue: 'Grand Hotel Oslo',
-  coupleName: 'Emma & Lars',
-  events: [
-    {
-      id: 'evt-1',
-      title: 'Forberedelser brud',
-      time: '10:00',
-      duration: 120,
-      description: 'Hår, makeup og påkledning',
-      location: 'Brudesuite, Grand Hotel',
-      participants: ['Brud', 'Forlovere', 'Makeup artist'],
-      equipment: ['Kamera', 'Blits', 'Reflektorer'],
-      status: 'planned',
-      hasSpeech: false,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    },
-    {
-      id: 'evt-2',
-      title: 'Forberedelser brudgom',
-      time: '11:00',
-      duration: 60,
-      description: 'Påkledning og forberedelser',
-      location: 'Rom 305, Grand Hotel',
-      participants: ['Brudgom', 'Forlovere'],
-      equipment: ['Kamera'],
-      status: 'planned',
-      hasSpeech: false,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    },
-    {
-      id: 'evt-3',
-      title: 'Vielse',
-      time: '14:00',
-      duration: 45,
-      description: 'Kirkelig vielse i Oslo Domkirke',
-      location: 'Oslo Domkirke',
-      participants: ['Brud', 'Brudgom', 'Prest', 'Gjester'],
-      equipment: ['Kamera', 'Videokamera', 'Mikrofon'],
-      status: 'confirmed',
-      hasSpeech: true,
-      speechDetails: 'Løfter og ringeveksling',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    },
-    {
-      id: 'evt-4',
-      title: 'Gruppefoto',
-      time: '15:00',
-      duration: 30,
-      description: 'Formelle gruppebilder utenfor kirken',
-      location: 'Utenfor Oslo Domkirke',
-      participants: ['Alle gjester'],
-      equipment: ['Kamera', 'Stativ', 'Blits'],
-      status: 'planned',
-      hasSpeech: false,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    },
-    {
-      id: 'evt-5',
-      title: 'Bryllupsmiddag',
-      time: '17:00',
-      duration: 180,
-      description: 'Festmiddag med taler og underholdning',
-      location: 'Festsalen, Grand Hotel',
-      participants: ['Alle gjester'],
-      equipment: ['Kamera', 'Videokamera'],
-      status: 'planned',
-      hasSpeech: true,
-      speechDetails: 'Taler fra forlovere, foreldre og brudeparet',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    },
-    {
-      id: 'evt-6',
-      title: 'Første dans',
-      time: '20:00',
-      duration: 15,
-      description: 'Brudevalsen',
-      location: 'Festsalen, Grand Hotel',
-      participants: ['Brud', 'Brudgom'],
-      equipment: ['Kamera', 'Videokamera'],
-      status: 'planned',
-      hasSpeech: false,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    }
-  ],
-  createdAt: new Date().toISOString(),
-  updatedAt: new Date().toISOString()
-};
+interface WeddingProject {
+  id: string;
+  projectName?: string;
+  clientName?: string;
+  clientId?: string;
+  culturalType?: string;
+  [key: string]: unknown;
+}
 
-export default function WeddingTimelineAdmin({ 
+// Contextual labels that adapt based on event type
+function getContextualLabels(eventType: EventType, category: 'personal' | 'corporate') {
+  const isWeddingType = eventType === 'wedding' || eventType === 'engagement';
+  const isCorporate = category === 'corporate';
+
+  return {
+    clientNameLabel: isWeddingType ? 'Par / Brudeparet' : isCorporate ? 'Firma / Organisasjon' : 'Klient / Arrangør',
+    eventDateLabel: isWeddingType ? 'Bryllupsdato' : isCorporate ? 'Arrangementsdato' : 'Dato',
+    venueLabel: isWeddingType ? 'Vielsessted / Festlokale' : 'Lokasjon / Venue',
+    noTimelinePlaceholder: isWeddingType
+      ? 'Administrer tidslinje-maler for bryllup.'
+      : isCorporate
+        ? 'Administrer tidslinje-maler for bedriftsarrangementer.'
+        : 'Administrer generelle tidslinje-maler.',
+    newPlaceholder: isWeddingType ? 'Nytt Bryllup' : isCorporate ? 'Nytt Arrangement' : `Ny ${getEventTypeLabel(eventType)}`,
+    projectLabel: isWeddingType ? 'Velg bryllupsprosjekt' : 'Velg prosjekt',
+    specificInfoText: isWeddingType
+      ? 'Endringer gjelder kun dette spesifikke bryllupet'
+      : 'Endringer gjelder kun dette spesifikke arrangementet',
+    templateInfoText: isWeddingType
+      ? 'Endringer lager maler som kan brukes for nye bryllup'
+      : 'Endringer lager maler som kan brukes for nye arrangementer',
+    contextPrefix: isWeddingType ? 'bryllups' : isCorporate ? 'bedrifts' : '',
+  };
+}
+
+// Contextual demo data generator — returns event-type-appropriate demo timeline
+function getDemoTimeline(eventType: EventType): EvendiTimeline {
+  const futureDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+  const now = new Date().toISOString();
+
+  if (eventType === 'wedding' || eventType === 'engagement') {
+    return {
+      id: 'demo-timeline-001',
+      eventDate: futureDate,
+      venue: 'Grand Hotel Oslo',
+      clientName: 'Emma & Lars',
+      eventType,
+      events: [
+        { id: 'evt-1', title: 'Forberedelser brud', time: '10:00', duration: 120, description: 'Hår, makeup og påkledning', location: 'Brudesuite, Grand Hotel', participants: ['Brud', 'Forlovere', 'Makeup artist'], equipment: ['Kamera', 'Blits', 'Reflektorer'], status: 'planned', hasSpeech: false, createdAt: now, updatedAt: now },
+        { id: 'evt-2', title: 'Forberedelser brudgom', time: '11:00', duration: 60, description: 'Påkledning og forberedelser', location: 'Rom 305, Grand Hotel', participants: ['Brudgom', 'Forlovere'], equipment: ['Kamera'], status: 'planned', hasSpeech: false, createdAt: now, updatedAt: now },
+        { id: 'evt-3', title: 'Vielse', time: '14:00', duration: 45, description: 'Kirkelig vielse i Oslo Domkirke', location: 'Oslo Domkirke', participants: ['Brud', 'Brudgom', 'Prest', 'Gjester'], equipment: ['Kamera', 'Videokamera', 'Mikrofon'], status: 'confirmed', hasSpeech: true, speechDetails: 'Løfter og ringeveksling', createdAt: now, updatedAt: now },
+        { id: 'evt-4', title: 'Gruppefoto', time: '15:00', duration: 30, description: 'Formelle gruppebilder utenfor kirken', location: 'Utenfor Oslo Domkirke', participants: ['Alle gjester'], equipment: ['Kamera', 'Stativ', 'Blits'], status: 'planned', hasSpeech: false, createdAt: now, updatedAt: now },
+        { id: 'evt-5', title: 'Bryllupsmiddag', time: '17:00', duration: 180, description: 'Festmiddag med taler og underholdning', location: 'Festsalen, Grand Hotel', participants: ['Alle gjester'], equipment: ['Kamera', 'Videokamera'], status: 'planned', hasSpeech: true, speechDetails: 'Taler fra forlovere, foreldre og brudeparet', createdAt: now, updatedAt: now },
+        { id: 'evt-6', title: 'Første dans', time: '20:00', duration: 15, description: 'Brudevalsen', location: 'Festsalen, Grand Hotel', participants: ['Brud', 'Brudgom'], equipment: ['Kamera', 'Videokamera'], status: 'planned', hasSpeech: false, createdAt: now, updatedAt: now },
+      ],
+      createdAt: now, updatedAt: now
+    };
+  }
+
+  if (getEventCategory(eventType) === 'corporate') {
+    return {
+      id: 'demo-timeline-001',
+      eventDate: futureDate,
+      venue: 'Oslo Kongressenter',
+      clientName: 'Nordisk Tech AS',
+      eventType,
+      events: [
+        { id: 'evt-1', title: 'Registrering & velkost', time: '08:30', duration: 30, description: 'Registrering, kaffe og mingling', location: 'Foajeen', participants: ['Alle deltakere'], equipment: ['Kamera', 'Navneskilt-system'], status: 'planned', hasSpeech: false, createdAt: now, updatedAt: now },
+        { id: 'evt-2', title: 'Åpningstale', time: '09:00', duration: 30, description: 'Velkommen og agenda', location: 'Hovedsalen', participants: ['CEO', 'Alle deltakere'], equipment: ['Mikrofon', 'Projektor', 'Kamera'], status: 'confirmed', hasSpeech: true, speechDetails: 'CEO holder velkomsttale', createdAt: now, updatedAt: now },
+        { id: 'evt-3', title: 'Hovedpresentasjon', time: '09:30', duration: 60, description: 'Hovedtema og faglig innhold', location: 'Hovedsalen', participants: ['Foredragsholder', 'Alle deltakere'], equipment: ['Mikrofon', 'Projektor', 'Kamera', 'Videokamera'], status: 'planned', hasSpeech: true, speechDetails: 'Gjesteforedragsholder presenterer', createdAt: now, updatedAt: now },
+        { id: 'evt-4', title: 'Lunsj & nettverking', time: '12:00', duration: 60, description: 'Lunsj med nettverkingsmuligheter', location: 'Restauranten', participants: ['Alle deltakere'], equipment: ['Kamera'], status: 'planned', hasSpeech: false, createdAt: now, updatedAt: now },
+        { id: 'evt-5', title: 'Workshop-sesjon', time: '13:00', duration: 90, description: 'Gruppeworkshop i parallelle sesjoner', location: 'Møterom A-D', participants: ['Alle deltakere'], equipment: ['Kamera', 'Whiteboard'], status: 'planned', hasSpeech: false, createdAt: now, updatedAt: now },
+        { id: 'evt-6', title: 'Avslutning & sosial samling', time: '16:00', duration: 120, description: 'Oppsummering og sosial sammenkomst', location: 'Terrassen', participants: ['Alle deltakere'], equipment: ['Kamera', 'Videokamera'], status: 'planned', hasSpeech: true, speechDetails: 'Oppsummering og takk-tale', createdAt: now, updatedAt: now },
+      ],
+      createdAt: now, updatedAt: now
+    };
+  }
+
+  // Personal events (birthday, confirmation, anniversary, baby_shower)
+  const personalLabels: Record<string, { name: string; venue: string }> = {
+    birthday: { name: 'Sofie Hansen', venue: 'Ekebergrestauranten' },
+    confirmation: { name: 'Mathias Olsen', venue: 'Holmenkollen Kapell' },
+    anniversary: { name: 'Kari & Jon', venue: 'Theatercaféen' },
+    baby_shower: { name: 'Maria & Erik', venue: 'Hjemme hos vertinnen' },
+  };
+  const labels = personalLabels[eventType] || { name: 'Klient', venue: 'Lokasjon' };
+
+  return {
+    id: 'demo-timeline-001',
+    eventDate: futureDate,
+    venue: labels.venue,
+    clientName: labels.name,
+    eventType,
+    events: [
+      { id: 'evt-1', title: 'Forberedelser', time: '10:00', duration: 60, description: 'Dekorasjon og oppsett av lokalet', location: labels.venue, participants: ['Arrangør', 'Hjelpere'], equipment: ['Kamera', 'Dekorasjon'], status: 'planned', hasSpeech: false, createdAt: now, updatedAt: now },
+      { id: 'evt-2', title: 'Gjestene ankommer', time: '12:00', duration: 30, description: 'Velkomst og mingling', location: labels.venue, participants: ['Alle gjester'], equipment: ['Kamera'], status: 'planned', hasSpeech: false, createdAt: now, updatedAt: now },
+      { id: 'evt-3', title: 'Seremoni / Program', time: '12:30', duration: 45, description: 'Hovedprogram og seremoni', location: labels.venue, participants: ['Alle gjester'], equipment: ['Kamera', 'Mikrofon'], status: 'confirmed', hasSpeech: true, speechDetails: 'Tale og program', createdAt: now, updatedAt: now },
+      { id: 'evt-4', title: 'Middag / Servering', time: '14:00', duration: 120, description: 'Festmåltid med taler', location: labels.venue, participants: ['Alle gjester'], equipment: ['Kamera', 'Videokamera'], status: 'planned', hasSpeech: true, speechDetails: 'Taler fra familie og venner', createdAt: now, updatedAt: now },
+      { id: 'evt-5', title: 'Kake & feiring', time: '16:00', duration: 30, description: 'Kakeskjæring og feiring', location: labels.venue, participants: ['Alle gjester'], equipment: ['Kamera'], status: 'planned', hasSpeech: false, createdAt: now, updatedAt: now },
+      { id: 'evt-6', title: 'Avslutning', time: '18:00', duration: 60, description: 'Takk og farvel', location: labels.venue, participants: ['Alle gjester'], equipment: ['Kamera'], status: 'planned', hasSpeech: false, createdAt: now, updatedAt: now },
+    ],
+    createdAt: now, updatedAt: now
+  };
+}
+
+// Type guard for validating EventType
+const VALID_EVENT_TYPES: ReadonlySet<string> = new Set<string>([
+  'wedding', 'confirmation', 'birthday', 'anniversary', 'engagement', 'baby_shower',
+  'conference', 'seminar', 'kickoff', 'summer_party', 'christmas_party', 'team_building',
+  'product_launch', 'trade_fair', 'corporate_anniversary', 'awards_night', 'employee_day',
+  'onboarding_day', 'corporate_event'
+]);
+
+function isValidEventType(value: string): value is EventType {
+  return VALID_EVENT_TYPES.has(value);
+}
+
+export default function EvendiTimelineAdmin({ 
   projectId, 
   weddingId, 
   evendiCoupleId,
+  eventType: eventTypeProp,
   projectIntegration,
   onMeetingCreate,
   onProjectUpdate,
@@ -242,8 +257,14 @@ export default function WeddingTimelineAdmin({
   selectedProject,
   onProjectSelect,
   selectedClient
-}: WeddingTimelineAdminProps) {
-  const [activeTab, setActiveTab] = useState(0);
+}: EvendiTimelineAdminProps) {
+  // Event type resolution — supports wedding, birthday, corporate, etc.
+  const rawEventType = eventTypeProp || 'wedding';
+  const resolvedEventType: EventType = isValidEventType(rawEventType) ? rawEventType : 'wedding';
+  const eventTypeLabel = getEventTypeLabel(resolvedEventType) || 'Arrangement';
+  const eventCategory = getEventCategory(resolvedEventType);
+  const contextLabels = getContextualLabels(resolvedEventType, eventCategory);
+
   const [eventDialogOpen, setEventDialogOpen] = useState(false);
   const [prefill, setPrefill] = useState<any | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<TimelineEvent | null>(null);
@@ -254,10 +275,10 @@ export default function WeddingTimelineAdmin({
   
   // Create Timeline Dialog State (prefilled)
   const [createTimelineOpen, setCreateTimelineOpen] = useState(false);
-  const [newTimelineData, setNewTimelineData] = useState<{ weddingDate: string; venue: string; coupleName: string }>({
-    weddingDate: '',
+  const [newTimelineData, setNewTimelineData] = useState<{ eventDate: string; venue: string; clientName: string }>({
+    eventDate: '',
     venue: '',
-    coupleName: ''
+    clientName: ''
   });
   
   // Auto-Adjust Timeline States
@@ -274,6 +295,70 @@ export default function WeddingTimelineAdmin({
   const [confirmPassword, setConfirmPassword] = useState('');
   const [resetType, setResetType] = useState<'pin' | 'password' | 'both'>('both');
   const { profession } = useProfessionAdapter();
+  const { settings } = useSettings();
+  const timelinePrefillSettings = settings?.projectCreation?.timelinePrefill || {
+    projectName: true,
+    clientName: true,
+    clientEmail: true,
+    clientPhone: true,
+    eventDate: true,
+    venue: true,
+    eventType: true,
+    guestCount: true,
+    location: true,
+    culturalType: true,
+    evendiCoupleId: true,
+  };
+  const timelineSettings = settings?.weddingTimeline || {
+    autoCreateOnProject: false,
+    template: {
+      defaultTemplate: 'standard',
+      autoApplyTemplate: true,
+      allowTemplateSave: true,
+      templateScope: 'profession'
+    },
+    notifications: {
+      clientChanges: true,
+      timelineUpdates: true,
+      autoAdjustments: true,
+      accessGenerated: true
+    },
+    autoAdjust: {
+      enabled: true,
+      minDelayMinutes: 10,
+      requireReason: true,
+      excludeCompleted: true
+    },
+    privacy: {
+      clientAccessDefault: 'read',
+      allowDownload: false,
+      allowSave: false,
+      allowRightClick: false,
+      requireApproval: true
+    },
+    sync: {
+      enableGoogleDriveBackup: true,
+      enableCalendarSync: false,
+      calendarProvider: 'none',
+      twoWaySync: false
+    },
+    viewDefaults: {
+      defaultTab: 'overview',
+      showClientNotes: true,
+      showSpeechMarkers: true
+    }
+  };
+  const defaultTabIndex = {
+    overview: 0,
+    events: 1,
+    people: 2,
+    client: 3,
+    settings: 4
+  } as const;
+  const initialTabIndex = defaultTabIndex[timelineSettings.viewDefaults.defaultTab] ?? 0;
+  const [activeTab, setActiveTab] = useState(initialTabIndex);
+  const hasUserSetTabRef = React.useRef(false);
+  const pendingCalendarEventRef = React.useRef<Partial<TimelineEvent> | null>(null);
   
   // Theming system - use dynamic profession
   const theming = useTheming(profession || 'photographer');
@@ -284,6 +369,48 @@ export default function WeddingTimelineAdmin({
   // Push notifications - timelineId will be set after timeline is fetched
   const { user: currentUser } = useAuth();
   const userId = currentUser?.id || currentUser?.sub;
+  const targetProjectId = selectedProjectId || projectId;
+
+  const ensureDriveBackup = async (context: string) => {
+    if (!timelineSettings.sync.enableGoogleDriveBackup || !targetProjectId) return;
+    try {
+      const response = await apiRequest(`/api/projects/${targetProjectId}/google-drive/initialize`, {
+        method: 'POST'
+      });
+      dataFlow.syncData('wedding-timeline:drive-backup', {
+        projectId: targetProjectId,
+        context,
+        folderPath: response?.folderPath
+      });
+    } catch (error) {
+      console.warn('Drive backup initialization failed:', error);
+    }
+  };
+
+  const syncTimelineToCalendar = async (payload: {
+    title: string;
+    date?: string;
+    location?: string;
+    type?: string;
+  }) => {
+    if (!timelineSettings.sync.enableCalendarSync) return;
+    if (timelineSettings.sync.calendarProvider === 'none') return;
+    if (!targetProjectId) return;
+
+    try {
+      await apiRequest('/api/events-management/events', {
+        method: 'POST',
+        body: {
+          ...payload,
+          projectId: targetProjectId,
+          provider: timelineSettings.sync.calendarProvider,
+          twoWaySync: timelineSettings.sync.twoWaySync,
+        }
+      });
+    } catch (error) {
+      console.warn('Calendar sync failed:', error);
+    }
+  };
 
   // Listen for prefill over bus
   React.useEffect(() => {
@@ -298,25 +425,78 @@ export default function WeddingTimelineAdmin({
     return unsubscribe;
   }, [communication]);
 
+  React.useEffect(() => {
+    if (!hasUserSetTabRef.current) {
+      setActiveTab(defaultTabIndex[timelineSettings.viewDefaults.defaultTab] ?? 0);
+    }
+  }, [timelineSettings.viewDefaults.defaultTab]);
+
   // Prefill defaults when dialog opens or prefill changes
   React.useEffect(() => {
     if (!prefill) return;
     setNewTimelineData((prev) => ({
-      weddingDate: prefill.eventDate || prev.weddingDate || (prefill.eventDates ? Object.values(prefill.eventDates)[0] : ''),
-      venue: prefill.location || prev.venue,
-      coupleName: prefill.projectName || prev.coupleName,
+      eventDate: timelinePrefillSettings.eventDate
+        ? prefill.eventDate || prev.eventDate || (prefill.eventDates ? Object.values(prefill.eventDates)[0] : '')
+        : prev.eventDate,
+      venue: timelinePrefillSettings.venue ? prefill.location || prev.venue : prev.venue,
+      clientName: timelinePrefillSettings.clientName
+        ? prefill.clientName || (timelinePrefillSettings.projectName ? prefill.projectName : undefined) || prev.clientName
+        : prev.clientName,
     }));
-  }, [prefill]);
+  }, [prefill, timelinePrefillSettings]);
 
-  // Hent alle bryllupsprosjekter for dropdown
+  // Seed prefill from props/selection when coming from project creation
+  React.useEffect(() => {
+    if (prefill) return;
+    const derivedPrefill = {
+      projectName: timelinePrefillSettings.projectName
+        ? selectedProject?.projectName || selectedProject?.name || selectedProject?.title
+        : undefined,
+      clientName: timelinePrefillSettings.clientName
+        ? selectedProject?.clientName || selectedClient?.name
+        : undefined,
+      clientEmail: timelinePrefillSettings.clientEmail
+        ? selectedProject?.clientEmail || selectedClient?.email
+        : undefined,
+      clientPhone: timelinePrefillSettings.clientPhone
+        ? selectedProject?.clientPhone || selectedClient?.phone
+        : undefined,
+      eventDate: timelinePrefillSettings.eventDate
+        ? selectedProject?.eventDate || selectedProject?.weddingDate
+        : undefined,
+      location: timelinePrefillSettings.location
+        ? selectedProject?.location || selectedProject?.venue
+        : undefined,
+      venue: timelinePrefillSettings.venue
+        ? selectedProject?.venue || selectedProject?.location
+        : undefined,
+      guestCount: timelinePrefillSettings.guestCount
+        ? selectedProject?.guestCount
+        : undefined,
+      culturalType: timelinePrefillSettings.culturalType
+        ? selectedProject?.culturalType || evendiCulturalType
+        : undefined,
+      eventType: timelinePrefillSettings.eventType
+        ? eventTypeProp || selectedProject?.eventType || selectedProject?.projectType
+        : undefined,
+      evendiCoupleId: timelinePrefillSettings.evendiCoupleId ? evendiCoupleId : undefined
+    };
+
+    if (Object.values(derivedPrefill).some((value) => value)) {
+      setPrefill(derivedPrefill);
+    }
+  }, [prefill, selectedProject, selectedClient, eventTypeProp, evendiCoupleId, evendiCulturalType, timelinePrefillSettings]);
+
+  // Hent alle prosjekter for dropdown
   const { data: weddingProjects = [] } = useQuery({
     queryKey: ['/api/projects', { type: 'wedding',}],
     queryFn: () => apiRequest('/api/projects?type=wedding')
 });
 
-  const weddingProjectsList = Array.isArray(weddingProjects)
-    ? weddingProjects
-    : (weddingProjects as any)?.projects || (weddingProjects as any)?.data || [];
+  const projectsResponse = weddingProjects as WeddingProject[] | { projects?: WeddingProject[]; data?: WeddingProject[] };
+  const weddingProjectsList: WeddingProject[] = Array.isArray(projectsResponse)
+    ? projectsResponse
+    : (projectsResponse?.projects ?? projectsResponse?.data ?? []);
 
   // Hent valgt prosjekt med kulturdata
   const { data: currentProject } = useQuery({
@@ -335,7 +515,7 @@ export default function WeddingTimelineAdmin({
         const data = await apiRequest(`/api/evendi/traditions-bridge?coupleId=${encodeURIComponent(evendiCoupleId)}`);
         if (data?.primaryCulturalType) {
           setEvendiCulturalType(data.primaryCulturalType);
-          console.log(`🌍 WeddingTimeline traditions bridge: ${evendiCoupleId} → ${data.primaryCulturalType}`);
+          console.log(`🌍 Evendi traditions bridge: ${evendiCoupleId} → ${data.primaryCulturalType}`);
         }
       } catch (error) {
         console.warn('Evendi traditions bridge fetch failed (non-critical):', error);
@@ -350,21 +530,43 @@ export default function WeddingTimelineAdmin({
   
   // Client access settings state
   const [clientSettings, setClientSettings] = useState({
-    clientAccessEnabled: false,
-    allowDownload: false,
-    allowRightClick: false,
-    allowSave: false,
-    requireApproval: true
-});
+    clientAccessEnabled: timelineSettings.privacy.clientAccessDefault !== 'off',
+    allowDownload: timelineSettings.privacy.allowDownload,
+    allowRightClick: timelineSettings.privacy.allowRightClick,
+    allowSave: timelineSettings.privacy.allowSave,
+    requireApproval: timelineSettings.privacy.requireApproval
+  });
+  const clientSettingsDirtyRef = React.useRef(false);
+
+  React.useEffect(() => {
+    if (clientSettingsDirtyRef.current) return;
+    setClientSettings({
+      clientAccessEnabled: timelineSettings.privacy.clientAccessDefault !== 'off',
+      allowDownload: timelineSettings.privacy.allowDownload,
+      allowRightClick: timelineSettings.privacy.allowRightClick,
+      allowSave: timelineSettings.privacy.allowSave,
+      requireApproval: timelineSettings.privacy.requireApproval
+    });
+  }, [timelineSettings.privacy]);
 
   // Handler for client settings changes
-  const handleClientSettingChange = (key: string, value: any) => {
-    console.log('Wedding timeline client setting changed, :', key, value);
-    setClientSettings(prev => ({
-      ...prev,
-      [key]: value
-  }));
-    // TODO: Implementer lagring av wedding timeline klientinnstillinger til API
+  const handleClientSettingChange = (key: string, value: unknown) => {
+    console.log('Wedding timeline client setting changed:', key, value);
+    const updatedSettings = { ...clientSettings, [key]: value };
+    setClientSettings(updatedSettings);
+    clientSettingsDirtyRef.current = true;
+    onClientUpdate?.({ settings: updatedSettings, projectId: selectedProjectId || projectId, timestamp: new Date().toISOString() });
+    // Sync client settings via data flow
+    dataFlow.syncData('wedding-timeline:client-settings', updatedSettings);
+    if (timelineSettings.notifications.clientChanges) {
+      communication.sendMessage({
+        from: 'wedding-timeline-admin',
+        to: 'all',
+        type: 'wedding-timeline:client-settings-changed',
+        data: { projectId: selectedProjectId || projectId, settings: updatedSettings },
+        priority: 'low'
+      });
+    }
 };
 
   // Handler for viewing timeline
@@ -376,19 +578,21 @@ export default function WeddingTimelineAdmin({
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const [clientUrl, setClientUrl] = useState('');
   const [accessCode, setAccessCode] = useState('');
+  const [accessToken, setAccessToken] = useState('');
 
-  // Bryllupstidslinje-administrasjon logikk: // - Hvis weddingId er oppgitt: spesifikk bryllupstidslinje
+  // Tidslinje-administrasjon logikk:
+  // - Hvis weddingId er oppgitt: spesifikk arrangementstidslinje
   // - Hvis projectId er oppgitt: prosjekt-spesifikk tidslinje
   // - Hvis begge er null/undefined: generell tidslinje-mal administrasjon
   const timelineContext = weddingId 
-    ? `bryllup ${weddingId}`
+    ? `${eventTypeLabel.toLowerCase()} ${weddingId}`
     : projectId 
       ? `prosjekt ${projectId}`
       : 'generelle tidslinje-maler';
 
   // Generate wedding timeline access code
   const generateClientAccess = useMutation({
-    mutationFn: async (regenerate = false) => {
+    mutationFn: async (regenerate: boolean = false) => {
       const targetProjectId = projectIntegration?.projectId || projectId || 'wedding-demo-project';
       console.log('🔑 Genererer klienttilgang for prosjekt-ID, :', targetProjectId);
       const response = await apiRequest(`/api/projects/${targetProjectId}/wedding-timeline/client-access${regenerate ? '?regenerate=true' : ','}`, {
@@ -399,14 +603,27 @@ export default function WeddingTimelineAdmin({
     onSuccess: (data) => {
       setClientUrl(data.clientUrl);
       setAccessCode(data.accessCode);
+      setAccessToken(data.accessToken || '');
       setShareDialogOpen(true);
+      // Notify parent about showcase/share creation
+      onShowcaseCreate?.({ clientUrl: data.clientUrl, accessCode: data.accessCode, projectId: projectIntegration?.projectId || projectId });
+      onWorklogCreate?.({ action: 'client-access-generated', projectId: projectIntegration?.projectId || projectId, timestamp: new Date().toISOString() });
+      if (timelineSettings.notifications.accessGenerated) {
+        communication.sendMessage({
+          from: 'wedding-timeline-admin',
+          to: 'all',
+          type: 'wedding-timeline:client-access-generated',
+          data: { projectId: projectIntegration?.projectId || projectId, clientUrl: data.clientUrl },
+          priority: 'medium'
+        });
+      }
 },
     onError: (error) => {
       console.error('Feil ved generering av klientlenke, :', error);
   }
 });
   
-  console.log(`💒 Wedding Timeline Admin: Administrerer ${timelineContext}`);
+  console.log(`� Evendi Timeline Admin: Administrerer ${timelineContext}`);
 
   // Create timeline mutation (project-specific)
   const createTimelineMutation = useMutation({
@@ -416,10 +633,12 @@ export default function WeddingTimelineAdmin({
         method: 'POST',
         headers: { 'Content-Type' : 'application/json' },
         body: JSON.stringify({
-          weddingDate: newTimelineData.weddingDate,
+          eventDate: newTimelineData.eventDate,
           venue: newTimelineData.venue,
-          coupleName: newTimelineData.coupleName,
+          clientName: newTimelineData.clientName,
           events: [],
+          template: timelineSettings.template.autoApplyTemplate ? timelineSettings.template.defaultTemplate : undefined,
+          templateScope: timelineSettings.template.templateScope
         })
       });
     },
@@ -430,14 +649,35 @@ export default function WeddingTimelineAdmin({
           : ['/api/wedding/timeline/templates']
       });
       setCreateTimelineOpen(false);
+      // Notify parent about project update and log worklog
+      onProjectUpdate?.({ projectId: selectedProjectId || projectId, action: 'timeline-created', timelineData: newTimelineData });
+      onWorklogCreate?.({ action: 'timeline-created', projectId: selectedProjectId || projectId, timestamp: new Date().toISOString() });
+      // Sync timeline creation via data flow
+      dataFlow.syncData('wedding-timeline:created', { projectId: selectedProjectId || projectId, ...newTimelineData });
+      if (timelineSettings.notifications.timelineUpdates) {
+        communication.sendMessage({
+          from: 'wedding-timeline-admin',
+          to: 'all',
+          type: 'wedding-timeline:created',
+          data: { projectId: selectedProjectId || projectId, timeline: newTimelineData },
+          priority: 'medium'
+        });
+      }
+      void syncTimelineToCalendar({
+        title: newTimelineData.clientName ? `Tidslinje: ${newTimelineData.clientName}` : 'Ny tidslinje',
+        date: newTimelineData.eventDate,
+        location: newTimelineData.venue,
+        type: 'wedding-timeline'
+      });
+      void ensureDriveBackup('timeline-created');
     }
   });
 
   // Check if we're in demo mode (projectId or weddingId starts with "demo-")
   const isDemoMode = projectId?.startsWith('demo-') || weddingId?.startsWith('demo-');
 
-  // Fetch wedding timeline data
-  const { data: fetchedTimeline, isLoading: timelineLoading, isError: timelineError } = useQuery<WeddingTimeline>({
+  // Fetch timeline data
+  const { data: fetchedTimeline, isLoading: timelineLoading, isError: timelineError } = useQuery<EvendiTimeline>({
     queryKey: weddingId
       ? ['/api/wedding/timeline', weddingId]
       : projectId
@@ -448,7 +688,19 @@ export default function WeddingTimelineAdmin({
   });
 
   // Use demo data if in demo mode or if the API failed
-  const timeline = isDemoMode || timelineError ? DEMO_TIMELINE : fetchedTimeline;
+  const timeline = isDemoMode || timelineError ? getDemoTimeline(resolvedEventType) : fetchedTimeline;
+
+  const icalBaseUrl = React.useMemo(() => {
+    if (typeof window === 'undefined') return '';
+    return window.location.origin;
+  }, []);
+  const icalHttpUrl = accessToken ? `${icalBaseUrl}/api/wedding/timeline/ical/${accessToken}` : '';
+  const icalWebcalUrl = icalHttpUrl ? icalHttpUrl.replace(/^https?/, 'webcal') : '';
+  const fullClientUrl = clientUrl
+    ? clientUrl.startsWith('http')
+      ? clientUrl
+      : `${icalBaseUrl}${clientUrl}`
+    : '';
 
   // Push notifications - now that timeline is defined
   const timelineId = timeline?.id || selectedProjectId || projectId || weddingId;
@@ -463,6 +715,9 @@ export default function WeddingTimelineAdmin({
 
   // Add/update timeline event mutation
   const saveEventMutation = useMutation({
+    onMutate: (eventData: Partial<TimelineEvent>) => {
+      pendingCalendarEventRef.current = eventData;
+    },
     mutationFn: async (eventData: Partial<TimelineEvent>) => {
       const endpoint = weddingId
         ? `/api/wedding/timeline/${weddingId}/events`
@@ -496,8 +751,38 @@ export default function WeddingTimelineAdmin({
             ? ['/api/wedding/timeline/project', projectId]
             : ['/api/wedding/timeline/templates']
     });
+      // Notify parent about event and project changes
+      const eventAction = selectedEvent ? 'event-updated' : 'event-created';
+      onProjectUpdate?.({ projectId: projectId || selectedProjectId, action: eventAction, weddingId });
+      onWorklogCreate?.({ action: eventAction, projectId: projectId || selectedProjectId, timestamp: new Date().toISOString() });
+      if (!selectedEvent) {
+        // New event created — notify as a meeting/scheduled item
+        onMeetingCreate?.({ title: 'Timeline Event', projectId: projectId || selectedProjectId, createdAt: new Date().toISOString() });
+      }
+      // Sync event change via data flow
+      dataFlow.syncData('wedding-timeline:event-change', { projectId: projectId || selectedProjectId, action: eventAction });
+      if (timelineSettings.notifications.timelineUpdates) {
+        communication.sendMessage({
+          from: 'wedding-timeline-admin',
+          to: 'all',
+          type: 'wedding-timeline:event-change',
+          data: { projectId: projectId || selectedProjectId, action: eventAction },
+          priority: 'low'
+        });
+      }
+      if (pendingCalendarEventRef.current?.title) {
+        const calendarPayload = pendingCalendarEventRef.current;
+        void syncTimelineToCalendar({
+          title: calendarPayload.title || 'Tidslinjehendelse',
+          date: calendarPayload.time || calendarPayload.originalTime || timeline?.eventDate,
+          location: calendarPayload.location || timeline?.venue,
+          type: 'wedding-timeline'
+        });
+      }
+      void ensureDriveBackup('event-change');
       setEventDialogOpen(false);
       setSelectedEvent(null);
+      pendingCalendarEventRef.current = null;
   }
 });
 
@@ -522,6 +807,19 @@ export default function WeddingTimelineAdmin({
             ? ['/api/wedding/timeline/project', projectId]
             : ['/api/wedding/timeline/templates']
     });
+      onProjectUpdate?.({ projectId: projectId || selectedProjectId, action: 'event-deleted', weddingId });
+      onWorklogCreate?.({ action: 'event-deleted', projectId: projectId || selectedProjectId, timestamp: new Date().toISOString() });
+      dataFlow.syncData('wedding-timeline:event-change', { projectId: projectId || selectedProjectId, action: 'event-deleted' });
+      if (timelineSettings.notifications.timelineUpdates) {
+        communication.sendMessage({
+          from: 'wedding-timeline-admin',
+          to: 'all',
+          type: 'wedding-timeline:event-deleted',
+          data: { projectId: projectId || selectedProjectId, weddingId },
+          priority: 'low'
+        });
+      }
+      void ensureDriveBackup('event-deleted');
   }
 });
 
@@ -542,6 +840,19 @@ export default function WeddingTimelineAdmin({
       
       // Show success notification
       alert(`✅ Timeline auto-adjusted! ${data.adjustedEventsCount} events updated (+${data.delayMinutes} minutes)`);
+      onWorklogCreate?.({ action: 'timeline-auto-adjusted', delayMinutes: data.delayMinutes, adjustedEvents: data.adjustedEventsCount, projectId, timestamp: new Date().toISOString() });
+      onProjectUpdate?.({ projectId, action: 'timeline-delayed', delayMinutes: data.delayMinutes });
+      dataFlow.syncData('wedding-timeline:delay', { projectId, delayMinutes: data.delayMinutes, adjustedCount: data.adjustedEventsCount });
+      if (timelineSettings.notifications.autoAdjustments) {
+        communication.sendMessage({
+          from: 'wedding-timeline-admin',
+          to: 'all',
+          type: 'wedding-timeline:auto-adjusted',
+          data: { projectId, delayMinutes: data.delayMinutes, adjustedCount: data.adjustedEventsCount },
+          priority: 'medium'
+        });
+      }
+      void ensureDriveBackup('auto-adjusted');
     }
   });
 
@@ -558,17 +869,42 @@ export default function WeddingTimelineAdmin({
       
       // Show success notification
       alert(`🔄 Timeline reverted! ${data.revertedCount} events restored to original schedule`);
+      onWorklogCreate?.({ action: 'timeline-reverted', revertedCount: data.revertedCount, projectId, timestamp: new Date().toISOString() });
+      onProjectUpdate?.({ projectId, action: 'timeline-reverted' });
+      dataFlow.syncData('wedding-timeline:reverted', { projectId, revertedCount: data.revertedCount });
+      if (timelineSettings.notifications.autoAdjustments) {
+        communication.sendMessage({
+          from: 'wedding-timeline-admin',
+          to: 'all',
+          type: 'wedding-timeline:reverted',
+          data: { projectId, revertedCount: data.revertedCount },
+          priority: 'medium'
+        });
+      }
+      void ensureDriveBackup('auto-adjust-reverted');
     }
   });
 
   // Handlers
   const handleMarkDelayed = (eventId: string) => {
+    if (!timelineSettings.autoAdjust.enabled) {
+      alert('Auto-justering er deaktivert i innstillingene.');
+      return;
+    }
     setDelayEventId(eventId);
     setShowDelayDialog(true);
   };
 
   const handleConfirmDelay = () => {
     if (!delayEventId || delayMinutes <= 0) return;
+    if (delayMinutes < timelineSettings.autoAdjust.minDelayMinutes) {
+      alert(`Minimum forsinkelse er ${timelineSettings.autoAdjust.minDelayMinutes} minutter.`);
+      return;
+    }
+    if (timelineSettings.autoAdjust.requireReason && !delayReason.trim()) {
+      alert('Du må oppgi årsak til forsinkelsen.');
+      return;
+    }
     
     setAdjusting(true);
     markDelayedMutation.mutate(
@@ -580,6 +916,10 @@ export default function WeddingTimelineAdmin({
   };
 
   const handleRevertTimeline = () => {
+    if (!timelineSettings.autoAdjust.enabled) {
+      alert('Auto-justering er deaktivert i innstillingene.');
+      return;
+    }
     if (!confirm('Revert all events back to original schedule?')) return;
     
     setAdjusting(true);
@@ -588,9 +928,108 @@ export default function WeddingTimelineAdmin({
     });
   };
 
+  // File export handler — exports timeline data as JSON and notifies parent
+  const handleExportTimeline = () => {
+    if (!timeline) return;
+    const exportData = JSON.stringify(timeline, null, 2);
+    const blob = new Blob([exportData], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `timeline-${timeline.clientName || projectId || 'export'}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    onFileDownload?.({ fileName: link.download, type: 'timeline-export', projectId: projectId || selectedProjectId });
+    onWorklogCreate?.({ action: 'timeline-exported', projectId: projectId || selectedProjectId, timestamp: new Date().toISOString() });
+  };
+
+  const handleExportToIcal = () => {
+    if (!timeline) return;
+    const baseDate = timeline.eventDate || newTimelineData.eventDate || '';
+    const sanitize = (value: string) => value.replace(/,/g, '\\,').replace(/;/g, '\\;').replace(/\n/g, '\\n');
+    const formatDateTime = (dateString: string, timeString?: string) => {
+      if (!dateString) return '';
+      const time = timeString && timeString.includes(':') ? `${timeString}:00` : '00:00:00';
+      const iso = new Date(`${dateString}T${time}`).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
+      return iso;
+    };
+
+    const events = (timeline.events || []).map((event) => {
+      const start = formatDateTime(baseDate, event.time);
+      const endDate = event.duration ? new Date(`${baseDate}T${event.time || '00:00'}:00`) : null;
+      const end = endDate
+        ? new Date(endDate.getTime() + event.duration * 60000).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z')
+        : '';
+      return [
+        'BEGIN:VEVENT',
+        `UID:${event.id || `${Date.now()}-${Math.random().toString(36).slice(2)}`}@creatorhubn`,
+        `DTSTAMP:${formatDateTime(new Date().toISOString().split('T')[0])}`,
+        start ? `DTSTART:${start}` : '',
+        end ? `DTEND:${end}` : '',
+        `SUMMARY:${sanitize(event.title || 'Timeline Event')}`,
+        event.location ? `LOCATION:${sanitize(event.location)}` : '',
+        event.description ? `DESCRIPTION:${sanitize(event.description)}` : '',
+        'END:VEVENT'
+      ].filter(Boolean).join('\n');
+    });
+
+    const calendarName = sanitize(timeline.clientName || timeline.venue || 'Timeline');
+    const icalContent = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'PRODID:-//CreatorHubN//Wedding Timeline//EN',
+      'CALSCALE:GREGORIAN',
+      `X-WR-CALNAME:${calendarName}`,
+      ...events,
+      'END:VCALENDAR'
+    ].join('\n');
+
+    const blob = new Blob([icalContent], { type: 'text/calendar;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `timeline-${timeline.clientName || projectId || 'export'}.ics`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    onFileDownload?.({ fileName: link.download, type: 'timeline-ical-export', projectId: projectId || selectedProjectId });
+    onWorklogCreate?.({ action: 'timeline-ical-exported', projectId: projectId || selectedProjectId, timestamp: new Date().toISOString() });
+  };
+
+  // File import handler — imports timeline data from JSON file
+  const handleImportTimeline = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const importedData = JSON.parse(e.target?.result as string);
+        // Prefill from imported data
+        if (importedData.eventDate || importedData.weddingDate || importedData.venue || importedData.clientName || importedData.coupleName) {
+          setNewTimelineData({
+            eventDate: importedData.eventDate || importedData.weddingDate || '',
+            venue: importedData.venue || '',
+            clientName: importedData.clientName || importedData.coupleName || '',
+          });
+          setCreateTimelineOpen(true);
+        }
+        onFileUpload?.({ fileName: file.name, type: 'timeline-import', data: importedData, projectId: projectId || selectedProjectId });
+        onWorklogCreate?.({ action: 'timeline-imported', projectId: projectId || selectedProjectId, fileName: file.name, timestamp: new Date().toISOString() });
+      } catch (err) {
+        console.error('Failed to parse imported timeline file:', err);
+      }
+    };
+    reader.readAsText(file);
+    // Reset the input
+    event.target.value = '';
+  };
+
   // Skip loading state in demo mode since we use static data
   if (timelineLoading && !isDemoMode) {
-    return <Box sx={{ p:  3 }}>Laster bryllupstidslinje-administrasjon...</Box>;
+    return <Box sx={{ p:  3 }}>Laster tidslinje-administrasjon...</Box>;
   }
 
   return (
@@ -599,14 +1038,50 @@ export default function WeddingTimelineAdmin({
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <Event sx={{ color: theming.colors.primary }} />
           <Typography variant="h4" sx={{ fontWeight: 700, color: theming.colors.primary }}>
-            Bryllupstidslinje Administrasjon
+            Evendi Tidslinje — {eventTypeLabel}
           </Typography>
         </Box>
-        <Tooltip title="Hjelp og veiledning">
-          <IconButton onClick={() => setHelpOpen(true)} sx={{ color: theming.colors.primary }}>
-            <HelpOutline />
-          </IconButton>
-        </Tooltip>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          {timeline?.clientAccessEnabled && icalWebcalUrl && (
+            <Tooltip title="Kopier iCal-abonnement">
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={<ContentCopy />}
+                onClick={() => {
+                  navigator.clipboard.writeText(icalWebcalUrl);
+                }}
+              >
+                iCal
+              </Button>
+            </Tooltip>
+          )}
+          {/* Push notification status indicator */}
+          {isSupported && (
+            <Chip
+              icon={<Notifications />}
+              label={pushEnabled ? 'Varsler aktive' : 'Varsler av'}
+              size="small"
+              color={pushEnabled ? 'success' : 'default'}
+              variant={pushEnabled ? 'filled' : 'outlined'}
+            />
+          )}
+          {/* Selected client indicator */}
+          {selectedClient && (
+            <Chip
+              icon={<People />}
+              label={selectedClient.name || selectedClient.email || 'Klient'}
+              size="small"
+              color="primary"
+              variant="outlined"
+            />
+          )}
+          <Tooltip title="Hjelp og veiledning">
+            <IconButton onClick={() => setHelpOpen(true)} sx={{ color: theming.colors.primary }}>
+              <HelpOutline />
+            </IconButton>
+          </Tooltip>
+        </Box>
       </Box>
 
       {/* Help Modal */}
@@ -620,18 +1095,18 @@ export default function WeddingTimelineAdmin({
       >
         <Typography variant="body2" sx={{ fontWeight: 600 }}>
           {weddingId 
-            ? `Administrerer tidslinje for bryllup ${weddingId}`
+            ? `Administrerer ${contextLabels.contextPrefix}tidslinje for ${weddingId}`
             : projectId 
-              ? `Administrerer tidslinje for fotograferingsprosjekt ${projectId}`
-              : 'Administrerer generelle bryllupstidslinje-maler'
+              ? `Administrerer tidslinje for prosjekt ${projectId}`
+              : `Administrerer generelle tidslinje-maler for ${eventTypeLabel.toLowerCase()}`
         }
         </Typography>
         <Typography variant="caption" color="text.secondary">
           {weddingId 
-            ? 'Endringer gjelder kun dette spesifikke bryllupet'
+            ? contextLabels.specificInfoText
             : projectId 
               ? 'Endringer gjelder kun dette fotograferingsprosjektet'
-              : 'Endringer lager maler som kan brukes for nye bryllup'
+              : contextLabels.templateInfoText
         }
         </Typography>
       </Alert>
@@ -640,14 +1115,39 @@ export default function WeddingTimelineAdmin({
       {prefill && (
         <Alert severity="info" sx={{ mb: 2 }}>
           <Typography variant="body2" sx={{ fontWeight: 600}}>Forhåndsutfylling mottatt fra prosjektopprettelse</Typography>
-          <Typography variant="caption" display="block">Prosjektnavn: {prefill.projectName || '—'}</Typography>
-          <Typography variant="caption" display="block">Kunde: {prefill.clientEmail || '—'}</Typography>
-          <Typography variant="caption" display="block">Dato: {prefill.eventDate || '—'}</Typography>
+          {timelinePrefillSettings.projectName && (
+            <Typography variant="caption" display="block">Prosjektnavn: {prefill.projectName || '—'}</Typography>
+          )}
+          {timelinePrefillSettings.clientName && (
+            <Typography variant="caption" display="block">Kunde: {prefill.clientName || '—'}</Typography>
+          )}
+          {timelinePrefillSettings.clientEmail && (
+            <Typography variant="caption" display="block">Kunde: {prefill.clientEmail || '—'}</Typography>
+          )}
+          {timelinePrefillSettings.clientPhone && (
+            <Typography variant="caption" display="block">Telefon: {prefill.clientPhone || '—'}</Typography>
+          )}
+          {timelinePrefillSettings.eventDate && (
+            <Typography variant="caption" display="block">Dato: {prefill.eventDate || '—'}</Typography>
+          )}
           {prefill.eventDates && (
             <Typography variant="caption" display="block">Datoer: {Object.values(prefill.eventDates).join('')}</Typography>
           )}
-          <Typography variant="caption" display="block">Lokasjon: {prefill.location || '—'}</Typography>
-          <Typography variant="caption" display="block">Gjester: {prefill.guestCount || '—'}</Typography>
+          {timelinePrefillSettings.location && (
+            <Typography variant="caption" display="block">Lokasjon: {prefill.location || '—'}</Typography>
+          )}
+          {timelinePrefillSettings.guestCount && (
+            <Typography variant="caption" display="block">Gjester: {prefill.guestCount || '—'}</Typography>
+          )}
+          {timelinePrefillSettings.culturalType && (
+            <Typography variant="caption" display="block">Kulturtype: {prefill.culturalType || evendiCulturalType || '—'}</Typography>
+          )}
+          {timelinePrefillSettings.eventType && (
+            <Typography variant="caption" display="block">Event type: {prefill.eventType || resolvedEventType}</Typography>
+          )}
+          {timelinePrefillSettings.evendiCoupleId && prefill.evendiCoupleId && (
+            <Typography variant="caption" display="block">Evendi couple ID: {prefill.evendiCoupleId}</Typography>
+          )}
         </Alert>
       )}
 
@@ -662,18 +1162,30 @@ export default function WeddingTimelineAdmin({
           <Grid container spacing={3}>
             <Grid item xs={12} md={6}>
               <FormControl fullWidth>
-                <InputLabel>Velg bryllupsprosjekt</InputLabel>
+                <InputLabel>{contextLabels.projectLabel}</InputLabel>
                 <Select
                   value={selectedProjectId || ''}
-                  onChange={(e) => setSelectedProjectId(e.target.value || undefined)}
-                  label="Velg bryllupsprosjekt"
+                  onChange={(e) => {
+                    const val = e.target.value || undefined;
+                    setSelectedProjectId(val);
+                    if (val) {
+                      const project = weddingProjectsList.find((p) => p.id === val);
+                      if (project) {
+                        onProjectSelect?.(project);
+                        if (project.clientName) {
+                          onClientSelect?.({ name: project.clientName, id: project.clientId, projectId: val });
+                        }
+                      }
+                    }
+                  }}
+                  label={contextLabels.projectLabel}
                 >
                   <MenuItem value="">
                     <em>Generell tidslinje (ingen prosjekt)</em>
                   </MenuItem>
-                  {weddingProjectsList.map((project: any) => (
-                    <MenuItem key={project.d} value={project.id}>
-                      {project.projectName} - {project.clientName} ({project.culturalType || 'norsk'})
+                  {weddingProjectsList.map((project) => (
+                    <MenuItem key={project.id} value={project.id}>
+                      {project.projectName || ''} - {project.clientName || ''} ({project.culturalType || 'norsk'})
                     </MenuItem>
                   ))}
                 </Select>
@@ -708,7 +1220,14 @@ export default function WeddingTimelineAdmin({
         </CardContent>
       </Card>
 
-      <Tabs value={activeTab} onChange={(_, newValue) => setActiveTab(newValue)} sx={{ mb: 3 }}>
+      <Tabs
+        value={activeTab}
+        onChange={(_, newValue) => {
+          hasUserSetTabRef.current = true;
+          setActiveTab(newValue);
+        }}
+        sx={{ mb: 3 }}
+      >
         <Tab label="Timeline Oversikt" />
         <Tab label="Hendelser" />
         <Tab label="Deltakere & Leverandører" />
@@ -730,12 +1249,12 @@ export default function WeddingTimelineAdmin({
                 {timeline ? (
                   <Box>
                     <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-                      {timeline.coupleName || 'Nytt Bryllup'}
+                      {timeline.clientName || contextLabels.newPlaceholder}
                     </Typography>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
                       <CalendarToday sx={{ fontSize: '1rem', color: 'text.secondary' }} />
                       <Typography variant="body2" color="text.secondary">
-                        {timeline.weddingDate || 'Dato ikke satt'}
+                        {timeline.eventDate || 'Dato ikke satt'}
                       </Typography>
                     </Box>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
@@ -753,16 +1272,16 @@ export default function WeddingTimelineAdmin({
                     <Typography variant="body2" color="text.secondary" sx={{ mb:  2 }}>
                       {weddingId || projectId 
                         ? 'Ingen tidslinje funnet. Opprett ny tidslinje for dette prosjektet.'
-                        : 'Administrer generelle tidslinje-maler som kan brukes for nye bryllup.'
+                        : contextLabels.noTimelinePlaceholder
                     }
                     </Typography>
                     <Button variant="contained" 
                       startIcon={theming.getThemedIcon('add')}
                       onClick={() => {
                         setNewTimelineData({
-                          weddingDate: prefill?.eventDate || (prefill?.eventDates ? Object.values(prefill.eventDates)[0] : '' ) || ',',
+                          eventDate: prefill?.eventDate || (prefill?.eventDates ? Object.values(prefill.eventDates)[0] : '' ) || ',',
                           venue: prefill?.location || '',
-                          coupleName: prefill?.projectName || ''
+                          clientName: prefill?.projectName || ''
                         });
                         setCreateTimelineOpen(true);
                       }}
@@ -783,12 +1302,15 @@ export default function WeddingTimelineAdmin({
                   {theming.getThemedIcon('cloudDone')} Automatisk Backup
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mb:  2 }}>
-                  Alle tidslinje-endringer lagres automatisk til din Google Drive.
+                  {timelineSettings.sync.enableGoogleDriveBackup
+                    ? 'Alle tidslinje-endringer lagres automatisk til din Google Drive.'
+                    : 'Automatisk Google Drive-backup er deaktivert i innstillingene.'}
                 </Typography>
                 <Button 
                   variant="outlined" 
                   size="small"
                   startIcon={theming.getThemedIcon('cloudDone')}
+                  disabled={!timelineSettings.sync.enableGoogleDriveBackup}
                 >
                   Se Backup Status
                 </Button>
@@ -800,7 +1322,7 @@ export default function WeddingTimelineAdmin({
             <Card sx={{
               ...theming.getThemedCardSx(),
               border: '3px solid',
-              borderColor: timeline?.clientAccessEnabled ? theming.colors.success : theming.colors.primary,
+              borderColor: timeline?.clientAccessEnabled ? ((theming.colors as Record<string, string>).success || '#4caf50') : theming.colors.primary,
               bgcolor: timeline?.clientAccessEnabled ? 'rgba(76, 175, 80, 0.05)' : 'rgba(233, 30, 99, 0.05)'
             }}>
               <CardContent>
@@ -824,7 +1346,7 @@ export default function WeddingTimelineAdmin({
                       variant="outlined"
                       startIcon={<ContentCopy />}
                       onClick={() => {
-                        navigator.clipboard.writeText(clientUrl);
+                        navigator.clipboard.writeText(fullClientUrl);
                       }}
                     >
                       Kopier lenke
@@ -846,7 +1368,13 @@ export default function WeddingTimelineAdmin({
                       <Button
                         variant="contained"
                         startIcon={<Key />}
-                        onClick={() => setShareDialogOpen(true)}
+                        onClick={() => {
+                          if (!clientUrl || !accessToken) {
+                            generateClientAccess.mutate(false);
+                          } else {
+                            setShareDialogOpen(true);
+                          }
+                        }}
                         sx={theming.getThemedButtonSx()}
                       >
                         Vis detaljer & QR-kode
@@ -866,7 +1394,7 @@ export default function WeddingTimelineAdmin({
                 ) : (
                   <Box>
                     <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                      Generer tilgangskode for bryllupsparet slik at de kan følge tidslinjen på bryllupsdagen.
+                      Generer tilgangskode for klienten slik at de kan følge tidslinjen på arrangementsdagen.
                     </Typography>
                     <Button
                       variant="contained"
@@ -891,16 +1419,66 @@ export default function WeddingTimelineAdmin({
         <Box>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb:  3 }}>
             <Typography variant="h6" sx={{ color: theming.colors.primary }}>Tidslinje Hendelser</Typography>
-            <Button variant="contained"
-              startIcon={theming.getThemedIcon('add')}
-              onClick={() => {
-                setSelectedEvent(null);
-                setEventDialogOpen(true);
-              }}
-              sx={{ bgcolor: '#E91E60','&:hover': { bgcolor: '#C2185B' }, ...theming.getThemedButtonSx() }}
-            >
-              Ny Hendelse
-            </Button>
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              {/* Revert Timeline Button */}
+              <Tooltip title="Tilbakestill tidslinje til opprinnelig tidsplan">
+                <span>
+                  <Button
+                    variant="outlined"
+                    color="warning"
+                    startIcon={<Schedule />}
+                    onClick={handleRevertTimeline}
+                    disabled={adjusting || !timeline?.events?.some(e => e.isDelayed)}
+                  >
+                    Tilbakestill
+                  </Button>
+                </span>
+              </Tooltip>
+              {/* Export Timeline */}
+              <Tooltip title="Eksporter tidslinje som JSON">
+                <Button
+                  variant="outlined"
+                  startIcon={<CalendarToday />}
+                  onClick={handleExportTimeline}
+                  disabled={!timeline}
+                >
+                  Eksporter
+                </Button>
+              </Tooltip>
+              {/* Export iCal */}
+              <Tooltip title="Eksporter tidslinje som iCal">
+                <Button
+                  variant="outlined"
+                  startIcon={<CalendarToday />}
+                  onClick={handleExportToIcal}
+                  disabled={!timeline}
+                >
+                  Eksporter iCal
+                </Button>
+              </Tooltip>
+              {/* Import Timeline */}
+              <Tooltip title="Importer tidslinje fra fil">
+                <Button
+                  variant="outlined"
+                  component="label"
+                  startIcon={<Settings />}
+                >
+                  Importer
+                  <input type="file" accept=".json" hidden onChange={handleImportTimeline} />
+                </Button>
+              </Tooltip>
+              {/* Add Event */}
+              <Button variant="contained"
+                startIcon={theming.getThemedIcon('add')}
+                onClick={() => {
+                  setSelectedEvent(null);
+                  setEventDialogOpen(true);
+                }}
+                sx={{ bgcolor: '#E91E60','&:hover': { bgcolor: '#C2185B' }, ...theming.getThemedButtonSx() }}
+              >
+                Ny Hendelse
+              </Button>
+            </Box>
           </Box>
 
           <Card sx={theming.getThemedCardSx()}>
@@ -911,7 +1489,7 @@ export default function WeddingTimelineAdmin({
                     primary={
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
                         <Typography variant="subtitle1">{event.title}</Typography>
-                        {event.clientNotes && (
+                        {timelineSettings.viewDefaults.showClientNotes && event.clientNotes && (
                           <Chip
                             icon={<Pending />}
                             label="Klientendring"
@@ -963,7 +1541,7 @@ export default function WeddingTimelineAdmin({
                             {event.description}
                           </Typography>
                         )}
-                        {event.clientNotes && (
+                        {timelineSettings.viewDefaults.showClientNotes && event.clientNotes && (
                           <Alert severity="info" sx={{ mt: 1, py: 0.5 }}>
                             <Typography variant="caption">
                               <strong>Klientnotat:</strong> {event.clientNotes}
@@ -978,6 +1556,7 @@ export default function WeddingTimelineAdmin({
                     <Tooltip title="Merk som forsinket (auto-juster tidslinje)">
                       <IconButton 
                         onClick={() => handleMarkDelayed(event.id)}
+                        disabled={!timelineSettings.autoAdjust.enabled}
                         sx={{ mr: 1 }}
                       >
                         <AccessTime sx={{ color: event.isDelayed ? '#FF9800' : '#757575' }} />
@@ -1109,10 +1688,10 @@ export default function WeddingTimelineAdmin({
                 </Box>
                 <Box sx={{ flex: 1 }}>
                   <Typography variant="h5" sx={{ fontWeight: 700, mb: 0.5 }}>
-                    Live Bryllupstidslinje
+                    Live Tidslinje
                   </Typography>
                   <Typography variant="body2" sx={{ opacity: 0.95 }}>
-                    Klienten kan følge tidslinjen live på bryllupsdagen med kulturtilpassede aktiviteter
+                    Klienten kan følge tidslinjen live på arrangementsdagen med kulturtilpassede aktiviteter
                   </Typography>
                 </Box>
               </Box>
@@ -1137,7 +1716,7 @@ export default function WeddingTimelineAdmin({
             settings={clientSettings}
             onSettingChange={handleClientSettingChange}
             title="Avanserte Klienttilgang Innstillinger"
-            description="Kontroller hva klienter kan gjøre med bryllupstidslinjen"
+            description="Kontroller hva klienter kan gjøre med tidslinjen"
             projectId={selectedProjectId || projectId || weddingId}
             onViewTimeline={handleViewTimeline}
           />
@@ -1153,7 +1732,7 @@ export default function WeddingTimelineAdmin({
 
           <Grid container spacing={3}>
             {/* PIN/Password Reset */}
-            <Grid size={{ xs: 12 }} md={6}>
+            <Grid item xs={12} md={6}>
               <Card sx={theming.getThemedCardSx()}>
                 <CardContent>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
@@ -1232,7 +1811,9 @@ export default function WeddingTimelineAdmin({
                         setNewPin('');
                         setNewPassword('');
                         setConfirmPassword('');
-                        // Show success message
+                        // Show success confirmation dialog
+                        setPinPasswordDialogOpen(true);
+                        onWorklogCreate?.({ action: 'security-updated', resetType, projectId: projectId || selectedProjectId, timestamp: new Date().toISOString() });
                       } catch (error) {
                         console.error('Failed to update security settings: ', error);
                       }
@@ -1250,7 +1831,7 @@ export default function WeddingTimelineAdmin({
             </Grid>
 
             {/* Last Client Activity */}
-            <Grid size={{ xs: 12 }} md={6}>
+            <Grid item xs={12} md={6}>
               <Card sx={theming.getThemedCardSx()}>
                 <CardContent>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
@@ -1284,19 +1865,43 @@ export default function WeddingTimelineAdmin({
             </Grid>
 
             {/* Push Notifications */}
-            <Grid size={{ xs: 12 }}>
+            <Grid item xs={12}>
               <Card sx={theming.getThemedCardSx()}>
                 <CardContent>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-                    <Notifications sx={{ color: theming.colors.primary }} />
-                    <Typography variant="h6" sx={{ color: theming.colors.primary }}>
-                      Push-varsler
-                    </Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Notifications sx={{ color: theming.colors.primary }} />
+                      <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+                        Push-varsler
+                      </Typography>
+                    </Box>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      {isSupported ? (
+                        <Chip
+                          label={pushEnabled ? 'Aktive' : 'Inaktive'}
+                          color={pushEnabled ? 'success' : 'default'}
+                          size="small"
+                          icon={<Notifications />}
+                        />
+                      ) : (
+                        <Chip label="Ikke støttet" color="warning" size="small" variant="outlined" />
+                      )}
+                    </Box>
                   </Box>
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                    Aktiver push-varsler for å motta varsler om klientendringer og tidslinjeoppdateringer.
-                  </Typography>
-                  <PushNotificationSettings userId={userId} contextId={timelineId} />
+                  {isSupported ? (
+                    <>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                        {pushEnabled
+                          ? 'Push-varsler er aktivert. Du mottar varsler om klientendringer og tidslinjeoppdateringer.'
+                          : 'Aktiver push-varsler for å motta varsler om klientendringer og tidslinjeoppdateringer.'}
+                      </Typography>
+                      <PushNotificationSettings userId={userId} contextId={timelineId} />
+                    </>
+                  ) : (
+                    <Alert severity="warning">
+                      Push-varsler støttes ikke i denne nettleseren. Bruk en moderne nettleser som Chrome, Firefox eller Edge for å aktivere push-varsler.
+                    </Alert>
+                  )}
                 </CardContent>
               </Card>
             </Grid>
@@ -1455,22 +2060,22 @@ export default function WeddingTimelineAdmin({
         maxWidth="sm"
         fullWidth
       >
-        <DialogTitle>Opprett bryllupstidslinje</DialogTitle>
+        <DialogTitle>Opprett tidslinje — {eventTypeLabel}</DialogTitle>
         <DialogContent>
           <Grid container spacing={2} sx={{ mt: 1 }}>
             <Grid item xs={12}>
               <TextField
-                label="Dato"
+                label={contextLabels.eventDateLabel}
                 type="date"
-                value={newTimelineData.weddingDate || ', '}
-                onChange={(e) => setNewTimelineData((p) => ({ ...p, weddingDate: e.target.value }))}
+                value={newTimelineData.eventDate || ', '}
+                onChange={(e) => setNewTimelineData((p) => ({ ...p, eventDate: e.target.value }))}
                 InputLabelProps={{ shrink: true }}
                 fullWidth
               />
             </Grid>
             <Grid item xs={12}>
               <TextField
-                label="Lokasjon / Venue"
+                label={contextLabels.venueLabel}
                 value={newTimelineData.venue || ', '}
                 onChange={(e) => setNewTimelineData((p) => ({ ...p, venue: e.target.value }))}
                 fullWidth
@@ -1478,9 +2083,9 @@ export default function WeddingTimelineAdmin({
             </Grid>
             <Grid item xs={12}>
               <TextField
-                label="Par / Prosjektnavn"
-                value={newTimelineData.coupleName || ', '}
-                onChange={(e) => setNewTimelineData((p) => ({ ...p, coupleName: e.target.value }))}
+                label={contextLabels.clientNameLabel}
+                value={newTimelineData.clientName || ', '}
+                onChange={(e) => setNewTimelineData((p) => ({ ...p, clientName: e.target.value }))}
                 fullWidth
               />
             </Grid>
@@ -1490,7 +2095,7 @@ export default function WeddingTimelineAdmin({
           <Button onClick={() => setCreateTimelineOpen(false)}>Avbryt</Button>
           <Button
             variant="contained"
-            disabled={createTimelineMutation.isPending || !newTimelineData.weddingDate}
+            disabled={createTimelineMutation.isPending || !newTimelineData.eventDate}
             onClick={() => createTimelineMutation.mutate()}
           >
             {createTimelineMutation.isPending ? 'Oppretter...' : 'Opprett'}
@@ -1507,7 +2112,7 @@ export default function WeddingTimelineAdmin({
       >
         <DialogTitle sx={{ bgcolor: '#f57c00', color: 'white', display: 'flex', alignItems: 'center', gap:  1 }}>
           <Event />
-          Bryllupstidslinje - {timeline?.coupleName || projectId}
+          Tidslinje - {timeline?.clientName || projectId}
         </DialogTitle>
         <DialogContent sx={{ p:  0 }}>
           <style>
@@ -1526,6 +2131,16 @@ export default function WeddingTimelineAdmin({
                   box-shadow: 0 2px 8px rgba(16, 39, 176, 0.4);
               }
             }
+              @keyframes fadeSlideIn {
+                from {
+                  opacity: 0;
+                  transform: translateY(12px);
+                }
+                to {
+                  opacity: 1;
+                  transform: translateY(0);
+                }
+              }
             `}
           </style>
           <Box sx={{ p:  3 }}>
@@ -1535,7 +2150,7 @@ export default function WeddingTimelineAdmin({
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
                     <CalendarToday sx={{ color: theming.colors.primary }} />
                     <Typography variant="h6" sx={{ color: theming.colors.primary }}>
-                      {timeline.weddingDate || 'Dato ikke satt'}
+                      {timeline.eventDate || 'Dato ikke satt'}
                     </Typography>
                   </Box>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
@@ -1548,15 +2163,17 @@ export default function WeddingTimelineAdmin({
                     <Typography variant="body2" sx={{ color: '#f57c00'}}>
                       {timeline.events?.length || 0} hendelser planlagt
                     </Typography>
-                    <Typography variant="body2" sx={{ 
-                      color: '#9c27b0', 
-                      fontWeight: 60
-                     , display: 'flex',
-                      alignItems: 'center',
-                      gap: 0.5 }}>
-                      <Mic sx={{ fontSize: '16px'}} />
-                      {timeline.events?.filter(event => event.hasSpeech).length || 0} taler/presentasjoner
-                    </Typography>
+                    {timelineSettings.viewDefaults.showSpeechMarkers && (
+                      <Typography variant="body2" sx={{ 
+                        color: '#9c27b0', 
+                        fontWeight: 60
+                       , display: 'flex',
+                        alignItems: 'center',
+                        gap: 0.5 }}>
+                        <Mic sx={{ fontSize: '16px'}} />
+                        {timeline.events?.filter(event => event.hasSpeech).length || 0} taler/presentasjoner
+                      </Typography>
+                    )}
                   </Box>
                 </Box>
 
@@ -1577,7 +2194,21 @@ export default function WeddingTimelineAdmin({
                     {timeline.events
                       .sort((a, b) => a.time.localeCompare(b.time))
                       .map((event, index) => (
-                      <Box key={event.id} sx={{ position: 'relative', mb:  3 }}>
+                      <Box key={event.id} sx={{ position: 'relative', mb: 3, opacity: 0, animation: `fadeSlideIn 0.4s ease-out ${index * 0.08}s forwards` }}>
+                        {/* Event number indicator */}
+                        <Typography
+                          variant="caption"
+                          sx={{
+                            position: 'absolute',
+                            left: '-60px',
+                            top: '22px',
+                            color: 'text.disabled',
+                            fontWeight: 600,
+                            fontSize: '0.7rem'
+                          }}
+                        >
+                          #{index + 1}
+                        </Typography>
                         {/* Timeline Node */}
                         <Box sx={{
                           position: 'absolute',
@@ -1590,7 +2221,7 @@ export default function WeddingTimelineAdmin({
                                    event.status === 'confirmed' ? '#f57c00' : 
                                    event.status === 'cancelled' ? '#f44336' : '#2196f0',
                           border: '4px solid white',
-                          boxShadow: '0 2px 8px blur\(\s*([0-9]+px)\s*,\s*\), 0,0,0,0.2)',
+                          boxShadow: '0 2px 8px rgba(0, 0, 0, 0.2)',
                           zIndex: 2,
                           display: 'flex',
                           alignItems: 'center',
@@ -1826,11 +2457,11 @@ export default function WeddingTimelineAdmin({
       <Dialog open={shareDialogOpen} onClose={() => setShareDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ bgcolor: '#E91E60', color: 'white', display: 'flex', alignItems: 'center', gap: 1 }}>
           <Key sx={{ fontSize: '1.5rem' }} />
-          Bryllupstidslinje - Klienttilgang
+          Evendi Tidslinje - Klienttilgang
         </DialogTitle>
         <DialogContent sx={{ p:  3 }}>
           <Typography variant="body1" sx={{ mb:  3 }}>
-            Tilgangskode er generert! Del denne informasjonen med bryllupsparet: </Typography>
+            Tilgangskode er generert! Del denne informasjonen med klienten: </Typography>
 
           <Grid container spacing={3} sx={{ mb: 3 }}>
             <Grid item xs={12} md={6}>
@@ -1858,22 +2489,53 @@ export default function WeddingTimelineAdmin({
                       flex: 1
                     }}
                   >
-                    {clientUrl}
+                    {fullClientUrl}
                   </Typography>
                   <Tooltip title="Kopier lenke">
                     <IconButton
                       size="small"
                       onClick={() => {
-                        navigator.clipboard.writeText(clientUrl);
+                        navigator.clipboard.writeText(fullClientUrl);
                       }}
                     >
                       <ContentCopy />
                     </IconButton>
                   </Tooltip>
                 </Box>
+                {timeline?.clientAccessEnabled && icalWebcalUrl && (
+                  <Box>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                      iCal abonnement (webcal)
+                    </Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        wordBreak: 'break-all',
+                        color: '#1976d2',
+                        fontFamily: 'monospace',
+                        fontSize: '0.8rem',
+                        flex: 1
+                      }}
+                    >
+                      {icalWebcalUrl}
+                    </Typography>
+                    <Tooltip title="Kopier iCal-abonnement">
+                      <IconButton
+                        size="small"
+                        onClick={() => {
+                          navigator.clipboard.writeText(icalWebcalUrl);
+                        }}
+                      >
+                        <ContentCopy />
+                      </IconButton>
+                    </Tooltip>
+                    </Box>
+                  </Box>
+                )}
               </Box>
             </Grid>
-            <Grid size={{ xs: 12 }} md={6}>
+            <Grid item xs={12} md={6}>
               <Box sx={{
                 bgcolor: '#f5f5f0',
                 p: 2,
@@ -1898,7 +2560,7 @@ export default function WeddingTimelineAdmin({
                     }}
                   >
                     <img
-                      src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(clientUrl)}`}
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(fullClientUrl)}`}
                       alt="QR Code"
                       style={{ maxWidth: '100%', height: 'auto' }}
                     />
@@ -1914,7 +2576,7 @@ export default function WeddingTimelineAdmin({
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <Lightbulb sx={{ color: theming.colors.primary, fontSize: '1.2rem' }} />
             <Typography variant="body2" color="text.secondary">
-              Tips: Bryllupsparet kan følge tidslinjen live på bryllupsdagen med denne koden!
+              Tips: Klienten kan følge tidslinjen live på arrangementsdagen med denne koden!
             </Typography>
           </Box>
         </DialogContent>
@@ -2000,6 +2662,38 @@ export default function WeddingTimelineAdmin({
             sx={{ bgcolor: '#FF9800', '&:hover': { bgcolor: '#F57C00' } }}
           >
             {adjusting ? 'Adjusting...' : 'Apply Auto-Adjust'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* PIN/Password Update Success Dialog */}
+      <Dialog
+        open={pinPasswordDialogOpen}
+        onClose={() => setPinPasswordDialogOpen(false)}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle sx={{ bgcolor: '#4caf50', color: 'white', display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Key />
+          Sikkerhet oppdatert
+        </DialogTitle>
+        <DialogContent sx={{ pt: 3 }}>
+          <Alert severity="success" sx={{ mt: 2 }}>
+            <Typography variant="body2" sx={{ fontWeight: 600 }}>
+              {resetType === 'pin' ? 'PIN-kode' : resetType === 'password' ? 'Passord' : 'PIN-kode og passord'} er oppdatert!
+            </Typography>
+            <Typography variant="caption" display="block" sx={{ mt: 1 }}>
+              Klienter med eksisterende tilgang må bruke den nye {resetType === 'pin' ? 'PIN-koden' : resetType === 'password' ? 'passordet' : 'PIN-koden/passordet'} ved neste innlogging.
+            </Typography>
+          </Alert>
+        </DialogContent>
+        <DialogActions>
+          <Button
+            variant="contained"
+            onClick={() => setPinPasswordDialogOpen(false)}
+            sx={{ bgcolor: '#4caf50', '&:hover': { bgcolor: '#388e3c' } }}
+          >
+            OK
           </Button>
         </DialogActions>
       </Dialog>

@@ -74,7 +74,7 @@ import ShowcaseClient from '@/pages/showcase-client';
 import ShowcaseClientEnhanced from '@/pages/showcase-client-enhanced';
 import WeddingTimelineClientPage from '@/pages/wedding-timeline-client';
 import WeddingTimelineClientResponsive from '@/pages/WeddingTimelineClientResponsive';
-import WeddingTimelineAdmin from '@/components/wedding/WeddingTimelineAdmin';
+import EvendiTimelineAdmin from '@/components/wedding/WeddingTimelineAdmin';
 import PricingPage from '@/pages/PricingPage';
 import ContractSigningPage from '@/pages/ContractSigningPage';
 // import MillionDollarMeetingSystem from '@/pages/million-dollar-meeting-system'; // File deleted
@@ -263,10 +263,10 @@ function App() {
                   {/* Login route */}
                   <Route path="/login" component={LoginPageSimple} />
                   {/* <Route path="/test" component={TestMinimal} /> */}
-                  {/* TEMPORARY: Demo route for Wedding Timeline Admin - bypasses auth */}
+                  {/* TEMPORARY: Demo route for Evendi Timeline Admin - bypasses auth */}
                   <Route path="/wedding-timeline-admin-demo" component={() => (
                     <Box sx={{ p: 3, bgcolor: '#f5f5f5', minHeight: '100vh' }}>
-                      <WeddingTimelineAdmin
+                      <EvendiTimelineAdmin
                         projectId="demo-project-123"
                         weddingId="demo-wedding-456"
                       />

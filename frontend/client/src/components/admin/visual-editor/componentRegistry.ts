@@ -60,12 +60,12 @@ export const UNIVERSAL_DASHBOARD_COMPONENTS: ComponentMetadata[] = [
     importPath: './FotografOrchestrator'
 },
 
-  // WEDDING TIMELINE COMPONENTS
+  // EVENDI TIMELINE COMPONENTS
   {
-    id: 'wedding-timeline-admin',
-    name: 'WeddingTimelineAdmin',
+    id: 'evendi-timeline-admin',
+    name: 'EvendiTimelineAdmin',
     category: 'management',
-    description: 'Wedding timeline administration and management interface',
+    description: 'Evendi timeline administration and management interface',
     profession: ['photographer','admin'],
     tabIndex:  2,
     dependencies: ['@mui/material','@tanstack/react-query'],
@@ -5782,12 +5782,12 @@ export const UNIVERSAL_DASHBOARD_COMPONENTS: ComponentMetadata[] = [
     importPath: '../ExportDialog'
 },
 
-  // WEDDING TIMELINE COMPONENTS
+  // EVENDI TIMELINE COMPONENTS (DUPLICATE SECTION)
   {
-    id: 'wedding-timeline-admin',
-    name: 'WeddingTimelineAdmin',
+    id: 'evendi-timeline-admin',
+    name: 'EvendiTimelineAdmin',
     category: 'management',
-    description: 'Wedding timeline administration for wedding event management',
+    description: 'Evendi timeline administration for event management',
     profession: ['photographer','admin'],
     tabIndex:  2,
     dependencies: ['@mui/material','@tanstack/react-query'],

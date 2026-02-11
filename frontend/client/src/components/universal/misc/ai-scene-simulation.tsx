@@ -64,7 +64,7 @@ export default function AiSceneSimulation({
   projectId,
   onSimulationComplete 
 }: AiSceneSimulationProps) {
-  const { user } = useAuth();
+  const { user, auth } = useAuth();
   
   // Theming system
   const theming = useTheming('photographer');
@@ -83,11 +83,11 @@ export default function AiSceneSimulation({
       return apiRequest(`/api/scene-simulations/${projectId || 'default'}`, {
         headers: {
           ...auth, 'Content-Type' : 'application/json'
-      }
-    });
-  },
+        }
+      });
+    },
     retry: false,
-});
+  });
 
   // Generate AI simulation
   const generateSimulation = useMutation({
@@ -96,7 +96,7 @@ export default function AiSceneSimulation({
         headers: {
           ...auth, 'Content-Type' : 'application/json'
       },
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify({ 
           ...sceneData, 
           projectId,
@@ -117,20 +117,19 @@ export default function AiSceneSimulation({
 
   // Save simulation
   const saveSimulation = useMutation({
-    mutationFn: async (simulation: SceneSimulation) => 
+    mutationFn: async (simulation: SceneSimulation) => {
       return apiRequest('/api/scene-simulations/save', {
         headers: {
-          "Content-Type" : "application/json"
-    },
-        headers: {
-    },
-        method: 'POS',
+          "Content-Type": "application/json"
+        },
+        method: 'POST',
         body: JSON.stringify(simulation)
-  }),
+      });
+    },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/scene-simulations", ],});
-  }
-});
+      queryClient.invalidateQueries({ queryKey: ["/api/scene-simulations"] });
+    }
+  });
 
   // Generate simulation for a scene
   const handleGenerateSimulation = useCallback(async (scene: any) => {
@@ -139,7 +138,7 @@ export default function AiSceneSimulation({
     
     try {
       await generateSimulation.mutateAsync({
-        sceneId: scene.d,
+        sceneId: scene.id,
         title: scene.title,
         description: scene.description,
         sceneType: scene.type || 'general',
@@ -159,10 +158,10 @@ export default function AiSceneSimulation({
     switch (type) {
       case 'lighting': return <Lightbulb />;
       case 'camera': return <CameraAlt />;
-      case 'composition': return theming.getThemedIcon(',');
-      case 'mood': return theming.getThemedIcon('smartToy');
+      case 'composition': return <Visibility />;
+      case 'mood': return <SmartToy />;
       case 'movement': return <Movie />;
-      default: return theming.getThemedIcon(', ');
+      default: return theming.getThemedIcon('info');
   }
 };
 

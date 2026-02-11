@@ -67,16 +67,15 @@ export default function DigitalSignaturePad({
       signerName: string; 
       signerEmail: string;
       timestamp: string;
-}) => 
+    }) => {
       return apiRequest('/api/signatures/save', {
         headers: {
-          "Content-Type" : "application/json"
-    },
-        headers: {
-    },
-        method: 'POS',
+          "Content-Type": "application/json"
+        },
+        method: 'POST',
         body: JSON.stringify(signatureData)
-  }),
+      });
+    },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/signatures", ],});
       onSignatureComplete?.(data.signature);
@@ -108,7 +107,7 @@ export default function DigitalSignaturePad({
     ctx.lineWidth = 2;
     ctx.lineCap = 'round';
     ctx.strokeStyle = '#000000';
-    ctx.lineTo, (y);
+    ctx.lineTo(x, y);
     ctx.stroke();
     ctx.beginPath();
     ctx.moveTo(x, y);
@@ -125,7 +124,7 @@ export default function DigitalSignaturePad({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    ctx.clearRect(0canvas.width, canvas.height);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
     setHasSignature(false);
 }, []);
 
@@ -133,7 +132,7 @@ export default function DigitalSignaturePad({
     if (!canvasRef.current || !hasSignature) return;
 
     setIsSaving(true);
-    setError(', ');
+    setError('');
 
     try {
       const signatureData = canvasRef.current.toDataURL('image/png');
@@ -280,7 +279,7 @@ export default function DigitalSignaturePad({
           Cancel
         </Button>
         <Button variant="contained"
-          startIcon={isSaving ? <CircularProgress size={20} sx={theming.getThemedButtonSx()}> : theming.getThemedIcon('save')}
+          startIcon={isSaving ? <CircularProgress size={20} sx={theming.getThemedButtonSx()} /> : theming.getThemedIcon('save')}
           onClick={saveSignatureData}
           disabled={!hasSignature || isSaving}
         >

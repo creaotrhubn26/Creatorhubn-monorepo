@@ -90,75 +90,72 @@ export default function DetailPlanManager({
 
   // Fetch detail plan items
   const { data: planItems = [], isLoading } = useQuery({
-    queryKey: ['/api/detail-plan,', projectId],
- return apiRequest(`/api/detail-plan/${projectId}`, {
-   headers: {
-          "Content-Type" : "application/json"
+    queryKey: ['/api/detail-plan', projectId],
+    queryFn: () => {
+      return apiRequest(`/api/detail-plan/${projectId}`, {
+        headers: {
+          "Content-Type": "application/json"
+        }
+      });
     },
-      headers: {
-  }
-  }),
     retry: false,
-});
+  });
 
   // Update plan item mutation
   const updatePlanItem = useMutation({
-    mutationFn: async (data: DetailPlanItem) => 
+    mutationFn: async (data: DetailPlanItem) => {
       return apiRequest('/api/detail-plan/update', {
         headers: {
-          "Content-Type" : "application/json"
-    },
-        headers: {
-    },
-        method: 'POS',
+          "Content-Type": "application/json"
+        },
+        method: 'POST',
         body: JSON.stringify(data)
-  }),
+      });
+    },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/detail-plan", ],});
-  }
-});
+      queryClient.invalidateQueries({ queryKey: ["/api/detail-plan"] });
+    }
+  });
 
   // Create plan item mutation
   const createPlanItem = useMutation({
-    mutationFn: async (data: Omit<DetailPlanItem, 'id, '>) => 
+    mutationFn: async (data: Omit<DetailPlanItem, 'id'>) => {
       return apiRequest('/api/detail-plan/create', {
         headers: {
-          "Content-Type" : "application/json"
-    },
-        headers: {
-    },
-        method: 'POS',
+          "Content-Type": "application/json"
+        },
+        method: 'POST',
         body: JSON.stringify({ ...data, projectId })
-    }),
+      });
+    },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/detail-plan", ],});
+      queryClient.invalidateQueries({ queryKey: ["/api/detail-plan"] });
       setShowDialog(false);
       setEditingItem(null);
-  }
-});
+    }
+  });
 
   // Delete plan item mutation
   const deletePlanItem = useMutation({
-    mutationFn: async (itemId: string) => 
-      return apiRequest(`/api/detail-plan/${itemd}`, {
+    mutationFn: async (itemId: string) => {
+      return apiRequest(`/api/detail-plan/${itemId}`, {
         headers: {
-          "Content-Type" : "application/json"
-    },
-        headers: {
-    },
+          "Content-Type": "application/json"
+        },
         method: 'DELETE'
-  }),
+      });
+    },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/detail-plan", ],});
-  }
-});
+      queryClient.invalidateQueries({ queryKey: ["/api/detail-plan"] });
+    }
+  });
 
   // Create worklog entry from plan item
   const createWorklogFromPlan = useCallback(async (item: DetailPlanItem) => {
     const worklogData = {
-      projectd,
+      projectId,
       userId: user?.id || user?.email || 'unknown-user',
-      day: 1// Default to day 1, can be adjusted
+      day: 1, // Default to day 1, can be adjusted
       title: item.title,
       description: item.description,
       timeSpent: item.actualHours || item.estimatedHours,
@@ -167,24 +164,22 @@ export default function DetailPlanManager({
       nextSteps: `Complete ${item.title}`,
       isPrivate: false,
       // Additional context
-      planItemId: item.d,
+      planItemId: item.id,
       priority: item.priority,
       status: item.status,
       location: item.location,
-      equipment: item.equipment?.join(''),
+      equipment: item.equipment?.join(', '),
       notes: item.notes
 };
 
     try {
- return apiRequest('/api/worklog/create', {
-   headers: {
-          "Content-Type" : "application/json"
-    },
+      const response = await apiRequest('/api/worklog/create', {
         headers: {
-    },
-        method: 'POS',
+          "Content-Type": "application/json"
+        },
+        method: 'POST',
         body: JSON.stringify(worklogData)
-  });
+      });
 
       if (response) {
         // Update plan item with worklog entry ID
@@ -210,12 +205,12 @@ export default function DetailPlanManager({
   // Get category icon
   const getCategoryIcon = (category: string) => {
     switch (category) {
-      case 'preparation': return theming.getThemedIcon(', ');
+      case 'preparation': return <Assignment />;
       case 'shooting': return <CameraAlt />;
-      case 'post-production': return theming.getThemedIcon('videocam');
-      case 'delivery': return theming.getThemedIcon('checkCircle');
-      case 'meeting': return theming.getThemedIcon('person');
-      default: return theming.getThemedIcon(', ');
+      case 'post-production': return <Videocam />;
+      case 'delivery': return <CheckCircle />;
+      case 'meeting': return <Person />;
+      default: return <Timeline />;
   }
 };
 
@@ -321,7 +316,7 @@ export default function DetailPlanManager({
       ) : (
         Object.entries(groupedItems).map(([category, items]: [string, any]) => (
           <Accordion key={category} defaultExpanded>
-            <AccordionSummary expandIcon={theming.getThemedIcon('expandMore')>
+            <AccordionSummary expandIcon={theming.getThemedIcon('expandMore')}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
                 {getCategoryIcon(category)}
                 <Typography variant="h6" sx={{ color: theming.colors.primary }}>
@@ -337,7 +332,7 @@ export default function DetailPlanManager({
             <AccordionDetails>
               <List>
                 {items.map((item: DetailPlanItem, index: number) => (
-                  <React.Fragment key={item.d}>
+                  <React.Fragment key={item.id}>
                     <ListItem
                       sx={{
                         bgcolor: 'background.paper',
@@ -369,14 +364,14 @@ export default function DetailPlanManager({
                             </Typography>
                             <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap'}}>
                               <Chip 
-                                icon={theming.getThemedIcon('schedule')}} 
+                                icon={theming.getThemedIcon('schedule')} 
                                 label={`${item.estimatedHours}h`} 
                                 size="small" 
                                 variant="outlined"
                               />
                               {item.location && (
                                 <Chip 
-                                  icon={theming.getThemedIcon('location')}} 
+                                  icon={theming.getThemedIcon('location')} 
                                   label={item.location} 
                                   size="small" 
                                   variant="outlined"
@@ -384,7 +379,7 @@ export default function DetailPlanManager({
                               )}
                               {item.assignedTo && (
                                 <Chip 
-                                  icon={theming.getThemedIcon('person')}} 
+                                  icon={theming.getThemedIcon('person')} 
                                   label={item.assignedTo} 
                                   size="small" 
                                   variant="outlined"

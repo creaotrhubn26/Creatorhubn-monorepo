@@ -230,14 +230,14 @@ const FOTOGRAF_ORCHESTRATIONS = {
     trigger: 'wedding_project_creation',
     actions: [
       {
-        component: 'WeddingTimelineAdmin',
+        component: 'EvendiTimelineAdmin',
         action: 'createTimeline',
         autoTrigger: true
       },
       {
         component: 'ContractGenerator',
         action: 'generateWeddingContract',
-        dependsOn: 'WeddingTimelineAdmin.createTimeline'
+        dependsOn: 'EvendiTimelineAdmin.createTimeline'
       },
       {
         component: 'GoogleDriveProjectSync',
@@ -520,14 +520,16 @@ function FotografOrchestrator({
   const [currentStep, setCurrentStep] = useState(0);
 
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const activeProfession = profession || 'photographer';
   
   // Theming system
-  const theming = useTheming('photographer');
+  const theming = useTheming(activeProfession);
   
   // Profession system integration
-  const { professionConfig, isLoading: configLoading } = useProfessionConfigs('photographer');
-  const { professionAdapter } = useProfessionAdapter('photographer');
-  const professionIcon = getProfessionIcon('photographer');
+  const { professionConfig, isLoading: configLoading } = useProfessionConfigs(activeProfession);
+  const { professionAdapter } = useProfessionAdapter(activeProfession);
+  const professionIcon = getProfessionIcon(activeProfession);
   const { professions: dynamicProfessions } = useDynamicProfessions();
 
   // Orkestreringsstatuser - with fallback for offline/error states
@@ -538,7 +540,7 @@ function FotografOrchestrator({
         const response = await apiRequest(`/api/orchestration/status/${effectiveSessionId}`);
         return response?.orchestrations || response || {};
       } catch (error) {
-        console.warn('Orchestration status fetch failed, using local state');
+        console.warn('Orchestration status fetch failed:', error instanceof Error ? error.message : String(error));
         return {};
       }
     },
@@ -555,7 +557,7 @@ function FotografOrchestrator({
         const response = await apiRequest('/api/system/metrics');
         return response?.metrics || response || {};
       } catch (error) {
-        console.warn('System metrics fetch failed, using defaults');
+        console.warn('System metrics fetch failed:', error instanceof Error ? error.message : String(error));
         return {
           cpu: 25,
           memory: 45,
@@ -586,7 +588,7 @@ function FotografOrchestrator({
         return response;
       } catch (error) {
         // Fallback: simulate local execution if API fails
-        console.warn('API trigger failed, simulating locally:', orchestrationId);
+        console.warn('API trigger failed:', error instanceof Error ? error.message : String(error), '– simulating locally:', orchestrationId);
         return { success: true, local: true, orchestrationId };
       }
     },
@@ -715,6 +717,87 @@ function FotografOrchestrator({
       };
       console.log('🎨 Fotograf Showcase Created:', showcaseData);
       onShowcaseCreate(showcaseData);
+    }
+
+    // Wire worklog creation for task-based actions
+    if ((actionKey === 'scheduleShoot' || actionKey === 'processImages' || actionKey === 'createGallery') && onWorklogCreate) {
+      const worklogData = {
+        id: `worklog_${Date.now()}`,
+        action: actionKey,
+        description: action?.name || actionKey,
+        status: 'logged',
+        createdAt: new Date().toISOString(),
+        source: 'fotograf_orchestrator',
+        workflow: selectedOrchestration,
+        user: user?.name || user?.email || 'unknown'
+      };
+      console.log('📝 Fotograf Worklog Created:', worklogData);
+      onWorklogCreate(worklogData);
+    }
+
+    // Wire client selection for client-related actions
+    if (actionKey === 'createClientProfile' && onClientSelect) {
+      const clientData = {
+        id: `client_${Date.now()}`,
+        name: 'Ny Kunde',
+        type: 'individual',
+        status: 'active',
+        createdAt: new Date().toISOString(),
+        source: 'fotograf_orchestrator'
+      };
+      console.log('👤 Fotograf Client Selected:', clientData);
+      onClientSelect(clientData);
+    }
+
+    // Wire client updates for update actions
+    if (actionKey === 'updateClientNotes' && onClientUpdate) {
+      const updateData = {
+        id: selectedClient?.id || `client_${Date.now()}`,
+        updatedFields: ['notes'],
+        updatedAt: new Date().toISOString(),
+        source: 'fotograf_orchestrator'
+      };
+      console.log('✏️ Fotograf Client Updated:', updateData);
+      onClientUpdate(updateData);
+    }
+
+    // Wire file upload for export/backup actions
+    if ((actionKey === 'exportImages' || actionKey === 'createBackup' || actionKey === 'backupFiles') && onFileUpload) {
+      const uploadData = {
+        id: `upload_${Date.now()}`,
+        action: actionKey,
+        projectId: selectedProject?.id || 'current',
+        status: 'initiated',
+        createdAt: new Date().toISOString(),
+        source: 'fotograf_orchestrator'
+      };
+      console.log('📤 Fotograf File Upload:', uploadData);
+      onFileUpload(uploadData);
+    }
+
+    // Wire file download for gallery/image delivery actions
+    if ((actionKey === 'createGallery' || actionKey === 'createSlideshow') && onFileDownload) {
+      const downloadData = {
+        id: `download_${Date.now()}`,
+        action: actionKey,
+        projectId: selectedProject?.id || 'current',
+        status: 'initiated',
+        createdAt: new Date().toISOString(),
+        source: 'fotograf_orchestrator'
+      };
+      console.log('📥 Fotograf File Download:', downloadData);
+      onFileDownload(downloadData);
+    }
+
+    // Wire project selection for project management actions
+    if ((actionKey === 'updateProjectStatus' || actionKey === 'archiveProject') && onProjectSelect) {
+      const projectRef = selectedProject || {
+        id: `project_${Date.now()}`,
+        name: 'Gjeldende prosjekt',
+        status: actionKey === 'archiveProject' ? 'archived' : 'active'
+      };
+      console.log('📂 Fotograf Project Selected:', projectRef);
+      onProjectSelect(projectRef);
     }
   };
 
@@ -984,10 +1067,186 @@ function FotografOrchestrator({
           <Info sx={{ fontSize: 18 }} />
           Status
         </Typography>
+        {(configLoading || isLoading) && (
+          <LinearProgress sx={{ mb: 1 }} />
+        )}
         <Typography variant="body2" color="text.secondary">
           {Object.values(triggeringStates).some(state => state) ? 
             'Systemet jobber med å sette opp alt for deg...' : 'Alt er klart. Trykk på knappene over når du trenger hjelp.'}
         </Typography>
+        {user && (
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+            Innlogget som: {user.name || user.email || 'Bruker'}
+          </Typography>
+        )}
+      </Box>
+
+      {/* Aktivt prosjekt og klient */}
+      {(selectedProject || selectedClient) && (
+        <Box sx={{ mt: 3 }}>
+          <Grid container spacing={2}>
+            {selectedProject && (
+              <Grid item xs={12} sm={6}>
+                <MuiCard variant="outlined">
+                  <CardContent>
+                    <Typography variant="subtitle2" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                      <Folder sx={{ fontSize: 18, color: theming.colors.primary }} />
+                      Aktivt prosjekt
+                    </Typography>
+                    <Divider sx={{ mb: 1 }} />
+                    <Typography variant="body2">{selectedProject.name || selectedProject.title || 'Ukjent prosjekt'}</Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {selectedProject.status || 'aktiv'}
+                    </Typography>
+                  </CardContent>
+                </MuiCard>
+              </Grid>
+            )}
+            {selectedClient && (
+              <Grid item xs={12} sm={6}>
+                <MuiCard variant="outlined">
+                  <CardContent>
+                    <Typography variant="subtitle2" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                      <PersonAdd sx={{ fontSize: 18, color: theming.colors.primary }} />
+                      Valgt klient
+                    </Typography>
+                    <Divider sx={{ mb: 1 }} />
+                    <Typography variant="body2">{selectedClient.name || 'Ukjent klient'}</Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {selectedClient.email || selectedClient.phone || ''}
+                    </Typography>
+                  </CardContent>
+                </MuiCard>
+              </Grid>
+            )}
+          </Grid>
+        </Box>
+      )}
+
+      {/* Profesjonsinfo og tilgjengelige profesjoner */}
+      {professionAdapter && (
+        <Box sx={{ mt: 3, p: 2, bgcolor: '#fafafa', borderRadius: 2, border: '1px solid #e0e0e0' }}>
+          <Typography variant="subtitle2" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Assessment sx={{ fontSize: 18, color: theming.colors.primary }} />
+            Profesjonsoppsett
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Aktiv profesjon: {professionConfig?.displayName || activeProfession}
+          </Typography>
+          {dynamicProfessions && dynamicProfessions.length > 0 && (
+            <Box sx={{ mt: 1, display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+              {dynamicProfessions.map((prof: { id?: string; name?: string; label?: string }, idx: number) => (
+                <Chip
+                  key={prof.id || idx}
+                  label={prof.name || prof.label || String(prof)}
+                  size="small"
+                  variant={(prof.id || prof.name) === activeProfession ? 'filled' : 'outlined'}
+                  color={(prof.id || prof.name) === activeProfession ? 'primary' : 'default'}
+                />
+              ))}
+            </Box>
+          )}
+        </Box>
+      )}
+
+      {/* System Metrics Panel */}
+      <Box sx={{ mt: 3, p: 2, bgcolor: '#fafafa', borderRadius: 2, border: '1px solid #e0e0e0' }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+          <Typography variant="subtitle2" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <TrendingUp sx={{ fontSize: 18, color: theming.colors.primary }} />
+            Systemstatistikk
+          </Typography>
+          <FormControlLabel
+            control={
+              <Switch
+                checked={showSystemMetrics}
+                onChange={(e) => setShowSystemMetrics(e.target.checked)}
+                size="small"
+              />
+            }
+            label={<Typography variant="caption">Vis detaljer</Typography>}
+          />
+        </Box>
+        {showSystemMetrics && (
+          <>
+            {(!systemMetrics || Object.keys(systemMetrics).length === 0) && (
+              <Alert severity="info" sx={{ mb: 1 }}>
+                Systemstatistikk er midlertidig utilgjengelig. Prøver automatisk igjen...
+              </Alert>
+            )}
+            <List dense>
+              {SYSTEM_METRICS.map((metric, idx) => {
+                const liveValue = (systemMetrics as Record<string, number>)?.[metric.name.toLowerCase().replace(/\s+/g, '')] ?? metric.value;
+                const updatedMetric = { ...metric, value: typeof liveValue === 'number' ? liveValue : metric.value };
+                return (
+                  <React.Fragment key={metric.name}>
+                    <ListItem>
+                      <ListItemIcon sx={{ minWidth: 36 }}>
+                        <Tooltip title={`Terskel: ${metric.threshold}${metric.unit}`} arrow>
+                          <Box
+                            sx={{
+                              width: 12,
+                              height: 12,
+                              borderRadius: '50%',
+                              bgcolor: getMetricColor(updatedMetric)
+                            }}
+                          />
+                        </Tooltip>
+                      </ListItemIcon>
+                      <ListItemText
+                        primary={metric.name}
+                        secondary={
+                          <LinearProgress
+                            variant="determinate"
+                            value={Math.min(updatedMetric.value / metric.threshold * 100, 100)}
+                            sx={{
+                              mt: 0.5,
+                              height: 6,
+                              borderRadius: 3,
+                              bgcolor: '#e0e0e0',
+                              '& .MuiLinearProgress-bar': {
+                                bgcolor: getMetricColor(updatedMetric),
+                                borderRadius: 3
+                              }
+                            }}
+                          />
+                        }
+                      />
+                      <Typography variant="caption" sx={{ ml: 1, minWidth: 50, textAlign: 'right' }}>
+                        {updatedMetric.value}{metric.unit}
+                      </Typography>
+                    </ListItem>
+                    {idx < SYSTEM_METRICS.length - 1 && <Divider component="li" />}
+                  </React.Fragment>
+                );
+              })}
+            </List>
+          </>
+        )}
+      </Box>
+
+      {/* Manuell trigger-knapp */}
+      <Box sx={{ mt: 2, display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
+        <Tooltip title="Åpne detaljer for valgt arbeidsflyt">
+          <Button
+            size="small"
+            variant="outlined"
+            startIcon={<PlayArrow />}
+            onClick={() => openOrchestrationDetails(selectedOrchestration)}
+          >
+            Detaljer
+          </Button>
+        </Tooltip>
+        <Tooltip title="Kjør en manuell trigger med egendefinerte data">
+          <Button
+            size="small"
+            variant="outlined"
+            startIcon={<Add />}
+            onClick={() => setTriggerDialogOpen(true)}
+          >
+            Manuell trigger
+          </Button>
+        </Tooltip>
       </Box>
     </MuiCard>
     
@@ -1141,6 +1400,7 @@ function FotografOrchestrator({
                           mb: 1
                         }}
                       >
+                        <DragIndicator sx={{ fontSize: 16, color: '#bdbdbd', cursor: 'grab' }} />
                         <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
                           {index + 1}.
                         </Typography>
@@ -1206,7 +1466,7 @@ function FotografOrchestrator({
               <Box sx={{ display: 'flex', gap: 1}}>
                 <Button onClick={() => setCurrentStep(1)}>Tilbake</Button>
                 <Button variant="contained" 
-                  startIcon={theming.getThemedIcon('save')}
+                  startIcon={<Save />}
                   onClick={saveCustomWorkflow}
                  sx={theming.getThemedButtonSx()}>
                   Lagre arbeidsflyt
@@ -1217,8 +1477,164 @@ function FotografOrchestrator({
         </Stepper>
       </DialogContent>
       <DialogActions>
-        <Button onClick={() => setShowWorkflowBuilder(false)} startIcon={theming.getThemedIcon('cancel')}>
+        <Button onClick={() => setShowWorkflowBuilder(false)} startIcon={<Cancel />}>
           Avbryt
+        </Button>
+      </DialogActions>
+    </Dialog>
+
+    {/* Orchestration Details Dialog */}
+    <Dialog
+      open={detailsOpen}
+      onClose={() => setDetailsOpen(false)}
+      maxWidth="sm"
+      fullWidth
+    >
+      <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        <Assessment sx={{ color: theming.colors.primary }} />
+        Arbeidsflyt-detaljer
+      </DialogTitle>
+      <DialogContent>
+        <FormControl fullWidth sx={{ mb: 2 }}>
+          <InputLabel>Velg arbeidsflyt</InputLabel>
+          <Select
+            value={selectedOrchestration}
+            label="Velg arbeidsflyt"
+            onChange={(e) => setSelectedOrchestration(e.target.value)}
+          >
+            {Object.entries(FOTOGRAF_ORCHESTRATIONS).map(([key, orch]) => (
+              <MenuItem key={key} value={key}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Box
+                    sx={{
+                      width: 10,
+                      height: 10,
+                      borderRadius: '50%',
+                      bgcolor: getOrchestrationStatusColor(key)
+                    }}
+                  />
+                  {(orch as Record<string, unknown>).name as string || key}
+                </Box>
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+
+        {selectedOrchestration && (
+          <Box>
+            <Typography variant="subtitle2" sx={{ mb: 1 }}>Status</Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+              <Box
+                sx={{
+                  width: 12,
+                  height: 12,
+                  borderRadius: '50%',
+                  bgcolor: getOrchestrationStatusColor(selectedOrchestration)
+                }}
+              />
+              <Typography variant="body2">
+                {orchestrationStates[selectedOrchestration]?.running ? 'Kjører' :
+                 (orchestrationStates[selectedOrchestration] as Record<string, unknown>)?.status === 'completed' ? 'Fullført' :
+                 (orchestrationStates[selectedOrchestration] as Record<string, unknown>)?.status === 'error' ? 'Feil' : 'Klar'}
+              </Typography>
+            </Box>
+
+            {orchestrationStates[selectedOrchestration]?.lastRun && (
+              <Typography variant="caption" color="text.secondary">
+                Sist kjørt: {new Date(orchestrationStates[selectedOrchestration].lastRun!).toLocaleString('nb-NO')}
+              </Typography>
+            )}
+
+            {orchestrationStates[selectedOrchestration]?.completedActions?.length > 0 && (
+              <Box sx={{ mt: 1 }}>
+                <Typography variant="caption" color="text.secondary">
+                  Fullførte steg: {orchestrationStates[selectedOrchestration].completedActions.length}
+                </Typography>
+              </Box>
+            )}
+          </Box>
+        )}
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={() => setDetailsOpen(false)}>Lukk</Button>
+        <Button
+          variant="contained"
+          startIcon={<PlayArrow />}
+          onClick={() => {
+            handleOrchestrationTrigger(selectedOrchestration);
+            setDetailsOpen(false);
+          }}
+          disabled={triggeringStates[selectedOrchestration]}
+        >
+          Kjør
+        </Button>
+      </DialogActions>
+    </Dialog>
+
+    {/* Manual Trigger Dialog */}
+    <Dialog
+      open={triggerDialogOpen}
+      onClose={() => setTriggerDialogOpen(false)}
+      maxWidth="sm"
+      fullWidth
+    >
+      <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        <DragIndicator sx={{ color: '#ff9800' }} />
+        Manuell trigger
+      </DialogTitle>
+      <DialogContent>
+        <Alert severity="info" sx={{ mb: 2 }}>
+          Send egendefinerte data til en arbeidsflyt for testing eller spesialtilfeller.
+        </Alert>
+        <FormControl fullWidth sx={{ mb: 2 }}>
+          <InputLabel>Arbeidsflyt</InputLabel>
+          <Select
+            value={selectedOrchestration}
+            label="Arbeidsflyt"
+            onChange={(e) => setSelectedOrchestration(e.target.value)}
+          >
+            {Object.entries(FOTOGRAF_ORCHESTRATIONS).map(([key, orch]) => (
+              <MenuItem key={key} value={key}>
+                {(orch as Record<string, unknown>).name as string || key}
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+        <TextField
+          fullWidth
+          multiline
+          rows={4}
+          label="Trigger-data (JSON)"
+          placeholder='{"key": "verdi"}'
+          value={typeof manualTriggerData === 'string' ? manualTriggerData : JSON.stringify(manualTriggerData, null, 2)}
+          onChange={(e) => {
+            try {
+              setManualTriggerData(JSON.parse(e.target.value));
+            } catch {
+              setManualTriggerData(e.target.value);
+            }
+          }}
+          sx={{ mb: 2 }}
+        />
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={() => setTriggerDialogOpen(false)} startIcon={<Cancel />}>
+          Avbryt
+        </Button>
+        <Button
+          variant="contained"
+          startIcon={<Save />}
+          onClick={() => {
+            const triggerData = typeof manualTriggerData === 'string'
+              ? (() => { try { return JSON.parse(manualTriggerData); } catch { return { raw: manualTriggerData }; } })()
+              : manualTriggerData;
+            handleOrchestrationTrigger(selectedOrchestration, triggerData);
+            setTriggerDialogOpen(false);
+            setManualTriggerData({});
+          }}
+          disabled={triggeringStates[selectedOrchestration]}
+        >
+          Trigger
         </Button>
       </DialogActions>
     </Dialog>

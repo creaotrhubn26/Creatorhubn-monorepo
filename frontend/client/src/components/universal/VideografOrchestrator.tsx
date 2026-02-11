@@ -4,7 +4,7 @@ import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
 import getProfessionIcon from '@/utils/profession-icons';
 import { useDynamicProfessions } from './hooks/useDynamicProfessions';
 import React, { useState, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
 import { 
   Box, 
@@ -349,13 +349,14 @@ export default function VideografOrchestrator({
   const [manualTriggerData, setManualTriggerData] = useState<any>({});
 
   const queryClient = useQueryClient();
+  const { user } = useAuth();
   
   // Theming system
   const theming = useTheming('videographer');
   
   // Profession system integration
-  const { professionConfig, isLoading: configLoading } = useProfessionConfigs('videographer');
-  const { professionAdapter } = useProfessionAdapter('videographer');
+  const { professionConfigs, isLoading: configLoading } = useProfessionConfigs();
+  const professionAdapterData = useProfessionAdapter();
   const professionIcon = getProfessionIcon('videographer');
   const { professions: dynamicProfessions } = useDynamicProfessions();
 
@@ -377,13 +378,13 @@ export default function VideografOrchestrator({
 
   // Trigger orchestration
   const triggerOrchestration = useMutation({
-    mutationFn: async ({ orchestrationd, triggerData }: { orchestrationId: string, triggerData: any }) => {
+    mutationFn: async ({ orchestrationId, triggerData }: { orchestrationId: string, triggerData: any }) => {
       return apiRequest(`/api/videograf/orchestration/trigger`, {
         headers: {
           "Content-Type" : "application/json"
     },
-        method: 'POS',
-        body: { orchestrationd, triggerData, sessionId }
+        method: 'POST',
+        body: JSON.stringify({ orchestrationId, triggerData, sessionId })
     });
   },
     onSuccess: (data, variables) => {
@@ -402,7 +403,47 @@ export default function VideografOrchestrator({
 
   const handleOrchestrationTrigger = (orchestrationId: string, triggerData?: any) => {
     triggerOrchestration.mutate({ orchestrationId, triggerData: triggerData || {} });
-};
+
+    // Wire integration callbacks based on orchestration type
+    if (orchestrationId === 'nyProsjekt') {
+      if (onProjectUpdate) {
+        onProjectUpdate({ id: `vp_${Date.now()}`, type: 'video', status: 'created', source: 'videograf_orchestrator', user: user?.name });
+      }
+      if (onMeetingCreate) {
+        onMeetingCreate({ id: `vm_${Date.now()}`, title: 'Video prosjekt konsultasjon', type: 'video_consultation', status: 'scheduled', source: 'videograf_orchestrator' });
+      }
+    }
+    if (orchestrationId === 'prosjektLevering') {
+      if (onShowcaseCreate) {
+        onShowcaseCreate({ id: `vs_${Date.now()}`, type: 'video_showcase', status: 'draft', projectId: selectedProject?.id, source: 'videograf_orchestrator' });
+      }
+      if (onFileDownload) {
+        onFileDownload({ id: `vd_${Date.now()}`, action: 'video_delivery', projectId: selectedProject?.id, status: 'initiated', source: 'videograf_orchestrator' });
+      }
+    }
+    if (orchestrationId === 'aiVideoAnalysis') {
+      if (onFileUpload) {
+        onFileUpload({ id: `vu_${Date.now()}`, action: 'video_upload', projectId: selectedProject?.id, status: 'initiated', source: 'videograf_orchestrator' });
+      }
+      if (onWorklogCreate) {
+        onWorklogCreate({ id: `vw_${Date.now()}`, action: 'ai_video_analysis', description: 'AI videoanalyse startet', status: 'logged', source: 'videograf_orchestrator' });
+      }
+    }
+    if (orchestrationId === 'storyArcCreation' || orchestrationId === 'multiAngleSync' || orchestrationId === 'audioEnhancement') {
+      if (onWorklogCreate) {
+        onWorklogCreate({ id: `vw_${Date.now()}`, action: orchestrationId, description: `${VIDEOGRAF_ORCHESTRATIONS[orchestrationId]?.name || orchestrationId} startet`, status: 'logged', source: 'videograf_orchestrator' });
+      }
+    }
+    if (selectedClient && onClientUpdate) {
+      onClientUpdate({ id: selectedClient.id, lastActivity: new Date().toISOString(), lastWorkflow: orchestrationId, source: 'videograf_orchestrator' });
+    }
+    if (selectedClient && onClientSelect) {
+      onClientSelect(selectedClient);
+    }
+    if (selectedProject && onProjectSelect) {
+      onProjectSelect(selectedProject);
+    }
+  };
 
   const openOrchestrationDetails = (orchestrationKey: string) => {
     setSelectedOrchestration(orchestrationKey);
@@ -418,11 +459,19 @@ export default function VideografOrchestrator({
   const getOrchestrationStatusColor = (orchestrationKey: string) => {
     const state = orchestrationStates[orchestrationKey] || orchestrationStatus[orchestrationKey];
     if (state?.running) return '#4caf50'; // Green
-    if (VIDEOGRAF_ORCHESTRATIONS[orchestrationKey]?.status === 'active') return '#2196f3'; // Blue
+    const orchKey = orchestrationKey as keyof typeof VIDEOGRAF_ORCHESTRATIONS;
+    if (VIDEOGRAF_ORCHESTRATIONS[orchKey]?.status === 'active') return '#2196f3'; // Blue
     return '#757575'; // Gray
-};
+  };
 
-  if (isLoading) {
+  // Sync profession adapter readiness
+  useEffect(() => {
+    if (professionAdapterData && dynamicProfessions && Object.keys(dynamicProfessions).length > 0) {
+      console.log('🎬 VideografOrchestrator profession ready:', professionAdapterData.profession, 'with', Object.keys(dynamicProfessions).length, 'professions');
+    }
+  }, [professionAdapterData, dynamicProfessions]);
+
+  if (isLoading || configLoading) {
     return (
       <Box sx={{ 
         display: 'flex', 
@@ -446,13 +495,18 @@ export default function VideografOrchestrator({
         </Box>
         <Box>
           <Typography variant="h4" sx={{ fontWeight: 700, color: theming.colors.primary }}>
-            {professionConfig?.displayName || 'Videograf'} Orkestrering
+            {professionConfigs?.videographer?.displayName || 'Videograf'} Orkestrering
           </Typography>
           <Typography variant="subtitle1" color="text.secondary">
             Automatisk sammenkobling av video produksjon komponenter
           </Typography>
         </Box>
-        <Box sx={{ ml: 'auto', display: 'flex', gap: 1 }}>
+        <Box sx={{ ml: 'auto', display: 'flex', gap: 1, alignItems: 'center' }}>
+          <Tooltip title="Innstillinger">
+            <IconButton onClick={() => openOrchestrationDetails(selectedOrchestration)} size="small">
+              <Settings />
+            </IconButton>
+          </Tooltip>
           <FormControlLabel
             control={
               <Switch 
@@ -464,7 +518,7 @@ export default function VideografOrchestrator({
             label="System Metrics"
           />
           <Button variant="contained"
-            startIcon={theming.getThemedIcon('playCircle')}
+            startIcon={<Videocam />}
             onClick={() => setTriggerDialogOpen(true)}
             sx={{ bgcolor: '#e91e63'}}
           >
@@ -475,26 +529,35 @@ export default function VideografOrchestrator({
 
       {/* System Metrics (når aktivert) */}
       {showSystemMetrics && (
-        <Grid container spacing={2} sx={{ mb:  4 }}>
-          {systemMetrics.map((metric, index) => (
-            <Grid size={{ xs:  6 }} md={2} key={index}>
-	              <MuiCard
-	                sx={{
-	                  border: `2px solid ${getMetricColor(metric)}20`, '&:hover': {
-	                    borderColor: getMetricColor(metric),
-	                  }}}
-	              >
-	                <CardContent sx={{ textAlign: 'center', py: 1, ...theming.getThemedCardSx() }}>
-	                  <Typography variant="h6" sx={{ color: getMetricColor(metric) }}>
-                    {metric.value},{metric.unit}
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    {metric.name}
-                  </Typography>
-                </CardContent>
-              </MuiCard>
-            </Grid>
-          ))}
+        <Grid container spacing={2} sx={{ mb: 4 }}>
+          {SYSTEM_METRICS.map((metric, index) => {
+            const MetricIcon = ({ 'CPU Usage': Speed, 'Memory Usage': Memory, 'Storage Usage': Storage, 'Network Latency': Cloud, 'Render Queue': Videocam, 'Active Projects': People } as Record<string, React.ElementType>)[metric.name] || TrendingUp;
+            const liveData = systemMetrics as Record<string, number>;
+            const liveValue = liveData[metric.name.toLowerCase().replace(/\s+/g, '')] ?? metric.value;
+            const enrichedMetric = { ...metric, value: typeof liveValue === 'number' ? liveValue : metric.value };
+            return (
+              <Grid item xs={6} md={2} key={index}>
+                <Tooltip title={`${metric.type} — terskel: ${metric.threshold}${metric.unit}`} arrow>
+                  <MuiCard
+                    sx={{
+                      border: `2px solid ${getMetricColor(enrichedMetric)}20`,
+                      '&:hover': { borderColor: getMetricColor(enrichedMetric) }
+                    }}
+                  >
+                    <CardContent sx={{ textAlign: 'center', py: 1, ...theming.getThemedCardSx() }}>
+                      <MetricIcon sx={{ fontSize: 20, color: getMetricColor(enrichedMetric), mb: 0.5 }} />
+                      <Typography variant="h6" sx={{ color: getMetricColor(enrichedMetric) }}>
+                        {enrichedMetric.value}{metric.unit}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {metric.name}
+                      </Typography>
+                    </CardContent>
+                  </MuiCard>
+                </Tooltip>
+              </Grid>
+            );
+          })}
         </Grid>
       )}
 
@@ -524,10 +587,10 @@ export default function VideografOrchestrator({
                     {orchestration.name}
                   </Typography>
                   <Chip 
-                    label={orchestrationStates[orchestrationKey]?.running ? 'Aktiv' : 'Klar'}
+                    label={orchestrationStates[orchestrationKey]?.running ? 'Aktiv' : orchestrationStates[orchestrationKey]?.failedActions?.length ? 'Feil' : 'Klar'}
                     size="small"
-                    color={orchestrationStates[orchestrationKey]?.running ? 'success' : 'default'}
-                    icon={orchestrationStates[orchestrationKey]?.running ? theming.getThemedIcon('sync') : theming.getThemedIcon('playCircle')}
+                    color={orchestrationStates[orchestrationKey]?.running ? 'success' : orchestrationStates[orchestrationKey]?.failedActions?.length ? 'error' : 'default'}
+                    icon={orchestrationStates[orchestrationKey]?.running ? <Sync sx={{ fontSize: 16 }} /> : orchestrationStates[orchestrationKey]?.failedActions?.length ? <Error sx={{ fontSize: 16 }} /> : <PlayCircle sx={{ fontSize: 16 }} />}
                   />
                 </Box>
 
@@ -561,7 +624,7 @@ export default function VideografOrchestrator({
                      <ListItemText 
                        primary={action.component}
                        secondary={action.action}
-                       primaryTypographyProps={{ variant: 'body', fontWeight: 600 }}
+                       primaryTypographyProps={{ variant: 'body2', fontWeight: 600 }}
                        secondaryTypographyProps={{ variant: 'caption' }}
                      />
                     </ListItem>
@@ -573,7 +636,7 @@ export default function VideografOrchestrator({
                   <Button size="small"
                     variant="contained"
                     color="primary"
-                    startIcon={theming.getThemedIcon('sync')}
+                    startIcon={<Refresh />}
                     onClick={() => handleOrchestrationTrigger(orchestrationKey)}
                     disabled={triggerOrchestration.isPending}
                   >
@@ -582,7 +645,7 @@ export default function VideografOrchestrator({
                   <Button
                     size="small"
                     variant="outlined"
-                    startIcon={theming.getThemedIcon('info')}
+                    startIcon={<Info />}
                     onClick={() => openOrchestrationDetails(orchestrationKey)}
                   >
                     Detaljer
@@ -595,16 +658,114 @@ export default function VideografOrchestrator({
       </Grid>
 
       {/* Status Alert */}
-      <Alert 
-        severity="success" 
-        sx={{ mt:  4 }}
-        icon={<Movie />}
-      >
-        <Typography variant="body1">
-          <strong>Videograf Orkestrering</strong> er aktiv og overvåker {Object.keys(VIDEOGRAF_ORCHESTRATIONS).length} automatiserte workflows.
-          {sessionId && ` Sesjon: ${sessiond}`}
-        </Typography>
-      </Alert>
+      {Object.values(orchestrationStates).some(s => s.failedActions?.length > 0) ? (
+        <Alert 
+          severity="warning" 
+          sx={{ mt: 4 }}
+          icon={<Warning />}
+        >
+          <Typography variant="body1">
+            <strong>Advarsel:</strong> Noen workflows har feilet. Sjekk detaljer for mer informasjon.
+          </Typography>
+        </Alert>
+      ) : (
+        <Alert 
+          severity="success" 
+          sx={{ mt: 4 }}
+          icon={Object.values(orchestrationStates).some(s => s.running) ? <Pause /> : <CheckCircle />}
+        >
+          <Typography variant="body1">
+            <strong>Videograf Orkestrering</strong> er aktiv og overvåker {Object.keys(VIDEOGRAF_ORCHESTRATIONS).length} automatiserte workflows.
+            {sessionId && ` Sesjon: ${sessionId}`}
+            {user && ` — ${user.name || user.email}`}
+          </Typography>
+        </Alert>
+      )}
+
+      {/* Prosjekt og klient-kontekst */}
+      {(selectedProject || selectedClient) && (
+        <Box sx={{ mt: 3 }}>
+          <Divider sx={{ mb: 2 }} />
+          <Typography variant="h6" sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+            <People sx={{ color: theming.colors.primary }} />
+            Aktiv kontekst
+          </Typography>
+          <Grid container spacing={2}>
+            {selectedProject && (
+              <Grid item xs={12} sm={6}>
+                <MuiCard variant="outlined">
+                  <CardContent>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                      <FilePresent sx={{ fontSize: 20, color: theming.colors.primary }} />
+                      <Typography variant="subtitle2">Aktivt prosjekt</Typography>
+                      <IconButton size="small" onClick={() => onProjectSelect?.(selectedProject)}>
+                        <Edit sx={{ fontSize: 16 }} />
+                      </IconButton>
+                    </Box>
+                    <Typography variant="body2">{selectedProject.name || selectedProject.title || 'Ukjent'}</Typography>
+                  </CardContent>
+                </MuiCard>
+              </Grid>
+            )}
+            {selectedClient && (
+              <Grid item xs={12} sm={6}>
+                <MuiCard variant="outlined">
+                  <CardContent>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                      <People sx={{ fontSize: 20, color: theming.colors.primary }} />
+                      <Typography variant="subtitle2">Valgt klient</Typography>
+                    </Box>
+                    <Typography variant="body2">{selectedClient.name || 'Ukjent klient'}</Typography>
+                  </CardContent>
+                </MuiCard>
+              </Grid>
+            )}
+          </Grid>
+        </Box>
+      )}
+
+      {/* Profesjonsinfo */}
+      {professionAdapterData && (
+        <Box sx={{ mt: 3 }}>
+          <Divider sx={{ mb: 2 }} />
+          <Typography variant="subtitle2" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+            <Build sx={{ fontSize: 18, color: theming.colors.primary }} />
+            Profesjonsoppsett
+          </Typography>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+            {dynamicProfessions && Object.entries(dynamicProfessions).map(([key, prof]) => (
+              <Chip key={key} label={prof.displayName || prof.name || key} size="small" variant="outlined" />
+            ))}
+          </Box>
+        </Box>
+      )}
+
+      {/* Hurtigverktøy */}
+      <Box sx={{ mt: 3 }}>
+        <Divider sx={{ mb: 2 }} />
+        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
+          <Tooltip title="Last opp videofil">
+            <Button size="small" variant="outlined" startIcon={<Upload />} onClick={() => onFileUpload?.({ type: 'video', source: 'videograf_orchestrator' })}>
+              Last opp
+            </Button>
+          </Tooltip>
+          <Tooltip title="AI-analyse av video">
+            <Button size="small" variant="outlined" startIcon={<AutoAwesome />} onClick={() => handleOrchestrationTrigger('aiVideoAnalysis')}>
+              AI Analyse
+            </Button>
+          </Tooltip>
+          <Tooltip title="Story Arc tidslinje">
+            <Button size="small" variant="outlined" startIcon={<TimelineIcon />} onClick={() => handleOrchestrationTrigger('storyArcCreation')}>
+              Story Arc
+            </Button>
+          </Tooltip>
+          <Tooltip title={showSystemMetrics ? 'Skjul metrikker' : 'Vis metrikker'}>
+            <IconButton size="small" onClick={() => setShowSystemMetrics(!showSystemMetrics)}>
+              {showSystemMetrics ? <VisibilityOff /> : <Visibility />}
+            </IconButton>
+          </Tooltip>
+        </Box>
+      </Box>
 
       {/* Manual Trigger Dialog */}
       <Dialog 
@@ -670,34 +831,41 @@ export default function VideografOrchestrator({
         fullWidth
       >
         <DialogTitle>
-          {selectedOrchestration && VIDEOGRAF_ORCHESTRATIONS[selectedOrchestration]?.name} - Detaljer
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Security sx={{ color: theming.colors.primary }} />
+            {selectedOrchestration && VIDEOGRAF_ORCHESTRATIONS[selectedOrchestration as keyof typeof VIDEOGRAF_ORCHESTRATIONS]?.name} - Detaljer
+          </Box>
         </DialogTitle>
         <DialogContent>
-          {selectedOrchestration && (
+          {selectedOrchestration && (() => {
+            const orch = VIDEOGRAF_ORCHESTRATIONS[selectedOrchestration as keyof typeof VIDEOGRAF_ORCHESTRATIONS];
+            if (!orch) return null;
+            return (
             <Box>
               <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>Trigger: </Typography>
               <Chip 
-                label={VIDEOGRAF_ORCHESTRATIONS[selectedOrchestration].trigger}
+                label={orch.trigger}
                 color="primary"
                 sx={{ mb: 2 }}
               />
               
               <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>Automatiserte Aksjoner: </Typography>
               <List>
-                {VIDEOGRAF_ORCHESTRATIONS[selectedOrchestration].actions.map((action, index) => (
+                {orch.actions.map((action, index) => (
                   <ListItem key={index}>
                     <ListItemIcon>
                       <Link color="primary" />
                     </ListItemIcon>
                     <ListItemText 
                       primary={action.component}
-                      secondary={`${action.action}${action.dependsOn ? ` (avhenger av: ${action.dependsn})` :''}`}
+                      secondary={`${action.action}${action.dependsOn ? ` (avhenger av: ${action.dependsOn})` :''}`}
                     />
                   </ListItem>
                 ))}
               </List>
             </Box>
-          )}
+            );
+          })()}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setDetailsOpen(false)}>Lukk</Button>

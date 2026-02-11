@@ -5,7 +5,7 @@ import getProfessionIcon from '@/utils/profession-icons';
 import { useDynamicProfessions } from './hooks/useDynamicProfessions';
 import { getAllVendorTypes, getEnabledVendorTypes } from '@shared/vendor-type-registry';
 import React, { useState, useEffect } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
 import { 
   Box, 
@@ -782,10 +782,34 @@ export default function VendorOrchestrator({
   const theming = useTheming('vendor');
   
   // Profession system integration
-  const { professionConfig, isLoading: configLoading } = useProfessionConfigs('vendor');
-  const { professionAdapter } = useProfessionAdapter('vendor');
+  const { user } = useAuth();
+  const { professionConfigs, isLoading: configLoading } = useProfessionConfigs();
+  const professionAdapter = useProfessionAdapter();
   const professionIcon = getProfessionIcon('vendor');
   const { professions: dynamicProfessions } = useDynamicProfessions();
+  const activeProfession = professionAdapter?.profession || 'vendor';
+  const professionConfig = professionConfigs?.[activeProfession];
+  const dynamicProfession = dynamicProfessions?.[activeProfession];
+  const professionDisplayName = dynamicProfession?.displayName || 'Vendor';
+  const projectTypes = professionAdapter?.getProjectTypes?.() || [];
+  const allVendorTypes = getAllVendorTypes();
+  const enabledVendorTypes = getEnabledVendorTypes();
+
+  useEffect(() => {
+    if (activeWorkflow && activeWorkflow !== selectedOrchestration) {
+      setSelectedOrchestration(activeWorkflow);
+    }
+  }, [activeWorkflow, selectedOrchestration]);
+
+  useEffect(() => {
+    if (!sessionId && !selectedProject && !selectedClient) return;
+    setManualTriggerData(prev => ({
+      ...prev,
+      sessionId: sessionId ?? prev.sessionId,
+      projectId: selectedProject?.id ?? prev.projectId,
+      clientId: selectedClient?.id ?? prev.clientId
+    }));
+  }, [sessionId, selectedProject, selectedClient]);
 
   // Orkestreringsstatuser
   const { data: orchestrationStatus = {}, isLoading } = useQuery({
@@ -804,32 +828,213 @@ export default function VendorOrchestrator({
 
   // Trigger orchestration
   const triggerOrchestration = useMutation({
-    mutationFn: async ({ orchestrationd, triggerData }: { orchestrationId: string, triggerData: any }) => {
+    mutationFn: async ({ orchestrationId, triggerData }: { orchestrationId: string; triggerData: any }) => {
       return apiRequest(`/api/vendor/orchestration/trigger`, {
         headers: {
-          "Content-Type" : "application/json"
+          "Content-Type": "application/json"
+        },
+        method: 'POST',
+        body: { orchestrationId, triggerData, sessionId }
+      });
     },
-        method: 'POS',
-        body: { orchestrationd, triggerData, sessionId }
-    });
-  },
     onSuccess: (data, variables) => {
       setOrchestrationStates(prev => ({
         ...prev,
         [variables.orchestrationId]: {
           running: true,
           lastRun: new Date(),
-          completedActions:  [],
+          completedActions: [],
           failedActions: []
+        }
+      }));
+      queryClient.invalidateQueries({ queryKey: ['/api/vendor/orchestration/status', sessionId] });
     }
-    }));
-      queryClient.invalidateQueries({ queryKey: ['/api/vendor/orchestration/status', ],});
-  }
-});
+  });
 
   const handleOrchestrationTrigger = (orchestrationId: string, triggerData?: any) => {
+    const timestamp = new Date().toISOString();
+    const projectContext = selectedProject || {
+      id: `vendor-${Date.now()}`,
+      name: 'Ny vendor prosjekt',
+      type: orchestrationId
+    };
+    const clientContext = selectedClient || {
+      id: `customer-${Date.now()}`,
+      name: 'Ny kunde'
+    };
+
+    switch (orchestrationId) {
+      case 'vendorOnboarding':
+        onClientSelect?.(clientContext);
+        onProjectSelect?.(projectContext);
+        onProjectUpdate?.({
+          ...projectContext,
+          status: 'onboarding',
+          updatedAt: timestamp
+        });
+        onMeetingCreate?.({
+          title: 'Vendor onboarding kickoff',
+          clientId: clientContext.id,
+          scheduledAt: timestamp
+        });
+        onWorklogCreate?.({
+          projectId: projectContext.id,
+          description: 'Startet vendor onboarding',
+          loggedAt: timestamp
+        });
+        break;
+      case 'quickProductAdd':
+        onProjectUpdate?.({
+          ...projectContext,
+          status: 'quick-add',
+          updatedAt: timestamp
+        });
+        onWorklogCreate?.({
+          projectId: projectContext.id,
+          description: 'Quick add produkt i gang',
+          loggedAt: timestamp
+        });
+        break;
+      case 'bulkProductImport':
+        onFileUpload?.({
+          projectId: projectContext.id,
+          fileName: 'bulk-import.csv',
+          uploadedAt: timestamp
+        });
+        onWorklogCreate?.({
+          projectId: projectContext.id,
+          description: 'Bulk import startet',
+          loggedAt: timestamp
+        });
+        break;
+      case 'productCloning':
+        onProjectUpdate?.({
+          ...projectContext,
+          status: 'cloning',
+          updatedAt: timestamp
+        });
+        onWorklogCreate?.({
+          projectId: projectContext.id,
+          description: 'Produkt duplisering startet',
+          loggedAt: timestamp
+        });
+        break;
+      case 'smartItemEdit':
+        onProjectUpdate?.({
+          ...projectContext,
+          status: 'optimizing',
+          updatedAt: timestamp
+        });
+        onWorklogCreate?.({
+          projectId: projectContext.id,
+          description: 'Smart item edit med AI',
+          loggedAt: timestamp
+        });
+        break;
+      case 'newVendorTypeDetected':
+        onShowcaseCreate?.({
+          title: 'Ny vendor type tilgjengelig',
+          createdAt: timestamp
+        });
+        onWorklogCreate?.({
+          description: 'Oppdaterte vendor type registry',
+          loggedAt: timestamp
+        });
+        break;
+      case 'typeSpecificTemplates':
+        onFileDownload?.({
+          projectId: projectContext.id,
+          fileName: 'templates.zip',
+          generatedAt: timestamp
+        });
+        onWorklogCreate?.({
+          projectId: projectContext.id,
+          description: 'Lastet ned type-malpakke',
+          loggedAt: timestamp
+        });
+        break;
+      case 'realTimeMarketplaceSync':
+        onProjectUpdate?.({
+          ...projectContext,
+          status: 'syncing',
+          updatedAt: timestamp
+        });
+        break;
+      case 'dynamicPricing':
+        onProjectUpdate?.({
+          ...projectContext,
+          status: 'pricing',
+          updatedAt: timestamp
+        });
+        onWorklogCreate?.({
+          projectId: projectContext.id,
+          description: 'Prisoptimalisering startet',
+          loggedAt: timestamp
+        });
+        break;
+      case 'orderFulfillment':
+      case 'orderProcessing':
+        onClientUpdate?.({
+          ...clientContext,
+          lastOrderUpdate: timestamp
+        });
+        onProjectUpdate?.({
+          ...projectContext,
+          status: 'fulfillment',
+          updatedAt: timestamp
+        });
+        onFileDownload?.({
+          projectId: projectContext.id,
+          fileName: 'packing-slip.pdf',
+          generatedAt: timestamp
+        });
+        break;
+      case 'digitalDelivery':
+        onFileUpload?.({
+          projectId: projectContext.id,
+          fileName: 'digital-assets.zip',
+          uploadedAt: timestamp
+        });
+        onFileDownload?.({
+          projectId: projectContext.id,
+          fileName: 'download-links.json',
+          generatedAt: timestamp
+        });
+        break;
+      case 'subscriptionManagement':
+        onClientUpdate?.({
+          ...clientContext,
+          subscriptionStatus: 'active',
+          lastUpdated: timestamp
+        });
+        onProjectUpdate?.({
+          ...projectContext,
+          status: 'subscription',
+          updatedAt: timestamp
+        });
+        break;
+      case 'inventoryManagement':
+        onWorklogCreate?.({
+          projectId: projectContext.id,
+          description: 'Inventory scan kjort',
+          loggedAt: timestamp
+        });
+        break;
+      case 'vendorOnboardingProgress':
+      case 'quickStatsRefresh':
+      case 'orderFulfillmentAlert':
+        onWorklogCreate?.({
+          projectId: projectContext.id,
+          description: `Oppdaterte workflow: ${orchestrationId}`,
+          loggedAt: timestamp
+        });
+        break;
+      default:
+        break;
+    }
+
     triggerOrchestration.mutate({ orchestrationId, triggerData: triggerData || {} });
-};
+  };
 
   const openOrchestrationDetails = (orchestrationKey: string) => {
     setSelectedOrchestration(orchestrationKey);
@@ -842,12 +1047,44 @@ export default function VendorOrchestrator({
     return '#4caf50'; // Green
 };
 
+  const getMetricIcon = (metric: any) => {
+    switch (metric.type) {
+      case 'performance':
+        return <Speed sx={{ color: getMetricColor(metric) }} />;
+      case 'storage':
+        return <Storage sx={{ color: getMetricColor(metric) }} />;
+      case 'network':
+        return <Cloud sx={{ color: getMetricColor(metric) }} />;
+      case 'orders':
+        return <ShoppingCart sx={{ color: getMetricColor(metric) }} />;
+      case 'inventory':
+        return <Inventory sx={{ color: getMetricColor(metric) }} />;
+      default:
+        return <Memory sx={{ color: getMetricColor(metric) }} />;
+    }
+  };
+
   const getOrchestrationStatusColor = (orchestrationKey: string) => {
     const state = orchestrationStates[orchestrationKey] || orchestrationStatus[orchestrationKey];
     if (state?.running) return '#4caf50'; // Green
-    if (VENDOR_ORCHESTRATIONS[orchestrationKey]?.status === 'active') return '#ff5722'; // Orange-red
+    const orchestration = VENDOR_ORCHESTRATIONS[orchestrationKey as keyof typeof VENDOR_ORCHESTRATIONS];
+    if (orchestration?.status === 'active') return '#ff5722'; // Orange-red
     return '#757575'; // Gray
 };
+
+  const resolvedMetrics = SYSTEM_METRICS.map((metric) => {
+    const liveMetric = Array.isArray(systemMetrics)
+      ? systemMetrics.find((item: any) => item?.name === metric.name)
+      : systemMetrics?.[metric.name] || systemMetrics?.[metric.type];
+    const rawValue = Number(liveMetric?.value ?? metric.value);
+    return {
+      ...metric,
+      value: Number.isFinite(rawValue) ? rawValue : metric.value
+    };
+  });
+  const performanceMetric = resolvedMetrics.find((metric) => metric.type === 'performance');
+  const inventoryMetric = resolvedMetrics.find((metric) => metric.type === 'inventory');
+  const userDisplayName = user?.name || user?.email || 'Bruker';
 
   if (isLoading) {
     return (
@@ -873,13 +1110,22 @@ export default function VendorOrchestrator({
         </Box>
         <Box>
           <Typography variant="h4" component="h1" sx={{ fontWeight: 700, color: theming.colors.primary }}>
-            {professionConfig?.displayName || 'Vendor'} Orkestrering
+            {professionDisplayName} Orkestrering
           </Typography>
           <Typography variant="subtitle1" color="text.secondary">
             Automatisk sammenkobling av leverandør og lager komponenter
           </Typography>
         </Box>
         <Box sx={{ ml: 'auto', display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+          <Tooltip title={showSystemMetrics ? 'Skjul system metrics' : 'Vis system metrics'}>
+            <IconButton
+              onClick={() => setShowSystemMetrics(prev => !prev)}
+              sx={{ bgcolor: '#f5f5f5' }}
+              aria-label={showSystemMetrics ? 'Skjul system metrics' : 'Vis system metrics'}
+            >
+              {showSystemMetrics ? <VisibilityOff /> : <Visibility />}
+            </IconButton>
+          </Tooltip>
           <FormControlLabel
             control={
               <Switch 
@@ -919,11 +1165,190 @@ export default function VendorOrchestrator({
         </Box>
       </Box>
 
+      <Divider sx={{ mb: 3 }} />
+
+      {/* Kontekst og raske kontroller */}
+      <Grid container spacing={2} sx={{ mb: 4 }}>
+        <Grid item xs={12} md={4}>
+          <MuiCard>
+            <CardContent sx={theming.getThemedCardSx()}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                <People sx={{ color: theming.colors.primary }} />
+                <Typography variant="h6">Vendor kontekst</Typography>
+              </Box>
+              <Typography variant="body2" color="text.secondary">
+                Innlogget: {userDisplayName}
+              </Typography>
+              <Divider sx={{ my: 2 }} />
+              <Typography variant="body2" sx={{ mb: 1 }}>
+                Prosjekt: {selectedProject?.name || 'Ikke valgt'}
+              </Typography>
+              <Typography variant="body2" sx={{ mb: 2 }}>
+                Kunde: {selectedClient?.name || 'Ikke valgt'}
+              </Typography>
+              <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  startIcon={<Business />}
+                  onClick={() => onProjectSelect?.({
+                    id: `vendor-${Date.now()}`,
+                    name: 'Demo vendor prosjekt'
+                  })}
+                >
+                  Velg prosjekt
+                </Button>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  startIcon={<People />}
+                  onClick={() => onClientSelect?.({
+                    id: `customer-${Date.now()}`,
+                    name: 'Demo kunde'
+                  })}
+                >
+                  Velg kunde
+                </Button>
+              </Box>
+            </CardContent>
+          </MuiCard>
+        </Grid>
+        <Grid item xs={12} md={4}>
+          <MuiCard>
+            <CardContent sx={theming.getThemedCardSx()}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                <Settings sx={{ color: theming.colors.primary }} />
+                <Typography variant="h6">Vendor typer</Typography>
+              </Box>
+              <Typography variant="body2" color="text.secondary">
+                Aktive typer: {enabledVendorTypes.length} / {allVendorTypes.length}
+              </Typography>
+              {configLoading && <LinearProgress sx={{ my: 2 }} />}
+              <Divider sx={{ my: 2 }} />
+              <Typography variant="body2" sx={{ mb: 1 }}>
+                Prosjekttyper
+              </Typography>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                {projectTypes.length === 0 && (
+                  <Chip size="small" label="Ingen typer" />
+                )}
+                {projectTypes.map((type: string) => (
+                  <Chip key={type} size="small" label={type} color="primary" />
+                ))}
+              </Box>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 2 }}>
+                <AutoAwesome sx={{ color: theming.colors.primary }} />
+                <Typography variant="caption" color="text.secondary">
+                  {professionConfig?.specialFeatures?.length || 0} spesialfunksjoner aktivert
+                </Typography>
+              </Box>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
+                <TimelineIcon sx={{ color: theming.colors.primary }} />
+                <Typography variant="caption" color="text.secondary">
+                  {Object.keys(VENDOR_ORCHESTRATIONS).length} workflows aktive
+                </Typography>
+              </Box>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
+                <TrendingUp sx={{ color: theming.colors.primary }} />
+                <Typography variant="caption" color="text.secondary">
+                  Performance: {performanceMetric?.value ?? 0}{performanceMetric?.unit || ''}
+                </Typography>
+              </Box>
+            </CardContent>
+          </MuiCard>
+        </Grid>
+        <Grid item xs={12} md={4}>
+          <MuiCard>
+            <CardContent sx={theming.getThemedCardSx()}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                <Build sx={{ color: theming.colors.primary }} />
+                <Typography variant="h6">Hurtigverktøy</Typography>
+              </Box>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 2 }}>
+                <Button
+                  size="small"
+                  variant="contained"
+                  startIcon={<PlayCircle />}
+                  onClick={() => onWorklogCreate?.({
+                    projectId: selectedProject?.id,
+                    description: 'Startet ny order flow',
+                    loggedAt: new Date().toISOString()
+                  })}
+                >
+                  Start
+                </Button>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  startIcon={<Pause />}
+                  onClick={() => onWorklogCreate?.({
+                    projectId: selectedProject?.id,
+                    description: 'Satte vendor flow pa pause',
+                    loggedAt: new Date().toISOString()
+                  })}
+                >
+                  Pause
+                </Button>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  startIcon={<Refresh />}
+                  onClick={() => handleOrchestrationTrigger(selectedOrchestration)}
+                >
+                  Oppdater
+                </Button>
+              </Box>
+              <Divider sx={{ my: 2 }} />
+              <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0,1fr))', gap: 1 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <CheckCircle sx={{ color: '#4caf50' }} />
+                  <Typography variant="caption">Automatisering klar</Typography>
+                </Box>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Warning sx={{ color: '#ff9800' }} />
+                  <Typography variant="caption">Ordre queue overvaket</Typography>
+                </Box>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Info sx={{ color: '#2196f3' }} />
+                  <Typography variant="caption">Marketplace sync aktiv</Typography>
+                </Box>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Error sx={{ color: '#f44336' }} />
+                  <Typography variant="caption">Ingen kritiske feil</Typography>
+                </Box>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Security sx={{ color: '#607d8b' }} />
+                  <Typography variant="caption">Sikkerhetsstatus OK</Typography>
+                </Box>
+              </Box>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 2 }}>
+                <Sync sx={{ color: theming.colors.primary }} />
+                <Typography variant="caption" color="text.secondary">
+                  Lager: {inventoryMetric?.value ?? 0}{inventoryMetric?.unit || ''} varer overvaket
+                </Typography>
+              </Box>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
+                <LocalShipping sx={{ color: theming.colors.primary }} />
+                <Typography variant="caption" color="text.secondary">
+                  Levering og fulfilment integrert
+                </Typography>
+              </Box>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
+                <Payment sx={{ color: theming.colors.primary }} />
+                <Typography variant="caption" color="text.secondary">
+                  Betaling og abonnement aktiv
+                </Typography>
+              </Box>
+            </CardContent>
+          </MuiCard>
+        </Grid>
+      </Grid>
+
 	      {/* System Metrics (når aktivert) */}
 	      {showSystemMetrics && (
 	        <Grid container spacing={2} sx={{ mb: 4 }}>
-	          {systemMetrics.map((metric, index) => (
-	            <Grid size={{ xs: 6 }} md={2} key={index}>
+            {resolvedMetrics.map((metric, index) => (
+              <Grid item xs={6} md={2} key={index}>
 	              <MuiCard
 	                sx={{
 	                  border: `2px solid ${getMetricColor(metric)}20`, '&:hover': {
@@ -931,6 +1356,9 @@ export default function VendorOrchestrator({
 	                  }}}
 	              >
 	                <CardContent sx={{ textAlign: 'center', py: 1, ...theming.getThemedCardSx() }}>
+                    <Box sx={{ mb: 1 }}>
+                      {getMetricIcon(metric)}
+                    </Box>
 	                  <Typography variant="h6" sx={{ color: getMetricColor(metric) }}>
 	                    {metric.value},{metric.unit}
 	                  </Typography>
@@ -1085,7 +1513,7 @@ export default function VendorOrchestrator({
             multiline
             rows={3}
             label="Trigger Data (JSON)"
-            placeholder='{"productId" : "12345""quantity": 5}'
+            placeholder='{"productId" : "12345", "quantity": 5}'
             value={JSON.stringify(manualTriggerData)}
             onChange={(e) => {
               try {
@@ -1121,28 +1549,28 @@ export default function VendorOrchestrator({
         fullWidth
       >
         <DialogTitle>
-          {selectedOrchestration && VENDOR_ORCHESTRATIONS[selectedOrchestration]?.name} - Detaljer
+          {selectedOrchestration && VENDOR_ORCHESTRATIONS[selectedOrchestration as keyof typeof VENDOR_ORCHESTRATIONS]?.name} - Detaljer
         </DialogTitle>
         <DialogContent>
           {selectedOrchestration && (
             <Box>
               <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>Trigger: </Typography>
               <Chip 
-                label={VENDOR_ORCHESTRATIONS[selectedOrchestration].trigger}
+                label={VENDOR_ORCHESTRATIONS[selectedOrchestration as keyof typeof VENDOR_ORCHESTRATIONS].trigger}
                 color="primary"
                 sx={{ mb: 2 }}
               />
               
               <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>Automatiserte Aksjoner: </Typography>
               <List>
-                {VENDOR_ORCHESTRATIONS[selectedOrchestration].actions.map((action, index) => (
+                {VENDOR_ORCHESTRATIONS[selectedOrchestration as keyof typeof VENDOR_ORCHESTRATIONS].actions.map((action, index) => (
                   <ListItem key={index}>
                     <ListItemIcon>
                       <Link color="primary" />
                     </ListItemIcon>
                     <ListItemText 
                       primary={action.component}
-                      secondary={`${action.action}${action.dependsOn ? ` (avhenger av: ${action.dependsn})` :''}`}
+                      secondary={`${action.action}${action.dependsOn ? ` (avhenger av: ${action.dependsOn})` : ''}`}
                     />
                   </ListItem>
                 ))}

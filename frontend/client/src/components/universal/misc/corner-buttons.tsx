@@ -53,22 +53,18 @@ export default function CornerButtons({
   
   // Theming system
   const theming = useTheming('photographer');
-  const isMobile = useMediaQuery(theme.breakpoints.down(, 'md'));
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
   // Get unread notification count
   const { data: notifications = [], error } = useQuery({
-    queryKey: ['/api/notifications/active', ],
+    queryKey: ['/api/notifications/active'],
+    queryFn: () => apiRequest('/api/notifications/active'),
     refetchInterval: 3000,
-    queryFn: () => apiRequest(['/api/notifications/active', ],
-    refetchInterval: 3000, {
-      headers: {
-  }
-  }), // Refetch every 30 seconds
-    retry: false, // Don't retry failed requests to avoid loops
+    retry: false,
     onError: (error) => {
-      console.warn('Notifications query failed, :', error);
-  }
-});
+      console.warn('Notifications query failed:', error);
+    }
+  });
 
   React.useEffect(() => {
     try {
@@ -165,7 +161,7 @@ export default function CornerButtons({
     {
       icon: <DemoModeToggle compact  />,
       name: 'Demo-modus',
-      onClick: () =>, {}, // Handled by DemoModeToggle component
+      onClick: () => {}, // Handled by DemoModeToggle component
       show: true
 }
   ].filter(action => action.show !== false);
@@ -179,13 +175,15 @@ export default function CornerButtons({
           position: 'fixed', 
           bottom:  20, 
           right:  20, // Per replit.md: SpeedDial at, right: 20
-          , '& .MuiFab-primary': { width: 70, // Per replit.md: 70x70px dimensions
+          '& .MuiFab-primary': {
+            width: 70, // Per replit.md: 70x70px dimensions
             height: 70,
-            backgroundColor: getProfessionColor()'&:hover': {
+            backgroundColor: getProfessionColor(),
+            '&:hover': {
               backgroundColor: getProfessionColor(),
               filter: 'brightness(0.9)'
-        }
-        }
+            }
+          }
       }}
         icon={<AddIcon sx={{ fontSize: 28}} />}
       >
@@ -217,14 +215,16 @@ export default function CornerButtons({
               position: 'fixed', 
               bottom:  20, 
               right: 10, // Per replit.md: chat button at, right: 100, width: 70, // Per replit.md: 70x70px dimensions
-             , height: 70,
+              width: 70,
+              height: 70,
               bgcolor: getProfessionColor(),
-              color: 'white', '&:hover': {
+              color: 'white',
+              '&:hover': {
                 bgcolor: getProfessionColor(),
-                filter:'brightness(0.9, )',
+                filter: 'brightness(0.9)'
             },
-              boxShadow: theme.shadows[],
-              zIndex: , theme.zIndex.speedDial
+              boxShadow: theme.shadows[6],
+              zIndex: theme.zIndex.speedDial
         }}
           >
             <Badge badgeContent={unreadCount > 0 ? unreadCount : 0} color="error">

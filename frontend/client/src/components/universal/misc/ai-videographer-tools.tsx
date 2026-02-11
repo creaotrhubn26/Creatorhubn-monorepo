@@ -78,7 +78,7 @@ export default function AiVideographerTools({
       name: 'Smart Cut Detection',
       description: 'Automatically detect and suggest optimal cut points',
       category: 'editing',
-      icon: theming.getThemedIcon(''),
+      icon: <AutoFixHigh />,
       isActive: false,
       processingTime:  15,
       confidence: 0.92 },
@@ -87,7 +87,7 @@ export default function AiVideographerTools({
       name: 'Audio Enhancement',
       description: 'AI noise reduction and audio quality improvement',
       category: 'audio',
-      icon: theming.getThemedIcon(''),
+      icon: <SmartToy />,
       isActive: false,
       processingTime:  45,
       confidence: 0.78 },
@@ -105,7 +105,7 @@ export default function AiVideographerTools({
       name: 'Scene Analysis',
       description: 'Analyze scenes for composition, lighting, and quality',
       category: 'analysis',
-      icon: theming.getThemedIcon(', '),
+      icon: <VideoLibrary />,
       isActive: false,
       processingTime:  20,
       confidence: 0.91 },
@@ -114,7 +114,7 @@ export default function AiVideographerTools({
       name: 'Auto Subtitle Generation',
       description: 'Generate accurate subtitles with timing',
       category: 'automation',
-      icon: theming.getThemedIcon(', '),
+      icon: <Speed />,
       isActive: false,
       processingTime:  25,
       confidence: 0.82 }
@@ -122,23 +122,22 @@ export default function AiVideographerTools({
 
   // Process AI tool
   const processAiTool = useMutation({
-    mutationFn: async (tool: AiTool) => 
-      return apiRequest(`/api/ai-tools/${tool.d}/process`, {
+    mutationFn: async (tool: AiTool) => {
+      return apiRequest(`/api/ai-tools/${tool.id}/process`, {
         headers: {
-          "Content-Type" : "application/json"
-    },
-        headers: {
-    },
-        method: 'POS',
+          "Content-Type": "application/json"
+        },
+        method: 'POST',
         body: JSON.stringify({ 
-          projectd,
-          toolId: tool.d,
+          projectId,
+          toolId: tool.id,
           parameters: {
             confidence: tool.confidence,
             processingTime: tool.processingTime
-      }
-      })
-    }),
+          }
+        })
+      });
+    },
     onSuccess: (data) => {
       onToolResult?.(activeTool!, data);
       setIsProcessing(false);

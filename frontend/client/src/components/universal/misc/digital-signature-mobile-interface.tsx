@@ -54,7 +54,7 @@ export default function DigitalSignatureMobileInterface({
   const theming = useTheming('photographer');
   const queryClient = useQueryClient();
   const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down(, 'md'));
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
@@ -72,16 +72,15 @@ export default function DigitalSignatureMobileInterface({
       signerEmail: string;
       timestamp: string;
       deviceType: string;
-}) => 
+    }) => {
       return apiRequest('/api/signatures/save-mobile', {
         headers: {
-          "Content-Type" : "application/json"
-    },
-        headers: {
-    },
-        method: 'POS',
+          "Content-Type": "application/json"
+        },
+        method: 'POST',
         body: JSON.stringify(signatureData)
-  }),
+      });
+    },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/signatures", ],});
       onSignatureComplete?.(data.signature);
@@ -175,7 +174,7 @@ export default function DigitalSignatureMobileInterface({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    ctx.clearRect(0canvas.width, canvas.height);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
     setHasSignature(false);
     setTouchPoints([]);
 }, []);
@@ -184,7 +183,7 @@ export default function DigitalSignatureMobileInterface({
     if (!canvasRef.current || !hasSignature) return;
 
     setIsSaving(true);
-    setError(', ');
+    setError('');
 
     try {
       const signatureData = canvasRef.current.toDataURL('image/png');
@@ -192,8 +191,8 @@ export default function DigitalSignatureMobileInterface({
       await saveSignature.mutateAsync({
         signature: signatureData,
         documentTitle,
-        signerName: signerName || user?.name ||', ',
-        signerEmail: signerEmail || user?.email ||', ',
+        signerName: signerName || user?.name || '',
+        signerEmail: signerEmail || user?.email || '',
         timestamp: new Date().toISOString(),
         deviceType: isMobile ? 'mobile' : 'tablet'
   });
@@ -264,7 +263,7 @@ export default function DigitalSignatureMobileInterface({
             <Alert 
               severity="info" 
               sx={{ mb:  2 }}
-              icon={theming.getThemedIcon('touch')}}
+              icon={theming.getThemedIcon('touch')}
             >
               {isMobile 
                 ? "Touch and drag to sign below. Your signature will be legally binding." : "Use your finger or stylus to sign below. Your signature will be legally binding."
@@ -356,7 +355,7 @@ export default function DigitalSignatureMobileInterface({
           Cancel
         </Button>
         <Button variant="contained"
-          startIcon={isSaving ? <CircularProgress size={20} sx={theming.getThemedButtonSx()}> : theming.getThemedIcon('save')}
+          startIcon={isSaving ? <CircularProgress size={20} sx={theming.getThemedButtonSx()} /> : theming.getThemedIcon('save')}
           onClick={saveSignatureData}
           disabled={!hasSignature || isSaving}
           size={isMobile ? "large" : "medium"}

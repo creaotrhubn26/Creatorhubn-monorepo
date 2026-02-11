@@ -34,7 +34,8 @@ import {
   DialogActions,
   TextField,
   CircularProgress,
-  Snackbar
+  Snackbar,
+  MenuItem
 } from '@mui/material';
 import {
   Business,
@@ -83,6 +84,7 @@ import EnterpriseTeamManagement from '../enterprise/EnterpriseTeamManagement';
 // Import dynamic profession system
 import { useDynamicProfessions } from './hooks/useDynamicProfessions';
 import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
+import { useSettings, UserSettings } from '@/contexts/SettingsContext';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -152,6 +154,75 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
   // Dynamic profession system
   const { professionConfigs, getProfessionDisplayName, getUserProfessionColor, getProfessionIcon } = useDynamicProfessions();
   const { adaptDashboardTitle, adaptTabLabels } = useProfessionAdapter();
+  const { settings, updateSetting } = useSettings();
+  const timelinePrefill = settings.projectCreation.timelinePrefill || {
+    projectName: true,
+    clientName: true,
+    clientEmail: true,
+    clientPhone: true,
+    eventDate: true,
+    venue: true,
+    eventType: true,
+    guestCount: true,
+    location: true,
+    culturalType: true,
+    evendiCoupleId: true,
+  };
+  const timelinePrefillDefaults = {
+    projectName: true,
+    clientName: true,
+    clientEmail: true,
+    clientPhone: true,
+    eventDate: true,
+    venue: true,
+    eventType: true,
+    guestCount: true,
+    location: true,
+    culturalType: true,
+    evendiCoupleId: true,
+  };
+  const timelinePrefillCount = Object.values(timelinePrefill).filter(Boolean).length;
+  const timelinePrefillTotal = Object.keys(timelinePrefillDefaults).length;
+  const timelineSettingsDefaults: UserSettings['weddingTimeline'] = {
+    autoCreateOnProject: false,
+    template: {
+      defaultTemplate: 'standard',
+      autoApplyTemplate: true,
+      allowTemplateSave: true,
+      templateScope: 'profession'
+    },
+    notifications: {
+      clientChanges: true,
+      timelineUpdates: true,
+      autoAdjustments: true,
+      accessGenerated: true
+    },
+    autoAdjust: {
+      enabled: true,
+      minDelayMinutes: 10,
+      requireReason: true,
+      excludeCompleted: true
+    },
+    privacy: {
+      clientAccessDefault: 'read',
+      allowDownload: false,
+      allowSave: false,
+      allowRightClick: false,
+      requireApproval: true
+    },
+    sync: {
+      enableGoogleDriveBackup: true,
+      enableCalendarSync: false,
+      calendarProvider: 'none',
+      twoWaySync: false
+    },
+    viewDefaults: {
+      defaultTab: 'overview',
+      showClientNotes: true,
+      showSpeechMarkers: true
+    }
+  };
+  const timelineSettings = settings.weddingTimeline || timelineSettingsDefaults;
 
   // Master Integration Provider
   const { integration, communication, dataFlow, componentRegistry, features } = useEnhancedMasterIntegration();
@@ -1267,6 +1338,519 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
                 selectedProject={selectedProject}
                 onProjectUpdate={onProjectUpdate}
               />
+            </Box>
+
+            <Divider sx={{ my: 3 }} />
+
+            {/* Timeline Prefill Preferences */}
+            <Box sx={{ mb: 4 }}>
+              <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Settings sx={{ color: customBranding.color }} />
+                Timeline Forhandsutfylling
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Velg hvilke felt som skal forhåndsutfylles når du oppretter tidslinjer.
+              </Typography>
+              <FormGroup>
+                {([
+                  { key: 'projectName', label: 'Prosjektnavn' },
+                  { key: 'clientName', label: 'Kundenavn' },
+                  { key: 'clientEmail', label: 'Kunde e-post' },
+                  { key: 'clientPhone', label: 'Kunde telefon' },
+                  { key: 'eventDate', label: 'Dato' },
+                  { key: 'venue', label: 'Lokasjon / Venue' },
+                  { key: 'eventType', label: 'Event type' },
+                  { key: 'guestCount', label: 'Antall gjester' },
+                  { key: 'location', label: 'Prosjektlokasjon' },
+                  { key: 'culturalType', label: 'Kulturtype' },
+                  { key: 'evendiCoupleId', label: 'Evendi couple ID' }
+                ] as Array<{ key: keyof UserSettings['projectCreation']['timelinePrefill']; label: string }>).map((item) => (
+                  <FormControlLabel
+                    key={item.key}
+                    control={
+                      <Switch
+                        checked={timelinePrefill[item.key]}
+                        onChange={(e) =>
+                          updateSetting('projectCreation', {
+                            timelinePrefill: {
+                              ...timelinePrefill,
+                              [item.key]: e.target.checked
+                            }
+                          })
+                        }
+                      />
+                    }
+                    label={item.label}
+                  />
+                ))}
+              </FormGroup>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 2, gap: 1, flexWrap: 'wrap' }}>
+                <Typography variant="caption" color="text.secondary" sx={{ alignSelf: 'center' }}>
+                  Valgt: {timelinePrefillCount}/{timelinePrefillTotal}
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 1 }}>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() =>
+                      updateSetting('projectCreation', {
+
+              {/* Timeline Settings */}
+              <Box sx={{ mb: 4 }}>
+                <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Settings sx={{ color: customBranding.color }} />
+                  Timeline Innstillinger
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  Velg standarder for auto-oppretting, maler, varsler, auto-justering, personvern og synk.
+                </Typography>
+
+                <FormGroup sx={{ mb: 2 }}>
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={timelineSettings.autoCreateOnProject}
+                        onChange={(e) => {
+                          const nextValue = e.target.checked;
+                          updateSetting('projectCreation', { autoCreateWeddingTimeline: nextValue });
+                          updateSetting('weddingTimeline', { ...timelineSettings, autoCreateOnProject: nextValue });
+                        }}
+                      />
+                    }
+                    label="Auto-opprett tidslinje ved prosjektopprettelse"
+                  />
+                </FormGroup>
+
+                <Divider sx={{ my: 2 }} />
+
+                <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>Maler</Typography>
+                <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 2, mb: 2 }}>
+                  <TextField
+                    select
+                    label="Standardmal"
+                    value={timelineSettings.template.defaultTemplate}
+                    onChange={(e) =>
+                      updateSetting('weddingTimeline', {
+                        ...timelineSettings,
+                        template: { ...timelineSettings.template, defaultTemplate: e.target.value as UserSettings['weddingTimeline']['template']['defaultTemplate'] }
+                      })
+                    }
+                  >
+                    <MenuItem value="standard">Standard</MenuItem>
+                    <MenuItem value="wedding">Bryllup</MenuItem>
+                    <MenuItem value="corporate">Bedrift</MenuItem>
+                    <MenuItem value="personal">Personlig</MenuItem>
+                  </TextField>
+                  <TextField
+                    select
+                    label="Mal-omfang"
+                    value={timelineSettings.template.templateScope}
+                    onChange={(e) =>
+                      updateSetting('weddingTimeline', {
+                        ...timelineSettings,
+                        template: { ...timelineSettings.template, templateScope: e.target.value as UserSettings['weddingTimeline']['template']['templateScope'] }
+                      })
+                    }
+                  >
+                    <MenuItem value="global">Global</MenuItem>
+                    <MenuItem value="profession">Profesjon</MenuItem>
+                    <MenuItem value="project">Prosjekt</MenuItem>
+                  </TextField>
+                </Box>
+                <FormGroup sx={{ mb: 2 }}>
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={timelineSettings.template.autoApplyTemplate}
+                        onChange={(e) =>
+                          updateSetting('weddingTimeline', {
+                            ...timelineSettings,
+                            template: { ...timelineSettings.template, autoApplyTemplate: e.target.checked }
+                          })
+                        }
+                      />
+                    }
+                    label="Auto-bruk mal ved opprettelse"
+                  />
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={timelineSettings.template.allowTemplateSave}
+                        onChange={(e) =>
+                          updateSetting('weddingTimeline', {
+                            ...timelineSettings,
+                            template: { ...timelineSettings.template, allowTemplateSave: e.target.checked }
+                          })
+                        }
+                      />
+                    }
+                    label="Tillat lagring av nye maler"
+                  />
+                </FormGroup>
+
+                <Divider sx={{ my: 2 }} />
+
+                <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>Varsler</Typography>
+                <FormGroup sx={{ mb: 2 }}>
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={timelineSettings.notifications.clientChanges}
+                        onChange={(e) =>
+                          updateSetting('weddingTimeline', {
+                            ...timelineSettings,
+                            notifications: { ...timelineSettings.notifications, clientChanges: e.target.checked }
+                          })
+                        }
+                      />
+                    }
+                    label="Varsle ved klientendringer"
+                  />
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={timelineSettings.notifications.timelineUpdates}
+                        onChange={(e) =>
+                          updateSetting('weddingTimeline', {
+                            ...timelineSettings,
+                            notifications: { ...timelineSettings.notifications, timelineUpdates: e.target.checked }
+                          })
+                        }
+                      />
+                    }
+                    label="Varsle ved tidslinjeoppdateringer"
+                  />
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={timelineSettings.notifications.autoAdjustments}
+                        onChange={(e) =>
+                          updateSetting('weddingTimeline', {
+                            ...timelineSettings,
+                            notifications: { ...timelineSettings.notifications, autoAdjustments: e.target.checked }
+                          })
+                        }
+                      />
+                    }
+                    label="Varsle ved auto-justering"
+                  />
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={timelineSettings.notifications.accessGenerated}
+                        onChange={(e) =>
+                          updateSetting('weddingTimeline', {
+                            ...timelineSettings,
+                            notifications: { ...timelineSettings.notifications, accessGenerated: e.target.checked }
+                          })
+                        }
+                      />
+                    }
+                    label="Varsle når klienttilgang genereres"
+                  />
+                </FormGroup>
+
+                <Divider sx={{ my: 2 }} />
+
+                <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>Auto-justering</Typography>
+                <FormGroup sx={{ mb: 2 }}>
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={timelineSettings.autoAdjust.enabled}
+                        onChange={(e) =>
+                          updateSetting('weddingTimeline', {
+                            ...timelineSettings,
+                            autoAdjust: { ...timelineSettings.autoAdjust, enabled: e.target.checked }
+                          })
+                        }
+                      />
+                    }
+                    label="Aktiver auto-justering"
+                  />
+                </FormGroup>
+                <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 2, mb: 2 }}>
+                  <TextField
+                    label="Minimum forsinkelse (min)"
+                    type="number"
+                    value={timelineSettings.autoAdjust.minDelayMinutes}
+                    onChange={(e) =>
+                      updateSetting('weddingTimeline', {
+                        ...timelineSettings,
+                        autoAdjust: { ...timelineSettings.autoAdjust, minDelayMinutes: Number(e.target.value) }
+                      })
+                    }
+                    inputProps={{ min: 0 }}
+                  />
+                </Box>
+                <FormGroup sx={{ mb: 2 }}>
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={timelineSettings.autoAdjust.requireReason}
+                        onChange={(e) =>
+                          updateSetting('weddingTimeline', {
+                            ...timelineSettings,
+                            autoAdjust: { ...timelineSettings.autoAdjust, requireReason: e.target.checked }
+                          })
+                        }
+                      />
+                    }
+                    label="Krev årsak for forsinkelse"
+                  />
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={timelineSettings.autoAdjust.excludeCompleted}
+                        onChange={(e) =>
+                          updateSetting('weddingTimeline', {
+                            ...timelineSettings,
+                            autoAdjust: { ...timelineSettings.autoAdjust, excludeCompleted: e.target.checked }
+                          })
+                        }
+                      />
+                    }
+                    label="Hopp over fullførte hendelser"
+                  />
+                </FormGroup>
+
+                <Divider sx={{ my: 2 }} />
+
+                <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>Personvern & Klienttilgang</Typography>
+                <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 2, mb: 2 }}>
+                  <TextField
+                    select
+                    label="Standard klienttilgang"
+                    value={timelineSettings.privacy.clientAccessDefault}
+                    onChange={(e) =>
+                      updateSetting('weddingTimeline', {
+                        ...timelineSettings,
+                        privacy: { ...timelineSettings.privacy, clientAccessDefault: e.target.value as UserSettings['weddingTimeline']['privacy']['clientAccessDefault'] }
+                      })
+                    }
+                  >
+                    <MenuItem value="off">Av</MenuItem>
+                    <MenuItem value="read">Les</MenuItem>
+                    <MenuItem value="comment">Kommentar</MenuItem>
+                  </TextField>
+                </Box>
+                <FormGroup sx={{ mb: 2 }}>
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={timelineSettings.privacy.allowDownload}
+                        onChange={(e) =>
+                          updateSetting('weddingTimeline', {
+                            ...timelineSettings,
+                            privacy: { ...timelineSettings.privacy, allowDownload: e.target.checked }
+                          })
+                        }
+                      />
+                    }
+                    label="Tillat nedlasting"
+                  />
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={timelineSettings.privacy.allowSave}
+                        onChange={(e) =>
+                          updateSetting('weddingTimeline', {
+                            ...timelineSettings,
+                            privacy: { ...timelineSettings.privacy, allowSave: e.target.checked }
+                          })
+                        }
+                      />
+                    }
+                    label="Tillat lagring/kopiering"
+                  />
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={timelineSettings.privacy.allowRightClick}
+                        onChange={(e) =>
+                          updateSetting('weddingTimeline', {
+                            ...timelineSettings,
+                            privacy: { ...timelineSettings.privacy, allowRightClick: e.target.checked }
+                          })
+                        }
+                      />
+                    }
+                    label="Tillat hoyreklikk"
+                  />
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={timelineSettings.privacy.requireApproval}
+                        onChange={(e) =>
+                          updateSetting('weddingTimeline', {
+                            ...timelineSettings,
+                            privacy: { ...timelineSettings.privacy, requireApproval: e.target.checked }
+                          })
+                        }
+                      />
+                    }
+                    label="Krev godkjenning"
+                  />
+                </FormGroup>
+
+                <Divider sx={{ my: 2 }} />
+
+                <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>Synk & Backup</Typography>
+                <FormGroup sx={{ mb: 2 }}>
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={timelineSettings.sync.enableGoogleDriveBackup}
+                        onChange={(e) =>
+                          updateSetting('weddingTimeline', {
+                            ...timelineSettings,
+                            sync: { ...timelineSettings.sync, enableGoogleDriveBackup: e.target.checked }
+                          })
+                        }
+                      />
+                    }
+                    label="Google Drive-backup"
+                  />
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={timelineSettings.sync.enableCalendarSync}
+                        onChange={(e) =>
+                          updateSetting('weddingTimeline', {
+                            ...timelineSettings,
+                            sync: { ...timelineSettings.sync, enableCalendarSync: e.target.checked }
+                          })
+                        }
+                      />
+                    }
+                    label="Synk til kalender"
+                  />
+                </FormGroup>
+                <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 2, mb: 2 }}>
+                  <TextField
+                    select
+                    label="Kalenderleverandor"
+                    value={timelineSettings.sync.calendarProvider}
+                    onChange={(e) =>
+                      updateSetting('weddingTimeline', {
+                        ...timelineSettings,
+                        sync: { ...timelineSettings.sync, calendarProvider: e.target.value as UserSettings['weddingTimeline']['sync']['calendarProvider'] }
+                      })
+                    }
+                    disabled={!timelineSettings.sync.enableCalendarSync}
+                  >
+                    <MenuItem value="none">Ingen</MenuItem>
+                    <MenuItem value="google">Google</MenuItem>
+                    <MenuItem value="outlook">Outlook</MenuItem>
+                  </TextField>
+                </Box>
+                <FormGroup sx={{ mb: 2 }}>
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={timelineSettings.sync.twoWaySync}
+                        onChange={(e) =>
+                          updateSetting('weddingTimeline', {
+                            ...timelineSettings,
+                            sync: { ...timelineSettings.sync, twoWaySync: e.target.checked }
+                          })
+                        }
+                        disabled={!timelineSettings.sync.enableCalendarSync}
+                      />
+                    }
+                    label="To-veis synk"
+                  />
+                </FormGroup>
+
+                <Divider sx={{ my: 2 }} />
+
+                <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>Visning</Typography>
+                <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 2, mb: 2 }}>
+                  <TextField
+                    select
+                    label="Standard fane"
+                    value={timelineSettings.viewDefaults.defaultTab}
+                    onChange={(e) =>
+                      updateSetting('weddingTimeline', {
+                        ...timelineSettings,
+                        viewDefaults: { ...timelineSettings.viewDefaults, defaultTab: e.target.value as UserSettings['weddingTimeline']['viewDefaults']['defaultTab'] }
+                      })
+                    }
+                  >
+                    <MenuItem value="overview">Oversikt</MenuItem>
+                    <MenuItem value="events">Hendelser</MenuItem>
+                    <MenuItem value="people">Deltakere</MenuItem>
+                    <MenuItem value="client">Klienttilgang</MenuItem>
+                    <MenuItem value="settings">Innstillinger</MenuItem>
+                  </TextField>
+                </Box>
+                <FormGroup>
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={timelineSettings.viewDefaults.showClientNotes}
+                        onChange={(e) =>
+                          updateSetting('weddingTimeline', {
+                            ...timelineSettings,
+                            viewDefaults: { ...timelineSettings.viewDefaults, showClientNotes: e.target.checked }
+                          })
+                        }
+                      />
+                    }
+                    label="Vis klientnotater"
+                  />
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={timelineSettings.viewDefaults.showSpeechMarkers}
+                        onChange={(e) =>
+                          updateSetting('weddingTimeline', {
+                            ...timelineSettings,
+                            viewDefaults: { ...timelineSettings.viewDefaults, showSpeechMarkers: e.target.checked }
+                          })
+                        }
+                      />
+                    }
+                    label="Vis tale-markorer"
+                  />
+                </FormGroup>
+              </Box>
+                        timelinePrefill: Object.keys(timelinePrefillDefaults).reduce(
+                          (acc, key) => ({ ...acc, [key]: true }),
+                          {} as typeof timelinePrefillDefaults
+                        )
+                      })
+                    }
+                  >
+                    Velg alle
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() =>
+                      updateSetting('projectCreation', {
+                        timelinePrefill: Object.keys(timelinePrefillDefaults).reduce(
+                          (acc, key) => ({ ...acc, [key]: false }),
+                          {} as typeof timelinePrefillDefaults
+                        )
+                      })
+                    }
+                  >
+                    Fjern alle
+                  </Button>
+                </Box>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  onClick={() =>
+                    updateSetting('projectCreation', {
+                      timelinePrefill: timelinePrefillDefaults
+                    })
+                  }
+                >
+                  Tilbakestill standard
+                </Button>
+              </Box>
             </Box>
 
             <Divider sx={{ my: 3 }} />

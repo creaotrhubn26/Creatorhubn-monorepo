@@ -1,8 +1,5 @@
-import React, { useState } from 'react';
-import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
+import React from 'react';
 import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
-import getProfessionIcon from '@/utils/profession-icons';
-import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
 import {
   Dialog,
   DialogTitle,
@@ -27,7 +24,6 @@ import {
   Event,
   Edit,
   Schedule,
-  LocationOn,
   People,
   CheckCircle,
   Pending,
@@ -54,7 +50,7 @@ export default function WeddingTimelineHelp({ open, onClose, mode = 'client' }: 
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', bgcolor: theming.colors.primary, color: 'white' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <HelpOutline />
-            <Typography variant="h6">Hvordan bruker jeg bryllupstidslinjen?</Typography>
+            <Typography variant="h6">Hvordan bruker jeg tidslinjen?</Typography>
           </Box>
           <IconButton onClick={onClose} sx={{ color: 'white' }}>
             <Close />
@@ -64,10 +60,10 @@ export default function WeddingTimelineHelp({ open, onClose, mode = 'client' }: 
           <Box sx={{ mb: 3 }}>
             <Typography variant="h6" sx={{ mb: 2, color: theming.colors.primary, display: 'flex', alignItems: 'center', gap: 1 }}>
               <Event />
-              Velkommen til bryllupstidslinjen
+              Velkommen til Evendi tidslinjen
             </Typography>
             <Typography variant="body1" sx={{ mb: 2 }}>
-              Denne tidslinjen gir deg en oversikt over alle aktiviteter på bryllupsdagen. Du kan se tider, lokasjoner, og legge til dine egne notater.
+              Denne tidslinjen gir deg en oversikt over alle aktiviteter på arrangementsdagen. Du kan se tider, lokasjoner, og legge til dine egne notater.
             </Typography>
           </Box>
 
@@ -104,7 +100,7 @@ export default function WeddingTimelineHelp({ open, onClose, mode = 'client' }: 
             <AccordionSummary expandIcon={<ExpandMoreIcon />}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <Schedule />
-                <Typography variant="subtitle1" sx={{ fontWeight: 600}}>Følge tidslinjen på bryllupsdagen</Typography>
+                <Typography variant="subtitle1" sx={{ fontWeight: 600}}>Følge tidslinjen på arrangementsdagen</Typography>
               </Box>
             </AccordionSummary>
             <AccordionDetails>
@@ -182,7 +178,7 @@ export default function WeddingTimelineHelp({ open, onClose, mode = 'client' }: 
       <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', bgcolor: theming.colors.primary, color: 'white' }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <HelpOutline />
-          <Typography variant="h6">Bryllupstidslinje - Administrasjon</Typography>
+          <Typography variant="h6">Evendi Tidslinje - Administrasjon</Typography>
         </Box>
         <IconButton onClick={onClose} sx={{ color: 'white' }}>
           <Close />
@@ -192,10 +188,10 @@ export default function WeddingTimelineHelp({ open, onClose, mode = 'client' }: 
         <Box sx={{ mb: 3 }}>
           <Typography variant="h6" sx={{ mb: 2, color: theming.colors.primary, display: 'flex', alignItems: 'center', gap: 1 }}>
             <Event />
-            Administrere bryllupstidslinje
+            Administrere Evendi tidslinje
           </Typography>
           <Typography variant="body1" sx={{ mb: 2 }}>
-            Her kan du opprette og administrere bryllupstidslinjer, gi klienter tilgang, og håndtere endringsforespørsler.
+            Her kan du opprette og administrere tidslinjer, gi klienter tilgang, og håndtere endringsforespørsler.
           </Typography>
         </Box>
 
