@@ -122,7 +122,7 @@ function getRoleColor(role: string): string {
   return colors[role?.toLowerCase()] || '#9E9E9E';
 }
 
-export default function WedflowImportantPeople({ coupleId: propCoupleId, coupleName: propCoupleName }: EvendiImportantPeopleProps) {
+export default function EvendiImportantPeople({ coupleId: propCoupleId, coupleName: propCoupleName }: EvendiImportantPeopleProps) {
   const [people, setPeople] = useState<ImportantPerson[]>([]);
   const [contacts, setContacts] = useState<CoupleContact[]>([]);
   const [selectedCoupleId, setSelectedCoupleId] = useState(propCoupleId || '');
@@ -272,7 +272,7 @@ export default function WedflowImportantPeople({ coupleId: propCoupleId, coupleN
       {/* Header */}
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <img src="/wedflow-logo.png" alt="Evendi" style={{ width: 28, height: 28 }} />
+          <img src="/evendi-logo.png" alt="Evendi" style={{ width: 28, height: 28 }} />
           <Typography variant="h6" sx={{ fontWeight: 700 }}>
             Deltakere & Leverandører
           </Typography>
@@ -522,7 +522,7 @@ export default function WedflowImportantPeople({ coupleId: propCoupleId, coupleN
       {/* Add/Edit Dialog */}
       <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <img src="/wedflow-logo.png" alt="Evendi" style={{ width: 24, height: 24 }} />
+          <img src="/evendi-logo.png" alt="Evendi" style={{ width: 24, height: 24 }} />
           {editPerson ? 'Rediger person' : 'Legg til person'}
         </DialogTitle>
         <DialogContent>

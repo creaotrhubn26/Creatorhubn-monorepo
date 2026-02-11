@@ -66,7 +66,7 @@ import ClientAccessSettings from '@/components/shared/ClientAccessSettings';
 import WeddingTimeline from '../wedding-timeline';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import WeddingTimelineHelp from './WeddingTimelineHelp';
-import WedflowImportantPeople from '../wedflow/WedflowImportantPeople';
+import EvendiImportantPeople from '../evendi/EvendiImportantPeople';
 import { usePushNotifications } from '../../hooks/usePushNotifications';
 import { PushNotificationSettings } from '../shared/PushNotificationSettings';
 
@@ -1023,7 +1023,7 @@ export default function WeddingTimelineAdmin({
       {/* Deltakere & Leverandører Tab — Evendi Important People Bridge */}
       {activeTab === 2 && (
         <Box>
-          <WedflowImportantPeople />
+          <EvendiImportantPeople />
         </Box>
       )}
 

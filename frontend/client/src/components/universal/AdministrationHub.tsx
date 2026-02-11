@@ -3,7 +3,7 @@ import { Box, Tabs as MuiTabs, Tab, Paper, Typography } from '@mui/material';
 import { Article, Payments, AdminPanelSettings } from '@mui/icons-material';
 import PriceAdministration from '../PriceAdministration';
 import UniversalContractHub from './contracts/UniversalContractHub';
-import EvendiOfferManager from '../wedflow/WedflowOfferManager';
+import EvendiOfferManager from '../evendi/EvendiOfferManager';
 
 interface AdministrationHubProps {
   userId: string;
@@ -99,7 +99,7 @@ export default function AdministrationHub({
             iconPosition="start"
           />
           <Tab 
-            icon={<img src="/wedflow-logo.png" alt="" style={{ height: 28 }} />} 
+            icon={<img src="/evendi-logo.png" alt="" style={{ height: 28 }} />} 
             label="EVENDI TILBUD" 
             iconPosition="start"
           />

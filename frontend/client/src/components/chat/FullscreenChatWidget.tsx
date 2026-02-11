@@ -1341,7 +1341,7 @@ export default function FullscreenChatWidget({
                       '&:hover': { color: '#E91E63', transform: activeTab !== 2 ? 'scale(1.02)' : 'none' }
                     }}
                   >
-                    <img src="/wedflow-logo.png" alt="" style={{ width: 20, height: 20, borderRadius: '50%', opacity: activeTab === 2 ? 1 : 0.6 }} />
+                    <img src="/evendi-logo.png" alt="" style={{ width: 20, height: 20, borderRadius: '50%', opacity: activeTab === 2 ? 1 : 0.6 }} />
                     <Typography variant="body2" sx={{ fontWeight: 'inherit', fontSize: '0.95rem' }}>
                       Evendi
                     </Typography>
@@ -1579,7 +1579,7 @@ export default function FullscreenChatWidget({
                         <IconButton size="small" onClick={() => { setSelEvendiConv(null); setEvendiMsgs([]); }}>
                           <Close fontSize="small" />
                         </IconButton>
-                        <img src="/wedflow-logo.png" alt="" style={{ width: 22, height: 22, borderRadius: '50%' }} />
+                        <img src="/evendi-logo.png" alt="" style={{ width: 22, height: 22, borderRadius: '50%' }} />
                         <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
                           {evendiConvs.find((c: any) => c.id === selEvendiConv)?.couple_name || 'Samtale'}
                         </Typography>
@@ -1620,7 +1620,7 @@ export default function FullscreenChatWidget({
                     <Box>
                       <Box sx={{ mb: 2, p: 1.5, bgcolor: '#fce4ec', borderRadius: 2, border: '1px solid #E91E6330' }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-                          <img src="/wedflow-logo.png" alt="" style={{ width: 22, height: 22, borderRadius: '50%' }} />
+                          <img src="/evendi-logo.png" alt="" style={{ width: 22, height: 22, borderRadius: '50%' }} />
                           <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#880E4F' }}>Evendi Meldinger</Typography>
                         </Box>
                         <Typography variant="caption" color="text.secondary">
@@ -1635,7 +1635,7 @@ export default function FullscreenChatWidget({
                                 borderLeft: conv.vendor_unread_count > 0 ? '3px solid #E91E63' : 'none' }}>
                               <ListItemAvatar>
                                 <Avatar sx={{ bgcolor: '#fce4ec', width: 36, height: 36 }}>
-                                  <img src="/wedflow-logo.png" alt="" style={{ width: 24, height: 24, borderRadius: '50%' }} />
+                                  <img src="/evendi-logo.png" alt="" style={{ width: 24, height: 24, borderRadius: '50%' }} />
                                 </Avatar>
                               </ListItemAvatar>
                               <ListItemText

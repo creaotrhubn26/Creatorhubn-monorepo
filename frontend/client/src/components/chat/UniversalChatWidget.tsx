@@ -1609,7 +1609,7 @@ export default function UniversalChatWidget({
                 <Chip
                   icon={
                     activeTab === 0 ? <img src="/creatorhub-logo-amber.svg" alt="" style={{ width: 16, height: 16 }} /> :
-                    activeTab === 3 ? <img src="/wedflow-logo.png" alt="" style={{ width: 16, height: 16, borderRadius: '50%' }} /> :
+                    activeTab === 3 ? <img src="/evendi-logo.png" alt="" style={{ width: 16, height: 16, borderRadius: '50%' }} /> :
                     undefined
                   }
                   label={activeTab === 0 ? "CREATORHUB" : activeTab === 1 ? "GOOGLE CHAT" : activeTab === 2 ? "FEEDBACK" : "EVENDI"}
@@ -1798,7 +1798,7 @@ export default function UniversalChatWidget({
                   sx={{ textTransform: 'none' }}
                 />
                 <Tab
-                  icon={<img src="/wedflow-logo.png" alt="Evendi" style={{ width: 24, height: 24, borderRadius: '50%' }} />}
+                  icon={<img src="/evendi-logo.png" alt="Evendi" style={{ width: 24, height: 24, borderRadius: '50%' }} />}
                   label="EVENDI"
                   iconPosition="start"
                   sx={{ textTransform: 'none' }}
@@ -2257,7 +2257,7 @@ export default function UniversalChatWidget({
                         <IconButton size="small" onClick={() => { setSelectedEvendiConv(null); setEvendiMessages([]); }}>
                           <Reply sx={{ transform: 'scaleX(-1)' }} />
                         </IconButton>
-                        <img src="/wedflow-logo.png" alt="Evendi" style={{ width: 22, height: 22, borderRadius: '50%' }} />
+                        <img src="/evendi-logo.png" alt="Evendi" style={{ width: 22, height: 22, borderRadius: '50%' }} />
                         <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
                           {evendiConversations.find(c => c.id === selectedEvendiConv)?.couple_name || 'Samtale'}
                         </Typography>
@@ -2330,7 +2330,7 @@ export default function UniversalChatWidget({
                     <>
                       <Box sx={{ mb: 2, p: 1.5, bgcolor: '#fce4ec', borderRadius: 2, border: '1px solid #E91E6330' }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-                          <img src="/wedflow-logo.png" alt="Evendi" style={{ width: 22, height: 22, borderRadius: '50%' }} />
+                          <img src="/evendi-logo.png" alt="Evendi" style={{ width: 22, height: 22, borderRadius: '50%' }} />
                           <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#880E4F' }}>
                             Evendi Meldinger
                           </Typography>
@@ -2407,7 +2407,7 @@ export default function UniversalChatWidget({
                             >
                               <ListItemAvatar>
                                 <Avatar sx={{ bgcolor: '#fce4ec', width: 36, height: 36 }}>
-                                  <img src="/wedflow-logo.png" alt="Evendi" style={{ width: 24, height: 24, borderRadius: '50%' }} />
+                                  <img src="/evendi-logo.png" alt="Evendi" style={{ width: 24, height: 24, borderRadius: '50%' }} />
                                 </Avatar>
                               </ListItemAvatar>
                               <ListItemText
@@ -2445,7 +2445,7 @@ export default function UniversalChatWidget({
                         </List>
                       ) : (
                         <Box sx={{ p: 3, textAlign: 'center' }}>
-                          <img src="/wedflow-logo.png" alt="Evendi" style={{ width: 48, height: 48, borderRadius: '50%', opacity: 0.5, marginBottom: 8 }} />
+                          <img src="/evendi-logo.png" alt="Evendi" style={{ width: 48, height: 48, borderRadius: '50%', opacity: 0.5, marginBottom: 8 }} />
                           <Typography variant="body2" color="text.secondary">
                             Ingen Evendi-samtaler ennå
                           </Typography>

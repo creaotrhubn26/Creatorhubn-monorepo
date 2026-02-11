@@ -73,7 +73,7 @@ interface EvendiOfferManagerProps {
   evendiCoupleId?: string;
 }
 
-export default function WedflowOfferManager({ evendiCoupleId }: EvendiOfferManagerProps) {
+export default function EvendiOfferManager({ evendiCoupleId }: EvendiOfferManagerProps) {
   const [offers, setOffers] = useState<Offer[]>([]);
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
@@ -232,7 +232,7 @@ export default function WedflowOfferManager({ evendiCoupleId }: EvendiOfferManag
       <Paper sx={{ p: 3, mb: 3, borderRadius: 3, border: '2px solid #E91E63', background: 'linear-gradient(135deg, #FCE4EC 0%, #fff 100%)' }}>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <img src="/wedflow-logo.png" alt="Evendi" style={{ height: 36 }} />
+            <img src="/evendi-logo.png" alt="Evendi" style={{ height: 36 }} />
             <Typography variant="h5" sx={{ fontWeight: 700, color: '#E91E63' }}>
               Evendi Tilbud & Kontrakter
             </Typography>
@@ -478,7 +478,7 @@ export default function WedflowOfferManager({ evendiCoupleId }: EvendiOfferManag
       {/* Create Offer Dialog */}
       <Dialog open={createDialogOpen} onClose={() => setCreateDialogOpen(false)} maxWidth="md" fullWidth>
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 2, bgcolor: '#E91E63', color: 'white' }}>
-          <img src="/wedflow-logo.png" alt="" style={{ height: 28, filter: 'brightness(10)' }} />
+          <img src="/evendi-logo.png" alt="" style={{ height: 28, filter: 'brightness(10)' }} />
           Opprett nytt tilbud
         </DialogTitle>
         <DialogContent sx={{ mt: 2 }}>

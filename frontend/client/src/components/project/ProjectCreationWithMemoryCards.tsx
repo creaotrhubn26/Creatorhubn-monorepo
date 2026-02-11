@@ -1276,6 +1276,8 @@ export default function ProjectCreationWithMemoryCards({
     eventDates: (initialData?.eventDates as any) || ({} as Record<number, string>), // For multi-day events
     location: initialData?.location || '',
     projectType: initialData?.projectType || getDefaultProjectType(userProfession),
+    eventType: 'wedding' as string, // From Evendi bridge (wedding, birthday, corporate, etc.)
+    eventCategory: 'personal' as string, // personal | corporate
     weddingCulture: 'norsk',
     totalDays: 1,
     activeDays: [1],
@@ -1314,17 +1316,24 @@ export default function ProjectCreationWithMemoryCards({
         const data = await apiRequest(`/api/evendi/traditions-bridge?coupleId=${encodeURIComponent(evendiCoupleId)}`);
         if (data?.primaryCulturalType) {
           setEvendiTraditionsBridge(data);
-          // Auto-set weddingCulture from couple's traditions
+          // Auto-set weddingCulture + eventType from couple's profile
+          // Also auto-map projectType when the Evendi eventType provides better info
+          const autoProjectType = data.eventType && data.eventType !== 'wedding'
+            ? data.eventType // Use Evendi event type directly (e.g., 'conference', 'birthday')
+            : undefined; // Keep user's selection for weddings
           setProjectData(prev => ({
             ...prev,
             weddingCulture: data.primaryCulturalType,
+            eventType: data.eventType || 'wedding',
+            eventCategory: data.eventCategory || 'personal',
+            ...(autoProjectType && { projectType: autoProjectType }),
             totalDays: WEDDING_CULTURES[data.primaryCulturalType]?.typical_days || prev.totalDays,
             activeDays: Array.from(
               { length: WEDDING_CULTURES[data.primaryCulturalType]?.typical_days || prev.totalDays },
               (_, i) => i + 1
             ),
           }));
-          console.log(`🌍 Traditions bridge: Couple ${evendiCoupleId} → culturalType: ${data.primaryCulturalType}`, data);
+          console.log(`🌍 Traditions bridge: Couple ${evendiCoupleId} → culturalType: ${data.primaryCulturalType}, eventType: ${data.eventType}`, data);
         }
       } catch (error) {
         console.warn('Evendi traditions bridge fetch failed (non-critical):', error);
@@ -4102,6 +4111,9 @@ useEffect(() => {
           <Stack spacing={1}>
             <Typography variant="body2"><strong>Prosjektnavn:</strong> {projectData.projectName || '(ikke satt)'}</Typography>
             <Typography variant="body2"><strong>Prosjekttype:</strong> {projectData.projectType} {projectData.weddingCulture !== 'norsk' && `(${projectData.weddingCulture})`}</Typography>
+            {projectData.eventType !== 'wedding' && (
+              <Typography variant="body2"><strong>Arrangementstype (Evendi):</strong> {projectData.eventType} ({projectData.eventCategory})</Typography>
+            )}
             <Typography variant="body2"><strong>Klient:</strong> {projectData.clientName || '(ikke satt)'}</Typography>
             <Typography variant="body2"><strong>Dato:</strong> {projectData.eventDate || '(ikke satt)'}</Typography>
             <Typography variant="body2"><strong>Lokasjon:</strong> {projectData.location || '(ikke satt)'}</Typography>

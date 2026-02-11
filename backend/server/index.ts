@@ -894,7 +894,7 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
-// POST /api/couples/login — Couple login (compatible with deployed Wedflow API)
+// POST /api/couples/login — Couple login (compatible with deployed Evendi API)
 app.post('/api/couples/login', async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -1735,7 +1735,7 @@ app.get('/api/business-lifecycle/profile-by-email/:email', async (req, res) => {
 });
 
 // ============================================================
-// CLIENT SUBMISSIONS API (couple → vendor messaging through Wedflow)
+// CLIENT SUBMISSIONS API (couple → vendor messaging through Evendi)
 // ============================================================
 
 // Helper: transform client_submission row to camelCase
@@ -3332,29 +3332,21 @@ app.get('/api/wedding/timeline/templates', async (req, res) => {
 // (formerly WEDFLOW — rebranded to Evendi event ecosystem)
 // ============================================================================
 
-// Dual-route middleware: /api/evendi/* → rewrite to /api/wedflow/* internally
-// so all existing route handlers work without modification.
-// Both /api/evendi/* and /api/wedflow/* are accepted by the client.
-app.use('/api/evendi', (req, _res, next) => {
-  req.url = req.url; // keep url as-is
-  req.baseUrl; // keep baseUrl
-  // Re-route through /api/wedflow by rewriting the path
+// Backward-compat middleware: /api/wedflow/* → rewrite to /api/evendi/*
+// so legacy clients that still call /api/wedflow/* continue to work.
+// All canonical routes are now registered under /api/evendi/*.
+app.use('/api/wedflow', (req, _res, next) => {
   const originalUrl = req.originalUrl;
-  req.url = originalUrl.replace('/api/evendi', '/api/wedflow');
+  req.url = originalUrl.replace('/api/wedflow', '/api/evendi');
   next('route');
 });
-// Alternative: register /api/evendi/* as a mirror of /api/wedflow/*
-app.all('/api/evendi/*', (req, res, next) => {
-  // Rewrite the path from /api/evendi/... to /api/wedflow/...
-  req.url = req.url.replace('/api/evendi', '/api/wedflow');
-  req.originalUrl = req.originalUrl.replace('/api/evendi', '/api/wedflow');
-  // Re-dispatch through Express router
+app.all('/api/wedflow/*', (req, res, next) => {
+  req.url = req.url.replace('/api/wedflow', '/api/evendi');
+  req.originalUrl = req.originalUrl.replace('/api/wedflow', '/api/evendi');
   req.app.handle(req, res, next);
 });
 
 const EVENDI_API_URL = process.env.EVENDI_API_URL || process.env.WEDFLOW_API_URL || 'https://evendi.onrender.com';
-/** @deprecated Use EVENDI_API_URL */
-const WEDFLOW_API_URL = EVENDI_API_URL;
 const CREATORHUB_API_KEY = process.env.CREATORHUB_API_KEY || '';
 
 // ── Couple Planning Timelines (MUST be registered BEFORE the wildcard proxy) ──
@@ -3376,8 +3368,8 @@ async function resolveCoupleId(coupleIdParam: string): Promise<string | null> {
   return null;
 }
 
-// GET /api/wedflow/planning/project/:projectId/couple — resolve couple from project
-app.get('/api/wedflow/planning/project/:projectId/couple', async (req, res) => {
+// GET /api/evendi/planning/project/:projectId/couple — resolve couple from project
+app.get('/api/evendi/planning/project/:projectId/couple', async (req, res) => {
   try {
     const { projectId } = req.params;
     // Get project client email from legacy.projects
@@ -3411,8 +3403,8 @@ function mapPlanningTimeline(tableName: string, row: any) {
   return { ...row, category, tableName };
 }
 
-// GET /api/wedflow/planning/:coupleId — get all planning progress for a couple
-app.get('/api/wedflow/planning/:coupleId', async (req, res) => {
+// GET /api/evendi/planning/:coupleId — get all planning progress for a couple
+app.get('/api/evendi/planning/:coupleId', async (req, res) => {
   try {
     const coupleId = await resolveCoupleId(req.params.coupleId) || req.params.coupleId;
     const planningTables = [
@@ -3450,8 +3442,8 @@ app.get('/api/wedflow/planning/:coupleId', async (req, res) => {
   }
 });
 
-// GET /api/wedflow/planning/:coupleId/schedule — get day-of schedule events
-app.get('/api/wedflow/planning/:coupleId/schedule', async (req, res) => {
+// GET /api/evendi/planning/:coupleId/schedule — get day-of schedule events
+app.get('/api/evendi/planning/:coupleId/schedule', async (req, res) => {
   try {
     const coupleId = await resolveCoupleId(req.params.coupleId) || req.params.coupleId;
     const result = await pool.query(
@@ -3465,8 +3457,8 @@ app.get('/api/wedflow/planning/:coupleId/schedule', async (req, res) => {
   }
 });
 
-// POST /api/wedflow/planning/:coupleId/schedule — add schedule event
-app.post('/api/wedflow/planning/:coupleId/schedule', async (req, res) => {
+// POST /api/evendi/planning/:coupleId/schedule — add schedule event
+app.post('/api/evendi/planning/:coupleId/schedule', async (req, res) => {
   try {
     const coupleId = await resolveCoupleId(req.params.coupleId) || req.params.coupleId;
     const { time, title, icon, notes, sortOrder } = req.body;
@@ -3484,8 +3476,8 @@ app.post('/api/wedflow/planning/:coupleId/schedule', async (req, res) => {
   }
 });
 
-// PUT /api/wedflow/planning/:coupleId/schedule/:eventId — update schedule event
-app.put('/api/wedflow/planning/:coupleId/schedule/:eventId', async (req, res) => {
+// PUT /api/evendi/planning/:coupleId/schedule/:eventId — update schedule event
+app.put('/api/evendi/planning/:coupleId/schedule/:eventId', async (req, res) => {
   try {
     const { eventId } = req.params;
     const data = req.body;
@@ -3509,8 +3501,8 @@ app.put('/api/wedflow/planning/:coupleId/schedule/:eventId', async (req, res) =>
   }
 });
 
-// DELETE /api/wedflow/planning/:coupleId/schedule/:eventId
-app.delete('/api/wedflow/planning/:coupleId/schedule/:eventId', async (req, res) => {
+// DELETE /api/evendi/planning/:coupleId/schedule/:eventId
+app.delete('/api/evendi/planning/:coupleId/schedule/:eventId', async (req, res) => {
   try {
     const result = await pool.query('DELETE FROM schedule_events WHERE id = $1 RETURNING id', [req.params.eventId]);
     if (result.rowCount === 0) return res.status(404).json({ error: 'Hendelse ikke funnet' });
@@ -3520,9 +3512,9 @@ app.delete('/api/wedflow/planning/:coupleId/schedule/:eventId', async (req, res)
   }
 });
 
-// POST /api/wedflow/planning/:coupleId/sync-to-timeline/:projectId
-//   Syncs the couple's Wedflow schedule_events → photographer's wedding_timeline_events
-app.post('/api/wedflow/planning/:coupleId/sync-to-timeline/:projectId', async (req, res) => {
+// POST /api/evendi/planning/:coupleId/sync-to-timeline/:projectId
+//   Syncs the couple's Evendi schedule_events → photographer's wedding_timeline_events
+app.post('/api/evendi/planning/:coupleId/sync-to-timeline/:projectId', async (req, res) => {
   try {
     const coupleId = await resolveCoupleId(req.params.coupleId) || req.params.coupleId;
     const { projectId } = req.params;
@@ -3588,22 +3580,22 @@ app.post('/api/wedflow/planning/:coupleId/sync-to-timeline/:projectId', async (r
       }), timelineId]
     );
     
-    console.log(`🔄 Synced ${synced} Wedflow schedule events → timeline ${timelineId.substring(0,8)}`);
+    console.log(`🔄 Synced ${synced} Evendi schedule events → timeline ${timelineId.substring(0,8)}`);
     res.json({ 
       synced, 
       total: schedResult.rowCount, 
       timelineId,
-      message: `${synced} nye hendelser synkronisert fra Wedflow` 
+      message: `${synced} nye hendelser synkronisert fra Evendi` 
     });
   } catch (error) {
-    console.error('Error syncing Wedflow → timeline:', error);
+    console.error('Error syncing Evendi → timeline:', error);
     res.status(500).json({ error: 'Kunne ikke synkronisere' });
   }
 });
 
-// POST /api/wedflow/planning/:coupleId/sync-from-timeline/:projectId
+// POST /api/evendi/planning/:coupleId/sync-from-timeline/:projectId
 //   Syncs photographer's timeline events → couple's schedule_events (reverse sync)
-app.post('/api/wedflow/planning/:coupleId/sync-from-timeline/:projectId', async (req, res) => {
+app.post('/api/evendi/planning/:coupleId/sync-from-timeline/:projectId', async (req, res) => {
   try {
     const coupleId = await resolveCoupleId(req.params.coupleId) || req.params.coupleId;
     const { projectId } = req.params;
@@ -3643,16 +3635,16 @@ app.post('/api/wedflow/planning/:coupleId/sync-from-timeline/:projectId', async 
       sortOrder++;
     }
     
-    console.log(`🔄 Synced ${synced} timeline events → Wedflow schedule for couple ${coupleId}`);
-    res.json({ synced, total: events.rowCount, message: `${synced} hendelser synkronisert til Wedflow` });
+    console.log(`🔄 Synced ${synced} timeline events → Evendi schedule for couple ${coupleId}`);
+    res.json({ synced, total: events.rowCount, message: `${synced} hendelser synkronisert til Evendi` });
   } catch (error) {
-    console.error('Error syncing timeline → Wedflow:', error);
+    console.error('Error syncing timeline → Evendi:', error);
     res.status(500).json({ error: 'Kunne ikke synkronisere' });
   }
 });
 
-// GET /api/wedflow/planning/project/:projectId/status — check sync status between timeline and Wedflow
-app.get('/api/wedflow/planning/project/:projectId/status', async (req, res) => {
+// GET /api/evendi/planning/project/:projectId/status — check sync status between timeline and Evendi
+app.get('/api/evendi/planning/project/:projectId/status', async (req, res) => {
   try {
     const { projectId } = req.params;
     
@@ -3666,7 +3658,7 @@ app.get('/api/wedflow/planning/project/:projectId/status', async (req, res) => {
     const timelineData = timeline.timeline_data || {};
     const evtCount = await pool.query('SELECT count(*) as c FROM wedding_timeline_events WHERE timeline_id = $1', [timeline.id]);
     
-    // Check for Wedflow schedule events if couple is known
+    // Check for Evendi schedule events if couple is known
     let wedflowScheduleCount = 0;
     if (timelineData.wedflowCoupleId) {
       const sched = await pool.query('SELECT count(*) as c FROM schedule_events WHERE couple_id = $1', [timelineData.wedflowCoupleId]);
@@ -3694,9 +3686,9 @@ app.get('/api/wedflow/planning/project/:projectId/status', async (req, res) => {
 });
 
 // ============================================================
-// WEATHER / LOCATION / TRAVEL BRIDGE — CreatorHub ↔ Wedflow
+// WEATHER / LOCATION / TRAVEL BRIDGE — CreatorHub ↔ Evendi
 // Bridges Kartverket, YR.no weather, travel cost intelligence
-// between CreatorHub project creation and Wedflow wedding planning
+// between CreatorHub project creation and Evendi event planning
 // ============================================================
 
 const YR_BRIDGE_CACHE: Map<string, { data: any; expires: Date }> = new Map();
@@ -3708,7 +3700,7 @@ async function fetchYrWeatherBridge(lat: number, lon: number): Promise<any> {
 
   const url = `https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}`;
   const response = await fetch(url, {
-    headers: { 'User-Agent': 'CreatorHub-Wedflow-Bridge/1.0 github.com/creatorhub' }
+    headers: { 'User-Agent': 'CreatorHub-Evendi-Bridge/1.0 github.com/creatorhub' }
   });
   if (!response.ok) throw new Error(`YR API error: ${response.status}`);
   const data = await response.json();
@@ -3765,8 +3757,8 @@ function calculateTravelInfo(from: { lat: number; lng: number }, to: { lat: numb
   };
 }
 
-// GET /api/wedflow/weather-location/:coupleId — Full weather + location intelligence for couple's wedding venue
-app.get('/api/wedflow/weather-location/:coupleId', async (req, res) => {
+// GET /api/evendi/weather-location/:coupleId — Full weather + location intelligence for couple's wedding venue
+app.get('/api/evendi/weather-location/:coupleId', async (req, res) => {
   try {
     const coupleId = await resolveCoupleId(req.params.coupleId) || req.params.coupleId;
 
@@ -3948,7 +3940,7 @@ app.get('/api/wedflow/weather-location/:coupleId', async (req, res) => {
       weather,
       eventsWithWeather,
       travelFromCities,
-      source: 'creatorhub-wedflow-bridge',
+      source: 'creatorhub-evendi-bridge',
     });
   } catch (error) {
     console.error('Weather-location bridge error:', error);
@@ -3956,8 +3948,8 @@ app.get('/api/wedflow/weather-location/:coupleId', async (req, res) => {
   }
 });
 
-// POST /api/wedflow/weather-location/:coupleId/venue — Update venue coordinates and trigger weather fetch
-app.post('/api/wedflow/weather-location/:coupleId/venue', async (req, res) => {
+// POST /api/evendi/weather-location/:coupleId/venue — Update venue coordinates and trigger weather fetch
+app.post('/api/evendi/weather-location/:coupleId/venue', async (req, res) => {
   try {
     const coupleId = await resolveCoupleId(req.params.coupleId) || req.params.coupleId;
     const { venueName, lat, lng, address } = req.body;
@@ -4023,8 +4015,8 @@ app.post('/api/wedflow/weather-location/:coupleId/venue', async (req, res) => {
   }
 });
 
-// GET /api/wedflow/weather-location/:coupleId/travel — Calculate travel info from origin to wedding venue
-app.get('/api/wedflow/weather-location/:coupleId/travel', async (req, res) => {
+// GET /api/evendi/weather-location/:coupleId/travel — Calculate travel info from origin to wedding venue
+app.get('/api/evendi/weather-location/:coupleId/travel', async (req, res) => {
   try {
     const coupleId = await resolveCoupleId(req.params.coupleId) || req.params.coupleId;
     const fromLat = parseFloat(req.query.fromLat as string);
@@ -4091,8 +4083,8 @@ app.get('/api/wedflow/weather-location/:coupleId/travel', async (req, res) => {
   }
 });
 
-// GET /api/wedflow/weather-location/:coupleId/event-weather — Weather for each timeline event time
-app.get('/api/wedflow/weather-location/:coupleId/event-weather', async (req, res) => {
+// GET /api/evendi/weather-location/:coupleId/event-weather — Weather for each timeline event time
+app.get('/api/evendi/weather-location/:coupleId/event-weather', async (req, res) => {
   try {
     const coupleId = await resolveCoupleId(req.params.coupleId) || req.params.coupleId;
     const date = req.query.date as string; // YYYY-MM-DD format
@@ -4175,8 +4167,8 @@ app.get('/api/wedflow/weather-location/:coupleId/event-weather', async (req, res
   }
 });
 
-// POST /api/wedflow/weather-location/sync-from-project/:projectId — Sync location data from CreatorHub project → Wedflow
-app.post('/api/wedflow/weather-location/sync-from-project/:projectId', async (req, res) => {
+// POST /api/evendi/weather-location/sync-from-project/:projectId — Sync location data from CreatorHub project → Evendi
+app.post('/api/evendi/weather-location/sync-from-project/:projectId', async (req, res) => {
   try {
     const { projectId } = req.params;
     const { venueCoordinates, venueName, locationAnalysis, travelData } = req.body;
@@ -4225,8 +4217,8 @@ app.post('/api/wedflow/weather-location/sync-from-project/:projectId', async (re
   }
 });
 
-// GET /api/wedflow/weather-location/search — Kartverket address search (used by both apps)
-app.get('/api/wedflow/weather-location/search', async (req, res) => {
+// GET /api/evendi/weather-location/search — Kartverket address search (used by both apps)
+app.get('/api/evendi/weather-location/search', async (req, res) => {
   try {
     const query = req.query.q as string;
     if (!query || query.length < 2) return res.status(400).json({ error: 'Søk må være minst 2 tegn' });
@@ -4690,11 +4682,11 @@ app.get('/api/inspirations/:vendorId/inquiries/all', async (req, res) => {
 
 // ============================================================================
 // EVENDI CHAT BRIDGE — Couple ↔ Vendor messaging from evendi.no
-// These MUST be BEFORE the generic /api/wedflow/* proxy to avoid shadowing
+// These MUST be BEFORE the generic /api/evendi/* proxy to avoid shadowing
 // ============================================================================
 
-// GET /api/wedflow/conversations — List conversations for logged-in vendor
-app.get('/api/wedflow/conversations', async (req, res) => {
+// GET /api/evendi/conversations — List conversations for logged-in vendor
+app.get('/api/evendi/conversations', async (req, res) => {
   try {
     const token = req.headers.authorization?.replace('Bearer ', '');
     const session = token ? activeSessions.get(token) : null;
@@ -4738,13 +4730,13 @@ app.get('/api/wedflow/conversations', async (req, res) => {
       vendorName: vendor.business_name
     });
   } catch (error) {
-    console.error('Wedflow conversations error:', error);
+    console.error('Evendi conversations error:', error);
     res.status(500).json({ error: 'Kunne ikke hente samtaler' });
   }
 });
 
-// GET /api/wedflow/conversations/:id/messages — Get messages for a conversation
-app.get('/api/wedflow/conversations/:id/messages', async (req, res) => {
+// GET /api/evendi/conversations/:id/messages — Get messages for a conversation
+app.get('/api/evendi/conversations/:id/messages', async (req, res) => {
   try {
     const token = req.headers.authorization?.replace('Bearer ', '');
     const session = token ? activeSessions.get(token) : null;
@@ -4798,13 +4790,13 @@ app.get('/api/wedflow/conversations/:id/messages', async (req, res) => {
       conversation: convResult.rows[0] || null
     });
   } catch (error) {
-    console.error('Wedflow messages error:', error);
+    console.error('Evendi messages error:', error);
     res.status(500).json({ error: 'Kunne ikke hente meldinger' });
   }
 });
 
-// POST /api/wedflow/conversations/:id/messages — Send a message as vendor
-app.post('/api/wedflow/conversations/:id/messages', async (req, res) => {
+// POST /api/evendi/conversations/:id/messages — Send a message as vendor
+app.post('/api/evendi/conversations/:id/messages', async (req, res) => {
   try {
     const token = req.headers.authorization?.replace('Bearer ', '');
     const session = token ? activeSessions.get(token) : null;
@@ -4841,14 +4833,14 @@ app.post('/api/wedflow/conversations/:id/messages', async (req, res) => {
 
     res.json({ message: msgResult.rows[0] });
   } catch (error) {
-    console.error('Wedflow send message error:', error);
+    console.error('Evendi send message error:', error);
     res.status(500).json({ error: 'Kunne ikke sende melding' });
   }
 });
 
 // ============================================================================
-// WEDFLOW OFFER & CONTRACT BRIDGE — Vendor offer/contract mgmt from CreatorHub
-// These MUST be BEFORE the generic /api/wedflow/* proxy
+// EVENDI OFFER & CONTRACT BRIDGE — Vendor offer/contract mgmt from CreatorHub
+// These MUST be BEFORE the generic /api/evendi/* proxy
 // ============================================================================
 
 // Helper: get vendor ID from session
@@ -4864,8 +4856,8 @@ async function getVendorFromSession(req: any, res: any): Promise<{id: string, bu
   return result.rows[0];
 }
 
-// GET /api/wedflow/offers — List vendor's offers with couple info
-app.get('/api/wedflow/offers', async (req, res) => {
+// GET /api/evendi/offers — List vendor's offers with couple info
+app.get('/api/evendi/offers', async (req, res) => {
   try {
     const vendor = await getVendorFromSession(req, res);
     if (!vendor) return;
@@ -4890,13 +4882,13 @@ app.get('/api/wedflow/offers', async (req, res) => {
 
     res.json({ offers: result.rows, vendorName: vendor.business_name });
   } catch (error) {
-    console.error('Wedflow offers list error:', error);
+    console.error('Evendi offers list error:', error);
     res.status(500).json({ error: 'Kunne ikke hente tilbud' });
   }
 });
 
-// POST /api/wedflow/offers — Create a new offer
-app.post('/api/wedflow/offers', async (req, res) => {
+// POST /api/evendi/offers — Create a new offer
+app.post('/api/evendi/offers', async (req, res) => {
   try {
     const vendor = await getVendorFromSession(req, res);
     if (!vendor) return;
@@ -4943,13 +4935,13 @@ app.post('/api/wedflow/offers', async (req, res) => {
 
     res.json({ offer, items: items.length });
   } catch (error) {
-    console.error('Wedflow create offer error:', error);
+    console.error('Evendi create offer error:', error);
     res.status(500).json({ error: 'Kunne ikke opprette tilbud' });
   }
 });
 
-// PATCH /api/wedflow/offers/:id — Update an offer (status, details)
-app.patch('/api/wedflow/offers/:id', async (req, res) => {
+// PATCH /api/evendi/offers/:id — Update an offer (status, details)
+app.patch('/api/evendi/offers/:id', async (req, res) => {
   try {
     const vendor = await getVendorFromSession(req, res);
     if (!vendor) return;
@@ -4995,13 +4987,13 @@ app.patch('/api/wedflow/offers/:id', async (req, res) => {
 
     res.json({ offer: result.rows[0] });
   } catch (error) {
-    console.error('Wedflow update offer error:', error);
+    console.error('Evendi update offer error:', error);
     res.status(500).json({ error: 'Kunne ikke oppdatere tilbud' });
   }
 });
 
-// DELETE /api/wedflow/offers/:id — Delete an offer
-app.delete('/api/wedflow/offers/:id', async (req, res) => {
+// DELETE /api/evendi/offers/:id — Delete an offer
+app.delete('/api/evendi/offers/:id', async (req, res) => {
   try {
     const vendor = await getVendorFromSession(req, res);
     if (!vendor) return;
@@ -5013,13 +5005,13 @@ app.delete('/api/wedflow/offers/:id', async (req, res) => {
     if (!result.rows.length) return res.status(404).json({ error: 'Tilbud ikke funnet' });
     res.json({ deleted: true });
   } catch (error) {
-    console.error('Wedflow delete offer error:', error);
+    console.error('Evendi delete offer error:', error);
     res.status(500).json({ error: 'Kunne ikke slette tilbud' });
   }
 });
 
-// GET /api/wedflow/contracts — List vendor's contracts with couple info
-app.get('/api/wedflow/contracts', async (req, res) => {
+// GET /api/evendi/contracts — List vendor's contracts with couple info
+app.get('/api/evendi/contracts', async (req, res) => {
   try {
     const vendor = await getVendorFromSession(req, res);
     if (!vendor) return;
@@ -5046,13 +5038,13 @@ app.get('/api/wedflow/contracts', async (req, res) => {
 
     res.json({ contracts: result.rows, vendorName: vendor.business_name });
   } catch (error) {
-    console.error('Wedflow contracts list error:', error);
+    console.error('Evendi contracts list error:', error);
     res.status(500).json({ error: 'Kunne ikke hente kontrakter' });
   }
 });
 
-// PATCH /api/wedflow/contracts/:id — Update contract (vendor marks complete etc.)
-app.patch('/api/wedflow/contracts/:id', async (req, res) => {
+// PATCH /api/evendi/contracts/:id — Update contract (vendor marks complete etc.)
+app.patch('/api/evendi/contracts/:id', async (req, res) => {
   try {
     const vendor = await getVendorFromSession(req, res);
     if (!vendor) return;
@@ -5082,13 +5074,13 @@ app.patch('/api/wedflow/contracts/:id', async (req, res) => {
     );
     res.json({ contract: result.rows[0] });
   } catch (error) {
-    console.error('Wedflow update contract error:', error);
+    console.error('Evendi update contract error:', error);
     res.status(500).json({ error: 'Kunne ikke oppdatere kontrakt' });
   }
 });
 
-// GET /api/wedflow/contacts — List couples the vendor has conversations with
-app.get('/api/wedflow/contacts', async (req, res) => {
+// GET /api/evendi/contacts — List couples the vendor has conversations with
+app.get('/api/evendi/contacts', async (req, res) => {
   try {
     const vendor = await getVendorFromSession(req, res);
     if (!vendor) return;
@@ -5105,13 +5097,13 @@ app.get('/api/wedflow/contacts', async (req, res) => {
 
     res.json({ contacts: result.rows });
   } catch (error) {
-    console.error('Wedflow contacts error:', error);
+    console.error('Evendi contacts error:', error);
     res.status(500).json({ error: 'Kunne ikke hente kontakter' });
   }
 });
 
-// GET /api/wedflow/products — List vendor's products (for offer line items)
-app.get('/api/wedflow/products', async (req, res) => {
+// GET /api/evendi/products — List vendor's products (for offer line items)
+app.get('/api/evendi/products', async (req, res) => {
   try {
     const vendor = await getVendorFromSession(req, res);
     if (!vendor) return;
@@ -5125,19 +5117,19 @@ app.get('/api/wedflow/products', async (req, res) => {
 
     res.json({ products: result.rows });
   } catch (error) {
-    console.error('Wedflow products error:', error);
+    console.error('Evendi products error:', error);
     res.status(500).json({ error: 'Kunne ikke hente produkter' });
   }
 });
 
 // ============================================================================
-// WEDFLOW IMPORTANT PEOPLE & WEDDING TIMELINE BRIDGE
+// EVENDI IMPORTANT PEOPLE & WEDDING TIMELINE BRIDGE
 // Vendor can view important people for couples they're connected to
 // ============================================================================
 
-// GET /api/wedflow/important-people?coupleId=xxx — list important people for a couple
+// GET /api/evendi/important-people?coupleId=xxx — list important people for a couple
 // Vendor must have an active conversation with the couple
-app.get('/api/wedflow/important-people', async (req: any, res: any) => {
+app.get('/api/evendi/important-people', async (req: any, res: any) => {
   try {
     const vendor = await getVendorFromSession(req, res);
     if (!vendor) return;
@@ -5165,13 +5157,13 @@ app.get('/api/wedflow/important-people', async (req: any, res: any) => {
 
     res.json({ people: result.rows });
   } catch (error) {
-    console.error('Wedflow important people error:', error);
+    console.error('Evendi important people error:', error);
     res.status(500).json({ error: 'Kunne ikke hente viktige personer' });
   }
 });
 
-// POST /api/wedflow/important-people — vendor can add important person for a couple
-app.post('/api/wedflow/important-people', async (req: any, res: any) => {
+// POST /api/evendi/important-people — vendor can add important person for a couple
+app.post('/api/evendi/important-people', async (req: any, res: any) => {
   try {
     const vendor = await getVendorFromSession(req, res);
     if (!vendor) return;
@@ -5198,13 +5190,13 @@ app.post('/api/wedflow/important-people', async (req: any, res: any) => {
 
     res.json({ person: result.rows[0] });
   } catch (error) {
-    console.error('Wedflow create important person error:', error);
+    console.error('Evendi create important person error:', error);
     res.status(500).json({ error: 'Kunne ikke legge til person' });
   }
 });
 
-// PATCH /api/wedflow/important-people/:id — update an important person
-app.patch('/api/wedflow/important-people/:id', async (req: any, res: any) => {
+// PATCH /api/evendi/important-people/:id — update an important person
+app.patch('/api/evendi/important-people/:id', async (req: any, res: any) => {
   try {
     const vendor = await getVendorFromSession(req, res);
     if (!vendor) return;
@@ -5241,13 +5233,13 @@ app.patch('/api/wedflow/important-people/:id', async (req: any, res: any) => {
 
     res.json({ person: result.rows[0] });
   } catch (error) {
-    console.error('Wedflow update important person error:', error);
+    console.error('Evendi update important person error:', error);
     res.status(500).json({ error: 'Kunne ikke oppdatere person' });
   }
 });
 
-// DELETE /api/wedflow/important-people/:id — delete an important person
-app.delete('/api/wedflow/important-people/:id', async (req: any, res: any) => {
+// DELETE /api/evendi/important-people/:id — delete an important person
+app.delete('/api/evendi/important-people/:id', async (req: any, res: any) => {
   try {
     const vendor = await getVendorFromSession(req, res);
     if (!vendor) return;
@@ -5268,13 +5260,13 @@ app.delete('/api/wedflow/important-people/:id', async (req: any, res: any) => {
     await pool.query('DELETE FROM couple_important_people WHERE id = $1', [id]);
     res.json({ success: true });
   } catch (error) {
-    console.error('Wedflow delete important person error:', error);
+    console.error('Evendi delete important person error:', error);
     res.status(500).json({ error: 'Kunne ikke slette person' });
   }
 });
 
-// GET /api/wedflow/photo-shots?coupleId=xxx — list photo shots for a couple
-app.get('/api/wedflow/photo-shots', async (req: any, res: any) => {
+// GET /api/evendi/photo-shots?coupleId=xxx — list photo shots for a couple
+app.get('/api/evendi/photo-shots', async (req: any, res: any) => {
   try {
     const vendor = await getVendorFromSession(req, res);
     if (!vendor) return;
@@ -5305,13 +5297,13 @@ app.get('/api/wedflow/photo-shots', async (req: any, res: any) => {
 
     res.json({ shots: result.rows });
   } catch (error) {
-    console.error('Wedflow photo shots error:', error);
+    console.error('Evendi photo shots error:', error);
     res.status(500).json({ error: 'Kunne ikke hente fotoliste' });
   }
 });
 
-// GET /api/wedflow/schedule-events?coupleId=xxx — list schedule events from couple
-app.get('/api/wedflow/schedule-events', async (req: any, res: any) => {
+// GET /api/evendi/schedule-events?coupleId=xxx — list schedule events from couple
+app.get('/api/evendi/schedule-events', async (req: any, res: any) => {
   try {
     const vendor = await getVendorFromSession(req, res);
     if (!vendor) return;
@@ -5338,13 +5330,13 @@ app.get('/api/wedflow/schedule-events', async (req: any, res: any) => {
 
     res.json({ events: result.rows });
   } catch (error) {
-    console.error('Wedflow schedule events error:', error);
+    console.error('Evendi schedule events error:', error);
     res.status(500).json({ error: 'Kunne ikke hente dagsplan' });
   }
 });
 
-// GET /api/wedflow/couple-profile?coupleId=xxx — get couple profile details
-app.get('/api/wedflow/couple-profile', async (req: any, res: any) => {
+// GET /api/evendi/couple-profile?coupleId=xxx — get couple profile details
+app.get('/api/evendi/couple-profile', async (req: any, res: any) => {
   try {
     const vendor = await getVendorFromSession(req, res);
     if (!vendor) return;
@@ -5374,18 +5366,18 @@ app.get('/api/wedflow/couple-profile', async (req: any, res: any) => {
 
     res.json({ profile: result.rows[0] });
   } catch (error) {
-    console.error('Wedflow couple profile error:', error);
+    console.error('Evendi couple profile error:', error);
     res.status(500).json({ error: 'Kunne ikke hente parprofil' });
   }
 });
 
 // ==============================================================
-// TRADITIONS BRIDGE — Syncs wedflow couple traditions → CreatorHub culturalType
+// TRADITIONS BRIDGE — Syncs Evendi couple traditions → CreatorHub culturalType
 // ==============================================================
 
-// Map wedflow tradition keys → CreatorHub culturalType (now synced 1:1 after key update)
+// Map Evendi tradition keys → CreatorHub culturalType (now synced 1:1 after key update)
 // Legacy keys still supported for backward compatibility
-const WEDFLOW_TO_CREATORHUB_CULTURE: Record<string, string> = {
+const EVENDI_TO_CREATORHUB_CULTURE: Record<string, string> = {
   // New synced keys (1:1 mapping)
   norsk: 'norsk',
   sikh: 'sikh',
@@ -5404,7 +5396,7 @@ const WEDFLOW_TO_CREATORHUB_CULTURE: Record<string, string> = {
   thai: 'thai',
   iransk: 'iransk',
   annet: 'annet',
-  // Legacy wedflow keys (backward compatibility)
+  // Legacy Evendi keys (backward compatibility)
   norway: 'norsk',
   hindu: 'indisk',
   muslim: 'muslimsk',
@@ -5414,8 +5406,8 @@ const WEDFLOW_TO_CREATORHUB_CULTURE: Record<string, string> = {
   denmark: 'norsk',
 };
 
-// GET /api/wedflow/traditions-bridge?coupleId=xxx — get couple's traditions mapped to CreatorHub culturalType
-app.get('/api/wedflow/traditions-bridge', async (req: any, res: any) => {
+// GET /api/evendi/traditions-bridge?coupleId=xxx — get couple's traditions mapped to CreatorHub culturalType
+app.get('/api/evendi/traditions-bridge', async (req: any, res: any) => {
   try {
     const vendor = await getVendorFromSession(req, res);
     if (!vendor) return;
@@ -5434,9 +5426,9 @@ app.get('/api/wedflow/traditions-bridge', async (req: any, res: any) => {
       return res.status(403).json({ error: 'Ingen tilgang til dette paret' });
     }
 
-    // Get couple's selected traditions from DB
+    // Get couple's selected traditions + event type from DB
     const result = await pool.query(`
-      SELECT id, display_name, wedding_date, selected_traditions
+      SELECT id, display_name, wedding_date, selected_traditions, event_type, event_category
       FROM couple_profiles
       WHERE id = $1
     `, [coupleId]);
@@ -5450,8 +5442,8 @@ app.get('/api/wedflow/traditions-bridge', async (req: any, res: any) => {
 
     // Map all selected traditions to CreatorHub culturalType keys
     const mappedCultures = selectedTraditions.map((t: string) => ({
-      wedflowKey: t,
-      creatorhubKey: WEDFLOW_TO_CREATORHUB_CULTURE[t] || 'annet',
+      evendiKey: t,
+      creatorhubKey: EVENDI_TO_CREATORHUB_CULTURE[t] || 'annet',
     }));
 
     // Primary culture = first selected tradition (what drives timeline)
@@ -5463,21 +5455,23 @@ app.get('/api/wedflow/traditions-bridge', async (req: any, res: any) => {
       coupleId: profile.id,
       displayName: profile.display_name,
       weddingDate: profile.wedding_date,
+      eventType: profile.event_type || 'wedding',
+      eventCategory: profile.event_category || 'personal',
       selectedTraditions,
       mappedCultures,
       primaryCulturalType: primaryCulture,
       allCulturalTypes: [...new Set(mappedCultures.map((m: any) => m.creatorhubKey))],
     });
   } catch (error) {
-    console.error('Wedflow traditions bridge error:', error);
+    console.error('Evendi traditions bridge error:', error);
     res.status(500).json({ error: 'Kunne ikke hente tradisjoner' });
   }
 });
 
 // ==============================================================
-// RESOLVE COUPLE — Auto-map selectedClient email → wedflow couple profile
+// RESOLVE COUPLE — Auto-map selectedClient email → Evendi couple profile
 // ==============================================================
-app.get('/api/wedflow/resolve-couple', async (req: any, res: any) => {
+app.get('/api/evendi/resolve-couple', async (req: any, res: any) => {
   try {
     const vendor = await getVendorFromSession(req, res);
     if (!vendor) return;
@@ -5489,7 +5483,7 @@ app.get('/api/wedflow/resolve-couple', async (req: any, res: any) => {
 
     // Look up couple_profiles by email
     const result = await pool.query(
-      `SELECT id, display_name, email, wedding_date, selected_traditions, expected_guests
+      `SELECT id, display_name, email, wedding_date, selected_traditions, expected_guests, event_type, event_category
        FROM couple_profiles WHERE LOWER(email) = $1 LIMIT 1`,
       [email]
     );
@@ -5503,7 +5497,7 @@ app.get('/api/wedflow/resolve-couple', async (req: any, res: any) => {
     // Map traditions to CreatorHub culturalType
     const traditions: string[] = profile.selected_traditions || [];
     const primaryCulturalType = traditions.length > 0
-      ? (WEDFLOW_TO_CREATORHUB_CULTURE[traditions[0]] || 'annet')
+      ? (EVENDI_TO_CREATORHUB_CULTURE[traditions[0]] || 'annet')
       : 'norsk';
 
     res.json({
@@ -5511,13 +5505,15 @@ app.get('/api/wedflow/resolve-couple', async (req: any, res: any) => {
       displayName: profile.display_name,
       email: profile.email,
       weddingDate: profile.wedding_date,
+      eventType: profile.event_type || 'wedding',
+      eventCategory: profile.event_category || 'personal',
       expectedGuests: profile.expected_guests || 0,
       selectedTraditions: traditions,
       primaryCulturalType,
-      allCulturalTypes: [...new Set(traditions.map((t: string) => WEDFLOW_TO_CREATORHUB_CULTURE[t] || 'annet'))],
+      allCulturalTypes: [...new Set(traditions.map((t: string) => EVENDI_TO_CREATORHUB_CULTURE[t] || 'annet'))],
     });
   } catch (error) {
-    console.error('Wedflow resolve-couple error:', error);
+    console.error('Evendi resolve-couple error:', error);
     res.status(500).json({ error: 'Kunne ikke finne parprofil' });
   }
 });
@@ -5525,7 +5521,7 @@ app.get('/api/wedflow/resolve-couple', async (req: any, res: any) => {
 // ==============================================================
 // PHOTO SHOTS BRIDGE — Fetch couple's photo plan for vendor's shot list
 // ==============================================================
-app.get('/api/wedflow/photo-shots-bridge', async (req: any, res: any) => {
+app.get('/api/evendi/photo-shots-bridge', async (req: any, res: any) => {
   try {
     const vendor = await getVendorFromSession(req, res);
     if (!vendor) return;
@@ -5544,7 +5540,7 @@ app.get('/api/wedflow/photo-shots-bridge', async (req: any, res: any) => {
       return res.status(403).json({ error: 'Ingen tilgang til dette paret' });
     }
 
-    // Fetch couple's photo shots from wedflow table
+    // Fetch couple's photo shots from Evendi table
     const result = await pool.query(
       `SELECT id, title, description, category, completed, sort_order, created_at,
               location_name, location_lat, location_lng, location_notes,
@@ -5555,7 +5551,7 @@ app.get('/api/wedflow/photo-shots-bridge', async (req: any, res: any) => {
       [coupleId]
     );
 
-    // Map wedflow categories → CreatorHub scene/shotType
+    // Map Evendi categories → CreatorHub scene/shotType
     const CATEGORY_TO_SCENE: Record<string, string> = {
       ceremony: 'Ceremony',
       portraits: 'Portraits',
@@ -5573,14 +5569,14 @@ app.get('/api/wedflow/photo-shots-bridge', async (req: any, res: any) => {
     };
 
     const mappedShots = result.rows.map((shot: any) => ({
-      id: `wedflow-${shot.id}`,
+      id: `evendi-${shot.id}`,
       scene: CATEGORY_TO_SCENE[shot.category] || 'Other',
       title: shot.title,
       description: shot.description || '',
       shotType: CATEGORY_TO_SHOT_TYPE[shot.category] || 'Wide',
       priority: shot.completed ? 'nice_to_have' : 'must_have',
       status: shot.completed ? 'Completed' : 'Planned',
-      source: 'wedflow-couple',
+      source: 'evendi-couple',
       originalCategory: shot.category,
       sortOrder: shot.sort_order,
       // Location scouting data
@@ -5618,7 +5614,7 @@ app.get('/api/wedflow/photo-shots-bridge', async (req: any, res: any) => {
 // ==============================================================
 // PUSH VENDOR SHOTS TO COUPLE — Sync vendor's planned shots back to couple
 // ==============================================================
-app.post('/api/wedflow/photo-shots-bridge/push', async (req: any, res: any) => {
+app.post('/api/evendi/photo-shots-bridge/push', async (req: any, res: any) => {
   try {
     const vendor = await getVendorFromSession(req, res);
     if (!vendor) return;
@@ -5637,7 +5633,7 @@ app.post('/api/wedflow/photo-shots-bridge/push', async (req: any, res: any) => {
       return res.status(403).json({ error: 'Ingen tilgang til dette paret' });
     }
 
-    // Map CreatorHub shots → wedflow photo_shots format
+    // Map CreatorHub shots → Evendi photo_shots format
     const SCENE_TO_CATEGORY: Record<string, string> = {
       'Ceremony': 'ceremony',
       'Pre-Ceremony': 'ceremony',
@@ -5703,11 +5699,11 @@ app.post('/api/wedflow/photo-shots-bridge/push', async (req: any, res: any) => {
 
 // ==============================================================
 // VENDOR ↔ CREATORHUB PROJECT BRIDGE  
-// Lets wedflow vendors see timeline, add comments, manage shots
+// Lets Evendi vendors see timeline, add comments, manage shots
 // ==============================================================
 
-// GET /api/wedflow/vendor-project-bridge — Vendor sees CreatorHub project + timeline for a couple
-app.get('/api/wedflow/vendor-project-bridge', async (req: any, res: any) => {
+// GET /api/evendi/vendor-project-bridge — Vendor sees CreatorHub project + timeline for a couple
+app.get('/api/evendi/vendor-project-bridge', async (req: any, res: any) => {
   try {
     const vendor = await getVendorFromSession(req, res);
     if (!vendor) return;
@@ -5822,8 +5818,8 @@ app.get('/api/wedflow/vendor-project-bridge', async (req: any, res: any) => {
   }
 });
 
-// GET /api/wedflow/timeline-bridge/:timelineId/comments — Get timeline comments
-app.get('/api/wedflow/timeline-bridge/:timelineId/comments', async (req: any, res: any) => {
+// GET /api/evendi/timeline-bridge/:timelineId/comments — Get timeline comments
+app.get('/api/evendi/timeline-bridge/:timelineId/comments', async (req: any, res: any) => {
   try {
     const vendor = await getVendorFromSession(req, res);
     if (!vendor) return;
@@ -5845,8 +5841,8 @@ app.get('/api/wedflow/timeline-bridge/:timelineId/comments', async (req: any, re
   }
 });
 
-// POST /api/wedflow/timeline-bridge/:timelineId/comments — Add a comment to the timeline
-app.post('/api/wedflow/timeline-bridge/:timelineId/comments', async (req: any, res: any) => {
+// POST /api/evendi/timeline-bridge/:timelineId/comments — Add a comment to the timeline
+app.post('/api/evendi/timeline-bridge/:timelineId/comments', async (req: any, res: any) => {
   try {
     const vendor = await getVendorFromSession(req, res);
     if (!vendor) return;
@@ -5889,8 +5885,8 @@ app.post('/api/wedflow/timeline-bridge/:timelineId/comments', async (req: any, r
   }
 });
 
-// POST /api/wedflow/timeline-bridge/:timelineId/events — Vendor adds an event to the timeline
-app.post('/api/wedflow/timeline-bridge/:timelineId/events', async (req: any, res: any) => {
+// POST /api/evendi/timeline-bridge/:timelineId/events — Vendor adds an event to the timeline
+app.post('/api/evendi/timeline-bridge/:timelineId/events', async (req: any, res: any) => {
   try {
     const vendor = await getVendorFromSession(req, res);
     if (!vendor) return;
@@ -5927,8 +5923,8 @@ app.post('/api/wedflow/timeline-bridge/:timelineId/events', async (req: any, res
 // Links deliveries to projects, timelines, and auto-creates showcase items
 // ==============================================================
 
-// GET /api/wedflow/delivery-project-bridge — Get delivery with linked project/timeline/showcase data
-app.get('/api/wedflow/delivery-project-bridge', async (req: any, res: any) => {
+// GET /api/evendi/delivery-project-bridge — Get delivery with linked project/timeline/showcase data
+app.get('/api/evendi/delivery-project-bridge', async (req: any, res: any) => {
   try {
     const vendor = await getVendorFromSession(req, res);
     if (!vendor) return;
@@ -6024,8 +6020,8 @@ app.get('/api/wedflow/delivery-project-bridge', async (req: any, res: any) => {
   }
 });
 
-// POST /api/wedflow/delivery-to-showcase-bridge — Auto-create showcase items from delivery items
-app.post('/api/wedflow/delivery-to-showcase-bridge', async (req: any, res: any) => {
+// POST /api/evendi/delivery-to-showcase-bridge — Auto-create showcase items from delivery items
+app.post('/api/evendi/delivery-to-showcase-bridge', async (req: any, res: any) => {
   try {
     const vendor = await getVendorFromSession(req, res);
     if (!vendor) return;
@@ -6103,8 +6099,8 @@ app.post('/api/wedflow/delivery-to-showcase-bridge', async (req: any, res: any) 
   }
 });
 
-// POST /api/wedflow/link-delivery-project — Link a delivery to a project/timeline/couple
-app.post('/api/wedflow/link-delivery-project', async (req: any, res: any) => {
+// POST /api/evendi/link-delivery-project — Link a delivery to a project/timeline/couple
+app.post('/api/evendi/link-delivery-project', async (req: any, res: any) => {
   try {
     const vendor = await getVendorFromSession(req, res);
     if (!vendor) return;
@@ -6156,8 +6152,8 @@ app.post('/api/wedflow/link-delivery-project', async (req: any, res: any) => {
   }
 });
 
-// GET /api/wedflow/project-showcase-bridge/:projectId — Get all showcase + delivery data for a project
-app.get('/api/wedflow/project-showcase-bridge/:projectId', async (req: any, res: any) => {
+// GET /api/evendi/project-showcase-bridge/:projectId — Get all showcase + delivery data for a project
+app.get('/api/evendi/project-showcase-bridge/:projectId', async (req: any, res: any) => {
   try {
     const vendor = await getVendorFromSession(req, res);
     if (!vendor) return;
@@ -6234,12 +6230,12 @@ app.get('/api/wedflow/project-showcase-bridge/:projectId', async (req: any, res:
 });
 
 // ==============================================================
-// SHOWCASE → WEDFLOW DELIVERY BRIDGE
+// SHOWCASE → EVENDI DELIVERY BRIDGE
 // ==============================================================
 
-// POST /api/wedflow/showcase-create-delivery — Create a wedflow delivery from showcase item(s)
+// POST /api/evendi/showcase-create-delivery — Create an Evendi delivery from showcase item(s)
 // Vendor selects showcase items → creates a new delivery pre-filled with those items
-app.post('/api/wedflow/showcase-create-delivery', async (req: any, res: any) => {
+app.post('/api/evendi/showcase-create-delivery', async (req: any, res: any) => {
   try {
     const vendor = await getVendorFromSession(req, res);
     if (!vendor) return;
@@ -6266,7 +6262,7 @@ app.post('/api/wedflow/showcase-create-delivery', async (req: any, res: any) => 
 
     if (!showcaseRes.rows.length) return res.status(404).json({ error: 'Ingen showcase-elementer funnet' });
 
-    // Create delivery in wedflow via deliveries table
+    // Create delivery in Evendi via deliveries table
     const deliveryId = crypto.randomUUID();
     const accessCode = crypto.randomBytes(8).toString('hex').toUpperCase().slice(0, 16);
     const now = new Date().toISOString();
@@ -6366,7 +6362,7 @@ app.post('/api/wedflow/showcase-create-delivery', async (req: any, res: any) => 
             `"${title || 'Showcase-leveranse'}"\n` +
             `${deliveryItems.length} ${deliveryItems.length === 1 ? 'element' : 'elementer'} venter på deg.\n\n` +
             `🔑 Tilgangskode: ${accessCode}\n\n` +
-            `Åpne Wedflow-appen → "Hent leveranse" → Skriv inn koden. 💕`;
+            `Åpne Evendi-appen → "Hent leveranse" → Skriv inn koden. 💕`;
           const chatMsgId = crypto.randomUUID();
           await pool.query(
             `INSERT INTO messages (id, conversation_id, sender_type, sender_id, body, created_at)
@@ -6408,8 +6404,8 @@ app.post('/api/wedflow/showcase-create-delivery', async (req: any, res: any) => 
   }
 });
 
-// GET /api/wedflow/showcase-delivery-status/:showcaseItemId — Check if a showcase item has linked deliveries
-app.get('/api/wedflow/showcase-delivery-status/:showcaseItemId', async (req: any, res: any) => {
+// GET /api/evendi/showcase-delivery-status/:showcaseItemId — Check if a showcase item has linked deliveries
+app.get('/api/evendi/showcase-delivery-status/:showcaseItemId', async (req: any, res: any) => {
   try {
     const vendor = await getVendorFromSession(req, res);
     if (!vendor) return;
@@ -6449,9 +6445,9 @@ app.get('/api/wedflow/showcase-delivery-status/:showcaseItemId', async (req: any
   }
 });
 
-// GET /api/wedflow/delivery-access-by-id/:deliveryId — Get delivery by ID (for showcase → delivery access bridge)
+// GET /api/evendi/delivery-access-by-id/:deliveryId — Get delivery by ID (for showcase → delivery access bridge)
 // This allows couples to access delivery directly from showcase without needing an access code
-app.get('/api/wedflow/delivery-access-by-id/:deliveryId', async (req: any, res: any) => {
+app.get('/api/evendi/delivery-access-by-id/:deliveryId', async (req: any, res: any) => {
   try {
     const { deliveryId } = req.params;
 
@@ -6497,9 +6493,9 @@ app.get('/api/wedflow/delivery-access-by-id/:deliveryId', async (req: any, res: 
 // DELIVERY TRACKING & CONFIRMATION SYSTEM
 // ==============================================================
 
-// POST /api/wedflow/delivery-track — Track open/download/favorite actions on delivery items
-// Called by both showcase (CreatorHub) and wedflow (DeliveryAccessScreen) when couple interacts
-app.post('/api/wedflow/delivery-track', async (req: any, res: any) => {
+// POST /api/evendi/delivery-track — Track open/download/favorite actions on delivery items
+// Called by both showcase (CreatorHub) and Evendi (DeliveryAccessScreen) when couple interacts
+app.post('/api/evendi/delivery-track', async (req: any, res: any) => {
   try {
     const { deliveryId, deliveryItemId, action, coupleId, accessCode } = req.body;
     if (!deliveryId || !action) return res.status(400).json({ error: 'deliveryId og action er påkrevd' });
@@ -6568,8 +6564,8 @@ app.post('/api/wedflow/delivery-track', async (req: any, res: any) => {
   }
 });
 
-// GET /api/wedflow/delivery-tracking/:deliveryId — Vendor views tracking/confirmation data
-app.get('/api/wedflow/delivery-tracking/:deliveryId', async (req: any, res: any) => {
+// GET /api/evendi/delivery-tracking/:deliveryId — Vendor views tracking/confirmation data
+app.get('/api/evendi/delivery-tracking/:deliveryId', async (req: any, res: any) => {
   try {
     const vendor = await getVendorFromSession(req, res);
     if (!vendor) return;
@@ -6629,9 +6625,9 @@ app.get('/api/wedflow/delivery-tracking/:deliveryId', async (req: any, res: any)
   }
 });
 
-// POST /api/wedflow/delivery-notify-chat — Send chat message to couple that delivery is ready
+// POST /api/evendi/delivery-notify-chat — Send chat message to couple that delivery is ready
 // Also syncs the access code across showcase/project if linked
-app.post('/api/wedflow/delivery-notify-chat', async (req: any, res: any) => {
+app.post('/api/evendi/delivery-notify-chat', async (req: any, res: any) => {
   try {
     const vendor = await getVendorFromSession(req, res);
     if (!vendor) return;
@@ -6708,7 +6704,7 @@ app.post('/api/wedflow/delivery-notify-chat', async (req: any, res: any) => {
       `"${delivery.title}"\n` +
       `${itemCount} ${itemCount === 1 ? 'element' : 'elementer'} venter på deg.\n\n` +
       `🔑 Tilgangskode: ${delivery.access_code}\n\n` +
-      `Åpne Wedflow-appen → "Hent leveranse" → Skriv inn koden for å se og laste ned filene dine. 💕`;
+      `Åpne Evendi-appen → "Hent leveranse" → Skriv inn koden for å se og laste ned filene dine. 💕`;
 
     let messageSent = false;
 
@@ -6764,9 +6760,9 @@ app.post('/api/wedflow/delivery-notify-chat', async (req: any, res: any) => {
   }
 });
 
-// GET /api/wedflow/unified-access-code/:accessCode — Look up delivery by access code from any source
-// Works for showcase, wedflow, or project-memory-cards — unified entry point
-app.get('/api/wedflow/unified-access-code/:accessCode', async (req: any, res: any) => {
+// GET /api/evendi/unified-access-code/:accessCode — Look up delivery by access code from any source
+// Works for showcase, Evendi, or project-memory-cards — unified entry point
+app.get('/api/evendi/unified-access-code/:accessCode', async (req: any, res: any) => {
   try {
     const { accessCode } = req.params;
     const normalizedCode = accessCode.replace(/[\s-]/g, '').toUpperCase();
@@ -6843,7 +6839,7 @@ app.get('/api/wedflow/unified-access-code/:accessCode', async (req: any, res: an
 // ==============================================================
 // VENDOR — View important people for a couple (via CreatorHub)
 // ==============================================================
-app.get('/api/wedflow/couple/:coupleId/important-people', async (req: any, res: any) => {
+app.get('/api/evendi/couple/:coupleId/important-people', async (req: any, res: any) => {
   try {
     const vendor = await getVendorFromSession(req, res);
     if (!vendor) return;
@@ -6877,7 +6873,7 @@ app.get('/api/wedflow/couple/:coupleId/important-people', async (req: any, res: 
 // ==============================================================
 // VENDOR — View wedding role invitations for a couple
 // ==============================================================
-app.get('/api/wedflow/couple/:coupleId/wedding-invites', async (req: any, res: any) => {
+app.get('/api/evendi/couple/:coupleId/wedding-invites', async (req: any, res: any) => {
   try {
     const vendor = await getVendorFromSession(req, res);
     if (!vendor) return;
@@ -6911,7 +6907,7 @@ app.get('/api/wedflow/couple/:coupleId/wedding-invites', async (req: any, res: a
 // ==============================================================
 // UPDATE EXPECTED GUESTS — Set guest count on couple profile
 // ==============================================================
-app.put('/api/wedflow/couple/guests', async (req: any, res: any) => {
+app.put('/api/evendi/couple/guests', async (req: any, res: any) => {
   try {
     const vendor = await getVendorFromSession(req, res);
     if (!vendor) return;
@@ -6945,7 +6941,7 @@ app.put('/api/wedflow/couple/guests', async (req: any, res: any) => {
 // ==============================================================
 // SEED TRADITION CHECKLIST ITEMS — Insert tradition-specific tasks
 // ==============================================================
-app.post('/api/wedflow/checklist/seed-traditions', async (req: any, res: any) => {
+app.post('/api/evendi/checklist/seed-traditions', async (req: any, res: any) => {
   try {
     const vendor = await getVendorFromSession(req, res);
     if (!vendor) return;
@@ -7024,7 +7020,7 @@ app.post('/api/wedflow/checklist/seed-traditions', async (req: any, res: any) =>
 // ==============================================================
 // SEED TRADITION BUDGET ITEMS — Insert tradition-specific budget items
 // ==============================================================
-app.post('/api/wedflow/budget/seed-traditions', async (req: any, res: any) => {
+app.post('/api/evendi/budget/seed-traditions', async (req: any, res: any) => {
   try {
     const vendor = await getVendorFromSession(req, res);
     if (!vendor) return;
@@ -7103,7 +7099,7 @@ app.post('/api/wedflow/budget/seed-traditions', async (req: any, res: any) => {
 // ==============================================================
 // CHECKLIST & BUDGET CRUD — Basic CRUD for couple checklist/budget items
 // ==============================================================
-app.get('/api/wedflow/checklist/:coupleId', async (req: any, res: any) => {
+app.get('/api/evendi/checklist/:coupleId', async (req: any, res: any) => {
   try {
     const vendor = await getVendorFromSession(req, res);
     if (!vendor) return;
@@ -7123,7 +7119,7 @@ app.get('/api/wedflow/checklist/:coupleId', async (req: any, res: any) => {
   }
 });
 
-app.get('/api/wedflow/budget/:coupleId', async (req: any, res: any) => {
+app.get('/api/evendi/budget/:coupleId', async (req: any, res: any) => {
   try {
     const vendor = await getVendorFromSession(req, res);
     if (!vendor) return;
@@ -7143,13 +7139,13 @@ app.get('/api/wedflow/budget/:coupleId', async (req: any, res: any) => {
   }
 });
 
-// Generic Evendi API proxy — forwards /api/wedflow/* → Evendi API /api/*
-// /api/evendi/* is rewritten to /api/wedflow/* by the middleware above
-// MUST be AFTER all specific /api/wedflow/planning/* routes to avoid shadowing
-app.all('/api/wedflow/*', async (req, res) => {
+// Generic Evendi API proxy — forwards /api/evendi/* → Evendi API /api/*
+// Legacy /api/wedflow/* is rewritten to /api/evendi/* by the backward-compat middleware above
+// MUST be AFTER all specific /api/evendi/planning/* routes to avoid shadowing
+app.all('/api/evendi/*', async (req, res) => {
   try {
-    const wedflowPath = req.path.replace('/api/wedflow', '/api');
-    const url = `${EVENDI_API_URL}${wedflowPath}`;
+    const evendiPath = req.path.replace('/api/evendi', '/api');
+    const url = `${EVENDI_API_URL}${evendiPath}`;
     
     const fetchOpts: any = {
       method: req.method,
@@ -7174,7 +7170,7 @@ app.all('/api/wedflow/*', async (req, res) => {
       if (text.includes('<!DOCTYPE') || text.includes('<html')) {
         res.status(response.status).json({ 
           error: 'Evendi endpoint not found', 
-          path: wedflowPath,
+          path: evendiPath,
           status: response.status 
         });
       } else {

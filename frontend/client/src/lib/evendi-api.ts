@@ -3,23 +3,20 @@
  * Provides typed access to the Evendi event-ecosystem API for bookings, users,
  * analytics, and event-type management.
  *
- * Replaces the legacy wedflow-api.ts — that file now re-exports from here for
+ * Evendi API client for CreatorHub — all Evendi interactions go through here for
  * backward compatibility.
  *
  * Proxy chain: frontend → /api/evendi/* → backend → Evendi API
  *
  * Environment variables (set in backend/.env):
  *   CREATORHUB_API_KEY  – API key for Evendi authentication
- *   EVENDI_API_URL      – Base URL of the Evendi service (was WEDFLOW_API_URL)
+ *   EVENDI_API_URL      – Base URL of the Evendi service
  */
 
 import { apiRequest } from './queryClient';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 export const EVENDI_PROXY_PREFIX = '/api/evendi';
-
-/** @deprecated Use EVENDI_PROXY_PREFIX */
-export const WEDFLOW_PROXY_PREFIX = EVENDI_PROXY_PREFIX;
 
 // ─── Event Types (mirrors Evendi shared/event-types.ts) ──────────────────────
 
@@ -118,9 +115,6 @@ export interface EvendiBooking {
   updatedAt?: string;
 }
 
-/** @deprecated Use EvendiBooking */
-export type WedflowBooking = EvendiBooking;
-
 // ─── User Types ───────────────────────────────────────────────────────────────
 
 export interface EvendiUser {
@@ -134,9 +128,6 @@ export interface EvendiUser {
   profession?: string;
   createdAt?: string;
 }
-
-/** @deprecated Use EvendiUser */
-export type WedflowUser = EvendiUser;
 
 // ─── Analytics Types ──────────────────────────────────────────────────────────
 
@@ -171,9 +162,6 @@ export interface EvendiAnalyticsSummary {
   eventTypeBreakdown?: { eventType: EventType; count: number }[];
 }
 
-/** @deprecated Use EvendiAnalyticsSummary */
-export type WedflowAnalyticsSummary = EvendiAnalyticsSummary;
-
 // ─── Payload Types ────────────────────────────────────────────────────────────
 
 export interface EvendiCreateBookingPayload {
@@ -193,9 +181,6 @@ export interface EvendiCreateBookingPayload {
   contactEmail?: string;
 }
 
-/** @deprecated Use EvendiCreateBookingPayload */
-export type WedflowCreateBookingPayload = EvendiCreateBookingPayload;
-
 export interface EvendiUpdateBookingPayload {
   title?: string;
   clientName?: string;
@@ -210,15 +195,12 @@ export interface EvendiUpdateBookingPayload {
   contactEmail?: string;
 }
 
-/** @deprecated Use EvendiUpdateBookingPayload */
-export type WedflowUpdateBookingPayload = EvendiUpdateBookingPayload;
 
 // ─── Core API Wrapper ─────────────────────────────────────────────────────────
 
 /**
  * Low-level Evendi API call routed through the backend proxy.
  * The backend appends the CREATORHUB_API_KEY header automatically.
- * Tries /api/evendi/* first; the backend also accepts legacy /api/wedflow/*.
  */
 export async function evendiApi<T = unknown>(
   path: string,
@@ -231,17 +213,12 @@ export async function evendiApi<T = unknown>(
   }) as Promise<T>;
 }
 
-/** @deprecated Use evendiApi */
-export const wedflowApi = evendiApi;
-
 // ─── High-Level Helpers ───────────────────────────────────────────────────────
 
 /** Fetch all Evendi users */
 export async function getEvendiUsers(): Promise<EvendiUser[]> {
   return evendiApi<EvendiUser[]>('/users');
 }
-/** @deprecated Use getEvendiUsers */
-export const getWedflowUsers = getEvendiUsers;
 
 /** Fetch all bookings (optionally filtered by status) */
 export async function getEvendiBookings(
@@ -250,15 +227,11 @@ export async function getEvendiBookings(
   const query = status ? `?status=${status}` : '';
   return evendiApi<EvendiBooking[]>(`/bookings${query}`);
 }
-/** @deprecated Use getEvendiBookings */
-export const getWedflowBookings = getEvendiBookings;
 
 /** Fetch a single booking by ID */
 export async function getEvendiBooking(id: string): Promise<EvendiBooking> {
   return evendiApi<EvendiBooking>(`/bookings/${id}`);
 }
-/** @deprecated Use getEvendiBooking */
-export const getWedflowBooking = getEvendiBooking;
 
 /** Create a new booking */
 export async function createEvendiBooking(
@@ -269,8 +242,6 @@ export async function createEvendiBooking(
     body: JSON.stringify(payload),
   });
 }
-/** @deprecated Use createEvendiBooking */
-export const createWedflowBooking = createEvendiBooking;
 
 /** Update an existing booking */
 export async function updateEvendiBooking(
@@ -282,15 +253,11 @@ export async function updateEvendiBooking(
     body: JSON.stringify(payload),
   });
 }
-/** @deprecated Use updateEvendiBooking */
-export const updateWedflowBooking = updateEvendiBooking;
 
 /** Delete a booking */
 export async function deleteEvendiBooking(id: string): Promise<void> {
   return evendiApi<void>(`/bookings/${id}`, { method: 'DELETE' });
 }
-/** @deprecated Use deleteEvendiBooking */
-export const deleteWedflowBooking = deleteEvendiBooking;
 
 /** Fetch analytics summary (normalises both Evendi and legacy shapes) */
 export async function getEvendiAnalyticsSummary(): Promise<EvendiAnalyticsSummary> {
@@ -321,8 +288,6 @@ export async function getEvendiAnalyticsSummary(): Promise<EvendiAnalyticsSummar
     eventTypeBreakdown: raw.eventTypeBreakdown as EvendiAnalyticsSummary['eventTypeBreakdown'],
   };
 }
-/** @deprecated Use getEvendiAnalyticsSummary */
-export const getWedflowAnalyticsSummary = getEvendiAnalyticsSummary;
 
 // ─── Auth Helpers ─────────────────────────────────────────────────────────────
 
@@ -349,8 +314,6 @@ export interface EvendiLoginResponse {
   };
 }
 
-/** @deprecated Use EvendiLoginResponse */
-export type WedflowLoginResponse = EvendiLoginResponse;
 
 /** Login as couple via /api/couples/login */
 export async function loginCouple(
@@ -517,14 +480,4 @@ export const evendiQueryKeys = {
   analytics: () => [...evendiQueryKeys.all, 'analytics'] as const,
   auth: () => [...evendiQueryKeys.all, 'auth'] as const,
   eventType: (coupleId: string) => [...evendiQueryKeys.all, 'eventType', coupleId] as const,
-};
-
-/** @deprecated Use evendiQueryKeys */
-export const wedflowQueryKeys = {
-  all: ['evendi'] as const,
-  users: () => evendiQueryKeys.users(),
-  bookings: (status?: string) => evendiQueryKeys.bookings(status),
-  booking: (id: string) => evendiQueryKeys.booking(id),
-  analytics: () => evendiQueryKeys.analytics(),
-  auth: () => evendiQueryKeys.auth(),
 };
