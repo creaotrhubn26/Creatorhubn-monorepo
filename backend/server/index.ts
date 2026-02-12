@@ -7431,6 +7431,166 @@ app.get('/api/evendi/budget/:coupleId', async (req: any, res: any) => {
   }
 });
 
+// ================================================================
+// SPEECHES BRIDGE — Fetch couple's speeches via Evendi, with contract check
+// ================================================================
+app.get('/api/evendi/speeches/:coupleId', async (req: any, res: any) => {
+  try {
+    const vendor = await getVendorFromSession(req, res);
+    if (!vendor) return;
+
+    const { coupleId } = req.params;
+
+    // Check vendor has an active contract with can_view_speeches = true
+    const contractCheck = await pool.query(
+      `SELECT id, can_view_speeches FROM couple_vendor_contracts
+       WHERE vendor_id = $1 AND couple_id = $2 AND status = 'active' LIMIT 1`,
+      [vendor.id, coupleId]
+    );
+
+    // Fallback: if no contract, check if they have a conversation (relaxed access)
+    if (!contractCheck.rows.length) {
+      const convCheck = await pool.query(
+        'SELECT id FROM conversations WHERE vendor_id = $1 AND couple_id = $2 LIMIT 1',
+        [vendor.id, coupleId]
+      );
+      if (!convCheck.rows.length) {
+        return res.status(403).json({ error: 'Ingen tilgang til dette parets taler' });
+      }
+    }
+
+    // If contract exists but can_view_speeches is false, deny
+    if (contractCheck.rows.length && !contractCheck.rows[0].can_view_speeches) {
+      return res.status(403).json({ error: 'Tilgang til taler er ikke aktivert i kontrakten' });
+    }
+
+    // Fetch speeches directly from DB (shared database)
+    const result = await pool.query(`
+      SELECT id, couple_id, speaker_name, role, duration_minutes,
+             sort_order, notes, scheduled_time, created_at, updated_at
+      FROM speeches
+      WHERE couple_id = $1
+      ORDER BY sort_order ASC, created_at ASC
+    `, [coupleId]);
+
+    // Get couple info for context
+    const coupleResult = await pool.query(
+      'SELECT display_name, event_type FROM couple_profiles WHERE id = $1',
+      [coupleId]
+    );
+    const couple = coupleResult.rows[0];
+
+    res.json({
+      speeches: result.rows,
+      coupleId,
+      eventType: couple?.event_type || 'wedding',
+      coupleName: couple?.display_name || 'Ukjent',
+    });
+  } catch (error) {
+    console.error('Evendi speeches bridge error:', error);
+    res.status(500).json({ error: 'Kunne ikke hente taler' });
+  }
+});
+
+// ================================================================
+// SEATING / TABLES BRIDGE — Fetch couple's tables via Evendi, with contract check
+// ================================================================
+app.get('/api/evendi/tables/:coupleId', async (req: any, res: any) => {
+  try {
+    const vendor = await getVendorFromSession(req, res);
+    if (!vendor) return;
+
+    const { coupleId } = req.params;
+
+    // Check vendor has an active contract with can_view_table_seating = true
+    const contractCheck = await pool.query(
+      `SELECT id, can_view_table_seating FROM couple_vendor_contracts
+       WHERE vendor_id = $1 AND couple_id = $2 AND status = 'active' LIMIT 1`,
+      [vendor.id, coupleId]
+    );
+
+    // Fallback: if no contract, check conversation
+    if (!contractCheck.rows.length) {
+      const convCheck = await pool.query(
+        'SELECT id FROM conversations WHERE vendor_id = $1 AND couple_id = $2 LIMIT 1',
+        [vendor.id, coupleId]
+      );
+      if (!convCheck.rows.length) {
+        return res.status(403).json({ error: 'Ingen tilgang til dette parets bordplassering' });
+      }
+    }
+
+    // If contract exists but can_view_table_seating is false, deny
+    if (contractCheck.rows.length && !contractCheck.rows[0].can_view_table_seating) {
+      return res.status(403).json({ error: 'Tilgang til bordplassering er ikke aktivert i kontrakten' });
+    }
+
+    // Fetch tables
+    const tablesResult = await pool.query(`
+      SELECT id, couple_id, table_number, name, category, label, seats,
+             is_reserved, vendor_notes, sort_order, created_at
+      FROM wedding_tables
+      WHERE couple_id = $1
+      ORDER BY sort_order ASC, table_number ASC
+    `, [coupleId]);
+
+    // Fetch guest assignments with guest names
+    const assignmentsResult = await pool.query(`
+      SELECT tga.table_id, tga.guest_id, tga.seat_number,
+             wg.name as guest_name, wg.category as guest_category
+      FROM table_guest_assignments tga
+      JOIN wedding_guests wg ON wg.id = tga.guest_id
+      WHERE tga.couple_id = $1
+    `, [coupleId]);
+
+    // Group assignments by table
+    const assignmentsByTable: Record<string, any[]> = {};
+    for (const a of assignmentsResult.rows) {
+      if (!assignmentsByTable[a.table_id]) assignmentsByTable[a.table_id] = [];
+      assignmentsByTable[a.table_id].push({
+        guestId: a.guest_id,
+        guestName: a.guest_name,
+        guestCategory: a.guest_category,
+        seatNumber: a.seat_number,
+      });
+    }
+
+    // Build response (hide private notes, only show vendor_notes)
+    const tables = tablesResult.rows.map((t: any) => ({
+      id: t.id,
+      tableNumber: t.table_number,
+      name: t.name,
+      category: t.category,
+      label: t.label,
+      seats: t.seats,
+      isReserved: t.is_reserved,
+      vendorNotes: t.vendor_notes,
+      sortOrder: t.sort_order,
+      guests: assignmentsByTable[t.id] || [],
+    }));
+
+    // Get couple info
+    const coupleResult = await pool.query(
+      'SELECT display_name, event_type FROM couple_profiles WHERE id = $1',
+      [coupleId]
+    );
+    const couple = coupleResult.rows[0];
+
+    res.json({
+      tables,
+      coupleId,
+      eventType: couple?.event_type || 'wedding',
+      coupleName: couple?.display_name || 'Ukjent',
+      totalTables: tables.length,
+      totalSeats: tables.reduce((sum: number, t: any) => sum + t.seats, 0),
+      assignedGuests: assignmentsResult.rows.length,
+    });
+  } catch (error) {
+    console.error('Evendi tables bridge error:', error);
+    res.status(500).json({ error: 'Kunne ikke hente bordplassering' });
+  }
+});
+
 // Generic Evendi API proxy — forwards /api/evendi/* → Evendi API /api/*
 // Legacy /api/wedflow/* is rewritten to /api/evendi/* by the backward-compat middleware above
 // MUST be AFTER all specific /api/evendi/planning/* routes to avoid shadowing
