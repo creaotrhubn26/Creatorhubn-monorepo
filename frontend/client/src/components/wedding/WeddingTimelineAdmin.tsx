@@ -58,6 +58,9 @@ import WeddingTimelineHelp from './WeddingTimelineHelp';
 import EvendiImportantPeople from '../evendi/EvendiImportantPeople';
 import EvendiSpeeches from '../evendi/EvendiSpeeches';
 import EvendiSeating from '../evendi/EvendiSeating';
+import EvendiMusic from '../evendi/EvendiMusic';
+import EvendiCoordinators from '../evendi/EvendiCoordinators';
+import EvendiReviews from '../evendi/EvendiReviews';
 import { usePushNotifications } from '../../hooks/usePushNotifications';
 import { PushNotificationSettings } from '../shared/PushNotificationSettings';
 import { EventType, getEventTypeLabel, getEventCategory } from '@/lib/evendi-api';
@@ -356,8 +359,11 @@ export default function EvendiTimelineAdmin({
     people: 2,
     speeches: 3,
     seating: 4,
-    client: 5,
-    settings: 6
+    music: 5,
+    coordinators: 6,
+    reviews: 7,
+    client: 8,
+    settings: 9
   } as const;
   const initialTabIndex = defaultTabIndex[timelineSettings.viewDefaults.defaultTab] ?? 0;
   const [activeTab, setActiveTab] = useState(initialTabIndex);
@@ -1237,6 +1243,9 @@ export default function EvendiTimelineAdmin({
         <Tab label="Deltakere & Leverandører" />
         <Tab label="Taler / Program" />
         <Tab label="Bordplassering" />
+        <Tab label="Musikk" />
+        <Tab label="Koordinatorer" />
+        <Tab label="Anmeldelser" />
         <Tab label="Klienttilgang" />
         <Tab label="Innstillinger" />
         <Tab label="Google Drive Backup" />
@@ -1644,8 +1653,55 @@ export default function EvendiTimelineAdmin({
         </Box>
       )}
 
-      {/* Client Access Tab */}
+      {/* Music Tab — Evendi Music Bridge */}
       {activeTab === 5 && (
+        <Box>
+          {evendiCoupleId ? (
+            <EvendiMusic
+              coupleId={evendiCoupleId}
+              eventType={resolvedEventType as any}
+            />
+          ) : (
+            <Alert severity="info" sx={{ mt: 2 }}>
+              Koble til en arrangør via Evendi for å se musikkdata.
+            </Alert>
+          )}
+        </Box>
+      )}
+
+      {/* Coordinators Tab — Evendi Coordinators Bridge */}
+      {activeTab === 6 && (
+        <Box>
+          {evendiCoupleId ? (
+            <EvendiCoordinators
+              coupleId={evendiCoupleId}
+              eventType={resolvedEventType as any}
+            />
+          ) : (
+            <Alert severity="info" sx={{ mt: 2 }}>
+              Koble til en arrangør via Evendi for å se koordinatorer.
+            </Alert>
+          )}
+        </Box>
+      )}
+
+      {/* Reviews Tab — Evendi Reviews Bridge */}
+      {activeTab === 7 && (
+        <Box>
+          {userId ? (
+            <EvendiReviews
+              vendorId={userId}
+            />
+          ) : (
+            <Alert severity="info" sx={{ mt: 2 }}>
+              Logg inn for å se dine anmeldelser.
+            </Alert>
+          )}
+        </Box>
+      )}
+
+      {/* Client Access Tab */}
+      {activeTab === 8 && (
         <Box>
           <Typography variant="h6" sx={{  mb:  3  }}>Klienttilgang til Tidslinje</Typography>
           
@@ -1762,7 +1818,7 @@ export default function EvendiTimelineAdmin({
       )}
 
       {/* Settings Tab */}
-      {activeTab === 6 && (
+      {activeTab === 9 && (
         <Box>
           <Typography variant="h6" sx={{ mb: 3, color: theming.colors.primary }}>
             Innstillinger

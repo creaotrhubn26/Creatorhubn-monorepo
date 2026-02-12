@@ -7593,6 +7593,187 @@ app.get('/api/evendi/tables/:coupleId', async (req: any, res: any) => {
   }
 });
 
+// =============================================
+// MUSIC BRIDGE — GET /api/evendi/music/:coupleId
+// =============================================
+app.get('/api/evendi/music/:coupleId', async (req: any, res: any) => {
+  try {
+    const { coupleId } = req.params;
+    const vendorId = req.headers['x-vendor-id'] || req.query.vendorId;
+
+    // Check vendor has an active contract with can_view_music = true
+    if (vendorId) {
+      const contractCheck = await pool.query(
+        `SELECT id, can_view_music FROM couple_vendor_contracts
+         WHERE couple_id = $1 AND vendor_id = $2 AND status = 'active'
+         LIMIT 1`,
+        [coupleId, vendorId]
+      );
+
+      if (contractCheck.rows.length && !contractCheck.rows[0].can_view_music) {
+        return res.status(403).json({ error: 'Tilgang til musikk er ikke aktivert for denne kontrakten' });
+      }
+    }
+
+    // Fetch music data directly from DB
+    const [performancesResult, setlistsResult, preferencesResult, organizerResult] = await Promise.all([
+      pool.query(
+        'SELECT * FROM couple_music_performances WHERE couple_id = $1 ORDER BY date',
+        [coupleId]
+      ),
+      pool.query(
+        'SELECT * FROM couple_music_setlists WHERE couple_id = $1',
+        [coupleId]
+      ),
+      pool.query(
+        'SELECT * FROM couple_music_preferences WHERE couple_id = $1 LIMIT 1',
+        [coupleId]
+      ),
+      pool.query(
+        'SELECT display_name, event_type FROM couple_profiles WHERE id = $1',
+        [coupleId]
+      ),
+    ]);
+
+    const organizer = organizerResult.rows[0];
+    const preferences = preferencesResult.rows[0] || null;
+
+    res.json({
+      performances: performancesResult.rows,
+      setlists: setlistsResult.rows,
+      preferences: preferences ? {
+        spotifyPlaylistUrl: preferences.spotify_playlist_url,
+        youtubePlaylistUrl: preferences.youtube_playlist_url,
+        entranceSong: preferences.entrance_song,
+        firstDanceSong: preferences.first_dance_song,
+        lastSong: preferences.last_song,
+        doNotPlay: preferences.do_not_play,
+        additionalNotes: preferences.additional_notes,
+      } : null,
+      coupleId,
+      eventType: organizer?.event_type || 'wedding',
+      organizerName: organizer?.display_name || 'Ukjent',
+      totalPerformances: performancesResult.rows.length,
+      totalSetlists: setlistsResult.rows.length,
+    });
+  } catch (error) {
+    console.error('Evendi music bridge error:', error);
+    res.status(500).json({ error: 'Kunne ikke hente musikkdata' });
+  }
+});
+
+// =============================================
+// COORDINATORS BRIDGE — GET /api/evendi/coordinators/:coupleId
+// =============================================
+app.get('/api/evendi/coordinators/:coupleId', async (req: any, res: any) => {
+  try {
+    const { coupleId } = req.params;
+    const vendorId = req.headers['x-vendor-id'] || req.query.vendorId;
+
+    // Check vendor has an active contract with can_view_coordinators = true
+    if (vendorId) {
+      const contractCheck = await pool.query(
+        `SELECT id, can_view_coordinators FROM couple_vendor_contracts
+         WHERE couple_id = $1 AND vendor_id = $2 AND status = 'active'
+         LIMIT 1`,
+        [coupleId, vendorId]
+      );
+
+      if (contractCheck.rows.length && !contractCheck.rows[0].can_view_coordinators) {
+        return res.status(403).json({ error: 'Tilgang til koordinatorer er ikke aktivert for denne kontrakten' });
+      }
+    }
+
+    // Fetch active coordinators
+    const [coordinatorsResult, organizerResult] = await Promise.all([
+      pool.query(
+        `SELECT id, name, role_label, email, can_view_speeches, can_view_schedule,
+                can_edit_speeches, can_edit_schedule, status, last_accessed_at, created_at
+         FROM coordinator_invitations
+         WHERE couple_id = $1 AND status = 'active'
+         ORDER BY created_at DESC`,
+        [coupleId]
+      ),
+      pool.query(
+        'SELECT display_name, event_type FROM couple_profiles WHERE id = $1',
+        [coupleId]
+      ),
+    ]);
+
+    const organizer = organizerResult.rows[0];
+
+    res.json({
+      coordinators: coordinatorsResult.rows.map((c: any) => ({
+        id: c.id,
+        name: c.name,
+        roleLabel: c.role_label,
+        email: c.email,
+        canViewSpeeches: c.can_view_speeches,
+        canViewSchedule: c.can_view_schedule,
+        canEditSpeeches: c.can_edit_speeches,
+        canEditSchedule: c.can_edit_schedule,
+        status: c.status,
+        lastAccessedAt: c.last_accessed_at,
+        createdAt: c.created_at,
+      })),
+      coupleId,
+      eventType: organizer?.event_type || 'wedding',
+      organizerName: organizer?.display_name || 'Ukjent',
+      totalCoordinators: coordinatorsResult.rows.length,
+    });
+  } catch (error) {
+    console.error('Evendi coordinators bridge error:', error);
+    res.status(500).json({ error: 'Kunne ikke hente koordinatorer' });
+  }
+});
+
+// =============================================
+// REVIEWS BRIDGE — GET /api/evendi/reviews/:vendorId
+// =============================================
+app.get('/api/evendi/reviews/:vendorId', async (req: any, res: any) => {
+  try {
+    const { vendorId } = req.params;
+
+    // Fetch approved reviews with vendor responses
+    const reviewsResult = await pool.query(
+      `SELECT r.id, r.rating, r.title, r.body, r.is_anonymous, r.created_at,
+              rr.body AS response_body, rr.created_at AS response_created_at
+       FROM vendor_reviews r
+       LEFT JOIN vendor_review_responses rr ON rr.review_id = r.id
+       WHERE r.vendor_id = $1 AND r.is_approved = true
+       ORDER BY r.created_at DESC`,
+      [vendorId]
+    );
+
+    const reviews = reviewsResult.rows.map((r: any) => ({
+      id: r.id,
+      rating: r.rating,
+      title: r.title,
+      body: r.body,
+      isAnonymous: r.is_anonymous,
+      createdAt: r.created_at,
+      vendorResponse: r.response_body ? {
+        body: r.response_body,
+        createdAt: r.response_created_at,
+      } : null,
+    }));
+
+    const avgRating = reviews.length > 0
+      ? reviews.reduce((sum: number, r: any) => sum + r.rating, 0) / reviews.length
+      : 0;
+
+    res.json({
+      reviews,
+      vendorId,
+      totalReviews: reviews.length,
+      averageRating: Math.round(avgRating * 10) / 10,
+    });
+  } catch (error) {
+    console.error('Evendi reviews bridge error:', error);
+    res.status(500).json({ error: 'Kunne ikke hente anmeldelser' });
+  }
+});
+
 // Generic Evendi API proxy — forwards /api/evendi/* → Evendi API /api/*
 // Legacy /api/wedflow/* is rewritten to /api/evendi/* by the backward-compat middleware above
 // MUST be AFTER all specific /api/evendi/planning/* routes to avoid shadowing
