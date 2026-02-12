@@ -235,15 +235,17 @@ export default function EvendiMusic({ coupleId, organizerName, eventType }: Even
                       )}
                       {isB2C && data.preferences.spotifyPlaylistUrl && (
                         <Grid item xs={12} sm={6}>
-                          <Link href={data.preferences.spotifyPlaylistUrl} target="_blank" rel="noopener" underline="hover">
-                            🎵 Spotify-spilleliste
+                          <Link href={data.preferences.spotifyPlaylistUrl} target="_blank" rel="noopener" underline="hover" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <img src="https://storage.googleapis.com/pr-newsroom-wp/1/2023/05/Spotify_Primary_Logo_RGB_Green.png" alt="Spotify" style={{ width: 20, height: 20 }} />
+                            Spotify-spilleliste
                           </Link>
                         </Grid>
                       )}
                       {isB2C && data.preferences.youtubePlaylistUrl && (
                         <Grid item xs={12} sm={6}>
-                          <Link href={data.preferences.youtubePlaylistUrl} target="_blank" rel="noopener" underline="hover">
-                            ▶️ YouTube-spilleliste
+                          <Link href={data.preferences.youtubePlaylistUrl} target="_blank" rel="noopener" underline="hover" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <img src="https://www.youtube.com/s/desktop/f506bd45/img/favicon_32x32.png" alt="YouTube" style={{ width: 20, height: 20 }} />
+                            YouTube-spilleliste
                           </Link>
                         </Grid>
                       )}
