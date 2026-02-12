@@ -35,7 +35,7 @@ import {
   Favorite,
   Star,
 } from '@mui/icons-material';
-import { isEventFeatureEnabled, EventType } from '@/lib/evendi-api';
+import { isEventFeatureEnabled, getEventCategory, EventType } from '@/lib/evendi-api';
 
 interface Performance {
   id: string;
@@ -125,6 +125,7 @@ export default function EvendiMusic({ coupleId, organizerName, eventType }: Even
   }
 
   const effectiveEventType = eventType || data?.eventType || 'wedding';
+  const isB2C = getEventCategory(effectiveEventType as EventType) === 'personal';
 
   // Feature-gate: music is relevant for most event types with speeches/entertainment
   // No specific music feature flag in event-types.ts, so we show for all types with speeches
@@ -205,25 +206,25 @@ export default function EvendiMusic({ coupleId, organizerName, eventType }: Even
                 <Collapse in={expandedSection === 'preferences'}>
                   <Box sx={{ pl: 3.5, pb: 2 }}>
                     <Grid container spacing={2}>
-                      {data.preferences.entranceSong && (
+                      {isB2C && data.preferences.entranceSong && (
                         <Grid item xs={12} sm={6}>
                           <Typography variant="caption" color="text.secondary">Inngangssang</Typography>
                           <Typography variant="body2" fontWeight={500}>{data.preferences.entranceSong}</Typography>
                         </Grid>
                       )}
-                      {data.preferences.firstDanceSong && (
+                      {isB2C && data.preferences.firstDanceSong && (
                         <Grid item xs={12} sm={6}>
                           <Typography variant="caption" color="text.secondary">Første dans</Typography>
                           <Typography variant="body2" fontWeight={500}>{data.preferences.firstDanceSong}</Typography>
                         </Grid>
                       )}
-                      {data.preferences.lastSong && (
+                      {isB2C && data.preferences.lastSong && (
                         <Grid item xs={12} sm={6}>
                           <Typography variant="caption" color="text.secondary">Siste sang</Typography>
                           <Typography variant="body2" fontWeight={500}>{data.preferences.lastSong}</Typography>
                         </Grid>
                       )}
-                      {data.preferences.doNotPlay && (
+                      {isB2C && data.preferences.doNotPlay && (
                         <Grid item xs={12} sm={6}>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                             <Block sx={{ fontSize: 16, color: '#f44336' }} />
@@ -232,14 +233,14 @@ export default function EvendiMusic({ coupleId, organizerName, eventType }: Even
                           <Typography variant="body2">{data.preferences.doNotPlay}</Typography>
                         </Grid>
                       )}
-                      {data.preferences.spotifyPlaylistUrl && (
+                      {isB2C && data.preferences.spotifyPlaylistUrl && (
                         <Grid item xs={12} sm={6}>
                           <Link href={data.preferences.spotifyPlaylistUrl} target="_blank" rel="noopener" underline="hover">
                             🎵 Spotify-spilleliste
                           </Link>
                         </Grid>
                       )}
-                      {data.preferences.youtubePlaylistUrl && (
+                      {isB2C && data.preferences.youtubePlaylistUrl && (
                         <Grid item xs={12} sm={6}>
                           <Link href={data.preferences.youtubePlaylistUrl} target="_blank" rel="noopener" underline="hover">
                             ▶️ YouTube-spilleliste
