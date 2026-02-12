@@ -62,7 +62,8 @@ import {
   Warning,
   CreditCard,
   Add as AddIcon,
-  AccountBalance
+  AccountBalance,
+  Language
 } from '@mui/icons-material';
 
 // Import existing components
@@ -146,6 +147,13 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
   const [processingAction, setProcessingAction] = useState(false);
   const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'info' | 'warning' }>({ open: false, message: '', severity: 'info' });
   const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; title: string; message: string; onConfirm: () => void }>({ open: false, title: '', message: '', onConfirm: () => {} });
+  const [newWebsiteTarget, setNewWebsiteTarget] = useState({
+    name: '',
+    domain: '',
+    apiKey: '',
+    provider: 'norwedfilm' as 'norwedfilm' | 'custom',
+    defaultStorage: 'google_drive' as 'google_drive' | 'youtube' | 'custom',
+  });
   const theme = useTheme();
   
   // Push notifications
@@ -155,6 +163,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
   const { professionConfigs, getProfessionDisplayName, getUserProfessionColor, getProfessionIcon } = useDynamicProfessions();
   const { adaptDashboardTitle, adaptTabLabels } = useProfessionAdapter();
   const { settings, updateSetting } = useSettings();
+  const publishingSettings = settings.publishing || { enableWebsitePublish: false, websiteTargets: [] };
   const timelinePrefill = settings.projectCreation.timelinePrefill || {
     projectName: true,
     clientName: true,
@@ -275,6 +284,7 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
     queryFn: () => apiRequest('/api/user/subscription-status'),
     staleTime: 30000,
   });
+  const isEnterprisePlan = (currentSubscription?.selectedPlan || '').toLowerCase() === 'enterprise';
 
   // Fetch user payment methods
   const { data: paymentMethodsData, refetch: refetchPaymentMethods } = useQuery({
@@ -2525,6 +2535,156 @@ export const UniversalSettingsPanel: React.FC<UniversalSettingsPanelProps> = ({
                 <PushNotificationSettings userId={userId} contextId="split-sheets" />
               </Box>
             )}
+
+            <Divider sx={{ my: 3 }} />
+
+            {/* Website Publishing (Enterprise) */}
+            <Box sx={{ mb: 4 }}>
+              <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Language sx={{ color: customBranding.color }} />
+                Publisering til nettside
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Whitelist domener som kan motta publisering fra Universal Showcase. Tilgjengelig for enterprise-brukere.
+              </Typography>
+
+              {!isEnterprisePlan && (
+                <Alert severity="info" sx={{ mb: 2 }}>
+                  Publisering til nettside krever enterprise-plan. Kontakt oss for aktivering.
+                </Alert>
+              )}
+
+              <FormGroup sx={{ mb: 2 }}>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={publishingSettings.enableWebsitePublish}
+                      onChange={(e) => updateSetting('publishing', {
+                        ...publishingSettings,
+                        enableWebsitePublish: e.target.checked,
+                      })}
+                      disabled={!isEnterprisePlan}
+                      sx={{
+                        '& .MuiSwitch-switchBase.Mui-checked': { color: customBranding.color },
+                        '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { backgroundColor: customBranding.color },
+                      }}
+                    />
+                  }
+                  label="Aktiver publisering til nettside"
+                />
+              </FormGroup>
+
+              {publishingSettings.enableWebsitePublish && (
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  {publishingSettings.websiteTargets.length === 0 ? (
+                    <Typography variant="body2" color="text.secondary">
+                      Ingen whitelistede domener ennå.
+                    </Typography>
+                  ) : (
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                      {publishingSettings.websiteTargets.map((target) => (
+                        <Box key={target.id} sx={{ p: 2, border: '1px solid rgba(0,0,0,0.1)', borderRadius: 2, bgcolor: 'rgba(255,255,255,0.02)' }}>
+                          <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>{target.name}</Typography>
+                          <Typography variant="caption" color="text.secondary" display="block">
+                            {target.domain} • {target.provider} • {target.defaultStorage}
+                          </Typography>
+                          <Button
+                            size="small"
+                            color="error"
+                            onClick={() => updateSetting('publishing', {
+                              ...publishingSettings,
+                              websiteTargets: publishingSettings.websiteTargets.filter((entry) => entry.id !== target.id),
+                            })}
+                            sx={{ mt: 1 }}
+                          >
+                            Fjern
+                          </Button>
+                        </Box>
+                      ))}
+                    </Box>
+                  )}
+
+                  <Divider />
+
+                  <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>Legg til whitelistet domene</Typography>
+                  <TextField
+                    label="Navn"
+                    value={newWebsiteTarget.name}
+                    onChange={(e) => setNewWebsiteTarget((prev) => ({ ...prev, name: e.target.value }))}
+                    size="small"
+                    fullWidth
+                  />
+                  <TextField
+                    label="Domene"
+                    value={newWebsiteTarget.domain}
+                    onChange={(e) => setNewWebsiteTarget((prev) => ({ ...prev, domain: e.target.value }))}
+                    size="small"
+                    fullWidth
+                    placeholder="norwedfilm.no"
+                  />
+                  <TextField
+                    label="API-nokkel"
+                    value={newWebsiteTarget.apiKey}
+                    onChange={(e) => setNewWebsiteTarget((prev) => ({ ...prev, apiKey: e.target.value }))}
+                    size="small"
+                    fullWidth
+                  />
+                  <TextField
+                    select
+                    label="Provider"
+                    value={newWebsiteTarget.provider}
+                    onChange={(e) => setNewWebsiteTarget((prev) => ({ ...prev, provider: e.target.value as 'norwedfilm' | 'custom' }))}
+                    size="small"
+                    fullWidth
+                  >
+                    <MenuItem value="norwedfilm">Norwedfilm</MenuItem>
+                    <MenuItem value="custom">Custom</MenuItem>
+                  </TextField>
+                  <TextField
+                    select
+                    label="Standard lagring"
+                    value={newWebsiteTarget.defaultStorage}
+                    onChange={(e) => setNewWebsiteTarget((prev) => ({ ...prev, defaultStorage: e.target.value as 'google_drive' | 'youtube' | 'custom' }))}
+                    size="small"
+                    fullWidth
+                  >
+                    <MenuItem value="google_drive">Google Drive</MenuItem>
+                    <MenuItem value="youtube">YouTube</MenuItem>
+                    <MenuItem value="custom">Custom</MenuItem>
+                  </TextField>
+                  <Button
+                    variant="contained"
+                    disabled={!isEnterprisePlan || !newWebsiteTarget.name.trim() || !newWebsiteTarget.domain.trim() || !newWebsiteTarget.apiKey.trim()}
+                    onClick={() => {
+                      const cleanedDomain = newWebsiteTarget.domain.trim().replace(/^https?:\/\//, '').replace(/\/+$/, '');
+                      if (!cleanedDomain) return;
+                      const entry = {
+                        id: `${Date.now()}`,
+                        name: newWebsiteTarget.name.trim(),
+                        domain: cleanedDomain,
+                        apiKey: newWebsiteTarget.apiKey.trim(),
+                        provider: newWebsiteTarget.provider,
+                        defaultStorage: newWebsiteTarget.defaultStorage,
+                      };
+                      updateSetting('publishing', {
+                        ...publishingSettings,
+                        websiteTargets: [...publishingSettings.websiteTargets, entry],
+                      });
+                      setNewWebsiteTarget({
+                        name: '',
+                        domain: '',
+                        apiKey: '',
+                        provider: 'norwedfilm',
+                        defaultStorage: 'google_drive',
+                      });
+                    }}
+                    sx={{ alignSelf: 'flex-start' }}
+                  >
+                    Legg til domene
+                  </Button>
+                </Box>
+              )}
+            </Box>
 
             <Divider sx={{ my: 3 }} />
 

@@ -6598,6 +6598,103 @@ app.post('/api/evendi/showcase-create-delivery', async (req: any, res: any) => {
   }
 });
 
+// POST /api/evendi/publish-to-website — Publish showcase item(s) to an external website (e.g. Norwedfilm)
+app.post('/api/evendi/publish-to-website', async (req: any, res: any) => {
+  try {
+    const vendor = await getVendorFromSession(req, res);
+    if (!vendor) return;
+
+    const {
+      showcaseItemId,
+      title,
+      slug,
+      category,
+      description,
+      coverImage,
+      videoUrl,
+      date,
+      location,
+      featured,
+      media, // array of { type, url, thumbnailUrl?, title?, alt?, sortOrder? }
+      targetUrl, // the website API endpoint
+      apiKey, // the API key for the target website
+    } = req.body;
+
+    if (!title || !slug || !category) {
+      return res.status(400).json({ error: 'Mangler påkrevde felter: title, slug, category' });
+    }
+    if (!targetUrl || !apiKey) {
+      return res.status(400).json({ error: 'Mangler target-konfigurasjon: targetUrl, apiKey' });
+    }
+
+    // Build the publish payload matching the Norwedfilm /api/publish schema
+    const publishPayload = {
+      project: {
+        title,
+        slug,
+        category,
+        description: description || null,
+        coverImage: coverImage || null,
+        videoUrl: videoUrl || null,
+        date: date || null,
+        location: location || null,
+        featured: featured || false,
+        published: true,
+      },
+      media: Array.isArray(media) ? media.map((m: any, i: number) => ({
+        type: m.type || 'image',
+        url: m.url,
+        thumbnailUrl: m.thumbnailUrl || null,
+        title: m.title || null,
+        alt: m.alt || null,
+        sortOrder: m.sortOrder ?? i,
+      })) : [],
+    };
+
+    // Call the external website's publish endpoint
+    const publishResponse = await fetch(targetUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+      },
+      body: JSON.stringify(publishPayload),
+    });
+
+    const publishData = await publishResponse.json();
+
+    if (!publishResponse.ok) {
+      console.error('Website publish failed:', publishData);
+      return res.status(publishResponse.status).json({
+        error: publishData.error || 'Publisering til nettside feilet',
+      });
+    }
+
+    // Optionally mark the showcase item as published
+    if (showcaseItemId) {
+      try {
+        await pool.query(
+          `UPDATE showcase_items SET published_to_website = true, website_publish_url = $1, updated_at = NOW() WHERE id = $2 AND user_id = (SELECT id FROM users WHERE LOWER(email) = LOWER($3) LIMIT 1)`,
+          [publishData.url || `${targetUrl.replace('/api/publish', '')}/${slug}`, showcaseItemId, (activeSessions.get(req.headers.authorization?.replace('Bearer ', '') || '') as any)?.email]
+        );
+      } catch (updateErr) {
+        console.warn('Could not update showcase item publish status:', updateErr);
+      }
+    }
+
+    res.json({
+      success: true,
+      projectId: publishData.projectId,
+      projectSlug: publishData.projectSlug,
+      url: publishData.url,
+      message: `Prosjektet "${title}" er publisert til nettsiden`,
+    });
+  } catch (error) {
+    console.error('Website publish error:', error);
+    res.status(500).json({ error: 'Kunne ikke publisere til nettside' });
+  }
+});
+
 // GET /api/evendi/showcase-delivery-status/:showcaseItemId — Check if a showcase item has linked deliveries
 app.get('/api/evendi/showcase-delivery-status/:showcaseItemId', async (req: any, res: any) => {
   try {

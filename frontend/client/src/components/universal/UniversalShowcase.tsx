@@ -813,6 +813,8 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
     getProfessionDefaults,
     mergeWithDefaults
 } = useSettings();
+  const publishingSettings = userSettings.publishing || { enableWebsitePublish: false, websiteTargets: [] };
+  const canPublishToWebsite = publishingSettings.enableWebsitePublish && publishingSettings.websiteTargets.length > 0;
   
   const { 
     theme: customTheme, 
@@ -1021,6 +1023,13 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
   const [evendiEventType, setEvendiEventType] = useState<string>('');
   const [evendiPublishing, setEvendiPublishing] = useState(false);
   const [evendiResult, setEvendiResult] = useState<{ accessCode: string; deliveryId: string; itemCount: number } | null>(null);
+  const [showPublishToWebsiteDialog, setShowPublishToWebsiteDialog] = useState(false);
+  const [selectedItemForWebsitePublish, setSelectedItemForWebsitePublish] = useState<ShowcaseItem | null>(null);
+  const [websitePublishTargetId, setWebsitePublishTargetId] = useState<string>('');
+  const [websitePublishStorage, setWebsitePublishStorage] = useState<'google_drive' | 'youtube' | 'custom'>('google_drive');
+  const [websitePublishCategory, setWebsitePublishCategory] = useState<string>('wedding-photo');
+  const [websitePublishing, setWebsitePublishing] = useState(false);
+  const [websitePublishResult, setWebsitePublishResult] = useState<{ projectId: string; projectSlug: string; url: string } | null>(null);
   const [showProToolsDialog, setShowProToolsDialog] = useState(false);
   const [proToolsSessionId, setProToolsSessionId] = useState<string | undefined>();
   const [selectedItemForCommunityShare, setSelectedItemForCommunityShare] = useState<ShowcaseItem | null>(null);

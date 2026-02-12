@@ -26,6 +26,7 @@
     "allowImportingTsExtensions": true,
     "moduleResolution": "bundler",
     "baseUrl": ".",
+    "typeRoots": ["./node_modules/@types", "../node_modules/@types", "../node_modules"],
     "types": ["node", "vite/client"],
     "paths": {
       "@/*": ["client/src/components/creatorhubvirtualstudio/src/*", "client/src/*"],

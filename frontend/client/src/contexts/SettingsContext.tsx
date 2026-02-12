@@ -132,6 +132,19 @@ export interface UserSettings {
 };
 };
 
+  // Publishing settings
+  publishing: {
+    enableWebsitePublish: boolean;
+    websiteTargets: Array<{
+      id: string;
+      name: string;
+      domain: string;
+      provider: 'norwedfilm' | 'custom';
+      apiKey: string;
+      defaultStorage: 'google_drive' | 'youtube' | 'custom';
+    }>;
+  };
+
   weddingTimeline: {
     autoCreateOnProject: boolean;
     template: {
@@ -364,6 +377,10 @@ const defaultSettings: UserSettings = {
       defaultCulture: 'norsk',
   },
 },
+  publishing: {
+    enableWebsitePublish: false,
+    websiteTargets: [],
+  },
   weddingTimeline: {
     autoCreateOnProject: false,
     template: {
