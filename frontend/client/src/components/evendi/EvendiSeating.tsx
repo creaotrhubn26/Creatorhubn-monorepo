@@ -60,7 +60,7 @@ interface TablesResponse {
   tables: SeatingTable[];
   coupleId: string;
   eventType: string;
-  coupleName: string;
+  organizerName: string;
   totalTables: number;
   totalSeats: number;
   assignedGuests: number;
@@ -68,7 +68,7 @@ interface TablesResponse {
 
 interface EvendiSeatingProps {
   coupleId: string;
-  coupleName?: string;
+  organizerName?: string;
   eventType?: EventType;
 }
 
@@ -110,13 +110,13 @@ function getCategoryColor(category?: string): string {
   return CATEGORY_COLORS[category.toLowerCase()] || '#9E9E9E';
 }
 
-export default function EvendiSeating({ coupleId, coupleName, eventType }: EvendiSeatingProps) {
+export default function EvendiSeating({ coupleId, organizerName, eventType }: EvendiSeatingProps) {
   const [tables, setTables] = useState<SeatingTable[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [expandedTableId, setExpandedTableId] = useState<string | null>(null);
   const [responseEventType, setResponseEventType] = useState<string>('');
-  const [responseCoupleName, setResponseCoupleName] = useState<string>('');
+  const [responseOrganizerName, setResponseOrganizerName] = useState<string>('');
   const [stats, setStats] = useState({ totalTables: 0, totalSeats: 0, assignedGuests: 0 });
 
   useEffect(() => {
@@ -132,7 +132,7 @@ export default function EvendiSeating({ coupleId, coupleName, eventType }: Evend
       const data: TablesResponse = await apiRequest(`/api/evendi/tables/${coupleId}`);
       setTables(data.tables || []);
       setResponseEventType(data.eventType || '');
-      setResponseCoupleName(data.coupleName || '');
+      setResponseOrganizerName(data.organizerName || '');
       setStats({
         totalTables: data.totalTables || 0,
         totalSeats: data.totalSeats || 0,
@@ -151,7 +151,7 @@ export default function EvendiSeating({ coupleId, coupleName, eventType }: Evend
   }
 
   const effectiveEventType = eventType || responseEventType || 'wedding';
-  const effectiveCoupleName = coupleName || responseCoupleName;
+  const effectiveOrganizerName = organizerName || responseOrganizerName;
 
   // Feature-gate
   if (effectiveEventType && !isEventFeatureEnabled(effectiveEventType as EventType, 'seating')) {
@@ -174,10 +174,10 @@ export default function EvendiSeating({ coupleId, coupleName, eventType }: Evend
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <TableRestaurant sx={{ color: '#1976D2' }} />
             <Typography variant="h6">{seatingLabel}</Typography>
-            {effectiveCoupleName && (
+            {effectiveOrganizerName && (
               <Chip
                 size="small"
-                label={effectiveCoupleName}
+                label={effectiveOrganizerName}
                 sx={{ ml: 1, bgcolor: 'rgba(25, 118, 210, 0.1)', color: '#1976D2' }}
               />
             )}

@@ -52,12 +52,12 @@ interface SpeechesResponse {
   speeches: Speech[];
   coupleId: string;
   eventType: string;
-  coupleName: string;
+  organizerName: string;
 }
 
 interface EvendiSpeechesProps {
   coupleId: string;
-  coupleName?: string;
+  organizerName?: string;
   eventType?: EventType;
 }
 
@@ -124,13 +124,13 @@ function formatDuration(minutes: number): string {
   return mins > 0 ? `${hrs}t ${mins}min` : `${hrs}t`;
 }
 
-export default function EvendiSpeeches({ coupleId, coupleName, eventType }: EvendiSpeechesProps) {
+export default function EvendiSpeeches({ coupleId, organizerName, eventType }: EvendiSpeechesProps) {
   const [speeches, setSpeeches] = useState<Speech[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [responseEventType, setResponseEventType] = useState<string>('');
-  const [responseCoupleName, setResponseCoupleName] = useState<string>('');
+  const [responseOrganizerName, setResponseOrganizerName] = useState<string>('');
 
   useEffect(() => {
     if (coupleId) {
@@ -145,7 +145,7 @@ export default function EvendiSpeeches({ coupleId, coupleName, eventType }: Even
       const data: SpeechesResponse = await apiRequest(`/api/evendi/speeches/${coupleId}`);
       setSpeeches(data.speeches || []);
       setResponseEventType(data.eventType || '');
-      setResponseCoupleName(data.coupleName || '');
+      setResponseOrganizerName(data.organizerName || '');
     } catch (err: any) {
       console.error('Failed to load speeches:', err);
       if (err.message?.includes('403')) {
@@ -159,7 +159,7 @@ export default function EvendiSpeeches({ coupleId, coupleName, eventType }: Even
   }
 
   const effectiveEventType = eventType || responseEventType || 'wedding';
-  const effectiveCoupleName = coupleName || responseCoupleName;
+  const effectiveOrganizerName = organizerName || responseOrganizerName;
 
   // Feature-gate: only show if this event type supports speeches
   if (effectiveEventType && !isEventFeatureEnabled(effectiveEventType as EventType, 'speeches')) {
@@ -182,10 +182,10 @@ export default function EvendiSpeeches({ coupleId, coupleName, eventType }: Even
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <RecordVoiceOver sx={{ color: '#9C27B0' }} />
             <Typography variant="h6">{speechLabel}</Typography>
-            {effectiveCoupleName && (
+            {effectiveOrganizerName && (
               <Chip
                 size="small"
-                label={effectiveCoupleName}
+                label={effectiveOrganizerName}
                 sx={{ ml: 1, bgcolor: 'rgba(156, 39, 176, 0.1)', color: '#9C27B0' }}
               />
             )}

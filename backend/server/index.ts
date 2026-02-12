@@ -7432,7 +7432,8 @@ app.get('/api/evendi/budget/:coupleId', async (req: any, res: any) => {
 });
 
 // ================================================================
-// SPEECHES BRIDGE — Fetch couple's speeches via Evendi, with contract check
+// SPEECHES BRIDGE — Fetch organizer's speeches/program via Evendi, with contract check
+// Supports all event types (wedding, conference, corporate, etc.)
 // ================================================================
 app.get('/api/evendi/speeches/:coupleId', async (req: any, res: any) => {
   try {
@@ -7455,7 +7456,7 @@ app.get('/api/evendi/speeches/:coupleId', async (req: any, res: any) => {
         [vendor.id, coupleId]
       );
       if (!convCheck.rows.length) {
-        return res.status(403).json({ error: 'Ingen tilgang til dette parets taler' });
+        return res.status(403).json({ error: 'Ingen tilgang til arrangørens taler/program' });
       }
     }
 
@@ -7473,18 +7474,18 @@ app.get('/api/evendi/speeches/:coupleId', async (req: any, res: any) => {
       ORDER BY sort_order ASC, created_at ASC
     `, [coupleId]);
 
-    // Get couple info for context
-    const coupleResult = await pool.query(
+    // Get organizer info for context
+    const organizerResult = await pool.query(
       'SELECT display_name, event_type FROM couple_profiles WHERE id = $1',
       [coupleId]
     );
-    const couple = coupleResult.rows[0];
+    const organizer = organizerResult.rows[0];
 
     res.json({
       speeches: result.rows,
       coupleId,
-      eventType: couple?.event_type || 'wedding',
-      coupleName: couple?.display_name || 'Ukjent',
+      eventType: organizer?.event_type || 'wedding',
+      organizerName: organizer?.display_name || 'Ukjent',
     });
   } catch (error) {
     console.error('Evendi speeches bridge error:', error);
@@ -7493,7 +7494,8 @@ app.get('/api/evendi/speeches/:coupleId', async (req: any, res: any) => {
 });
 
 // ================================================================
-// SEATING / TABLES BRIDGE — Fetch couple's tables via Evendi, with contract check
+// SEATING / TABLES BRIDGE — Fetch organizer's table layout via Evendi, with contract check
+// Supports all event types (wedding, conference, corporate, etc.)
 // ================================================================
 app.get('/api/evendi/tables/:coupleId', async (req: any, res: any) => {
   try {
@@ -7516,7 +7518,7 @@ app.get('/api/evendi/tables/:coupleId', async (req: any, res: any) => {
         [vendor.id, coupleId]
       );
       if (!convCheck.rows.length) {
-        return res.status(403).json({ error: 'Ingen tilgang til dette parets bordplassering' });
+        return res.status(403).json({ error: 'Ingen tilgang til arrangørens bordplassering' });
       }
     }
 
@@ -7569,18 +7571,18 @@ app.get('/api/evendi/tables/:coupleId', async (req: any, res: any) => {
       guests: assignmentsByTable[t.id] || [],
     }));
 
-    // Get couple info
-    const coupleResult = await pool.query(
+    // Get organizer info
+    const organizerResult = await pool.query(
       'SELECT display_name, event_type FROM couple_profiles WHERE id = $1',
       [coupleId]
     );
-    const couple = coupleResult.rows[0];
+    const organizer = organizerResult.rows[0];
 
     res.json({
       tables,
       coupleId,
-      eventType: couple?.event_type || 'wedding',
-      coupleName: couple?.display_name || 'Ukjent',
+      eventType: organizer?.event_type || 'wedding',
+      organizerName: organizer?.display_name || 'Ukjent',
       totalTables: tables.length,
       totalSeats: tables.reduce((sum: number, t: any) => sum + t.seats, 0),
       assignedGuests: assignmentsResult.rows.length,
