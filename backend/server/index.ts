@@ -2,7 +2,9 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import multer from 'multer';
-const pdfParseModule: any = require('pdf-parse');
+import { createRequire } from 'module';
+const _require = createRequire(import.meta.url);
+const pdfParseModule: any = _require('pdf-parse');
 import mammoth from 'mammoth';
 import crypto from 'crypto';
 import fs from 'fs/promises';
@@ -7598,21 +7600,32 @@ app.get('/api/evendi/tables/:coupleId', async (req: any, res: any) => {
 // =============================================
 app.get('/api/evendi/music/:coupleId', async (req: any, res: any) => {
   try {
+    const vendor = await getVendorFromSession(req, res);
+    if (!vendor) return;
+
     const { coupleId } = req.params;
-    const vendorId = req.headers['x-vendor-id'] || req.query.vendorId;
 
     // Check vendor has an active contract with can_view_music = true
-    if (vendorId) {
-      const contractCheck = await pool.query(
-        `SELECT id, can_view_music FROM couple_vendor_contracts
-         WHERE couple_id = $1 AND vendor_id = $2 AND status = 'active'
-         LIMIT 1`,
-        [coupleId, vendorId]
-      );
+    const contractCheck = await pool.query(
+      `SELECT id, can_view_music FROM couple_vendor_contracts
+       WHERE vendor_id = $1 AND couple_id = $2 AND status = 'active' LIMIT 1`,
+      [vendor.id, coupleId]
+    );
 
-      if (contractCheck.rows.length && !contractCheck.rows[0].can_view_music) {
-        return res.status(403).json({ error: 'Tilgang til musikk er ikke aktivert for denne kontrakten' });
+    // Fallback: if no contract, check if they have a conversation (relaxed access)
+    if (!contractCheck.rows.length) {
+      const convCheck = await pool.query(
+        'SELECT id FROM conversations WHERE vendor_id = $1 AND couple_id = $2 LIMIT 1',
+        [vendor.id, coupleId]
+      );
+      if (!convCheck.rows.length) {
+        return res.status(403).json({ error: 'Ingen tilgang til arrangørens musikkdata' });
       }
+    }
+
+    // If contract exists but can_view_music is false, deny
+    if (contractCheck.rows.length && !contractCheck.rows[0].can_view_music) {
+      return res.status(403).json({ error: 'Tilgang til musikk er ikke aktivert for denne kontrakten' });
     }
 
     // Fetch music data directly from DB
@@ -7667,21 +7680,32 @@ app.get('/api/evendi/music/:coupleId', async (req: any, res: any) => {
 // =============================================
 app.get('/api/evendi/coordinators/:coupleId', async (req: any, res: any) => {
   try {
+    const vendor = await getVendorFromSession(req, res);
+    if (!vendor) return;
+
     const { coupleId } = req.params;
-    const vendorId = req.headers['x-vendor-id'] || req.query.vendorId;
 
     // Check vendor has an active contract with can_view_coordinators = true
-    if (vendorId) {
-      const contractCheck = await pool.query(
-        `SELECT id, can_view_coordinators FROM couple_vendor_contracts
-         WHERE couple_id = $1 AND vendor_id = $2 AND status = 'active'
-         LIMIT 1`,
-        [coupleId, vendorId]
-      );
+    const contractCheck = await pool.query(
+      `SELECT id, can_view_coordinators FROM couple_vendor_contracts
+       WHERE vendor_id = $1 AND couple_id = $2 AND status = 'active' LIMIT 1`,
+      [vendor.id, coupleId]
+    );
 
-      if (contractCheck.rows.length && !contractCheck.rows[0].can_view_coordinators) {
-        return res.status(403).json({ error: 'Tilgang til koordinatorer er ikke aktivert for denne kontrakten' });
+    // Fallback: if no contract, check if they have a conversation (relaxed access)
+    if (!contractCheck.rows.length) {
+      const convCheck = await pool.query(
+        'SELECT id FROM conversations WHERE vendor_id = $1 AND couple_id = $2 LIMIT 1',
+        [vendor.id, coupleId]
+      );
+      if (!convCheck.rows.length) {
+        return res.status(403).json({ error: 'Ingen tilgang til koordinatordata' });
       }
+    }
+
+    // If contract exists but can_view_coordinators is false, deny
+    if (contractCheck.rows.length && !contractCheck.rows[0].can_view_coordinators) {
+      return res.status(403).json({ error: 'Tilgang til koordinatorer er ikke aktivert for denne kontrakten' });
     }
 
     // Fetch active coordinators
@@ -7732,6 +7756,9 @@ app.get('/api/evendi/coordinators/:coupleId', async (req: any, res: any) => {
 // =============================================
 app.get('/api/evendi/reviews/:vendorId', async (req: any, res: any) => {
   try {
+    const vendor = await getVendorFromSession(req, res);
+    if (!vendor) return;
+
     const { vendorId } = req.params;
 
     // Fetch approved reviews with vendor responses
