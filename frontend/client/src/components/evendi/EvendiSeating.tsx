@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { apiRequest } from '@/lib/queryClient';
+import { useToast } from '@/hooks/use-toast';
 import {
   Box,
   Typography,
@@ -111,9 +112,9 @@ function getCategoryColor(category?: string): string {
 }
 
 export default function EvendiSeating({ coupleId, organizerName, eventType }: EvendiSeatingProps) {
+  const { toast } = useToast();
   const [tables, setTables] = useState<SeatingTable[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
   const [expandedTableId, setExpandedTableId] = useState<string | null>(null);
   const [responseEventType, setResponseEventType] = useState<string>('');
   const [responseOrganizerName, setResponseOrganizerName] = useState<string>('');
@@ -127,7 +128,6 @@ export default function EvendiSeating({ coupleId, organizerName, eventType }: Ev
 
   async function loadTables() {
     setLoading(true);
-    setError('');
     try {
       const data: TablesResponse = await apiRequest(`/api/evendi/tables/${coupleId}`);
       setTables(data.tables || []);
@@ -141,9 +141,9 @@ export default function EvendiSeating({ coupleId, organizerName, eventType }: Ev
     } catch (err: any) {
       console.error('Failed to load tables:', err);
       if (err.message?.includes('403')) {
-        setError('Tilgang til bordplassering er ikke aktivert for denne kontrakten');
+        toast({ title: 'Ingen tilgang', description: 'Tilgang til bordplassering er ikke aktivert for denne kontrakten', variant: 'warning' });
       } else {
-        setError('Kunne ikke hente bordplassering');
+        toast({ title: 'Feil', description: 'Kunne ikke hente bordplassering', variant: 'destructive' });
       }
     } finally {
       setLoading(false);
@@ -198,17 +198,15 @@ export default function EvendiSeating({ coupleId, organizerName, eventType }: Ev
           </Box>
         )}
 
-        {/* Error */}
-        {error && (
-          <Alert severity="warning" sx={{ mb: 2 }}>{error}</Alert>
-        )}
-
         {/* Empty state */}
-        {!loading && !error && tables.length === 0 && (
-          <Alert severity="info" icon={<EventSeat />}>
-            Ingen {seatingLabel.toLowerCase()} er satt opp ennå.
-            Arrangøren kan sette opp bord i Evendi-appen.
-          </Alert>
+        {!loading && tables.length === 0 && (
+          <Box sx={{ textAlign: 'center', py: 4, color: 'text.secondary' }}>
+            <EventSeat sx={{ fontSize: 40, mb: 1, opacity: 0.5 }} />
+            <Typography variant="body2">
+              Ingen {seatingLabel.toLowerCase()} er satt opp ennå.
+              Arrangøren kan sette opp bord i Evendi-appen.
+            </Typography>
+          </Box>
         )}
 
         {/* Stats row */}

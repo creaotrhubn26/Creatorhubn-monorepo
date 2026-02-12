@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { apiRequest } from '@/lib/queryClient';
+import { useToast } from '@/hooks/use-toast';
 import {
   Box,
   Typography,
@@ -13,7 +14,6 @@ import {
   ListItemAvatar,
   ListItemSecondaryAction,
   Avatar,
-  Alert,
   Divider,
   CircularProgress,
   Tooltip,
@@ -125,9 +125,9 @@ function formatDuration(minutes: number): string {
 }
 
 export default function EvendiSpeeches({ coupleId, organizerName, eventType }: EvendiSpeechesProps) {
+  const { toast } = useToast();
   const [speeches, setSpeeches] = useState<Speech[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [responseEventType, setResponseEventType] = useState<string>('');
   const [responseOrganizerName, setResponseOrganizerName] = useState<string>('');
@@ -140,7 +140,6 @@ export default function EvendiSpeeches({ coupleId, organizerName, eventType }: E
 
   async function loadSpeeches() {
     setLoading(true);
-    setError('');
     try {
       const data: SpeechesResponse = await apiRequest(`/api/evendi/speeches/${coupleId}`);
       setSpeeches(data.speeches || []);
@@ -149,9 +148,9 @@ export default function EvendiSpeeches({ coupleId, organizerName, eventType }: E
     } catch (err: any) {
       console.error('Failed to load speeches:', err);
       if (err.message?.includes('403')) {
-        setError('Tilgang til taler er ikke aktivert for denne kontrakten');
+        toast({ title: 'Ingen tilgang', description: 'Tilgang til taler er ikke aktivert for denne kontrakten', variant: 'warning' });
       } else {
-        setError('Kunne ikke hente taler');
+        toast({ title: 'Feil', description: 'Kunne ikke hente taler', variant: 'destructive' });
       }
     } finally {
       setLoading(false);
@@ -216,17 +215,15 @@ export default function EvendiSpeeches({ coupleId, organizerName, eventType }: E
           </Box>
         )}
 
-        {/* Error */}
-        {error && (
-          <Alert severity="warning" sx={{ mb: 2 }}>{error}</Alert>
-        )}
-
         {/* Empty state */}
-        {!loading && !error && speeches.length === 0 && (
-          <Alert severity="info" icon={<Mic />}>
-            Ingen {speechLabel.toLowerCase()} er lagt til ennå.
-            Arrangøren kan legge til {speechLabel.toLowerCase()} i Evendi-appen.
-          </Alert>
+        {!loading && speeches.length === 0 && (
+          <Box sx={{ textAlign: 'center', py: 4, color: 'text.secondary' }}>
+            <Mic sx={{ fontSize: 40, mb: 1, opacity: 0.5 }} />
+            <Typography variant="body2">
+              Ingen {speechLabel.toLowerCase()} er lagt til ennå.
+              Arrangøren kan legge til {speechLabel.toLowerCase()} i Evendi-appen.
+            </Typography>
+          </Box>
         )}
 
         {/* Speech list */}
