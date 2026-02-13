@@ -182,6 +182,9 @@ interface OnboardingData {
   email: string;
   phone: string;
   business: string;
+  whyStatement?: string;
+  howStatement?: string;
+  whatStatement?: string;
   // Obligatoriske bedriftsinformasjon for norske brukere
   companyName: string;
   organizationNumber: string;
@@ -219,11 +222,11 @@ interface OnboardingData {
 const getStepsForProfession = (profession: string) => {
   if (profession === 'enterprise') {
     return [
-      'Profesjonsvalg', 'Team-profil', 'Teammedlemmer', 'Kamera- og Utstyrssystem', 'Cloud Integrering', 'Sosiale Medier', 'Branding Setup', 'Arbeidsflyt Konfigurasjon', 'Velg Abonnement'
+      'Profesjonsvalg', 'Team-profil', 'Hvorfor, Hvordan, Hva', 'Teammedlemmer', 'Kamera- og Utstyrssystem', 'Cloud Integrering', 'Sosiale Medier', 'Branding Setup', 'Arbeidsflyt Konfigurasjon', 'Velg Abonnement'
     ];
   }
   const baseSteps = [
-    'Profesjonsvalg', 'Profildetaljer', 'Kamera- og Utstyrssystem', 'Cloud Integrering', 'Sosiale Medier', 'Branding Setup', 'Arbeidsflyt Konfigurasjon', 'Velg Abonnement' // New payment/subscription step
+    'Profesjonsvalg', 'Profildetaljer', 'Hvorfor, Hvordan, Hva', 'Kamera- og Utstyrssystem', 'Cloud Integrering', 'Sosiale Medier', 'Branding Setup', 'Arbeidsflyt Konfigurasjon', 'Velg Abonnement' // New payment/subscription step
   ];
   
   return baseSteps;
@@ -348,6 +351,9 @@ export default function UniversalOnboarding({ isOpen: open = true, onClose = () 
     email: pendingData?.email ||'',
     phone: pendingData?.phone ||'',
     business: pendingData?.business ||'',
+    whyStatement: pendingData?.whyStatement || '',
+    howStatement: pendingData?.howStatement || '',
+    whatStatement: pendingData?.whatStatement || '',
     companyName: pendingData?.business ||'',
     organizationNumber: pendingData?.organizationNumber ||'',
     businessAddress: pendingData?.businessAddress ||'',
@@ -1014,21 +1020,22 @@ export default function UniversalOnboarding({ isOpen: open = true, onClose = () 
     switch (activeStep) {
       case 0: return onboardingData.profession !== ', ';
       case 1: return onboardingData.firstName && onboardingData.lastName && onboardingData.email;
-      case 2: 
+      case 2:
+        return Boolean(onboardingData.whyStatement && onboardingData.howStatement && onboardingData.whatStatement);
+      case 3:
         // Enterprise: team members step (always proceed)
         if (onboardingData.profession === 'enterprise') return true;
         // Different equipment requirements based on profession
         if (onboardingData.profession === 'music_producer') {
           return onboardingData.selectedAudioInterfaces.length > 0; // Audio interface er påkrevd for musikk produsenter
-  } else {
-          return onboardingData.selectedCameras.length > 0; // Kamera er påkrevd for foto/video
-    }
-      case 3: return onboardingData.profession === 'enterprise' ? true : onboardingData.cloudProvider !== ', '; // Enterprise: equipment optional
-      case 4: return true; // Social media er valgfritt
-      case 5: return true; // Branding er valgfritt
-      case 6: return true; // Workflow preferences er valgfritt
-      case 7: return true; // Payment is optional (can start with trial)
-      case 8: return true; // Enterprise summary
+        }
+        return onboardingData.selectedCameras.length > 0; // Kamera er påkrevd for foto/video
+      case 4: return onboardingData.profession === 'enterprise' ? true : onboardingData.cloudProvider !== ', '; // Enterprise: equipment optional
+      case 5: return true; // Social media er valgfritt
+      case 6: return true; // Branding er valgfritt
+      case 7: return true; // Workflow preferences er valgfritt
+      case 8: return true; // Payment is optional (can start with trial)
+      case 9: return true; // Summary
       default: return false;
 }
 };
@@ -1718,7 +1725,75 @@ export default function UniversalOnboarding({ isOpen: open = true, onClose = () 
           </Fade>
       );
 
-      case 2: // Teammedlemmer (enterprise) or Utstyrssystem (standard)
+      case 2: // Hvorfor, Hvordan, Hva
+        return (
+          <Fade in>
+            <Box>
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
+                <AutoAwesome sx={{ color: (selectedProfession as any)?.color, mr: 2, fontSize: 32 }} />
+                <Typography variant="h5" sx={{ color: theming.colors.primary }}>
+                  Hvorfor, Hvordan, Hva
+                </Typography>
+              </Box>
+
+              <Typography variant="body1" color="textSecondary" sx={{ mb: 3 }}>
+                Fortell hvorfor du finnes, hvordan du jobber, og hva du leverer. Dette brukes i profiler og salgsdialoger.
+              </Typography>
+
+              <Paper sx={{ p: 2, mb: 3, bgcolor: 'info.light', border: '1px solid', borderColor: 'info.main' }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1, color: 'info.dark' }}>
+                  Creatorhub med Hvorfor / Hvordan / Hva
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Hvorfor: Vi hjelper kreative leverandorer a vokse med tillit og struktur.
+                  Hvordan: Vi samler onboarding, drift og kundeopplevelse i ett system.
+                  Hva: Et profesjonelt dashboard med verktøy for salg, leveranse og samarbeid.
+                </Typography>
+              </Paper>
+
+              <Grid container spacing={3}>
+                <Grid item xs={12}>
+                  <TextField
+                    fullWidth
+                    label="Hvorfor (formål)"
+                    value={onboardingData.whyStatement}
+                    onChange={(e) => setOnboardingData(prev => ({ ...prev, whyStatement: e.target.value }))}
+                    placeholder="Eksempel: Vi skaper minner gjennom visuelle opplevelser..."
+                    multiline
+                    minRows={3}
+                    required
+                  />
+                </Grid>
+                <Grid item xs={12}>
+                  <TextField
+                    fullWidth
+                    label="Hvordan (prosess)"
+                    value={onboardingData.howStatement}
+                    onChange={(e) => setOnboardingData(prev => ({ ...prev, howStatement: e.target.value }))}
+                    placeholder="Eksempel: Vi jobber strukturert med forhåndsmøte, detaljert plan og tett oppfolging..."
+                    multiline
+                    minRows={3}
+                    required
+                  />
+                </Grid>
+                <Grid item xs={12}>
+                  <TextField
+                    fullWidth
+                    label="Hva (produkt)"
+                    value={onboardingData.whatStatement}
+                    onChange={(e) => setOnboardingData(prev => ({ ...prev, whatStatement: e.target.value }))}
+                    placeholder="Eksempel: Vi leverer foto, video og eventplan med premium kundereise..."
+                    multiline
+                    minRows={3}
+                    required
+                  />
+                </Grid>
+              </Grid>
+            </Box>
+          </Fade>
+        );
+
+      case 3: // Teammedlemmer (enterprise) or Utstyrssystem (standard)
         if (onboardingData.profession === 'enterprise') {
           return (
             <Fade in>
@@ -2284,7 +2359,7 @@ export default function UniversalOnboarding({ isOpen: open = true, onClose = () 
           </Fade>
         );
 
-      case 3: // Cloud Integrering
+      case 4: // Cloud Integrering
         return (
           <Fade in>
             <Box>
@@ -2322,7 +2397,7 @@ export default function UniversalOnboarding({ isOpen: open = true, onClose = () 
           </Fade>
         );
 
-      case 4: // Sosiale Medier
+      case 5: // Sosiale Medier
         return (
           <Fade in>
             <Box>
@@ -2353,7 +2428,7 @@ export default function UniversalOnboarding({ isOpen: open = true, onClose = () 
           </Fade>
         );
 
-      case 5: // Branding Setup
+      case 6: // Branding Setup
         return (
           <Fade in>
             <Box>
@@ -2486,7 +2561,7 @@ export default function UniversalOnboarding({ isOpen: open = true, onClose = () 
           </Fade>
         );
 
-      case 6: // Arbeidsflyt Konfigurasjon
+      case 7: // Arbeidsflyt Konfigurasjon
         return (
           <Fade in>
             <Box>
@@ -2508,7 +2583,7 @@ export default function UniversalOnboarding({ isOpen: open = true, onClose = () 
           </Fade>
         );
 
-      case 7: // Payment & Subscription
+      case 8: // Payment & Subscription
         return (
           <Fade in>
             <Box>
@@ -2691,7 +2766,7 @@ export default function UniversalOnboarding({ isOpen: open = true, onClose = () 
 
                                     // Auto-advance to summary
                                     setTimeout(() => {
-                                      setActiveStep(8); // Move to summary step
+                                      setActiveStep(9); // Move to summary step
                                     }, 1500);
                                   }}
                                   onError={(error) => {
@@ -2789,7 +2864,7 @@ export default function UniversalOnboarding({ isOpen: open = true, onClose = () 
           </Fade>
         );
 
-      case 8: // Summary (moved from case 6)
+      case 9: // Summary (moved from case 6)
         return (
           <Fade in>
             <Box sx={{ textAlign: 'center' }}>
@@ -2811,6 +2886,24 @@ export default function UniversalOnboarding({ isOpen: open = true, onClose = () 
                     <ListItemText
                       primary="Navn"
                       secondary={`${onboardingData.firstName} ${onboardingData.lastName}`}
+                    />
+                  </ListItem>
+                  <ListItem>
+                    <ListItemText
+                      primary="Hvorfor (formål)"
+                      secondary={onboardingData.whyStatement || 'Ikke fylt ut'}
+                    />
+                  </ListItem>
+                  <ListItem>
+                    <ListItemText
+                      primary="Hvordan (prosess)"
+                      secondary={onboardingData.howStatement || 'Ikke fylt ut'}
+                    />
+                  </ListItem>
+                  <ListItem>
+                    <ListItemText
+                      primary="Hva (produkt)"
+                      secondary={onboardingData.whatStatement || 'Ikke fylt ut'}
                     />
                   </ListItem>
                   {selectedPersona && (

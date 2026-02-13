@@ -218,6 +218,204 @@ function readStringArray(value: unknown): string[] {
   return [];
 }
 
+type EvendiVendorCategory = {
+  id: string;
+  name: string;
+  icon?: string | null;
+  description?: string | null;
+  slug?: string | null;
+  dashboardKey?: string | null;
+  sortOrder?: number | null;
+  applicableEventTypes?: string[] | null;
+};
+
+type VendorProductCategory = {
+  id: string;
+  label: string;
+  color: string;
+};
+
+type VendorTypePayload = {
+  id: string;
+  name: string;
+  nameEnglish: string;
+  color: string;
+  category: 'creative' | 'technology' | 'service' | 'physical' | 'education' | 'lifestyle';
+  primaryActions: Array<{ label: string; icon: string; action: string }>;
+  quickStats: Array<{ label: string; key: string; icon: string }>;
+  supportedFeatures: {
+    showcase: boolean;
+    pricing: boolean;
+    inventory: boolean;
+    bookings: boolean;
+    subscriptions: boolean;
+    downloads: boolean;
+    physical_shipping: boolean;
+    digital_delivery: boolean;
+  };
+  marketplaceCategory: string[];
+  targetCustomers: string[];
+  productCategories?: VendorProductCategory[];
+  evendiCategory?: EvendiVendorCategory;
+};
+
+const EVENDI_API_URL = process.env.EVENDI_API_URL || process.env.WEDFLOW_API_URL || 'https://evendi.onrender.com';
+const evendiVendorOverrides = new Map<string, { productCategories?: VendorProductCategory[] }>();
+
+const EVENDI_VENDOR_COLORS: Record<string, string> = {
+  photographer: '#ff8c00',
+  videographer: '#e74c3c',
+  florist: '#43e97b',
+  catering: '#ff9800',
+  musician: '#9b59b6',
+  music: '#9b59b6',
+  venue: '#6c5ce7',
+  cake: '#f7b731',
+  planner: '#00bcd4',
+  coordinator: '#00bcd4',
+  beauty: '#ec407a',
+  'hair-makeup': '#ec407a',
+  transport: '#4facfe',
+};
+
+const EVENDI_VENDOR_CATEGORIES: Record<string, VendorTypePayload['category']> = {
+  photographer: 'creative',
+  videographer: 'creative',
+  music: 'creative',
+  musician: 'creative',
+  florist: 'service',
+  catering: 'service',
+  cake: 'service',
+  planner: 'service',
+  coordinator: 'service',
+  beauty: 'lifestyle',
+  'hair-makeup': 'lifestyle',
+  venue: 'physical',
+  transport: 'physical',
+};
+
+const EVENDI_VENDOR_FEATURES: Record<string, VendorTypePayload['supportedFeatures']> = {
+  venue: {
+    showcase: true,
+    pricing: true,
+    inventory: true,
+    bookings: true,
+    subscriptions: true,
+    downloads: false,
+    physical_shipping: true,
+    digital_delivery: false,
+  },
+  transport: {
+    showcase: true,
+    pricing: true,
+    inventory: true,
+    bookings: true,
+    subscriptions: true,
+    downloads: false,
+    physical_shipping: true,
+    digital_delivery: false,
+  },
+  catering: {
+    showcase: true,
+    pricing: true,
+    inventory: true,
+    bookings: true,
+    subscriptions: true,
+    downloads: false,
+    physical_shipping: true,
+    digital_delivery: false,
+  },
+  cake: {
+    showcase: true,
+    pricing: true,
+    inventory: true,
+    bookings: true,
+    subscriptions: true,
+    downloads: false,
+    physical_shipping: true,
+    digital_delivery: false,
+  },
+};
+
+const DEFAULT_VENDOR_FEATURES: VendorTypePayload['supportedFeatures'] = {
+  showcase: true,
+  pricing: true,
+  inventory: false,
+  bookings: true,
+  subscriptions: true,
+  downloads: true,
+  physical_shipping: false,
+  digital_delivery: true,
+};
+
+const DEFAULT_VENDOR_ACTIONS: VendorTypePayload['primaryActions'] = [
+  { label: 'Administrer', icon: 'Edit', action: 'manage_general' },
+  { label: 'Nytt tilbud', icon: 'Add', action: 'create_offer' },
+  { label: 'Oppdater', icon: 'Settings', action: 'manage_settings' },
+];
+
+const DEFAULT_VENDOR_STATS: VendorTypePayload['quickStats'] = [
+  { label: 'Prosjekter', key: 'projects', icon: 'Assessment' },
+  { label: 'Tilbud', key: 'offers', icon: 'AttachMoney' },
+  { label: 'Showcase', key: 'showcase', icon: 'Visibility' },
+];
+
+const slugifyEvendi = (value: string) =>
+  value
+    .toLowerCase()
+    .replace(/å/g, 'a')
+    .replace(/æ/g, 'ae')
+    .replace(/ø/g, 'o')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+
+const resolveEvendiKey = (category: EvendiVendorCategory): string => {
+  return (
+    category.dashboardKey?.trim()
+    || category.slug?.trim()
+    || slugifyEvendi(category.name)
+  );
+};
+
+async function fetchEvendiVendorCategories(eventType?: string): Promise<EvendiVendorCategory[]> {
+  if (!EVENDI_API_URL) {
+    return [];
+  }
+
+  const url = new URL('/api/vendor-categories', EVENDI_API_URL);
+  if (eventType) {
+    url.searchParams.set('eventType', eventType);
+  }
+
+  const response = await fetch(url.toString());
+  if (!response.ok) {
+    throw new Error(`Evendi vendor categories failed (${response.status})`);
+  }
+  const data = await response.json();
+  return Array.isArray(data) ? data : [];
+}
+
+function buildVendorTypePayload(category: EvendiVendorCategory): VendorTypePayload {
+  const key = resolveEvendiKey(category);
+  const color = EVENDI_VENDOR_COLORS[key] || '#667eea';
+  const overrides = evendiVendorOverrides.get(key);
+
+  return {
+    id: key,
+    name: category.name,
+    nameEnglish: category.name,
+    color,
+    category: EVENDI_VENDOR_CATEGORIES[key] || 'service',
+    primaryActions: DEFAULT_VENDOR_ACTIONS,
+    quickStats: DEFAULT_VENDOR_STATS,
+    supportedFeatures: EVENDI_VENDOR_FEATURES[key] || DEFAULT_VENDOR_FEATURES,
+    marketplaceCategory: [key],
+    targetCustomers: ['evendi'],
+    productCategories: overrides?.productCategories,
+    evendiCategory: category,
+  };
+}
+
 const EVENDI_EVENT_TYPES = new Set([
   'wedding',
   'confirmation',
@@ -1319,6 +1517,123 @@ app.get('/api/admin/profession-types', async (req, res) => {
   ]);
 });
 
+app.get('/api/evendi/vendor-categories', async (req, res) => {
+  try {
+    const eventType = typeof req.query.eventType === 'string' ? req.query.eventType : undefined;
+    const categories = await fetchEvendiVendorCategories(eventType);
+    res.json(categories);
+  } catch (error) {
+    console.error('[EvendiVendorCategories] Error:', error);
+    res.status(502).json({ error: 'Kunne ikke hente Evendi-kategorier' });
+  }
+});
+
+app.get('/api/vendor-types', async (req, res) => {
+  try {
+    const categories = await fetchEvendiVendorCategories();
+    const sorted = [...categories].sort((a, b) => {
+      const aOrder = a.sortOrder ?? 9999;
+      const bOrder = b.sortOrder ?? 9999;
+      if (aOrder !== bOrder) return aOrder - bOrder;
+      return a.name.localeCompare(b.name);
+    });
+    const vendorTypes = sorted.map(buildVendorTypePayload);
+    res.json({
+      vendorTypes,
+      totalTypes: vendorTypes.length,
+      coreTypes: vendorTypes,
+      expandableTypes: [],
+      categories: sorted.map((category) => category.name),
+    });
+  } catch (error) {
+    console.error('[VendorTypes] Error:', error);
+    res.status(502).json({ vendorTypes: [], totalTypes: 0, coreTypes: [], expandableTypes: [], categories: [] });
+  }
+});
+
+app.get('/api/vendor-types/expandable/available', (_req, res) => {
+  res.json({ availableTypes: [], count: 0 });
+});
+
+app.post('/api/vendor-types/enable/:id', async (req, res) => {
+  try {
+    const categories = await fetchEvendiVendorCategories();
+    const typeId = req.params.id;
+    const match = categories.find((category) => resolveEvendiKey(category) === typeId);
+    if (!match) {
+      return res.status(404).json({ error: 'Vendor type ikke funnet' });
+    }
+    return res.json({ config: buildVendorTypePayload(match) });
+  } catch (error) {
+    console.error('[VendorTypesEnable] Error:', error);
+    res.status(502).json({ error: 'Kunne ikke aktivere vendor type' });
+  }
+});
+
+app.put('/api/vendor-types/:id', async (req, res) => {
+  try {
+    const typeId = req.params.id;
+    const updates = req.body as Partial<VendorTypePayload>;
+    const overrides = evendiVendorOverrides.get(typeId) || {};
+    if (Array.isArray(updates.productCategories)) {
+      overrides.productCategories = updates.productCategories as VendorProductCategory[];
+      evendiVendorOverrides.set(typeId, overrides);
+    }
+    const baseCategory: EvendiVendorCategory = {
+      id: typeId,
+      name: updates.name || typeId,
+      slug: typeId,
+      dashboardKey: typeId,
+    };
+    const payload = buildVendorTypePayload(baseCategory);
+    payload.name = updates.name || payload.name;
+    payload.color = updates.color || payload.color;
+    payload.productCategories = overrides.productCategories || payload.productCategories;
+    res.json(payload);
+  } catch (error) {
+    console.error('[VendorTypesUpdate] Error:', error);
+    res.status(500).json({ error: 'Kunne ikke oppdatere vendor type' });
+  }
+});
+
+app.post('/api/vendor-types/:id/categories', async (req, res) => {
+  const typeId = req.params.id;
+  const category = req.body as VendorProductCategory;
+  const overrides = evendiVendorOverrides.get(typeId) || { productCategories: [] };
+  const existing = overrides.productCategories || [];
+  overrides.productCategories = [...existing, category];
+  evendiVendorOverrides.set(typeId, overrides);
+  res.json({ categories: overrides.productCategories });
+});
+
+app.put('/api/vendor-types/:id/categories/:categoryId', async (req, res) => {
+  const typeId = req.params.id;
+  const categoryId = req.params.categoryId;
+  const updates = req.body as Partial<VendorProductCategory>;
+  const overrides = evendiVendorOverrides.get(typeId) || { productCategories: [] };
+  const categories = overrides.productCategories || [];
+  const updated = categories.map((category) =>
+    category.id === categoryId
+      ? { ...category, ...updates, id: updates.id || category.id }
+      : category
+  );
+  overrides.productCategories = updated;
+  evendiVendorOverrides.set(typeId, overrides);
+  res.json({ categories: updated, affectedProducts: 0 });
+});
+
+app.delete('/api/vendor-types/:id/categories/:categoryId', async (req, res) => {
+  const typeId = req.params.id;
+  const categoryId = req.params.categoryId;
+  const { replacementCategory } = req.body as { replacementCategory?: string };
+  const overrides = evendiVendorOverrides.get(typeId) || { productCategories: [] };
+  const categories = overrides.productCategories || [];
+  const updated = categories.filter((category) => category.id !== categoryId);
+  overrides.productCategories = updated;
+  evendiVendorOverrides.set(typeId, overrides);
+  res.json({ categories: updated, affectedProducts: 0, replacementCategory: replacementCategory || null });
+});
+
 // User KV store - return empty/default values
 app.get('/api/user/kv/:key', (req, res) => {
   res.json({ value: null, key: req.params.key });
@@ -2330,8 +2645,8 @@ app.post('/api/admin-provisioning/create-user', async (req, res) => {
     const { email, firstName, lastName, role, userType, businessName, sendInvite } = req.body;
     
     const result = await pool.query(
-      `INSERT INTO invite_requests (email, first_name, last_name, profession, company_name, status, user_journey_status, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, 'approved', 'approved', NOW(), NOW())
+      `INSERT INTO invite_requests (email, first_name, last_name, profession, company_name, status, user_journey_status, source, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, 'approved', 'approved', 'creatorhub', NOW(), NOW())
        RETURNING id`,
       [email, firstName, lastName, userType || role, businessName || '']
     );
@@ -2342,6 +2657,93 @@ app.post('/api/admin-provisioning/create-user', async (req, res) => {
     console.error('Error creating user:', error);
     res.status(500).json({ error: 'Could not create user' });
   }
+});
+
+// GET /api/invite-requests — list invite requests (optionally filter by source)
+app.get('/api/invite-requests', async (req, res) => {
+  try {
+    const source = typeof req.query.source === 'string' ? req.query.source : null;
+    const status = typeof req.query.status === 'string' ? req.query.status : null;
+    const params: any[] = [];
+    const clauses: string[] = [];
+
+    if (source) {
+      params.push(source);
+      clauses.push(`source = $${params.length}`);
+    }
+    if (status) {
+      params.push(status);
+      clauses.push(`status = $${params.length}`);
+    }
+
+    const whereClause = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+    const result = await pool.query(
+      `SELECT id::text, email, first_name, last_name, profession, company_name, status,
+              user_journey_status, admin_notes, source, processed_at, created_at, updated_at
+       FROM invite_requests
+       ${whereClause}
+       ORDER BY created_at DESC`,
+      params
+    );
+
+    const rows = result.rows.map((row: any) => ({
+      id: row.id,
+      profession: row.profession,
+      firstName: row.first_name || '',
+      lastName: row.last_name || '',
+      email: row.email,
+      business: row.company_name || null,
+      status: row.status || 'pending',
+      requestDate: row.created_at,
+      processedDate: row.processed_at || null,
+      processedBy: null,
+      source: row.source || 'unknown',
+    }));
+
+    res.json(rows);
+  } catch (error) {
+    console.error('Error fetching invite requests:', error);
+    res.status(500).json({ error: 'Could not fetch invite requests' });
+  }
+});
+
+// POST /api/invite-requests/:id/process — update invite request status
+app.post('/api/invite-requests/:id/process', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, notes } = req.body as { status?: string; notes?: string };
+    if (!status) return res.status(400).json({ error: 'Missing status' });
+
+    const result = await pool.query(
+      `UPDATE invite_requests
+       SET status = $1,
+           user_journey_status = $1,
+           admin_notes = COALESCE($2, admin_notes),
+           processed_at = NOW(),
+           updated_at = NOW()
+       WHERE id = $3
+       RETURNING id`,
+      [status, notes || null, id]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Invite request not found' });
+    }
+
+    res.json({ success: true, id });
+  } catch (error) {
+    console.error('Error processing invite request:', error);
+    res.status(500).json({ error: 'Could not process invite request' });
+  }
+});
+
+// Prototype tester requests (placeholder endpoints to keep admin UI stable)
+app.get('/api/prototype-tester-requests', (_req, res) => {
+  res.json([]);
+});
+
+app.post('/api/prototype-tester-requests/:id/process', (_req, res) => {
+  res.json({ success: true });
 });
 
 // POST /api/admin-provisioning/reject-user
@@ -3524,7 +3926,6 @@ app.all('/api/wedflow/*', (req, res, next) => {
   (req.app as any).handle(req, res, next);
 });
 
-const EVENDI_API_URL = process.env.EVENDI_API_URL || process.env.WEDFLOW_API_URL || 'https://evendi.onrender.com';
 const CREATORHUB_API_KEY = process.env.CREATORHUB_API_KEY || '';
 
 // ── Couple Planning Timelines (MUST be registered BEFORE the wildcard proxy) ──

@@ -12,11 +12,10 @@ import {
   Button,
   Alert,
 } from '@mui/material';
-import { Category, Dashboard, Settings, TrendingUp } from '@mui/icons-material';
+import { Category, Dashboard } from '@mui/icons-material';
 import VendorTypeManager from '@/components/vendor/VendorTypeManager';
 import UniversalVendorDashboard from '@/components/vendor/UniversalVendorDashboard';
 import { useQuery } from '@tanstack/react-query';
-import { apiRequest } from '@/lib/queryClient';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -29,7 +28,7 @@ function TabPanel({ children, value, index }: TabPanelProps) {
 }
 
 const VendorTypeManagementPage: React.FC = () => {
-  const [tabValue, setTabValue] = useState(false);
+  const [tabValue, setTabValue] = useState<number>(0);
   
   // Theming system
   const theming = useTheming('photographer');
@@ -37,12 +36,11 @@ const VendorTypeManagementPage: React.FC = () => {
 
   // Fetch vendor types for demo
   const { data: vendorTypesData } = useQuery({
-    queryKey: ['/api/vendor-types', ],
-    queryFn: () => apiRequest('/api/vendor-types', ),
-});
+    queryKey: ['/api/vendor-types'],
+  });
 
   const handleTypeEnabled = (typeId: string) => {
-    console.log(`✅ Vendor type enabled: ${typed}`);
+    console.log(`✅ Vendor type enabled: ${typeId}`);
     setSelectedVendorType(typeId);
     setTabValue(1); // Switch to dashboard tab
 };
@@ -52,12 +50,13 @@ const VendorTypeManagementPage: React.FC = () => {
       {/* Header */}
       <Paper
         sx={{
-          p:  3,
-          mb:  3,
+          p: 3,
+          mb: 3,
           background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
           color: 'white',
-      }}
-       sx={theming.getThemedCardSx()}>
+          ...theming.getThemedCardSx(),
+        }}
+      >
         <Typography variant="h3" sx={{ fontWeight: 700, mb: 2 }}>
           🚀 Skalerbar Vendor Type System
         </Typography>
@@ -68,9 +67,10 @@ const VendorTypeManagementPage: React.FC = () => {
         <Alert
           severity="info"
           sx={{
-            mt:  2,
+            mt: 2,
             bgcolor: 'rgba(255,255,255,0.1)',
-            color: 'white','& .MuiAlert-icon': { color: 'white',},
+            color: 'white',
+            '& .MuiAlert-icon': { color: 'white' },
         }}
         >
           <Typography variant="body2">
@@ -81,16 +81,16 @@ const VendorTypeManagementPage: React.FC = () => {
       </Paper>
 
       {/* Navigation Tabs */}
-      <Paper sx={{ mb:  3 ,  ...theming.getThemedCardSx() }}>
+      <Paper sx={{ mb: 3, ...theming.getThemedCardSx() }}>
         <Tabs
           value={tabValue}
           onChange={(e, newValue) => setTabValue(newValue)}
           sx={{
             '& .MuiTab-root': {
               minWidth: 10,
-              fontWeight: 60
-          },
-        }}
+              fontWeight: 600
+            },
+          }}
         >
           <Tab label="Type Manager" icon={<Category />} iconPosition="start" />
           <Tab label="Live Demo" icon={<Dashboard />} iconPosition="start" />

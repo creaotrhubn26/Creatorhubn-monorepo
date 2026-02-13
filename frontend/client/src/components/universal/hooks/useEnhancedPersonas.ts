@@ -88,6 +88,351 @@ export interface PersonaProfile {
   };
 }
 
+export interface VendorPersonaProfile {
+  id: string;
+  vendorType: string;
+  displayName: string;
+  personaDescription: string;
+  iconColor: string;
+  icon?: React.ReactElement;
+  businessModel: string;
+  averageProjectValue: string;
+  typicalProjects: string[];
+  targetClients: string[];
+  norwegianMarket: {
+    demand: 'high' | 'medium' | 'low';
+    competition: 'high' | 'medium' | 'low';
+    seasonality: string[];
+    keyEvents: string[];
+    pricingRange: string;
+  };
+}
+
+const buildVendorPersona = (persona: VendorPersonaProfile): VendorPersonaProfile => persona;
+
+export const VENDOR_PERSONAS: Record<string, VendorPersonaProfile[]> = {
+  florist: [
+    buildVendorPersona({
+      id: 'florist-wedding-stylist',
+      vendorType: 'florist',
+      displayName: 'Bryllupsflorist',
+      personaDescription: 'Skaper helhetlige blomsterkonsepter for bryllup og seremonier.',
+      iconColor: '#43e97b',
+      icon: getProfessionIcon('vendor'),
+      businessModel: 'Project-based styling',
+      averageProjectValue: '12,000 - 60,000 NOK',
+      typicalProjects: ['Brudebuketter', 'Seremonidekor', 'Borddekor', 'Sesongpakker'],
+      targetClients: ['Brudepar', 'Wedding planners', 'Venue stylists'],
+      norwegianMarket: {
+        demand: 'high',
+        competition: 'medium',
+        seasonality: ['Høy i mai-september', 'Lavere vinter'],
+        keyEvents: ['Bryllup', 'Konfirmasjon', 'Sommerfester'],
+        pricingRange: '6,000 - 80,000 NOK'
+      }
+    }),
+    buildVendorPersona({
+      id: 'florist-event-decor',
+      vendorType: 'florist',
+      displayName: 'Eventdekoratør',
+      personaDescription: 'Leverer blomsterinstallasjoner og scenedekor til bedriftseventer.',
+      iconColor: '#2ecc71',
+      icon: getProfessionIcon('vendor'),
+      businessModel: 'Retainer + event packages',
+      averageProjectValue: '20,000 - 120,000 NOK',
+      typicalProjects: ['Scenedekor', 'Foajeinstallasjoner', 'Sponsorvegger', 'Gjestebord'],
+      targetClients: ['Byråer', 'Konferansearrangorer', 'Hotellkjeder'],
+      norwegianMarket: {
+        demand: 'medium',
+        competition: 'medium',
+        seasonality: ['Stabil hele aret'],
+        keyEvents: ['Konferanser', 'Produktlanseringer', 'Prisgallaer'],
+        pricingRange: '15,000 - 150,000 NOK'
+      }
+    })
+  ],
+  catering: [
+    buildVendorPersona({
+      id: 'catering-fine-dining',
+      vendorType: 'catering',
+      displayName: 'Gourmet catering',
+      personaDescription: 'Flerretters menyer og premium servering for eksklusive arrangementer.',
+      iconColor: '#ff9800',
+      icon: getProfessionIcon('vendor'),
+      businessModel: 'Premium event packages',
+      averageProjectValue: '35,000 - 250,000 NOK',
+      typicalProjects: ['Bryllupsmenyer', 'Private selskaper', 'VIP-arrangement'],
+      targetClients: ['Brudepar', 'Bedriftsledere', 'Luxury venues'],
+      norwegianMarket: {
+        demand: 'medium',
+        competition: 'high',
+        seasonality: ['Høy i sommer', 'Julebord i november-desember'],
+        keyEvents: ['Bryllup', 'Gala', 'Julebord'],
+        pricingRange: '900 - 2,500 NOK per kuvert'
+      }
+    }),
+    buildVendorPersona({
+      id: 'catering-corporate',
+      vendorType: 'catering',
+      displayName: 'Bedriftscatering',
+      personaDescription: 'Effektiv matleveranse og service til kurs, konferanser og kontor.',
+      iconColor: '#f4a261',
+      icon: getProfessionIcon('vendor'),
+      businessModel: 'Volume contracts',
+      averageProjectValue: '15,000 - 120,000 NOK',
+      typicalProjects: ['Lunsjavtaler', 'Konferansebuffet', 'Kickoff-catering'],
+      targetClients: ['HR-avdelinger', 'Eventbyraer', 'Kontorfelleskap'],
+      norwegianMarket: {
+        demand: 'high',
+        competition: 'medium',
+        seasonality: ['Stabil hele aret'],
+        keyEvents: ['Seminarer', 'Kickoff', 'Sommerfest'],
+        pricingRange: '350 - 1,200 NOK per kuvert'
+      }
+    })
+  ],
+  music: [
+    buildVendorPersona({
+      id: 'music-dj',
+      vendorType: 'music',
+      displayName: 'Event DJ',
+      personaDescription: 'Skreddersydd musikkopplevelse for bryllup og fester.',
+      iconColor: '#9b59b6',
+      icon: getProfessionIcon('vendor'),
+      businessModel: 'Event-based booking',
+      averageProjectValue: '8,000 - 35,000 NOK',
+      typicalProjects: ['Bryllupsfest', 'Klubbkveld', 'Firmafest'],
+      targetClients: ['Brudepar', 'Eventbyraer', 'Utesteder'],
+      norwegianMarket: {
+        demand: 'high',
+        competition: 'high',
+        seasonality: ['Høy i sommer', 'Høy i desember'],
+        keyEvents: ['Bryllup', 'Julebord', 'Sommerfest'],
+        pricingRange: '6,000 - 45,000 NOK'
+      }
+    }),
+    buildVendorPersona({
+      id: 'music-live-band',
+      vendorType: 'music',
+      displayName: 'Live band',
+      personaDescription: 'Leverer liveopptreden og underholdning for store arrangementer.',
+      iconColor: '#8e44ad',
+      icon: getProfessionIcon('vendor'),
+      businessModel: 'Performance packages',
+      averageProjectValue: '20,000 - 120,000 NOK',
+      typicalProjects: ['Bryllupsband', 'Festivalopptreden', 'Galla'],
+      targetClients: ['Eventarrangorer', 'Hotell', 'Private selskaper'],
+      norwegianMarket: {
+        demand: 'medium',
+        competition: 'medium',
+        seasonality: ['Sommerhoysesong', 'Julebord'],
+        keyEvents: ['Festivaler', 'Prisgalla', 'Bryllup'],
+        pricingRange: '15,000 - 150,000 NOK'
+      }
+    })
+  ],
+  venue: [
+    buildVendorPersona({
+      id: 'venue-historic',
+      vendorType: 'venue',
+      displayName: 'Historisk lokale',
+      personaDescription: 'Unike lokaler med karakter og full service for bryllup.',
+      iconColor: '#6c5ce7',
+      icon: getProfessionIcon('vendor'),
+      businessModel: 'Venue rental + packages',
+      averageProjectValue: '40,000 - 200,000 NOK',
+      typicalProjects: ['Slottsbryllup', 'Vinterselskap', 'Galla'],
+      targetClients: ['Brudepar', 'Eventbyraer', 'Bedriftskunder'],
+      norwegianMarket: {
+        demand: 'high',
+        competition: 'medium',
+        seasonality: ['Hoy i sommer', 'Sterk helgebookinger'],
+        keyEvents: ['Bryllup', 'Jubileer', 'Julebord'],
+        pricingRange: '25,000 - 250,000 NOK'
+      }
+    }),
+    buildVendorPersona({
+      id: 'venue-modern',
+      vendorType: 'venue',
+      displayName: 'Moderne eventspace',
+      personaDescription: 'Fleksible lokaler med teknologi for konferanser og lanseringer.',
+      iconColor: '#5c6bc0',
+      icon: getProfessionIcon('vendor'),
+      businessModel: 'Hourly + service contracts',
+      averageProjectValue: '30,000 - 180,000 NOK',
+      typicalProjects: ['Konferanser', 'Produktlanseringer', 'Kickoff'],
+      targetClients: ['Bedrifter', 'Byraer', 'Tech-miljo'],
+      norwegianMarket: {
+        demand: 'medium',
+        competition: 'high',
+        seasonality: ['Stabil hele aret'],
+        keyEvents: ['Konferanser', 'Seminarer', 'Awards'],
+        pricingRange: '20,000 - 200,000 NOK'
+      }
+    })
+  ],
+  cake: [
+    buildVendorPersona({
+      id: 'cake-bespoke',
+      vendorType: 'cake',
+      displayName: 'Skreddersydde bryllupskaker',
+      personaDescription: 'Eksklusive designkaker og dessertbord for bryllup.',
+      iconColor: '#f7b731',
+      icon: getProfessionIcon('vendor'),
+      businessModel: 'Custom orders',
+      averageProjectValue: '8,000 - 40,000 NOK',
+      typicalProjects: ['Bryllupskaker', 'Dessertbord', 'Signaturdesign'],
+      targetClients: ['Brudepar', 'Wedding planners', 'Boutique venues'],
+      norwegianMarket: {
+        demand: 'high',
+        competition: 'medium',
+        seasonality: ['Hoy i sommer', 'Konfirmasjonssong'],
+        keyEvents: ['Bryllup', 'Konfirmasjon', 'Jubileer'],
+        pricingRange: '2,500 - 50,000 NOK'
+      }
+    }),
+    buildVendorPersona({
+      id: 'cake-dessert-bar',
+      vendorType: 'cake',
+      displayName: 'Dessertbar & minis',
+      personaDescription: 'Variert dessertopplevelse for firmafester og store events.',
+      iconColor: '#f39c12',
+      icon: getProfessionIcon('vendor'),
+      businessModel: 'Volume packages',
+      averageProjectValue: '6,000 - 30,000 NOK',
+      typicalProjects: ['Mini-dessertbord', 'Sweet tables', 'Corporate catering'],
+      targetClients: ['Eventbyraer', 'Bedrifter', 'Venue operators'],
+      norwegianMarket: {
+        demand: 'medium',
+        competition: 'medium',
+        seasonality: ['Hoy i desember', 'Sommerfester'],
+        keyEvents: ['Julebord', 'Sommerfest', 'Prisgalla'],
+        pricingRange: '1,500 - 25,000 NOK'
+      }
+    })
+  ],
+  planner: [
+    buildVendorPersona({
+      id: 'planner-wedding',
+      vendorType: 'planner',
+      displayName: 'Bryllupsplanlegger',
+      personaDescription: 'Totalplanlegging av bryllup med koordinering av alle leverandorer.',
+      iconColor: '#00bcd4',
+      icon: getProfessionIcon('vendor'),
+      businessModel: 'Full-service planning',
+      averageProjectValue: '25,000 - 120,000 NOK',
+      typicalProjects: ['Full bryllupsplan', 'Koordinering', 'Leverandorstyring'],
+      targetClients: ['Brudepar', 'Familier', 'Destinasjonsbryllup'],
+      norwegianMarket: {
+        demand: 'high',
+        competition: 'medium',
+        seasonality: ['Hoy i mai-september'],
+        keyEvents: ['Bryllup', 'Forlovelser'],
+        pricingRange: '15,000 - 150,000 NOK'
+      }
+    }),
+    buildVendorPersona({
+      id: 'planner-corporate',
+      vendorType: 'planner',
+      displayName: 'Corporate planner',
+      personaDescription: 'Planlegger konferanser, kickoff og lanseringer for bedrifter.',
+      iconColor: '#26c6da',
+      icon: getProfessionIcon('vendor'),
+      businessModel: 'Project + retainer',
+      averageProjectValue: '40,000 - 300,000 NOK',
+      typicalProjects: ['Konferanser', 'Kickoff', 'Produktlansering'],
+      targetClients: ['HR-avdelinger', 'Markedsavdelinger', 'Byraer'],
+      norwegianMarket: {
+        demand: 'medium',
+        competition: 'medium',
+        seasonality: ['Hoy i var/host'],
+        keyEvents: ['Konferanser', 'Seminarer', 'Awards'],
+        pricingRange: '25,000 - 350,000 NOK'
+      }
+    })
+  ],
+  beauty: [
+    buildVendorPersona({
+      id: 'beauty-bridal',
+      vendorType: 'beauty',
+      displayName: 'Brude-stylist',
+      personaDescription: 'Hår og makeup med fokus på bryllupsdager og fotoshoots.',
+      iconColor: '#ec407a',
+      icon: getProfessionIcon('vendor'),
+      businessModel: 'Per-event booking',
+      averageProjectValue: '4,000 - 18,000 NOK',
+      typicalProjects: ['Brudemakeup', 'Praveoppsett', 'Fotografering'],
+      targetClients: ['Brudepar', 'Fotografer', 'Venue stylists'],
+      norwegianMarket: {
+        demand: 'high',
+        competition: 'high',
+        seasonality: ['Hoy i mai-september'],
+        keyEvents: ['Bryllup', 'Konfirmasjon', 'Galla'],
+        pricingRange: '2,500 - 25,000 NOK'
+      }
+    }),
+    buildVendorPersona({
+      id: 'beauty-editorial',
+      vendorType: 'beauty',
+      displayName: 'Editorial glam',
+      personaDescription: 'Makeup for kampanjer, mote og studioinnhold.',
+      iconColor: '#d81b60',
+      icon: getProfessionIcon('vendor'),
+      businessModel: 'Day rates + retainers',
+      averageProjectValue: '6,000 - 30,000 NOK',
+      typicalProjects: ['Foto-shoots', 'Kampanjer', 'Runway'],
+      targetClients: ['Byraer', 'Motehus', 'Produksjonsselskap'],
+      norwegianMarket: {
+        demand: 'medium',
+        competition: 'medium',
+        seasonality: ['Stabil hele aret'],
+        keyEvents: ['Kampanjer', 'Awards', 'Runway'],
+        pricingRange: '4,000 - 40,000 NOK'
+      }
+    })
+  ],
+  transport: [
+    buildVendorPersona({
+      id: 'transport-luxury',
+      vendorType: 'transport',
+      displayName: 'Luxury transport',
+      personaDescription: 'Premium kjoretoy og sjaforservice for VIP-events.',
+      iconColor: '#4facfe',
+      icon: getProfessionIcon('vendor'),
+      businessModel: 'Event packages',
+      averageProjectValue: '12,000 - 80,000 NOK',
+      typicalProjects: ['Bryllupstransport', 'VIP-kjoreplan', 'Galla'],
+      targetClients: ['Brudepar', 'Bedrifter', 'Hoteller'],
+      norwegianMarket: {
+        demand: 'medium',
+        competition: 'medium',
+        seasonality: ['Hoy i sommer', 'Julebord'],
+        keyEvents: ['Bryllup', 'Galla', 'Konferanser'],
+        pricingRange: '7,000 - 120,000 NOK'
+      }
+    }),
+    buildVendorPersona({
+      id: 'transport-shuttle',
+      vendorType: 'transport',
+      displayName: 'Shuttle & logistikk',
+      personaDescription: 'Transportlogistikk for gjester og events i stor skala.',
+      iconColor: '#2b8ef8',
+      icon: getProfessionIcon('vendor'),
+      businessModel: 'Hourly + fleet contracts',
+      averageProjectValue: '15,000 - 120,000 NOK',
+      typicalProjects: ['Gjestetransport', 'Konferanselogistikk', 'Festivaler'],
+      targetClients: ['Eventbyraer', 'Bedrifter', 'Festivalarrangorer'],
+      norwegianMarket: {
+        demand: 'medium',
+        competition: 'low',
+        seasonality: ['Sommerhoysesong', 'Konferansesesong var/host'],
+        keyEvents: ['Festivaler', 'Konferanser', 'Sommerfester'],
+        pricingRange: '10,000 - 150,000 NOK'
+      }
+    })
+  ]
+};
+
 // Enhanced persona configurations based on real professional images
 export const ENHANCED_PERSONAS: Record<string, PersonaProfile> = {
   photographer: {
@@ -585,6 +930,15 @@ export function useEnhancedPersonas() {
     };
   };
 
+  const getVendorPersonasByType = (vendorType: string): VendorPersonaProfile[] => {
+    return VENDOR_PERSONAS[vendorType] || [];
+  };
+
+  const getVendorPersonaById = (vendorType: string, personaId: string): VendorPersonaProfile | null => {
+    const personas = VENDOR_PERSONAS[vendorType] || [];
+    return personas.find((persona) => persona.id === personaId) || null;
+  };
+
   // Check if we're still loading SSB data
   const isLoading = personaLoading;
 
@@ -599,6 +953,9 @@ export function useEnhancedPersonas() {
     getPersonaInsights,
     personas: personaConfigs, // Alias for compatibility
     loading: isLoading, // Alias for compatibility
+    vendorPersonaConfigs: VENDOR_PERSONAS,
+    getVendorPersonasByType,
+    getVendorPersonaById,
     // Expose SSB and Proff.no data availability
     hasRealData: !!(ssbDataPhotographer || ssbDataVideographer || ssbDataMusicProducer || ssbDataPetGroomer || ssbDataVendor),
   };

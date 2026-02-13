@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
 import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
 import { getProfessionIcon } from '@/utils/profession-icons';
+import { useEnhancedPersonas, VendorPersonaProfile } from '../universal/hooks/useEnhancedPersonas';
 import {
   Box,
   Typography,
@@ -180,10 +181,11 @@ interface OnboardingStep {
   fields?: {
     name: string;
     label: string;
-    type: 'text' | 'email' | 'url' | 'textarea' | 'select' | 'checkbox' | 'category-select' | 'file' | 'integration';
+    type: 'text' | 'email' | 'url' | 'textarea' | 'select' | 'checkbox' | 'category-select' | 'persona-select' | 'file' | 'integration';
     required?: boolean;
     options?: string[];
     categoryOptions?: CategoryOption[];
+    personaOptions?: VendorPersonaProfile[];
   }[];
 }
 
@@ -229,6 +231,9 @@ export default function UniversalVendorOnboarding({
     enhancedProfessionConfig?.displayName || enhancedProfessionConfig?.name || activeProfession;
   const professionColor = enhancedProfessionConfig?.color || '#ff8c00';
   const professionIcon = getProfessionIcon(activeProfession);
+
+  const { getVendorPersonasByType } = useEnhancedPersonas();
+  const vendorPersonas = getVendorPersonasByType(vendorType);
 
   // Theming system
   const theming = useTheming(activeProfession);
@@ -321,6 +326,17 @@ export default function UniversalVendorOnboarding({
         ]
     },
       {
+        label: 'Hvorfor, Hvordan, Hva',
+        description: 'Forklar formål, prosess og hva du leverer',
+        icon: AutoAwesome,
+        required: true,
+        fields: [
+          { name: 'whyStatement', label: 'Hvorfor (formål)', type: 'textarea', required: true },
+          { name: 'howStatement', label: 'Hvordan (prosess)', type: 'textarea', required: true },
+          { name: 'whatStatement', label: 'Hva (produkt)', type: 'textarea', required: true }
+        ]
+      },
+      {
         label: 'Produktkategorier',
         description: `Velg hvilke ${vendorConfig?.name.toLowerCase()} kategorier du tilbyr`,
         icon: Category,
@@ -337,6 +353,24 @@ export default function UniversalVendorOnboarding({
         ]
       }
     ];
+
+    if (vendorPersonas.length > 0) {
+      baseSteps.splice(2, 0, {
+        label: 'Persona',
+        description: `Velg profilen som passer best for ${vendorConfig?.name.toLowerCase()} virksomheten din`,
+        icon: AutoAwesome,
+        required: true,
+        fields: [
+          {
+            name: 'personaId',
+            label: 'Velg persona',
+            type: 'persona-select',
+            required: true,
+            personaOptions: vendorPersonas
+          }
+        ]
+      });
+    }
 
     // Add vendor-specific steps
     switch (vendorType) {
@@ -1027,6 +1061,69 @@ export default function UniversalVendorOnboarding({
                                 {formData[field.name].length} kategorier valgt
                               </Typography>
                             )}
+                          </Box>
+                        ) : field.type === 'persona-select' && field.personaOptions ? (
+                          <Box>
+                            <Typography variant="subtitle2" sx={{ mb: 2 }}>
+                              {field.label}
+                            </Typography>
+                            <Grid container spacing={2}>
+                              {field.personaOptions.map((persona) => {
+                                const isSelected = formData[field.name] === persona.id;
+                                return (
+                                  <Grid size={{ xs: 12, sm: 6 }} key={persona.id}>
+                                    <Card
+                                      onClick={() => handleFieldChange(field.name, persona.id)}
+                                      sx={{
+                                        cursor: 'pointer',
+                                        border: isSelected ? `2px solid ${persona.iconColor}` : '1px solid',
+                                        borderColor: isSelected ? persona.iconColor : 'divider',
+                                        bgcolor: isSelected ? `${persona.iconColor}10` : 'background.paper',
+                                        transition: 'all 0.2s',
+                                        '&:hover': {
+                                          transform: 'translateY(-2px)',
+                                          boxShadow: 3
+                                        }
+                                      }}
+                                    >
+                                      <CardContent>
+                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                                          <Avatar sx={{ bgcolor: persona.iconColor, width: 36, height: 36 }}>
+                                            {persona.icon && React.cloneElement(persona.icon as React.ReactElement<any>, { sx: { fontSize: 18 } })}
+                                          </Avatar>
+                                          <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                                            {persona.displayName}
+                                          </Typography>
+                                        </Box>
+                                        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                                          {persona.personaDescription}
+                                        </Typography>
+                                        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 2 }}>
+                                          <Chip
+                                            label={`Etterspørsel: ${persona.norwegianMarket.demand}`}
+                                            size="small"
+                                            color={persona.norwegianMarket.demand === 'high' ? 'success' : persona.norwegianMarket.demand === 'medium' ? 'warning' : 'info'}
+                                            variant="outlined"
+                                          />
+                                          <Chip
+                                            label={`Konkurranse: ${persona.norwegianMarket.competition}`}
+                                            size="small"
+                                            color={persona.norwegianMarket.competition === 'low' ? 'success' : persona.norwegianMarket.competition === 'medium' ? 'warning' : 'error'}
+                                            variant="outlined"
+                                          />
+                                        </Box>
+                                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                                          💰 {persona.norwegianMarket.pricingRange}
+                                        </Typography>
+                                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                                          {persona.businessModel} • {persona.averageProjectValue}
+                                        </Typography>
+                                      </CardContent>
+                                    </Card>
+                                  </Grid>
+                                );
+                              })}
+                            </Grid>
                           </Box>
                         ) : field.type === 'integration' && field.name === 'fikenIntegration' ? (
                           <Box sx={{ gridColumn: 'span 2' }}>

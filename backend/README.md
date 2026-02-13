@@ -45,6 +45,9 @@ DATABASE_URL=postgresql://user:password@host:5432/database
 PORT=5050
 NODE_ENV=development
 
+# Evendi bridge
+EVENDI_API_URL=https://evendi.onrender.com
+
 # Auth
 SESSION_SECRET=your-session-secret
 JWT_SECRET=your-jwt-secret

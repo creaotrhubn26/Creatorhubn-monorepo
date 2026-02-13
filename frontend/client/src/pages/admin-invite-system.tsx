@@ -48,7 +48,7 @@ import { useExternalData } from '../services/ExternalDataService';
 import { useLocation } from 'wouter';
 
 interface InviteRequest {
-  id: number;
+  id: string;
   profession: string;
   firstName: string;
   lastName: string;
@@ -71,6 +71,7 @@ interface InviteRequest {
   paymentTransactionId?: string;
   paymentAmount?: number;
   paymentTimestamp?: string;
+  source?: string;
 }
 
 interface PrototypeTesterRequest {
@@ -282,6 +283,17 @@ export default function AdminInviteSystem() {
     }
   };
 
+  const getSourceChip = (source?: string) => {
+    const normalized = (source || 'unknown').toLowerCase();
+    if (normalized === 'creatorhub') {
+      return { label: 'Creatorhub', color: 'primary' as const };
+    }
+    if (normalized === 'evendi') {
+      return { label: 'Evendi', color: 'secondary' as const };
+    }
+    return { label: 'Ukjent', color: 'default' as const };
+  };
+
   const pendingRequests = inviteRequests.filter((req: InviteRequest) => req.status === 'pending');
   const processedRequests = inviteRequests.filter((req: InviteRequest) => req.status !== 'pending');
   const pendingPrototypeRequests = prototypeTesterRequests.filter((req: PrototypeTesterRequest) => req.status === 'pending');
@@ -335,6 +347,7 @@ export default function AdminInviteSystem() {
                       <TableRow>
                         <TableCell>Bedrift / Navn</TableCell>
                         <TableCell>Profesjon</TableCell>
+                        <TableCell>Kilde</TableCell>
                         <TableCell>Kontakt</TableCell>
                         <TableCell>Org.nr</TableCell>
                         <TableCell>Abonnement</TableCell>
@@ -371,6 +384,12 @@ export default function AdminInviteSystem() {
                                   }}
                                 />
                               );
+                            })()}
+                          </TableCell>
+                          <TableCell>
+                            {(() => {
+                              const sourceChip = getSourceChip(request.source);
+                              return <Chip label={sourceChip.label} size="small" color={sourceChip.color} />;
                             })()}
                           </TableCell>
                           <TableCell>
@@ -459,6 +478,7 @@ export default function AdminInviteSystem() {
                     <TableHead>
                       <TableRow>
                         <TableCell>Bedrift / Navn</TableCell>
+                        <TableCell>Kilde</TableCell>
                         <TableCell>Status</TableCell>
                         <TableCell>Behandlet dato</TableCell>
                         <TableCell>Handlinger</TableCell>
@@ -468,6 +488,12 @@ export default function AdminInviteSystem() {
                       {processedRequests.slice(0, 10).map((request: InviteRequest) => (
                         <TableRow key={request.id}>
                           <TableCell>{request.business || `${request.firstName} ${request.lastName}`}</TableCell>
+                          <TableCell>
+                            {(() => {
+                              const sourceChip = getSourceChip(request.source);
+                              return <Chip label={sourceChip.label} size="small" color={sourceChip.color} />;
+                            })()}
+                          </TableCell>
                           <TableCell><Chip label={getStatusText(request.status)} color={getStatusColor(request.status) as any} size="small" /></TableCell>
                           <TableCell>{request.processedDate ? new Date(request.processedDate).toLocaleDateString('nb-NO') : 'Ukjent'}</TableCell>
                           <TableCell>
@@ -734,6 +760,20 @@ export default function AdminInviteSystem() {
                           mt: 0.5,
                           '& .MuiChip-icon': { color: 'white' }
                         }}
+                      />
+                    );
+                  })()}
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="subtitle2">Kilde</Typography>
+                  {(() => {
+                    const sourceChip = getSourceChip(selectedRequest.source);
+                    return (
+                      <Chip
+                        label={sourceChip.label}
+                        size="small"
+                        color={sourceChip.color}
+                        sx={{ mt: 0.5 }}
                       />
                     );
                   })()}

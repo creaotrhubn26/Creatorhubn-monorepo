@@ -29,5 +29,9 @@ services:
       - key: NODE_ENV
         value: production
 
+      # Evendi bridge
+      - key: EVENDI_API_URL
+        sync: false  # Set manually in Render dashboard
+
 # Note: For security, sensitive variables (marked with sync: false) should be
 # set directly in the Render dashboard rather than in this file.

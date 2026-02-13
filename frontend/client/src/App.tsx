@@ -94,7 +94,7 @@ import UniversalDashboard from '@/components/universal/UniversalDashboard';
 // import ConcurrentOperationsDemo from '@/pages/concurrent-operations-demo'; // Has syntax errors
 // import UniversalVendorShowcasePage from '@/pages/UniversalVendorShowcasePage'; // Has syntax errors
 // import VendorPricingTestPage from '@/pages/VendorPricingTestPage'; // Has syntax errors
-// import VendorTypeManagementPage from '@/pages/VendorTypeManagementPage'; // Has syntax errors
+import VendorTypeManagementPage from '@/pages/VendorTypeManagementPage';
 // import VendorOnboardingTestPage from '@/pages/VendorOnboardingTestPage'; // File doesn't exist
 // import VendorOnboardingWithInvitePage from '@/pages/VendorOnboardingWithInvitePage'; // Has syntax errors
 // import UniversalVisualCMS from '@/components/cms/UniversalVisualCMS'; // Has syntax errors
@@ -426,7 +426,7 @@ function App() {
                     component={UniversalVendorShowcasePage as React.ComponentType<any>}
                   /> */}
                   {/* <Route path="/vendor-pricing-test" component={VendorPricingTestPage} /> */}
-                  {/* <Route path="/vendor-type-management" component={VendorTypeManagementPage} /> */}
+                  <Route path="/vendor-type-management" component={VendorTypeManagementPage} />
                   {/* <Route path="/vendor-onboarding-test" component={VendorOnboardingTestPage} /> */}
                   {/* <Route
                     path="/vendor-onboarding-with-invite"
