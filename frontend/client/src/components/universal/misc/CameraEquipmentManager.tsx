@@ -89,7 +89,7 @@ export default function CameraEquipmentManager({ profession }: CameraEquipmentMa
       type: 'universal',
       category: 'equipment',
       capabilities: [
-        'data:read','data: write''event: emit','event: listen''ui: update','equipment: manage''camera: track','maintenance: schedule''google-drive: sync','google-sheets: sync''equipment: export'
+        'data:read', 'data:write', 'event:emit', 'event:listen', 'ui:update', 'equipment:manage', 'camera:track', 'maintenance:schedule', 'google-drive:sync', 'google-sheets:sync', 'equipment:export'
      , ],
       dependencies: ['google-drive-manager','google-sheets-api'],
       props: ['profession','equipmentType','maintenanceSchedule'],

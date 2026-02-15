@@ -78,6 +78,13 @@ function TabPanel(props: TabPanelProps) {
   );
 }
 
+interface CustomFieldDefinition {
+  key: string;
+  label: string;
+  type?: 'text' | 'multiline' | 'number' | 'switch';
+  helperText?: string;
+}
+
 export function LandingPageSectionEditor({
   sectionId,
   sectionName,
@@ -245,6 +252,10 @@ export function LandingPageSectionEditor({
     </Box>
   );
 
+  const customFields: CustomFieldDefinition[] = Array.isArray(localSection.fields)
+    ? (localSection.fields as CustomFieldDefinition[])
+    : [];
+
   return (
     <Paper
       elevation={isEditing ? 4 : 1}
@@ -373,6 +384,51 @@ export function LandingPageSectionEditor({
           {renderTextEditor('title', 'Section Title')}
           {renderTextEditor('subtitle', 'Subtitle')}
           {renderTextEditor('content', 'Description', true)}
+
+          {customFields.length > 0 && (
+            <Box sx={{ mt: 2 }}>
+              <Typography variant="subtitle2" sx={{ mb: 1, color: 'rgba(255,255,255,0.7)' }}>
+                Custom Fields
+              </Typography>
+              {customFields.map((field) => {
+                if (field.type === 'switch') {
+                  return (
+                    <FormControlLabel
+                      key={field.key}
+                      control={
+                        <Switch
+                          checked={Boolean(localSection[field.key])}
+                          onChange={(e) => handleFieldChange(field.key, e.target.checked)}
+                          sx={{
+                            '& .Mui-checked': { color: '#ff6b00' },
+                            '& .Mui-checked + .MuiSwitch-track': { bgcolor: '#ff6b00' },
+                          }}
+                        />
+                      }
+                      label={field.label}
+                      sx={{ color: 'white', mb: 1 }}
+                    />
+                  );
+                }
+
+                return (
+                  <TextField
+                    key={field.key}
+                    fullWidth
+                    label={field.label}
+                    value={localSection[field.key] || ''}
+                    onChange={(e) => handleFieldChange(field.key, e.target.value)}
+                    multiline={field.type === 'multiline'}
+                    rows={field.type === 'multiline' ? 3 : 1}
+                    type={field.type === 'number' ? 'number' : 'text'}
+                    size="small"
+                    sx={{ mb: 2 }}
+                    helperText={field.helperText}
+                  />
+                );
+              })}
+            </Box>
+          )}
 
           {/* Items array (for features, testimonials, etc.) */}
           {localSection.items && Array.isArray(localSection.items) && (

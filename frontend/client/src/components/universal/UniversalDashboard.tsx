@@ -182,6 +182,7 @@ import UniversalCommunication from '../communication/UniversalCommunication';
 import UniversalWorklog from '../worklog/UniversalWorklog';
 import ContextualPhotographyTipsOverlay from '../photography/ContextualPhotographyTipsOverlay';
 import ShowcaseAdmin from '../showcase/ShowcaseAdmin';
+import ShowcasePublisherPanel from '../showcase/ShowcasePublisherPanel';
 import WeddingTimelineOverview from '../wedding/WeddingTimelineOverview';
 import WeddingTimelineClientView from '../wedding/WeddingTimelineClientView';
 import WeddingTimelineChangesOverview from '../wedding/WeddingTimelineChangesOverview';
@@ -261,11 +262,13 @@ const localProfessionConfigs: ProfessionConfigs = {
       { id: 'projects', label: 'Prosjekter', icon: <Folder /> },
       { id: 'wedding-timeline', label: 'Bryllupstidslinje', icon: <Event /> },
       { id: 'showcase-admin', label: 'Showcase Admin', icon: <Collections /> },
+      { id: 'showcase-publisher', label: 'Showcase Publisher', icon: <VideoLibrary /> },
       { id: 'showcase-viewer', label: 'Showcase Viewer', icon: <Visibility /> },
       { id: 'downloads', label: 'Downloads', icon: <GetApp /> },
       { id: 'file-upload', label: 'File Upload', icon: <CloudUpload /> },
       { id: 'ai-enhancement', label: 'AI Forbedring', icon: <AutoFixHigh /> },
       { id: 'email-center', label: 'E-post', icon: <Email /> },
+      { id: 'worklog', label: 'Worklog', icon: <AccessTime /> },
       { id: 'photo-enhancement', label: 'Fotoforbedring', icon: <Collections /> },
       { id: 'client-management', label: 'Klientadministrasjon', icon: <Group /> },
       { id: 'equipment', label: 'Utstyr', icon: <CameraAlt /> },
@@ -5011,6 +5014,11 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
 
               </TabPanel>
 
+              {/* Tab 4b: Showcase Publisher */}
+              <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'showcase-publisher')}>
+                <ShowcasePublisherPanel userId={userId} />
+              </TabPanel>
+
               {/* Tab 5: Universal Showcase Viewer */}
               <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'showcase-viewer')}>
                 <Box sx={{ p: 0, height: 'calc(100vh - 200px)', overflow: 'auto' }}>
@@ -5141,15 +5149,11 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
 
               {/* Tab 10: Worklog */}
               <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'worklog')}>
-                <Box sx={{ p: 3, textAlign: 'center' }}>
-                  <Typography variant="body2" sx={{ color: theme.palette.primary.main, fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: 1 }}>
-                    📝 Google Keep Arbeidslogg
-                    <Chip label="AKTIVT" size="small" sx={{ bgcolor: '#4caf50', color: 'white', fontSize: '0.7rem', height: 20 }} />
-                  </Typography>
-                  <Typography variant="body2" sx={{ color: '#666', fontSize: '0.8rem', mt: 1 }}>
-                    Alle arbeidslogger synkroniseres automatisk til Google Keep for sikker lagring og enkel tilgang fra alle enheter.
-                  </Typography>
-                </Box>
+                <UniversalWorklog
+                  projectId={selectedProject?.id || userId}
+                  userId={userId}
+                  profession={getComponentProfession(profession) as any}
+                />
               </TabPanel>
 
               {/* Tab 11: Kunder - Universal CRM System with Pricing */}
@@ -5785,7 +5789,11 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
 
               {/* Tab 17: Integration Test */}
               <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'integration-test')}>
-                <UniversalDashboardIntegrationTest />
+                <UniversalDashboardIntegrationTest
+                  profession={profession as any}
+                  userId={userId}
+                  projectId={selectedProject?.id || userId}
+                />
               </TabPanel>
             </>
           ) : profession === 'videographer' ? (
@@ -6293,7 +6301,11 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
 
               {/* Tab 13: Integration Test */}
               <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'integration-test')}>
-                <UniversalDashboardIntegrationTest />
+                <UniversalDashboardIntegrationTest
+                  profession={profession as any}
+                  userId={userId}
+                  projectId={selectedProject?.id || userId}
+                />
               </TabPanel>
             </>
           ) : (
@@ -6455,7 +6467,11 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
 
               {/* Integration Test Tab */}
               <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'integration-test') >= 0 ? availableTabs.findIndex(tab => tab.id === 'integration-test') : 13}>
-                <UniversalDashboardIntegrationTest />
+                <UniversalDashboardIntegrationTest
+                  profession={profession as any}
+                  userId={userId}
+                  projectId={selectedProject?.id || userId}
+                />
               </TabPanel>
 
               {/* Tab 11: Innstillinger - Vendor Implementation */}

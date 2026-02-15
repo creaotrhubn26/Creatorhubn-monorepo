@@ -1,9 +1,5 @@
-import { useTheming } from '../utils/theming-helper';
-import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
 import { useDynamicProfessions } from '@/components/universal/hooks/useDynamicProfessions';
-import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
-import getProfessionIcon from '@/utils/profession-icons';
-import React, { useEffect, useRef, useState, useCallback } from "react";
+import React, { useState } from "react";
 import { useLocation } from "wouter";
 import { GdprNotice } from "@/components/common/GdprNotice";
 import { withVisualEditor } from '@/components/admin/visual-editor/withVisualEditor';
@@ -20,15 +16,12 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  TextField,
   Grid,
   IconButton,
   Chip,
-  Alert,
   Divider,
   List,
   ListItem,
-  ListItemButton,
   ListItemIcon,
   ListItemText,
 } from "@mui/material";
@@ -44,7 +37,6 @@ import {
   Phone,
   LocationOn,
   Close,
-  Dashboard,
   Settings,
   Info,
   Assessment,
@@ -53,6 +45,7 @@ import {
   Adjust,
   Login,
   ArrowForward,
+  PlayArrow,
   School,
   People,
   AccountCircle,
@@ -61,130 +54,7 @@ import {
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import FAQSection from "@/components/landing/FAQSection";
-
-// Custom hook for scroll-triggered reveal animations
-const useScrollReveal = (options?: IntersectionObserverInit) => {
-  const [isVisible, setIsVisible] = useState(false);
-  const [hasAnimated, setHasAnimated] = useState(false);
-  const elementRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    // Check if element is already in viewport on mount
-    const element = elementRef.current;
-    if (element) {
-      const rect = element.getBoundingClientRect();
-      if (rect.top < window.innerHeight && rect.bottom > 0) {
-        setIsVisible(true);
-        setHasAnimated(true);
-        return;
-      }
-    }
-
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting && !hasAnimated) {
-          setIsVisible(true);
-          setHasAnimated(true);
-        }
-      },
-      {
-        threshold: 0.05,
-        rootMargin: '50px 0px 50px 0px',
-        ...options,
-      }
-    );
-
-    if (element) {
-      observer.observe(element);
-    }
-
-    return () => {
-      if (element) {
-        observer.unobserve(element);
-      }
-    };
-  }, [hasAnimated, options]);
-
-  return { ref: elementRef, isVisible };
-};
-
-// Animated section wrapper component
-interface AnimatedSectionProps {
-  children: React.ReactNode;
-  animation?: 'fadeInUp' | 'slideInLeft' | 'slideInRight' | 'scaleIn';
-  delay?: number;
-  className?: string;
-  sx?: any;
-}
-
-const AnimatedSection: React.FC<AnimatedSectionProps> = ({ 
-  children, 
-  animation = 'fadeInUp',
-  delay = 0,
-  className,
-  sx 
-}) => {
-  const { ref, isVisible } = useScrollReveal();
-  
-  // Start with initial visible state to prevent flash of hidden content
-  const [mounted, setMounted] = useState(false);
-  
-  useEffect(() => {
-    // Small delay to allow for proper hydration
-    const timer = setTimeout(() => setMounted(true), 50);
-    return () => clearTimeout(timer);
-  }, []);
-  
-  const getAnimationStyles = () => {
-    // If not mounted yet, show content immediately (prevents flash)
-    if (!mounted) {
-      return { opacity: 1, transform: 'none' };
-    }
-    
-    const baseStyles = {
-      fadeInUp: {
-        transform: isVisible ? 'translateY(0)' : 'translateY(30px)',
-        opacity: isVisible ? 1 : 0,
-      },
-      slideInLeft: {
-        transform: isVisible ? 'translateX(0)' : 'translateX(-30px)',
-        opacity: isVisible ? 1 : 0,
-      },
-      slideInRight: {
-        transform: isVisible ? 'translateX(0)' : 'translateX(30px)',
-        opacity: isVisible ? 1 : 0,
-      },
-      scaleIn: {
-        transform: isVisible ? 'scale(1)' : 'scale(0.97)',
-        opacity: isVisible ? 1 : 0,
-      },
-    };
-    
-    return baseStyles[animation];
-  };
-
-  return (
-    <Box
-      ref={ref}
-      className={className}
-      sx={{
-        ...getAnimationStyles(),
-        transition: mounted ? `all 0.7s cubic-bezier(0.4, 0, 0.2, 1) ${delay}s` : 'none',
-        ...sx,
-      }}
-    >
-      {children}
-    </Box>
-  );
-};
-
-// User interface definition
-interface User {
-  email?: string;
-  profession?: string;
-  userType?: string;
-  isAdmin?: boolean;
-}
+import { usePublishedPageCustomizations } from '@/hooks/usePageCustomizations';
 
 // Lazy load non-critical components for performance
 const LoginModal = React.lazy(() => import("@/components/auth/LoginModal"));
@@ -459,6 +329,9 @@ const globalStyles = `
   .icon-bounce {
     transition: transform 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
   }
+  .video-loading-logo {
+    animation: pulseGlow 2.4s ease-in-out infinite;
+  }
   
   .icon-bounce:hover {
     transform: translateY(-4px) scale(1.1);
@@ -471,7 +344,8 @@ const globalStyles = `
     .bento-card,
     .btn-glow::before,
     .card-shine::after,
-    .icon-bounce {
+    .icon-bounce,
+    .video-loading-logo {
       animation: none !important;
       transform: none !important;
       transition: none !important;
@@ -557,26 +431,253 @@ if (
   document.head.appendChild(style);
 }
 
-const LandingDesktop: React.FC = () => {
+interface LandingPartnerCustomization {
+  enabled?: boolean;
+  title?: string;
+  description?: string;
+  logoUrl?: string;
+  ctaLabel?: string;
+  dialogTitle?: string;
+  dialogBody?: string;
+  dialogBullets?: string | string[];
+}
+
+interface LandingVideoCustomization {
+  enabled?: boolean;
+  showEmbeddedVideo?: boolean;
+  title?: string;
+  description?: string;
+  videoUrl?: string;
+  posterUrl?: string;
+  autoPlay?: boolean;
+  loop?: boolean;
+  showControls?: boolean;
+  showLoadingLogo?: boolean;
+}
+
+interface LandingCinematicCustomization {
+  enabled?: boolean;
+  contrast?: number;
+  saturate?: number;
+  overlayTopOpacity?: number;
+  overlayBottomOpacity?: number;
+  glowWarmOpacity?: number;
+  glowCoolOpacity?: number;
+}
+
+interface LandingCustomizationProps {
+  partnerSection?: LandingPartnerCustomization;
+  videoSection?: LandingVideoCustomization;
+  cinematic?: LandingCinematicCustomization;
+}
+
+const LandingDesktop: React.FC<LandingCustomizationProps> = ({
+  partnerSection,
+  videoSection,
+  cinematic,
+}) => {
   console.log('[LandingDesktop] Component rendering...');
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
-  const { profession } = useProfessionAdapter();
-  
-  // Theming system - use dynamic profession
-  const theming = useTheming(profession || 'photographer');
   
   // Dynamic profession system
-  const { professionConfigs, getUserProfessionColor, getProfessionDisplayName } = useDynamicProfessions();
-  const { professionConfigs: apiProfessionConfigs } = useProfessionConfigs();
-  const currentProfession = profession || 'photographer';
-  const professionIcon = getProfessionIcon(currentProfession);
-  const professionConfig = professionConfigs?.[currentProfession];
-  const enhancedProfessionConfig = apiProfessionConfigs?.[currentProfession] || professionConfig;
-  const professionColor = getUserProfessionColor(currentProfession) || '#FF6B35';
+  const { getProfessionDisplayName } = useDynamicProfessions();
+  const defaultVideoUrl = "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4";
+  const defaultPoster = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='1280' height='720'><defs><linearGradient id='g' x1='0' x2='1' y1='0' y2='1'><stop offset='0%' stop-color='%23fff7ed'/><stop offset='100%' stop-color='%23ffedd5'/></linearGradient></defs><rect width='100%' height='100%' fill='url(%23g)'/><rect x='80' y='80' width='1120' height='560' fill='none' stroke='%23fdba74' stroke-width='6' rx='24'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' fill='%239ca3af' font-family='Arial' font-size='48' letter-spacing='2'>VIDEO%20POSTER</text></svg>";
+  const { data: pageCustomizations } = usePublishedPageCustomizations('landing-desktop');
+  const pageSections = pageCustomizations?.sections || {};
+
+  const defaultHeroSection = {
+    titleLineOne: 'Profesjonell Kreativ',
+    titleLineTwo: 'Plattform',
+    subtitle:
+      'Alt-i-ett plattform for kreative i Norge. StoryArc Studio, Academy, Community, og sømløse integrasjoner. Alt du trenger for å vokse.',
+    primaryCtaLabel: 'Bli med i CreatorHub',
+    secondaryCtaLabel: 'Logg inn',
+    items: [
+      {
+        title: 'Prosjektadministrasjon',
+        description: 'Hold oversikt over alle prosjekter, klienter og leveranser på ett sted',
+      },
+      {
+        title: 'StoryArc Studio',
+        description: 'Automatisk videoredigering med eksport til DaVinci Resolve, Final Cut Pro og Premiere',
+      },
+      {
+        title: 'Academy & Community',
+        description: 'Lær nye ferdigheter og koble deg til andre norske kreative',
+      },
+    ],
+  };
+  const heroSection = { ...defaultHeroSection, ...(pageSections.hero || {}) };
+
+  const defaultHowItWorks = {
+    title: 'Hvordan fungerer det?',
+    subtitle: 'Tre enkle steg til å komme i gang med CreatorHub Norge',
+    items: [
+      {
+        step: '1',
+        title: 'Velg din rolle',
+        description:
+          'Velg om du er fotograf, videograf, musikkprodusent eller leverandør. Vi tilpasser plattformen til dine behov.',
+      },
+      {
+        step: '2',
+        title: 'Opprett din konto',
+        description:
+          'Registrer deg gratis og gjennomfør en rask onboarding. Du kan begynne å bruke plattformen umiddelbart.',
+      },
+      {
+        step: '3',
+        title: 'Start a jobbe',
+        description:
+          'Last opp prosjekter, inviter klienter, bruk StoryArc Studio, og utforsk Academy og Community.',
+      },
+    ],
+  };
+  const howItWorksSection = { ...defaultHowItWorks, ...(pageSections.howItWorks || {}) };
+
+  const defaultFeatures = {
+    badgeLabel: 'Plattformen for de kreative',
+    title: 'Hvorfor',
+    highlight: 'CreatorHub Norge',
+    subtitle: 'Alt du trenger for å drive en profesjonell kreativ virksomhet i Norge',
+    items: [
+      {
+        title: 'Prosjektadministrasjon',
+        description:
+          'Effektiv prosjektstyring med intelligente løsninger for planlegging, produksjon og post-produksjon. Hold oversikt over alle prosjekter på ett sted.',
+      },
+      {
+        title: 'StoryArc Studio',
+        description: 'Profesjonell videoredigering som analyserer innholdet ditt og genererer story arcs automatisk.',
+      },
+      {
+        title: 'Integrasjoner',
+        description: 'Google Workspace, DaVinci Resolve, Final Cut Pro, Premiere Pro.',
+      },
+      {
+        title: 'Academy & Community',
+        description: 'Lær nye ferdigheter med kurs og tutorials.',
+      },
+    ],
+  };
+  const featuresSection = { ...defaultFeatures, ...(pageSections.features || {}) };
+
+  const defaultCta = {
+    titlePrefix: 'Klar til å',
+    highlight: 'revolutjonere',
+    titleSuffix: 'din kreative virksomhet?',
+    subtitle:
+      'Bli med i CreatorHub Norge i dag og opplev forskjellen profesjonelle verktøy kan gjøre.',
+    ctaLabel: 'Bli en del av CreatorHub Norge',
+  };
+  const ctaSection = { ...defaultCta, ...(pageSections.cta || {}) };
+
+  const defaultFooter = {
+    content:
+      'Profesjonell prosjektadministrasjon og kreative verktøy for norske fotografer, videografer og musikkprodusenter.',
+    contactEmail: 'daniel@creatorhubn.com',
+    contactPhone: '+47 97 95 92 94',
+    contactLocation: 'Norge',
+    privacyLabel: 'Personvernerklæring',
+    items: [
+      { title: 'Hjem', description: '/' },
+      { title: 'Om Oss', description: '/about-us' },
+      { title: 'Logg Inn', description: 'login' },
+      { title: 'Kom i Gang', description: 'cta' },
+    ],
+  };
+  const footerSection = { ...defaultFooter, ...(pageSections.footer || {}) };
+
+  const defaultFaq = {
+    badgeLabel: 'Ofte Stilte Spørsmål',
+    title: 'Spørsmål?',
+    highlight: 'Vi har svarene',
+    subtitle: 'Finn raskt svar på de vanligste spørsmålene om CreatorHub Norge',
+    items: [
+      {
+        title: 'Er CreatorHub Norge gratis?',
+        description:
+          'CreatorHub Norge tilbyr både gratis og betalte planer. Du kan starte med en gratis konto for å utforske plattformen.',
+      },
+      {
+        title: 'Hvordan kommer jeg i gang?',
+        description:
+          'Klikk på "Kom i Gang" knappen og velg din kreative rolle. Du vil bli guidet gjennom en enkel onboarding-prosess.',
+      },
+      {
+        title: 'Hvilke yrker stottes?',
+        description: 'Vi støtter fotografer, videografer, musikkprodusenter og leverandører.',
+      },
+    ],
+  };
+  const faqSection = { ...defaultFaq, ...(pageSections.faq || {}) };
+
+  const videoOverrides = { ...(pageSections.video || {}), ...(videoSection || {}) };
+  const partnerOverrides = { ...(pageSections.partner || {}), ...(partnerSection || {}) };
+  const cinematicOverrides = { ...(pageSections.cinematic || {}), ...(cinematic || {}) };
+
+  const videoConfig = {
+    enabled: videoOverrides.enabled ?? true,
+    showEmbeddedVideo: videoOverrides.showEmbeddedVideo ?? true,
+    title: videoOverrides.title || "Brukscase og resultater - fortalt visuelt",
+    description:
+      videoOverrides.description ||
+      "Her legger vi inn en use case-video som viser hvordan CreatorHub Norge og Evendi skaper bedre flyt, tryggere leveranser og mer fornøyde kunder.",
+    videoUrl: videoOverrides.videoUrl || defaultVideoUrl,
+    posterUrl: videoOverrides.posterUrl || defaultPoster,
+    autoPlay: videoOverrides.autoPlay ?? true,
+    loop: videoOverrides.loop ?? true,
+    showControls: videoOverrides.showControls ?? true,
+    showLoadingLogo: videoOverrides.showLoadingLogo ?? true,
+  };
+  const partnerConfig = {
+    enabled: partnerOverrides.enabled ?? true,
+    title: partnerOverrides.title || "Samarbeidspartner",
+    description:
+      partnerOverrides.description ||
+      "CreatorHub Norge og Evendi bygger en sømløs opplevelse der kreative leverandører møter brudepar med høyere kvalitet, bedre flyt og mer fornøyde kunder.",
+    logoUrl: partnerOverrides.logoUrl || "/evendi-logo.png",
+    ctaLabel: partnerOverrides.ctaLabel || "Les mer om samarbeidet",
+    dialogTitle: partnerOverrides.dialogTitle || "Samarbeid med Evendi",
+    dialogBody:
+      partnerOverrides.dialogBody ||
+      "Evendi er den mest ambisiose bryllupsplattformen i Norge. De tar hånd om planlegging, kommunikasjon og forutsigbarhet for brudeparene som vil ha en premium opplevelse.\n\nNår CreatorHub Norge kobles inn blir prosjektene levert med klarere forventninger, tryggere tidsplaner og profesjonell prosjektstyring. Det betyr mer tid til kreativitet, færre misforståelser og høyere kundetilfredshet.",
+    dialogBullets:
+      partnerOverrides.dialogBullets ||
+      "Flere kvalifiserte leads til deg som leverandør\nKlarere prosesser som gir trygghet og bedre marginer\nEt helhetlig premium-stempel som skiller deg ut i markedet",
+  };
+  const cinematicConfig = {
+    enabled: cinematicOverrides.enabled ?? true,
+    contrast: cinematicOverrides.contrast ?? 1.08,
+    saturate: cinematicOverrides.saturate ?? 1.1,
+    overlayTopOpacity: cinematicOverrides.overlayTopOpacity ?? 0.55,
+    overlayBottomOpacity: cinematicOverrides.overlayBottomOpacity ?? 0.65,
+    glowWarmOpacity: cinematicOverrides.glowWarmOpacity ?? 0.25,
+    glowCoolOpacity: cinematicOverrides.glowCoolOpacity ?? 0.15,
+  };
+  const heroItems = Array.isArray(heroSection.items) && heroSection.items.length > 0
+    ? heroSection.items
+    : defaultHeroSection.items;
+  const howItWorksItems = Array.isArray(howItWorksSection.items) && howItWorksSection.items.length > 0
+    ? howItWorksSection.items
+    : defaultHowItWorks.items;
+  const featureItems = Array.isArray(featuresSection.items) && featuresSection.items.length > 0
+    ? featuresSection.items
+    : defaultFeatures.items;
+  const footerLinks = Array.isArray(footerSection.items) && footerSection.items.length > 0
+    ? footerSection.items
+    : defaultFooter.items;
+  const howItWorksPalette = [
+    { icon: <AccountCircle sx={{ fontSize: 40, color: "white" }} />, color: "#ff8c00" },
+    { icon: <RocketLaunch sx={{ fontSize: 40, color: "white" }} />, color: "#f59e0b" },
+    { icon: <Settings sx={{ fontSize: 40, color: "white" }} />, color: "#d97706" },
+  ];
+  const [isVideoReady, setIsVideoReady] = useState(false);
   
   // Fetch dynamic professions from wizard - aggressive caching for static data
-  const { data: dynamicProfessions, isLoading: professionsLoading } = useQuery({
+  const { data: dynamicProfessions } = useQuery({
     queryKey: ['/api/professions/all'],
     queryFn: () => apiRequest('/api/professions/all'),
     staleTime: 15 * 60 * 1000, // Cache for 15 minutes (professions rarely change)
@@ -679,6 +780,7 @@ const LandingDesktop: React.FC = () => {
     showLoginModal: false,
     showInviteRequest: false,
     showOnboarding: false,
+    showPartnerDialog: false,
     selectedRole: ", ",
     selectedPlan: null as any,
   });
@@ -695,6 +797,7 @@ const LandingDesktop: React.FC = () => {
       showLoginModal: false,
       showInviteRequest: false,
       showOnboarding: false,
+      showPartnerDialog: false,
       selectedRole: ", ",
       selectedPlan: null,
     });
@@ -718,6 +821,8 @@ const LandingDesktop: React.FC = () => {
         }));
       } else if (modalState.showLoginModal) {
           setModalState((prev) => ({ ...prev, showLoginModal: false }));
+      } else if (modalState.showPartnerDialog) {
+          setModalState((prev) => ({ ...prev, showPartnerDialog: false }));
       }
     }
   };
@@ -748,11 +853,9 @@ const LandingDesktop: React.FC = () => {
       isAdmin: true
     }
   };
-  const userLoading = false;
 
   const isAuthenticated = true;
   const currentUser = authData.user;
-  const userProfession = currentUser?.profession || currentUser?.userType;
   const isAdmin = true;
 
   // ✅ FIX #1: Listen for 'auth-changed' event from LoginModal
@@ -792,38 +895,6 @@ const LandingDesktop: React.FC = () => {
     }
   }, [isAuthenticated, currentUser]);
 
-  // Role-based access control
-  const canAccessProfession = (profession: string) => {
-    try {
-      if (isAdmin) {
-        console.log(
-          `Admin Access: ${currentUser?.email} accessing ${profession} dashboard`,
-        );
-        return true;
-    }
-
-      if (userLoading) {
-        return false;
-    }
-
-      const detectedProfession =
-        userProfession ||
-        currentUser?.profession ||
-        currentUser?.userType ||
-        "unknown";
-
-      if (detectedProfession === "unknown" && isAuthenticated) {
-        return false;
-    }
-
-      const hasAccess = detectedProfession === profession;
-      return hasAccess;
-  } catch (error) {
-      console.error(`Error in canAccessProfession(${profession}):`, error);
-      return false;
-  }
-};
-
   const handleNavigation = (path: string) => {
     handleNavigationCleanup(path);
 };
@@ -840,20 +911,6 @@ const LandingDesktop: React.FC = () => {
   const handleLogin = () => {
     console.log('🔐 Existing user login - opening login modal');
     setModalState((prev) => ({ ...prev, showLoginModal: true }));
-};
-
-  const handleJoinAsProfessional = () => {
-    console.log('👔 Professional signup - opening role selector');
-    setModalState((prev) => ({ ...prev, showRoleSelector: true }));
-};
-
-  const handleVendorNetwork = () => {
-    setModalState((prev) => ({
-      ...prev,
-      selectedRole: "vendor",
-      showInviteRequest: true,
-      showRoleSelector: false,
-  }));
 };
 
   const handleRoleSelection = (role: string) => {
@@ -1168,7 +1225,7 @@ const LandingDesktop: React.FC = () => {
                   fontSize: { md: "48px", lg: "56px" },
               }}
     >
-                Profesjonell Kreativ
+                {heroSection.titleLineOne || defaultHeroSection.titleLineOne}
               </Typography>
               <Typography variant="h2"
                 sx={{
@@ -1182,7 +1239,7 @@ const LandingDesktop: React.FC = () => {
                   display: "inline-block",
               }}
     >
-                Plattform
+                {heroSection.titleLineTwo || defaultHeroSection.titleLineTwo}
               </Typography>
 
               {/* Hero Description */}
@@ -1195,32 +1252,20 @@ const LandingDesktop: React.FC = () => {
                   maxWidth: "500px",
                 }}
     >
-                Alt-i-ett plattform for kreative i Norge. StoryArc Studio,
-                Academy, Community, og sømløse integrasjoner.
-                Alt du trenger for å vokse.
+                {heroSection.subtitle || heroSection.content || defaultHeroSection.subtitle}
               </Typography>
 
               {/* Key Benefits - Educational Enhancement */}
               <Box sx={{ mb: 4, maxWidth: "500px" }}>
                 <Stack spacing={1.5}>
-                  <Box sx={{ display: "flex", alignItems: "flex-start", gap: 1.5 }}>
-                    <CheckCircle sx={{ color: "#ff8c00", fontSize: { xs: 18, sm: 20, md: 22, lg: 24 }, mt: 0.5, flexShrink: 0 }} />
-                    <Typography variant="body1" sx={{ color: "#374151", fontSize: { xs: "15px", sm: "16px", md: "18px", lg: "20px" } }}>
-                      <strong>Prosjektadministrasjon:</strong> Hold oversikt over alle prosjekter, klienter og leveranser på ett sted
-                    </Typography>
-                  </Box>
-                  <Box sx={{ display: "flex", alignItems: "flex-start", gap: 1.5 }}>
-                    <CheckCircle sx={{ color: "#ff8c00", fontSize: { xs: 18, sm: 20, md: 22, lg: 24 }, mt: 0.5, flexShrink: 0 }} />
-                    <Typography variant="body1" sx={{ color: "#374151", fontSize: { xs: "15px", sm: "16px", md: "18px", lg: "20px" } }}>
-                      <strong>StoryArc Studio:</strong> Automatisk videoredigering med eksport til DaVinci Resolve, Final Cut Pro og Premiere
-                    </Typography>
-                  </Box>
-                  <Box sx={{ display: "flex", alignItems: "flex-start", gap: 1.5 }}>
-                    <CheckCircle sx={{ color: "#ff8c00", fontSize: { xs: 18, sm: 20, md: 22, lg: 24 }, mt: 0.5, flexShrink: 0 }} />
-                    <Typography variant="body1" sx={{ color: "#374151", fontSize: { xs: "15px", sm: "16px", md: "18px", lg: "20px" } }}>
-                      <strong>Academy & Community:</strong> Lær nye ferdigheter og koble deg til andre norske kreative
-                    </Typography>
-                  </Box>
+                  {heroItems.map((item, index) => (
+                    <Box key={index} sx={{ display: "flex", alignItems: "flex-start", gap: 1.5 }}>
+                      <CheckCircle sx={{ color: "#ff8c00", fontSize: { xs: 18, sm: 20, md: 22, lg: 24 }, mt: 0.5, flexShrink: 0 }} />
+                      <Typography variant="body1" sx={{ color: "#374151", fontSize: { xs: "15px", sm: "16px", md: "18px", lg: "20px" } }}>
+                        <strong>{item.title}:</strong> {item.description}
+                      </Typography>
+                    </Box>
+                  ))}
                 </Stack>
               </Box>
 
@@ -1255,7 +1300,7 @@ const LandingDesktop: React.FC = () => {
                   onClick={handleGetStarted}
                   startIcon={<RocketLaunch sx={{ fontSize: 22 }} />}
                 >
-                  Bli med i CreatorHub
+                  {heroSection.primaryCtaLabel || defaultHeroSection.primaryCtaLabel}
                 </Button>
 
                 <Button
@@ -1290,7 +1335,7 @@ const LandingDesktop: React.FC = () => {
                     },
                 }}
                 >
-                  Logg inn
+                  {heroSection.secondaryCtaLabel || defaultHeroSection.secondaryCtaLabel}
                 </Button>
               </Stack>
 
@@ -1475,7 +1520,7 @@ const LandingDesktop: React.FC = () => {
                 fontSize: { xs: "2rem", md: "2.5rem" },
               }}
             >
-              Hvordan fungerer det?
+              {howItWorksSection.title || defaultHowItWorks.title}
             </Typography>
             <Typography
               variant="h6"
@@ -1487,46 +1532,26 @@ const LandingDesktop: React.FC = () => {
                 fontWeight: 400,
               }}
             >
-              Tre enkle steg til å komme i gang med CreatorHub Norge
+              {howItWorksSection.subtitle || defaultHowItWorks.subtitle}
             </Typography>
           </Box>
 
           <Grid container spacing={4} sx={{ mt: 2 }}>
-            {[
-              {
-                step: "1",
-                title: "Velg din rolle",
-                description: "Velg om du er fotograf, videograf, musikkprodusent eller leverandør. Vi tilpasser plattformen til dine behov.",
-                icon: <AccountCircle sx={{ fontSize: 40, color: "white" }} />,
-                color: "#ff8c00",
-              },
-              {
-                step: "2",
-                title: "Opprett din konto",
-                description: "Registrer deg gratis og gjennomfør en rask onboarding. Du kan begynne å bruke plattformen umiddelbart.",
-                icon: <RocketLaunch sx={{ fontSize: 40, color: "white" }} />,
-                color: "#f59e0b",
-              },
-              {
-                step: "3",
-                title: "Start å jobbe",
-                description: "Last opp prosjekter, inviter klienter, bruk StoryArc Studio, og utforsk Academy og Community.",
-                icon: <Settings sx={{ fontSize: 40, color: "white" }} />,
-                color: "#d97706",
-              },
-            ].map((item, index) => (
+            {howItWorksItems.map((item, index) => {
+              const palette = howItWorksPalette[index] || howItWorksPalette[0];
+              return (
               <Grid item xs={12} md={4} key={index}>
                 <MuiCard
                   sx={{
                     height: "100%",
                     borderRadius: "20px",
                     background: `linear-gradient(135deg, rgba(255,255,255,0.98) 0%, rgba(255,247,237,0.95) 100%)`,
-                    border: `1px solid ${item.color}20`,
+                    border: `1px solid ${palette.color}20`,
                     boxShadow: "0 4px 16px rgba(0,0,0,0.08)",
                     transition: "all 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
                     "&:hover": {
                       transform: "translateY(-6px)",
-                      boxShadow: `0 16px 40px ${item.color}30`,
+                      boxShadow: `0 16px 40px ${palette.color}30`,
                     },
                   }}
                 >
@@ -1536,22 +1561,22 @@ const LandingDesktop: React.FC = () => {
                         width: 80,
                         height: 80,
                         borderRadius: "20px",
-                        background: `linear-gradient(135deg, ${item.color} 0%, ${item.color}dd 100%)`,
+                        background: `linear-gradient(135deg, ${palette.color} 0%, ${palette.color}dd 100%)`,
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
                         mx: "auto",
                         mb: 3,
-                        boxShadow: `0 12px 32px ${item.color}40`,
+                        boxShadow: `0 12px 32px ${palette.color}40`,
                       }}
                     >
-                      {item.icon}
+                      {palette.icon}
                     </Box>
                     <Chip
-                      label={`Steg ${item.step}`}
+                      label={`Steg ${item.step || index + 1}`}
                       sx={{
-                        bgcolor: `${item.color}15`,
-                        color: item.color,
+                        bgcolor: `${palette.color}15`,
+                        color: palette.color,
                         fontWeight: 700,
                         mb: 2,
                         fontSize: "0.875rem",
@@ -1581,7 +1606,8 @@ const LandingDesktop: React.FC = () => {
                   </CardContent>
                 </MuiCard>
               </Grid>
-            ))}
+              );
+            })}
           </Grid>
         </Box>
 
@@ -1984,7 +2010,7 @@ const LandingDesktop: React.FC = () => {
                   fontSize: "0.75rem",
                 }}
               >
-                Plattformen for de kreative
+                {featuresSection.badgeLabel || defaultFeatures.badgeLabel}
               </Typography>
             </Box>
 
@@ -2001,7 +2027,7 @@ const LandingDesktop: React.FC = () => {
                 lineHeight: 1.2,
               }}
             >
-              Hvorfor{" "}
+              {featuresSection.title || defaultFeatures.title}{" "}
               <Box 
                 component="span" 
                 sx={{ 
@@ -2011,7 +2037,7 @@ const LandingDesktop: React.FC = () => {
                   backgroundClip: "text",
                 }}
               >
-                CreatorHub Norge
+                {featuresSection.highlight || defaultFeatures.highlight}
               </Box>
               ?
             </Typography>
@@ -2028,7 +2054,7 @@ const LandingDesktop: React.FC = () => {
                 fontSize: { xs: "1rem", sm: "1.125rem", md: "1.25rem", lg: "1.375rem" },
               }}
             >
-              Alt du trenger for å drive en profesjonell kreativ virksomhet i Norge
+              {featuresSection.subtitle || defaultFeatures.subtitle}
             </Typography>
 
             {/* Decorative Divider */}
@@ -2098,10 +2124,10 @@ const LandingDesktop: React.FC = () => {
                   </Box>
                   <Box>
                     <Typography component="h3" variant="h4" sx={{ fontWeight: "bold", color: "#1f2937", mb: 1.5, fontSize: { xs: "1.5rem", sm: "1.75rem", md: "2rem", lg: "2.25rem" } }}>
-                      Prosjektadministrasjon
+                      {featureItems[0]?.title || defaultFeatures.items[0].title}
                     </Typography>
                     <Typography variant="body1" sx={{ color: "#4b5563", lineHeight: 1.8, maxWidth: "500px", fontSize: { xs: "0.9rem", sm: "1rem", md: "1.125rem", lg: "1.25rem" } }}>
-                      Effektiv prosjektstyring med intelligente løsninger for planlegging, produksjon og post-produksjon. Hold oversikt over alle prosjekter på ett sted.
+                      {featureItems[0]?.description || defaultFeatures.items[0].description}
                     </Typography>
                   </Box>
                 </Stack>
@@ -2169,10 +2195,10 @@ const LandingDesktop: React.FC = () => {
                   </svg>
                 </Box>
                 <Typography component="h3" variant="h4" sx={{ fontWeight: "bold", color: "white", mb: 2, fontSize: { xs: "1.5rem", sm: "1.75rem", md: "2rem", lg: "2.25rem" } }}>
-                  StoryArc Studio
+                  {featureItems[1]?.title || defaultFeatures.items[1].title}
                 </Typography>
                 <Typography variant="body1" sx={{ color: "rgba(255,255,255,0.95)", lineHeight: 1.8, mb: 3, flex: 1, fontSize: { xs: "0.9rem", sm: "1rem", md: "1.125rem", lg: "1.25rem" } }}>
-                  Profesjonell videoredigering som analyserer innholdet ditt og genererer story arcs automatisk. Eksporter til DaVinci Resolve, Final Cut Pro og Premiere.
+                  {featureItems[1]?.description || defaultFeatures.items[1].description}
                 </Typography>
                 <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ gap: 1 }}>
                   <Chip label="Auto-analyse" size="small" sx={{ bgcolor: "rgba(255,255,255,0.2)", color: "white", border: "1px solid rgba(255,255,255,0.3)" }} />
@@ -2209,10 +2235,10 @@ const LandingDesktop: React.FC = () => {
                   <Settings sx={{ fontSize: 32, color: "white" }} />
                 </Box>
                 <Typography component="h3" variant="h5" sx={{ fontWeight: "bold", color: "#1f2937", mb: 1.5, fontSize: { xs: "1.25rem", sm: "1.5rem", md: "1.75rem", lg: "2rem" } }}>
-                  Integrasjoner
+                  {featureItems[2]?.title || defaultFeatures.items[2].title}
                 </Typography>
                 <Typography variant="body1" sx={{ color: "#4b5563", lineHeight: 1.7, fontSize: { xs: "0.9rem", sm: "1rem", md: "1.125rem", lg: "1.25rem" } }}>
-                  Sømløs integrasjon med verktøyene du bruker. Google Workspace, DaVinci Resolve, Final Cut Pro, Premiere Pro. Fiken kommer snart.
+                  {featureItems[2]?.description || defaultFeatures.items[2].description}
                 </Typography>
               </CardContent>
             </MuiCard>
@@ -2244,10 +2270,10 @@ const LandingDesktop: React.FC = () => {
                   <Group sx={{ fontSize: 32, color: "white" }} />
                 </Box>
                 <Typography component="h3" variant="h5" sx={{ fontWeight: "bold", color: "#1f2937", mb: 1.5 }}>
-                  Academy & Community
+                  {featureItems[3]?.title || defaultFeatures.items[3].title}
                 </Typography>
                 <Typography variant="body1" sx={{ color: "#4b5563", lineHeight: 1.7 }}>
-                  Lær nye ferdigheter med kurs og tutorials. Koble deg til andre kreative i vårt community.
+                  {featureItems[3]?.description || defaultFeatures.items[3].description}
                 </Typography>
               </CardContent>
             </MuiCard>
@@ -2519,7 +2545,7 @@ const LandingDesktop: React.FC = () => {
               lineHeight: 1.2,
             }}
           >
-            Klar til å{" "}
+            {ctaSection.titlePrefix || defaultCta.titlePrefix}{" "}
             <Box 
               component="span" 
               sx={{ 
@@ -2529,10 +2555,10 @@ const LandingDesktop: React.FC = () => {
                 backgroundClip: "text",
               }}
             >
-              revolutjonere
+              {ctaSection.highlight || defaultCta.highlight}
             </Box>
             <br />
-            din kreative virksomhet?
+            {ctaSection.titleSuffix || defaultCta.titleSuffix}
           </Typography>
 
           {/* Subtitle */}
@@ -2549,11 +2575,7 @@ const LandingDesktop: React.FC = () => {
               fontSize: { xs: "1rem", md: "1.125rem" },
             }}
           >
-            Bli med i{" "}
-            <Box component="span" sx={{ fontWeight: 600, color: "#374151" }}>
-              CreatorHub Norge
-            </Box>
-            {" "}i dag og opplev forskjellen profesjonelle verktøy kan gjøre.
+            {ctaSection.subtitle || defaultCta.subtitle}
           </Typography>
 
           {/* Decorative line */}
@@ -2611,13 +2633,415 @@ const LandingDesktop: React.FC = () => {
             startIcon={<CreatorHubLogoIcon size={28} />}
             endIcon={<ArrowForward sx={{ fontSize: 20 }} />}
           >
-            Bli en del av CreatorHub Norge
+            {ctaSection.ctaLabel || defaultCta.ctaLabel}
           </Button>
         </Box>
       </Container>
 
+      {partnerConfig.enabled && (
+        <Box
+          sx={{
+            py: { xs: 6, md: 10 },
+            background: "linear-gradient(135deg, rgba(255,248,235,0.9) 0%, rgba(255,240,216,0.95) 50%, rgba(255,251,243,0.9) 100%)",
+            borderTop: "1px solid rgba(255,140,0,0.12)",
+            borderBottom: "1px solid rgba(255,140,0,0.12)",
+          }}
+        >
+          <Container maxWidth="lg">
+            <Grid container spacing={6} alignItems="center">
+              <Grid item xs={12} md={5}>
+                <Box
+                  sx={{
+                    background: "rgba(255,255,255,0.9)",
+                    borderRadius: "24px",
+                    p: 4,
+                    boxShadow: "0 16px 40px rgba(255,140,0,0.12)",
+                    border: "1px solid rgba(255,140,0,0.16)",
+                    textAlign: "center",
+                  }}
+                >
+                  <Typography
+                    variant="overline"
+                    sx={{
+                      letterSpacing: 2,
+                      color: "#c2410c",
+                      fontWeight: 700,
+                    }}
+                  >
+                    {partnerConfig.title}
+                  </Typography>
+                  <Box
+                    component="img"
+                    src={partnerConfig.logoUrl}
+                    alt="Evendi"
+                    loading="lazy"
+                    sx={{
+                      width: "220px",
+                      height: "auto",
+                      my: 2,
+                      filter: "drop-shadow(0 8px 20px rgba(0,0,0,0.08))",
+                    }}
+                  />
+                  <Typography
+                    variant="h5"
+                    sx={{ fontWeight: 800, color: "#1f2937", mb: 1 }}
+                  >
+                    En sterk allianse for bryllupsmarkedet
+                  </Typography>
+                  <Typography
+                    variant="body1"
+                    sx={{ color: "#4b5563", lineHeight: 1.8 }}
+                  >
+                    {partnerConfig.description}
+                  </Typography>
+                </Box>
+              </Grid>
+              <Grid item xs={12} md={7}>
+                <Typography
+                  variant="h4"
+                  sx={{
+                    fontWeight: 800,
+                    color: "#111827",
+                    mb: 2,
+                  }}
+                >
+                  Sammen skaper vi den mest profesjonelle bryllupsreisen
+                </Typography>
+                <Typography
+                  variant="body1"
+                  sx={{ color: "#4b5563", lineHeight: 1.9, mb: 3 }}
+                >
+                  Evendi bringer brudeparene og planleggingen. CreatorHub Norge
+                  leverer produksjon, leveranse og samarbeid i toppklasse. Resultatet
+                  er flere oppdrag, bedre logistikk og et klarere premium-stempel.
+                </Typography>
+                <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+                  <Button
+                    variant="contained"
+                    size="large"
+                    sx={{
+                      background:
+                        "linear-gradient(135deg, #ff8c00 0%, #f59e0b 50%, #d97706 100%)",
+                      color: "white",
+                      textTransform: "none",
+                      px: 4,
+                      py: 1.5,
+                      borderRadius: "16px",
+                      fontWeight: 700,
+                      boxShadow: "0 12px 28px rgba(255,140,0,0.35)",
+                      "&:hover": {
+                        background:
+                          "linear-gradient(135deg, #e67c00 0%, #d97706 50%, #c2410c 100%)",
+                        transform: "translateY(-2px)",
+                      },
+                    }}
+                    onClick={() =>
+                      setModalState((prev) => ({ ...prev, showPartnerDialog: true }))
+                    }
+                    endIcon={<Info sx={{ fontSize: 20 }} />}
+                  >
+                    {partnerConfig.ctaLabel}
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="large"
+                    sx={{
+                      borderColor: "rgba(255,140,0,0.5)",
+                      color: "#c2410c",
+                      textTransform: "none",
+                      px: 4,
+                      py: 1.5,
+                      borderRadius: "16px",
+                      fontWeight: 700,
+                      "&:hover": {
+                        borderColor: "#f59e0b",
+                        backgroundColor: "rgba(255,140,0,0.08)",
+                      },
+                    }}
+                    onClick={handleGetStarted}
+                  >
+                    Kom i gang
+                  </Button>
+                </Stack>
+              </Grid>
+            </Grid>
+          </Container>
+        </Box>
+      )}
+
+      {videoConfig.enabled && (
+        <Box
+          sx={{
+            py: { xs: 6, md: 10 },
+            background: "linear-gradient(135deg, rgba(255,255,255,0.96) 0%, rgba(255,248,235,0.9) 100%)",
+            borderTop: "1px solid rgba(255,140,0,0.08)",
+            borderBottom: "1px solid rgba(255,140,0,0.08)",
+          }}
+        >
+          <Container maxWidth="lg">
+            <Grid container spacing={6} alignItems="center">
+              <Grid item xs={12} md={6}>
+                <Typography
+                  variant="overline"
+                  sx={{ letterSpacing: 2, color: "#c2410c", fontWeight: 700 }}
+                >
+                  Video
+                </Typography>
+                <Typography
+                  variant="h4"
+                  sx={{ fontWeight: 800, color: "#111827", mb: 2 }}
+                >
+                  {videoConfig.title}
+                </Typography>
+                <Typography
+                  variant="body1"
+                  sx={{ color: "#4b5563", lineHeight: 1.9, mb: 3 }}
+                >
+                  {videoConfig.description}
+                </Typography>
+                <Typography variant="body2" sx={{ color: "#6b7280" }}>
+                  Placeholder - innholdet styres fra admin via Visual Editor.
+                </Typography>
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <Box
+                  sx={{
+                    position: "relative",
+                    borderRadius: "28px",
+                    overflow: "hidden",
+                    border: "1px solid rgba(255,140,0,0.28)",
+                    boxShadow: "0 24px 60px rgba(15, 23, 42, 0.35)",
+                    background: cinematicConfig.enabled
+                      ? "linear-gradient(135deg, rgba(20, 20, 30, 0.85), rgba(255,140,0,0.12))"
+                      : "linear-gradient(135deg, rgba(255,140,0,0.12), rgba(255,255,255,0.9))",
+                    "&::before": cinematicConfig.enabled
+                      ? {
+                          content: '""',
+                          position: "absolute",
+                          inset: 0,
+                          background: `radial-gradient(circle at 30% 20%, rgba(255,186,120,${cinematicConfig.glowWarmOpacity}), transparent 55%), radial-gradient(circle at 70% 80%, rgba(14, 165, 233, ${cinematicConfig.glowCoolOpacity}), transparent 55%)`,
+                          zIndex: 1,
+                          pointerEvents: "none",
+                        }
+                      : undefined,
+                    "&::after": cinematicConfig.enabled
+                      ? {
+                          content: '""',
+                          position: "absolute",
+                          inset: 0,
+                          background: `linear-gradient(to bottom, rgba(0,0,0,${cinematicConfig.overlayTopOpacity}) 0%, rgba(0,0,0,0) 22%, rgba(0,0,0,0) 78%, rgba(0,0,0,${cinematicConfig.overlayBottomOpacity}) 100%)`,
+                          zIndex: 2,
+                          pointerEvents: "none",
+                        }
+                      : undefined,
+                  }}
+                >
+                  <Box sx={{ position: "relative", pt: "56.25%" }}>
+                    {videoConfig.showEmbeddedVideo ? (
+                      <Box
+                        component="video"
+                        src={videoConfig.videoUrl}
+                        poster={videoConfig.posterUrl}
+                        muted
+                        playsInline
+                        autoPlay={videoConfig.autoPlay}
+                        loop={videoConfig.loop}
+                        controls={videoConfig.showControls}
+                        preload="metadata"
+                        onLoadStart={() => setIsVideoReady(false)}
+                        onCanPlay={() => setIsVideoReady(true)}
+                        sx={{
+                          position: "absolute",
+                          inset: 0,
+                          width: "100%",
+                          height: "100%",
+                          objectFit: "cover",
+                          backgroundColor: "#0b0b0f",
+                          filter: cinematicConfig.enabled
+                            ? `contrast(${cinematicConfig.contrast}) saturate(${cinematicConfig.saturate})`
+                            : "none",
+                        }}
+                      />
+                    ) : (
+                      <Box
+                        sx={{
+                          position: "absolute",
+                          inset: 0,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          flexDirection: "column",
+                          gap: 2,
+                          textAlign: "center",
+                          p: 4,
+                          backgroundImage: `url("${videoConfig.posterUrl}")`,
+                          backgroundSize: "cover",
+                          backgroundPosition: "center",
+                        }}
+                      >
+                        <Box
+                          sx={{
+                            width: 84,
+                            height: 84,
+                            borderRadius: "24px",
+                            background: "rgba(255,255,255,0.85)",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            boxShadow: "0 12px 28px rgba(255,140,0,0.35)",
+                            border: "1px solid rgba(255,140,0,0.2)",
+                          }}
+                        >
+                          <Box
+                            sx={{
+                              width: 56,
+                              height: 56,
+                              borderRadius: "18px",
+                              background:
+                                "linear-gradient(135deg, #ff8c00 0%, #d97706 100%)",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                            }}
+                          >
+                            <PlayArrow sx={{ fontSize: 34, color: "white" }} />
+                          </Box>
+                        </Box>
+                        <Typography
+                          variant="h6"
+                          sx={{ fontWeight: 700, color: "#1f2937" }}
+                        >
+                          Se videoen her
+                        </Typography>
+                        <Typography variant="body2" sx={{ color: "#6b7280" }}>
+                          16:9 video - use case scenario
+                        </Typography>
+                      </Box>
+                    )}
+                    {videoConfig.showEmbeddedVideo && !isVideoReady && videoConfig.showLoadingLogo && (
+                      <Box
+                        sx={{
+                          position: "absolute",
+                          inset: 0,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          flexDirection: "column",
+                          gap: 1.5,
+                          textAlign: "center",
+                          zIndex: 3,
+                          background:
+                            "linear-gradient(135deg, rgba(15,23,42,0.88), rgba(30,41,59,0.72))",
+                          color: "white",
+                        }}
+                      >
+                        <Box className="video-loading-logo">
+                          <CreatorHubLogoIcon size={72} />
+                        </Box>
+                        <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                          Laster video
+                        </Typography>
+                      </Box>
+                    )}
+                  </Box>
+                </Box>
+              </Grid>
+            </Grid>
+          </Container>
+        </Box>
+      )}
+
       {/* FAQ Section */}
-      <FAQSection />
+      <FAQSection
+        badgeLabel={faqSection.badgeLabel || defaultFaq.badgeLabel}
+        title={faqSection.title || defaultFaq.title}
+        highlight={faqSection.highlight || defaultFaq.highlight}
+        subtitle={faqSection.subtitle || defaultFaq.subtitle}
+        items={faqSection.items || defaultFaq.items}
+      />
+
+      {/* Partner Dialog */}
+      <Dialog
+        open={modalState.showPartnerDialog}
+        onClose={() => setModalState((prev) => ({ ...prev, showPartnerDialog: false }))}
+        maxWidth="md"
+        fullWidth
+        slotProps={{
+          paper: {
+            sx: {
+              borderRadius: "24px",
+              background: "rgba(255, 255, 255, 0.98)",
+              boxShadow: "0 24px 60px rgba(17, 24, 39, 0.2)",
+              border: "1px solid rgba(255,140,0,0.2)",
+            },
+          },
+        }}
+      >
+        <DialogTitle sx={{ pb: 1, fontWeight: 800, color: "#111827" }}>
+          {partnerConfig.dialogTitle}
+        </DialogTitle>
+        <DialogContent>
+          <Stack spacing={2}>
+            {partnerConfig.dialogBody
+              .split("\n\n")
+              .filter(Boolean)
+              .map((paragraph, index) => (
+                <Typography key={index} sx={{ color: "#374151", lineHeight: 1.8 }}>
+                  {paragraph}
+                </Typography>
+              ))}
+            <Box
+              sx={{
+                p: 2.5,
+                borderRadius: "16px",
+                background: "linear-gradient(135deg, rgba(255,140,0,0.12), rgba(255,200,80,0.16))",
+                border: "1px solid rgba(255,140,0,0.2)",
+              }}
+            >
+              <Typography sx={{ fontWeight: 700, color: "#9a3412", mb: 1 }}>
+                Hvorfor det er en gamechanger:
+              </Typography>
+              <Box component="ul" sx={{ pl: 3, m: 0, color: "#4b5563" }}>
+                {(Array.isArray(partnerConfig.dialogBullets)
+                  ? partnerConfig.dialogBullets
+                  : partnerConfig.dialogBullets.split("\n")
+                )
+                  .filter(Boolean)
+                  .map((bullet) => (
+                    <Box component="li" key={bullet} sx={{ lineHeight: 1.7 }}>
+                      {bullet}
+                    </Box>
+                  ))}
+              </Box>
+            </Box>
+            <Typography sx={{ color: "#374151", lineHeight: 1.8 }}>
+              Bli med i samarbeidet og la oss løfte hele bryllupsreisen sammen.
+            </Typography>
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 3 }}>
+          <Button
+            variant="text"
+            onClick={() => setModalState((prev) => ({ ...prev, showPartnerDialog: false }))}
+            sx={{ textTransform: "none", color: "#6b7280" }}
+          >
+            Lukk
+          </Button>
+          <Button
+            variant="contained"
+            onClick={handleGetStarted}
+            sx={{
+              textTransform: "none",
+              background:
+                "linear-gradient(135deg, #ff8c00 0%, #f59e0b 50%, #d97706 100%)",
+              px: 4,
+              fontWeight: 700,
+            }}
+          >
+            Kom i gang med CreatorHub
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Enhanced Role Selector Modal */}
       <Dialog
@@ -3043,7 +3467,7 @@ const LandingDesktop: React.FC = () => {
                 />
               </Box>
               <Typography variant="body2" sx={{ color: "rgba(255,255,255,0.7)", mb: 2, lineHeight: 1.6 }}>
-                Profesjonell prosjektadministrasjon og kreative verktøy for norske fotografer, videografer og musikkprodusenter.
+                {footerSection.content || defaultFooter.content}
               </Typography>
               <Stack direction="row" spacing={1}>
                 <IconButton
@@ -3073,16 +3497,20 @@ const LandingDesktop: React.FC = () => {
                 Navigasjon
               </Typography>
               <Stack spacing={1}>
-                {[
-                  { label: "Hjem", path: "/" },
-                  { label: "Om Oss", path: "/about-us" },
-                  { label: "Logg Inn", action: handleLogin },
-                  { label: "Kom i Gang", action: handleGetStarted },
-                ].map((link, index) => (
+                {footerLinks.map((link, index) => {
+                  const label = link.title || link.label || `Link ${index + 1}`;
+                  const target = link.description || link.path || '/';
+                  const onClick = target === 'login'
+                    ? handleLogin
+                    : target === 'cta'
+                      ? handleGetStarted
+                      : () => handleNavigation(target);
+
+                  return (
                   <Button
                     key={index}
                     variant="text"
-                    onClick={link.action || (() => handleNavigation(link.path || "/"))}
+                    onClick={link.action || onClick}
                     sx={{
                       color: "rgba(255,255,255,0.7)",
                       textTransform: "none",
@@ -3095,9 +3523,10 @@ const LandingDesktop: React.FC = () => {
                       },
                     }}
                   >
-                    {link.label}
+                    {label}
                   </Button>
-                ))}
+                  );
+                })}
               </Stack>
             </Grid>
 
@@ -3137,15 +3566,15 @@ const LandingDesktop: React.FC = () => {
               <Stack spacing={1.5}>
                 <Box sx={{ display: "flex", alignItems: "center", color: "rgba(255,255,255,0.7)" }}>
                   <Email fontSize="small" sx={{ mr: 1, color: "#ff8c00" }} />
-                  <Typography variant="body2">daniel@creatorhubn.com</Typography>
+                  <Typography variant="body2">{footerSection.contactEmail || defaultFooter.contactEmail}</Typography>
                 </Box>
                 <Box sx={{ display: "flex", alignItems: "center", color: "rgba(255,255,255,0.7)" }}>
                   <Phone fontSize="small" sx={{ mr: 1, color: "#ff8c00" }} />
-                  <Typography variant="body2">+47 97 95 92 94</Typography>
+                  <Typography variant="body2">{footerSection.contactPhone || defaultFooter.contactPhone}</Typography>
                 </Box>
                 <Box sx={{ display: "flex", alignItems: "center", color: "rgba(255,255,255,0.7)" }}>
                   <LocationOn fontSize="small" sx={{ mr: 1, color: "#ff8c00" }} />
-                  <Typography variant="body2">Norge</Typography>
+                  <Typography variant="body2">{footerSection.contactLocation || defaultFooter.contactLocation}</Typography>
                 </Box>
               </Stack>
             </Grid>
@@ -3179,7 +3608,7 @@ const LandingDesktop: React.FC = () => {
                   },
                 }}
               >
-                Personvernerklæring
+                {footerSection.privacyLabel || defaultFooter.privacyLabel}
               </Button>
               <Typography variant="body2" sx={{ color: "rgba(255,255,255,0.3)" }}>
                 •

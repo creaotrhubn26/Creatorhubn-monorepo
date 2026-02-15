@@ -204,8 +204,6 @@ const FilesTab: React.FC<FilesTabProps> = ({
     },
   });
 
-};
-
   // State for change history tracking and dialogs
   const [changeHistory, setChangeHistory] = useState<any>(null);
   const [showRestoreDialog, setShowRestoreDialog] = useState(false);

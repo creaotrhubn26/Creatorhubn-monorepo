@@ -20,7 +20,13 @@ import {
   Chip,
   Fade,
   Popper,
-  ClickAwayListener
+  ClickAwayListener,
+  Stack,
+  Divider,
+  Switch,
+  FormControlLabel,
+  Slider,
+  TextField
 } from '@mui/material';
 
 import {
@@ -88,9 +94,25 @@ export function withVisualEditor<P extends object>(
     const [showEditDialog, setShowEditDialog] = useState(false);
     const [showFloatingControls, setShowFloatingControls] = useState(false);
     const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
-    const [localCustomizations, setLocalCustomizations] = useState(customizations);
+    const [localCustomizations, setLocalCustomizations] = useState(customizations || {});
     const [isHovered, setIsHovered] = useState(false);
     const componentRef = useRef<HTMLDivElement>(null);
+    const isLandingComponent = componentId === 'landing-desktop' || componentId === 'landing-mobile';
+
+    const updateCustomization = useCallback((path: string[], value: any) => {
+      setLocalCustomizations((prev: Record<string, any> = {}) => {
+        const next = { ...prev };
+        let cursor: Record<string, any> = next;
+        path.slice(0, -1).forEach((key) => {
+          if (!cursor[key] || typeof cursor[key] !== 'object') {
+            cursor[key] = {};
+          }
+          cursor = cursor[key];
+        });
+        cursor[path[path.length - 1]] = value;
+        return next;
+      });
+    }, []);
 
     // Track component usage
     useEffect(() => {
@@ -258,15 +280,291 @@ export function withVisualEditor<P extends object>(
             </Typography>
           </Box>
 
-          {/* Component-specific customization interface would go here */}
-          <Box sx={{ p: 2, border: '1px dashed #ccc', borderRadius:  1 }}>
-            <Typography variant="body2" color="text.secondary">
-              Component customization interface for {componentName}
-            </Typography>
-            <Typography variant="caption" color="text.secondary">
-              This would contain the actual customization controls based on the component type
-            </Typography>
-          </Box>
+          {isLandingComponent ? (
+            <Stack spacing={3}>
+              <Paper variant="outlined" sx={{ p: 2 }}>
+                <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 700 }}>
+                  Samarbeidspartner
+                </Typography>
+                <Stack spacing={2}>
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={localCustomizations?.partnerSection?.enabled ?? true}
+                        onChange={(event) =>
+                          updateCustomization(['partnerSection', 'enabled'], event.target.checked)
+                        }
+                      />
+                    }
+                    label="Vis seksjon"
+                  />
+                  <TextField
+                    label="Tittel"
+                    value={localCustomizations?.partnerSection?.title || ''}
+                    onChange={(event) =>
+                      updateCustomization(['partnerSection', 'title'], event.target.value)
+                    }
+                    fullWidth
+                  />
+                  <TextField
+                    label="Beskrivelse"
+                    value={localCustomizations?.partnerSection?.description || ''}
+                    onChange={(event) =>
+                      updateCustomization(['partnerSection', 'description'], event.target.value)
+                    }
+                    fullWidth
+                    multiline
+                    minRows={3}
+                  />
+                  <TextField
+                    label="Logo URL"
+                    value={localCustomizations?.partnerSection?.logoUrl || ''}
+                    onChange={(event) =>
+                      updateCustomization(['partnerSection', 'logoUrl'], event.target.value)
+                    }
+                    fullWidth
+                  />
+                  <TextField
+                    label="CTA-tekst"
+                    value={localCustomizations?.partnerSection?.ctaLabel || ''}
+                    onChange={(event) =>
+                      updateCustomization(['partnerSection', 'ctaLabel'], event.target.value)
+                    }
+                    fullWidth
+                  />
+                  <Divider />
+                  <TextField
+                    label="Dialogtittel"
+                    value={localCustomizations?.partnerSection?.dialogTitle || ''}
+                    onChange={(event) =>
+                      updateCustomization(['partnerSection', 'dialogTitle'], event.target.value)
+                    }
+                    fullWidth
+                  />
+                  <TextField
+                    label="Dialoginnhold"
+                    value={localCustomizations?.partnerSection?.dialogBody || ''}
+                    onChange={(event) =>
+                      updateCustomization(['partnerSection', 'dialogBody'], event.target.value)
+                    }
+                    fullWidth
+                    multiline
+                    minRows={4}
+                    helperText="Bruk linjeskift for flere avsnitt"
+                  />
+                  <TextField
+                    label="Dialogpunkter"
+                    value={localCustomizations?.partnerSection?.dialogBullets || ''}
+                    onChange={(event) =>
+                      updateCustomization(['partnerSection', 'dialogBullets'], event.target.value)
+                    }
+                    fullWidth
+                    multiline
+                    minRows={3}
+                    helperText="Ett punkt per linje"
+                  />
+                </Stack>
+              </Paper>
+
+              <Paper variant="outlined" sx={{ p: 2 }}>
+                <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 700 }}>
+                  Video
+                </Typography>
+                <Stack spacing={2}>
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={localCustomizations?.videoSection?.enabled ?? true}
+                        onChange={(event) =>
+                          updateCustomization(['videoSection', 'enabled'], event.target.checked)
+                        }
+                      />
+                    }
+                    label="Vis seksjon"
+                  />
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={localCustomizations?.videoSection?.showEmbeddedVideo ?? true}
+                        onChange={(event) =>
+                          updateCustomization(['videoSection', 'showEmbeddedVideo'], event.target.checked)
+                        }
+                      />
+                    }
+                    label="Aktiv video"
+                  />
+                  <TextField
+                    label="Videotittel"
+                    value={localCustomizations?.videoSection?.title || ''}
+                    onChange={(event) =>
+                      updateCustomization(['videoSection', 'title'], event.target.value)
+                    }
+                    fullWidth
+                  />
+                  <TextField
+                    label="Videotekst"
+                    value={localCustomizations?.videoSection?.description || ''}
+                    onChange={(event) =>
+                      updateCustomization(['videoSection', 'description'], event.target.value)
+                    }
+                    fullWidth
+                    multiline
+                    minRows={3}
+                  />
+                  <TextField
+                    label="Video URL"
+                    value={localCustomizations?.videoSection?.videoUrl || ''}
+                    onChange={(event) =>
+                      updateCustomization(['videoSection', 'videoUrl'], event.target.value)
+                    }
+                    fullWidth
+                  />
+                  <TextField
+                    label="Poster URL"
+                    value={localCustomizations?.videoSection?.posterUrl || ''}
+                    onChange={(event) =>
+                      updateCustomization(['videoSection', 'posterUrl'], event.target.value)
+                    }
+                    fullWidth
+                  />
+                  <Stack direction="row" spacing={2}>
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          checked={localCustomizations?.videoSection?.autoPlay ?? true}
+                          onChange={(event) =>
+                            updateCustomization(['videoSection', 'autoPlay'], event.target.checked)
+                          }
+                        />
+                      }
+                      label="Autoplay"
+                    />
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          checked={localCustomizations?.videoSection?.loop ?? true}
+                          onChange={(event) =>
+                            updateCustomization(['videoSection', 'loop'], event.target.checked)
+                          }
+                        />
+                      }
+                      label="Loop"
+                    />
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          checked={localCustomizations?.videoSection?.showControls ?? true}
+                          onChange={(event) =>
+                            updateCustomization(['videoSection', 'showControls'], event.target.checked)
+                          }
+                        />
+                      }
+                      label="Kontroller"
+                    />
+                  </Stack>
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={localCustomizations?.videoSection?.showLoadingLogo ?? true}
+                        onChange={(event) =>
+                          updateCustomization(['videoSection', 'showLoadingLogo'], event.target.checked)
+                        }
+                      />
+                    }
+                    label="Vis CreatorHub-logo ved lasting"
+                  />
+                </Stack>
+              </Paper>
+
+              <Paper variant="outlined" sx={{ p: 2 }}>
+                <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 700 }}>
+                  Cinematic effekt
+                </Typography>
+                <Stack spacing={2}>
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={localCustomizations?.cinematic?.enabled ?? true}
+                        onChange={(event) =>
+                          updateCustomization(['cinematic', 'enabled'], event.target.checked)
+                        }
+                      />
+                    }
+                    label="Aktiver cinematic look"
+                  />
+                  <Typography variant="caption">Kontrast</Typography>
+                  <Slider
+                    value={localCustomizations?.cinematic?.contrast ?? 1.08}
+                    min={0.9}
+                    max={1.4}
+                    step={0.02}
+                    onChange={(_, value) =>
+                      updateCustomization(['cinematic', 'contrast'], value)
+                    }
+                  />
+                  <Typography variant="caption">Metning</Typography>
+                  <Slider
+                    value={localCustomizations?.cinematic?.saturate ?? 1.1}
+                    min={0.8}
+                    max={1.4}
+                    step={0.02}
+                    onChange={(_, value) =>
+                      updateCustomization(['cinematic', 'saturate'], value)
+                    }
+                  />
+                  <Typography variant="caption">Vignette topp</Typography>
+                  <Slider
+                    value={localCustomizations?.cinematic?.overlayTopOpacity ?? 0.55}
+                    min={0}
+                    max={0.9}
+                    step={0.05}
+                    onChange={(_, value) =>
+                      updateCustomization(['cinematic', 'overlayTopOpacity'], value)
+                    }
+                  />
+                  <Typography variant="caption">Vignette bunn</Typography>
+                  <Slider
+                    value={localCustomizations?.cinematic?.overlayBottomOpacity ?? 0.65}
+                    min={0}
+                    max={0.9}
+                    step={0.05}
+                    onChange={(_, value) =>
+                      updateCustomization(['cinematic', 'overlayBottomOpacity'], value)
+                    }
+                  />
+                  <Typography variant="caption">Glow varm</Typography>
+                  <Slider
+                    value={localCustomizations?.cinematic?.glowWarmOpacity ?? 0.25}
+                    min={0}
+                    max={0.6}
+                    step={0.05}
+                    onChange={(_, value) =>
+                      updateCustomization(['cinematic', 'glowWarmOpacity'], value)
+                    }
+                  />
+                  <Typography variant="caption">Glow kald</Typography>
+                  <Slider
+                    value={localCustomizations?.cinematic?.glowCoolOpacity ?? 0.15}
+                    min={0}
+                    max={0.6}
+                    step={0.05}
+                    onChange={(_, value) =>
+                      updateCustomization(['cinematic', 'glowCoolOpacity'], value)
+                    }
+                  />
+                </Stack>
+              </Paper>
+            </Stack>
+          ) : (
+            <Box sx={{ p: 2, border: '1px dashed #ccc', borderRadius: 1 }}>
+              <Typography variant="body2" color="text.secondary">
+                Component customization interface for {componentName}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                This would contain the actual customization controls based on the component type
+              </Typography>
+            </Box>
+          )}
         </DialogContent>
         
         <DialogActions>

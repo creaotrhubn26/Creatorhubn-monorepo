@@ -43,6 +43,8 @@ import SEODashboard from './SEODashboard';
 import BrandingWorkflowPanel from './BrandingWorkflowPanel';
 import { LogoManagementPanel } from './LogoManagementPanel';
 import ThemingAdminPanel from './ThemingAdminPanel';
+import LandingSettingsPanel from './LandingSettingsPanel';
+import ShowcasePublisherPanel from '../../showcase/ShowcasePublisherPanel';
 // Import custom hooks (to be created)
 // import { useVisualEditor } from '../hooks/useVisualEditor';
 // import { useScrollStories } from '../hooks/useScrollStories';
@@ -321,7 +323,7 @@ const CreatorhubVisualEditorContent: React.FC<CreatorhubVisualEditorProps> = ({
     return unsubscribe;
 }, [communication, onClientSelect, addNotification]);
 
-  const [selectedView, setSelectedView] = useState<'designer' | 'revenue-optimization' | 'team-collaboration' | 'theming-admin'>('designer');
+  const [selectedView, setSelectedView] = useState<string>('designer');
   const [showUnifiedDashboard, setShowUnifiedDashboard] = useState(false);
   const [selectedElements, setSelectedElements] = useState<string[]>([]);
   const [selectedElement, setSelectedElement] = useState<EditorElement | null>(null);
@@ -378,7 +380,7 @@ const CreatorhubVisualEditorContent: React.FC<CreatorhubVisualEditorProps> = ({
   }, [dbConnected, dbIntegration, project?.id]);
 
   // Event handlers
-  const handleViewChange = useCallback((view: 'designer' | 'revenue-optimization' | 'team-collaboration' | 'theming-admin') => {
+  const handleViewChange = useCallback((view: string) => {
     setSelectedView(view);
   }, []);
 
@@ -1213,6 +1215,8 @@ const CreatorhubVisualEditorContent: React.FC<CreatorhubVisualEditorProps> = ({
                 <Tab label="Revenue Optimization" value="revenue-optimization" />
                 <Tab label="Team Collaboration" value="team-collaboration" />
                 <Tab label="Brand Customization" value="branding" />
+                <Tab label="Landing Settings" value="landing-settings" />
+                <Tab label="Showcase Publisher" value="showcase-publisher" />
                 <Tab label="🎨 Theming Admin" value="theming-admin" />
               </Tabs>
             </Box>
@@ -1912,6 +1916,10 @@ const CreatorhubVisualEditorContent: React.FC<CreatorhubVisualEditorProps> = ({
                   </Box>
                 </Box>
               )}
+
+              {selectedView === 'landing-settings' && <LandingSettingsPanel />}
+
+              {selectedView === 'showcase-publisher' && <ShowcasePublisherPanel />}
 
               {/* NEW: Theming Admin Panel */}
               {selectedView === 'theming-admin' && <ThemingAdminPanel />}

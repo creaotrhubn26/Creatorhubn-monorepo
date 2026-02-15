@@ -3294,6 +3294,113 @@ app.post('/api/worklog', async (req, res) => {
   }
 });
 
+// PATCH /api/worklog/:id — Update worklog entry
+app.patch('/api/worklog/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title, description, timeSpent, category, mood, nextSteps, isPrivate, day } = req.body || {};
+    const internalNotes = JSON.stringify({ mood, nextSteps, day });
+
+    const milestoneUpdate = await pool.query(
+      `UPDATE project_milestones
+       SET title = COALESCE($1, title),
+           description = COALESCE($2, description),
+           category = COALESCE($3, category),
+           time_spent = COALESCE($4, time_spent),
+           client_visible = COALESCE($5, client_visible),
+           internal_notes = COALESCE($6, internal_notes),
+           updated_at = NOW()
+       WHERE id = $7 AND type = 'worklog'
+       RETURNING *`,
+      [
+        title || null,
+        description || null,
+        category || null,
+        timeSpent ?? null,
+        typeof isPrivate === 'boolean' ? !isPrivate : null,
+        internalNotes || null,
+        id,
+      ]
+    );
+
+    if (milestoneUpdate.rowCount) {
+      return res.json(milestoneUpdate.rows[0]);
+    }
+
+    const entryUpdate = await pool.query(
+      `UPDATE worklog_entries
+       SET title = COALESCE($1, title),
+           description = COALESCE($2, description),
+           category = COALESCE($3, category),
+           time_spent = COALESCE($4, time_spent),
+           updated_at = NOW()
+       WHERE id = $5
+       RETURNING *`,
+      [title || null, description || null, category || null, timeSpent ?? null, id]
+    );
+
+    if (entryUpdate.rowCount) {
+      return res.json(entryUpdate.rows[0]);
+    }
+
+    const legacyUpdate = await pool.query(
+      `UPDATE worklogs
+       SET task = COALESCE($1, task),
+           description = COALESCE($2, description),
+           time_spent = COALESCE($3, time_spent),
+           updated_at = NOW()
+       WHERE id = $4
+       RETURNING *`,
+      [title || null, description || null, timeSpent ?? null, id]
+    );
+
+    if (!legacyUpdate.rowCount) {
+      return res.status(404).json({ error: 'Arbeidslogg ikke funnet' });
+    }
+
+    res.json(legacyUpdate.rows[0]);
+  } catch (error) {
+    console.error('Error updating worklog:', error);
+    res.status(500).json({ error: 'Kunne ikke oppdatere arbeidslogg' });
+  }
+});
+
+// DELETE /api/worklog/:id — Delete worklog entry
+app.delete('/api/worklog/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const milestoneDelete = await pool.query(
+      `DELETE FROM project_milestones WHERE id = $1 AND type = 'worklog' RETURNING id`,
+      [id]
+    );
+    if (milestoneDelete.rowCount) {
+      return res.json({ deleted: true, id });
+    }
+
+    const entryDelete = await pool.query(
+      `DELETE FROM worklog_entries WHERE id = $1 RETURNING id`,
+      [id]
+    );
+    if (entryDelete.rowCount) {
+      return res.json({ deleted: true, id });
+    }
+
+    const legacyDelete = await pool.query(
+      `DELETE FROM worklogs WHERE id = $1 RETURNING id`,
+      [id]
+    );
+    if (legacyDelete.rowCount) {
+      return res.json({ deleted: true, id });
+    }
+
+    res.status(404).json({ error: 'Arbeidslogg ikke funnet' });
+  } catch (error) {
+    console.error('Error deleting worklog:', error);
+    res.status(500).json({ error: 'Kunne ikke slette arbeidslogg' });
+  }
+});
+
 // POST /api/events-management/events — create event from project
 app.post('/api/events-management/events', async (req, res) => {
   try {
@@ -3955,6 +4062,37 @@ app.all('/api/wedflow/*', (req, res, next) => {
 });
 
 const CREATORHUB_API_KEY = process.env.CREATORHUB_API_KEY || '';
+const EVENDI_SMOKE_SECRET =
+  process.env.EVENDI_ADMIN_SECRET ||
+  process.env.WEDFLOW_ADMIN_SECRET ||
+  process.env.EXPO_PUBLIC_ADMIN_SECRET ||
+  '';
+
+const isEvendiSmokeAuthorized = (req: any) => {
+  if (!EVENDI_SMOKE_SECRET) return false;
+  const header = req.get('x-admin-secret') || req.get('x-evendi-admin-secret');
+  return header && header === EVENDI_SMOKE_SECRET;
+};
+
+async function runEvendiSmoke(path: string) {
+  const url = `${EVENDI_API_URL}${path}`;
+  const response = await fetch(url, {
+    headers: {
+      'Content-Type': 'application/json',
+      'X-API-Key': CREATORHUB_API_KEY,
+    },
+  });
+  const contentType = response.headers.get('content-type') || '';
+  const payload = contentType.includes('application/json')
+    ? await response.json()
+    : await response.text();
+
+  return {
+    status: response.status,
+    ok: response.ok,
+    data: payload,
+  };
+}
 
 // ── Couple Planning Timelines (MUST be registered BEFORE the wildcard proxy) ──
 
@@ -4116,6 +4254,45 @@ app.delete('/api/evendi/planning/:coupleId/schedule/:eventId', async (req, res) 
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: 'Kunne ikke slette hendelse' });
+  }
+});
+
+// Admin smoke tests via Evendi bridge
+app.get('/api/admin/smoke-tests/evendi', async (req, res) => {
+  try {
+    if (!isEvendiSmokeAuthorized(req)) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    const projectId = (req.query.projectId as string) || 'local-user';
+
+    const [
+      showcaseCategories,
+      showcaseItems,
+      worklogList,
+      worklogStats,
+      landingDesktop,
+      landingMobile,
+    ] = await Promise.all([
+      runEvendiSmoke('/api/showcase/categories?profession=videographer'),
+      runEvendiSmoke('/api/showcase/profession/videographer'),
+      runEvendiSmoke(`/api/projects/${encodeURIComponent(projectId)}/worklog`),
+      runEvendiSmoke(`/api/projects/${encodeURIComponent(projectId)}/worklog/stats`),
+      runEvendiSmoke('/api/pages/landing-desktop/published'),
+      runEvendiSmoke('/api/pages/landing-mobile/published'),
+    ]);
+
+    res.json({
+      showcaseCategories,
+      showcaseItems,
+      worklogList,
+      worklogStats,
+      landingDesktop,
+      landingMobile,
+    });
+  } catch (error: any) {
+    console.error('Evendi smoke test error:', error?.message || error);
+    res.status(502).json({ error: 'Evendi smoke test failed' });
   }
 });
 
@@ -13799,6 +13976,124 @@ app.delete('/api/projects/:projectId/timeline/:eventId', async (req, res) => {
   } catch (error) {
     console.error('Error deleting timeline event:', error);
     res.status(500).json({ error: 'Failed to delete timeline event' });
+  }
+});
+
+// GET /api/projects/:projectId/worklog — List worklog entries
+app.get('/api/projects/:projectId/worklog', async (req, res) => {
+  try {
+    const { projectId } = req.params;
+
+    const milestones = await pool.query(
+      `SELECT id, project_id, user_id, title, description, category, time_spent, client_visible,
+              internal_notes, created_at, updated_at
+       FROM project_milestones
+       WHERE project_id = $1 AND type = 'worklog'
+       ORDER BY created_at ASC`,
+      [projectId]
+    );
+
+    if (milestones.rowCount > 0) {
+      const mapped = milestones.rows.map((row: any, index: number) => {
+        const notes = row.internal_notes && typeof row.internal_notes === 'string'
+          ? JSON.parse(row.internal_notes)
+          : (row.internal_notes || {});
+        return {
+          id: row.id,
+          projectId: row.project_id,
+          userId: row.user_id,
+          day: notes.day || index + 1,
+          date: row.created_at,
+          title: row.title,
+          description: row.description,
+          timeSpent: row.time_spent || 0,
+          category: row.category || 'general',
+          mood: notes.mood,
+          nextSteps: notes.nextSteps,
+          isPrivate: row.client_visible === false,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+        };
+      });
+
+      return res.json({ data: mapped });
+    }
+
+    const entryCheck = await pool.query(
+      `SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'worklog_entries')`
+    );
+
+    if (entryCheck.rows[0].exists) {
+      const entries = await pool.query(
+        `SELECT id, project_id, user_id, title, description, time_spent, category, date, created_at, updated_at
+         FROM worklog_entries WHERE project_id = $1 ORDER BY created_at ASC`,
+        [projectId]
+      );
+
+      const mapped = entries.rows.map((row: any, index: number) => ({
+        id: row.id,
+        projectId: row.project_id,
+        userId: row.user_id,
+        day: index + 1,
+        date: row.date || row.created_at,
+        title: row.title,
+        description: row.description,
+        timeSpent: row.time_spent || 0,
+        category: row.category || 'general',
+        isPrivate: false,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      }));
+
+      return res.json({ data: mapped });
+    }
+
+    return res.json({ data: [] });
+  } catch (error) {
+    console.error('Error fetching worklog:', error);
+    res.status(500).json({ error: 'Kunne ikke hente arbeidslogg' });
+  }
+});
+
+// GET /api/projects/:projectId/worklog/stats — Worklog stats
+app.get('/api/projects/:projectId/worklog/stats', async (req, res) => {
+  try {
+    const { projectId } = req.params;
+    const entriesRes = await pool.query(
+      `SELECT time_spent, category FROM project_milestones WHERE project_id = $1 AND type = 'worklog'`,
+      [projectId]
+    );
+
+    let entries = entriesRes.rows || [];
+
+    if (entries.length === 0) {
+      const entryCheck = await pool.query(
+        `SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'worklog_entries')`
+      );
+      if (entryCheck.rows[0].exists) {
+        const fallback = await pool.query(
+          `SELECT time_spent, category FROM worklog_entries WHERE project_id = $1`,
+          [projectId]
+        );
+        entries = fallback.rows || [];
+      }
+    }
+    const totalDays = entries.length;
+    const totalTimeSpent = entries.reduce((sum: number, row: any) => sum + (row.time_spent || 0), 0);
+    const averageTimePerDay = totalDays > 0 ? Math.round(totalTimeSpent / totalDays) : 0;
+    const categoriesUsed = Array.from(new Set(entries.map((row: any) => row.category).filter(Boolean)));
+
+    res.json({
+      data: {
+        totalDays,
+        totalTimeSpent,
+        averageTimePerDay,
+        categoriesUsed,
+      },
+    });
+  } catch (error) {
+    console.error('Error fetching worklog stats:', error);
+    res.status(500).json({ error: 'Kunne ikke hente arbeidsloggstatistikk' });
   }
 });
 

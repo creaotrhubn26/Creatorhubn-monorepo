@@ -217,7 +217,7 @@ export const InteractiveTutorialCreator: React.FC<InteractiveTutorialCreatorProp
           const step: TutorialStep = {
             id: `step_${Date.now()}`,
             type: 'video',
-            title: `Video Step ${session.steps.length +, 1}`,
+            title: `Video Step ${session.steps.length + 1}`,
             description: 'Video tutorial step',
             mediaUrl: URL.createObjectURL(blob),
             timestamp: Date.now(),

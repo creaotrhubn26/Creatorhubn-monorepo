@@ -8,10 +8,12 @@ import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
 import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
 import getProfessionIcon from '@/utils/profession-icons';
 import { useDynamicProfessions } from './hooks/useDynamicProfessions';
-import { Box, Typography, Card, CardContent, List, ListItem, ListItemText, Chip, Alert, Button } from '@mui/material';
+import { Box, Typography, Card, CardContent, List, ListItem, ListItemText, Chip, Alert, Button, Divider, Stack } from '@mui/material';
 import { useUniversalDashboard } from './UniversalDashboardContext';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { useTheming } from '../../utils/theming-helper';
+import { apiRequest } from '@/lib/queryClient';
+import { useAuth } from '@/hooks/useAuth';
 
 interface ComponentTestResult {
   componentName: string;
@@ -26,11 +28,16 @@ interface ComponentTestResult {
 
 interface UniversalDashboardIntegrationTestProps {
   profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
+  userId?: string;
+  projectId?: string;
 }
 
 const UniversalDashboardIntegrationTest: React.FC<UniversalDashboardIntegrationTestProps> = ({ 
-  profession = 'photographer' 
+  profession = 'photographer',
+  userId,
+  projectId,
 }) => {
+  const { user } = useAuth();
   const { state, broadcastChange, requestData, syncWithComponent } = useUniversalDashboard();
   const { integration, communication, dataFlow } = useEnhancedMasterIntegration();
   
@@ -38,6 +45,16 @@ const UniversalDashboardIntegrationTest: React.FC<UniversalDashboardIntegrationT
   const theming = useTheming(profession);
   const [testResults, setTestResults] = useState<ComponentTestResult[]>([]);
   const [isRunning, setIsRunning] = useState(false);
+  const [smokeResults, setSmokeResults] = useState<Record<string, { status: 'pass' | 'fail' | 'pending'; message: string }>>({
+    showcasePublisher: { status: 'pending', message: 'Not run yet' },
+    worklog: { status: 'pending', message: 'Not run yet' },
+    landingVideo: { status: 'pending', message: 'Not run yet' },
+  });
+  const [smokeRunning, setSmokeRunning] = useState<{ showcasePublisher: boolean; worklog: boolean; landingVideo: boolean }>({
+    showcasePublisher: false,
+    worklog: false,
+    landingVideo: false,
+  });
 
   // List of components that should be integrated
   const componentsToTest = [
@@ -213,6 +230,111 @@ const UniversalDashboardIntegrationTest: React.FC<UniversalDashboardIntegrationT
     }
   };
 
+  const runShowcasePublisherSmoke = async () => {
+    const testProfession = profession || 'videographer';
+    setSmokeRunning((prev) => ({ ...prev, showcasePublisher: true }));
+    setSmokeResults((prev) => ({
+      ...prev,
+      showcasePublisher: { status: 'pending', message: 'Running...' },
+    }));
+
+    try {
+      await apiRequest(`/api/showcase/categories?profession=${encodeURIComponent(testProfession)}`);
+      await apiRequest(`/api/showcase/profession/${encodeURIComponent(testProfession)}`);
+      setSmokeResults((prev) => ({
+        ...prev,
+        showcasePublisher: { status: 'pass', message: 'Showcase endpoints responding' },
+      }));
+    } catch (error) {
+      setSmokeResults((prev) => ({
+        ...prev,
+        showcasePublisher: {
+          status: 'fail',
+          message: error instanceof Error ? error.message : 'Showcase smoke test failed',
+        },
+      }));
+    } finally {
+      setSmokeRunning((prev) => ({ ...prev, showcasePublisher: false }));
+    }
+  };
+
+  const runWorklogSmoke = async () => {
+    const resolvedProjectId = projectId || userId || user?.id;
+    if (!resolvedProjectId) {
+      setSmokeResults((prev) => ({
+        ...prev,
+        worklog: { status: 'fail', message: 'Missing projectId for worklog test' },
+      }));
+      return;
+    }
+
+    setSmokeRunning((prev) => ({ ...prev, worklog: true }));
+    setSmokeResults((prev) => ({
+      ...prev,
+      worklog: { status: 'pending', message: 'Running...' },
+    }));
+
+    try {
+      await apiRequest(`/api/projects/${encodeURIComponent(resolvedProjectId)}/worklog`);
+      await apiRequest(`/api/projects/${encodeURIComponent(resolvedProjectId)}/worklog/stats`);
+      setSmokeResults((prev) => ({
+        ...prev,
+        worklog: { status: 'pass', message: 'Worklog endpoints responding' },
+      }));
+    } catch (error) {
+      setSmokeResults((prev) => ({
+        ...prev,
+        worklog: {
+          status: 'fail',
+          message: error instanceof Error ? error.message : 'Worklog smoke test failed',
+        },
+      }));
+    } finally {
+      setSmokeRunning((prev) => ({ ...prev, worklog: false }));
+    }
+  };
+
+  const runLandingVideoSmoke = async () => {
+    setSmokeRunning((prev) => ({ ...prev, landingVideo: true }));
+    setSmokeResults((prev) => ({
+      ...prev,
+      landingVideo: { status: 'pending', message: 'Running...' },
+    }));
+
+    const extractVideoUrl = (data: any) => data?.sections?.video?.videoUrl;
+
+    try {
+      const [desktop, mobile] = await Promise.all([
+        apiRequest('/api/pages/landing-desktop/published'),
+        apiRequest('/api/pages/landing-mobile/published'),
+      ]);
+
+      const desktopVideo = extractVideoUrl(desktop);
+      const mobileVideo = extractVideoUrl(mobile);
+      const hasVideo = Boolean(desktopVideo || mobileVideo);
+
+      setSmokeResults((prev) => ({
+        ...prev,
+        landingVideo: {
+          status: hasVideo ? 'pass' : 'fail',
+          message: hasVideo
+            ? `Published video found (${desktopVideo ? 'desktop' : ''}${desktopVideo && mobileVideo ? ', ' : ''}${mobileVideo ? 'mobile' : ''})`
+            : 'No published video found on landing pages',
+        },
+      }));
+    } catch (error) {
+      setSmokeResults((prev) => ({
+        ...prev,
+        landingVideo: {
+          status: 'fail',
+          message: error instanceof Error ? error.message : 'Landing page video smoke test failed',
+        },
+      }));
+    } finally {
+      setSmokeRunning((prev) => ({ ...prev, landingVideo: false }));
+    }
+  };
+
   useEffect(() => {
     // Set up message listener for testing
     const unsubscribe = communication.onMessage((message: any) => {
@@ -272,6 +394,95 @@ const UniversalDashboardIntegrationTest: React.FC<UniversalDashboardIntegrationT
           Test Communication
         </Button>
       </Box>
+
+      <Divider sx={{ my: 3 }} />
+
+      <Typography variant="h5" gutterBottom sx={{ color: theming.colors.primary }}>
+        Admin Smoke Tests
+      </Typography>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        Quick checks for Showcase Publisher and Worklog endpoints.
+      </Typography>
+
+      <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ mb: 2 }}>
+        <Card variant="outlined" sx={{ flex: 1 }}>
+          <CardContent>
+            <Typography variant="subtitle1" sx={{ mb: 1 }}>
+              Showcase Publisher
+            </Typography>
+            <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 2 }}>
+              <Chip
+                label={smokeResults.showcasePublisher.status.toUpperCase()}
+                color={getStatusColor(smokeResults.showcasePublisher.status)}
+                size="small"
+              />
+              <Typography variant="body2" color="text.secondary">
+                {smokeResults.showcasePublisher.message}
+              </Typography>
+            </Stack>
+            <Button
+              variant="contained"
+              onClick={runShowcasePublisherSmoke}
+              disabled={smokeRunning.showcasePublisher}
+              sx={theming.getThemedButtonSx()}
+            >
+              {smokeRunning.showcasePublisher ? 'Testing...' : 'Run Showcase Smoke Test'}
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card variant="outlined" sx={{ flex: 1 }}>
+          <CardContent>
+            <Typography variant="subtitle1" sx={{ mb: 1 }}>
+              Worklog
+            </Typography>
+            <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 2 }}>
+              <Chip
+                label={smokeResults.worklog.status.toUpperCase()}
+                color={getStatusColor(smokeResults.worklog.status)}
+                size="small"
+              />
+              <Typography variant="body2" color="text.secondary">
+                {smokeResults.worklog.message}
+              </Typography>
+            </Stack>
+            <Button
+              variant="contained"
+              onClick={runWorklogSmoke}
+              disabled={smokeRunning.worklog}
+              sx={theming.getThemedButtonSx()}
+            >
+              {smokeRunning.worklog ? 'Testing...' : 'Run Worklog Smoke Test'}
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card variant="outlined" sx={{ flex: 1 }}>
+          <CardContent>
+            <Typography variant="subtitle1" sx={{ mb: 1 }}>
+              Published Landing Video
+            </Typography>
+            <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 2 }}>
+              <Chip
+                label={smokeResults.landingVideo.status.toUpperCase()}
+                color={getStatusColor(smokeResults.landingVideo.status)}
+                size="small"
+              />
+              <Typography variant="body2" color="text.secondary">
+                {smokeResults.landingVideo.message}
+              </Typography>
+            </Stack>
+            <Button
+              variant="contained"
+              onClick={runLandingVideoSmoke}
+              disabled={smokeRunning.landingVideo}
+              sx={theming.getThemedButtonSx()}
+            >
+              {smokeRunning.landingVideo ? 'Testing...' : 'Run Landing Video Test'}
+            </Button>
+          </CardContent>
+        </Card>
+      </Stack>
 
       {testResults.length > 0 && (
         <Card sx={{ mb: 3, ...theming.getThemedCardSx() }}>

@@ -16,6 +16,22 @@ interface FAQItem {
   category?: string;
 }
 
+interface FAQSectionItem {
+  question?: string;
+  answer?: string;
+  category?: string;
+  title?: string;
+  description?: string;
+}
+
+interface FAQSectionProps {
+  badgeLabel?: string;
+  title?: string;
+  highlight?: string;
+  subtitle?: string;
+  items?: FAQSectionItem[];
+}
+
 const faqData: FAQItem[] = [
   {
     question: 'Er CreatorHub Norge gratis?',
@@ -59,14 +75,41 @@ const faqData: FAQItem[] = [
   },
 ];
 
-const FAQSection: React.FC = () => {
+const FAQSection: React.FC<FAQSectionProps> = ({
+  badgeLabel,
+  title,
+  highlight,
+  subtitle,
+  items,
+}) => {
   const [expanded, setExpanded] = useState<string | false>(false);
+
+  const resolvedItems = (items && items.length > 0 ? items : faqData).map((item) => {
+    if ('question' in item || 'answer' in item) {
+      return {
+        question: item.question || item.title || '',
+        answer: item.answer || item.description || '',
+        category: item.category,
+      };
+    }
+
+    return {
+      question: item.title || '',
+      answer: item.description || '',
+      category: item.category,
+    };
+  });
+
+  const resolvedBadge = badgeLabel || 'Ofte Stilte Sporsmal';
+  const resolvedTitle = title || 'Sporsmal?';
+  const resolvedHighlight = highlight || 'Vi har svarene';
+  const resolvedSubtitle = subtitle || 'Finn raskt svar pa de vanligste sporsmalene om CreatorHub Norge';
 
   const handleChange = (panel: string) => (event: React.SyntheticEvent, isExpanded: boolean) => {
     setExpanded(isExpanded ? panel : false);
   };
 
-  const categories = Array.from(new Set(faqData.map(item => item.category).filter(Boolean)));
+  const categories = Array.from(new Set(resolvedItems.map((item) => item.category).filter(Boolean)));
 
   return (
     <Box
@@ -102,7 +145,7 @@ const FAQSection: React.FC = () => {
                 fontSize: '0.75rem',
               }}
             >
-              Ofte Stilte Spørsmål
+              {resolvedBadge}
             </Typography>
           </Box>
 
@@ -116,7 +159,7 @@ const FAQSection: React.FC = () => {
               lineHeight: 1.2,
             }}
           >
-            Spørsmål?{' '}
+            {resolvedTitle}{' '}
             <Box
               component="span"
               sx={{
@@ -126,7 +169,7 @@ const FAQSection: React.FC = () => {
                 backgroundClip: 'text',
               }}
             >
-              Vi har svarene
+              {resolvedHighlight}
             </Box>
           </Typography>
 
@@ -140,13 +183,13 @@ const FAQSection: React.FC = () => {
               fontWeight: 400,
             }}
           >
-            Finn raskt svar på de vanligste spørsmålene om CreatorHub Norge
+            {resolvedSubtitle}
           </Typography>
         </Box>
 
         {/* FAQ Accordion */}
         <Box sx={{ maxWidth: '800px', mx: 'auto' }}>
-          {faqData.map((item, index) => (
+          {resolvedItems.map((item, index) => (
             <Accordion
               key={index}
               expanded={expanded === `panel${index}`}

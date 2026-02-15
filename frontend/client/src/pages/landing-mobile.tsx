@@ -44,6 +44,10 @@ const globalStyles = `
     0% { background-position: -200% 0 }
     100% { background-position: 200% 0 }
 }
+    @keyframes pulseGlow {
+      0%, 100% { transform: scale(1); filter: drop-shadow(0 0 0 rgba(255, 140, 0, 0)); opacity: 0.9; }
+      50% { transform: scale(1.05); filter: drop-shadow(0 0 20px rgba(255, 140, 0, 0.45)); opacity: 1; }
+    }
   
   /* PERFORMANCE: Critical CSS for above-the-fold content */
   .critical-load-priority {
@@ -57,6 +61,9 @@ const globalStyles = `
     transform: translateZ(0);
     will-change: transform;
 }
+  .video-loading-logo {
+    animation: pulseGlow 2.4s ease-in-out infinite;
+  }
   
   /* PERFORMANCE: Optimized glassmorphism for mobile */
   .mobile-optimized-glass {
@@ -71,6 +78,10 @@ const globalStyles = `
       animation: none;
       transform: none;
 }
+    .video-loading-logo {
+      animation: none;
+      transform: none;
+    }
     * {
       animation-duration: 0.01ms !important;
       animation-iteration-count: 1 !important;
@@ -158,6 +169,7 @@ import {
   PhotoCamera,
   Work,
   ArrowForward,
+  PlayArrow,
   Assessment,
   MenuBook,
   Email,
@@ -178,6 +190,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from "@/lib/queryClient";
 import { Grid } from '@mui/material';
 import { PrototypeTesterIcon } from '@/components/icons/PrototypeTesterIcon';
+import { usePublishedPageCustomizations } from '@/hooks/usePageCustomizations';
 
 // Type for auth status response
 interface AuthStatusResponse {
@@ -299,13 +312,175 @@ const CreatorHubLogoIcon: React.FC<{ size?: number }> = ({ size = 20 }) => (
   </svg>
 );
 
-const LandingMobile: React.FC = () => {
+interface LandingPartnerCustomization {
+  enabled?: boolean;
+  title?: string;
+  description?: string;
+  logoUrl?: string;
+  ctaLabel?: string;
+  dialogTitle?: string;
+  dialogBody?: string;
+  dialogBullets?: string | string[];
+}
+
+interface LandingVideoCustomization {
+  enabled?: boolean;
+  showEmbeddedVideo?: boolean;
+  title?: string;
+  description?: string;
+  videoUrl?: string;
+  posterUrl?: string;
+  autoPlay?: boolean;
+  loop?: boolean;
+  showControls?: boolean;
+  showLoadingLogo?: boolean;
+}
+
+interface LandingCinematicCustomization {
+  enabled?: boolean;
+  contrast?: number;
+  saturate?: number;
+  overlayTopOpacity?: number;
+  overlayBottomOpacity?: number;
+  glowWarmOpacity?: number;
+  glowCoolOpacity?: number;
+}
+
+interface LandingCustomizationProps {
+  partnerSection?: LandingPartnerCustomization;
+  videoSection?: LandingVideoCustomization;
+  cinematic?: LandingCinematicCustomization;
+}
+
+const LandingMobile: React.FC<LandingCustomizationProps> = ({
+  partnerSection,
+  videoSection,
+  cinematic,
+}) => {
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
   const { profession } = useProfessionAdapter();
 
   // Theming system - use dynamic profession
   const _theming = useTheming(profession || 'photographer');
+  const defaultVideoUrl = "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4";
+  const defaultPoster = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='1280' height='720'><defs><linearGradient id='g' x1='0' x2='1' y1='0' y2='1'><stop offset='0%' stop-color='%23fff7ed'/><stop offset='100%' stop-color='%23ffedd5'/></linearGradient></defs><rect width='100%' height='100%' fill='url(%23g)'/><rect x='80' y='80' width='1120' height='560' fill='none' stroke='%23fdba74' stroke-width='6' rx='24'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' fill='%239ca3af' font-family='Arial' font-size='48' letter-spacing='2'>VIDEO%20POSTER</text></svg>";
+  const { data: pageCustomizations } = usePublishedPageCustomizations('landing-mobile');
+  const pageSections = pageCustomizations?.sections || {};
+
+  const defaultHeroSection = {
+    badgeLabel: 'CreatorHub Norge - Profesjonell Kreativ Plattform',
+    titleLineOne: 'Profesjonell Kreativ',
+    titleLineTwo: 'Plattform',
+    subtitle:
+      'Alt-i-ett plattform for kreative i Norge. StoryArc Studio, Academy, Community, og sømløse integrasjoner. Alt du trenger for å vokse.',
+    primaryCtaLabel: 'Bli med i CreatorHub',
+    secondaryCtaLabel: 'Logg inn',
+  };
+  const heroSection = { ...defaultHeroSection, ...(pageSections.hero || {}) };
+
+  const defaultFeatures = {
+    badgeLabel: 'Plattformen for de kreative',
+    title: 'Hvorfor',
+    highlight: 'CreatorHub Norge',
+    subtitle: 'Alt du trenger for å drive en profesjonell kreativ virksomhet i Norge',
+    items: [
+      {
+        title: 'Prosjektadministrasjon',
+        description: 'Effektiv prosjektstyring med intelligente løsninger for planlegging, produksjon og post-produksjon.',
+      },
+      {
+        title: 'StoryArc Studio',
+        description: 'Profesjonell videoredigering som analyserer innholdet ditt og genererer story arcs automatisk.',
+      },
+      {
+        title: 'Integrasjoner',
+        description: 'Sømløs integrasjon med verktøyene du bruker. Google Workspace, DaVinci Resolve, Final Cut Pro, Premiere Pro.',
+      },
+      {
+        title: 'Academy & Community',
+        description: 'Lær nye ferdigheter med kurs og tutorials. Koble deg til andre kreative i vårt community.',
+      },
+    ],
+  };
+  const featuresSection = { ...defaultFeatures, ...(pageSections.features || {}) };
+
+  const defaultCta = {
+    titlePrefix: 'Klar til å',
+    highlight: 'revolutjonere',
+    titleSuffix: 'din kreative virksomhet?',
+    subtitle:
+      'Bli med i CreatorHub Norge i dag og opplev forskjellen profesjonelle verktøy kan gjøre.',
+    ctaLabel: 'Bli en del av CreatorHub Norge',
+  };
+  const ctaSection = { ...defaultCta, ...(pageSections.cta || {}) };
+
+  const defaultFooter = {
+    content:
+      'Profesjonell prosjektadministrasjon og kreative verktøy for norske fotografer, videografer og musikkprodusenter.',
+    contactEmail: 'daniel@creatorhubn.com',
+    contactPhone: '+47 97 95 92 94',
+    contactLocation: 'Norge',
+    privacyLabel: 'Personvern & GDPR',
+    items: [
+      { title: 'Hjem', description: '/' },
+      { title: 'Om Oss', description: '/about-us' },
+      { title: 'Logg Inn', description: 'login' },
+      { title: 'Kom i Gang', description: 'cta' },
+    ],
+  };
+  const footerSection = { ...defaultFooter, ...(pageSections.footer || {}) };
+
+  const featureItems = Array.isArray(featuresSection.items) && featuresSection.items.length > 0
+    ? featuresSection.items
+    : defaultFeatures.items;
+  const footerLinks = Array.isArray(footerSection.items) && footerSection.items.length > 0
+    ? footerSection.items
+    : defaultFooter.items;
+
+  const videoOverrides = { ...(pageSections.video || {}), ...(videoSection || {}) };
+  const partnerOverrides = { ...(pageSections.partner || {}), ...(partnerSection || {}) };
+  const cinematicOverrides = { ...(pageSections.cinematic || {}), ...(cinematic || {}) };
+  const videoConfig = {
+    enabled: videoOverrides.enabled ?? true,
+    showEmbeddedVideo: videoOverrides.showEmbeddedVideo ?? true,
+    title: videoOverrides.title || "Use case-video kommer her",
+    description:
+      videoOverrides.description ||
+      "Plassholder for video som viser samarbeid, flyt og resultater.",
+    videoUrl: videoOverrides.videoUrl || defaultVideoUrl,
+    posterUrl: videoOverrides.posterUrl || defaultPoster,
+    autoPlay: videoOverrides.autoPlay ?? true,
+    loop: videoOverrides.loop ?? true,
+    showControls: videoOverrides.showControls ?? true,
+    showLoadingLogo: videoOverrides.showLoadingLogo ?? true,
+  };
+  const partnerConfig = {
+    enabled: partnerOverrides.enabled ?? true,
+    title: partnerOverrides.title || "Samarbeidspartner",
+    description:
+      partnerOverrides.description ||
+      "Evendi gir brudeparene flyt og forutsigbarhet. CreatorHub Norge sørger for at du leverer med profesjonalitet og lønnsomhet.",
+    logoUrl: partnerOverrides.logoUrl || "/evendi-logo.png",
+    ctaLabel: partnerOverrides.ctaLabel || "Les mer om samarbeidet",
+    dialogTitle: partnerOverrides.dialogTitle || "Samarbeid med Evendi",
+    dialogBody:
+      partnerOverrides.dialogBody ||
+      "Evendi samler brudepar og leverandører i en premium bryllupsreise. Vi kobler deg inn med profesjonell prosjektstyring, trygg kommunikasjon og en tydelig leveranseflyt.\n\nSamarbeidet betyr flere kvalifiserte oppdrag, bedre kontroll og en opplevelse som skiller deg ut i markedet.",
+    dialogBullets:
+      partnerOverrides.dialogBullets ||
+      "Flere premium leads\nRyddigere samarbeid\nHøyere kundetilfredshet",
+  };
+  const cinematicConfig = {
+    enabled: cinematicOverrides.enabled ?? true,
+    contrast: cinematicOverrides.contrast ?? 1.08,
+    saturate: cinematicOverrides.saturate ?? 1.1,
+    overlayTopOpacity: cinematicOverrides.overlayTopOpacity ?? 0.5,
+    overlayBottomOpacity: cinematicOverrides.overlayBottomOpacity ?? 0.6,
+    glowWarmOpacity: cinematicOverrides.glowWarmOpacity ?? 0.22,
+    glowCoolOpacity: cinematicOverrides.glowCoolOpacity ?? 0.12,
+  };
+  const [isVideoReady, setIsVideoReady] = React.useState(false);
 
   // Dynamic profession system
   const { getProfessionDisplayName } = useDynamicProfessions();
@@ -421,6 +596,7 @@ const LandingMobile: React.FC = () => {
     showLoginModal: false,
     showInviteRequest: false,
     showOnboarding: false,
+    showPartnerDialog: false,
     selectedRole: '',
     selectedPlan: null as any,
   });
@@ -434,6 +610,7 @@ const LandingMobile: React.FC = () => {
       showLoginModal: false,
       showInviteRequest: false,
       showOnboarding: false,
+      showPartnerDialog: false,
       selectedRole: ', ',
       selectedPlan: null,
     });
@@ -481,6 +658,8 @@ const LandingMobile: React.FC = () => {
           setModalState((prev) => ({ ...prev, showLoginModal: false }));
     } else if (modalState.showSidebar) {
           setModalState((prev) => ({ ...prev, showSidebar: false }));
+        } else if (modalState.showPartnerDialog) {
+          setModalState((prev) => ({ ...prev, showPartnerDialog: false }));
     }
   }
 };
@@ -823,7 +1002,7 @@ const LandingMobile: React.FC = () => {
                   letterSpacing: '0.5px',
             }}
               >
-                CreatorHub Norge - Profesjonell Kreativ Plattform
+                {heroSection.badgeLabel || defaultHeroSection.badgeLabel}
               </Typography>
             </Box>
 
@@ -837,7 +1016,7 @@ const LandingMobile: React.FC = () => {
                 fontSize: { xs: '20px', sm: '24px' },
           }}
             >
-              Profesjonell Kreativ
+              {heroSection.titleLineOne || defaultHeroSection.titleLineOne}
             </Typography>
             <Typography variant="h4"
               sx={{
@@ -847,7 +1026,7 @@ const LandingMobile: React.FC = () => {
                 fontSize: { xs: '20px', sm: '24px' },
           }}
             >
-              Plattform
+              {heroSection.titleLineTwo || defaultHeroSection.titleLineTwo}
             </Typography>
 
             {/* Description */}
@@ -860,9 +1039,7 @@ const LandingMobile: React.FC = () => {
                 fontSize: '14px',
           }}
             >
-              Alt-i-ett plattform for kreative i Norge. StoryArc Studio,
-              Academy, Community, og sømløse integrasjoner.
-              Alt du trenger for å vokse.
+              {heroSection.subtitle || heroSection.content || defaultHeroSection.subtitle}
             </Typography>
 
             {/* Dynamic Key Stats - Only shown when 350+ users */}
@@ -897,7 +1074,7 @@ const LandingMobile: React.FC = () => {
                 onClick={handleGetStarted}
                 startIcon={<RocketLaunch sx={{ fontSize: 18 }} />}
               >
-                Bli med i CreatorHub
+                {heroSection.primaryCtaLabel || defaultHeroSection.primaryCtaLabel}
               </Button>
 
               <Button
@@ -930,7 +1107,7 @@ const LandingMobile: React.FC = () => {
                   },
                 }}
               >
-                Logg inn
+                {heroSection.secondaryCtaLabel || defaultHeroSection.secondaryCtaLabel}
               </Button>
             </Stack>
           </CardContent>
@@ -1734,6 +1911,262 @@ const LandingMobile: React.FC = () => {
           </Stack>
         </Box>
       </Container>
+
+      {partnerConfig.enabled && (
+        <Container maxWidth="sm" sx={{ py: 2 }}>
+          <MuiCard
+            className="fade-in-animation"
+            sx={{
+              mt: 3,
+              mb: 2,
+              textAlign: "center",
+              background:
+                "linear-gradient(135deg, rgba(255,255,255,0.98) 0%, rgba(255,247,237,0.95) 60%, rgba(254,243,199,0.9) 100%)",
+              border: "1px solid rgba(255,140,0,0.18)",
+              borderRadius: "24px",
+              p: 3,
+              boxShadow: "0 20px 48px rgba(255,140,0,0.12), 0 8px 18px rgba(0,0,0,0.08)",
+              position: "relative",
+              overflow: "hidden",
+            }}
+          >
+            <Typography
+              variant="overline"
+              sx={{ letterSpacing: 2, color: "#c2410c", fontWeight: 700 }}
+            >
+              {partnerConfig.title}
+            </Typography>
+            <Box
+              component="img"
+              src={partnerConfig.logoUrl}
+              alt="Evendi"
+              loading="lazy"
+              sx={{
+                width: "180px",
+                height: "auto",
+                my: 2,
+                mx: "auto",
+                display: "block",
+                filter: "drop-shadow(0 8px 16px rgba(0,0,0,0.08))",
+              }}
+            />
+            <Typography
+              variant="h6"
+              sx={{ fontWeight: 800, color: "#1f2937", mb: 1 }}
+            >
+              Premium bryllupsopplevelser - sammen
+            </Typography>
+            <Typography
+              variant="body2"
+              sx={{ color: "#4b5563", lineHeight: 1.7, mb: 2 }}
+            >
+              {partnerConfig.description}
+            </Typography>
+            <Button
+              variant="contained"
+              size="large"
+              sx={{
+                background:
+                  "linear-gradient(135deg, #ff8c00 0%, #f59e0b 50%, #d97706 100%)",
+                color: "white",
+                py: 1.4,
+                px: 4,
+                minHeight: "48px",
+                borderRadius: "14px",
+                fontSize: "14px",
+                fontWeight: "bold",
+                textTransform: "none",
+                boxShadow: "0 10px 24px rgba(255,140,0,0.4)",
+              }}
+              onClick={() =>
+                setModalState((prev) => ({ ...prev, showPartnerDialog: true }))
+              }
+              endIcon={<Info sx={{ fontSize: 18 }} />}
+            >
+              {partnerConfig.ctaLabel}
+            </Button>
+          </MuiCard>
+        </Container>
+      )}
+
+      {videoConfig.enabled && (
+        <Container maxWidth="sm" sx={{ py: 1 }}>
+          <MuiCard
+            className="fade-in-animation"
+            sx={{
+              mt: 3,
+              mb: 2,
+              textAlign: "left",
+              background:
+                "linear-gradient(135deg, rgba(255,255,255,0.98) 0%, rgba(255,248,235,0.94) 100%)",
+              border: "1px solid rgba(255,140,0,0.18)",
+              borderRadius: "24px",
+              p: 3,
+              boxShadow: "0 20px 48px rgba(255,140,0,0.12), 0 8px 18px rgba(0,0,0,0.08)",
+            }}
+          >
+            <Typography
+              variant="overline"
+              sx={{ letterSpacing: 2, color: "#c2410c", fontWeight: 700 }}
+            >
+              Video
+            </Typography>
+            <Typography
+              variant="h6"
+              sx={{ fontWeight: 800, color: "#1f2937", mb: 1 }}
+            >
+              {videoConfig.title}
+            </Typography>
+            <Typography
+              variant="body2"
+              sx={{ color: "#4b5563", lineHeight: 1.7, mb: 2 }}
+            >
+              {videoConfig.description}
+            </Typography>
+            <Box
+              sx={{
+                position: "relative",
+                borderRadius: "20px",
+                overflow: "hidden",
+                border: "1px solid rgba(255,140,0,0.28)",
+                boxShadow: "0 18px 40px rgba(15, 23, 42, 0.3)",
+                background: cinematicConfig.enabled
+                  ? "linear-gradient(135deg, rgba(20, 20, 30, 0.85), rgba(255,140,0,0.12))"
+                  : "linear-gradient(135deg, rgba(255,140,0,0.12), rgba(255,255,255,0.9))",
+                "&::before": cinematicConfig.enabled
+                  ? {
+                      content: '""',
+                      position: "absolute",
+                      inset: 0,
+                      background: `radial-gradient(circle at 30% 20%, rgba(255,186,120,${cinematicConfig.glowWarmOpacity}), transparent 55%), radial-gradient(circle at 70% 80%, rgba(14, 165, 233, ${cinematicConfig.glowCoolOpacity}), transparent 55%)`,
+                      zIndex: 1,
+                      pointerEvents: "none",
+                    }
+                  : undefined,
+                "&::after": cinematicConfig.enabled
+                  ? {
+                      content: '""',
+                      position: "absolute",
+                      inset: 0,
+                      background: `linear-gradient(to bottom, rgba(0,0,0,${cinematicConfig.overlayTopOpacity}) 0%, rgba(0,0,0,0) 24%, rgba(0,0,0,0) 78%, rgba(0,0,0,${cinematicConfig.overlayBottomOpacity}) 100%)`,
+                      zIndex: 2,
+                      pointerEvents: "none",
+                    }
+                  : undefined,
+              }}
+            >
+              <Box sx={{ position: "relative", pt: "56.25%" }}>
+                {videoConfig.showEmbeddedVideo ? (
+                  <Box
+                    component="video"
+                    src={videoConfig.videoUrl}
+                    poster={videoConfig.posterUrl}
+                    muted
+                    playsInline
+                    autoPlay={videoConfig.autoPlay}
+                    loop={videoConfig.loop}
+                    controls={videoConfig.showControls}
+                    preload="metadata"
+                    onLoadStart={() => setIsVideoReady(false)}
+                    onCanPlay={() => setIsVideoReady(true)}
+                    sx={{
+                      position: "absolute",
+                      inset: 0,
+                      width: "100%",
+                      height: "100%",
+                      objectFit: "cover",
+                      backgroundColor: "#0b0b0f",
+                      filter: cinematicConfig.enabled
+                        ? `contrast(${cinematicConfig.contrast}) saturate(${cinematicConfig.saturate})`
+                        : "none",
+                    }}
+                  />
+                ) : (
+                  <Box
+                    sx={{
+                      position: "absolute",
+                      inset: 0,
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 1.5,
+                      textAlign: "center",
+                      p: 2,
+                      backgroundImage: `url("${videoConfig.posterUrl}")`,
+                      backgroundSize: "cover",
+                      backgroundPosition: "center",
+                    }}
+                  >
+                    <Box
+                      sx={{
+                        width: 64,
+                        height: 64,
+                        borderRadius: "18px",
+                        background: "rgba(255,255,255,0.85)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        boxShadow: "0 10px 22px rgba(255,140,0,0.35)",
+                        border: "1px solid rgba(255,140,0,0.2)",
+                      }}
+                    >
+                      <Box
+                        sx={{
+                          width: 44,
+                          height: 44,
+                          borderRadius: "14px",
+                          background:
+                            "linear-gradient(135deg, #ff8c00 0%, #d97706 100%)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        <PlayArrow sx={{ fontSize: 26, color: "white" }} />
+                      </Box>
+                    </Box>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 700, color: "#1f2937" }}>
+                      Se videoen her
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: "#6b7280" }}>
+                      16:9 format
+                    </Typography>
+                  </Box>
+                )}
+                {videoConfig.showEmbeddedVideo && !isVideoReady && videoConfig.showLoadingLogo && (
+                  <Box
+                    sx={{
+                      position: "absolute",
+                      inset: 0,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      flexDirection: "column",
+                      gap: 1,
+                      textAlign: "center",
+                      zIndex: 3,
+                      background:
+                        "linear-gradient(135deg, rgba(15,23,42,0.9), rgba(30,41,59,0.75))",
+                      color: "white",
+                    }}
+                  >
+                    <Box className="video-loading-logo">
+                      <CreatorHubLogoIcon size={56} />
+                    </Box>
+                    <Typography variant="caption" sx={{ fontWeight: 700 }}>
+                      Laster video
+                    </Typography>
+                  </Box>
+                )}
+              </Box>
+            </Box>
+            <Typography variant="caption" sx={{ color: "#6b7280", display: "block", mt: 1.5 }}>
+              Innholdet styres fra admin via Visual Editor.
+            </Typography>
+          </MuiCard>
+        </Container>
+      )}
 
       {/* Call to Action Section - Desktop content in mobile card format */}
       <Container maxWidth="sm" sx={{ py: 1 }}>
@@ -2745,6 +3178,85 @@ const LandingMobile: React.FC = () => {
           </List>
         </Box>
       </Drawer>
+
+      {/* Partner Dialog */}
+      <Dialog
+        open={modalState.showPartnerDialog}
+        onClose={() => setModalState((prev) => ({ ...prev, showPartnerDialog: false }))}
+        maxWidth="sm"
+        fullWidth
+        slotProps={{
+          paper: {
+            sx: {
+              borderRadius: '20px',
+              background: 'rgba(255,255,255,0.98)',
+              boxShadow: '0 20px 50px rgba(17, 24, 39, 0.2)',
+              border: '1px solid rgba(255,140,0,0.2)',
+            },
+          },
+        }}
+      >
+        <DialogTitle sx={{ pb: 1, fontWeight: 800, color: '#111827' }}>
+            {partnerConfig.dialogTitle}
+          </DialogTitle>
+        <DialogContent>
+          <Stack spacing={2}>
+              {partnerConfig.dialogBody
+                .split('\n\n')
+                .filter(Boolean)
+                .map((paragraph, index) => (
+                  <Typography key={index} sx={{ color: '#374151', lineHeight: 1.7 }}>
+                    {paragraph}
+                  </Typography>
+                ))}
+            <Box
+              sx={{
+                p: 2,
+                borderRadius: '14px',
+                background: 'linear-gradient(135deg, rgba(255,140,0,0.12), rgba(255,200,80,0.16))',
+                border: '1px solid rgba(255,140,0,0.2)',
+              }}
+            >
+              <Typography sx={{ fontWeight: 700, color: '#9a3412', mb: 1 }}>
+                Kort sagt:
+              </Typography>
+                <Box component="ul" sx={{ pl: 3, m: 0, color: '#4b5563' }}>
+                  {(Array.isArray(partnerConfig.dialogBullets)
+                    ? partnerConfig.dialogBullets
+                    : partnerConfig.dialogBullets.split('\n')
+                  )
+                    .filter(Boolean)
+                    .map((bullet) => (
+                      <Box component="li" key={bullet} sx={{ lineHeight: 1.6 }}>
+                        {bullet}
+                      </Box>
+                    ))}
+                </Box>
+            </Box>
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 3 }}>
+          <Button
+            variant="text"
+            onClick={() => setModalState((prev) => ({ ...prev, showPartnerDialog: false }))}
+            sx={{ textTransform: 'none', color: '#6b7280' }}
+          >
+            Lukk
+          </Button>
+          <Button
+            variant="contained"
+            onClick={handleGetStarted}
+            sx={{
+              textTransform: 'none',
+              background: 'linear-gradient(135deg, #ff8c00 0%, #f59e0b 50%, #d97706 100%)',
+              px: 3,
+              fontWeight: 700,
+            }}
+          >
+            Kom i gang
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Enhanced Role Selector Modal */}
       <Dialog
