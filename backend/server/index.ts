@@ -2896,11 +2896,20 @@ function mapProjectRow(r: any) {
 app.get('/api/projects', async (req, res) => {
   try {
     const userId = getUserIdFromAuth(req);
+    const { customerId } = req.query as Record<string, string>;
     let query = 'SELECT * FROM legacy.projects';
     const params: any[] = [];
+    let idx = 1;
 
-    if (userId) {
-      query += ' WHERE user_id = $1';
+    if (customerId) {
+      query += ` WHERE customer_id = $${idx++}`;
+      params.push(customerId);
+      if (userId) {
+        query += ` AND user_id = $${idx++}`;
+        params.push(userId);
+      }
+    } else if (userId) {
+      query += ` WHERE user_id = $${idx++}`;
       params.push(userId);
     }
     query += ' ORDER BY created_at DESC';
@@ -15604,12 +15613,53 @@ app.get('/api/universal-crm/customers', async (req, res) => {
       createdAt: r.created_at,
       updatedAt: r.updated_at,
       customFields: r.custom_fields || {},
+      projectId: r.project_id || null,
     }));
 
     return res.json({ customers, total: parseInt(countResult.rows[0].total) });
   } catch (error) {
     console.error('CRM customers list error:', error);
     return res.status(500).json({ error: 'Failed to fetch customers' });
+  }
+});
+
+/**
+ * GET /api/universal-crm/customers/:id
+ * Get a single customer with project link
+ */
+app.get('/api/universal-crm/customers/:id', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT c.*, p.name as project_name, p.status as project_status FROM crm_customers c LEFT JOIN legacy.projects p ON c.project_id = p.id WHERE c.id = $1', [req.params.id]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Customer not found' });
+    }
+    const r = result.rows[0];
+    return res.json({
+      id: r.id,
+      name: r.name || '',
+      email: r.email || '',
+      phone: r.phone || '',
+      company: r.company || '',
+      profession: r.profession || '',
+      projectType: r.project_type || '',
+      budget: r.budget ? parseFloat(r.budget) : undefined,
+      status: r.status || 'lead',
+      tags: r.tags || [],
+      notes: r.notes || '',
+      source: r.source || '',
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+      customFields: r.custom_fields || {},
+      projectId: r.project_id || null,
+      project: r.project_id ? {
+        id: r.project_id,
+        name: r.project_name || '',
+        status: r.project_status || '',
+      } : null,
+    });
+  } catch (error) {
+    console.error('CRM customer fetch error:', error);
+    return res.status(500).json({ error: 'Failed to fetch customer' });
   }
 });
 
@@ -15658,6 +15708,7 @@ app.post('/api/universal-crm/customers', async (req, res) => {
       createdAt: r.created_at,
       updatedAt: r.updated_at,
       customFields: r.custom_fields || {},
+      projectId: r.project_id || null,
     };
 
     return res.status(201).json({ customer });
@@ -15756,6 +15807,7 @@ app.put('/api/universal-crm/customers/:id', async (req, res) => {
       createdAt: r.created_at,
       updatedAt: r.updated_at,
       customFields: r.custom_fields || {},
+      projectId: r.project_id || null,
     });
   } catch (error) {
     console.error('CRM customer update error:', error);
