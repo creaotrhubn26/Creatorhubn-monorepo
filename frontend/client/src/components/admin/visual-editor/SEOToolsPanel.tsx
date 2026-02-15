@@ -555,3 +555,9 @@ export const SEOToolsPanel: React.FC<SEOToolsPanelProps> = ({
           </Box>
         </AccordionSummary>
         <AccordionDetails>
+          <Typography color="text.secondary">Keyword research tools coming soon.</Typography>
+        </AccordionDetails>
+      </Accordion>
+    </Paper>
+  );
+};

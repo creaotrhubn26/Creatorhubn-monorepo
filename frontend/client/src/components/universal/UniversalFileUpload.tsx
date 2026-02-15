@@ -807,7 +807,7 @@ export const UniversalFileUpload: React.FC<UniversalFileUploadProps> = ({
         {enableAIAnalysis && <Chip size="small" label="AI analyse" color="primary" />}
         {enableAutoTagging && <Chip size="small" label="Auto-tag" color="primary" />}
         {enableSmartCollections && <Chip size="small" label="Smart collections" color="primary" />}
-      </Box>
+      </Stack>
 
       {/* Google Workspace Storage Information */}
       {showStorageInfo && (

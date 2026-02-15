@@ -159,10 +159,33 @@ export default defineConfig({
     devSourcemap: false,
   },
   optimizeDeps: {
-    include: ['buffer'],
+    include: [
+      'buffer',
+      'react',
+      'react-dom',
+      'react-dom/client',
+      'react/jsx-runtime',
+      'react/jsx-dev-runtime',
+      '@mui/material',
+      '@mui/icons-material',
+      '@mui/system',
+      '@emotion/react',
+      '@emotion/styled',
+      '@tanstack/react-query',
+      'wouter',
+      'zustand',
+      'recharts',
+      'framer-motion',
+      'lodash',
+      'date-fns',
+      'notistack',
+      'zod',
+      'axios',
+    ],
     exclude: [
       'rgthree/common/rgthree_api.js',
       'rgthree/common/components/base_custom_element',
+      'three-stdlib',
     ],
     // Only scan files within the project directory
     entries: [
@@ -197,6 +220,9 @@ export default defineConfig({
     host: '0.0.0.0',
     port: 5000,
     allowedHosts: true,
+    hmr: {
+      overlay: false,
+    },
     proxy: {
       '/api': {
         target: 'http://localhost:3001',

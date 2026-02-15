@@ -120,12 +120,15 @@ const TutorialLauncher: React.FC<TutorialLauncherProps> = ({
         onClick={() => setShowLauncher(true)}
         sx={{
           position: 'fixed',
-          bottom:  16,
-          right:  16,
-          bgcolor: professionColor'&:hover': {
+          bottom: 16,
+          right: 16,
+          bgcolor: professionColor,
+          '&:hover': {
             bgcolor: professionColor,
-            opacity: 0.9 },
-          zIndex: 1000}}
+            opacity: 0.9,
+          },
+          zIndex: 1000,
+        }}
       >
         <Help />
       </Fab>

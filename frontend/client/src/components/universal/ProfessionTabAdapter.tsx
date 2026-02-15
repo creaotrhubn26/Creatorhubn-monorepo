@@ -58,6 +58,8 @@ import TreatmentBooking from '../spa/TreatmentBooking';
 import ClientPreferences from '../spa/ClientPreferences';
 import MembershipPackages from '../spa/MembershipPackages';
 
+import RoleRoomDashboardPanel from '../role-room/RoleRoomDashboardPanel';
+
 interface ProfessionTabAdapterProps {
   profession: string;
   tabId: string;
@@ -89,6 +91,11 @@ export default function ProfessionTabAdapter({
         </Alert>
       </Box>
     );
+  }
+
+  // Universal tabs available across all professions
+  if (tabId === 'role-room') {
+    return <RoleRoomDashboardPanel userId={userId} profession={profession} {...additionalProps} />;
   }
 
   // Component mapping - maps tab IDs to actual components

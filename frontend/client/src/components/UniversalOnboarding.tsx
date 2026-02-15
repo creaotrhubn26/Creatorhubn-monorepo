@@ -850,7 +850,23 @@ export default function UniversalOnboarding({ isOpen: open = true, onClose = () 
 }, 'medium');
 
       await completeOnboardingMutation.mutateAsync(onboardingData);
-      
+
+      // ⭐ Register profession as a Role Room role (fire-and-forget)
+      try {
+        await fetch('/api/role-room/onboarding/register-role', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            userId: 'current-user',
+            email: onboardingData.email,
+            profession: onboardingData.profession,
+          }),
+        });
+      } catch (_roleRoomErr) {
+        // Non-blocking — Role Room registration is optional
+      }
+
       // ⭐ Broadcast to other tabs/components via BroadcastChannel
       if (typeof window !== 'undefined') {
         const channel = new BroadcastChannel('business-info-sync');

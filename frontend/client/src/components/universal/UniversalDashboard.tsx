@@ -200,6 +200,9 @@ import IntegratedToolsOverview from './IntegratedToolsOverview';
 // Import Universal CRM System
 import UniversalCRMDashboard from '../crm/UniversalCRMDashboard';
 
+// Import Role Room integration
+import RoleRoomDashboardPanel from '../role-room/RoleRoomDashboardPanel';
+
 // Import all missing components to properly wire them up
 import SignatureStatusOverview from './signatures/SignatureStatusOverview';
 import EquipmentManagementDB from '../unused/profession-specific/EquipmentManagementDB';
@@ -269,6 +272,7 @@ const localProfessionConfigs: ProfessionConfigs = {
       { id: 'files', label: 'Filer', icon: <FolderOpen /> },
       { id: 'settings', label: 'Innstillinger', icon: <Settings /> },
       { id: 'communication', label: 'Kommunikasjon', icon: <Chat /> },
+      { id: 'role-room', label: 'The Role Room', icon: <img src="/TheRoleRoom_App_Logo.png" alt="Role Room" style={{ width: 24, height: 24, objectFit: 'contain' }} /> },
       { id: 'integration-test', label: 'Integration Test', icon: <Build /> }
     ],
     projectTypes: ['bryllup','portrett','event','kommersiell'],
@@ -304,6 +308,7 @@ const localProfessionConfigs: ProfessionConfigs = {
       { id: 'settings', label: 'Innstillinger', icon: <Settings /> },
       { id: 'administration', label: 'Administrasjon', icon: <AdminPanelSettings /> },
       { id: 'communication', label: 'Kommunikasjon', icon: <Chat /> },
+      { id: 'role-room', label: 'The Role Room', icon: <img src="/TheRoleRoom_App_Logo.png" alt="Role Room" style={{ width: 24, height: 24, objectFit: 'contain' }} /> },
       { id: 'integration-test', label: 'Integration Test', icon: <Build /> }
     ],
     projectTypes: ['bryllup','commercial','portrett','produkt'],
@@ -339,6 +344,7 @@ const localProfessionConfigs: ProfessionConfigs = {
       { id: 'settings', label: 'Innstillinger', icon: <Settings /> },
       { id: 'administration', label: 'Administrasjon', icon: <AdminPanelSettings /> },
       { id: 'communication', label: 'Kommunikasjon', icon: <Chat /> },
+      { id: 'role-room', label: 'The Role Room', icon: <img src="/TheRoleRoom_App_Logo.png" alt="Role Room" style={{ width: 24, height: 24, objectFit: 'contain' }} /> },
       { id: 'integration-test', label: 'Integration Test', icon: <Build /> }
     ],
     projectTypes: ['bryllup','reklame','dokumentar','musikkvideo'],
@@ -373,6 +379,7 @@ const localProfessionConfigs: ProfessionConfigs = {
       { id: 'settings', label: 'Innstillinger', icon: <Settings /> },
       { id: 'administration', label: 'Administrasjon', icon: <AdminPanelSettings /> },
       { id: 'communication', label: 'Kommunikasjon', icon: <Chat /> },
+      { id: 'role-room', label: 'The Role Room', icon: <img src="/TheRoleRoom_App_Logo.png" alt="Role Room" style={{ width: 24, height: 24, objectFit: 'contain' }} /> },
       { id: 'integration-test', label: 'Integration Test', icon: <Build /> }
     ],
     projectTypes: ['album','singel','podcast','jingle'],
@@ -398,6 +405,7 @@ const localProfessionConfigs: ProfessionConfigs = {
       { id: 'support', label: 'Support', icon: <HelpCenter /> },
       { id: 'settings', label: 'Innstillinger', icon: <Settings /> },
       { id: 'administration', label: 'Administrasjon', icon: <AdminPanelSettings /> },
+      { id: 'role-room', label: 'The Role Room', icon: <img src="/TheRoleRoom_App_Logo.png" alt="Role Room" style={{ width: 24, height: 24, objectFit: 'contain' }} /> },
       { id: 'integration-test', label: 'Integration Test', icon: <Build /> }
     ],
     projectTypes: ['utleie','salg','service','konsultasjon'],
@@ -435,6 +443,7 @@ const localProfessionConfigs: ProfessionConfigs = {
       { id: 'settings', label: 'Innstillinger', icon: <Settings /> },
       { id: 'administration', label: 'Administrasjon', icon: <AdminPanelSettings /> },
       { id: 'communication', label: 'Kommunikasjon', icon: <Chat /> },
+      { id: 'role-room', label: 'The Role Room', icon: <img src="/TheRoleRoom_App_Logo.png" alt="Role Room" style={{ width: 24, height: 24, objectFit: 'contain' }} /> },
       { id: 'integration-test', label: 'Integration Test', icon: <Build /> }
     ],
     projectTypes: ['bryllup','corporate','event','musikkvideo','portrett','reklame'],
@@ -729,6 +738,7 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
         'settings': true, // Always available
         'administration': true, // Pricing administration for all professions
         'communication': true,
+        'role-room': true, // The Role Room - casting & crew management
         'integration-test': isAdmin // Only for admins
       };
 
@@ -4889,6 +4899,15 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
               </Box>
             </TabPanel>
           )}
+
+          {/* The Role Room — Casting & Crew management (shared across all professions) */}
+          <TabPanel value={tabValue} index={availableTabs.findIndex(tab => tab.id === 'role-room')}>
+            <RoleRoomDashboardPanel
+              userId={userId}
+              profession={profession}
+              creatorhubProjectId={selectedProject?.id}
+            />
+          </TabPanel>
 
           {/* Dynamically render tabs based on profession */}
           {profession === 'photographer' ? (

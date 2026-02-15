@@ -170,6 +170,7 @@ export function useProfessionTabs(profession: string) {
       { id: 'email-center', label: 'E-post', icon: 'email' },
       { id: 'worklog', label: 'Worklog', icon: 'access-time' },
       { id: 'clients', label: 'Kunder', icon: 'people' },
+      { id: 'role-room', label: 'The Role Room', icon: 'theater-comedy' },
       { id: 'settings', label: 'Innstillinger', icon: 'settings' },
       { id: 'communication', label: 'Kommunikasjon', icon: 'chat' },
     ];

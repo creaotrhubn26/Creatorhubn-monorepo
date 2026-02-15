@@ -16,6 +16,7 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import * as schema from '../migrations/schema.js';
 import { and, desc, eq, inArray, isNotNull, or, sql } from 'drizzle-orm';
+import { createRoleRoomRouter } from './role-room-routes.js';
 
 // Database connection
 const pool = new Pool({
@@ -86,9 +87,13 @@ async function getTableColumns(tableName: string): Promise<Set<string>> {
   return columns;
 }
 
+// CORS — apply CORS_ALLOW_ORIGINS to Role Room routes; wide-open for legacy routes
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
+
+// ── Role Room API (x-api-key enforced, own CORS) ─────────
+app.use('/api/role-room', createRoleRoomRouter(pool));
 
 // Ensure UTF-8 charset for all JSON responses (æøå support)
 app.use((req, res, next) => {

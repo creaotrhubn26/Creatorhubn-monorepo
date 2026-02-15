@@ -444,24 +444,29 @@ export default function ChatWidget({
             variant="fullWidth"
             sx={{
               '& .MuiTabs-root': {
-                minHeight:  60,
-            }, '& .MuiTab-root': {
-                color: 'rgba(25,255,255,0.7)',
-                minHeight:  60,
-                fontSize: '1rem',
-                fontWeight: 60
-                border: '2px solid rgba(25,255,255,0.2)',
-                borderRadius:  2,
-                mx: 0.5, '&:hover': {
-                  bgcolor: 'rgba(25,255,255,0.1)',
+                minHeight: 60,
               },
-            }, '& .Mui-selected': {
+              '& .MuiTab-root': {
+                color: 'rgba(25,255,255,0.7)',
+                minHeight: 60,
+                fontSize: '1rem',
+                fontWeight: 600,
+                border: '2px solid rgba(25,255,255,0.2)',
+                borderRadius: 2,
+                mx: 0.5,
+                '&:hover': {
+                  bgcolor: 'rgba(25,255,255,0.1)',
+                },
+              },
+              '& .Mui-selected': {
                 color: 'white !important',
                 bgcolor: 'rgba(25,255,255,0.2)',
                 border: '2px solid white',
-            }, '& .MuiTabs-indicator': {
+              },
+              '& .MuiTabs-indicator': {
                 display: 'none',
-            }}}
+              },
+            }}
           >
             <Tab
               icon={<Chat sx={{ fontSize: 24}} />}

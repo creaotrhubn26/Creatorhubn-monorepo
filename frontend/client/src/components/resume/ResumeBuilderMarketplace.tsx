@@ -282,6 +282,28 @@ export const CreatorHubMarketplace: React.FC<CreatorHubMarketplaceProps> = ({
       gradientEnd: '#0891B2',
       categoryIcon: <TimerIcon />,
     },
+    {
+      id: 'role-room',
+      name: 'The Role Room',
+      category: 'Business',
+      rating: 4.9,
+      reviews: 412,
+      description: 'Casting, crew & produksjonsplanlegging',
+      longDescription: 'Komplett casting-system for film, TV og teater. Administrer roller, kandidater, crew, tidsplaner og produksjonsdetaljer — alt koblet til Creatorhub-prosjekter.',
+      featured: true,
+      downloadCount: 34000,
+      monthlyGrowth: 30,
+      features: [
+        { icon: <GroupsIcon />, text: 'Rolleforvaltning & casting' },
+        { icon: <DocumentIcon />, text: 'Kandidat-administrasjon' },
+        { icon: <TimerIcon />, text: 'Tidsplanlegging' },
+        { icon: <AnalyzeIcon />, text: 'Prosjektsynkronisering' },
+      ],
+      pricing: { free: true },
+      gradientStart: '#F59E0B',
+      gradientEnd: '#D946EF',
+      categoryIcon: <GroupsIcon />,
+    },
   ];
 
   const categories = ['all', 'Career', 'Showcase', 'Legal', 'Finance', 'Business', 'Productivity'];
