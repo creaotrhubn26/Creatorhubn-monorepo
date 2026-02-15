@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box,
   Typography,
@@ -31,6 +31,8 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
+  Avatar,
+  Divider,
 } from '@mui/material';
 import {
   TrendingUp,
@@ -76,16 +78,83 @@ import {
   Area,
 } from 'recharts';
 
+// System status shape returned from /api/business/intelligence/status
+interface SystemStatus {
+  online: boolean;
+  analyticsEngine: string;
+  performance: {
+    dataAccuracy: string;
+    queryResponseTime: string;
+  };
+  version: string;
+  timestamp: string;
+  dataSources?: {
+    vendors: number;
+    products: number;
+  };
+}
+
+// SSB economic indicator from ExternalDataService
+interface SSBIndicator {
+  title: string;
+  value: number;
+  unit: string;
+  period: string;
+}
+
+interface SSBEconomicData {
+  source: string;
+  lastUpdated: string;
+  indicators: SSBIndicator[];
+}
+
+interface SSBPopulationData {
+  region: string;
+  year: number;
+  data: {
+    population: number;
+    growth: number;
+    density: number;
+  };
+}
+
+interface ProffCompany {
+  name: string;
+  orgNumber: string;
+  industry: string;
+  employees: number;
+  revenue: number;
+  location: string;
+}
+
+// Map profession to Norwegian search term for Proff.no
+function professionToNorwegianSearch(profession: string): string {
+  const map: Record<string, string> = {
+    photographer: 'Fotograf',
+    videographer: 'Videograf',
+    music_producer: 'Musikkprodusent',
+    musician: 'Musiker',
+    venue: 'Selskapslokaler',
+    planner: 'Bryllupsplanlegger',
+    makeup: 'Makeup',
+    florist: 'Blomsterdekoratør',
+    catering: 'Catering',
+    cake: 'Konditor',
+    transport: 'Limousine',
+  };
+  return map[profession] || profession;
+}
+
 const COLORS = ['#ff6b35','#4dabf7','#69db7c','#ffd43b','#f783ac'];
 
 export default function BusinessIntelligenceDashboard() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
-  const profession = (user as any)?.profession || 'photographer';
+  const profession = user?.profession || 'photographer';
   // Theming system - use dynamic profession instead of hardcoded value
   const theming = useTheming(profession);
-  const [selectedRegion, setSelectedRegion] = useState('Oslo,');
-  const [selectedService, setSelectedService] = useState('bryllup,');
+  const [selectedRegion, setSelectedRegion] = useState('Oslo');
+  const [selectedService, setSelectedService] = useState('bryllup');
   const [pushSettingsOpen, setPushSettingsOpen] = useState(false);
   
   // Push notifications
@@ -96,6 +165,12 @@ export default function BusinessIntelligenceDashboard() {
   
   // Dynamic profession system
   const { getProfessionDisplayName } = useDynamicProfessions();
+  
+  // Profession configuration & adapter
+  const { professionConfigs, hasData: hasProfessionConfig } = useProfessionConfigs();
+  const { adaptDashboardTitle, trackProfessionActivity, getProfessionAnalytics } = useProfessionAdapter();
+  const professionIcon = getProfessionIcon(profession);
+  const currentProfConfig = professionConfigs[profession];
   
   // ⭐ Enhanced Master Integration
   const { integration, communication, dataFlow, componentRegistry, lifecycle, analytics, performance, debugging } = useEnhancedMasterIntegration();
@@ -109,9 +184,9 @@ export default function BusinessIntelligenceDashboard() {
   } = useExternalData();
   
   // State for Norwegian data
-  const [ssbEconomicData, setSSBEconomicData] = useState<any>(null);
-  const [ssbPopulationData, setSSBPopulationData] = useState<any>(null);
-  const [proffMarketData, setProffMarketData] = useState<any>(null);
+  const [ssbEconomicData, setSSBEconomicData] = useState<SSBEconomicData | null>(null);
+  const [ssbPopulationData, setSSBPopulationData] = useState<SSBPopulationData | null>(null);
+  const [proffMarketData, setProffMarketData] = useState<ProffCompany[] | null>(null);
   
   // Register component with MasterIntegrationProvider
   React.useEffect(() => {
@@ -142,6 +217,15 @@ export default function BusinessIntelligenceDashboard() {
       service: selectedService
     });
 
+    // Track profession activity via adapter
+    trackProfessionActivity('dashboard_view', { component: 'BusinessIntelligenceDashboard' });
+
+    // Register with component registry for cross-component discovery
+    componentRegistry.register?.('BusinessIntelligenceDashboard', {
+      type: 'analytics',
+      capabilities: ['market-analysis', 'regional-analysis', 'ssb-integration'],
+    });
+
     return () => {
       lifecycle.unregisterComponent('BusinessIntelligenceDashboard');
     };
@@ -170,7 +254,7 @@ export default function BusinessIntelligenceDashboard() {
   });
 
   // System status
-  const { data: systemStatus } = useQuery({
+  const { data: systemStatus } = useQuery<SystemStatus>({
     queryKey: ['/api/business/intelligence/status'],
     queryFn: () => apiRequest('/api/business/intelligence/status'),
     retry: 1,
@@ -206,6 +290,7 @@ export default function BusinessIntelligenceDashboard() {
     
     queryClient.invalidateQueries({ queryKey: ['/api/business'] });
     fetchNorwegianData(); // Also refresh Norwegian data
+    fetchProffData(); // Refresh Proff.no data
     
     // Track refresh action
     analytics.trackEvent('dashboard_refreshed', {
@@ -214,9 +299,12 @@ export default function BusinessIntelligenceDashboard() {
       profession
     });
     
-    debugging.logIntegration('info, ','Dashboard data refreshed', {
+    // Log integration status
+    const integrationState = integration.getState?.();
+    debugging.logIntegration('info', 'Dashboard data refreshed', {
       region: selectedRegion,
-      service: selectedService
+      service: selectedService,
+      integrationActive: !!integrationState,
     });
     
     endTiming();
@@ -247,7 +335,7 @@ export default function BusinessIntelligenceDashboard() {
       dataFlow.syncData('BusinessIntelligenceDashboard:ssbEconomic', economicData);
       dataFlow.syncData('BusinessIntelligenceDashboard:ssbPopulation', populationData);
       
-      debugging.logIntegration('info','Norwegian business intelligence data loaded', {
+      debugging.logIntegration('info', 'Norwegian business intelligence data loaded', {
         region: selectedRegion,
         economicIndicators: economicData.indicators?.length,
         population: populationData.data.population
@@ -278,6 +366,41 @@ export default function BusinessIntelligenceDashboard() {
       component: 'BusinessIntelligenceDashboard'
     });
   }, [selectedRegion]);
+
+  // ⭐ Fetch Proff.no competitor data for the selected region
+  const fetchProffData = useCallback(async () => {
+    try {
+      const categoryName = professionToNorwegianSearch(profession);
+      const companies = await searchProffCompanies(categoryName, selectedRegion);
+      let companyList: ProffCompany[] = [];
+      if (companies?.companies) {
+        companyList = companies.companies as ProffCompany[];
+      } else if (Array.isArray(companies)) {
+        companyList = companies as ProffCompany[];
+      }
+
+      // Enrich first company with detailed Proff.no data if available
+      if (companyList.length > 0 && companyList[0].orgNumber) {
+        try {
+          const detail = await getProffCompanyData(companyList[0].orgNumber);
+          if (detail?.revenue) {
+            companyList[0] = { ...companyList[0], revenue: detail.revenue, employees: detail.employees ?? companyList[0].employees };
+          }
+        } catch {
+          // Detailed data optional
+        }
+      }
+
+      setProffMarketData(companyList);
+      analytics.trackEvent('proff_data_fetched', { region: selectedRegion, profession, count: companyList.length });
+    } catch (error) {
+      debugging.logIntegration('warn', 'Proff.no data unavailable, using backend data only', { error: (error as Error).message });
+    }
+  }, [selectedRegion, profession, searchProffCompanies, getProffCompanyData, analytics, debugging]);
+
+  useEffect(() => {
+    fetchProffData();
+  }, [fetchProffData]);
   
   // Track service selection changes
   React.useEffect(() => {
@@ -293,7 +416,7 @@ export default function BusinessIntelligenceDashboard() {
       <Alert severity="error" sx={{ m: 2 }}>
         <Typography variant="h6">Feil ved lasting av business intelligence data</Typography>
         <Typography variant="body2">
-          {(dashboardError as any).message || 'Kunne ikke laste markedsdata. Prøv igjen senere.'}
+          {dashboardError instanceof Error ? dashboardError.message : 'Kunne ikke laste markedsdata. Prøv igjen senere.'}
         </Typography>
         <Button variant="outlined" onClick={handleRefresh} sx={{ mt: 1 }}>
           Prøv igjen
@@ -309,20 +432,28 @@ export default function BusinessIntelligenceDashboard() {
     <Box sx={{ p: 3, maxWidth: '100%' }}>
       {/* Header */}
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-        <Box>
-          <Typography variant="h4" gutterBottom sx={{ fontWeight: 600, color: theming.colors.primary }}>
-            Business Intelligence Dashboard
-          </Typography>
-          <Typography variant="subtitle1" color="text.secondary">
-            Markedsanalyse og forretningsmessig innsikt for{' '}
-            {getProfessionDisplayName(profession).toLowerCase()}er
-          </Typography>
+        <Box display="flex" alignItems="center" gap={2}>
+          {professionIcon && (
+            <Avatar sx={{ bgcolor: currentProfConfig?.color || theming.colors.primary, width: 48, height: 48 }}>
+              {professionIcon}
+            </Avatar>
+          )}
+          <Box>
+            <Typography variant="h4" gutterBottom sx={{ fontWeight: 600, color: theming.colors.primary }}>
+              {adaptDashboardTitle ? adaptDashboardTitle('Business Intelligence') : 'Business Intelligence Dashboard'}
+            </Typography>
+            <Typography variant="subtitle1" color="text.secondary">
+              Markedsanalyse og forretningsmessig innsikt for{' '}
+              {getProfessionDisplayName(profession).toLowerCase()}er
+              {hasProfessionConfig && currentProfConfig ? ` (${currentProfConfig.displayName})` : ''}
+            </Typography>
+          </Box>
         </Box>
         <Box display="flex" gap={1} alignItems="center">
           {systemStatus && (
             <Chip
-              label={(systemStatus as any).online ? 'System Online' : 'System Offline'}
-              color={(systemStatus as any).online ? 'success' : 'error'}
+              label={systemStatus.online ? 'System Online' : 'System Offline'}
+              color={systemStatus.online ? 'success' : 'error'}
               variant="outlined"
               size="small"
             />
@@ -887,6 +1018,57 @@ export default function BusinessIntelligenceDashboard() {
           </Grid>
         )}
 
+        {/* ⭐ Proff.no Competitor Intelligence */}
+        {proffMarketData && proffMarketData.length > 0 && (
+          <Grid item xs={12}>
+            <Card sx={{ bgcolor: 'warning.light', border: '2px solid', borderColor: 'warning.main' }}>
+              <CardHeader 
+                title="🏢 Konkurrentoversikt (Proff.no)"
+                subheader={`${proffMarketData.length} relaterte bedrifter i ${selectedRegion}`}
+                avatar={<BusinessCenter color="warning" />}
+              />
+              <CardContent>
+                <TableContainer>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell><strong>Bedrift</strong></TableCell>
+                        <TableCell><strong>Bransje</strong></TableCell>
+                        <TableCell align="right"><strong>Ansatte</strong></TableCell>
+                        <TableCell align="right"><strong>Omsetning</strong></TableCell>
+                        <TableCell><strong>Sted</strong></TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {proffMarketData.slice(0, 8).map((company, index) => (
+                        <TableRow key={company.orgNumber || index} hover>
+                          <TableCell>
+                            <Typography variant="body2" sx={{ fontWeight: 600 }}>{company.name}</Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="body2" color="text.secondary">{company.industry}</Typography>
+                          </TableCell>
+                          <TableCell align="right">{company.employees || '–'}</TableCell>
+                          <TableCell align="right">
+                            {company.revenue ? `kr ${company.revenue.toLocaleString('no-NO')}` : '–'}
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="body2" color="text.secondary">{company.location}</Typography>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+                <Divider sx={{ my: 1 }} />
+                <Typography variant="caption" color="text.secondary">
+                  Data fra Proff.no. Viser {professionToNorwegianSearch(profession)}-relaterte bedrifter.
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+        )}
+
         {/* Split Sheet Revenue Analytics - Only for Music Producers */}
         {isMusicProducer && revenueAnalyticsData?.data && (
           <>
@@ -1071,7 +1253,7 @@ export default function BusinessIntelligenceDashboard() {
             <Card>
               <CardHeader 
                 title="System Status"
-                subheader={`Sist oppdatert: ${new Date((systemStatus as any).timestamp).toLocaleString('no-NO')}`}
+                subheader={`Sist oppdatert: ${new Date(systemStatus.timestamp).toLocaleString('no-NO')}`}
                 avatar={<Assessment color="success" />}
               />
               <CardContent>
@@ -1079,30 +1261,45 @@ export default function BusinessIntelligenceDashboard() {
                   <Grid item xs={12} sm={6} md={3}>
                     <Typography variant="body2" color="text.secondary">Analytics Engine</Typography>
                     <Chip
-                      label={(systemStatus as any).analyticsEngine === 'active' ? 'Aktiv' : 'Inaktiv'}
-                      color={(systemStatus as any).analyticsEngine === 'active' ? 'success': 'error'}
+                      label={systemStatus.analyticsEngine === 'active' ? 'Aktiv' : 'Inaktiv'}
+                      color={systemStatus.analyticsEngine === 'active' ? 'success': 'error'}
                       size="small"
                     />
                   </Grid>
                   <Grid item xs={12} sm={6} md={3}>
                     <Typography variant="body2" color="text.secondary">Data Nøyaktighet</Typography>
                     <Typography variant="body1" sx={{ fontWeight: 600}}>
-                      {(systemStatus as any).performance?.dataAccuracy || 'N/A'}
+                      {systemStatus.performance?.dataAccuracy || 'N/A'}
                     </Typography>
                   </Grid>
                   <Grid item xs={12} sm={6} md={3}>
                     <Typography variant="body2" color="text.secondary">Response Time</Typography>
                     <Typography variant="body1" sx={{ fontWeight: 600}}>
-                      {(systemStatus as any).performance?.queryResponseTime || 'N/A'}
+                      {systemStatus.performance?.queryResponseTime || 'N/A'}
                     </Typography>
                   </Grid>
                   <Grid item xs={12} sm={6} md={3}>
                     <Typography variant="body2" color="text.secondary">Versjon</Typography>
                     <Typography variant="body1" sx={{ fontWeight: 600}}>
-                      {(systemStatus as any).version ||'N/A'}
+                      {systemStatus.version || 'N/A'}
                     </Typography>
                   </Grid>
                 </Grid>
+                {/* Profession usage analytics */}
+                {(() => {
+                  const profAnalytics = getProfessionAnalytics();
+                  if (!profAnalytics) return null;
+                  return (
+                    <Box mt={2}>
+                      <Divider sx={{ mb: 1 }} />
+                      <Typography variant="caption" color="text.secondary">
+                        Profesjonsaktivitet: {typeof profAnalytics === 'object' && 'totalEvents' in profAnalytics
+                          ? `${(profAnalytics as { totalEvents: number }).totalEvents} hendelser registrert`
+                          : 'Sporing aktiv'}
+                      </Typography>
+                    </Box>
+                  );
+                })()}
               </CardContent>
             </Card>
           </Grid>
