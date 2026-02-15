@@ -2888,6 +2888,7 @@ function mapProjectRow(r: any) {
     expenses: r.expenses || 0,
     featured: r.featured || false,
     published: r.published || false,
+    customerId: r.customer_id || null,
   };
 }
 
@@ -2980,13 +2981,14 @@ app.post('/api/projects', async (req, res) => {
     };
 
     const projectId = crypto.randomUUID();
+    const customerId = data.customerId || data.customer_id || null;
 
     const result = await pool.query(
       `INSERT INTO legacy.projects 
         (id, user_id, title, name, description, profession, category, status,
          client_email, client_phone, date, event_date, location, budget,
-         settings, metadata, created_at, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,'active',$8,$9,$10,$11,$12,$13,$14,$15,NOW(),NOW())
+         settings, metadata, customer_id, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,'active',$8,$9,$10,$11,$12,$13,$14,$15,$16,NOW(),NOW())
        RETURNING *`,
       [
         projectId,
@@ -3004,11 +3006,20 @@ app.post('/api/projects', async (req, res) => {
         data.budget || null,
         JSON.stringify(settings),
         JSON.stringify(metadata),
+        customerId,
       ]
     );
 
     const project = mapProjectRow(result.rows[0]);
-    console.log(`🎬 Nytt prosjekt opprettet: "${projectName}" (${projectId}) av ${userId}`);
+    console.log(`🎬 Nytt prosjekt opprettet: "${projectName}" (${projectId}) av ${userId}${customerId ? ` for kunde ${customerId}` : ''}`);
+
+    // If created from CRM customer, link project back to customer
+    if (customerId) {
+      await pool.query(
+        `UPDATE crm_customers SET project_id = $1, status = 'active', updated_at = NOW() WHERE id = $2`,
+        [projectId, customerId]
+      ).catch((err: any) => console.error('Failed to link project to CRM customer:', err.message));
+    }
 
     // If this project came from a submission, update submission status
     if (data.submissionId) {
