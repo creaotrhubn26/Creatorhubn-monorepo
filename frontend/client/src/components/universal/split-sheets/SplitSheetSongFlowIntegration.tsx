@@ -1,6 +1,6 @@
 /**
- * Split Sheet SongFlow Integration
- * Component for linking/unlinking split sheets with SongFlow tracks and projects
+ * Split Sheet EaseVerse Integration
+ * Component for linking/unlinking split sheets with EaseVerse tracks and projects
  */
 
 import React, { useState } from 'react';
@@ -36,7 +36,7 @@ import {
   MusicNote as MusicIcon,
   AccountBalance as SplitSheetIcon
 } from '@mui/icons-material';
-import type { SplitSheet, SplitSheetSongFlowLink } from './types';
+import type { SplitSheet, SplitSheetEaseVerseLink } from './types';
 
 interface SplitSheetSongFlowIntegrationProps {
   splitSheetId: string;
@@ -49,77 +49,85 @@ export default function SplitSheetSongFlowIntegration({
 }: SplitSheetSongFlowIntegrationProps) {
   const queryClient = useQueryClient();
   const [showLinkDialog, setShowLinkDialog] = useState(false);
-  const [songflowTrackId, setSongflowTrackId] = useState('');
-  const [songflowProjectId, setSongflowProjectId] = useState('');
-  const [confirmUnlink, setConfirmUnlink] = useState<SplitSheetSongFlowLink | null>(null);
+  const [easeverseTrackId, setEaseverseTrackId] = useState('');
+  const [easeverseProjectId, setEaseverseProjectId] = useState('');
+  const [confirmUnlink, setConfirmUnlink] = useState<SplitSheetEaseVerseLink | null>(null);
   const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'info' | 'warning' | 'error' }>({ open: false, message: '', severity: 'info' });
 
   // Fetch existing links
   const { data: linksData } = useQuery({
-    queryKey: ['split-sheet-songflow-links', splitSheetId],
+    queryKey: ['split-sheet-easeverse-links', splitSheetId],
     queryFn: async () => {
-      const response = await apiRequest(`/api/split-sheets/${splitSheetId}/songflow`);
+      const response = await apiRequest(`/api/split-sheets/${splitSheetId}/easeverse`);
       return response;
     }
   });
 
-  const links: SplitSheetSongFlowLink[] = linksData?.data || [];
+  const links: SplitSheetEaseVerseLink[] = linksData?.data || [];
 
   // Link mutation
   const linkMutation = useMutation({
-    mutationFn: async (data: { songflow_track_id?: string; songflow_project_id?: string }) => {
-      await apiRequest(`/api/split-sheets/${splitSheetId}/link-songflow`, {
+    mutationFn: async (data: { easeverseTrackId?: string; easeverseProjectId?: string }) => {
+      await apiRequest(`/api/split-sheets/${splitSheetId}/link-easeverse`, {
         method: 'POST',
-        body: JSON.stringify(data)
+        body: data
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['split-sheet-songflow-links', splitSheetId] });
+      queryClient.invalidateQueries({ queryKey: ['split-sheet-easeverse-links', splitSheetId] });
       queryClient.invalidateQueries({ queryKey: ['split-sheet', splitSheetId] });
       setShowLinkDialog(false);
-      setSongflowTrackId('');
-      setSongflowProjectId('');
+      setEaseverseTrackId('');
+      setEaseverseProjectId('');
       if (onLinkCreated) onLinkCreated();
     }
   });
 
   // Unlink mutation
   const unlinkMutation = useMutation({
-    mutationFn: async (params: { songflow_track_id?: string; songflow_project_id?: string }) => {
+    mutationFn: async (params: { easeverseTrackId?: string; easeverseProjectId?: string }) => {
       const queryParams = new URLSearchParams();
-      if (params.songflow_track_id) queryParams.append('songflow_track_id', params.songflow_track_id);
-      if (params.songflow_project_id) queryParams.append('songflow_project_id', params.songflow_project_id);
+      if (params.easeverseTrackId) queryParams.append('easeverseTrackId', params.easeverseTrackId);
+      if (params.easeverseProjectId) queryParams.append('easeverseProjectId', params.easeverseProjectId);
       
-      await apiRequest(`/api/split-sheets/${splitSheetId}/unlink-songflow?${queryParams.toString()}`, {
+      await apiRequest(`/api/split-sheets/${splitSheetId}/unlink-easeverse?${queryParams.toString()}`, {
         method: 'DELETE'
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['split-sheet-songflow-links', splitSheetId] });
+      queryClient.invalidateQueries({ queryKey: ['split-sheet-easeverse-links', splitSheetId] });
       queryClient.invalidateQueries({ queryKey: ['split-sheet', splitSheetId] });
     }
   });
 
   const handleLink = () => {
-    if (!songflowTrackId && !songflowProjectId) {
-      setSnackbar({ open: true, message: 'Vennligst oppgi enten SongFlow track ID eller project ID', severity: 'warning' });
+    if (!easeverseTrackId && !easeverseProjectId) {
+      setSnackbar({ open: true, message: 'Vennligst oppgi enten EaseVerse track ID eller project ID', severity: 'warning' });
       return;
     }
     linkMutation.mutate({
-      songflow_track_id: songflowTrackId || undefined,
-      songflow_project_id: songflowProjectId || undefined
+      easeverseTrackId: easeverseTrackId || undefined,
+      easeverseProjectId: easeverseProjectId || undefined
     });
   };
 
-  const handleUnlink = (link: SplitSheetSongFlowLink) => {
+  const handleUnlink = (link: SplitSheetEaseVerseLink) => {
     setConfirmUnlink(link);
   };
 
   const executeUnlink = () => {
     if (!confirmUnlink) return;
     unlinkMutation.mutate({
-      songflow_track_id: confirmUnlink.songflow_track_id || undefined,
-      songflow_project_id: confirmUnlink.songflow_project_id || undefined
+      easeverseTrackId:
+        confirmUnlink.easeverseTrackId ||
+        confirmUnlink.easeverse_track_id ||
+        confirmUnlink.songflow_track_id ||
+        undefined,
+      easeverseProjectId:
+        confirmUnlink.easeverseProjectId ||
+        confirmUnlink.easeverse_project_id ||
+        confirmUnlink.songflow_project_id ||
+        undefined
     });
     setConfirmUnlink(null);
   };
@@ -132,10 +140,10 @@ export default function SplitSheetSongFlowIntegration({
             <Box>
               <Typography variant="h6" sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
                 <MusicIcon sx={{ color: '#9f7aea' }} />
-                SongFlow Integrasjon
+                EaseVerse Integrasjon
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                Koble split sheet til SongFlow tracks eller prosjekter
+                Koble split sheet til EaseVerse tracks eller prosjekter
               </Typography>
             </Box>
             <Button
@@ -143,13 +151,13 @@ export default function SplitSheetSongFlowIntegration({
               startIcon={<LinkIcon />}
               onClick={() => setShowLinkDialog(true)}
             >
-              Koble til SongFlow
+              Koble til EaseVerse
             </Button>
           </Stack>
 
           {links.length === 0 ? (
             <Alert severity="info">
-              Ingen SongFlow-koblinger. Koble til en SongFlow track eller prosjekt for å synkronisere data.
+              Ingen EaseVerse-koblinger. Koble til en EaseVerse track eller prosjekt for å synkronisere data.
             </Alert>
           ) : (
             <List>
@@ -160,22 +168,22 @@ export default function SplitSheetSongFlowIntegration({
                       primary={
                         <Stack direction="row" spacing={1} alignItems="center">
                           <Chip
-                            label={link.link_type === 'track' ? 'Track' : 'Prosjekt'}
+                            label={(link.linkType || link.link_type) === 'track' ? 'Track' : 'Prosjekt'}
                             size="small"
                             color="primary"
                             variant="outlined"
                           />
-                          {link.songflow_track_id && (
+                          {(link.easeverseTrackId || link.easeverse_track_id || link.songflow_track_id) && (
                             <Typography variant="body2">
-                              Track ID: {link.songflow_track_id}
+                              Track ID: {link.easeverseTrackId || link.easeverse_track_id || link.songflow_track_id}
                             </Typography>
                           )}
-                          {link.songflow_project_id && (
+                          {(link.easeverseProjectId || link.easeverse_project_id || link.songflow_project_id) && (
                             <Typography variant="body2">
-                              Prosjekt ID: {link.songflow_project_id}
+                              Prosjekt ID: {link.easeverseProjectId || link.easeverse_project_id || link.songflow_project_id}
                             </Typography>
                           )}
-                          {link.auto_created && (
+                          {(link.autoCreated || link.auto_created) && (
                             <Chip
                               label="Auto-opprettet"
                               size="small"
@@ -186,8 +194,8 @@ export default function SplitSheetSongFlowIntegration({
                         </Stack>
                       }
                       secondary={
-                        link.linked_at
-                          ? `Koblet: ${new Date(link.linked_at).toLocaleDateString('no-NO')}`
+                        (link.linkedAt || link.linked_at)
+                          ? `Koblet: ${new Date(link.linkedAt || (link.linked_at as string)).toLocaleDateString('no-NO')}`
                           : undefined
                       }
                     />
@@ -216,29 +224,29 @@ export default function SplitSheetSongFlowIntegration({
         open={showLinkDialog}
         onClose={() => {
           setShowLinkDialog(false);
-          setSongflowTrackId(', ');
-          setSongflowProjectId(', ');
+          setEaseverseTrackId('');
+          setEaseverseProjectId('');
         }}
         maxWidth="sm"
         fullWidth
       >
-        <DialogTitle>Koble til SongFlow</DialogTitle>
+        <DialogTitle>Koble til EaseVerse</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
             <Alert severity="info">
-              Oppgi enten SongFlow track ID eller prosjekt ID for å koble til split sheet.
+              Oppgi enten EaseVerse track ID eller prosjekt ID for å koble til split sheet.
             </Alert>
             <TextField
-              label="SongFlow Track ID (valgfritt)"
-              value={songflowTrackId}
-              onChange={(e) => setSongflowTrackId(e.target.value)}
+              label="EaseVerse Track ID (valgfritt)"
+              value={easeverseTrackId}
+              onChange={(e) => setEaseverseTrackId(e.target.value)}
               fullWidth
               placeholder="f.eks. track_123"
             />
             <TextField
-              label="SongFlow Prosjekt ID (valgfritt)"
-              value={songflowProjectId}
-              onChange={(e) => setSongflowProjectId(e.target.value)}
+              label="EaseVerse Prosjekt ID (valgfritt)"
+              value={easeverseProjectId}
+              onChange={(e) => setEaseverseProjectId(e.target.value)}
               fullWidth
               placeholder="f.eks. project_456"
             />
@@ -250,15 +258,15 @@ export default function SplitSheetSongFlowIntegration({
         <DialogActions>
           <Button onClick={() => {
             setShowLinkDialog(false);
-            setSongflowTrackId(', ');
-            setSongflowProjectId('');
+            setEaseverseTrackId('');
+            setEaseverseProjectId('');
           }}>
             Avbryt
           </Button>
           <Button
             variant="contained"
             onClick={handleLink}
-            disabled={linkMutation.isPending || (!songflowTrackId && !songflowProjectId)}
+            disabled={linkMutation.isPending || (!easeverseTrackId && !easeverseProjectId)}
             sx={{ bgcolor: '#9f7aea' }}
           >
             {linkMutation.isPending ? 'Kobler...' : 'Koble til'}
@@ -271,7 +279,7 @@ export default function SplitSheetSongFlowIntegration({
         <DialogTitle>Bekreft frakobling</DialogTitle>
         <DialogContent>
           <Typography>
-            Er du sikker på at du vil fjerne koblingen til SongFlow? Du kan koble til igjen senere.
+            Er du sikker på at du vil fjerne koblingen til EaseVerse? Du kan koble til igjen senere.
           </Typography>
         </DialogContent>
         <DialogActions>
@@ -298,8 +306,6 @@ export default function SplitSheetSongFlowIntegration({
     </Box>
   );
 }
-
-
 
 
 

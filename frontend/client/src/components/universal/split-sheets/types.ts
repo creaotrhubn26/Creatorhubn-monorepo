@@ -74,6 +74,10 @@ export interface SplitSheet {
   user_id?: string;
   project_id?: string | null;
   track_id?: string | null;
+  easeverseProjectId?: string | null;
+  easeverseTrackId?: string | null;
+  easeverse_project_id?: string | null;
+  easeverse_track_id?: string | null;
   songflow_project_id?: string | null;
   songflow_track_id?: string | null;
   title: string;
@@ -89,9 +93,20 @@ export interface SplitSheet {
   signed_count?: number;
 }
 
-export interface SplitSheetSongFlowLink {
+export interface SplitSheetEaseVerseLink {
   id?: string;
+  splitSheetId?: string;
+  easeverseProjectId?: string | null;
+  easeverseTrackId?: string | null;
+  linkType?: 'project' | 'track';
+  autoCreated?: boolean;
+  linkedAt?: string;
+  linkedBy?: string;
+
+  // Deprecated compatibility fields
   split_sheet_id: string;
+  easeverse_project_id?: string | null;
+  easeverse_track_id?: string | null;
   songflow_project_id?: string | null;
   songflow_track_id?: string | null;
   link_type: 'project' | 'track';
@@ -100,6 +115,9 @@ export interface SplitSheetSongFlowLink {
   linked_by?: string;
   metadata?: Record<string, any>;
 }
+
+// Backward compatibility alias while SongFlow naming is phased out.
+export type SplitSheetSongFlowLink = SplitSheetEaseVerseLink;
 
 export interface SplitSheetVersion {
   id?: string;
@@ -304,8 +322,6 @@ export const PAYMENT_STATUS_COLORS: Record<PaymentStatus, string> = {
   overdue: '#f44336',
   cancelled: '#757575'
 };
-
-
 
 
 

@@ -362,7 +362,7 @@ export default function SplitSheetEditor({
           </CardContent>
         </Card>
 
-        {/* SongFlow Integration */}
+        {/* EaseVerse Integration */}
         {splitSheet?.id && (
           <SplitSheetSongFlowIntegration
             splitSheetId={splitSheet.id}
@@ -737,7 +737,6 @@ export default function SplitSheetEditor({
     </Box>
   );
 }
-
 
 
 

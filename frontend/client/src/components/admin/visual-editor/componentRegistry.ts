@@ -1817,9 +1817,9 @@ export const UNIVERSAL_DASHBOARD_COMPONENTS: ComponentMetadata[] = [
   // SPECIALIZED FORM COMPONENTS
   {
     id: 'songflow-platform',
-    name: 'SongflowPlatform',
+    name: 'EaseVersePlatform',
     category: 'form',
-    description: 'Songflow platform form for music production workflow',
+    description: 'EaseVerse platform form for music production workflow',
     profession: ['music_producer','admin'],
     tabIndex:  17,
     dependencies: ['@mui/material','@tanstack/react-query'],
@@ -1828,9 +1828,9 @@ export const UNIVERSAL_DASHBOARD_COMPONENTS: ComponentMetadata[] = [
       optional: ['profession','onFormSubmit','formType','workflowMode']
   },
     customization: {
-      styles: ['layout','form','colors','songflow'],
-      layout: ['form','songflow','workflow'],
-      behavior: ['form','songflow','music','workflow']
+      styles: ['layout','form','colors','easeverse'],
+      layout: ['form','easeverse','workflow'],
+      behavior: ['form','easeverse','music','workflow']
   },
     visualEditor: {
       editable: true,
@@ -1838,8 +1838,8 @@ export const UNIVERSAL_DASHBOARD_COMPONENTS: ComponentMetadata[] = [
       templateable: true,
       propsEditable: true
 },
-    filePath: 'client/src/components/forms/songflow-platform.tsx',
-    importPath: '../forms/songflow-platform'
+    filePath: 'client/src/components/forms/easeverse-platform.tsx',
+    importPath: '../forms/easeverse-platform'
 },
   {
     id: 'videograf-orchestrator',
@@ -3847,9 +3847,9 @@ export const UNIVERSAL_DASHBOARD_COMPONENTS: ComponentMetadata[] = [
   // UNIVERSAL FORMS COMPONENTS
   {
     id: 'songflow-platform-form',
-    name: 'SongflowPlatform',
+    name: 'EaseVersePlatform',
     category: 'form',
-    description: 'Songflow platform form for music production workflow',
+    description: 'EaseVerse platform form for music production workflow',
     profession: ['music_producer','admin'],
     tabIndex:  17,
     dependencies: ['@mui/material','@tanstack/react-query'],
@@ -3858,9 +3858,9 @@ export const UNIVERSAL_DASHBOARD_COMPONENTS: ComponentMetadata[] = [
       optional: ['profession','onFormSubmit','formType','workflowMode']
   },
     customization: {
-      styles: ['layout','form','colors','songflow'],
-      layout: ['form','songflow','workflow'],
-      behavior: ['form','songflow','music','workflow']
+      styles: ['layout','form','colors','easeverse'],
+      layout: ['form','easeverse','workflow'],
+      behavior: ['form','easeverse','music','workflow']
   },
     visualEditor: {
       editable: true,
@@ -3868,8 +3868,8 @@ export const UNIVERSAL_DASHBOARD_COMPONENTS: ComponentMetadata[] = [
       templateable: true,
       propsEditable: true
 },
-    filePath: 'client/src/components/universal/forms/songflow-platform.tsx',
-    importPath: './forms/songflow-platform'
+    filePath: 'client/src/components/universal/forms/easeverse-platform.tsx',
+    importPath: './forms/easeverse-platform'
 },
 
   // MEMORY CARD COMPONENTS
@@ -6673,9 +6673,9 @@ export const UNIVERSAL_DASHBOARD_COMPONENTS: ComponentMetadata[] = [
   // SPECIALIZED FORM COMPONENTS
   {
     id: 'songflow-platform',
-    name: 'SongflowPlatform',
+    name: 'EaseVersePlatform',
     category: 'form',
-    description: 'Songflow platform form for music production workflow',
+    description: 'EaseVerse platform form for music production workflow',
     profession: ['music_producer','admin'],
     tabIndex:  17,
     dependencies: ['@mui/material','@tanstack/react-query'],
@@ -6684,9 +6684,9 @@ export const UNIVERSAL_DASHBOARD_COMPONENTS: ComponentMetadata[] = [
       optional: ['profession','onFormSubmit','formType','workflowMode']
   },
     customization: {
-      styles: ['layout','form','colors','songflow'],
-      layout: ['form','songflow','platform'],
-      behavior: ['form','songflow','platform','music']
+      styles: ['layout','form','colors','easeverse'],
+      layout: ['form','easeverse','platform'],
+      behavior: ['form','easeverse','platform','music']
   },
     visualEditor: {
       editable: true,
@@ -6694,8 +6694,8 @@ export const UNIVERSAL_DASHBOARD_COMPONENTS: ComponentMetadata[] = [
       templateable: true,
       propsEditable: true
 },
-    filePath: 'client/src/components/forms/SongflowPlatform.tsx',
-    importPath: '../forms/SongflowPlatform'
+    filePath: 'client/src/components/forms/EaseVersePlatform.tsx',
+    importPath: '../forms/EaseVersePlatform'
 },
   {
     id: 'invite-request-form',
@@ -8839,9 +8839,9 @@ export const UNIVERSAL_DASHBOARD_COMPONENTS: ComponentMetadata[] = [
   // ADDITIONAL COMPONENT CATEGORIES - BATCH 5
   {
     id: 'songflow-platform-alt',
-    name: 'SongflowPlatform',
+    name: 'EaseVersePlatform',
     category: 'form',
-    description: 'Songflow platform form for music production workflow',
+    description: 'EaseVerse platform form for music production workflow',
     profession: ['music_producer','admin'],
     tabIndex:  17,
     dependencies: ['@mui/material','@tanstack/react-query'],
@@ -8850,9 +8850,9 @@ export const UNIVERSAL_DASHBOARD_COMPONENTS: ComponentMetadata[] = [
       optional: ['profession','onFormSubmit','formType','workflowMode']
   },
     customization: {
-      styles: ['layout','form','colors','songflow'],
-      layout: ['form','songflow','platform'],
-      behavior: ['form','songflow','platform','music']
+      styles: ['layout','form','colors','easeverse'],
+      layout: ['form','easeverse','platform'],
+      behavior: ['form','easeverse','platform','music']
   },
     visualEditor: {
       editable: true,
@@ -8860,8 +8860,8 @@ export const UNIVERSAL_DASHBOARD_COMPONENTS: ComponentMetadata[] = [
       templateable: true,
       propsEditable: true
 },
-    filePath: 'client/src/components/forms/SongflowPlatform.tsx',
-    importPath: '../forms/SongflowPlatform'
+    filePath: 'client/src/components/forms/EaseVersePlatform.tsx',
+    importPath: '../forms/EaseVersePlatform'
 },
   {
     id: 'component-orchestrator-alt',

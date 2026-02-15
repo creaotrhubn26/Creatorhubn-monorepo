@@ -69,12 +69,14 @@ interface Track {
   lastBackup?: string;
   collaborators: string[];
   notes: string;
+  lyrics?: string;
   stemFiles: number;
   projectId?: string;
   projectName?: string;
+  lastLyricSync?: string;
 }
 
-interface SongFlowProject {
+interface EaseVerseProject {
   id: string;
   name: string;
   artist: string;
@@ -85,7 +87,7 @@ interface SongFlowProject {
   lastSync?: string;
 }
 
-export default function SongFlowPlatform() {
+export default function EaseVersePlatform() {
   const queryClient = useQueryClient();
   const [, setLocation] = useLocation();
 
@@ -124,17 +126,17 @@ export default function SongFlowPlatform() {
   const projectTypes = getProjectTypes();
   const defaultHourlyRate = getDefaultHourlyRate();
 
-  // Fetch Song Flow projects with real database integration
-  const { data: projects = [], isLoading: projectsLoading } = useQuery<SongFlowProject[]>({
-    queryKey: ['/api/songflow-projects'],
-    queryFn: () => apiRequest('/api/songflow-projects'),
+  // Fetch EaseVerse projects with real database integration
+  const { data: projects = [], isLoading: projectsLoading } = useQuery<EaseVerseProject[]>({
+    queryKey: ['/api/easeverse-projects'],
+    queryFn: () => apiRequest('/api/easeverse-projects'),
     enabled: true,
   });
 
   // Create new track mutation
   const createTrackMutation = useMutation({
     mutationFn: async (trackData: Omit<Track, 'id' | 'duration' | 'googleDriveBackup' | 'lastBackup'>) =>
-      apiRequest('/api/songflow-tracks', {
+      apiRequest('/api/easeverse-tracks', {
         method: 'POST',
         body: {
           ...trackData,
@@ -148,8 +150,8 @@ export default function SongFlowPlatform() {
         }
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/songflow-projects'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/songflow-tracks'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/easeverse-projects'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/easeverse-tracks'] });
       setShowNewTrackDialog(false);
       setNewTrack({
         title: '',
@@ -158,6 +160,7 @@ export default function SongFlowPlatform() {
         bpm: 120,
         key: 'C',
         notes: '',
+        lyrics: '',
         stemFiles: 0,
         collaborators: [],
         projectId: ''
@@ -176,6 +179,7 @@ export default function SongFlowPlatform() {
     bpm: 120,
     key: 'C',
     notes: '',
+    lyrics: '',
     stemFiles: 0,
     collaborators: [] as string[],
     projectId: ''
@@ -184,7 +188,7 @@ export default function SongFlowPlatform() {
   // Google Drive backup mutation
   const backupToGoogleDrive = useMutation({
     mutationFn: async (trackId: string) =>
-      apiRequest(`/api/songflow-tracks/${trackId}/backup`, {
+      apiRequest(`/api/easeverse-tracks/${trackId}/backup`, {
         method: 'POST',
         body: {
           backupType: 'google-drive',
@@ -193,8 +197,8 @@ export default function SongFlowPlatform() {
         },
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/songflow-projects'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/songflow-tracks'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/easeverse-projects'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/easeverse-tracks'] });
       setBackupSeverity('success');
       setBackupMessage('Backup gjennomfort for valgt spor.');
       setShowBackupStatus(true);
@@ -229,7 +233,7 @@ export default function SongFlowPlatform() {
     try {
       await Promise.all(
         tracksData.map((track) =>
-          apiRequest(`/api/songflow-tracks/${track.id}/backup`, {
+          apiRequest(`/api/easeverse-tracks/${track.id}/backup`, {
             method: 'POST',
             body: {
               backupType: 'google-drive',
@@ -248,12 +252,12 @@ export default function SongFlowPlatform() {
       setBackupMessage('Manuell backup feilet. Prov igjen.');
       setShowBackupStatus(true);
     } finally {
-      queryClient.invalidateQueries({ queryKey: ['/api/songflow-projects'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/songflow-tracks'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/easeverse-projects'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/easeverse-tracks'] });
     }
   };
 
-  const handleProjectBackup = async (project: SongFlowProject) => {
+  const handleProjectBackup = async (project: EaseVerseProject) => {
     if (project.tracks.length === 0) {
       setBackupSeverity('error');
       setBackupMessage('Prosjektet har ingen spor a sikkerhetskopiere.');
@@ -264,7 +268,7 @@ export default function SongFlowPlatform() {
     try {
       await Promise.all(
         project.tracks.map((track) =>
-          apiRequest(`/api/songflow-tracks/${track.id}/backup`, {
+          apiRequest(`/api/easeverse-tracks/${track.id}/backup`, {
             method: 'POST',
             body: {
               backupType: 'google-drive',
@@ -283,8 +287,8 @@ export default function SongFlowPlatform() {
       setBackupMessage(`Backup feilet for prosjektet ${project.name}. Prov igjen.`);
       setShowBackupStatus(true);
     } finally {
-      queryClient.invalidateQueries({ queryKey: ['/api/songflow-projects'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/songflow-tracks'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/easeverse-projects'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/easeverse-tracks'] });
     }
   };
 
@@ -308,9 +312,28 @@ export default function SongFlowPlatform() {
 
   // Database connection for tracks
   const { data: tracksData = [], isLoading: tracksLoading } = useQuery<Track[]>({
-    queryKey: ['/api/songflow-tracks'],
-    queryFn: () => apiRequest('/api/songflow-tracks'),
+    queryKey: ['/api/easeverse-tracks'],
+    queryFn: () => apiRequest('/api/easeverse-tracks'),
     retry: false,
+  });
+
+  const syncLyricsMutation = useMutation({
+    mutationFn: async (data: { trackId: string; lyrics?: string }) =>
+      apiRequest(`/api/easeverse-tracks/${data.trackId}/sync-lyrics`, {
+        method: 'POST',
+        body: data.lyrics ? { lyrics: data.lyrics } : {}
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/easeverse-tracks'] });
+      setBackupSeverity('success');
+      setBackupMessage('Tekst synkronisert til EaseVerse.');
+      setShowBackupStatus(true);
+    },
+    onError: () => {
+      setBackupSeverity('error');
+      setBackupMessage('Tekstsynk feilet. Sjekk EaseVerse-tilkoblingen.');
+      setShowBackupStatus(true);
+    }
   });
   const hasRecordingTracks = tracksData.some((track) => track.status === 'recording');
 
@@ -350,10 +373,10 @@ export default function SongFlowPlatform() {
               alignItems: 'center',
               gap:  2 }}>
             {professionIcon || libraryIcon}
-            Song Flow Platform
+            EaseVerse Platform
           </Typography>
           <Typography variant="subtitle1" color="text.secondary">
-            {professionDisplayName} • Avansert musikkproduksjon med Google services integrasjon
+            {professionDisplayName} • Samarbeid om lyrikk, produksjon og coaching i EaseVerse
           </Typography>
           <Typography variant="caption" color="text.secondary">
             Standard timesats: {defaultHourlyRate} kr/time • {projectTypes.length} prosjekttyper tilgjengelig
@@ -367,7 +390,7 @@ export default function SongFlowPlatform() {
             onClick={handleManualBackup}
             disabled={tracksLoading || tracksData.length === 0}
           >
-            Google Drive Sync
+            EaseVerse Sync
           </Button>
           <Button variant="outlined" startIcon={<AccountBalance />} onClick={() => setLocation('/dashboard')}>
             Split Sheets
@@ -392,7 +415,7 @@ export default function SongFlowPlatform() {
             Google Workspace Integration Aktiv
           </Typography>
           <Typography variant="caption">
-            Automatisk backup til Google Drive • Sanntids samarbeid • Intelligent mixing suggestions
+            Google Drive backup • EaseVerse lyrikksynk • Sanntids samarbeid
           </Typography>
         </Box>
       </Alert>
@@ -502,12 +525,12 @@ export default function SongFlowPlatform() {
                             startIcon={<AccountBalance />}
                             onClick={async () => {
                               try {
-                                await apiRequest(`/api/split-sheets/from-songflow/${track.id}`, {
+                                await apiRequest(`/api/split-sheets/from-easeverse/${track.id}`, {
                                   method: 'POST',
                                   body: {
                                     projectId: track.projectId,
                                     title: `Split Sheet - ${track.title}`,
-                                    description: `Auto-opprettet fra SongFlow, track: ${track.title}`
+                                    description: `Auto-opprettet fra EaseVerse, track: ${track.title}`
                                   }
                                 });
                                 alert('Split Sheet opprettet!');
@@ -533,6 +556,18 @@ export default function SongFlowPlatform() {
                               onClick={() => backupToGoogleDrive.mutate(track.id)}
                             >
                               <Backup />
+                            </IconButton>
+                            <IconButton
+                              size="small"
+                              sx={{ color: 'white' }}
+                              onClick={() =>
+                                syncLyricsMutation.mutate({
+                                  trackId: track.id,
+                                  lyrics: track.lyrics || track.notes || ''
+                                })
+                              }
+                            >
+                              <Sync />
                             </IconButton>
                             <IconButton size="small" sx={{ color: 'white' }} onClick={() => handlePlaybackToggle(track.id)}>
                               {playbackState === 'paused' && playingTrackId === track.id ? playIcon : <Equalizer />}
@@ -756,14 +791,12 @@ export default function SongFlowPlatform() {
           <Grid item xs={12}>
             <MuiCard>
               <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h6" sx={{ color: theming.colors.primary }}>Sanntids Google Workspace Samarbeid</Typography>
+                <Typography variant="h6" sx={{ color: theming.colors.primary }}>Sanntids EaseVerse Samarbeid</Typography>
                 <Typography color="text.secondary" sx={{ mb:  2 }}>
-                  Del og samarbeid på musikkprosjekter i sanntid med Google Drive og Docs
-                  integration
+                  Produsenter og låtskrivere kan skrive tekst i Creatorhub og synke direkte til EaseVerse
                 </Typography>
                 <Alert severity="info">
-                  Song Flow er spesielt designet for musikkprodusenter med full Google services
-                  integrasjon
+                  EaseVerse er koblet til musikkworkflowen for coaching, tekst og sessions
                 </Alert>
               </CardContent>
             </MuiCard>
@@ -886,6 +919,17 @@ export default function SongFlowPlatform() {
                 minRows={3}
                 value={newTrack.notes}
                 onChange={(e) => setNewTrack({ ...newTrack, notes: e.target.value })}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                label="Lyrikk"
+                fullWidth
+                multiline
+                minRows={4}
+                value={newTrack.lyrics}
+                onChange={(e) => setNewTrack({ ...newTrack, lyrics: e.target.value })}
+                helperText="Teksten synkroniseres til EaseVerse når sporet opprettes."
               />
             </Grid>
           </Grid>

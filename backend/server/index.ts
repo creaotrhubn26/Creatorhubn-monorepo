@@ -12097,8 +12097,1053 @@ app.get('/api/price-administration/weather/alerts/:location', async (req, res) =
 // ============================================
 
 function getSplitSheetUserId(req: any): string {
-  return req.headers['x-user-id'] || req.body?.userId || req.query?.userId || '';
+  const authHeader = req.headers?.authorization;
+  const bearerToken =
+    typeof authHeader === 'string' && authHeader.startsWith('Bearer ')
+      ? authHeader.slice(7).trim()
+      : '';
+  const sessionUserId =
+    bearerToken && activeSessions.has(bearerToken)
+      ? activeSessions.get(bearerToken)?.userId
+      : '';
+
+  const rawUserId =
+    req.session?.user?.id ||
+    req.user?.id ||
+    sessionUserId ||
+    req.headers['x-user-id'] ||
+    req.body?.userId ||
+    req.query?.userId ||
+    req.headers['x-userid'] ||
+    req.headers['x-user'];
+
+  if (typeof rawUserId === 'string' && rawUserId.trim().length > 0) {
+    return rawUserId.trim();
+  }
+  return '';
 }
+
+function requireEaseVerseUserId(req: any, res: any): string | null {
+  const userId = getSplitSheetUserId(req);
+  if (userId) {
+    return userId;
+  }
+
+  res.status(401).json({
+    success: false,
+    error: 'Missing user identity. Provide x-user-id header or authenticate the request.'
+  });
+  return null;
+}
+
+const EASEVERSE_API_URL = (process.env.EASEVERSE_API_URL || '').trim().replace(/\/+$/, '');
+const EASEVERSE_API_KEY = (process.env.EASEVERSE_API_KEY || '').trim();
+let easeVerseSchemaReadyPromise: Promise<void> | null = null;
+const SONGFLOW_ALIAS_SUNSET = 'Wed, 31 Dec 2026 23:59:59 GMT';
+
+async function ensureEaseVerseSchema(): Promise<void> {
+  if (!easeVerseSchemaReadyPromise) {
+    easeVerseSchemaReadyPromise = (async () => {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS easeverse_projects (
+          id UUID PRIMARY KEY,
+          user_id VARCHAR(255) NOT NULL,
+          name VARCHAR(255) NOT NULL,
+          artist VARCHAR(255) NOT NULL DEFAULT '',
+          status VARCHAR(50) NOT NULL DEFAULT 'active',
+          deadline TIMESTAMPTZ NULL,
+          google_workspace_sync BOOLEAN NOT NULL DEFAULT true,
+          last_sync TIMESTAMPTZ NULL,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+      `);
+
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS idx_easeverse_projects_user_id
+        ON easeverse_projects(user_id);
+      `);
+
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS easeverse_tracks (
+          id UUID PRIMARY KEY,
+          user_id VARCHAR(255) NOT NULL,
+          project_id UUID NULL REFERENCES easeverse_projects(id) ON DELETE SET NULL,
+          title VARCHAR(255) NOT NULL,
+          artist VARCHAR(255) NOT NULL,
+          duration_seconds INTEGER NOT NULL DEFAULT 0,
+          genre VARCHAR(120) NOT NULL DEFAULT 'pop',
+          status VARCHAR(50) NOT NULL DEFAULT 'recording'
+            CHECK (status IN ('recording', 'mixing', 'mastering', 'completed')),
+          bpm INTEGER NOT NULL DEFAULT 120,
+          musical_key VARCHAR(16) NOT NULL DEFAULT 'C',
+          collaborators JSONB NOT NULL DEFAULT '[]'::jsonb,
+          notes TEXT NOT NULL DEFAULT '',
+          lyrics TEXT NOT NULL DEFAULT '',
+          stem_files INTEGER NOT NULL DEFAULT 0,
+          google_drive_backup BOOLEAN NOT NULL DEFAULT false,
+          last_backup TIMESTAMPTZ NULL,
+          last_lyric_sync TIMESTAMPTZ NULL,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+      `);
+
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS idx_easeverse_tracks_user_id
+        ON easeverse_tracks(user_id);
+      `);
+
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS idx_easeverse_tracks_project_id
+        ON easeverse_tracks(project_id);
+      `);
+
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS split_sheet_songflow_links (
+          id UUID PRIMARY KEY,
+          split_sheet_id VARCHAR(255) NOT NULL,
+          songflow_project_id VARCHAR(255),
+          songflow_track_id VARCHAR(255),
+          link_type VARCHAR(20) NOT NULL DEFAULT 'track',
+          auto_created BOOLEAN NOT NULL DEFAULT false,
+          linked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          linked_by VARCHAR(255),
+          metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+      `);
+
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS idx_split_sheet_songflow_links_split_sheet_id
+        ON split_sheet_songflow_links(split_sheet_id);
+      `);
+
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS idx_split_sheet_songflow_links_track_id
+        ON split_sheet_songflow_links(songflow_track_id);
+      `);
+    })();
+  }
+
+  return easeVerseSchemaReadyPromise;
+}
+
+function parseCollaborators(collaborators: unknown): string[] {
+  if (Array.isArray(collaborators)) {
+    return collaborators
+      .filter((entry): entry is string => typeof entry === 'string')
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+  }
+
+  if (typeof collaborators === 'string' && collaborators.trim().length > 0) {
+    try {
+      const parsed = JSON.parse(collaborators);
+      if (Array.isArray(parsed)) {
+        return parsed
+          .filter((entry): entry is string => typeof entry === 'string')
+          .map((entry) => entry.trim())
+          .filter(Boolean);
+      }
+    } catch {
+      return collaborators
+        .split(',')
+        .map((entry) => entry.trim())
+        .filter(Boolean);
+    }
+  }
+
+  return [];
+}
+
+function mapEaseVerseTrackRow(row: any) {
+  return {
+    id: row.id,
+    title: row.title,
+    artist: row.artist,
+    duration: Number(row.duration_seconds || 0),
+    genre: row.genre || 'pop',
+    status: row.status || 'recording',
+    bpm: Number(row.bpm || 120),
+    key: row.musical_key || 'C',
+    googleDriveBackup: Boolean(row.google_drive_backup),
+    lastBackup: row.last_backup || null,
+    collaborators: parseCollaborators(row.collaborators),
+    notes: row.notes || '',
+    lyrics: row.lyrics || '',
+    stemFiles: Number(row.stem_files || 0),
+    projectId: row.project_id || null,
+    projectName: row.project_name || null,
+    lastLyricSync: row.last_lyric_sync || null,
+    createdAt: row.created_at || null,
+    updatedAt: row.updated_at || null
+  };
+}
+
+function mapEaseVerseSplitSheetLinkRow(row: any) {
+  const easeverseProjectId = row.songflow_project_id || null;
+  const easeverseTrackId = row.songflow_track_id || null;
+  return {
+    id: row.id,
+    splitSheetId: row.split_sheet_id,
+    easeverseProjectId,
+    easeverseTrackId,
+    linkType: row.link_type,
+    autoCreated: Boolean(row.auto_created),
+    linkedAt: row.linked_at || null,
+    linkedBy: row.linked_by || null,
+    metadata: row.metadata || {},
+
+    // Deprecated compatibility fields (SongFlow + snake_case)
+    easeverse_project_id: easeverseProjectId,
+    easeverse_track_id: easeverseTrackId,
+    songflow_project_id: easeverseProjectId,
+    songflow_track_id: easeverseTrackId,
+    split_sheet_id: row.split_sheet_id,
+    link_type: row.link_type,
+    auto_created: Boolean(row.auto_created),
+    linked_at: row.linked_at || null,
+    linked_by: row.linked_by || null
+  };
+}
+
+function resolveEaseVerseLinkIds(input: any): {
+  easeverseTrackId: string | null;
+  easeverseProjectId: string | null;
+} {
+  const trackCandidate =
+    input?.easeverseTrackId ??
+    input?.easeverse_track_id ??
+    input?.songflowTrackId ??
+    input?.songflow_track_id ??
+    null;
+  const projectCandidate =
+    input?.easeverseProjectId ??
+    input?.easeverse_project_id ??
+    input?.songflowProjectId ??
+    input?.songflow_project_id ??
+    null;
+
+  const easeverseTrackId =
+    typeof trackCandidate === 'string' && trackCandidate.trim().length > 0
+      ? trackCandidate.trim()
+      : null;
+  const easeverseProjectId =
+    typeof projectCandidate === 'string' && projectCandidate.trim().length > 0
+      ? projectCandidate.trim()
+      : null;
+
+  return { easeverseTrackId, easeverseProjectId };
+}
+
+function markSongFlowAliasDeprecated(res: any, successorPath: string) {
+  res.setHeader('Deprecation', 'true');
+  res.setHeader('Sunset', SONGFLOW_ALIAS_SUNSET);
+  res.setHeader('X-API-Deprecated', 'true');
+  res.setHeader('X-API-Successor', successorPath);
+  res.setHeader('Link', `<${successorPath}>; rel="successor-version"`);
+  res.setHeader(
+    'Warning',
+    `299 - "SongFlow alias route is deprecated; use ${successorPath}"`
+  );
+}
+
+async function syncLyricsToEaseVerse(payload: {
+  externalTrackId: string;
+  projectId?: string | null;
+  title: string;
+  artist: string;
+  lyrics: string;
+  collaborators: string[];
+}) {
+  if (!EASEVERSE_API_URL) {
+    return {
+      success: false,
+      skipped: true,
+      reason: 'EASEVERSE_API_URL is not configured'
+    };
+  }
+
+  try {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json'
+    };
+    if (EASEVERSE_API_KEY) {
+      headers['x-api-key'] = EASEVERSE_API_KEY;
+    }
+
+    const response = await fetch(`${EASEVERSE_API_URL}/api/v1/collab/lyrics`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        externalTrackId: payload.externalTrackId,
+        projectId: payload.projectId || undefined,
+        title: payload.title,
+        artist: payload.artist,
+        lyrics: payload.lyrics,
+        collaborators: payload.collaborators,
+        source: 'creatorhub',
+        updatedAt: new Date().toISOString()
+      })
+    });
+
+    const rawResponse = await response.text();
+    let parsedResponse: any = null;
+    try {
+      parsedResponse = rawResponse ? JSON.parse(rawResponse) : null;
+    } catch {
+      parsedResponse = null;
+    }
+
+    if (!response.ok) {
+      return {
+        success: false,
+        status: response.status,
+        error:
+          parsedResponse?.error ||
+          rawResponse ||
+          `EaseVerse lyric sync failed (${response.status})`
+      };
+    }
+
+    return {
+      success: true,
+      status: response.status,
+      data: parsedResponse
+    };
+  } catch (error: any) {
+    return {
+      success: false,
+      error: error?.message || 'Could not reach EaseVerse API'
+    };
+  }
+}
+
+const listEaseVerseProjectsHandler = async (req: any, res: any) => {
+  try {
+    await ensureEaseVerseSchema();
+    const userId = requireEaseVerseUserId(req, res);
+    if (!userId) return;
+
+    const projectsResult = await pool.query(
+      `
+        SELECT
+          p.id,
+          p.name,
+          p.artist,
+          p.status,
+          p.deadline,
+          p.google_workspace_sync,
+          p.last_sync,
+          p.created_at,
+          p.updated_at
+        FROM easeverse_projects p
+        WHERE p.user_id = $1
+        ORDER BY p.updated_at DESC
+      `,
+      [userId]
+    );
+
+    const tracksResult = await pool.query(
+      `
+        SELECT
+          t.*,
+          p.name as project_name
+        FROM easeverse_tracks t
+        LEFT JOIN easeverse_projects p ON p.id = t.project_id
+        WHERE t.user_id = $1
+        ORDER BY t.created_at DESC
+      `,
+      [userId]
+    );
+
+    const tracksByProject = new Map<string, any[]>();
+    for (const track of tracksResult.rows) {
+      if (!track.project_id) continue;
+      if (!tracksByProject.has(track.project_id)) {
+        tracksByProject.set(track.project_id, []);
+      }
+      tracksByProject.get(track.project_id)!.push(mapEaseVerseTrackRow(track));
+    }
+
+    const projects = projectsResult.rows.map((project) => ({
+      id: project.id,
+      name: project.name,
+      artist: project.artist,
+      status: project.status,
+      deadline: project.deadline,
+      googleWorkspaceSync: Boolean(project.google_workspace_sync),
+      lastSync: project.last_sync,
+      tracks: tracksByProject.get(project.id) || []
+    }));
+
+    res.json(projects);
+  } catch (error) {
+    console.error('Error fetching EaseVerse projects:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch EaseVerse projects' });
+  }
+};
+
+const listEaseVerseTracksHandler = async (req: any, res: any) => {
+  try {
+    await ensureEaseVerseSchema();
+    const userId = requireEaseVerseUserId(req, res);
+    if (!userId) return;
+
+    const tracksResult = await pool.query(
+      `
+        SELECT
+          t.*,
+          p.name as project_name
+        FROM easeverse_tracks t
+        LEFT JOIN easeverse_projects p ON p.id = t.project_id
+        WHERE t.user_id = $1
+        ORDER BY t.updated_at DESC
+      `,
+      [userId]
+    );
+
+    res.json(tracksResult.rows.map(mapEaseVerseTrackRow));
+  } catch (error) {
+    console.error('Error fetching EaseVerse tracks:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch EaseVerse tracks' });
+  }
+};
+
+const createEaseVerseTrackHandler = async (req: any, res: any) => {
+  try {
+    await ensureEaseVerseSchema();
+    const userId = requireEaseVerseUserId(req, res);
+    if (!userId) return;
+    const {
+      title,
+      artist,
+      genre = 'pop',
+      status = 'recording',
+      bpm = 120,
+      key = 'C',
+      notes = '',
+      lyrics = '',
+      stemFiles = 0,
+      collaborators = [],
+      projectId: projectIdRaw,
+      project_id: projectIdLegacy
+    } = req.body || {};
+    const projectId =
+      typeof projectIdRaw === 'string' && projectIdRaw.trim().length > 0
+        ? projectIdRaw.trim()
+        : typeof projectIdLegacy === 'string' && projectIdLegacy.trim().length > 0
+          ? projectIdLegacy.trim()
+          : null;
+
+    if (!title || !artist) {
+      return res.status(400).json({ error: 'title and artist are required' });
+    }
+
+    let resolvedProjectId: string | null = null;
+    if (projectId) {
+      const existingProject = await pool.query(
+        `SELECT id FROM easeverse_projects WHERE id = $1 AND user_id = $2`,
+        [projectId, userId]
+      );
+      if (existingProject.rows.length > 0) {
+        resolvedProjectId = existingProject.rows[0].id;
+      }
+    }
+
+    if (!resolvedProjectId) {
+      const defaultProjectName = `${String(artist).trim()} Sessions`;
+      const existingDefaultProject = await pool.query(
+        `
+          SELECT id
+          FROM easeverse_projects
+          WHERE user_id = $1 AND name = $2
+          LIMIT 1
+        `,
+        [userId, defaultProjectName]
+      );
+
+      if (existingDefaultProject.rows.length > 0) {
+        resolvedProjectId = existingDefaultProject.rows[0].id;
+      } else {
+        resolvedProjectId = crypto.randomUUID();
+        await pool.query(
+          `
+            INSERT INTO easeverse_projects (
+              id, user_id, name, artist, status, google_workspace_sync, created_at, updated_at
+            )
+            VALUES ($1, $2, $3, $4, 'active', true, NOW(), NOW())
+          `,
+          [resolvedProjectId, userId, defaultProjectName, String(artist).trim()]
+        );
+      }
+    }
+
+    const collaboratorsArray = parseCollaborators(collaborators);
+    const trackId = crypto.randomUUID();
+
+    await pool.query(
+      `
+        INSERT INTO easeverse_tracks (
+          id, user_id, project_id, title, artist, duration_seconds, genre, status, bpm, musical_key,
+          collaborators, notes, lyrics, stem_files, google_drive_backup, created_at, updated_at
+        )
+        VALUES ($1, $2, $3, $4, $5, 0, $6, $7, $8, $9, $10::jsonb, $11, $12, $13, true, NOW(), NOW())
+      `,
+      [
+        trackId,
+        userId,
+        resolvedProjectId,
+        String(title).trim(),
+        String(artist).trim(),
+        String(genre || 'pop').trim(),
+        String(status || 'recording').trim(),
+        Number.isFinite(Number(bpm)) ? Number(bpm) : 120,
+        String(key || 'C').trim(),
+        JSON.stringify(collaboratorsArray),
+        String(notes || ''),
+        String(lyrics || ''),
+        Number.isFinite(Number(stemFiles)) ? Number(stemFiles) : 0
+      ]
+    );
+
+    let lyricSync: any = {
+      success: false,
+      skipped: true,
+      reason: 'No lyrics provided'
+    };
+
+    const lyricsValue = String(lyrics || '').trim();
+    if (lyricsValue) {
+      lyricSync = await syncLyricsToEaseVerse({
+        externalTrackId: trackId,
+        projectId: resolvedProjectId,
+        title: String(title).trim(),
+        artist: String(artist).trim(),
+        lyrics: lyricsValue,
+        collaborators: collaboratorsArray
+      });
+
+      if (lyricSync.success) {
+        await pool.query(
+          `UPDATE easeverse_tracks SET last_lyric_sync = NOW(), updated_at = NOW() WHERE id = $1`,
+          [trackId]
+        );
+      }
+    }
+
+    const createdTrack = await pool.query(
+      `
+        SELECT
+          t.*,
+          p.name as project_name
+        FROM easeverse_tracks t
+        LEFT JOIN easeverse_projects p ON p.id = t.project_id
+        WHERE t.id = $1
+      `,
+      [trackId]
+    );
+
+    return res.status(201).json({
+      ...mapEaseVerseTrackRow(createdTrack.rows[0]),
+      lyricSync
+    });
+  } catch (error) {
+    console.error('Error creating EaseVerse track:', error);
+    return res.status(500).json({ success: false, error: 'Failed to create EaseVerse track' });
+  }
+};
+
+const backupEaseVerseTrackHandler = async (req: any, res: any) => {
+  try {
+    await ensureEaseVerseSchema();
+    const userId = requireEaseVerseUserId(req, res);
+    if (!userId) return;
+    const { trackId } = req.params;
+
+    const updated = await pool.query(
+      `
+        UPDATE easeverse_tracks
+        SET google_drive_backup = true, last_backup = NOW(), updated_at = NOW()
+        WHERE id = $1 AND user_id = $2
+        RETURNING id, last_backup
+      `,
+      [trackId, userId]
+    );
+
+    if (updated.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Track not found' });
+    }
+
+    return res.json({
+      success: true,
+      message: 'Track backup completed',
+      data: updated.rows[0]
+    });
+  } catch (error) {
+    console.error('Error backing up EaseVerse track:', error);
+    return res.status(500).json({ success: false, error: 'Failed to backup track' });
+  }
+};
+
+const syncEaseVerseLyricsHandler = async (req: any, res: any) => {
+  try {
+    await ensureEaseVerseSchema();
+    const userId = requireEaseVerseUserId(req, res);
+    if (!userId) return;
+    const { trackId } = req.params;
+
+    const existingTrack = await pool.query(
+      `
+        SELECT
+          t.*,
+          p.name as project_name
+        FROM easeverse_tracks t
+        LEFT JOIN easeverse_projects p ON p.id = t.project_id
+        WHERE t.id = $1 AND t.user_id = $2
+      `,
+      [trackId, userId]
+    );
+
+    if (existingTrack.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Track not found' });
+    }
+
+    const track = existingTrack.rows[0];
+    const incomingLyrics = typeof req.body?.lyrics === 'string' ? req.body.lyrics : null;
+    const resolvedLyrics = String(incomingLyrics ?? track.lyrics ?? '').trim();
+
+    if (!resolvedLyrics) {
+      return res.status(400).json({
+        success: false,
+        error: 'Lyrics are required to sync with EaseVerse'
+      });
+    }
+
+    if (incomingLyrics !== null) {
+      await pool.query(
+        `UPDATE easeverse_tracks SET lyrics = $1, updated_at = NOW() WHERE id = $2`,
+        [resolvedLyrics, trackId]
+      );
+    }
+
+    const lyricSync = await syncLyricsToEaseVerse({
+      externalTrackId: track.id,
+      projectId: track.project_id,
+      title: track.title,
+      artist: track.artist,
+      lyrics: resolvedLyrics,
+      collaborators: parseCollaborators(track.collaborators)
+    });
+
+    if (lyricSync.success) {
+      await pool.query(
+        `UPDATE easeverse_tracks SET last_lyric_sync = NOW(), updated_at = NOW() WHERE id = $1`,
+        [trackId]
+      );
+    }
+
+    const refreshedTrack = await pool.query(
+      `
+        SELECT
+          t.*,
+          p.name as project_name
+        FROM easeverse_tracks t
+        LEFT JOIN easeverse_projects p ON p.id = t.project_id
+        WHERE t.id = $1
+      `,
+      [trackId]
+    );
+
+    return res.json({
+      success: lyricSync.success,
+      lyricSync,
+      track: mapEaseVerseTrackRow(refreshedTrack.rows[0])
+    });
+  } catch (error) {
+    console.error('Error syncing lyrics to EaseVerse:', error);
+    return res.status(500).json({ success: false, error: 'Failed to sync lyrics to EaseVerse' });
+  }
+};
+
+const updateEaseVerseLyricsHandler = async (req: any, res: any) => {
+  try {
+    await ensureEaseVerseSchema();
+    const userId = requireEaseVerseUserId(req, res);
+    if (!userId) return;
+    const { trackId } = req.params;
+    const { lyrics, syncNow = true, sync_now } = req.body || {};
+    const shouldSyncNow =
+      typeof syncNow === 'boolean'
+        ? syncNow
+        : typeof sync_now === 'boolean'
+          ? sync_now
+          : true;
+
+    if (typeof lyrics !== 'string' || lyrics.trim().length === 0) {
+      return res.status(400).json({ success: false, error: 'lyrics is required' });
+    }
+
+    const updatedTrack = await pool.query(
+      `
+        UPDATE easeverse_tracks
+        SET lyrics = $1, updated_at = NOW()
+        WHERE id = $2 AND user_id = $3
+        RETURNING *
+      `,
+      [lyrics.trim(), trackId, userId]
+    );
+
+    if (updatedTrack.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Track not found' });
+    }
+
+    let lyricSync: any = { success: false, skipped: true, reason: 'syncNow disabled' };
+    if (shouldSyncNow) {
+      const track = updatedTrack.rows[0];
+      lyricSync = await syncLyricsToEaseVerse({
+        externalTrackId: track.id,
+        projectId: track.project_id,
+        title: track.title,
+        artist: track.artist,
+        lyrics: track.lyrics,
+        collaborators: parseCollaborators(track.collaborators)
+      });
+
+      if (lyricSync.success) {
+        await pool.query(
+          `UPDATE easeverse_tracks SET last_lyric_sync = NOW(), updated_at = NOW() WHERE id = $1`,
+          [track.id]
+        );
+      }
+    }
+
+    const refreshedTrack = await pool.query(
+      `
+        SELECT
+          t.*,
+          p.name as project_name
+        FROM easeverse_tracks t
+        LEFT JOIN easeverse_projects p ON p.id = t.project_id
+        WHERE t.id = $1
+      `,
+      [trackId]
+    );
+
+    return res.json({
+      success: true,
+      lyricSync,
+      track: mapEaseVerseTrackRow(refreshedTrack.rows[0])
+    });
+  } catch (error) {
+    console.error('Error updating EaseVerse lyrics:', error);
+    return res.status(500).json({ success: false, error: 'Failed to update lyrics' });
+  }
+};
+
+const listSplitSheetEaseVerseLinksHandler = async (req: any, res: any) => {
+  try {
+    await ensureEaseVerseSchema();
+    const userId = requireEaseVerseUserId(req, res);
+    if (!userId) return;
+    const { id } = req.params;
+
+    const result = await pool.query(
+      `
+        SELECT l.*
+        FROM split_sheet_songflow_links l
+        INNER JOIN split_sheets s ON s.id = l.split_sheet_id
+        WHERE l.split_sheet_id = $1
+          AND s.user_id = $2
+        ORDER BY linked_at DESC
+      `,
+      [id, userId]
+    );
+
+    const data = result.rows.map(mapEaseVerseSplitSheetLinkRow);
+
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error fetching EaseVerse split sheet links:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch EaseVerse links' });
+  }
+};
+
+const linkSplitSheetEaseVerseHandler = async (req: any, res: any) => {
+  try {
+    await ensureEaseVerseSchema();
+    const userId = requireEaseVerseUserId(req, res);
+    if (!userId) return;
+    const { id } = req.params;
+    const { easeverseTrackId, easeverseProjectId } = resolveEaseVerseLinkIds(req.body);
+
+    if (!easeverseTrackId && !easeverseProjectId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Either easeverseTrackId or easeverseProjectId is required'
+      });
+    }
+
+    const splitSheet = await pool.query(
+      `SELECT id FROM split_sheets WHERE id = $1 AND user_id = $2`,
+      [id, userId]
+    );
+    if (splitSheet.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Split sheet not found' });
+    }
+
+    const duplicate = await pool.query(
+      `
+        SELECT l.*
+        FROM split_sheet_songflow_links l
+        INNER JOIN split_sheets s ON s.id = l.split_sheet_id
+        WHERE l.split_sheet_id = $1
+          AND s.user_id = $4
+          AND COALESCE(songflow_track_id, '') = COALESCE($2, '')
+          AND COALESCE(songflow_project_id, '') = COALESCE($3, '')
+        LIMIT 1
+      `,
+      [id, easeverseTrackId, easeverseProjectId, userId]
+    );
+
+    if (duplicate.rows.length > 0) {
+      return res.json({
+        success: true,
+        data: mapEaseVerseSplitSheetLinkRow(duplicate.rows[0])
+      });
+    }
+
+    const linkId = crypto.randomUUID();
+    await pool.query(
+      `
+        INSERT INTO split_sheet_songflow_links (
+          id, split_sheet_id, songflow_track_id, songflow_project_id, link_type, auto_created, linked_by, metadata
+        )
+        VALUES ($1, $2, $3, $4, $5, false, $6, $7::jsonb)
+      `,
+      [
+        linkId,
+        id,
+        easeverseTrackId,
+        easeverseProjectId,
+        easeverseProjectId ? 'project' : 'track',
+        userId,
+        JSON.stringify({ source: 'easeverse' })
+      ]
+    );
+
+    await pool.query(
+      `
+        UPDATE split_sheets
+        SET
+          project_id = COALESCE($1, project_id),
+          track_id = COALESCE($2, track_id),
+          updated_at = NOW()
+        WHERE id = $3 AND user_id = $4
+      `,
+      [easeverseProjectId, easeverseTrackId, id, userId]
+    );
+
+    const createdLink = await pool.query(
+      `SELECT * FROM split_sheet_songflow_links WHERE id = $1`,
+      [linkId]
+    );
+
+    return res.json({
+      success: true,
+      data: mapEaseVerseSplitSheetLinkRow(createdLink.rows[0])
+    });
+  } catch (error) {
+    console.error('Error linking split sheet to EaseVerse:', error);
+    return res.status(500).json({ success: false, error: 'Failed to link split sheet to EaseVerse' });
+  }
+};
+
+const unlinkSplitSheetEaseVerseHandler = async (req: any, res: any) => {
+  try {
+    await ensureEaseVerseSchema();
+    const userId = requireEaseVerseUserId(req, res);
+    if (!userId) return;
+    const { id } = req.params;
+    const { easeverseTrackId, easeverseProjectId } = resolveEaseVerseLinkIds(req.query);
+
+    const splitSheet = await pool.query(
+      `SELECT id FROM split_sheets WHERE id = $1 AND user_id = $2`,
+      [id, userId]
+    );
+    if (splitSheet.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Split sheet not found' });
+    }
+
+    let query = `
+      DELETE FROM split_sheet_songflow_links l
+      USING split_sheets s
+      WHERE l.split_sheet_id = $1
+        AND s.id = l.split_sheet_id
+        AND s.user_id = $2
+    `;
+    const params: any[] = [id, userId];
+    let idx = 3;
+
+    if (easeverseTrackId) {
+      query += ` AND songflow_track_id = $${idx++}`;
+      params.push(easeverseTrackId);
+    }
+
+    if (easeverseProjectId) {
+      query += ` AND songflow_project_id = $${idx++}`;
+      params.push(easeverseProjectId);
+    }
+
+    await pool.query(query, params);
+
+    return res.json({
+      success: true,
+      message: 'EaseVerse link removed'
+    });
+  } catch (error) {
+    console.error('Error unlinking split sheet from EaseVerse:', error);
+    return res.status(500).json({ success: false, error: 'Failed to unlink split sheet from EaseVerse' });
+  }
+};
+
+const createSplitSheetFromEaseVerseTrackHandler = async (req: any, res: any) => {
+  try {
+    await ensureEaseVerseSchema();
+    const userId = requireEaseVerseUserId(req, res);
+    if (!userId) return;
+    const { trackId } = req.params;
+
+    const trackResult = await pool.query(
+      `SELECT * FROM easeverse_tracks WHERE id = $1 AND user_id = $2`,
+      [trackId, userId]
+    );
+
+    if (trackResult.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'EaseVerse track not found' });
+    }
+
+    const track = trackResult.rows[0];
+    const splitSheetId = crypto.randomUUID();
+    const title = req.body?.title || `Split Sheet - ${track.title}`;
+    const description =
+      req.body?.description || `Auto-opprettet fra EaseVerse, track: ${track.title}`;
+
+    await pool.query(
+      `
+        INSERT INTO split_sheets (
+          id, user_id, project_id, track_id, title, description, status, total_percentage, metadata
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, 'draft', 0, $7::jsonb)
+      `,
+      [
+        splitSheetId,
+        userId,
+        track.project_id,
+        track.id,
+        title,
+        description,
+        JSON.stringify({
+          source: 'easeverse',
+          easeverseTrackId: track.id,
+          easeverseProjectId: track.project_id,
+          lastLyricSync: track.last_lyric_sync,
+          easeverse_track_id: track.id,
+          easeverse_project_id: track.project_id,
+          last_lyric_sync: track.last_lyric_sync
+        })
+      ]
+    );
+
+    await pool.query(
+      `
+        INSERT INTO split_sheet_songflow_links (
+          id, split_sheet_id, songflow_track_id, songflow_project_id, link_type, auto_created, linked_by, metadata
+        )
+        VALUES ($1, $2, $3, $4, 'track', true, $5, $6::jsonb)
+      `,
+      [
+        crypto.randomUUID(),
+        splitSheetId,
+        track.id,
+        track.project_id,
+        userId,
+        JSON.stringify({ source: 'easeverse-auto' })
+      ]
+    );
+
+    const createdSplitSheet = await pool.query(
+      `SELECT * FROM split_sheets WHERE id = $1`,
+      [splitSheetId]
+    );
+
+    return res.json({
+      success: true,
+      data: createdSplitSheet.rows[0]
+    });
+  } catch (error) {
+    console.error('Error creating split sheet from EaseVerse:', error);
+    return res.status(500).json({ success: false, error: 'Failed to create split sheet from EaseVerse' });
+  }
+};
+
+// EaseVerse platform endpoints (primary)
+app.get('/api/easeverse-projects', listEaseVerseProjectsHandler);
+app.get('/api/easeverse-tracks', listEaseVerseTracksHandler);
+app.post('/api/easeverse-tracks', createEaseVerseTrackHandler);
+app.post('/api/easeverse-tracks/:trackId/backup', backupEaseVerseTrackHandler);
+app.post('/api/easeverse-tracks/:trackId/sync-lyrics', syncEaseVerseLyricsHandler);
+app.put('/api/easeverse-tracks/:trackId/lyrics', updateEaseVerseLyricsHandler);
+
+app.post('/api/split-sheets/from-easeverse/:trackId', createSplitSheetFromEaseVerseTrackHandler);
+app.get('/api/split-sheets/:id/easeverse', listSplitSheetEaseVerseLinksHandler);
+app.post('/api/split-sheets/:id/link-easeverse', linkSplitSheetEaseVerseHandler);
+app.delete('/api/split-sheets/:id/unlink-easeverse', unlinkSplitSheetEaseVerseHandler);
+
+// SongFlow aliases (backward compatibility)
+app.get('/api/songflow-projects', (req, res) => {
+  markSongFlowAliasDeprecated(res, '/api/easeverse-projects');
+  return listEaseVerseProjectsHandler(req, res);
+});
+app.get('/api/songflow-tracks', (req, res) => {
+  markSongFlowAliasDeprecated(res, '/api/easeverse-tracks');
+  return listEaseVerseTracksHandler(req, res);
+});
+app.post('/api/songflow-tracks', (req, res) => {
+  markSongFlowAliasDeprecated(res, '/api/easeverse-tracks');
+  return createEaseVerseTrackHandler(req, res);
+});
+app.post('/api/songflow-tracks/:trackId/backup', (req, res) => {
+  markSongFlowAliasDeprecated(res, '/api/easeverse-tracks/:trackId/backup');
+  return backupEaseVerseTrackHandler(req, res);
+});
+app.post('/api/songflow-tracks/:trackId/sync-lyrics', (req, res) => {
+  markSongFlowAliasDeprecated(res, '/api/easeverse-tracks/:trackId/sync-lyrics');
+  return syncEaseVerseLyricsHandler(req, res);
+});
+app.put('/api/songflow-tracks/:trackId/lyrics', (req, res) => {
+  markSongFlowAliasDeprecated(res, '/api/easeverse-tracks/:trackId/lyrics');
+  return updateEaseVerseLyricsHandler(req, res);
+});
+
+app.post('/api/split-sheets/from-songflow/:trackId', (req, res) => {
+  markSongFlowAliasDeprecated(res, '/api/split-sheets/from-easeverse/:trackId');
+  return createSplitSheetFromEaseVerseTrackHandler(req, res);
+});
+app.get('/api/split-sheets/:id/songflow', (req, res) => {
+  markSongFlowAliasDeprecated(res, '/api/split-sheets/:id/easeverse');
+  return listSplitSheetEaseVerseLinksHandler(req, res);
+});
+app.post('/api/split-sheets/:id/link-songflow', (req, res) => {
+  markSongFlowAliasDeprecated(res, '/api/split-sheets/:id/link-easeverse');
+  return linkSplitSheetEaseVerseHandler(req, res);
+});
+app.delete('/api/split-sheets/:id/unlink-songflow', (req, res) => {
+  markSongFlowAliasDeprecated(res, '/api/split-sheets/:id/unlink-easeverse');
+  return unlinkSplitSheetEaseVerseHandler(req, res);
+});
 
 // GET /api/split-sheets — List all split sheets for user
 app.get('/api/split-sheets', async (req, res) => {

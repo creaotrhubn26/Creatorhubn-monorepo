@@ -5,11 +5,34 @@ let cachedAuthToken = { token: "", exp: 0 };
 
 /**
  * Get authorization header for API requests
- * DISABLED: Authentication bypassed for direct dashboard access
  */
 async function getAuthHeader(): Promise<Record<string, string>> {
-  // Authentication disabled - return empty headers
-  return {};
+  const headers: Record<string, string> = {};
+
+  try {
+    const token =
+      localStorage.getItem('creatorhub_auth_token') ||
+      localStorage.getItem('token') ||
+      '';
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+
+    const storedUserRaw = localStorage.getItem('creatorhub_auth_user');
+    const storedUser = storedUserRaw ? JSON.parse(storedUserRaw) : null;
+    const userIdCandidate =
+      storedUser?.id ||
+      storedUser?.userId ||
+      localStorage.getItem('userId') ||
+      '';
+    if (typeof userIdCandidate === 'string' && userIdCandidate.trim().length > 0) {
+      headers['x-user-id'] = userIdCandidate.trim();
+    }
+  } catch {
+    // Ignore storage parse issues and fall back to anonymous headers.
+  }
+
+  return headers;
 }
 
 // Backend API URL from environment — points to Render backend in production
