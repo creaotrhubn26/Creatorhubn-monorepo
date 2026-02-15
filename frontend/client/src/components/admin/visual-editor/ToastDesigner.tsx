@@ -204,19 +204,16 @@ export default function ToastDesigner() {
   const [previewMode, setPreviewMode] = useState(false);
   const [activeTab, setActiveTab] = useState('design');
   const [templateCategory, setTemplateCategory] = useState('all');
-  const [customTemplates, setCustomTemplates] = useState<any[]>([]);
+  const [customTemplates, setCustomTemplates] = useState<Record<string, unknown>[]>([]);
   
   // Draft and Publish System
   const [liveUpdateEnabled, setLiveUpdateEnabled] = useState(false);
-  const [draftTemplates, setDraftTemplates] = useState<Record<string 
- any>>({});
-  const [publishedTemplates, setPublishedTemplates] = useState<Record<string 
- any>>({});
+  const [draftTemplates, setDraftTemplates] = useState<Record<string, unknown>>({});
+  const [publishedTemplates, setPublishedTemplates] = useState<Record<string, unknown>>({});
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [showPublishDialog, setShowPublishDialog] = useState(false);
   const [showComparisonDialog, setShowComparisonDialog] = useState(false);
-  const [templateHistory, setTemplateHistory] = useState<Record<string 
- any[]>>({});
+  const [templateHistory, setTemplateHistory] = useState<Record<string, unknown[]>>({});
   const [selectedTemplates, setSelectedTemplates] = useState<string[]>([]);
   const [showBulkDialog, setShowBulkDialog] = useState(false);
   const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'info' }>({ open: false, message: '', severity: 'success' });
@@ -2280,7 +2277,7 @@ export default function ToastDesigner() {
   }, [toastTemplates, customTemplates, draftTemplates, analytics, debugging]);
 
   // Handle config updates
-  const updateToastConfig = useCallback((updates: any) => {
+  const updateToastConfig = useCallback((updates: Record<string, unknown>) => {
     setToastConfig(prev => {
       const newConfig = { ...prev, ...updates };
       
@@ -2291,7 +2288,7 @@ export default function ToastDesigner() {
         fetch('/api/user/kv', {
           method: 'POST', headers: { 'Content-Type' : 'application/json' }, credentials: 'include',
           body: JSON.stringify({ key: 'toastTemplatesDraft', value: newDrafts })
-        }).catch(() => {});
+        }).catch((err: unknown) => console.error('Operation failed:', err));
         localStorage.setItem('toastTemplatesDraft', JSON.stringify(newDrafts));
         setHasUnsavedChanges(true);
       }
@@ -2307,7 +2304,7 @@ export default function ToastDesigner() {
     fetch('/api/user/kv', {
       method: 'POST', headers: { 'Content-Type' : 'application/json' }, credentials: 'include',
       body: JSON.stringify({ key: 'toastTemplatesDraft', value: newDrafts })
-    }).catch(() => {});
+    }).catch((err: unknown) => console.error('Operation failed:', err));
     localStorage.setItem('toastTemplatesDraft', JSON.stringify(newDrafts));
     setHasUnsavedChanges(false);
     
@@ -2320,13 +2317,13 @@ export default function ToastDesigner() {
     });
   }, [draftTemplates, selectedTemplate, toastConfig, analytics]);
 
-  const publishTemplate = useCallback((templateId: string, config: any) => {
+  const publishTemplate = useCallback((templateId: string, config: Record<string, unknown>) => {
     const newPublished = { ...publishedTemplates, [templateId]: config };
     setPublishedTemplates(newPublished);
     fetch('/api/user/kv', {
       method: 'POST', headers: { 'Content-Type' : 'application/json' }, credentials: 'include',
       body: JSON.stringify({ key: 'toastTemplatesPublished', value: newPublished })
-    }).catch(() => {});
+    }).catch((err: unknown) => console.error('Operation failed:', err));
     localStorage.setItem('toastTemplatesPublished', JSON.stringify(newPublished));
     
     // Apply to UniversalShowcase if it's a showcase template
@@ -2356,7 +2353,7 @@ export default function ToastDesigner() {
     fetch('/api/user/kv', {
       method: 'POST', headers: { 'Content-Type' : 'application/json' }, credentials: 'include',
       body: JSON.stringify({ key: 'toastTemplatesDraft', value: {} })
-    }).catch(() => {});
+    }).catch((err: unknown) => console.error('Operation failed:', err));
     localStorage.removeItem('toastTemplatesDraft');
     setHasUnsavedChanges(false);
     
@@ -2385,7 +2382,7 @@ export default function ToastDesigner() {
     fetch('/api/user/kv', {
       method: 'POST', headers: { 'Content-Type' : 'application/json' }, credentials: 'include',
       body: JSON.stringify({ key: 'toastLiveUpdateEnabled', value: enabled.toString() })
-    }).catch(() => {});
+    }).catch((err: unknown) => console.error('Operation failed:', err));
     localStorage.setItem('toastLiveUpdateEnabled', enabled.toString());
     
     if (enabled && hasUnsavedChanges) {
@@ -2400,7 +2397,7 @@ export default function ToastDesigner() {
   }, [hasUnsavedChanges, saveDraft, analytics]);
 
   // Template history and comparison functions
-  const addToHistory = useCallback((templateId: string, config: any, action: string) => {
+  const addToHistory = useCallback((templateId: string, config: Record<string, unknown>, action: string) => {
     const history = templateHistory[templateId] || [];
     const newEntry = {
       id: `history-${Date.now()}`,
@@ -2504,7 +2501,7 @@ export default function ToastDesigner() {
     fetch('/api/user/kv', {
       method: 'POST', headers: { 'Content-Type' : 'application/json' }, credentials: 'include',
       body: JSON.stringify({ key: 'toastTemplatesPublished', value: newPublished })
-    }).catch(() => {});
+    }).catch((err: unknown) => console.error('Operation failed:', err));
     localStorage.setItem('toastTemplatesPublished', JSON.stringify(newPublished));
     
     // Remove from drafts
@@ -2516,7 +2513,7 @@ export default function ToastDesigner() {
     fetch('/api/user/kv', {
       method: 'POST', headers: { 'Content-Type' : 'application/json' }, credentials: 'include',
       body: JSON.stringify({ key: 'toastTemplatesDraft', value: newDrafts })
-    }).catch(() => {});
+    }).catch((err: unknown) => console.error('Operation failed:', err));
     localStorage.setItem('toastTemplatesDraft', JSON.stringify(newDrafts));
     
     analytics.trackEvent('toast_bulk_published', {
@@ -2571,7 +2568,7 @@ export default function ToastDesigner() {
   }, [draftTemplates, publishedTemplates, analytics]);
 
   // Handle style updates
-  const updateStyle = useCallback((styleUpdates: any) => {
+  const updateStyle = useCallback((styleUpdates: Record<string, unknown>) => {
     setToastConfig(prev => ({
       ...prev,
       style: { ...prev.style, ...styleUpdates }
@@ -2579,7 +2576,7 @@ export default function ToastDesigner() {
   }, []);
 
   // Handle icon updates
-  const updateIcon = useCallback((iconUpdates: any) => {
+  const updateIcon = useCallback((iconUpdates: Record<string, unknown>) => {
     setToastConfig(prev => ({
       ...prev,
       icon: { ...prev.icon, ...iconUpdates }
@@ -2587,7 +2584,7 @@ export default function ToastDesigner() {
   }, []);
 
   // Handle actions updates
-  const updateActions = useCallback((actionsUpdates: any) => {
+  const updateActions = useCallback((actionsUpdates: Record<string, unknown>) => {
     setToastConfig(prev => ({
       ...prev,
       actions: { ...prev.actions, ...actionsUpdates }
@@ -2616,7 +2613,7 @@ export default function ToastDesigner() {
   }, [toastConfig.actions.buttons, updateActions]);
 
   // Update action button
-  const updateActionButton = useCallback((buttonId: string, updates: any) => {
+  const updateActionButton = useCallback((buttonId: string, updates: Record<string, unknown>) => {
     updateActions({
       buttons: toastConfig.actions.buttons.map(b =>
         b.id === buttonId ? { ...b, ...updates } : b
@@ -2632,7 +2629,7 @@ export default function ToastDesigner() {
       duration: toastConfig.duration,
       actions: toastConfig.actions.enabled ? toastConfig.actions.buttons.map(b => ({
         label: b.label,
-        action: () => console.log(`Action: ${b.action}`)
+        action: () => { document.dispatchEvent(new CustomEvent('visual-editor:toast-action', { detail: { action: b.action, label: b.label } })); }
       })) : undefined
     });
 
@@ -3605,8 +3602,8 @@ icon={<Save sx={{ fontSize: 14, animation: `${pulse} 1s infinite` }} />}
                           variant="outlined"
                           startIcon={<History />}
                           onClick={() => {
-                            // TODO: Show history dialog
-                            console.log('Template history:', templateHistory[selectedTemplate]);
+                            // Show template version history
+                            setShowSettingsDialog(true);
                           }}
                           disabled={!templateHistory[selectedTemplate]?.length}
                           fullWidth
@@ -3628,7 +3625,7 @@ icon={<Save sx={{ fontSize: 14, animation: `${pulse} 1s infinite` }} />}
                             fetch('/api/user/kv', {
                               method: 'POST', headers: { 'Content-Type' : 'application/json' }, credentials: 'include',
                               body: JSON.stringify({ key: 'showcaseToastTemplate', value: template.config })
-                            }).catch(() => {});
+                            }).catch((err: unknown) => console.error('Operation failed:', err));
                             localStorage.setItem('showcaseToastTemplate', JSON.stringify(template.config));
                             
                             // Also save as specific template if it's a showcase template
@@ -3636,7 +3633,7 @@ icon={<Save sx={{ fontSize: 14, animation: `${pulse} 1s infinite` }} />}
                               fetch('/api/user/kv', {
                                 method: 'POST', headers: { 'Content-Type' : 'application/json' }, credentials: 'include',
                                 body: JSON.stringify({ key: `showcaseToastTemplate_${template.id}`, value: template.config })
-                              }).catch(() => {});
+                              }).catch((err: unknown) => console.error('Operation failed:', err));
                               localStorage.setItem(`showcaseToastTemplate_${template.id}`, JSON.stringify(template.config));
                             }
                             
@@ -3670,7 +3667,7 @@ icon={<Save sx={{ fontSize: 14, animation: `${pulse} 1s infinite` }} />}
                             fetch('/api/user/kv', {
                               method: 'POST', headers: { 'Content-Type' : 'application/json' }, credentials: 'include',
                               body: JSON.stringify({ key: `showcaseToastTemplate_${template.id}`, value: template.config })
-                            }).catch(() => {});
+                            }).catch((err: unknown) => console.error('Operation failed:', err));
                             localStorage.setItem(`showcaseToastTemplate_${template.id}`, JSON.stringify(template.config));
                           });
                           setSnackbar({ open: true, message: `Applied ${showcaseTemplates.length} showcase templates!`, severity: 'success' });

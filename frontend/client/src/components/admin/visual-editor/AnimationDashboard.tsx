@@ -538,11 +538,9 @@ const AnimationDashboard: React.FC<AnimationDashboardProps> = memo(({
   }, [addAnimation]);
 
   // Handle delete animation
-  const handleDeleteAnimation = useCallback((animationId: string) => {
-    // This would call a deleteAnimation function from the hook
-    console.log('Delete animation:', animationId);
-    // TODO: Implement deleteAnimation in useAnimation hook
-  }, []);
+  const handleDeleteAnimation = useCallback(async (animationId: string) => {
+    await stopAnimation(animationId);
+  }, [stopAnimation]);
 
   // Filter animations by category
   const filteredAnimations = useMemo(() => {

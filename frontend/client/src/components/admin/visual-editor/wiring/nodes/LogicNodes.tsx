@@ -33,8 +33,8 @@ export const IfElseNode = memo(function IfElseNode({
   ...props
 }: {
   config: NodeConfig;
-  onDataChange?: (key: string, value: any) => void;
-  [key: string]: any;
+  onDataChange?: (key: string, value: unknown) => void;
+  [key: string]: unknown;
 }) {
   return (
     <BaseNode
@@ -90,8 +90,8 @@ export const SwitchNode = memo(function SwitchNode({
   ...props
 }: {
   config: NodeConfig;
-  onDataChange?: (key: string, value: any) => void;
-  [key: string]: any;
+  onDataChange?: (key: string, value: unknown) => void;
+  [key: string]: unknown;
 }) {
   const cases = config.data.cases || ['case1', 'case2'];
 
@@ -180,8 +180,8 @@ export const CompareNode = memo(function CompareNode({
   ...props
 }: {
   config: NodeConfig;
-  onDataChange?: (key: string, value: any) => void;
-  [key: string]: any;
+  onDataChange?: (key: string, value: unknown) => void;
+  [key: string]: unknown;
 }) {
   return (
     <BaseNode
@@ -244,8 +244,8 @@ export const AndNode = memo(function AndNode({
   ...props
 }: {
   config: NodeConfig;
-  onDataChange?: (key: string, value: any) => void;
-  [key: string]: any;
+  onDataChange?: (key: string, value: unknown) => void;
+  [key: string]: unknown;
 }) {
   return (
     <BaseNode
@@ -278,8 +278,8 @@ export const OrNode = memo(function OrNode({
   ...props
 }: {
   config: NodeConfig;
-  onDataChange?: (key: string, value: any) => void;
-  [key: string]: any;
+  onDataChange?: (key: string, value: unknown) => void;
+  [key: string]: unknown;
 }) {
   return (
     <BaseNode
@@ -312,8 +312,8 @@ export const NotNode = memo(function NotNode({
   ...props
 }: {
   config: NodeConfig;
-  onDataChange?: (key: string, value: any) => void;
-  [key: string]: any;
+  onDataChange?: (key: string, value: unknown) => void;
+  [key: string]: unknown;
 }) {
   return (
     <BaseNode
@@ -346,8 +346,8 @@ export const MergeNode = memo(function MergeNode({
   ...props
 }: {
   config: NodeConfig;
-  onDataChange?: (key: string, value: any) => void;
-  [key: string]: any;
+  onDataChange?: (key: string, value: unknown) => void;
+  [key: string]: unknown;
 }) {
   return (
     <BaseNode

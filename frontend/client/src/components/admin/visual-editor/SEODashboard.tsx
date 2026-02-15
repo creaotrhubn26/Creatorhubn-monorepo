@@ -65,7 +65,7 @@ import {
 // SEO Interfaces
 interface SEOCrawlResult {
   totalPages: number;
-  crawledPages: any[];
+  crawledPages: Record<string, unknown>[];
   issues: SEOIssue[];
   siteArchitecture: SiteArchitecture;
   performance: SitePerformance;
@@ -149,7 +149,7 @@ interface CompetitorData {
 interface JSONLDSchema {
   id: string;
   type: string;
-  schema: any;
+  schema: Record<string, unknown>;
   validation: {
     valid: boolean;
     errors: string[];
@@ -241,7 +241,7 @@ const SEODashboard: React.FC<SEODashboardProps> = ({
       });
 
       if (response.success && response.keywords) {
-        setKeywords(response.keywords.map((kw: any) => ({
+        setKeywords(response.keywords.map((kw: Record<string, unknown>) => ({
           keyword: kw.keyword,
           volume: kw.searchVolume || kw.volume,
           difficulty: kw.difficulty,
@@ -277,7 +277,7 @@ const SEODashboard: React.FC<SEODashboardProps> = ({
       });
 
       if (response.success && response.competitors) {
-        setCompetitors(response.competitors.map((comp: any) => ({
+        setCompetitors(response.competitors.map((comp: Record<string, unknown>) => ({
           domain: comp.domain,
           authority: comp.domainAuthority || comp.authority,
           organicTraffic: comp.estimatedTraffic || comp.organicTraffic,
@@ -342,7 +342,7 @@ const SEODashboard: React.FC<SEODashboardProps> = ({
               setCrawlResult({
                 totalPages: resultsResponse.totalPages || 0,
                 crawledPages: resultsResponse.crawledPages || [],
-                issues: (resultsResponse.issues || []).map((issue: any) => ({
+                issues: (resultsResponse.issues || []).map((issue: Record<string, unknown>) => ({
                   id: issue.id || `issue-${Date.now()}`,
                   type: issue.type || 'warning',
                   category: issue.category || 'technical',
@@ -591,7 +591,7 @@ const SEODashboard: React.FC<SEODashboardProps> = ({
                                 <Typography variant="h6" sx={{ color: theming.colors.primary }}>{issue.title}</Typography>
                                 <Chip 
                                   label={issue.severity}
-                                  color={getSeverityColor(issue.severity) as any}
+                                  color={getSeverityColor(issue.severity) as 'default' | 'primary' | 'secondary' | 'error' | 'info' | 'success' | 'warning'}
                                   size="small"
                                 />
                                 <Chip 

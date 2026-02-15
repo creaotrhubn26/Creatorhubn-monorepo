@@ -103,7 +103,7 @@ export interface WiringNode {
   type: string;
   category: NodeCategory;
   position: { x: number; y: number };
-  data: Record<string, any>;
+  data: Record<string, unknown>;
   inputs: NodePort[];
   outputs: NodePort[];
   isSelected?: boolean;
@@ -119,7 +119,7 @@ export interface NodePort {
   type: 'input' | 'output';
   dataType: 'any' | 'string' | 'number' | 'boolean' | 'object' | 'array' | 'event' | 'function';
   connected?: boolean;
-  value?: any;
+  value?: unknown;
 }
 
 // Connection interface
@@ -143,7 +143,7 @@ interface NodeDefinition {
   icon: React.ReactNode;
   inputs: Omit<NodePort, 'id'>[];
   outputs: Omit<NodePort, 'id'>[];
-  defaultData: Record<string, any>;
+  defaultData: Record<string, unknown>;
   color: string;
 }
 
@@ -469,7 +469,7 @@ export function ComponentWiringSystem({
   useEffect(() => {
     if (apiNodes.length > 0 && nodes.length === 0) {
       // Transform API nodes to WiringNode format
-      const transformedNodes = apiNodes.map((n: any) => ({
+      const transformedNodes = apiNodes.map((n: Record<string, unknown>) => ({
         id: n.nodeId,
         type: n.nodeType,
         category: n.category as NodeCategory,
@@ -489,7 +489,7 @@ export function ComponentWiringSystem({
   // Initialize connections from API
   useEffect(() => {
     if (apiConnections && apiConnections.length > 0 && connections.length === 0) {
-      const transformedConnections = apiConnections.map((c: any) => ({
+      const transformedConnections = apiConnections.map((c: Record<string, unknown>) => ({
         id: c.connectionId || c.id,
         sourceNodeId: c.sourceNodeId,
         sourcePortId: c.sourcePortId || 'output-0',
@@ -517,7 +517,7 @@ export function ComponentWiringSystem({
 
   // Group nodes by category
   const nodesByCategory = useMemo(() => {
-    const grouped: Record<NodeCategory, NodeDefinition[]> = {} as any;
+    const grouped: Partial<Record<NodeCategory, NodeDefinition[]>> = {};
     filteredLibrary.forEach((node) => {
       if (!grouped[node.category]) {
         grouped[node.category] = [];
@@ -803,7 +803,7 @@ export function ComponentWiringSystem({
   }, [saveToHistory]);
 
   // Update node data from settings dialog
-  const handleUpdateNodeData = useCallback((nodeId: string, newData: Record<string, any>) => {
+  const handleUpdateNodeData = useCallback((nodeId: string, newData: Record<string, unknown>) => {
     setNodes((prev) =>
       prev.map((n) => (n.id === nodeId ? { ...n, data: { ...n.data, ...newData } } : n))
     );
@@ -880,7 +880,7 @@ export function ComponentWiringSystem({
               size="small"
               onClick={(e) => {
                 e.stopPropagation();
-                handleContextMenu(e as any, node.id);
+                handleContextMenu(e as unknown as React.MouseEvent, node.id);
               }}
               sx={{ p: 0.25, color: 'rgba(255,255,255,0.7)' }}
             >

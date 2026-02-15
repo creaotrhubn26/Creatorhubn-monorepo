@@ -104,7 +104,7 @@ export const AccessibilityChecker: React.FC<AccessibilityCheckerProps> = ({
 
       const formattedIssues: AccessibilityIssue[] = results.violations.map((violation) => ({
         id: violation.id,
-        impact: violation.impact as any,
+        impact: violation.impact as 'minor' | 'moderate' | 'serious' | 'critical',
         description: violation.description,
         help: violation.help,
         helpUrl: violation.helpUrl,

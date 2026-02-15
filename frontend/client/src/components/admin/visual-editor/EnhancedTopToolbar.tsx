@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box,
   IconButton,
@@ -24,9 +24,10 @@ import {
   CloudDone,
   History as HistoryIcon,
 } from '@mui/icons-material';
-import { useVisualEditor } from './VisualEditorContext';
+import { useVisualEditor, HistoryEntry } from './VisualEditorContext';
 import { getShortcutText, SHORTCUTS } from './useKeyboardShortcuts';
 import { useMotionPreference } from '../../../hooks/useMotionPreference';
+import { getVisualEditorTokens } from './visualEditorTokens';
 
 // Research-backed animation constants
 const TOOLBAR_ANIMATIONS = {
@@ -49,23 +50,54 @@ const TOOLBAR_ANIMATIONS = {
 };
 
 export const EnhancedTopToolbar: React.FC = () => {
-  const { undo, redo, canUndo, canRedo, state } = useVisualEditor();
+  const { undo, redo, canUndo, canRedo, state, saveProject, updateSettings, addNotification } = useVisualEditor();
   const { getTransition, shouldAnimate } = useMotionPreference();
+  const tokens = getVisualEditorTokens();
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'unsaved'>('saved');
   const [historyAnchor, setHistoryAnchor] = useState<null | HTMLElement>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const openHistory = Boolean(historyAnchor);
 
-  // Auto-save simulation every 30 seconds
+  // Auto-save using context's saveProject
   useEffect(() => {
+    if (!state.settings.autoSave || !state.currentProject) return;
     const autoSaveInterval = setInterval(() => {
       setSaveStatus('saving');
+      saveProject();
       setTimeout(() => {
         setSaveStatus('saved');
       }, 1000);
-    }, 30000); // 30 seconds
+    }, state.settings.autoSaveInterval || 30000);
 
     return () => clearInterval(autoSaveInterval);
-  }, []);
+  }, [state.settings.autoSave, state.settings.autoSaveInterval, state.currentProject, saveProject]);
+
+  // Settings toggle handler
+  const handleSettingsClick = useCallback(() => {
+    updateSettings({ theme: state.settings.theme === 'light' ? 'dark' : 'light' });
+  }, [state.settings.theme, updateSettings]);
+
+  // Preview toggle handler
+  const handlePreviewClick = useCallback(() => {
+    setPreviewOpen((prev) => !prev);
+    addNotification({
+      type: 'info',
+      title: 'Preview',
+      message: previewOpen ? 'Exiting preview mode' : 'Entering preview mode',
+      read: false,
+    });
+  }, [previewOpen, addNotification]);
+
+  // Publish handler
+  const handlePublish = useCallback(() => {
+    saveProject();
+    addNotification({
+      type: 'success',
+      title: 'Published',
+      message: 'Project published successfully',
+      read: false,
+    });
+  }, [saveProject, addNotification]);
 
   return (
     <Box
@@ -101,10 +133,10 @@ export const EnhancedTopToolbar: React.FC = () => {
           <Edit sx={{ color: 'warning.main', fontSize: 20 }} />
           <Box>
             <Typography variant="body2" fontWeight={600}>
-              Edit Visual Design
+              {tokens.toolbar.editTitle}
             </Typography>
             <Typography variant="caption" color="text.secondary">
-              Last edited 2 mins ago
+              {tokens.toolbar.lastEditedLabel}
             </Typography>
           </Box>
         </Box>
@@ -114,10 +146,10 @@ export const EnhancedTopToolbar: React.FC = () => {
       <Box sx={{ display: 'flex', alignItems: 'center' }}>
         <Breadcrumbs separator="/" sx={{ fontSize: '0.875rem' }}>
           <Link underline="hover" color="inherit" href="#" sx={{ fontWeight: 500}}>
-            Visual Editor Project
+            {tokens.toolbar.breadcrumbs.project}
           </Link>
           <Typography color="text.primary" fontSize="0.875rem" fontWeight={500}>
-            Design
+            {tokens.toolbar.breadcrumbs.section}
           </Typography>
         </Breadcrumbs>
       </Box>
@@ -130,7 +162,7 @@ export const EnhancedTopToolbar: React.FC = () => {
             <>
               <CircularProgress size={12} />
               <Typography variant="caption" color="text.secondary">
-                Saving...
+                {tokens.toolbar.saveStatus.saving}
               </Typography>
             </>
           )}
@@ -139,14 +171,14 @@ export const EnhancedTopToolbar: React.FC = () => {
               <CloudDone fontSize="small" sx={{ color: 'success.main' }} />
               <Check fontSize="small" sx={{ color: 'success.main', ml: -0.5 }} />
               <Typography variant="caption" color="text.secondary">
-                Saved
+                {tokens.toolbar.saveStatus.saved}
               </Typography>
             </>
           )}
         </Box>
 
         <Tooltip 
-          title={`Undo ${getShortcutText(SHORTCUTS.undo)}`}
+          title={`${tokens.toolbar.tooltips.undo} ${getShortcutText(SHORTCUTS.undo)}`}
           enterDelay={shouldAnimate() ? TOOLBAR_ANIMATIONS.tooltip.duration : 0}
           TransitionProps={{
             timeout: shouldAnimate() ? TOOLBAR_ANIMATIONS.tooltip.duration : 0
@@ -176,7 +208,7 @@ export const EnhancedTopToolbar: React.FC = () => {
         </Tooltip>
 
         <Tooltip 
-          title={`Redo ${getShortcutText(SHORTCUTS.redo)}`}
+          title={`${tokens.toolbar.tooltips.redo} ${getShortcutText(SHORTCUTS.redo)}`}
           enterDelay={shouldAnimate() ? TOOLBAR_ANIMATIONS.tooltip.duration : 0}
           TransitionProps={{
             timeout: shouldAnimate() ? TOOLBAR_ANIMATIONS.tooltip.duration : 0
@@ -207,7 +239,7 @@ export const EnhancedTopToolbar: React.FC = () => {
 
         {/* History dropdown */}
         <Tooltip 
-          title="History"
+          title={tokens.toolbar.tooltips.history}
           enterDelay={shouldAnimate() ? TOOLBAR_ANIMATIONS.tooltip.duration : 0}
           TransitionProps={{
             timeout: shouldAnimate() ? TOOLBAR_ANIMATIONS.tooltip.duration : 0
@@ -249,10 +281,10 @@ export const EnhancedTopToolbar: React.FC = () => {
             timeout: shouldAnimate() ? TOOLBAR_ANIMATIONS.menu.duration : 0
           }}
         >
-          {state.history
-            ?.slice(-20)
+          {(state.historyEntries ?? [])
+            .slice(-20)
             .reverse()
-            .map((entry: any) => (
+            .map((entry: HistoryEntry) => (
               <MenuItem 
                 key={entry.id} 
                 onClick={() => setHistoryAnchor(null)}
@@ -269,15 +301,15 @@ export const EnhancedTopToolbar: React.FC = () => {
                 />
               </MenuItem>
             ))}
-          {(!state.history || state.history.length === 0) && (
+          {(!state.historyEntries || state.historyEntries.length === 0) && (
             <MenuItem disabled>
-              <ListItemText primary="No history yet" />
+              <ListItemText primary={tokens.toolbar.historyEmpty} />
             </MenuItem>
           )}
         </Menu>
 
         <Tooltip 
-          title="Settings"
+          title={tokens.toolbar.tooltips.settings}
           enterDelay={shouldAnimate() ? TOOLBAR_ANIMATIONS.tooltip.duration : 0}
           TransitionProps={{
             timeout: shouldAnimate() ? TOOLBAR_ANIMATIONS.tooltip.duration : 0
@@ -285,6 +317,7 @@ export const EnhancedTopToolbar: React.FC = () => {
         >
           <IconButton
             size="small"
+            onClick={handleSettingsClick}
             sx={{
               border: 1,
               borderColor: 'divider',
@@ -303,7 +336,7 @@ export const EnhancedTopToolbar: React.FC = () => {
         </Tooltip>
 
         <Tooltip 
-          title="Preview"
+          title={tokens.toolbar.tooltips.preview}
           enterDelay={shouldAnimate() ? TOOLBAR_ANIMATIONS.tooltip.duration : 0}
           TransitionProps={{
             timeout: shouldAnimate() ? TOOLBAR_ANIMATIONS.tooltip.duration : 0
@@ -311,6 +344,8 @@ export const EnhancedTopToolbar: React.FC = () => {
         >
           <IconButton
             size="small"
+            onClick={handlePreviewClick}
+            color={previewOpen ? 'primary' : 'default'}
             sx={{
               border: 1,
               borderColor: 'divider',
@@ -330,6 +365,7 @@ export const EnhancedTopToolbar: React.FC = () => {
 
         <Button
           variant="contained"
+          onClick={handlePublish}
           sx={{
             bgcolor: '#FF6B35',
             color: 'white',
@@ -348,7 +384,7 @@ export const EnhancedTopToolbar: React.FC = () => {
             }
           }}
         >
-          Publish
+          {tokens.toolbar.publishLabel}
         </Button>
       </Box>
     </Box>

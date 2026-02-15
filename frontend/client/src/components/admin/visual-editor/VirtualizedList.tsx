@@ -62,16 +62,16 @@ import { useVirtualization, UseVirtualizationOptions } from '../../../hooks/useV
 import { VirtualItem, VirtualizationConfig } from '../../../utils/virtualizationUtils';
 
 interface VirtualizedListProps {
-  items: any[];
+  items: unknown[];
   itemHeight?: number;
   containerHeight?: number;
   overscan?: number;
   enableDynamicSizing?: boolean;
   enableSmoothScrolling?: boolean;
   enableMomentum?: boolean;
-  onItemClick?: (item: any, index: number) => void;
-  onItemSelect?: (item: any, index: number, selected: boolean) => void;
-  onItemRender?: (item: any, index: number) => React.ReactNode;
+  onItemClick?: (item: unknown, index: number) => void;
+  onItemSelect?: (item: unknown, index: number, selected: boolean) => void;
+  onItemRender?: (item: unknown, index: number) => React.ReactNode;
   onScroll?: (scrollTop: number) => void;
   showMetrics?: boolean;
   showControls?: boolean;
@@ -148,25 +148,26 @@ const VirtualizedList: React.FC<VirtualizedListProps> = memo(({
 }), [itemHeight, containerHeight, overscan, enableDynamicSizing, enableSmoothScrolling, enableMomentum]);
 
   // Virtualization options
+  const renderCountRef = useRef(0);
   const virtualizationOptions: UseVirtualizationOptions = useMemo(() => ({
     config: virtualizationConfig,
     items: sortedItems,
-    onItemRender: (item: VirtualItem) => {
-      // Handle item render
+    onItemRender: (_item: VirtualItem) => {
+      renderCountRef.current += 1;
 },
-    onItemUnrender: (item: VirtualItem) => {
-      // Handle item unrender
+    onItemUnrender: (_item: VirtualItem) => {
+      renderCountRef.current = Math.max(0, renderCountRef.current - 1);
 },
     onScroll: (scrollTop: number) => {
       if (onScroll) {
         onScroll(scrollTop);
   }
   },
-    onMetricsUpdate: (metrics) => {
-      // Handle metrics update
+    onMetricsUpdate: (_metrics) => {
+      // Metrics consumed by useVirtualization hook internally
 },
-    onStateUpdate: (state) => {
-      // Handle state update
+    onStateUpdate: (_state) => {
+      // State consumed by useVirtualization hook internally
 }
 }), [virtualizationConfig, sortedItems, onScroll]);
 
@@ -235,14 +236,14 @@ const VirtualizedList: React.FC<VirtualizedListProps> = memo(({
 }, [filteredItems, sortOptions]);
 
   // Handle item click
-  const handleItemClick = useCallback((item: any, index: number) => {
+  const handleItemClick = useCallback((item: unknown, index: number) => {
     if (onItemClick) {
       onItemClick(item, index);
   }
 }, [onItemClick]);
 
   // Handle item select
-  const handleItemSelect = useCallback((item: any, index: number, selected: boolean) => {
+  const handleItemSelect = useCallback((item: unknown, index: number, selected: boolean) => {
     if (onItemSelect) {
       onItemSelect(item, index, selected);
   }
@@ -261,7 +262,7 @@ const VirtualizedList: React.FC<VirtualizedListProps> = memo(({
   // Handle scroll
   const handleScroll = useCallback((event: React.UIEvent<HTMLDivElement>) => {
     const scrollTop = event.currentTarget.scrollTop;
-    (virtualizationOptions as any).handleScroll?.(scrollTop);
+    virtualizationOptions.onScroll?.(scrollTop);
 }, [virtualizationOptions]);
 
   // Handle optimization level change

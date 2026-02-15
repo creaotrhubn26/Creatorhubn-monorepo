@@ -109,6 +109,8 @@ import NorthtoneVendorShowcase from '@/components/vendor/NorthtoneVendorShowcase
 import CompleteDeploymentManager from '@/components/admin/CompleteDeploymentManager';
 import VisualEditorWithPageSelection from '@/components/visual-editor/VisualEditorWithPageSelection';
 import CreatorhubVisualEditorRefactored from '@/components/admin/visual-editor/CreatorhubVisualEditorRefactored';
+import { EnhancedVisualEditorPage } from '@/components/admin/visual-editor/EnhancedVisualEditorPage';
+import EventiOnePager from '@/pages/EventiOnePager';
 // Import unified dashboard components
 import TemplateDashboard from '@/components/admin/visual-editor/TemplateDashboard';
 import ExportPresetsDashboard from '@/components/admin/visual-editor/ExportPresetsDashboard';
@@ -444,6 +446,9 @@ function App() {
                   <Route path="/vendor-dashboard/:vendorType/:vendorName" component={({ params }) => <UniversalVendorDashboard vendorType={params.vendorType} vendorName={params.vendorName} userId="current-user" />} />
                   <Route path="/visual-editor-advanced" component={VisualEditorWithPageSelection as React.ComponentType<any>} />
                   <Route path="/visual-editor-unified" component={() => <CreatorhubVisualEditorRefactored />} />
+                  <Route path="/visual-editor-enhanced" component={() => <EnhancedVisualEditorPage />} />
+                  <Route path="/visual-editor-enhanced/:projectId" component={({ params }) => <EnhancedVisualEditorPage projectId={params.projectId} />} />
+                  <Route path="/evendi" component={() => <EventiOnePager />} />
                   
                   {/* Unified Dashboard Routes */}
                   <Route path="/templates" component={() => <TemplateDashboard onTemplatesClick={() => {}} onCategoriesClick={() => {}} onSearchClick={() => {}} onPreviewClick={() => {}} />} />

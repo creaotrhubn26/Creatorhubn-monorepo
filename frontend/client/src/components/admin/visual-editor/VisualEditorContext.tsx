@@ -39,7 +39,7 @@ export interface EditorElement {
     fontStyle?: string;
     textStroke?: string;
 };
-  props: Record<string, any>;
+  props: Record<string, unknown>;
   children?: string[];
   parent?: string;
   icon?: string;
@@ -134,6 +134,13 @@ export interface Notification {
 };
 }
 
+export interface HistoryEntry {
+  id: string;
+  action: string;
+  description: string;
+  timestamp: string;
+}
+
 // State interface
 export interface VisualEditorState {
   // Core editor state
@@ -173,6 +180,9 @@ export interface VisualEditorState {
   
   // Notifications
   notifications: Notification[];
+  
+  // History entries (descriptive log)
+  historyEntries: HistoryEntry[];
   
   // Settings
   settings: {
@@ -236,6 +246,8 @@ export type VisualEditorAction =
   | { type: 'UPDATE_SETTINGS'; payload: Partial<VisualEditorState['settings']> }
   | { type: 'SET_LOADING'; payload: { key: keyof VisualEditorState['loading']; value: boolean } }
   | { type: 'SET_ERROR'; payload: { key: keyof VisualEditorState['errors']; value: string | null } }
+  | { type: 'ADD_HISTORY_ENTRY'; payload: { action: string; description: string; timestamp: string } }
+  | { type: 'UPDATE_COLLABORATIVE_CURSORS'; payload: { userId: string; userName: string; userColor: string; x: number; y: number; timestamp: string } }
   | { type: 'RESET_STATE' };
 
 // Initial state
@@ -266,6 +278,7 @@ const initialState: VisualEditorState = {
     renderTime: 0
   },
   notifications: [],
+  historyEntries: [],
   settings: {
     autoSave: true,
     autoSaveInterval: 500,
@@ -480,6 +493,40 @@ function visualEditorReducer(state: VisualEditorState, action: VisualEditorActio
         errors: { ...state.errors, [action.payload.key]: action.payload.value }
     };
     
+    case 'ADD_HISTORY_ENTRY': {
+      const entry: HistoryEntry = {
+        id: `history-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        action: action.payload.action,
+        description: action.payload.description,
+        timestamp: action.payload.timestamp,
+      };
+      return {
+        ...state,
+        historyEntries: [...state.historyEntries, entry],
+      };
+    }
+    
+    case 'UPDATE_COLLABORATIVE_CURSORS': {
+      const { userId, userName, userColor, x, y } = action.payload;
+      return {
+        ...state,
+        cursors: {
+          ...state.cursors,
+          [userId]: { x, y, color: userColor },
+        },
+        collaborationSession: state.collaborationSession
+          ? {
+              ...state.collaborationSession,
+              cursors: {
+                ...state.collaborationSession.cursors,
+                [userId]: { x, y, color: userColor },
+              },
+              lastActivity: new Date(),
+            }
+          : null,
+      };
+    }
+
     case 'RESET_STATE':
       return initialState;
     
@@ -520,6 +567,13 @@ const VisualEditorContext = createContext<{
   createTemplate: (template: Omit<Template, 'id' | 'metadata'>) => void;
   loadTemplate: (templateId: string) => void;
   updateSettings: (settings: Partial<VisualEditorState['settings']>) => void;
+  // Profession system
+  professionIcon: string;
+  professionConfig: Record<string, unknown> | undefined;
+  enhancedProfessionConfig: Record<string, unknown> | undefined;
+  professionColor: string;
+  currentProfession: string;
+  theming: ReturnType<typeof useTheming>;
 } | null>(null);
 
 // Provider component
@@ -760,7 +814,7 @@ export function VisualEditorProvider({ children }: { children: React.ReactNode }
 
   // Listen for external changes
   useEffect(() => {
-    const unsubscribe = communication.onMessage((message: any) => {
+    const unsubscribe = communication.onMessage((message: { type: string; data: Record<string, unknown>; from?: string }) => {
       switch (message.type) {
         case 'element:added':
           // Handle external element addition
@@ -809,8 +863,7 @@ export function VisualEditorProvider({ children }: { children: React.ReactNode }
         case 'client:selected':
           // Handle client selection from other components
           if (message.data && message.data.client) {
-            // Log client selection - project type doesn't have client property
-            console.log('Client selected:', message.data.client);
+            dispatch({ type: 'ADD_NOTIFICATION', payload: { type: 'info', title: 'Client Selected', message: `Selected client: ${(message.data.client as Record<string, unknown>).name ?? 'Unknown'}`, read: false } });
           }
           break;
       }
@@ -849,7 +902,14 @@ export function VisualEditorProvider({ children }: { children: React.ReactNode }
     saveProject,
     createTemplate,
     loadTemplate,
-    updateSettings
+    updateSettings,
+    // Profession system
+    professionIcon,
+    professionConfig,
+    enhancedProfessionConfig,
+    professionColor,
+    currentProfession,
+    theming,
 };
 
   return (

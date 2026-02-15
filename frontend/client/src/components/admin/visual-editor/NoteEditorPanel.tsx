@@ -18,10 +18,10 @@ import {
 import NoteEditor from '../../notes/NoteEditor';
 
 interface NoteEditorPanelProps {
-  selectedProject?: any;
-  onProjectUpdate?: (project: any) => void;
-  onWorklogCreate?: (worklog: any) => void;
-  onNotificationCreate?: (notification: any) => void;
+  selectedProject?: { id: string; name?: string };
+  onProjectUpdate?: (project: Record<string, unknown>) => void;
+  onWorklogCreate?: (worklog: Record<string, unknown>) => void;
+  onNotificationCreate?: (notification: Record<string, unknown>) => void;
 }
 
 export const NoteEditorPanel: React.FC<NoteEditorPanelProps> = ({

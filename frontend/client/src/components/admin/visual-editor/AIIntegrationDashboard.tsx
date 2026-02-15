@@ -222,7 +222,7 @@ const AIIntegrationDashboard: React.FC<AIIntegrationDashboardProps> = memo(({
   const [showLearningDialog, setShowLearningDialog] = useState(false);
   const [showOptimizationsDialog, setShowOptimizationsDialog] = useState(false);
   const [activeTab, setActiveTab] = useState(0);
-  const [searchQuery, setSearchQuery] = useState(', ');
+  const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState('all');
   const [sortBy, setSortBy] = useState('name');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
@@ -232,29 +232,30 @@ const AIIntegrationDashboard: React.FC<AIIntegrationDashboardProps> = memo(({
 
   // AI integration options
   const aiOptions: UseAIIntegrationOptions = useMemo(() => ({
-    onPromptCreated: (data: { prompt: AIPrompt }) => {
-      // Handle prompt created
+    onPromptCreated: (_data: { prompt: AIPrompt }) => {
+      setPage(0);
   },
-    onPromptExecuted: (data: { prompt: AIPrompt; response: AIResponse }) => {
-      // Handle prompt executed
+    onPromptExecuted: (_data: { prompt: AIPrompt; response: AIResponse }) => {
+      setPage(0);
   },
     onPromptExecutionFailed: (data: { prompt: AIPrompt; response: AIResponse; error: string }) => {
       console.error('Prompt execution failed: ', data.error);
   },
-    onContextCreated: (data: { context: AIContext }) => {
-      // Handle context created
+    onContextCreated: (_data: { context: AIContext }) => {
+      setPage(0);
   },
-    onLearningCreated: (data: { learning: AILearning }) => {
-      // Handle learning created
+    onLearningCreated: (_data: { learning: AILearning }) => {
+      setPage(0);
   },
-    onOptimizationCreated: (data: { optimization: AIOptimization }) => {
-      // Handle optimization created
+    onOptimizationCreated: (_data: { optimization: AIOptimization }) => {
+      setPage(0);
   },
     onError: (error: string) => {
       console.error('AI integration error:', error);
   },
     onInitialized: () => {
-      // Handle initialized
+      setFilterType('all');
+      setPage(0);
 }
 }), []);
 
@@ -378,7 +379,7 @@ const AIIntegrationDashboard: React.FC<AIIntegrationDashboardProps> = memo(({
         variables: { input: 'sample'},
         context:  [],
         examples:  [],
-        config:  , {}
+        config: {},
     };
       await createPrompt(promptData);
   } catch (error) {
@@ -394,7 +395,7 @@ const AIIntegrationDashboard: React.FC<AIIntegrationDashboardProps> = memo(({
         description: 'A sample context for testing',
         type: 'user',
         data: { userId: 'sample'},
-        config:  , {}
+        config: {},
     };
       await createContext(contextData);
   } catch (error) {
@@ -411,8 +412,8 @@ const AIIntegrationDashboard: React.FC<AIIntegrationDashboardProps> = memo(({
         type: 'supervised',
         data:  [],
         model: 'default',
-        parameters:  , {},
-        config:  , {}
+        parameters: {},
+        config: {},
     };
       await createLearning(learningData);
   } catch (error) {
@@ -428,9 +429,9 @@ const AIIntegrationDashboard: React.FC<AIIntegrationDashboardProps> = memo(({
         description: 'A sample optimization for testing',
         type: 'prompt',
         target: 'accuracy',
-        parameters:  , {},
-        results:  , {},
-        config:  , {}
+        parameters: {},
+        results: {},
+        config: {},
     };
       await createOptimization(optimizationData);
   } catch (error) {
@@ -441,7 +442,7 @@ const AIIntegrationDashboard: React.FC<AIIntegrationDashboardProps> = memo(({
   // Handle execute prompt
   const handleExecutePrompt = useCallback(async (promptId: string, input: string) => {
     try {
-      await executePrompt(promptd, input);
+      await executePrompt(promptId, input);
   } catch (error) {
       console.error('Failed to execute prompt:', error);
   }

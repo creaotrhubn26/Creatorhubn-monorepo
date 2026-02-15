@@ -209,41 +209,43 @@ const WorkflowAutomationDashboard: React.FC<WorkflowAutomationDashboardProps> = 
 
   // Workflow automation options
   const workflowOptions: UseWorkflowAutomationOptions = useMemo(() => ({
-    onWorkflowCreated: (data: { workflow: Workflow }) => {
-      // Handle workflow created
+    onWorkflowCreated: (_data: { workflow: Workflow }) => {
+      setPage(0);
   },
-    onWorkflowDeleted: (data: { workflow: Workflow }) => {
-      // Handle workflow deleted
+    onWorkflowDeleted: (_data: { workflow: Workflow }) => {
+      setPage(0);
   },
-    onWorkflowExecuted: (data: { workflow: Workflow }) => {
-      // Handle workflow executed
+    onWorkflowExecuted: (_data: { workflow: Workflow }) => {
+      setPage(0);
   },
-    onWorkflowPaused: (data: { workflow: Workflow }) => {
-      // Handle workflow paused
+    onWorkflowPaused: (_data: { workflow: Workflow }) => {
+      setSelectedWorkflow(_data.workflow);
   },
-    onWorkflowResumed: (data: { workflow: Workflow }) => {
-      // Handle workflow resumed
+    onWorkflowResumed: (_data: { workflow: Workflow }) => {
+      setSelectedWorkflow(_data.workflow);
   },
-    onWorkflowStopped: (data: { workflow: Workflow }) => {
-      // Handle workflow stopped
+    onWorkflowStopped: (_data: { workflow: Workflow }) => {
+      setPage(0);
   },
-    onWorkflowCompleted: (data: { workflow: Workflow }) => {
-      // Handle workflow completed
+    onWorkflowCompleted: (_data: { workflow: Workflow }) => {
+      setFilterType('all');
+      setPage(0);
   },
     onWorkflowFailed: (data: { workflow: Workflow; error: string }) => {
       console.error('Workflow failed:', data.error);
   },
-    onTemplateCreated: (data: { template: WorkflowTemplate }) => {
-      // Handle template created
+    onTemplateCreated: (_data: { template: WorkflowTemplate }) => {
+      setPage(0);
   },
-    onTemplateDeleted: (data: { template: WorkflowTemplate }) => {
-      // Handle template deleted
+    onTemplateDeleted: (_data: { template: WorkflowTemplate }) => {
+      setPage(0);
   },
     onError: (error: string) => {
       console.error('Workflow automation error:', error);
   },
     onInitialized: () => {
-      // Handle initialized
+      setFilterType('all');
+      setPage(0);
 }
 }), []);
 

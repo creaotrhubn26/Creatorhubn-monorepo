@@ -180,56 +180,65 @@ const VersionControlDashboard: React.FC<VersionControlDashboardProps> = memo(({
 
   // Version control options
   const versionControlOptions: UseVersionControlOptions = useMemo(() => ({
-    onVersionCreated: (data: { version: Version }) => {
-      // Handle version created
+    onVersionCreated: (_data: { version: Version }) => {
+      setFilterType('all');
+      setPage(0);
   },
-    onVersionUpdated: (data: { version: Version }) => {
-      // Handle version updated
+    onVersionUpdated: (_data: { version: Version }) => {
+      setPage(0);
   },
-    onVersionDeleted: (data: { version: Version }) => {
-      // Handle version deleted
+    onVersionDeleted: (_data: { version: Version }) => {
+      setPage(0);
   },
-    onVersionRollback: (data: { version: Version }) => {
-      // Handle version rollback
+    onVersionRollback: (_data: { version: Version }) => {
+      setPage(0);
   },
-    onChangeTracked: (data: { change: Change }) => {
-      // Handle change tracked
+    onChangeTracked: (_data: { change: Change }) => {
+      setFilterType('changes');
   },
-    onChangesStaged: (data: { changes: Change[] }) => {
-      // Handle changes staged
+    onChangesStaged: (_data: { changes: Change[] }) => {
+      setActiveTab(0);
+      setPage(0);
   },
-    onChangesUnstaged: (data: { changes: Change[] }) => {
-      // Handle changes unstaged
+    onChangesUnstaged: (_data: { changes: Change[] }) => {
+      setActiveTab(0);
+      setPage(0);
   },
-    onCommitCreated: (data: { commit: Commit }) => {
-      // Handle commit created
+    onCommitCreated: (_data: { commit: Commit }) => {
+      setShowCommitsDialog(true);
+      setPage(0);
   },
-    onBranchCreated: (data: { branch: Branch }) => {
-      // Handle branch created
+    onBranchCreated: (_data: { branch: Branch }) => {
+      setShowBranchesDialog(true);
+      setPage(0);
   },
-    onBranchSwitched: (data: { branch: Branch }) => {
-      // Handle branch switched
+    onBranchSwitched: (_data: { branch: Branch }) => {
+      setPage(0);
   },
-    onBranchMerged: (data: { sourceBranch: Branch; targetBranch: Branch; strategy: string }) => {
-      // Handle branch merged
+    onBranchMerged: (_data: { sourceBranch: Branch; targetBranch: Branch; strategy: string }) => {
+      setPage(0);
   },
-    onTagCreated: (data: { tag: Tag }) => {
-      // Handle tag created
+    onTagCreated: (_data: { tag: Tag }) => {
+      setShowTagsDialog(true);
+      setPage(0);
   },
-    onDiffCreated: (data: { diff: Diff }) => {
-      // Handle diff created
+    onDiffCreated: (_data: { diff: Diff }) => {
+      setShowDiffsDialog(true);
+      setPage(0);
   },
-    onBackupCreated: (data: { timestamp: number }) => {
-      // Handle backup created
+    onBackupCreated: (_data: { timestamp: number }) => {
+      setPage(0);
   },
     onSyncCompleted: () => {
-      // Handle sync completed
+      setFilterType('all');
+      setPage(0);
 },
     onError: (error: string) => {
       console.error('Version control error:', error);
   },
     onInitialized: () => {
-      // Handle initialized
+      setFilterType('all');
+      setPage(0);
 }
 }), []);
 

@@ -108,11 +108,11 @@ const OptimizedCanvas: React.FC<OptimizedCanvasProps> = memo(({
     autoStart: true,
     enableMetrics: showMetrics,
     enableOptimization: showOptimization,
-    onMetricsUpdate: (metrics) => {
-      // Handle metrics update
+    onMetricsUpdate: (_metrics) => {
+      console.debug('Canvas metrics updated');
 },
-    onOptimizationUpdate: (result) => {
-      // Handle optimization update
+    onOptimizationUpdate: (_result) => {
+      console.debug('Canvas optimization updated');
 }
 }), [config, showMetrics, showOptimization, optimizationLevel]);
 

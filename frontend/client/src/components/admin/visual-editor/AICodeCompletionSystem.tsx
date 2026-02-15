@@ -107,7 +107,7 @@ export interface AIContext {
   frameworkVersion?: string;
   // 📸 Vision context (AI Vision integration)
   visualContext?: {
-    imageAnalysis?: any; // PhotoAnalysis from ai-vision-service
+    imageAnalysis?: Record<string, unknown>; // PhotoAnalysis from ai-vision-service
     detectedComponents?: string[];
     layoutType?: 'grid' | 'flex' | 'absolute' | 'stack';
     colorScheme?: 'light' | 'dark' | 'vibrant';
@@ -198,7 +198,7 @@ export class AICodeCompletionEngine {
         const v = j && typeof j === 'object' && 'value,' in j ? j.value : j;
         if (v) this.apiKey = v as string;
       })
-      .catch(() => {});
+      .catch((err: unknown) => console.error('Request failed:', err));
   }
 
   private hydrateTeamKeyFromServer(teamId: string) {
@@ -213,7 +213,7 @@ export class AICodeCompletionEngine {
           } catch {}
         }
       })
-      .catch(() => {});
+      .catch((err: unknown) => console.error('Request failed:', err));
   }
 
   /**
@@ -243,7 +243,7 @@ export class AICodeCompletionEngine {
       fetch('/api/user/kv', {
         method: 'POST', headers: { , 'Content-Type': 'application/json' }, credentials: 'include',
         body: JSON.stringify({ key: 'ai_team_keys', value: teamKeys })
-      }).catch(() => {});
+      }).catch((err: unknown) => console.error('Request failed:', err));
       localStorage.setItem('ai_team_keys', JSON.stringify(teamKeys));
 
       // Store role permissions
@@ -252,7 +252,7 @@ export class AICodeCompletionEngine {
       fetch('/api/user/kv', {
         method: 'POST', headers: { , 'Content-Type': 'application/json' }, credentials: 'include',
         body: JSON.stringify({ key: 'ai_team_permissions', value: permissions })
-      }).catch(() => {});
+      }).catch((err: unknown) => console.error('Request failed:', err));
       localStorage.setItem('ai_team_permissions', JSON.stringify(permissions));
     } catch (error) {
       console.error('Failed to set team API key: ', error);
@@ -268,7 +268,7 @@ export class AICodeCompletionEngine {
     fetch('/api/user/kv', {
       method: 'POST', headers: { , 'Content-Type': 'application/json' }, credentials: 'include',
       body: JSON.stringify({ key: 'ai_api_key', value: key })
-    }).catch(() => {});
+    }).catch((err: unknown) => console.error('Request failed:', err));
     localStorage.setItem('ai_api_key', key);
   }
 
@@ -390,7 +390,7 @@ export class AICodeCompletionEngine {
     const response = await this.callAI(prompt);
 
     const suggestions: AICompletion[] = (response.suggestions || []).map(
-      (sugg: any, idx: number) => ({
+      (sugg: Record<string, unknown>, idx: number) => ({
         id: `refactor-${Date.now()}-${idx}`,
         type: 'refactor',
         suggestion: sugg.title || 'Refactoring suggestion',
@@ -590,7 +590,7 @@ Provide a clear, beginner-friendly explanation. Return JSON with:
   /**
    * Call AI API
    */
-  private async callAI(prompt: string, signal?: AbortSignal): Promise<any> {
+  private async callAI(prompt: string, signal?: AbortSignal): Promise<unknown> {
     // Determine provider
     let provider = this.config.provider;
 
@@ -616,9 +616,9 @@ Provide a clear, beginner-friendly explanation. Return JSON with:
   /**
    * Call local AI model (Ollama, LM Studio, etc.)
    */
-  private async callLocalModel(prompt: string, signal?: AbortSignal): Promise<any> {
+  private async callLocalModel(prompt: string, signal?: AbortSignal): Promise<unknown> {
     // Get local model config (server-first)
-    let localConfig: any = {};
+    let localConfig: Record<string, unknown> = {};
     try {
       const r = await fetch('/api/user/kv/ai_local_provider_config', { credentials: 'include' });
       const j = r.ok ? await r.json().catch(() => null) : null;
@@ -694,7 +694,7 @@ Provide a clear, beginner-friendly explanation. Return JSON with:
   /**
    * Call OpenAI API
    */
-  private async callOpenAI(prompt: string, signal?: AbortSignal): Promise<any> {
+  private async callOpenAI(prompt: string, signal?: AbortSignal): Promise<unknown> {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -737,7 +737,7 @@ Provide a clear, beginner-friendly explanation. Return JSON with:
   /**
    * Call Anthropic API
    */
-  private async callAnthropic(prompt: string, signal?: AbortSignal): Promise<any> {
+  private async callAnthropic(prompt: string, signal?: AbortSignal): Promise<unknown> {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {

@@ -56,9 +56,9 @@ import {
 } from '@mui/icons-material';
 
 interface AdvancedToolsProps {
-  selectedProject?: any;
-  onProjectUpdate?: (project: any) => void;
-  onNotificationCreate?: (notification: any) => void;
+  selectedProject?: { id: string; name?: string };
+  onProjectUpdate?: (project: Record<string, unknown>) => void;
+  onNotificationCreate?: (notification: Record<string, unknown>) => void;
 }
 
 export const AdvancedTools: React.FC<AdvancedToolsProps> = ({
@@ -118,8 +118,8 @@ export const AdvancedTools: React.FC<AdvancedToolsProps> = ({
   };
 }, [analytics, lifecycle, performance, debugging, selectedProject?.id]);
   const [analysisLoading, setAnalysisLoading] = useState(false);
-  const [qualityAnalysis, setQualityAnalysis] = useState<any>(null);
-  const [aiInsights, setAiInsights] = useState<any[]>([]);
+  const [qualityAnalysis, setQualityAnalysis] = useState<Record<string, unknown> | null>(null);
+  const [aiInsights, setAiInsights] = useState<Record<string, unknown>[]>([]);
   const [isGeneratingInsights, setIsGeneratingInsights] = useState(false);
   const [vrPreviewOpen, setVrPreviewOpen] = useState(false);
   const [arPreviewOpen, setArPreviewOpen] = useState(false);
@@ -393,7 +393,7 @@ export const AdvancedTools: React.FC<AdvancedToolsProps> = ({
               </Card>
 
               <Grid container spacing={2} sx={{ mb:  3 }}>
-                {Object.entries(qualityAnalysis.categories).map(([category, data]: [string, any]) => (
+                {Object.entries(qualityAnalysis.categories).map(([category, data]: [string, unknown]) => (
                   <Grid size={{ xs:  6, sm:  4, md:  3 }} key={category}>
                     <Card sx={theming.getThemedCardSx()}>
                       <CardContent sx={theming.getThemedCardSx()}>

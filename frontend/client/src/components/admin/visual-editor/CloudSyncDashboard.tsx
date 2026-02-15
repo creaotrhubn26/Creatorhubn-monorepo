@@ -308,25 +308,25 @@ const CloudSyncDashboard: React.FC<CloudSyncDashboardProps> = memo(({
   // Cloud sync options
   const cloudSyncOptions: UseCloudSyncOptions = useMemo(() => ({
     onProviderAdded: (providerData: { provider: CloudProvider }) => {
-      console.log('Provider added:', providerData.provider);
+      setSelectedProvider(providerData.provider);
     },
     onBackupConfigAdded: (backupData: { backupConfig: BackupConfig }) => {
-      console.log('Backup config added:', backupData.backupConfig);
+      setSelectedBackup(backupData.backupConfig);
     },
-    onSyncSessionStarted: (sessionData: { session: SyncSession }) => {
-      console.log('Sync session started:', sessionData.session);
+    onSyncSessionStarted: (_sessionData: { session: SyncSession }) => {
+      setFilterStatus('syncing');
     },
-    onSyncSessionStopped: (sessionData: { session: SyncSession }) => {
-      console.log('Sync session stopped:', sessionData.session);
+    onSyncSessionStopped: (_sessionData: { session: SyncSession }) => {
+      setFilterStatus('all');
     },
-    onConflictDetected: (conflictData: { conflict: SyncConflict }) => {
-      console.log('Conflict detected:', conflictData.conflict);
+    onConflictDetected: (_conflictData: { conflict: SyncConflict }) => {
+      setFilterStatus('conflict');
     },
     onError: (syncError: string) => {
       console.error('Cloud sync error:', syncError);
     },
     onInitialized: () => {
-      console.log('Cloud sync initialized');
+      setFilterStatus('all');
     }
   }), []);
 

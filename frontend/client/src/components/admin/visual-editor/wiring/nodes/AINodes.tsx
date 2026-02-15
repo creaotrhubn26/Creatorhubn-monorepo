@@ -42,8 +42,8 @@ export const AISuggestNode = memo(function AISuggestNode({
   ...props
 }: {
   config: NodeConfig;
-  onDataChange?: (key: string, value: any) => void;
-  [key: string]: any;
+  onDataChange?: (key: string, value: unknown) => void;
+  [key: string]: unknown;
 }) {
   return (
     <BaseNode
@@ -134,8 +134,8 @@ export const AIGenerateNode = memo(function AIGenerateNode({
   ...props
 }: {
   config: NodeConfig;
-  onDataChange?: (key: string, value: any) => void;
-  [key: string]: any;
+  onDataChange?: (key: string, value: unknown) => void;
+  [key: string]: unknown;
 }) {
   return (
     <BaseNode
@@ -233,8 +233,8 @@ export const AIOptimizeNode = memo(function AIOptimizeNode({
   ...props
 }: {
   config: NodeConfig;
-  onDataChange?: (key: string, value: any) => void;
-  [key: string]: any;
+  onDataChange?: (key: string, value: unknown) => void;
+  [key: string]: unknown;
 }) {
   return (
     <BaseNode
@@ -319,8 +319,8 @@ export const AICodeAssistantNode = memo(function AICodeAssistantNode({
   ...props
 }: {
   config: NodeConfig;
-  onDataChange?: (key: string, value: any) => void;
-  [key: string]: any;
+  onDataChange?: (key: string, value: unknown) => void;
+  [key: string]: unknown;
 }) {
   return (
     <BaseNode
@@ -402,8 +402,8 @@ export const AIImageAnalysisNode = memo(function AIImageAnalysisNode({
   ...props
 }: {
   config: NodeConfig;
-  onDataChange?: (key: string, value: any) => void;
-  [key: string]: any;
+  onDataChange?: (key: string, value: unknown) => void;
+  [key: string]: unknown;
 }) {
   return (
     <BaseNode
@@ -474,8 +474,8 @@ export const AITextEnhancementNode = memo(function AITextEnhancementNode({
   ...props
 }: {
   config: NodeConfig;
-  onDataChange?: (key: string, value: any) => void;
-  [key: string]: any;
+  onDataChange?: (key: string, value: unknown) => void;
+  [key: string]: unknown;
 }) {
   return (
     <BaseNode
@@ -558,8 +558,8 @@ export const AIChatNode = memo(function AIChatNode({
   ...props
 }: {
   config: NodeConfig;
-  onDataChange?: (key: string, value: any) => void;
-  [key: string]: any;
+  onDataChange?: (key: string, value: unknown) => void;
+  [key: string]: unknown;
 }) {
   return (
     <BaseNode

@@ -43,9 +43,9 @@ import {
 // Import helper functions separately
 
 interface MediaEditingToolsProps {
-  selectedProject?: any;
-  onProjectUpdate?: (project: any) => void;
-  onNotificationCreate?: (notification: any) => void;
+  selectedProject?: { id: string; name?: string };
+  onProjectUpdate?: (project: Record<string, unknown>) => void;
+  onNotificationCreate?: (notification: Record<string, unknown>) => void;
 }
 
 export const MediaEditingTools: React.FC<MediaEditingToolsProps> = ({
@@ -119,10 +119,10 @@ export const MediaEditingTools: React.FC<MediaEditingToolsProps> = ({
   const [assetSearchQuery, setAssetSearchQuery] = useState('');
   const [selectedFont, setSelectedFont] = useState<string>('Roboto');
   const [selectedIcon, setSelectedIcon] = useState<string | null>(null);
-  const [uploadedAssets, setUploadedAssets] = useState<any[]>([]);
+  const [uploadedAssets, setUploadedAssets] = useState<Record<string, unknown>[]>([]);
 
   // Font and icon libraries
-  const [googleFonts, setGoogleFonts] = useState<any[]>([]);
+  const [googleFonts, setGoogleFonts] = useState<Record<string, unknown>[]>([]);
   const [fontWeights] = useState(['300','400','500','600','700']);
   const [fontStyles] = useState(['normal','italic']);
 

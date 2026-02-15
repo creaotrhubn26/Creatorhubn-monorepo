@@ -49,9 +49,9 @@ import {
 } from '@mui/icons-material';
 
 interface DashboardIntegrationPanelProps {
-  selectedProject?: any;
-  onProjectUpdate?: (project: any) => void;
-  onNotificationCreate?: (notification: any) => void; 
+  selectedProject?: { id: string; name?: string };
+  onProjectUpdate?: (project: Record<string, unknown>) => void;
+  onNotificationCreate?: (notification: Record<string, unknown>) => void; 
 }
 
 export const DashboardIntegrationPanel: React.FC<DashboardIntegrationPanelProps> = ({
@@ -113,7 +113,7 @@ export const DashboardIntegrationPanel: React.FC<DashboardIntegrationPanelProps>
   const [selectedDashboard, setSelectedDashboard] = useState<string | null>(null);
 
   // TemplateDashboard functionality
-  const handleTemplateSelect = useCallback((template: any) => {
+  const handleTemplateSelect = useCallback((template: Record<string, unknown>) => {
     onNotificationCreate?.({
       id: `template_selected_${Date.now()}`,
       type: 'project_updated',
@@ -133,7 +133,7 @@ export const DashboardIntegrationPanel: React.FC<DashboardIntegrationPanelProps>
   }, [selectedProject, onProjectUpdate, onNotificationCreate]);
 
   // ExportPresetsDashboard functionality
-  const handleExportPreset = useCallback((preset: any) => {
+  const handleExportPreset = useCallback((preset: Record<string, unknown>) => {
     onNotificationCreate?.({
       id: `export_preset_${Date.now()}`,
       type: 'project_updated',
@@ -163,7 +163,7 @@ export const DashboardIntegrationPanel: React.FC<DashboardIntegrationPanelProps>
   }, [onNotificationCreate]);
 
   // TeamCollaborationDashboard functionality
-  const handleTeamInvite = useCallback((teamData: any) => {
+  const handleTeamInvite = useCallback((teamData: Record<string, unknown>) => {
     onNotificationCreate?.({
       id: `team_collaboration_${Date.now()}`,
       type: 'project_updated',
@@ -171,6 +171,62 @@ export const DashboardIntegrationPanel: React.FC<DashboardIntegrationPanelProps>
       message: `${teamData.count} team members invited`,
       priority: 'medium',
       source: 'team_dashboard',
+      timestamp: new Date().toISOString()
+    });
+  }, [onNotificationCreate]);
+
+  // PluginDashboard functionality
+  const handlePluginManager = useCallback(() => {
+    setSelectedDashboard('plugins');
+    onNotificationCreate?.({
+      id: `plugin_manager_${Date.now()}`,
+      type: 'project_updated',
+      title: 'Plugin Manager Opened',
+      message: 'Browse and manage installed plugins',
+      priority: 'low',
+      source: 'plugin_dashboard',
+      timestamp: new Date().toISOString()
+    });
+  }, [onNotificationCreate]);
+
+  // AnimationDashboard functionality
+  const handleAnimationGrid = useCallback(() => {
+    setSelectedDashboard('animation');
+    onNotificationCreate?.({
+      id: `animation_grid_${Date.now()}`,
+      type: 'project_updated',
+      title: 'Animation Grid Opened',
+      message: 'Configure animation timeframes and keyframes',
+      priority: 'low',
+      source: 'animation_dashboard',
+      timestamp: new Date().toISOString()
+    });
+  }, [onNotificationCreate]);
+
+  // ComponentLibrary functionality
+  const handleComponentLibrary = useCallback(() => {
+    setSelectedDashboard('library');
+    onNotificationCreate?.({
+      id: `component_library_${Date.now()}`,
+      type: 'project_updated',
+      title: 'Component Library Opened',
+      message: 'Browse and manage reusable components',
+      priority: 'low',
+      source: 'component_library',
+      timestamp: new Date().toISOString()
+    });
+  }, [onNotificationCreate]);
+
+  // DesignSystem functionality
+  const handleDesignSystem = useCallback(() => {
+    setSelectedDashboard('designsystem');
+    onNotificationCreate?.({
+      id: `design_system_${Date.now()}`,
+      type: 'project_updated',
+      title: 'Design System Opened',
+      message: 'Manage design tokens and style guides',
+      priority: 'low',
+      source: 'design_system',
       timestamp: new Date().toISOString()
     });
   }, [onNotificationCreate]);
@@ -214,7 +270,7 @@ export const DashboardIntegrationPanel: React.FC<DashboardIntegrationPanelProps>
       description: 'Manage plugins',
       icon: <Extension />,
       color: '#d84310',
-      action: () => {}
+      action: handlePluginManager
     },
     {
       id: 'animation',
@@ -222,7 +278,7 @@ export const DashboardIntegrationPanel: React.FC<DashboardIntegrationPanelProps>
       description: 'Animation timeframes',
       icon: <Animation />,
       color: '#1e88e0',
-      action: () => {}
+      action: handleAnimationGrid
     },
     {
       id: 'library',
@@ -230,7 +286,7 @@ export const DashboardIntegrationPanel: React.FC<DashboardIntegrationPanelProps>
       description: 'Manage components',
       icon: <LibraryBooks />,
       color: '#fb8c00',
-      action: () => {}
+      action: handleComponentLibrary
     },
     {
       id: 'designsystem',
@@ -238,7 +294,7 @@ export const DashboardIntegrationPanel: React.FC<DashboardIntegrationPanelProps>
       description: 'Manage design tokens',
       icon: <Palette />,
       color: '#e91e60',
-      action: () => {}
+      action: handleDesignSystem
     }
   ];
 

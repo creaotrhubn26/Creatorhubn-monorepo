@@ -54,7 +54,7 @@ export interface NodePort {
   dataType: PortDataType;
   description?: string;
   required?: boolean;
-  defaultValue?: any;
+  defaultValue?: unknown;
   connected?: boolean;
   connectedTo?: string[];
 }
@@ -70,7 +70,7 @@ export interface NodeConfig {
   color: string;
   inputs: NodePort[];
   outputs: NodePort[];
-  data: Record<string, any>;
+  data: Record<string, unknown>;
   position: { x: number; y: number };
   width?: number;
   height?: number;
@@ -98,7 +98,7 @@ export const PORT_COLORS: Record<PortDataType, string> = {
 
 interface BaseNodeProps {
   config: NodeConfig;
-  onDataChange?: (key: string, value: any) => void;
+  onDataChange?: (key: string, value: unknown) => void;
   onPortClick?: (portId: string, isOutput: boolean) => void;
   onNodeClick?: (e: React.MouseEvent) => void;
   onNodeDragStart?: (e: React.MouseEvent) => void;
@@ -107,7 +107,7 @@ interface BaseNodeProps {
   onToggleLock?: () => void;
   onExecute?: () => void;
   children?: React.ReactNode;
-  renderContent?: (data: Record<string, any>, onChange: (key: string, value: any) => void) => React.ReactNode;
+  renderContent?: (data: Record<string, unknown>, onChange: (key: string, value: unknown) => void) => React.ReactNode;
 }
 
 export const BaseNode = memo(function BaseNode({
@@ -126,7 +126,7 @@ export const BaseNode = memo(function BaseNode({
   const [isExpanded, setIsExpanded] = useState(!config.isCollapsed);
   const [showSettings, setShowSettings] = useState(false);
 
-  const handleDataChange = useCallback((key: string, value: any) => {
+  const handleDataChange = useCallback((key: string, value: unknown) => {
     onDataChange?.(key, value);
   }, [onDataChange]);
 

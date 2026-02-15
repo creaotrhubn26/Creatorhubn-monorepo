@@ -336,7 +336,7 @@ export default function AILocalModelProvider({
     fetch('/api/user/kv', {
       method: 'POST', headers: { , 'Content-Type': 'application/json' }, credentials: 'include',
       body: JSON.stringify({ key: 'ai_local_provider_config', value: config })
-    }).catch(() => {});
+    }).catch((err: unknown) => console.error('Operation failed:', err));
     // Local fallback
     localStorage.setItem('ai_local_provider_config', JSON.stringify(config));
     onConfigSaved(config);

@@ -205,16 +205,16 @@ const GestureDashboard: React.FC<GestureDashboardProps> = memo(({
 
   // Gesture options
   const gestureOptions: UseGesturesOptions = useMemo(() => ({
-    onGestureCreated: (data: { gesture: GestureType }) => {
-      // Handle gesture created
+    onGestureCreated: (_data: { gesture: GestureType }) => {
+      setPage(0);
   },
     onGestureRecognized: (data: { gesture: GestureType; event: TouchEvent | MouseEvent | KeyboardEvent }) => {
-      // Handle gesture recognized
+      setSelectedGesture(data.gesture);
   },
-    onGestureExecuted: (data: { gesture: GestureType; event: any }) => {
-      // Handle gesture executed
+    onGestureExecuted: (data: { gesture: GestureType; event: Record<string, unknown> }) => {
+      setSelectedGesture(data.gesture);
   },
-    onGestureExecutionFailed: (data: { gesture: GestureType; event: any; error: string }) => {
+    onGestureExecutionFailed: (data: { gesture: GestureType; event: Record<string, unknown>; error: string }) => {
       console.error('Gesture execution failed: ', data.error);
   },
     onGestureRecognitionFailed: (data: { event: TouchEvent | MouseEvent | KeyboardEvent; error: string }) => {
@@ -224,7 +224,8 @@ const GestureDashboard: React.FC<GestureDashboardProps> = memo(({
       console.error('Gesture error, :', error);
   },
     onInitialized: () => {
-      // Handle initialized
+      setFilterType('all');
+      setPage(0);
 }
 }), []);
 
@@ -328,7 +329,7 @@ const GestureDashboard: React.FC<GestureDashboardProps> = memo(({
         threshold:  10,
         tolerance:  5,
         element: document.body,
-        handler: () => console.log('Custom gesture executed', ),
+        handler: () => { document.dispatchEvent(new CustomEvent('visual-editor:gesture', { detail: { type: 'custom', timestamp: Date.now() } })); },
         enabled: true,
         preventDefault: true,
         stopPropagation: false,

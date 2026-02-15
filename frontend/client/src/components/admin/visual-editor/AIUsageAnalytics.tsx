@@ -284,7 +284,7 @@ export default function AIUsageAnalytics({
           <FormControl size="small" sx={{ minWidth: 120 }}>
             <Select
               value={timeRange}
-              onChange={(e) => setTimeRange(e.target.value as any)}
+              onChange={(e) => setTimeRange(e.target.value as string)}
               sx={{
                 color: 'white', '.MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(2, 5, 5,255,255,0.3)' }}}
             >
@@ -616,7 +616,7 @@ export function trackAIUsage(record: Omit<UsageRecord, 'id' | 'timestamp'>) {
     fetch('/api/user/kv', {
       method: 'POST', headers: { , 'Content-Type': 'application/json' }, credentials: 'include',
       body: JSON.stringify({ key: 'ai_usage_records', value: trimmed })
-    }).catch(() => {});
+    }).catch((err: unknown) => console.error('Operation failed:', err));
     localStorage.setItem('ai_usage_records', JSON.stringify(trimmed));
 
     // Also send to AI Metrics Dashboard if available

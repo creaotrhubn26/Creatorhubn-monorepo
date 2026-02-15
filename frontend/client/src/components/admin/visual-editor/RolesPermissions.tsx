@@ -86,7 +86,7 @@ interface Permission {
 interface PermissionCondition {
   field: string;
   operator: 'equals' | 'not_equals' | 'contains' | 'in' | 'not_in';
-  value: any;
+  value: unknown;
 }
 
 interface User {

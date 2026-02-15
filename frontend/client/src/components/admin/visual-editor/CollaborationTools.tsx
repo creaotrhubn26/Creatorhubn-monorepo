@@ -44,8 +44,8 @@ import {
 } from '@mui/icons-material';
 
 interface CollaborationToolsProps {
-  selectedProject?: any;
-  onNotificationCreate?: (notification: any) => void; 
+  selectedProject?: { id: string; name?: string };
+  onNotificationCreate?: (notification: Record<string, unknown>) => void; 
 }
 
 export const CollaborationTools: React.FC<CollaborationToolsProps> = ({
@@ -104,13 +104,13 @@ export const CollaborationTools: React.FC<CollaborationToolsProps> = ({
     };
   }, [analytics, lifecycle, performance, debugging, selectedProject?.id]);
 
-  const [activeVoiceSession, setActiveVoiceSession] = useState<any>(null);
-  const [achievements, setAchievements] = useState<any[]>([
+  const [activeVoiceSession, setActiveVoiceSession] = useState<Record<string, unknown> | null>(null);
+  const [achievements, setAchievements] = useState<Record<string, unknown>[]>([
     { id: '1', title: 'First Project', description: 'Created your first project', earned: true },
     { id: '2', title: 'Quick Learner', description: 'Completed basic tutorial', earned: true },
     { id: '3', title: 'User Expert', description: 'Used all major features', earned: false }
   ]);
-  const [recentActivities, setRecentActivities] = useState<any[]>([
+  const [recentActivities, setRecentActivities] = useState<Record<string, unknown>[]>([
     { id: '1', type: 'element_added', timestamp: new Date(), description: 'Added image element' },
     { id: '2', type: 'project_saved', timestamp: new Date(), description: 'Project auto-saved' }
   ]);
@@ -189,7 +189,7 @@ export const CollaborationTools: React.FC<CollaborationToolsProps> = ({
         id: `achievement_unlocked_${Date.now()}`,
         type: 'project_updated',
         title: 'Achievement Unlocked, !',
-        message: `${achieved.title}: ${achieved.description as any}`,
+        message: `${achieved.title}: ${achieved.description as string}`,
         priority: 'medium',
         source: 'gamification',
         timestamp: new Date().toISOString()
@@ -317,7 +317,7 @@ export const CollaborationTools: React.FC<CollaborationToolsProps> = ({
                             {achievement.title}
                           </Typography>
                           <Typography variant="caption" color="text.secondary">
-                            {achievement.description as any}
+                            {achievement.description as string}
                           </Typography>
                         </Box>
                         {achievement.earned && (
@@ -351,7 +351,7 @@ export const CollaborationTools: React.FC<CollaborationToolsProps> = ({
                   </Avatar>
                 </ListItemIcon>
                 <ListItemText
-                  primary={activity.description as any}
+                  primary={activity.description as string}
                   secondary={activity.timestamp.toLocaleString()}
                 />
               </ListItem>

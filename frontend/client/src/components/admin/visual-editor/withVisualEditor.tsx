@@ -43,9 +43,9 @@ import { useTheming } from '../../../utils/theming-helper';
 interface VisualEditorProps {
   isEditing?: boolean;
   onEdit?: () => void;
-  onSave?: (customizations: any) => void;
+  onSave?: (customizations: Record<string, unknown>) => void;
   onCancel?: () => void;
-  customizations?: any;
+  customizations?: Record<string, unknown>;
   componentId?: string;
   componentName?: string;
   profession?: string;

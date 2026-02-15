@@ -62,7 +62,7 @@ interface Component {
   favorite: boolean;
   createdAt: number;
   updatedAt: number;
-  props?: Record<string, any>;
+  props?: Record<string, unknown>;
 }
 
 interface ComponentLibraryProps {

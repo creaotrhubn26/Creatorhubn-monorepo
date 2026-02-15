@@ -85,7 +85,7 @@ interface AIDebugAssistantProps {
   language: string;
   errors?: Array<{ message: string; line?: number; column?: number }>;
   onApplyFix: (code: string) => void;
-  onGetAIAnalysis: (context: AIContext) => Promise<any>;
+  onGetAIAnalysis: (context: AIContext) => Promise<unknown>;
 }
 
 export default function AIDebugAssistant({

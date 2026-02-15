@@ -1,6 +1,7 @@
 import React from 'react';
 import { Box, IconButton, Tooltip, ToggleButton, ToggleButtonGroup } from '@mui/material';
 import { Grid3x3, GridOn, GridOff } from '@mui/icons-material';
+import { getVisualEditorTokens } from './visualEditorTokens';
 
 interface CanvasGridOverlayProps {
   width: number;
@@ -161,9 +162,10 @@ export const GridControls: React.FC<GridControlsProps> = ({
   onChangeGridSize,
   onToggleSnap,
 }) => {
+  const tokens = getVisualEditorTokens();
   return (
     <Box sx={{ display: 'flex', gap: 0.5 alignItems: 'center' }}>
-      <Tooltip title={showGrid ? 'Hide Grid' : 'Show Grid'}>
+      <Tooltip title={showGrid ? tokens.gridControls.hideGrid : tokens.gridControls.showGrid}>
         <IconButton
           size="small"
           onClick={() => onToggleGrid(!showGrid)}
@@ -176,7 +178,7 @@ export const GridControls: React.FC<GridControlsProps> = ({
         </IconButton>
       </Tooltip>
 
-      <Tooltip title={snapToGrid ? 'Snap On' : 'Snap Off'}>
+      <Tooltip title={snapToGrid ? tokens.gridControls.snapOn : tokens.gridControls.snapOff}>
         <IconButton
           size="small"
           onClick={() => onToggleSnap(!snapToGrid)}
@@ -198,13 +200,13 @@ export const GridControls: React.FC<GridControlsProps> = ({
         disabled={!showGrid}
       >
         <ToggleButton value="8" sx={{ px: 1, fontSize: '0.75rem' }}>
-          8px
+          {tokens.gridControls.sizes.small}
         </ToggleButton>
         <ToggleButton value="16" sx={{ px: 1, fontSize: '0.75rem' }}>
-          16px
+          {tokens.gridControls.sizes.medium}
         </ToggleButton>
         <ToggleButton value="24" sx={{ px: 1, fontSize: '0.75rem' }}>
-          24px
+          {tokens.gridControls.sizes.large}
         </ToggleButton>
       </ToggleButtonGroup>
     </Box>

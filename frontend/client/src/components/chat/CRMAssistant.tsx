@@ -155,15 +155,15 @@ export default function CRMAssistant({
 
   const { data: projectTimeline, isLoading: timelineLoading } = useQuery({
     queryKey: ['/api/projects/timeline', clientContext?.id],
-    queryFn: () => apiRequest(`/api/projects/timeline/${clientContext?.d}`),
-    enabled: !!clientContext?.d,
+    queryFn: () => apiRequest(`/api/projects/timeline/${clientContext?.id}`),
+    enabled: !!clientContext?.id,
 });
 
   // Quote creation mutation
   const createQuoteMutation = useMutation({
     mutationFn: async (quoteData: any) => {
       return apiRequest('/api/quotes/create', {
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify(quoteData),
     });
   },
@@ -177,8 +177,8 @@ export default function CRMAssistant({
   // Quote acceptance detection
   const { data: quoteStatus } = useQuery({
     queryKey: ['/api/quotes/status', clientContext?.id],
-    queryFn: () => apiRequest(`/api/quotes/status/${clientContext?.d}`),
-    enabled: !!clientContext?.d,
+    queryFn: () => apiRequest(`/api/quotes/status/${clientContext?.id}`),
+    enabled: !!clientContext?.id,
     refetchInterval: 3000, // Check every 30 seconds
 });
 
@@ -348,7 +348,7 @@ export default function CRMAssistant({
   const generateResponse = useMutation({
     mutationFn: async (prompt: string) => {
       return apiRequest('/api/crm/generate-response', {
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify({
           prompt,
           clientContext,

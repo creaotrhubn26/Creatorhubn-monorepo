@@ -77,7 +77,7 @@ export const useAcademyToastTheming = (templateId: string) => {
   const theming = useTheming('academy');
   
   // Find the template configuration for this templateId
-  const template = academyToastTemplates.find((t: any) => t.id === templateId);
+  const template = academyToastTemplates.find((t: { id: string }) => t.id === templateId);
   
   // Memoize template-specific theming
   const templateSpecificStyle = React.useMemo(() => {
@@ -100,7 +100,7 @@ export const useAcademyToastTheming = (templateId: string) => {
   }, [templateId, template, theming.colors.primary]);
   
   return {
-    getThemedStyle: (baseStyle: Record<string, any>) => ({
+    getThemedStyle: (baseStyle: Record<string, unknown>) => ({
       ...baseStyle,
       ...templateSpecificStyle
     }),
@@ -116,7 +116,7 @@ export const useAcademyToastTheming = (templateId: string) => {
 };
 
 // Function to render a toast with themed styling and icon
-export const renderAcademyToast = (template: any) => {
+export const renderAcademyToast = (template: Record<string, unknown>) => {
   const theming = useTheming('academy');
   const icon = template.config.icon.customIcon || getAcademyIcon(template.config.icon.type, template.config.icon.size);
   

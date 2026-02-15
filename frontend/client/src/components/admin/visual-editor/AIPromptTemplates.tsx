@@ -580,7 +580,7 @@ export default function AIPromptTemplates({
                 onChange={(e) =>
                   setEditingTemplate((prev) => ({
                     ...prev,
-                    category: e.target.value as any,
+                    category: e.target.value as string,
                   }))
                 }
                 label="Category"

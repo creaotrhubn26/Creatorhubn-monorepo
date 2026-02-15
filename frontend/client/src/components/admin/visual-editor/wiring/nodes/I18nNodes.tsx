@@ -49,8 +49,8 @@ export const TranslationKeyNode = memo(function TranslationKeyNode({
   ...props
 }: {
   config: NodeConfig;
-  onDataChange?: (key: string, value: any) => void;
-  [key: string]: any;
+  onDataChange?: (key: string, value: unknown) => void;
+  [key: string]: unknown;
 }) {
   return (
     <BaseNode
@@ -122,8 +122,8 @@ export const LocaleNode = memo(function LocaleNode({
   ...props
 }: {
   config: NodeConfig;
-  onDataChange?: (key: string, value: any) => void;
-  [key: string]: any;
+  onDataChange?: (key: string, value: unknown) => void;
+  [key: string]: unknown;
 }) {
   return (
     <BaseNode
@@ -206,8 +206,8 @@ export const PluralNode = memo(function PluralNode({
   ...props
 }: {
   config: NodeConfig;
-  onDataChange?: (key: string, value: any) => void;
-  [key: string]: any;
+  onDataChange?: (key: string, value: unknown) => void;
+  [key: string]: unknown;
 }) {
   return (
     <BaseNode
@@ -267,8 +267,8 @@ export const FormatDateNode = memo(function FormatDateNode({
   ...props
 }: {
   config: NodeConfig;
-  onDataChange?: (key: string, value: any) => void;
-  [key: string]: any;
+  onDataChange?: (key: string, value: unknown) => void;
+  [key: string]: unknown;
 }) {
   return (
     <BaseNode
@@ -337,8 +337,8 @@ export const FormatCurrencyNode = memo(function FormatCurrencyNode({
   ...props
 }: {
   config: NodeConfig;
-  onDataChange?: (key: string, value: any) => void;
-  [key: string]: any;
+  onDataChange?: (key: string, value: unknown) => void;
+  [key: string]: unknown;
 }) {
   return (
     <BaseNode
@@ -413,8 +413,8 @@ export const FormatNumberNode = memo(function FormatNumberNode({
   ...props
 }: {
   config: NodeConfig;
-  onDataChange?: (key: string, value: any) => void;
-  [key: string]: any;
+  onDataChange?: (key: string, value: unknown) => void;
+  [key: string]: unknown;
 }) {
   return (
     <BaseNode
@@ -483,8 +483,8 @@ export const LanguageSwitcherNode = memo(function LanguageSwitcherNode({
   ...props
 }: {
   config: NodeConfig;
-  onDataChange?: (key: string, value: any) => void;
-  [key: string]: any;
+  onDataChange?: (key: string, value: unknown) => void;
+  [key: string]: unknown;
 }) {
   return (
     <BaseNode

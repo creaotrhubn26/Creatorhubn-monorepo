@@ -173,59 +173,64 @@ const CollaborationDashboard: React.FC<CollaborationDashboardProps> = memo(({
 
   // Collaboration options
   const collaborationOptions: UseCollaborationOptions = useMemo(() => ({
-    onConnected: (data: { user: Collaborator }) => {
-      // Handle connected
+    onConnected: (_data: { user: Collaborator }) => {
+      setFilterType('all');
+      setPage(0);
   },
     onDisconnected: () => {
-      // Handle disconnected
+      setFilterType('all');
 },
     onReconnecting: () => {
-      // Handle reconnecting
+      setFilterType('all');
 },
     onReconnected: () => {
-      // Handle reconnected
+      setPage(0);
 },
-    onEventSent: (event: any) => {
-      // Handle event sent
+    onEventSent: (_event: Record<string, unknown>) => {
+      setPage(0);
 },
-    onEventReceived: (event: any) => {
-      // Handle event received
+    onEventReceived: (_event: Record<string, unknown>) => {
+      setPage(0);
 },
-    onCursorUpdated: (data: { userId: string; cursor: any }) => {
-      // Handle cursor updated
+    onCursorUpdated: (_data: { userId: string; cursor: Record<string, unknown> }) => {
+      setShowCursorsDialog(true);
   },
-    onPresenceUpdated: (data: { userId: string; presence: any }) => {
-      // Handle presence updated
+    onPresenceUpdated: (_data: { userId: string; presence: Record<string, unknown> }) => {
+      setPage(0);
   },
-    onCommentUpdated: (data: { elementId: string; comment: any }) => {
-      // Handle comment updated
+    onCommentUpdated: (_data: { elementId: string; comment: Record<string, unknown> }) => {
+      setShowCommentsDialog(true);
   },
-    onVersionUpdated: (data: { projectId: string; version: any }) => {
-      // Handle version updated
+    onVersionUpdated: (_data: { projectId: string; version: Record<string, unknown> }) => {
+      setShowVersionsDialog(true);
   },
-    onPermissionUpdated: (data: { userId: string; permission: any }) => {
-      // Handle permission updated
+    onPermissionUpdated: (_data: { userId: string; permission: Record<string, unknown> }) => {
+      setShowPermissionsDialog(true);
   },
-    onNotificationUpdated: (data: { userId: string; notification: any }) => {
-      // Handle notification updated
+    onNotificationUpdated: (_data: { userId: string; notification: Record<string, unknown> }) => {
+      setShowNotificationsDialog(true);
   },
-    onConflictDetected: (conflict: ConflictResolution) => {
-      // Handle conflict detected
+    onConflictDetected: (_conflict: ConflictResolution) => {
+      setShowConflictsDialog(true);
+      setFilterType('conflicts');
 },
-    onConflictResolved: (conflict: ConflictResolution) => {
-      // Handle conflict resolved
+    onConflictResolved: (_conflict: ConflictResolution) => {
+      setFilterType('all');
+      setPage(0);
 },
-    onSyncCompleted: (data: { data: any }) => {
-      // Handle sync completed
+    onSyncCompleted: (_data: { data: unknown }) => {
+      setFilterType('all');
+      setPage(0);
   },
-    onOfflineSyncCompleted: (data: { count: number }) => {
-      // Handle offline sync completed
+    onOfflineSyncCompleted: (_data: { count: number }) => {
+      setPage(0);
   },
     onError: (error: string) => {
-      console.error('Collaboration error, :', error);
+      console.error('Collaboration error:', error);
   },
     onInitialized: () => {
-      // Handle initialized
+      setFilterType('all');
+      setPage(0);
 }
 }), []);
 

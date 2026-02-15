@@ -100,7 +100,7 @@ export function LandingPageSectionEditor({
   const [historyIndex, setHistoryIndex] = useState(0);
 
   // Handle text field changes
-  const handleFieldChange = useCallback((field: string, value: any) => {
+  const handleFieldChange = useCallback((field: string, value: unknown) => {
     setLocalSection((prev) => {
       const newSection = { ...prev, [field]: value };
       setHasChanges(true);
@@ -112,12 +112,12 @@ export function LandingPageSectionEditor({
   }, [historyIndex]);
 
   // Handle style changes
-  const handleStyleChange = useCallback((category: string, field: string, value: any) => {
+  const handleStyleChange = useCallback((category: string, field: string, value: unknown) => {
     setLocalStyles((prev) => {
       const newStyles = {
         ...prev,
         [category]: {
-          ...(prev[category] as Record<string, any> || {}),
+          ...(prev[category] as Record<string, unknown> || {}),
           [field]: value,
         },
       };
@@ -127,7 +127,7 @@ export function LandingPageSectionEditor({
   }, []);
 
   // Handle array item changes (for features, testimonials, etc.)
-  const handleArrayItemChange = useCallback((arrayField: string, index: number, field: string, value: any) => {
+  const handleArrayItemChange = useCallback((arrayField: string, index: number, field: string, value: unknown) => {
     setLocalSection((prev) => {
       const array = [...(prev[arrayField] as unknown[] || [])];
       array[index] = { ...array[index], [field]: value };
@@ -138,7 +138,7 @@ export function LandingPageSectionEditor({
   }, []);
 
   // Add array item
-  const handleAddArrayItem = useCallback((arrayField: string, template: Record<string, any>) => {
+  const handleAddArrayItem = useCallback((arrayField: string, template: Record<string, unknown>) => {
     setLocalSection((prev) => {
       const array = [...(prev[arrayField] as unknown[] || []), template];
       return { ...prev, [arrayField]: array };
@@ -232,13 +232,13 @@ export function LandingPageSectionEditor({
       </Typography>
       <input
         type="color"
-        value={(localStyles[category] as Record<string, any>)?.[field] || '#ff6b00'}
+        value={(localStyles[category] as Record<string, unknown>)?.[field] || '#ff6b00'}
         onChange={(e) => handleStyleChange(category, field, e.target.value)}
         style={{ width: 40, height: 30, border: 'none', cursor: 'pointer' }}
       />
       <TextField
         size="small"
-        value={(localStyles[category] as Record<string, any>)?.[field] || '#ff6b00'}
+        value={(localStyles[category] as Record<string, unknown>)?.[field] || '#ff6b00'}
         onChange={(e) => handleStyleChange(category, field, e.target.value)}
         sx={{ width: 120 }}
       />
@@ -380,7 +380,7 @@ export function LandingPageSectionEditor({
               <Typography variant="subtitle2" sx={{ mb: 1, color: 'rgba(255,255,255,0.7)' }}>
                 Items ({localSection.items.length})
               </Typography>
-              {localSection.items.map((item: any, index: number) => (
+              {localSection.items.map((item: unknown, index: number) => (
                 <Paper
                   key={index}
                   sx={{
@@ -452,7 +452,7 @@ export function LandingPageSectionEditor({
               Section Padding
             </Typography>
             <Slider
-              value={parseInt((localStyles.spacing as Record<string, any>)?.sectionPadding || '80', 10)}
+              value={parseInt((localStyles.spacing as Record<string, unknown>)?.sectionPadding || '80', 10)}
               onChange={(_, value) => handleStyleChange('spacing', 'sectionPadding', `${value}px`)}
               min={20}
               max={200}

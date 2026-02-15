@@ -50,7 +50,7 @@ interface LayoutTemplate {
     areas: Array<{ name: string; startRow: number; endRow: number; startCol: number; endCol: number }>;
   };
   spacing: { xs: number; sm: number; md: number; lg: number; xl: number };
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 // Local grid state management

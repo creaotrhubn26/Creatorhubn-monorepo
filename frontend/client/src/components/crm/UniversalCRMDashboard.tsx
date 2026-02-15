@@ -379,7 +379,7 @@ export default function UniversalCRMDashboard({
         headers: {
           "Content-Type" : "application/json"
     },
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify(meetingPayload)
   });
       

@@ -241,14 +241,14 @@ const LayoutDashboard: React.FC<LayoutDashboardProps> = memo(({
 
   // Layout options
   const layoutOptions: UseLayoutOptions = useMemo(() => ({
-    onElementRegistered: (data: { element: LayoutElement }) => {
-      // Handle element registered
+    onElementRegistered: (_data: { element: LayoutElement }) => {
+      setPage(0);
   },
-    onRuleCreated: (data: { rule: LayoutRule }) => {
-      // Handle rule created
+    onRuleCreated: (_data: { rule: LayoutRule }) => {
+      setPage(0);
   },
-    onLayoutApplied: (data: { element: LayoutElement }) => {
-      // Handle layout applied
+    onLayoutApplied: (_data: { element: LayoutElement }) => {
+      setPage(0);
   },
     onLayoutApplyFailed: (data: { element: LayoutElement; error: string }) => {
       console.error('Layout apply failed:', data.error);
@@ -260,7 +260,8 @@ const LayoutDashboard: React.FC<LayoutDashboardProps> = memo(({
       console.error('Layout error:', error);
     },
     onInitialized: () => {
-      // Handle initialized
+      setFilterType('all');
+      setPage(0);
 }
 }), []);
 

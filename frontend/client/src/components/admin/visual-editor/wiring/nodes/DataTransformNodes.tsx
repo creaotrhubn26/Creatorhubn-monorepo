@@ -34,8 +34,8 @@ export const MapNode = memo(function MapNode({
   ...props
 }: {
   config: NodeConfig;
-  onDataChange?: (key: string, value: any) => void;
-  [key: string]: any;
+  onDataChange?: (key: string, value: unknown) => void;
+  [key: string]: unknown;
 }) {
   return (
     <BaseNode
@@ -93,8 +93,8 @@ export const FilterNode = memo(function FilterNode({
   ...props
 }: {
   config: NodeConfig;
-  onDataChange?: (key: string, value: any) => void;
-  [key: string]: any;
+  onDataChange?: (key: string, value: unknown) => void;
+  [key: string]: unknown;
 }) {
   return (
     <BaseNode
@@ -135,8 +135,8 @@ export const ReduceNode = memo(function ReduceNode({
   ...props
 }: {
   config: NodeConfig;
-  onDataChange?: (key: string, value: any) => void;
-  [key: string]: any;
+  onDataChange?: (key: string, value: unknown) => void;
+  [key: string]: unknown;
 }) {
   return (
     <BaseNode
@@ -185,8 +185,8 @@ export const FormatNode = memo(function FormatNode({
   ...props
 }: {
   config: NodeConfig;
-  onDataChange?: (key: string, value: any) => void;
-  [key: string]: any;
+  onDataChange?: (key: string, value: unknown) => void;
+  [key: string]: unknown;
 }) {
   return (
     <BaseNode
@@ -279,8 +279,8 @@ export const MergeDataNode = memo(function MergeDataNode({
   ...props
 }: {
   config: NodeConfig;
-  onDataChange?: (key: string, value: any) => void;
-  [key: string]: any;
+  onDataChange?: (key: string, value: unknown) => void;
+  [key: string]: unknown;
 }) {
   return (
     <BaseNode
@@ -324,8 +324,8 @@ export const ParseNode = memo(function ParseNode({
   ...props
 }: {
   config: NodeConfig;
-  onDataChange?: (key: string, value: any) => void;
-  [key: string]: any;
+  onDataChange?: (key: string, value: unknown) => void;
+  [key: string]: unknown;
 }) {
   return (
     <BaseNode
@@ -382,8 +382,8 @@ export const PickNode = memo(function PickNode({
   ...props
 }: {
   config: NodeConfig;
-  onDataChange?: (key: string, value: any) => void;
-  [key: string]: any;
+  onDataChange?: (key: string, value: unknown) => void;
+  [key: string]: unknown;
 }) {
   return (
     <BaseNode
@@ -422,8 +422,8 @@ export const SortNode = memo(function SortNode({
   ...props
 }: {
   config: NodeConfig;
-  onDataChange?: (key: string, value: any) => void;
-  [key: string]: any;
+  onDataChange?: (key: string, value: unknown) => void;
+  [key: string]: unknown;
 }) {
   return (
     <BaseNode

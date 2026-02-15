@@ -246,26 +246,28 @@ const ThemeDashboard: React.FC<ThemeDashboardProps> = memo(({
 
   // Theme options
   const themeOptions: UseThemeOptions = useMemo(() => ({
-    onThemeChanged: (data: { theme: Theme; previousTheme: string }) => {
-      // Handle theme changed
+    onThemeChanged: (_data: { theme: Theme; previousTheme: string }) => {
+      setFilterType('all');
+      setPage(0);
   },
     onThemeChangeFailed: (data: { theme: Theme; error: string }) => {
       console.error('Theme change failed:', data.error);
   },
-    onSystemThemeChanged: (data: { theme: string }) => {
-      // Handle system theme changed
+    onSystemThemeChanged: (_data: { theme: string }) => {
+      setPage(0);
   },
-    onCustomThemeCreated: (data: { theme: Theme }) => {
-      // Handle custom theme created
+    onCustomThemeCreated: (_data: { theme: Theme }) => {
+      setPage(0);
   },
     onCustomThemeCreateFailed: (data: { theme: Theme; error: string }) => {
       console.error('Custom theme creation failed:', data.error);
   },
     onError: (error: string) => {
-      console.error('Theme error, :', error);
+      console.error('Theme error:', error);
   },
     onInitialized: () => {
-      // Handle initialized
+      setFilterType('all');
+      setPage(0);
 }
 }), []);
 

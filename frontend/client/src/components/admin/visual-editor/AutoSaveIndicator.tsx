@@ -133,31 +133,31 @@ const AutoSaveIndicator: React.FC<AutoSaveIndicatorProps> = memo(({
   const [showSettingsDialog, setShowSettingsDialog] = useState(false);
   const [showConflictsDialog, setShowConflictsDialog] = useState(false);
   const [showBackupDialog, setShowBackupDialog] = useState(false);
-  const [conflicts, setConflicts] = useState<any[]>([]);
-  const [backups, setBackups] = useState<any[]>([]);
+  const [conflicts, setConflicts] = useState<Record<string, unknown>[]>([]);
+  const [backups, setBackups] = useState<Record<string, unknown>[]>([]);
 
   // Auto-save options
   const autoSaveOptions: UseAutoSaveOptions = useMemo(() => ({
-    onDataSaved: (data: AutoSaveData) => {
-      // Handle data saved
+    onDataSaved: (_data: AutoSaveData) => {
+      console.info('Auto-save: data saved');
 },
-    onDataQueued: (data: AutoSaveData) => {
-      // Handle data queued
+    onDataQueued: (_data: AutoSaveData) => {
+      console.info('Auto-save: data queued');
 },
-    onConflictDetected: (conflict: any) => {
+    onConflictDetected: (conflict: Record<string, unknown>) => {
       setConflicts(prev => [...prev, conflict]);
   },
-    onConflictResolved: (conflict: any) => {
+    onConflictResolved: (conflict: Record<string, unknown>) => {
       setConflicts(prev => prev.filter(c => c.id !== conflict.id));
 },
     onError: (error: string) => {
       console.error('Auto-save error:', error);
   },
     onPaused: () => {
-      // Handle paused
+      console.info('Auto-save: paused');
 },
     onResumed: () => {
-      // Handle resumed
+      console.info('Auto-save: resumed');
 },
     onBackupCreated: (data: { timestamp: number }) => {
       setBackups(prev => [...prev, { timestamp: data.timestamp, type: 'created'}]);
@@ -166,7 +166,7 @@ const AutoSaveIndicator: React.FC<AutoSaveIndicatorProps> = memo(({
       setBackups(prev => [...prev, { timestamp: data.timestamp, type: 'restored'}]);
   },
     onInitialized: () => {
-      // Handle initialized
+      console.info('Auto-save: initialized');
 }
 }), []);
 

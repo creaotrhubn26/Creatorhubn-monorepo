@@ -129,7 +129,8 @@ const MonitoringDashboard: React.FC<MonitoringDashboardProps> = memo(({
   style
 }) => {
   // Mock performance profiler
-  const performanceProfiler = {
+  const [profilingActive, setProfilingActive] = useState(false);
+  const performanceProfiler = useMemo(() => ({
     overallScore: 85,
     bottleneckCount: 3,
     alertCount: 2,
@@ -137,18 +138,18 @@ const MonitoringDashboard: React.FC<MonitoringDashboardProps> = memo(({
       { id: '1', name: 'Render Time', duration: 16.5, category: 'performance', severity: 'low', timestamp: new Date().toISOString() },
       { id: '2', name: 'Memory Usage', duration: 45.2, category: 'memory', severity: 'medium', timestamp: new Date().toISOString() }
     ],
-    clear: () => {},
-    startProfiling: () => {},
-    stopProfiling: () => {},
+    clear: () => { setAlerts([]); setSystemHealth('healthy'); },
+    startProfiling: () => { setProfilingActive(true); setIsMonitoring(true); },
+    stopProfiling: () => { setProfilingActive(false); },
     getMetrics: () => []
-};
+  }), []);
 
   // Mock caching strategy
-  const cachingStrategy = {
+  const cachingStrategy = useMemo(() => ({
     totalSize: 50 * 1024 * 1024, // 50MB
     hitRate: 0.85,
     entryCount: 1250,
-    clear: () => {},
+    clear: () => { setSystemHealth('healthy'); },
     stats: {
       topKeys: [
         { key: 'user:123', accessCount: 150 },
@@ -161,7 +162,7 @@ const MonitoringDashboard: React.FC<MonitoringDashboardProps> = memo(({
         { tag: 'cache', count: 28 }
       ]
   }
-};
+  }), []);
 
   const [tabValue, setTabValue] = useState(0);
 
@@ -173,9 +174,9 @@ const MonitoringDashboard: React.FC<MonitoringDashboardProps> = memo(({
   const [isMonitoring, setIsMonitoring] = useState(true);
   const [refreshInterval, setRefreshInterval] = useState(1000);
   const [showAlertsPanel, setShowAlertsPanel] = useState(false);
-  const [selectedMetric, setSelectedMetric] = useState<any>(null);
+  const [selectedMetric, setSelectedMetric] = useState<Record<string, unknown> | null>(null);
   const [metricDetailsOpen, setMetricDetailsOpen] = useState(false);
-  const [alerts, setAlerts] = useState<any[]>([]);
+  const [alerts, setAlerts] = useState<Record<string, unknown>[]>([]);
   const [systemHealth, setSystemHealth] = useState<'healthy' | 'warning' | 'critical'>('healthy');
 
   // System health calculation
@@ -226,7 +227,7 @@ const MonitoringDashboard: React.FC<MonitoringDashboardProps> = memo(({
 };
 
   // Handle metric click
-  const handleMetricClick = useCallback((metric: any) => {
+  const handleMetricClick = useCallback((metric: Record<string, unknown>) => {
     setSelectedMetric(metric);
     setMetricDetailsOpen(true);
 }, []);
@@ -240,8 +241,14 @@ const MonitoringDashboard: React.FC<MonitoringDashboardProps> = memo(({
 
   // Handle monitoring toggle
   const handleMonitoringToggle = useCallback(() => {
-    setIsMonitoring(!isMonitoring);
-}, [isMonitoring]);
+    const newState = !isMonitoring;
+    setIsMonitoring(newState);
+    if (newState) {
+      performanceProfiler.startProfiling();
+    } else {
+      performanceProfiler.stopProfiling();
+    }
+}, [isMonitoring, performanceProfiler]);
 
   if (variant === 'minimal') {
     return (
@@ -251,7 +258,7 @@ const MonitoringDashboard: React.FC<MonitoringDashboardProps> = memo(({
             <Typography variant="h6" sx={{ color: theming.colors.primary }}>System Health</Typography>
             <Chip
               label={systemHealth}
-              color={getHealthColor(systemHealth) as any}
+              color={getHealthColor(systemHealth) as 'default' | 'primary' | 'secondary' | 'error' | 'info' | 'success' | 'warning'}
               icon={getHealthIcon(systemHealth)}
             />
           </Box>
@@ -279,7 +286,10 @@ const MonitoringDashboard: React.FC<MonitoringDashboardProps> = memo(({
         <Typography variant="h5" gutterBottom sx={{ color: theming.colors.primary }}>
           System Monitoring
         </Typography>
-        <Box display="flex" gap={1}>
+        <Box display="flex" gap={1} alignItems="center">
+          {profilingActive && (
+            <Chip label="Profiling" color="warning" size="small" />
+          )}
           <Tooltip title={isMonitoring ? "Pause Monitoring" : "Resume Monitoring"}>
             <IconButton onClick={handleMonitoringToggle} color={isMonitoring ? "primary" : "default"}>
               {isMonitoring ? <PauseIcon /> : <PlayIcon />}

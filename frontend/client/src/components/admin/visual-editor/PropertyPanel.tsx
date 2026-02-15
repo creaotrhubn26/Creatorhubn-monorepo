@@ -38,13 +38,13 @@ interface EditorElement {
   y: number;
   width: number;
   height: number;
-  styles: Record<string, any>;
-  props: Record<string, any>;
+  styles: Record<string, unknown>;
+  props: Record<string, unknown>;
 }
 
 interface PropertyPanelProps {
   selectedElements: EditorElement[];
-  onUpdateElements: (updates: { id: string; styles?: Record<string, any>; props?: Record<string, any> }[]) => void;
+  onUpdateElements: (updates: { id: string; styles?: Record<string, unknown>; props?: Record<string, unknown> }[]) => void;
 }
 
 export const PropertyPanel: React.FC<PropertyPanelProps> = ({
@@ -102,7 +102,7 @@ export const PropertyPanel: React.FC<PropertyPanelProps> = ({
     };
   }, [analytics, lifecycle, performance, debugging, selectedElements.length]);
   
-  const handlePropertyUpdate = useCallback((property: string, value: any, type: 'style' | 'prop' = 'style') => {
+  const handlePropertyUpdate = useCallback((property: string, value: unknown, type: 'style' | 'prop' = 'style') => {
     const updates = selectedElements.map(element => ({
       id: element.id,
       [type]: type === 'style'

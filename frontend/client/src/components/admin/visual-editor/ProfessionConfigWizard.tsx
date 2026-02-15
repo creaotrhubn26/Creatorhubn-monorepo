@@ -291,16 +291,16 @@ export default function ProfessionConfigWizard({
   const [showAnalyticsDialog, setShowAnalyticsDialog] = useState(false);
   const [importJson, setImportJson] = useState('');
   const [exportedJson, setExportedJson] = useState('');
-  const [availableProfessions, setAvailableProfessions] = useState<any[]>([]);
+  const [availableProfessions, setAvailableProfessions] = useState<Record<string, unknown>[]>([]);
   const [selectedProfessionToClone, setSelectedProfessionToClone] = useState<string>('');
   const [abTestVariant, setAbTestVariant] = useState<'A' | 'B'>('A');
-  const [tabAnalytics, setTabAnalytics] = useState<any>(null);
+  const [tabAnalytics, setTabAnalytics] = useState<Record<string, unknown> | null>(null);
   
   // Draft & Version Management
   const [showDraftDialog, setShowDraftDialog] = useState(false);
   const [showVersionHistory, setShowVersionHistory] = useState(false);
-  const [savedDrafts, setSavedDrafts] = useState<any[]>([]);
-  const [versionHistory, setVersionHistory] = useState<any[]>([]);
+  const [savedDrafts, setSavedDrafts] = useState<Record<string, unknown>[]>([]);
+  const [versionHistory, setVersionHistory] = useState<Record<string, unknown>[]>([]);
   
   // Step 1: Basic Info
   const [professionId, setProfessionId] = useState(existingProfession?.professionId || ',');
@@ -381,19 +381,19 @@ export default function ProfessionConfigWizard({
   
   // Step 4: Dashboard Layout Template
   const [layoutTemplate, setLayoutTemplate] = useState<'compact' | 'expanded' | 'visual_heavy'>('expanded');
-  const [dashboardTemplates, setDashboardTemplates] = useState<any[]>([]);
+  const [dashboardTemplates, setDashboardTemplates] = useState<Record<string, unknown>[]>([]);
   
   // Step 5: Tab Configuration
-  const [selectedTabs, setSelectedTabs] = useState<any[]>([]);
-  const [tabPresets, setTabPresets] = useState<any>({});
+  const [selectedTabs, setSelectedTabs] = useState<Record<string, unknown>[]>([]);
+  const [tabPresets, setTabPresets] = useState<Record<string, unknown>>({});
   
   // Step 6: Project Types
-  const [selectedProjectTypes, setSelectedProjectTypes] = useState<any[]>([]);
-  const [projectTypePresets, setProjectTypePresets] = useState<any>({});
+  const [selectedProjectTypes, setSelectedProjectTypes] = useState<Record<string, unknown>[]>([]);
+  const [projectTypePresets, setProjectTypePresets] = useState<Record<string, unknown>>({});
   
   // Step 7: Dashboard Stats
-  const [selectedStats, setSelectedStats] = useState<any[]>([]);
-  const [statPresets, setStatPresets] = useState<any>({});
+  const [selectedStats, setSelectedStats] = useState<Record<string, unknown>[]>([]);
+  const [statPresets, setStatPresets] = useState<Record<string, unknown>>({});
   
   // Auto-save wizard state whenever it changes
   useEffect(() => {
@@ -487,7 +487,7 @@ export default function ProfessionConfigWizard({
         
         // Clone tabs
         if (response.tabs) {
-          setSelectedTabs(response.tabs.map((tab: any, index: number) => ({
+          setSelectedTabs(response.tabs.map((tab: Record<string, unknown>, index: number) => ({
             tabId: tab.tabId,
             label: tab.label,
             icon: tab.icon,
@@ -499,7 +499,7 @@ export default function ProfessionConfigWizard({
         
         // Clone project types
         if (response.projectTypes) {
-          setSelectedProjectTypes(response.projectTypes.map((type: any, index: number) => ({
+          setSelectedProjectTypes(response.projectTypes.map((type: Record<string, unknown>, index: number) => ({
             typeId: type.typeId,
             displayName: type.displayName,
             description: type.description,
@@ -512,7 +512,7 @@ export default function ProfessionConfigWizard({
         
         // Clone stats
         if (response.stats) {
-          setSelectedStats(response.stats.map((stat: any, index: number) => ({
+          setSelectedStats(response.stats.map((stat: Record<string, unknown>, index: number) => ({
             statId: stat.statId,
             displayName: stat.displayName,
             description: stat.description,
@@ -624,7 +624,7 @@ export default function ProfessionConfigWizard({
         message: `Konfigurasjon, importert: ${importedConfig.displayName}`,
         type: 'success',
         duration: 3000 });
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Import error:', error);
       addToast({
         message: `Import, feilet: ${error.message}`,
@@ -733,7 +733,7 @@ export default function ProfessionConfigWizard({
     fetch('/api/user/kv', {
       method: 'POST', headers: { 'Content-Type' : 'application/json' }, credentials: 'include',
       body: JSON.stringify({ key: 'profession_wizard_drafts', value: newDrafts })
-    }).catch(() => {});
+    }).catch((err: unknown) => console.error('Operation failed:', err));
     localStorage.setItem('profession_wizard_drafts', JSON.stringify(newDrafts));
     setSavedDrafts(newDrafts);
     
@@ -744,7 +744,7 @@ export default function ProfessionConfigWizard({
   };
   
   // 9. Restore from Draft
-  const restoreDraft = (draft: any) => {
+  const restoreDraft = (draft: Record<string, unknown>) => {
     const data = draft.data;
     
     setProfessionId(data.professionId);
@@ -777,7 +777,7 @@ export default function ProfessionConfigWizard({
     fetch('/api/user/kv', {
       method: 'POST', headers: { 'Content-Type' : 'application/json' }, credentials: 'include',
       body: JSON.stringify({ key: 'profession_wizard_drafts', value: newDrafts })
-    }).catch(() => {});
+    }).catch((err: unknown) => console.error('Operation failed:', err));
     localStorage.setItem('profession_wizard_drafts', JSON.stringify(newDrafts));
     setSavedDrafts(newDrafts);
     
@@ -788,7 +788,7 @@ export default function ProfessionConfigWizard({
   };
   
   // 11. Restore from Version
-  const restoreVersion = (version: any) => {
+  const restoreVersion = (version: Record<string, unknown>) => {
     const data = version.data;
     
     setProfessionId(data.professionId);
@@ -860,7 +860,7 @@ export default function ProfessionConfigWizard({
       // Load default tabs based on profession or use 'default'
       const presetKey = tabPresets[professionId] ? professionId : 'default';
       const defaultTabs = tabPresets[presetKey] || [];
-      setSelectedTabs(defaultTabs.map((tab: any, index: number) => ({
+      setSelectedTabs(defaultTabs.map((tab: Record<string, unknown>, index: number) => ({
         ...tab,
         sortOrder: index,
         isEnabled: true
@@ -873,7 +873,7 @@ export default function ProfessionConfigWizard({
     if (activeStep === 5 && selectedProjectTypes.length === 0 && professionId) {
       const presetKey = projectTypePresets[professionId] ? professionId : 'default';
       const defaultTypes = projectTypePresets[presetKey] || [];
-      setSelectedProjectTypes(defaultTypes.map((type: any, index: number) => ({
+      setSelectedProjectTypes(defaultTypes.map((type: Record<string, unknown>, index: number) => ({
         ...type,
         sortOrder: index,
         isEnabled: true
@@ -1553,7 +1553,7 @@ export default function ProfessionConfigWizard({
                 This determines the overall look and feel of the dashboard
               </Alert>
               
-              <RadioGroup value={layoutTemplate} onChange={(e) => setLayoutTemplate(e.target.value as any)}>
+              <RadioGroup value={layoutTemplate} onChange={(e) => setLayoutTemplate(e.target.value as string)}>
                 <Grid container spacing={2}>
                   {dashboardTemplates.map((template) => {
                     const TemplateIcon = template.icon === 'ViewCompact' ? ViewCompact :

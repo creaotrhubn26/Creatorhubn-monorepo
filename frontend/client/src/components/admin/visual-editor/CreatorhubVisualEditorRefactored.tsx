@@ -76,7 +76,7 @@ interface EditorElement {
     fontStyle?: string;
     textStroke?: string;
 };
-  props: Record<string, any>;
+  props: Record<string, unknown>;
   children?: string[];
   parent?: string;
   icon?: string;
@@ -93,21 +93,45 @@ interface EditorProject {
 };
 }
 
+interface IntegrationMessage {
+  type: string;
+  from?: string;
+  data: Record<string, unknown>;
+}
+
+interface ProjectVersion {
+  id: string;
+  timestamp: number;
+  project: EditorProject;
+}
+
+interface Collaborator {
+  id: string;
+  name: string;
+  role: string;
+}
+
+interface CursorInfo {
+  x: number;
+  y: number;
+  timestamp: number;
+}
+
 interface CreatorhubVisualEditorProps {
   // Integration props for unified workflow connectivity
-  onMeetingCreate?: (meeting: any) => void;
-  onProjectUpdate?: (project: any) => void;
-  onWorklogCreate?: (worklog: any) => void;
-  onClientSelect?: (client: any) => void;
-  onClientUpdate?: (client: any) => void;
-  onShowcaseCreate?: (showcase: any) => void;
-  onFileUpload?: (file: any) => void;
-  onFileDownload?: (file: any) => void;
-  selectedProject?: any;
-  onProjectSelect?: (project: any) => void;
-  selectedClient?: any;
-  onSettingsUpdate?: (settings: any) => void;
-  onNotificationCreate?: (notification: any) => void;
+  onMeetingCreate?: (meeting: Record<string, unknown>) => void;
+  onProjectUpdate?: (project: EditorProject) => void;
+  onWorklogCreate?: (worklog: Record<string, unknown>) => void;
+  onClientSelect?: (client: Record<string, unknown>) => void;
+  onClientUpdate?: (client: Record<string, unknown>) => void;
+  onShowcaseCreate?: (showcase: Record<string, unknown>) => void;
+  onFileUpload?: (file: File | Record<string, unknown>) => void;
+  onFileDownload?: (file: Record<string, unknown>) => void;
+  selectedProject?: EditorProject;
+  onProjectSelect?: (project: EditorProject) => void;
+  selectedClient?: Record<string, unknown>;
+  onSettingsUpdate?: (settings: Record<string, unknown>) => void;
+  onNotificationCreate?: (notification: Record<string, unknown>) => void;
 }
 
 // Main component that uses the context
@@ -160,7 +184,7 @@ const CreatorhubVisualEditorContent: React.FC<CreatorhubVisualEditorProps> = ({
     getUserProjects = async () => [], 
     searchProjects = async () => [], 
     deleteProject = async () => {} 
-} = (databaseHook || {}) as Record<string, any>;
+} = (databaseHook || {}) as Record<string, (...args: unknown[]) => unknown>;
   
   // Core state (moved to top to avoid hoisting issues) (Optional) if you want to add a project. If you don't want to add a project, you can leave it blank. If you want to add a description, you can add it here. If you don't want to add a description, you can leave it blank.
   const [project, setProject] = useState<EditorProject>({
@@ -177,15 +201,15 @@ const CreatorhubVisualEditorContent: React.FC<CreatorhubVisualEditorProps> = ({
   // Database integration state (Optional) if you want to add a database integration. If you don't want to add a database integration, you can leave it blank. If you want to add a description, you can add it here. If you don't want to add a description, you can leave it blank.
   const [dbIntegration, setDbIntegration] = useState<DatabaseIntegrationService | null>(null);
   const [lastAutoSave, setLastAutoSave] = useState<Date | null>(null);
-  const [projectVersions, setProjectVersions] = useState<any[]>([]);
-  const [collaborators, setCollaborators] = useState<any[]>([]);
-  const [realTimeCursors, setRealTimeCursors] = useState<Record<string, any>>({});
+  const [projectVersions, setProjectVersions] = useState<ProjectVersion[]>([]);
+  const [collaborators, setCollaborators] = useState<Collaborator[]>([]);
+  const [realTimeCursors, setRealTimeCursors] = useState<Record<string, CursorInfo>>({});
 
   // Visual editor context
   const visualEditorHook = useVisualEditor();
   const {
     addNotification = () => {},
-} = (visualEditorHook || {}) as Record<string, any>;
+} = (visualEditorHook || {}) as Record<string, (...args: unknown[]) => void>;
 
   // Initialize database integration
   useEffect(() => {
@@ -205,8 +229,8 @@ const CreatorhubVisualEditorContent: React.FC<CreatorhubVisualEditorProps> = ({
     ]);
 
     // Set up data flow nodes
-    dataFlow.registerNode('source', 'visual-editor', 'visual-editor:project', (data: any) => ({ ...data, lastUpdated: Date.now() }));
-    dataFlow.registerNode('destination', 'visual-editor', 'visual-editor:selectedElement', (data: any) => data);
+    dataFlow.registerNode('source', 'visual-editor', 'visual-editor:project', (data: Record<string, unknown>) => ({ ...data, lastUpdated: Date.now() }));
+    dataFlow.registerNode('destination', 'visual-editor', 'visual-editor:selectedElement', (data: Record<string, unknown>) => data);
 
     return () => {
       communication.unregisterComponent('visual-editor');
@@ -222,7 +246,6 @@ const CreatorhubVisualEditorContent: React.FC<CreatorhubVisualEditorProps> = ({
         if (project && Object.keys(project.elements).length > 0) {
           await autoSaveProject(project.id, 'visual-editor:project', project);
           setLastAutoSave(new Date());
-          console.log('🔄 Auto-saved project: ', project.name);
         }
       } catch (error) {
         console.error('❌ Auto-save failed: ', error);
@@ -234,19 +257,18 @@ const CreatorhubVisualEditorContent: React.FC<CreatorhubVisualEditorProps> = ({
 
   // Real-time collaboration listeners
   useEffect(() => {
-    const unsubscribe = communication.onMessage((message: any) => {
+    const unsubscribe = communication.onMessage((message: IntegrationMessage) => {
       if (message.type === 'visual-editor:project:synced' && 
-          message.data.projectId === project?.id) {
+          (message.data as Record<string, unknown>).projectId === project?.id) {
         // Apply remote changes
         setProject((prev: EditorProject) => ({
           ...prev,
-          elements: { ...prev.elements, ...(message.data.changes?.elements || {}) }
+          elements: { ...prev.elements, ...((message.data as Record<string, Record<string, EditorElement>>).changes?.elements || {}) }
       }));
-        console.log('🔄 Project synced from remote changes');
     }
       
       if (message.type === 'visual-editor:cursor:update') {
-        setRealTimeCursors((prev: Record<string, any>) => ({
+        setRealTimeCursors((prev: Record<string, CursorInfo>) => ({
           ...prev,
           [message.data.userId]: {
             ...message.data.cursor,
@@ -261,12 +283,12 @@ const CreatorhubVisualEditorContent: React.FC<CreatorhubVisualEditorProps> = ({
 
   // Listen to global events and update accordingly
   useEffect(() => {
-    const unsubscribe = communication.onMessage((message: any) => {
+    const unsubscribe = communication.onMessage((message: IntegrationMessage) => {
       if (message.type === 'project:selected' && message.data) {
-        setProject(message.data as EditorProject);
+        setProject(message.data as unknown as EditorProject);
   }
       if (message.type === 'client:selected' && message.data) {
-        onClientSelect?.(message.data);
+        onClientSelect?.(message.data as Record<string, unknown>);
   }
       if (message.type === 'data: sync' && message.data.dataKey === 'visual-editor:project') {
         setProject(message.data.data as EditorProject);
@@ -274,19 +296,19 @@ const CreatorhubVisualEditorContent: React.FC<CreatorhubVisualEditorProps> = ({
       
       // Listen for new components from CodeGenerationStudio
       if (message.type === 'new-components-available' && message.data) {
-        console.log('🎨 Visual Editor: New components available from CodeGenerationStudio:', message.data);
         addNotification('visual-editor', 'new-components-available', {
           title: 'New components available',
           message: `${message.data.components?.length || 0} new components generated for ${message.data.provider}`,
           type: 'success',
           read: false
         });
-        // TODO: Refresh component library to show new components
+        document.dispatchEvent(new CustomEvent('visual-editor:refresh-component-library', {
+          detail: { components: message.data.components, provider: message.data.provider }
+        }));
       }
 
       // Listen for code generation completion
       if (message.type === 'code-generation:complete' && message.data) {
-        console.log('🎨 Visual Editor: Code generation, complete:', message.data);
         addNotification('visual-editor', 'code-generation:complete', {
           title: 'Code generation complete',
           message: `${message.data.provider} integration ready to use!`,
@@ -337,6 +359,9 @@ const CreatorhubVisualEditorContent: React.FC<CreatorhubVisualEditorProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<'all' | 'buttons' | 'text' | 'images' | 'cards' | 'containers' | 'grids' | 'audio' | 'video'>('all');
 
+  // Clipboard state
+  const [clipboard, setClipboard] = useState<EditorElement | null>(null);
+
   // Loading state
   const [isSaving, setIsSaving] = useState(false);
   
@@ -346,7 +371,6 @@ const CreatorhubVisualEditorContent: React.FC<CreatorhubVisualEditorProps> = ({
     try {
       if (dbConnected && dbIntegration) {
         await dbIntegration.syncProjectChanges(project?.id || "", changes || {}, 'visual-editor', 'all');
-        console.log('🔄 Project changes synced');
       }
     } catch (error) {
       console.error('❌ Sync failed:', error);
@@ -371,8 +395,6 @@ const CreatorhubVisualEditorContent: React.FC<CreatorhubVisualEditorProps> = ({
           id: element.id,
           props: element.props
         });
-
-        console.log('🎨 Visual Editor: Broadcasted component, selection:', element.type);
       }
     } else {
       setSelectedElements([]);
@@ -540,7 +562,6 @@ const CreatorhubVisualEditorContent: React.FC<CreatorhubVisualEditorProps> = ({
       // Save to database if connected
       if (dbConnected) {
         await saveProjectToDb(project);
-        console.log('💾 Project saved to database:', project.name);
 
         // Track save action
         await trackProjectUsage(project.id, 'project_saved', {
@@ -582,7 +603,7 @@ const CreatorhubVisualEditorContent: React.FC<CreatorhubVisualEditorProps> = ({
 }, [project, onProjectUpdate, integration, communication, dataFlow, dbConnected, saveProjectToDb, trackProjectUsage, addNotification]);
 
   // Universal function to update any component from the visual editor
-  const updateAnyComponent = useCallback((targetComponent: string, action: string, data: any) => {
+  const updateAnyComponent = useCallback((targetComponent: string, action: string, data: Record<string, unknown>) => {
     // Method 1: Direct communication
     communication.sendMessage({
       from: 'visual-editor',
@@ -606,7 +627,7 @@ const CreatorhubVisualEditorContent: React.FC<CreatorhubVisualEditorProps> = ({
   const getDataFromComponent = useCallback(async (targetComponent: string, dataKey: string) => {
     // Method 1: Request data via communication
     return new Promise((resolve) => {
-      const unsubscribe = communication.onMessage((message: any) => {
+      const unsubscribe = communication.onMessage((message: IntegrationMessage) => {
         if (message.from === targetComponent && message.type === `${dataKey}:response`) {
           unsubscribe();
           resolve(message.data);
@@ -630,7 +651,7 @@ const CreatorhubVisualEditorContent: React.FC<CreatorhubVisualEditorProps> = ({
   }, [communication]);
 
   // Universal function to trigger actions in any component
-  const triggerComponentAction = useCallback((targetComponent: string, action: string, ...args: any[]) => {
+  const triggerComponentAction = useCallback((targetComponent: string, action: string, ...args: unknown[]) => {
     // Method 1: Direct action execution
     integration.executeAction(action, { target: targetComponent, args }, 'high', 'visual-editor', 'all');
 
@@ -764,18 +785,108 @@ const CreatorhubVisualEditorContent: React.FC<CreatorhubVisualEditorProps> = ({
         onUndo={handleUndo}
         onRedo={handleRedo}
         onSave={handleSave}
-        onCopy={() => {}}
-        onPaste={() => {}}
-        onDelete={() => {}}
-        onGroup={() => {}}
-        onUngroup={() => {}}
-        onAlignLeft={() => {}}
-        onAlignCenter={() => {}}
-        onAlignRight={() => {}}
-        onDistributeHorizontally={() => {}}
-        onDistributeVertically={() => {}}
-        onBringToFront={() => {}}
-        onSendToBack={() => {}}
+        onCopy={() => {
+          if (selectedElement) {
+            setClipboard(selectedElement);
+          }
+        }}
+        onPaste={() => {
+          if (clipboard) {
+            const pastedElement: EditorElement = {
+              ...clipboard,
+              id: `element_${Date.now()}`,
+              x: clipboard.x + 20,
+              y: clipboard.y + 20,
+            };
+            setProject(prev => ({
+              ...prev,
+              elements: { ...prev.elements, [pastedElement.id]: pastedElement },
+            }));
+            handleElementSelect(pastedElement.id);
+          }
+        }}
+        onDelete={() => {
+          selectedElements.forEach(id => handleElementDelete(id));
+        }}
+        onGroup={() => {
+          if (selectedElements.length > 1) {
+            updateAnyComponent('visual-editor', 'group', { elementIds: selectedElements });
+          }
+        }}
+        onUngroup={() => {
+          selectedElements.forEach(id => {
+            updateAnyComponent('visual-editor', 'ungroup', { elementId: id });
+          });
+        }}
+        onAlignLeft={() => {
+          if (selectedElements.length > 0) {
+            const minX = Math.min(...selectedElements.map(id => project.elements[id]?.x ?? 0));
+            selectedElements.forEach(id => handleElementUpdate(id, { x: minX }));
+          }
+        }}
+        onAlignCenter={() => {
+          if (selectedElements.length > 0) {
+            const centerX = project.pageSettings.width / 2;
+            selectedElements.forEach(id => {
+              const el = project.elements[id];
+              if (el) handleElementUpdate(id, { x: centerX - el.width / 2 });
+            });
+          }
+        }}
+        onAlignRight={() => {
+          if (selectedElements.length > 0) {
+            const maxRight = Math.max(...selectedElements.map(id => {
+              const el = project.elements[id];
+              return el ? el.x + el.width : 0;
+            }));
+            selectedElements.forEach(id => {
+              const el = project.elements[id];
+              if (el) handleElementUpdate(id, { x: maxRight - el.width });
+            });
+          }
+        }}
+        onDistributeHorizontally={() => {
+          if (selectedElements.length >= 3) {
+            const sorted = [...selectedElements].sort((a, b) => (project.elements[a]?.x ?? 0) - (project.elements[b]?.x ?? 0));
+            const first = project.elements[sorted[0]];
+            const last = project.elements[sorted[sorted.length - 1]];
+            if (first && last) {
+              const totalSpace = last.x - first.x;
+              const step = totalSpace / (sorted.length - 1);
+              sorted.forEach((id, i) => handleElementUpdate(id, { x: first.x + step * i }));
+            }
+          }
+        }}
+        onDistributeVertically={() => {
+          if (selectedElements.length >= 3) {
+            const sorted = [...selectedElements].sort((a, b) => (project.elements[a]?.y ?? 0) - (project.elements[b]?.y ?? 0));
+            const first = project.elements[sorted[0]];
+            const last = project.elements[sorted[sorted.length - 1]];
+            if (first && last) {
+              const totalSpace = last.y - first.y;
+              const step = totalSpace / (sorted.length - 1);
+              sorted.forEach((id, i) => handleElementUpdate(id, { y: first.y + step * i }));
+            }
+          }
+        }}
+        onBringToFront={() => {
+          selectedElements.forEach(elementId => {
+            setProject(prev => {
+              const entries = Object.entries(prev.elements).filter(([k]) => k !== elementId);
+              entries.push([elementId, prev.elements[elementId]]);
+              return { ...prev, elements: Object.fromEntries(entries) };
+            });
+          });
+        }}
+        onSendToBack={() => {
+          selectedElements.forEach(elementId => {
+            setProject(prev => {
+              const entries = Object.entries(prev.elements).filter(([k]) => k !== elementId);
+              entries.unshift([elementId, prev.elements[elementId]]);
+              return { ...prev, elements: Object.fromEntries(entries) };
+            });
+          });
+        }}
         onOpenAssetLibrary={handleOpenAssetLibrary}
         onOpenScrollStories={handleOpenScrollStories}
         onOpenGoogleServices={handleOpenGoogleServices}
@@ -807,6 +918,7 @@ const CreatorhubVisualEditorContent: React.FC<CreatorhubVisualEditorProps> = ({
           onOpenScrollStories={handleOpenScrollStories}
           onOpenGoogleServices={handleOpenGoogleServices}
           onOpenNoteEditor={handleOpenNoteEditor}
+          onOpenSettings={handleOpenGoogleServices}
         />
 
         {/* Canvas */}
@@ -825,13 +937,11 @@ const CreatorhubVisualEditorContent: React.FC<CreatorhubVisualEditorProps> = ({
           onCanvasPanChange={setCanvasPan}
           showRulers={showRulers}
           onShowRulersChange={setShowRulers}
-          onElementDrag={(elementId: string, position: { x: number; y: number; r: any }) => {
-            // Handle element drag
-            console.log('Element dragged:', elementId, position);
+          onElementDrag={(elementId: string, position: { x: number; y: number; r: number }) => {
+            handleElementUpdate(elementId, { x: position.x, y: position.y });
           }}
           onElementResize={(elementId: string, size: { width: number; height: number }) => {
-            // Handle element resize
-            console.log('Element resized:', elementId, size);
+            handleElementUpdate(elementId, { width: size.width, height: size.height });
           }}
           isDragging={isDragging}
           draggedComponent={draggedComponent}
@@ -843,57 +953,83 @@ const CreatorhubVisualEditorContent: React.FC<CreatorhubVisualEditorProps> = ({
         {/* Right Sidebar */}
         <VisualEditorProperties
           selectedElement={selectedElement}
-          onElementUpdate={(elementId: string, updates: Partial<EditorElement>) => {
-            // Handle element update
-            console.log('Element updated:', elementId, updates);
+          onElementUpdate={handleElementUpdate}
+          onElementDelete={handleElementDelete}
+          onElementCopy={() => {
+            if (selectedElement) {
+              setClipboard(selectedElement);
+            }
           }}
-          onElementDelete={(elementId: string) => {
-            // Handle element delete
-            console.log('Element deleted:', elementId);
-          }}
-          onElementCopy={() => {}}
           onElementPaste={() => {
-            // Handle element paste
-            console.log('Element pasted');
+            if (clipboard) {
+              const pastedElement: EditorElement = {
+                ...clipboard,
+                id: `element_${Date.now()}`,
+                x: clipboard.x + 20,
+                y: clipboard.y + 20,
+              };
+              setProject(prev => ({
+                ...prev,
+                elements: { ...prev.elements, [pastedElement.id]: pastedElement },
+              }));
+              handleElementSelect(pastedElement.id);
+            }
           }}
           onElementLock={(elementId: string) => {
-            // Handle element lock
-            console.log('Element locked:', elementId);
+            handleElementUpdate(elementId, { props: { ...(project.elements[elementId]?.props ?? {}), locked: !project.elements[elementId]?.props?.locked } });
           }}
           onElementVisibility={(elementId: string) => {
-            // Handle element visibility
-            console.log('Element visibility:', elementId);
+            handleElementUpdate(elementId, { props: { ...(project.elements[elementId]?.props ?? {}), hidden: !project.elements[elementId]?.props?.hidden } });
           }}
           onElementDuplicate={(elementId: string) => {
-            // Handle element duplicate
-            console.log('Element duplicated:', elementId);
-        }}
+            const original = project.elements[elementId];
+            if (original) {
+              const dup: EditorElement = { ...original, id: `element_${Date.now()}`, x: original.x + 20, y: original.y + 20 };
+              setProject(prev => ({ ...prev, elements: { ...prev.elements, [dup.id]: dup } }));
+              handleElementSelect(dup.id);
+            }
+          }}
           onElementGroup={(elementId: string) => {
-            // Handle element group
-            console.log('Element grouped:', elementId);
-        }}
+            updateAnyComponent('visual-editor', 'group', { elementIds: [elementId, ...selectedElements] });
+          }}
           onElementUngroup={(elementId: string) => {
-            // Handle element ungroup
-            console.log('Element ungrouped:', elementId);
-        }}
+            updateAnyComponent('visual-editor', 'ungroup', { elementId });
+          }}
           onElementBringToFront={(elementId: string) => {
-            // Handle element bring to front
-            console.log('Element brought to front:', elementId);
-        }}
+            const keys = Object.keys(project.elements);
+            const last = keys[keys.length - 1];
+            if (last !== elementId) {
+              setProject(prev => {
+                const entries = Object.entries(prev.elements).filter(([k]) => k !== elementId);
+                entries.push([elementId, prev.elements[elementId]]);
+                return { ...prev, elements: Object.fromEntries(entries) };
+              });
+            }
+          }}
           onElementSendToBack={(elementId: string) => {
-            // Handle element send to back
-            console.log('Element sent to back:', elementId);
-        }}
+            const keys = Object.keys(project.elements);
+            if (keys[0] !== elementId) {
+              setProject(prev => {
+                const entries = Object.entries(prev.elements).filter(([k]) => k !== elementId);
+                entries.unshift([elementId, prev.elements[elementId]]);
+                return { ...prev, elements: Object.fromEntries(entries) };
+              });
+            }
+          }}
           onElementAlign={(elementId: string) => {
-            // Handle element align
-            console.log('Element aligned:', elementId);
-        }}
+            const el = project.elements[elementId];
+            if (el) {
+              handleElementUpdate(elementId, { x: project.pageSettings.width / 2 - el.width / 2 });
+            }
+          }}
           onElementDistribute={(elementId: string) => {
-            // Handle element distribute
-            console.log('Element distributed:', elementId);
-        }}
+            const el = project.elements[elementId];
+            if (el) {
+              handleElementUpdate(elementId, { y: project.pageSettings.height / 2 - el.height / 2 });
+            }
+          }}
           selectedElements={selectedElements}
-          canPaste={false}
+          canPaste={clipboard !== null}
         />
 
         {/* Integration Demo Panel */}
@@ -953,7 +1089,6 @@ const CreatorhubVisualEditorContent: React.FC<CreatorhubVisualEditorProps> = ({
               size="small"
               onClick={async () => {
                 const data = await getDataFromComponent('admin-dashboard', 'selectedUser');
-                console.log('Data from admin dashboard:', data);
               }}
             >
               Get Admin Data
@@ -1087,16 +1222,13 @@ const CreatorhubVisualEditorContent: React.FC<CreatorhubVisualEditorProps> = ({
               {selectedView === 'templates' && (
                 <TemplateDashboard
                   onTemplatesClick={() => {
-                    // Handle templates click
-                    console.log('Templates clicked');
+                    updateAnyComponent('template-dashboard', 'templates:open', { source: 'visual-editor' });
                 }}
                   onCategoriesClick={() => {
-                    // Handle categories click
-                    console.log('Categories clicked');  
+                    updateAnyComponent('template-dashboard', 'categories:open', { source: 'visual-editor' });
                 }}
                   onSearchClick={() => {
-                    // Handle search click
-                    console.log('Search clicked');
+                    updateAnyComponent('template-dashboard', 'search:open', { source: 'visual-editor' });
                 }}  
                 />
               )}
@@ -1104,8 +1236,7 @@ const CreatorhubVisualEditorContent: React.FC<CreatorhubVisualEditorProps> = ({
               {selectedView === 'export-presets' && (
                 <ExportPresetsDashboard
                   onPresetsClick={() => {
-                    // Handle presets click
-                    console.log('Presets clicked');  
+                    updateAnyComponent('export-presets-dashboard', 'presets:open', { source: 'visual-editor' });
                 }}
                 />
               )}
@@ -1113,8 +1244,7 @@ const CreatorhubVisualEditorContent: React.FC<CreatorhubVisualEditorProps> = ({
               {selectedView === 'cloud-sync' && (
                 <CloudSyncDashboard
                   onSyncClick={() => {
-                    // Handle sync click
-                    console.log('Sync clicked');  
+                    updateAnyComponent('cloud-sync-dashboard', 'sync:open', { source: 'visual-editor' });
                 }}
                 />
         )}
@@ -1122,20 +1252,16 @@ const CreatorhubVisualEditorContent: React.FC<CreatorhubVisualEditorProps> = ({
               {selectedView === 'plugins' && (
                 <PluginDashboard
                   onHooksClick={() => {
-                    // Handle hooks click
-                    console.log('Hooks clicked');
+                    updateAnyComponent('plugin-dashboard', 'hooks:open', { source: 'visual-editor' });
                 }}
                   onComponentsClick={() => {
-                    // Handle components click
-                    console.log('Components clicked');
+                    updateAnyComponent('plugin-dashboard', 'components:open', { source: 'visual-editor' });
                 }}
                   onUtilitiesClick={() => {
-                    // Handle utilities click
-                    console.log('Utilities clicked');
+                    updateAnyComponent('plugin-dashboard', 'utilities:open', { source: 'visual-editor' });
                 }}
                   onThemesClick={() => {
-                    // Handle themes click
-                    console.log('Themes clicked');
+                    updateAnyComponent('plugin-dashboard', 'themes:open', { source: 'visual-editor' });
                 }}
                 />
               )}
@@ -1143,20 +1269,16 @@ const CreatorhubVisualEditorContent: React.FC<CreatorhubVisualEditorProps> = ({
               {selectedView === 'animations' && (
                 <AnimationDashboard
                   onAnimationsClick={() => {
-                    // Handle animations click
-                    console.log('Animations clicked');
+                    updateAnyComponent('animation-dashboard', 'animations:open', { source: 'visual-editor' });
                 }}
                   onTimelineClick={() => {
-                    // Handle timeline click
-                    console.log('Timeline clicked');
+                    updateAnyComponent('animation-dashboard', 'timeline:open', { source: 'visual-editor' });
                 }}
                   onKeyframesClick={() => {
-                    // Handle keyframes click
-                    console.log('Keyframes clicked');
+                    updateAnyComponent('animation-dashboard', 'keyframes:open', { source: 'visual-editor' });
                 }}
                   onPreviewClick={() => {
-                    // Handle preview click
-                    console.log('Preview clicked');
+                    updateAnyComponent('animation-dashboard', 'preview:open', { source: 'visual-editor' });
                 }}
                 />
               )}
@@ -1164,20 +1286,16 @@ const CreatorhubVisualEditorContent: React.FC<CreatorhubVisualEditorProps> = ({
               {selectedView === 'component-library' && (
                 <ComponentLibraryDashboard
                   onLibraryClick={() => {
-                    // Handle library click
-                    console.log('Library clicked');
+                    updateAnyComponent('component-library-dashboard', 'library:open', { source: 'visual-editor' });
                 }}
                   onCategoriesClick={() => {
-                    // Handle categories click
-                    console.log('Categories clicked');
+                    updateAnyComponent('component-library-dashboard', 'categories:open', { source: 'visual-editor' });
                 }}
                   onTagsClick={() => {
-                    // Handle tags click
-                    console.log('Tags clicked');
+                    updateAnyComponent('component-library-dashboard', 'tags:open', { source: 'visual-editor' });
                 }}
                   onDocumentationClick={() => {
-                    // Handle documentation click
-                    console.log('Documentation clicked');
+                    updateAnyComponent('component-library-dashboard', 'documentation:open', { source: 'visual-editor' });
                 }}
                 />
               )}
@@ -1185,20 +1303,16 @@ const CreatorhubVisualEditorContent: React.FC<CreatorhubVisualEditorProps> = ({
               {selectedView === 'design-system' && (
                 <DesignSystemDashboard
                   onTokensClick={() => {
-                    // Handle tokens click
-                    console.log('Tokens clicked');
+                    updateAnyComponent('design-system-dashboard', 'tokens:open', { source: 'visual-editor' });
                 }}
                   onGuidelinesClick={() => {
-                    // Handle guidelines click
-                    console.log('Guidelines clicked');
+                    updateAnyComponent('design-system-dashboard', 'guidelines:open', { source: 'visual-editor' });
                 }}
                   onThemesClick={() => {
-                    // Handle themes click
-                    console.log('Themes clicked');
+                    updateAnyComponent('design-system-dashboard', 'themes:open', { source: 'visual-editor' });
                 }}
                   onDocumentationClick={() => {
-                    // Handle documentation click
-                    console.log('Documentation clicked');
+                    updateAnyComponent('design-system-dashboard', 'documentation:open', { source: 'visual-editor' });
                 }}
                 />
               )}
@@ -1206,12 +1320,10 @@ const CreatorhubVisualEditorContent: React.FC<CreatorhubVisualEditorProps> = ({
               {selectedView === 'analytics' && (
                 <AnalyticsDashboard
                   onAnalyticsClick={() => {
-                    // Handle analytics click
-                    console.log('Analytics clicked');
+                    updateAnyComponent('analytics-dashboard', 'analytics:open', { source: 'visual-editor' });
                 }}
                   onExportClick={() => {
-                    // Handle export click
-                    console.log('Export clicked');
+                    updateAnyComponent('analytics-dashboard', 'export:open', { source: 'visual-editor' });
                 }}
                 />
               )}
@@ -1219,32 +1331,25 @@ const CreatorhubVisualEditorContent: React.FC<CreatorhubVisualEditorProps> = ({
               {selectedView === 'seo' && (
                 <SEODashboard
                   onCrawlClick={() => {
-                    // Handle crawl click
-                    console.log('SEO Crawl clicked');
+                    updateAnyComponent('seo-dashboard', 'crawl:open', { source: 'visual-editor' });
                 }}
                   onAnalyzeClick={() => {
-                    // Handle analyze click
-                    console.log('SEO Analysis clicked');
+                    updateAnyComponent('seo-dashboard', 'analyze:open', { source: 'visual-editor' });
                 }}
                   onKeywordsClick={() => {
-                    // Handle keywords click
-                    console.log('Keywords Research clicked');
+                    updateAnyComponent('seo-dashboard', 'keywords:open', { source: 'visual-editor' });
                 }}
                   onCompetitorsClick={() => {
-                    // Handle competitors click
-                    console.log('Competitor Analysis clicked');
+                    updateAnyComponent('seo-dashboard', 'competitors:open', { source: 'visual-editor' });
                 }}
                   onSchemaClick={() => {
-                    // Handle schema click
-                    console.log('Schema.org Validation clicked');
+                    updateAnyComponent('seo-dashboard', 'schema:open', { source: 'visual-editor' });
                 }}
                   onReportsClick={() => {
-                    // Handle reports click
-                    console.log('SEO Reports clicked');
+                    updateAnyComponent('seo-dashboard', 'reports:open', { source: 'visual-editor' });
                 }}
                   onSettingsClick={() => {
-                    // Handle settings click
-                    console.log('SEO Settings clicked');
+                    updateAnyComponent('seo-dashboard', 'settings:open', { source: 'visual-editor' });
                 }}
                 />
               )}
@@ -1252,20 +1357,16 @@ const CreatorhubVisualEditorContent: React.FC<CreatorhubVisualEditorProps> = ({
               {selectedView === 'audit' && (
                 <AuditDashboard
                   onAuditClick={() => {
-                    // Handle audit click
-                    console.log('Audit clicked');
+                    updateAnyComponent('audit-dashboard', 'audit:open', { source: 'visual-editor' });
                 }}
                   onAuditManagementClick={() => {
-                    // Handle audit management click
-                    console.log('Audit management clicked');
+                    updateAnyComponent('audit-dashboard', 'audit-management:open', { source: 'visual-editor' });
                 }}
                   onAlertsClick={() => {
-                    // Handle alerts click
-                    console.log('Audit alerts clicked');
+                    updateAnyComponent('audit-dashboard', 'alerts:open', { source: 'visual-editor' });
                 }}
                   onExportClick={() => {
-                    // Handle export click
-                    console.log('Audit export clicked');
+                    updateAnyComponent('audit-dashboard', 'export:open', { source: 'visual-editor' });
                 }}
                 />
               )}
@@ -1273,16 +1374,13 @@ const CreatorhubVisualEditorContent: React.FC<CreatorhubVisualEditorProps> = ({
               {selectedView === 'monitoring' && (
                 <MonitoringDashboard
                   onMonitoringClick={() => {
-                    // Handle monitoring click
-                    console.log('Monitoring clicked');
+                    updateAnyComponent('monitoring-dashboard', 'monitoring:open', { source: 'visual-editor' });
                 }}
                   onCachingClick={() => {
-                    // Handle caching click
-                    console.log('Monitoring caching clicked');
+                    updateAnyComponent('monitoring-dashboard', 'caching:open', { source: 'visual-editor' });
                 }}
                   onSystemManagementClick={() => {
-                    // Handle system click
-                    console.log('System management clicked');
+                    updateAnyComponent('monitoring-dashboard', 'system-management:open', { source: 'visual-editor' });
                 }}
                 />
               )}
@@ -1290,28 +1388,22 @@ const CreatorhubVisualEditorContent: React.FC<CreatorhubVisualEditorProps> = ({
         {selectedView === 'system-management' && (
           <SystemManagementDashboard
             onSystemManagementClick={() => {
-              // Handle system management click
-              console.log('System management clicked');
+              updateAnyComponent('system-management-dashboard', 'system-management:open', { source: 'visual-editor' });
           }}
             onAlertsClick={() => {
-              // Handle alerts click
-              console.log('System management alerts clicked');
+              updateAnyComponent('system-management-dashboard', 'alerts:open', { source: 'visual-editor' });
           }}
             onMetricsClick={() => {
-              // Handle metrics click
-              console.log('System management metrics clicked');
+              updateAnyComponent('system-management-dashboard', 'metrics:open', { source: 'visual-editor' });
           }}
             onScalingClick={() => {
-              // Handle scaling click
-              console.log('System management scaling clicked');
+              updateAnyComponent('system-management-dashboard', 'scaling:open', { source: 'visual-editor' });
           }}
             onBackupClick={() => {
-              // Handle backup click
-              console.log('System management backup clicked');
+              updateAnyComponent('system-management-dashboard', 'backup:open', { source: 'visual-editor' });
           }}
             onRecoveryClick={() => {
-              // Handle recovery click
-              console.log('System management recovery clicked');
+              updateAnyComponent('system-management-dashboard', 'recovery:open', { source: 'visual-editor' });
           }}
           />
         )}
@@ -1319,28 +1411,22 @@ const CreatorhubVisualEditorContent: React.FC<CreatorhubVisualEditorProps> = ({
         {selectedView === 'ml-optimization' && (
           <MLOptimizationDashboard
             onMLOptimizationClick={() => {
-              // Handle ML optimization click
-              console.log('ML optimization clicked');
+              updateAnyComponent('ml-optimization-dashboard', 'ml-optimization:open', { source: 'visual-editor' });
           }}
             onMLModelsClick={() => {
-              // Handle ML models click
-              console.log('ML models clicked');
+              updateAnyComponent('ml-optimization-dashboard', 'ml-models:open', { source: 'visual-editor' });
           }}
             onMLPredictionsClick={() => {
-              // Handle ML predictions click
-              console.log('ML predictions clicked');
+              updateAnyComponent('ml-optimization-dashboard', 'ml-predictions:open', { source: 'visual-editor' });
           }}
             onOptimizationsClick={() => {
-              // Handle optimizations click
-              console.log('ML optimizations clicked');
+              updateAnyComponent('ml-optimization-dashboard', 'optimizations:open', { source: 'visual-editor' });
           }}
             onAnalyticsClick={() => {
-              // Handle analytics click
-              console.log('ML optimization analytics clicked');
+              updateAnyComponent('ml-optimization-dashboard', 'analytics:open', { source: 'visual-editor' });
           }}
             onMLTrainingClick={() => {
-              // Handle ML training click
-              console.log('ML training clicked');
+              updateAnyComponent('ml-optimization-dashboard', 'ml-training:open', { source: 'visual-editor' });
           }}
           />
         )}
@@ -1348,28 +1434,22 @@ const CreatorhubVisualEditorContent: React.FC<CreatorhubVisualEditorProps> = ({
         {selectedView === 'advanced-analytics' && (
           <AdvancedAnalyticsDashboard
             onAdvancedAnalyticsClick={() => {
-              // Handle advanced analytics click
-              console.log('Advanced analytics clicked');
+              updateAnyComponent('advanced-analytics-dashboard', 'advanced-analytics:open', { source: 'visual-editor' });
           }}
             onHeatmapsClick={() => {
-              // Handle heatmaps click
-              console.log('Advanced analytics heatmaps clicked');
+              updateAnyComponent('advanced-analytics-dashboard', 'heatmaps:open', { source: 'visual-editor' });
           }}
             onAdvancedAnalyticsBehaviorClick={() => {
-              // Handle advanced analytics behavior click
-              console.log('Advanced analytics behavior clicked');
+              updateAnyComponent('advanced-analytics-dashboard', 'advanced-analytics-behavior:open', { source: 'visual-editor' });
           }}
             onFunnelsClick={() => {
-              // Handle funnels click
-              console.log('Funnels clicked');
+              updateAnyComponent('advanced-analytics-dashboard', 'funnels:open', { source: 'visual-editor' });
           }}
             onAdvancedAnalyticsTestsClick={() => {
-              // Handle tests click
-              console.log('Tests clicked');
+              updateAnyComponent('advanced-analytics-dashboard', 'advanced-analytics-tests:open', { source: 'visual-editor' });
           }}
             onAdvancedAnalyticsInsightsClick={() => {
-              // Handle insights click
-              console.log('Insights clicked');
+              updateAnyComponent('advanced-analytics-dashboard', 'advanced-analytics-insights:open', { source: 'visual-editor' });
           }}
           />
         )}
@@ -1377,28 +1457,22 @@ const CreatorhubVisualEditorContent: React.FC<CreatorhubVisualEditorProps> = ({
         {selectedView === 'ai-assistance' && (
           <AIAssistanceDashboard
             onAISettingsClick={() => {
-              // Handle settings click
-              console.log('AI settings clicked');
+              updateAnyComponent('ai-assistance-dashboard', 'ai-settings:open', { source: 'visual-editor' });
           }}
             onAISuggestionsClick={() => {
-              // Handle suggestions click
-              console.log('Suggestions clicked');
+              updateAnyComponent('ai-assistance-dashboard', 'ai-suggestions:open', { source: 'visual-editor' });
           }}
             onAIConversationsClick={() => {
-              // Handle conversations click
-              console.log('Conversations clicked');
+              updateAnyComponent('ai-assistance-dashboard', 'ai-conversations:open', { source: 'visual-editor' });
           }}
             onCodeGenerationClick={() => {
-              // Handle code generation click
-              console.log('Code generation clicked');
+              updateAnyComponent('ai-assistance-dashboard', 'code-generation:open', { source: 'visual-editor' });
           }}
             onDesignSuggestionsClick={() => {
-              // Handle design suggestions click
-              console.log('Design suggestions clicked');
+              updateAnyComponent('ai-assistance-dashboard', 'design-suggestions:open', { source: 'visual-editor' });
           }}
             onWorkflowsClick={() => {
-              // Handle workflows click
-              console.log('Workflows clicked');
+              updateAnyComponent('ai-assistance-dashboard', 'workflows:open', { source: 'visual-editor' });
           }}
           />
         )}
@@ -1406,20 +1480,16 @@ const CreatorhubVisualEditorContent: React.FC<CreatorhubVisualEditorProps> = ({
         {selectedView === 'templates-presets' && (
           <TemplatePresetDashboard
             onTemplatesPresetsSettingsClick={() => {
-              // Handle templates & presets settings click
-              console.log('Templates & presets clicked');
+              updateAnyComponent('template-preset-dashboard', 'templates-presets-settings:open', { source: 'visual-editor' });
           }}
             onTemplatesPresetsCategoriesClick={() => {
-              // Handle templates & presets categories click
-              console.log('Templates & presets categories clicked');
+              updateAnyComponent('template-preset-dashboard', 'templates-presets-categories:open', { source: 'visual-editor' });
           }}
             onTemplatesPresetsImportClick={() => {
-              // Handle templates & presets import click
-              console.log('Templates & presets import clicked');
+              updateAnyComponent('template-preset-dashboard', 'templates-presets-import:open', { source: 'visual-editor' });
           }}
             onTemplatesPresetsExportClick={() => {
-              // Handle templates & presets export click
-              console.log('Templates & presets export clicked');
+              updateAnyComponent('template-preset-dashboard', 'templates-presets-export:open', { source: 'visual-editor' });
           }}
           />
         )}
@@ -1427,28 +1497,22 @@ const CreatorhubVisualEditorContent: React.FC<CreatorhubVisualEditorProps> = ({
         {selectedView === 'client-communication' && (
           <ClientCommunicationDashboard
             onClientCommunicationSettingsClick={() => {
-              // Handle settings click
-              console.log('Client communication clicked');
+              updateAnyComponent('client-communication-dashboard', 'client-communication-settings:open', { source: 'visual-editor' });
           }}
             onClientCommunicationTemplatesClick={() => {
-              // Handle client communication templates click
-              console.log('Templates clicked');
+              updateAnyComponent('client-communication-dashboard', 'client-communication-templates:open', { source: 'visual-editor' });
           }}
             onClientCommunicationSegmentsClick={() => {
-              // Handle client communication segments click
-              console.log('Segments clicked');
+              updateAnyComponent('client-communication-dashboard', 'client-communication-segments:open', { source: 'visual-editor' });
           }}
             onClientCommunicationAutomationClick={() => {
-              // Handle automation click
-              console.log('Automation clicked');
+              updateAnyComponent('client-communication-dashboard', 'client-communication-automation:open', { source: 'visual-editor' });
           }}
             onClientCommunicationAnalyticsClick={() => {
-              // Handle analytics click
-              console.log('Analytics clicked');
+              updateAnyComponent('client-communication-dashboard', 'client-communication-analytics:open', { source: 'visual-editor' });
           }}
             onClientCommunicationDeadlinesClick={() => {
-              // Handle deadlines click
-              console.log('Deadlines clicked');
+              updateAnyComponent('client-communication-dashboard', 'client-communication-deadlines:open', { source: 'visual-editor' });
           }}
           />
         )}
@@ -1456,28 +1520,22 @@ const CreatorhubVisualEditorContent: React.FC<CreatorhubVisualEditorProps> = ({
         {selectedView === 'revenue-optimization' && (
           <RevenueOptimizationDashboard
             onRevenueOptimizationSettingsClick={() => {
-              // Handle settings click
-              console.log('Revenue optimization clicked');
+              updateAnyComponent('revenue-optimization-dashboard', 'revenue-optimization-settings:open', { source: 'visual-editor' });
           }}
             onRevenueOptimizationPricingClick={() => {
-              // Handle pricing click
-              console.log('Pricing clicked');
+              updateAnyComponent('revenue-optimization-dashboard', 'revenue-optimization-pricing:open', { source: 'visual-editor' });
           }}
             onRevenueOptimizationUpsellingClick={() => {
-              // Handle upselling click
-              console.log('Upselling clicked');
+              updateAnyComponent('revenue-optimization-dashboard', 'revenue-optimization-upselling:open', { source: 'visual-editor' });
           }}
             onRevenueOptimizationForecastingClick={() => {
-              // Handle forecasting click
-              console.log('Forecasting clicked');
+              updateAnyComponent('revenue-optimization-dashboard', 'revenue-optimization-forecasting:open', { source: 'visual-editor' });
           }}
             onRevenueOptimizationAnalysisClick={() => {
-              // Handle analysis click
-              console.log('Analysis clicked');
+              updateAnyComponent('revenue-optimization-dashboard', 'revenue-optimization-analysis:open', { source: 'visual-editor' });
           }}
             onRevenueOptimizationRatesClick={() => {
-              // Handle rates click
-              console.log('Market rates clicked');
+              updateAnyComponent('revenue-optimization-dashboard', 'revenue-optimization-rates:open', { source: 'visual-editor' });
           }}
           />
         )}
@@ -1485,12 +1543,10 @@ const CreatorhubVisualEditorContent: React.FC<CreatorhubVisualEditorProps> = ({
               {selectedView === 'team-collaboration' && (
                 <TeamCollaborationDashboard
                   onTeamCollaborationSettingsClick={() => {
-                    // Handle settings click
-                    console.log('Team collaboration clicked');
+                    updateAnyComponent('team-collaboration-dashboard', 'team-collaboration-settings:open', { source: 'visual-editor' });
                   }}
                   onTeamCollaborationMembersClick={() => {
-                    // Handle members click
-                    console.log('Members clicked');
+                    updateAnyComponent('team-collaboration-dashboard', 'team-collaboration-members:open', { source: 'visual-editor' });
                   }}
                 />
               )}
@@ -1931,31 +1987,31 @@ const CreatorhubVisualEditorContent: React.FC<CreatorhubVisualEditorProps> = ({
           <Box sx={{ p: 2 }}>
             <SEODashboard
               onCrawlClick={() => {
-                console.log('SEO Crawl clicked');
+                updateAnyComponent('seo-dashboard', 'crawl:open', { source: 'visual-editor' });
                 setSeoDashboardOpen(false);
             }}
               onAnalyzeClick={() => {
-                console.log('SEO Analysis clicked');
+                updateAnyComponent('seo-dashboard', 'analyze:open', { source: 'visual-editor' });
                 setSeoDashboardOpen(false);
             }}
               onKeywordsClick={() => {
-                console.log('Keywords Research clicked');
+                updateAnyComponent('seo-dashboard', 'keywords:open', { source: 'visual-editor' });
                 setSeoDashboardOpen(false);
             }}
               onCompetitorsClick={() => {
-                console.log('Competitor Analysis clicked');
+                updateAnyComponent('seo-dashboard', 'competitors:open', { source: 'visual-editor' });
                 setSeoDashboardOpen(false);
             }}
               onSchemaClick={() => {
-                console.log('Schema.org Validation clicked');
+                updateAnyComponent('seo-dashboard', 'schema:open', { source: 'visual-editor' });
                 setSeoDashboardOpen(false);
             }}
               onReportsClick={() => {
-                console.log('SEO Reports clicked');
+                updateAnyComponent('seo-dashboard', 'reports:open', { source: 'visual-editor' });
                 setSeoDashboardOpen(false);
             }}
               onSettingsClick={() => {
-                console.log('SEO Settings clicked');
+                updateAnyComponent('seo-dashboard', 'settings:open', { source: 'visual-editor' });
                 setSeoDashboardOpen(false);
             }}
             />

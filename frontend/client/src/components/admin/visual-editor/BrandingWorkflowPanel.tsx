@@ -54,9 +54,10 @@ import {
   Info as InfoIcon
 } from '@mui/icons-material';
 import { useBrandingWorkflow, useCreatorHubBranding } from '../../../hooks/useCreatorHubBranding';
+import { ProjectCategoryType } from '../../../constants/CreatorHubBranding';
 
 interface BrandingWorkflowPanelProps {
-  onBrandingApplied?: (branding: any) => void;
+  onBrandingApplied?: (branding: Record<string, unknown>) => void;
   onNotification?: (notification: { title: string; message: string; type: string }) => void;
 }
 
@@ -80,7 +81,7 @@ const BrandingWorkflowPanel: React.FC<BrandingWorkflowPanelProps> = ({
   const [selectedTab, setSelectedTab] = useState(0);
   const [brandingProfession, setBrandingProfession] = useState<'admin' | 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise'>('photographer');
   const [confirmDeletePreset, setConfirmDeletePreset] = useState<{ id: string; name: string } | null>(null);
-  const [brandingCategory, setBrandingCategory] = useState<string | undefined>(undefined);
+  const [brandingCategory, setBrandingCategory] = useState<ProjectCategoryType | undefined>(undefined);
   const [customBrandColor, setCustomBrandColor] = useState<string | undefined>(undefined);
   const [darkMode, setDarkMode] = useState(false);
   const [presetName, setPresetName] = useState('');
@@ -93,7 +94,7 @@ const BrandingWorkflowPanel: React.FC<BrandingWorkflowPanelProps> = ({
   // Get current branding with live updates
   const liveBranding = useCreatorHubBranding({
     profession: brandingProfession,
-    projectCategory: brandingCategory as any,
+    projectCategory: brandingCategory,
     customColor: customBrandColor,
     mode: darkMode ? 'dark' : 'light',
     persist: true,

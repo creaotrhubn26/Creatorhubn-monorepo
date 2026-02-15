@@ -82,17 +82,21 @@ const MLOptimizationDashboard: React.FC<MLOptimizationDashboardProps> = ({
     colors: { primary: '#1976d2' }
 };
   const [selectedModel, setSelectedModel] = useState<string>('');
-  const [trainingData, setTrainingData] = useState<Record<string, any>[]>([]);
+  const [trainingData, setTrainingData] = useState<Record<string, unknown>[]>([]);
   const [isTraining, setIsTraining] = useState(false);
   const [showTrainingDialog, setShowTrainingDialog] = useState(false);
   const [snackbar, setSnackbar] = useState({ open: false, message: ', ', severity: 'success' as 'success' | 'error' | 'warning' | 'info' });
+  const [mlError, setMlError] = useState<string | null>(null);
+  const [trackedEvents, setTrackedEvents] = useState<Record<string, unknown>[]>([]);
 
   // Mock useMLOptimizer hook
-  const models: any[] = [];
-  const predictions: any[] = [];
-  const optimizations: any[] = [];
+  const models: Record<string, unknown>[] = [];
+  const predictions: Record<string, unknown>[] = [];
+  const optimizations: Record<string, unknown>[] = [];
   const analytics = { 
-    trackEvent: () => {},
+    trackEvent: (event: string, data?: Record<string, unknown>) => {
+      setTrackedEvents(prev => [...prev, { event, data, timestamp: Date.now() }]);
+    },
     totalModels: 0,
     activeModels: 0,
     totalPredictions: 0,
@@ -102,15 +106,15 @@ const MLOptimizationDashboard: React.FC<MLOptimizationDashboardProps> = ({
     averageAccuracy: 0
 };
   const isLoading = false;
-  const error = null;
-  const trainModel = (modelId: string, data: any[]) => Promise.resolve();
+  const error = mlError;
+  const trainModel = (modelId: string, data: unknown[]) => Promise.resolve();
   const predictPerformance = (modelId: string) => Promise.resolve();
   const analyzeUserBehavior = (userId: string) => Promise.resolve();
   const applyOptimization = (id: string) => Promise.resolve();
   const rejectOptimization = (id: string) => Promise.resolve();
   const refreshData = () => Promise.resolve();
   const exportData = () => Promise.resolve();
-  const importData = (data: any) => Promise.resolve();
+  const importData = (data: unknown) => Promise.resolve();
 
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
     setActiveTab(newValue);
@@ -248,7 +252,7 @@ const MLOptimizationDashboard: React.FC<MLOptimizationDashboardProps> = ({
 
       {/* Error Alert */}
       {error && (
-        <Alert severity="error" sx={{ mb: 2 }} onClose={() => {}}>
+        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setMlError(null)}>
           {error}
         </Alert>
       )}

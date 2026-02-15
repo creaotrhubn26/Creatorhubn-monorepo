@@ -45,6 +45,7 @@ import {
   VisibilityOff as VisibilityOffIcon,
   Science as ScienceIcon
 } from '@mui/icons-material';
+import { getVisualEditorTokens } from './visualEditorTokens';
 
 interface VisualEditorToolbarProps {
   selectedView: string;
@@ -92,12 +93,18 @@ const DynamicIntelligenceControls = memo(({
   extendedThinking,
   onExtendedThinkingChange,
   highPowerMode,
-  onHighPowerModeChange
+  onHighPowerModeChange,
+  extendedLabel,
+  highPowerLabel,
+  iconMotionSx
 }: {
   extendedThinking: boolean;
   onExtendedThinkingChange: (value: boolean) => void;
   highPowerMode: boolean;
-  onHighPowerModeChange: (value: boolean) => void
+  onHighPowerModeChange: (value: boolean) => void;
+  extendedLabel: string;
+  highPowerLabel: string;
+  iconMotionSx: Record<string, string | number | Record<string, string | number>>;
 }) => (
   <Box sx={{ display: 'flex', alignItems: 'center', mr:  2 }}>
     <FormControlLabel
@@ -110,8 +117,8 @@ const DynamicIntelligenceControls = memo(({
     }
       label={
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5}}>
-          <ExtendedThinkingIcon fontSize="small" />
-          <Typography variant="caption">Extended</Typography>
+          <ExtendedThinkingIcon fontSize="small" sx={iconMotionSx} />
+          <Typography variant="caption">{extendedLabel}</Typography>
         </Box>
     }
       labelPlacement="start"
@@ -126,8 +133,8 @@ const DynamicIntelligenceControls = memo(({
     }
       label={
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5}}>
-          <HighPowerIcon fontSize="small" />
-          <Typography variant="caption">High Power</Typography>
+          <HighPowerIcon fontSize="small" sx={iconMotionSx} />
+          <Typography variant="caption">{highPowerLabel}</Typography>
         </Box>
     }
       labelPlacement="start"
@@ -140,37 +147,47 @@ const IntegrationActions = memo(({
   onOpenScrollStories,
   onOpenGoogleServices,
   onOpenNoteEditor,
-  onRunQualityAnalysis
+  onRunQualityAnalysis,
+  labels,
+  iconMotionSx
 }: {
   onOpenAssetLibrary: () => void;
   onOpenScrollStories: () => void;
   onOpenGoogleServices: () => void;
   onOpenNoteEditor: () => void;
-  onRunQualityAnalysis: () => void
+  onRunQualityAnalysis: () => void;
+  labels: {
+    assetLibrary: string;
+    scrollStories: string;
+    googleServices: string;
+    notes: string;
+    qualityAnalysis: string;
+  };
+  iconMotionSx: Record<string, string | number | Record<string, string | number>>;
 }) => (
   <ButtonGroup size="small" sx={{ mr:  2 }}>
-    <Tooltip title="Asset Library">
-      <IconButton onClick={onOpenAssetLibrary}>
+    <Tooltip title={labels.assetLibrary}>
+      <IconButton onClick={onOpenAssetLibrary} sx={iconMotionSx}>
         <LayersIcon />
       </IconButton>
     </Tooltip>
-    <Tooltip title="Scroll Stories">
-      <IconButton onClick={onOpenScrollStories}>
+    <Tooltip title={labels.scrollStories}>
+      <IconButton onClick={onOpenScrollStories} sx={iconMotionSx}>
         <PaletteIcon />
       </IconButton>
     </Tooltip>
-    <Tooltip title="Google Services">
-      <IconButton onClick={onOpenGoogleServices}>
+    <Tooltip title={labels.googleServices}>
+      <IconButton onClick={onOpenGoogleServices} sx={iconMotionSx}>
         <SettingsIcon />
       </IconButton>
     </Tooltip>
-    <Tooltip title="Notes">
-      <IconButton onClick={onOpenNoteEditor}>
+    <Tooltip title={labels.notes}>
+      <IconButton onClick={onOpenNoteEditor} sx={iconMotionSx}>
         <EditIcon />
       </IconButton>
     </Tooltip>
-    <Tooltip title="Quality Analysis">
-      <IconButton onClick={onRunQualityAnalysis}>
+    <Tooltip title={labels.qualityAnalysis}>
+      <IconButton onClick={onRunQualityAnalysis} sx={iconMotionSx}>
         <ScienceIcon />
       </IconButton>
     </Tooltip>
@@ -179,19 +196,30 @@ const IntegrationActions = memo(({
 
 const ViewTabs = memo(({
   selectedView,
-  onViewChange
+  onViewChange,
+  labels,
+  iconMotionSx
 }: {
   selectedView: string;
-  onViewChange: (view: string) => void
+  onViewChange: (view: string) => void;
+  labels: {
+    plan: string;
+    designer: string;
+    components: string;
+    code: string;
+    preview: string;
+    seo: string;
+  };
+  iconMotionSx: Record<string, string | number | Record<string, string | number>>;
 }) => {
   const viewOptions = useMemo(() => [
-    { value: 'plan', label: 'Plan', icon: <LayersIcon fontSize="small" />,},
-    { value: 'designer', label: 'Designer', icon: <PaletteIcon fontSize="small" />,},
-    { value: 'components', label: 'Components', icon: <AddIcon fontSize="small" />,},
-    { value: 'code', label: 'Code', icon: <CodeIcon fontSize="small" />,},
-    { value: 'preview', label: 'Preview', icon: <PreviewIcon fontSize="small" />,},
-    { value: 'seo', label: 'SE', icon: <ScienceIcon fontSize="small" />,}
-  ], []);
+    { value: 'plan', label: labels.plan, icon: <LayersIcon fontSize="small" sx={iconMotionSx} />},
+    { value: 'designer', label: labels.designer, icon: <PaletteIcon fontSize="small" sx={iconMotionSx} />},
+    { value: 'components', label: labels.components, icon: <AddIcon fontSize="small" sx={iconMotionSx} />},
+    { value: 'code', label: labels.code, icon: <CodeIcon fontSize="small" sx={iconMotionSx} />},
+    { value: 'preview', label: labels.preview, icon: <PreviewIcon fontSize="small" sx={iconMotionSx} />},
+    { value: 'seo', label: labels.seo, icon: <ScienceIcon fontSize="small" sx={iconMotionSx} />}
+  ], [labels, iconMotionSx]);
 
   return (
     <ToggleButtonGroup
@@ -215,12 +243,14 @@ const GridControls = memo(({
   showGrid,
   onShowGridChange,
   snapToGrid,
-  onSnapToGridChange
+  onSnapToGridChange,
+  snapLabel
 }: {
   showGrid: boolean;
   onShowGridChange: (value: boolean) => void;
   snapToGrid: boolean;
-  onSnapToGridChange: (value: boolean) => void
+  onSnapToGridChange: (value: boolean) => void;
+  snapLabel: string;
 }) => (
   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mr: 2 }}>
     <FormControlLabel
@@ -242,7 +272,7 @@ const GridControls = memo(({
           size="small"
         />
     }
-      label="Snap"
+      label={snapLabel}
       labelPlacement="start"
     />
   </Box>
@@ -255,7 +285,9 @@ const CopyPasteControls = memo(({
   onPaste,
   onDelete,
   canUndo,
-  canRedo
+  canRedo,
+  labels,
+  iconMotionSx
 }: {
   onUndo: () => void;
   onRedo: () => void;
@@ -263,31 +295,39 @@ const CopyPasteControls = memo(({
   onPaste: () => void;
   onDelete: () => void;
   canUndo: boolean;
-  canRedo: boolean
+  canRedo: boolean;
+  labels: {
+    undo: string;
+    redo: string;
+    copy: string;
+    paste: string;
+    delete: string;
+  };
+  iconMotionSx: Record<string, string | number | Record<string, string | number>>;
 }) => (
   <ButtonGroup size="small" sx={{ mr:  2 }}>
-    <Tooltip title="Undo">
-      <IconButton onClick={onUndo} disabled={!canUndo}>
+    <Tooltip title={labels.undo}>
+      <IconButton onClick={onUndo} disabled={!canUndo} sx={iconMotionSx}>
         <UndoIcon />
       </IconButton>
     </Tooltip>
-    <Tooltip title="Redo">
-      <IconButton onClick={onRedo} disabled={!canRedo}>
+    <Tooltip title={labels.redo}>
+      <IconButton onClick={onRedo} disabled={!canRedo} sx={iconMotionSx}>
         <RedoIcon />
       </IconButton>
     </Tooltip>
-    <Tooltip title="Copy">
-      <IconButton onClick={onCopy}>
+    <Tooltip title={labels.copy}>
+      <IconButton onClick={onCopy} sx={iconMotionSx}>
         <AddIcon />
       </IconButton>
     </Tooltip>
-    <Tooltip title="Paste">
-      <IconButton onClick={onPaste}>
+    <Tooltip title={labels.paste}>
+      <IconButton onClick={onPaste} sx={iconMotionSx}>
         <RemoveIcon />
       </IconButton>
     </Tooltip>
-    <Tooltip title="Delete">
-      <IconButton onClick={onDelete}>
+    <Tooltip title={labels.delete}>
+      <IconButton onClick={onDelete} sx={iconMotionSx}>
         <RemoveIcon />
       </IconButton>
     </Tooltip>
@@ -303,7 +343,9 @@ const ElementManipulationControls = memo(({
   onDistributeHorizontally,
   onDistributeVertically,
   onBringToFront,
-  onSendToBack
+  onSendToBack,
+  labels,
+  iconMotionSx
 }: {
   onGroup: () => void;
   onUngroup: () => void;
@@ -313,51 +355,63 @@ const ElementManipulationControls = memo(({
   onDistributeHorizontally: () => void;
   onDistributeVertically: () => void;
   onBringToFront: () => void;
-  onSendToBack: () => void
+  onSendToBack: () => void;
+  labels: {
+    group: string;
+    ungroup: string;
+    alignLeft: string;
+    alignCenter: string;
+    alignRight: string;
+    distributeHorizontally: string;
+    distributeVertically: string;
+    bringToFront: string;
+    sendToBack: string;
+  };
+  iconMotionSx: Record<string, string | number | Record<string, string | number>>;
 }) => (
   <ButtonGroup size="small" sx={{ mr:  2 }}>
-    <Tooltip title="Group">
-      <IconButton onClick={onGroup}>
+    <Tooltip title={labels.group}>
+      <IconButton onClick={onGroup} sx={iconMotionSx}>
         <LayersIcon />
       </IconButton>
     </Tooltip>
-    <Tooltip title="Ungroup">
-      <IconButton onClick={onUngroup}>
+    <Tooltip title={labels.ungroup}>
+      <IconButton onClick={onUngroup} sx={iconMotionSx}>
         <LayersIcon />
       </IconButton>
     </Tooltip>
-    <Tooltip title="Align Left">
-      <IconButton onClick={onAlignLeft}>
+    <Tooltip title={labels.alignLeft}>
+      <IconButton onClick={onAlignLeft} sx={iconMotionSx}>
         <EditIcon />
       </IconButton>
     </Tooltip>
-    <Tooltip title="Align Center">
-      <IconButton onClick={onAlignCenter}>
+    <Tooltip title={labels.alignCenter}>
+      <IconButton onClick={onAlignCenter} sx={iconMotionSx}>
         <EditIcon />
       </IconButton>
     </Tooltip>
-    <Tooltip title="Align Right">
-      <IconButton onClick={onAlignRight}>
+    <Tooltip title={labels.alignRight}>
+      <IconButton onClick={onAlignRight} sx={iconMotionSx}>
         <EditIcon />
       </IconButton>
     </Tooltip>
-    <Tooltip title="Distribute Horizontally">
-      <IconButton onClick={onDistributeHorizontally}>
+    <Tooltip title={labels.distributeHorizontally}>
+      <IconButton onClick={onDistributeHorizontally} sx={iconMotionSx}>
         <EditIcon />
       </IconButton>
     </Tooltip>
-    <Tooltip title="Distribute Vertically">
-      <IconButton onClick={onDistributeVertically}>
+    <Tooltip title={labels.distributeVertically}>
+      <IconButton onClick={onDistributeVertically} sx={iconMotionSx}>
         <EditIcon />
       </IconButton>
     </Tooltip>
-    <Tooltip title="Bring to Front">
-      <IconButton onClick={onBringToFront}>
+    <Tooltip title={labels.bringToFront}>
+      <IconButton onClick={onBringToFront} sx={iconMotionSx}>
         <EditIcon />
       </IconButton>
     </Tooltip>
-    <Tooltip title="Send to Back">
-      <IconButton onClick={onSendToBack}>
+    <Tooltip title={labels.sendToBack}>
+      <IconButton onClick={onSendToBack} sx={iconMotionSx}>
         <EditIcon />
       </IconButton>
     </Tooltip>
@@ -367,22 +421,26 @@ const ElementManipulationControls = memo(({
 const StatusChips = memo(({
   selectedElementsCount,
   totalElementsCount,
-  isSaving
+  isSaving,
+  selectedSuffix,
+  savingLabel
 }: {
   selectedElementsCount: number;
   totalElementsCount: number;
-  isSaving: boolean
+  isSaving: boolean;
+  selectedSuffix: string;
+  savingLabel: string;
 }) => (
   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mr: 2 }}>
     <Chip
-      label={`${selectedElementsCount}/${totalElementsCount} selected`}
+      label={`${selectedElementsCount}/${totalElementsCount} ${selectedSuffix}`}
       size="small"
       color="primary"
       variant="outlined"
     />
     {isSaving && (
       <Chip
-        label="Saving..."
+        label={savingLabel}
         size="small"
         color="secondary"
         variant="filled"
@@ -431,13 +489,19 @@ const VisualEditorToolbarOptimized: React.FC<VisualEditorToolbarProps> = ({
   projectName,
   isSaving
 }) => {
-  // Memoized callbacks to prevent unnecessary re-renders
-  const handleExtendedThinkingChange = useCallback(
-  
   // Theming system
-  const theming = useTheming('prototype_tester');(value: boolean) => {
+  const theming = useTheming('prototype_tester');
+  const tokens = getVisualEditorTokens();
+  const iconMotionSx = {
+    transition: `transform ${tokens.iconAnimation.durationMs}ms ${tokens.iconAnimation.easing}`,
+    '&:hover': { transform: `scale(${tokens.iconAnimation.scaleHover})` },
+    '&:active': { transform: `scale(${tokens.iconAnimation.scaleActive})` },
+  };
+
+  // Memoized callbacks to prevent unnecessary re-renders
+  const handleExtendedThinkingChange = useCallback((value: boolean) => {
     onExtendedThinkingChange(value);
-}, [onExtendedThinkingChange]);
+  }, [onExtendedThinkingChange]);
 
   const handleHighPowerModeChange = useCallback((value: boolean) => {
     onHighPowerModeChange(value);
@@ -460,14 +524,14 @@ const VisualEditorToolbarOptimized: React.FC<VisualEditorToolbarProps> = ({
 }, [onViewChange]);
 
   // Memoized values to prevent unnecessary recalculations
-  const toolbarTitle = useMemo(() => 
-    projectName || 'CreatorHub Visual Editor', 
-    [projectName]
+  const toolbarTitle = useMemo(
+    () => projectName || tokens.legacyToolbar.titleFallback,
+    [projectName, tokens.legacyToolbar.titleFallback]
   );
 
-  const saveButtonText = useMemo(() => 
-    isSaving ? 'Saving...' : 'Save', 
-    [isSaving]
+  const saveButtonText = useMemo(
+    () => (isSaving ? tokens.legacyToolbar.status.saving : tokens.legacyToolbar.extraActions.save),
+    [isSaving, tokens.legacyToolbar.status.saving, tokens.legacyToolbar.extraActions.save]
   );
 
   return (
@@ -483,6 +547,9 @@ const VisualEditorToolbarOptimized: React.FC<VisualEditorToolbarProps> = ({
           onExtendedThinkingChange={handleExtendedThinkingChange}
           highPowerMode={highPowerMode}
           onHighPowerModeChange={handleHighPowerModeChange}
+          extendedLabel={tokens.legacyToolbar.dynamicControls.extended}
+          highPowerLabel={tokens.legacyToolbar.dynamicControls.highPower}
+          iconMotionSx={iconMotionSx}
         />
 
         {/* Integration Actions */}
@@ -492,6 +559,8 @@ const VisualEditorToolbarOptimized: React.FC<VisualEditorToolbarProps> = ({
           onOpenGoogleServices={onOpenGoogleServices}
           onOpenNoteEditor={onOpenNoteEditor}
           onRunQualityAnalysis={onRunQualityAnalysis}
+          labels={tokens.legacyToolbar.integrations}
+          iconMotionSx={iconMotionSx}
         />
 
         <Divider orientation="vertical" flexItem sx={{ mr:  2 }} />
@@ -500,6 +569,8 @@ const VisualEditorToolbarOptimized: React.FC<VisualEditorToolbarProps> = ({
         <ViewTabs
           selectedView={selectedView}
           onViewChange={handleViewChange}
+          labels={tokens.legacyToolbar.viewTabs}
+          iconMotionSx={iconMotionSx}
         />
 
         <Divider orientation="vertical" flexItem sx={{ mr:  2 }} />
@@ -512,6 +583,7 @@ const VisualEditorToolbarOptimized: React.FC<VisualEditorToolbarProps> = ({
             onShowGridChange={handleShowGridChange}
             snapToGrid={snapToGrid}
             onSnapToGridChange={handleSnapToGridChange}
+            snapLabel={tokens.legacyToolbar.gridControls.snap}
           />
         </Box>
 
@@ -524,7 +596,7 @@ const VisualEditorToolbarOptimized: React.FC<VisualEditorToolbarProps> = ({
               size="small"
             />
         }
-          label="Multi-select"
+          label={tokens.legacyToolbar.extraActions.multiSelect}
           labelPlacement="start"
           sx={{ mr:  2 }}
         />
@@ -538,17 +610,25 @@ const VisualEditorToolbarOptimized: React.FC<VisualEditorToolbarProps> = ({
           onDelete={onDelete}
           canUndo={canUndo}
           canRedo={canRedo}
+          labels={{
+            undo: tokens.legacyToolbar.actionTooltips.undo,
+            redo: tokens.legacyToolbar.actionTooltips.redo,
+            copy: tokens.legacyToolbar.editActions.copy,
+            paste: tokens.legacyToolbar.editActions.paste,
+            delete: tokens.legacyToolbar.editActions.delete,
+          }}
+          iconMotionSx={iconMotionSx}
         />
 
         {/* Asset Libraries */}
         <ButtonGroup size="small" sx={{ mr:  2 }}>
-          <Tooltip title="Group">
-            <IconButton onClick={onGroup}>
+          <Tooltip title={tokens.legacyToolbar.editActions.group}>
+            <IconButton onClick={onGroup} sx={iconMotionSx}>
               <LayersIcon />
             </IconButton>
           </Tooltip>
-          <Tooltip title="Ungroup">
-            <IconButton onClick={onUngroup}>
+          <Tooltip title={tokens.legacyToolbar.editActions.ungroup}>
+            <IconButton onClick={onUngroup} sx={iconMotionSx}>
               <LayersIcon />
             </IconButton>
           </Tooltip>
@@ -556,8 +636,8 @@ const VisualEditorToolbarOptimized: React.FC<VisualEditorToolbarProps> = ({
 
         {/* Code Generation */}
         <ButtonGroup size="small" sx={{ mr:  2 }}>
-          <Tooltip title="Generate Code">
-            <IconButton>
+          <Tooltip title={tokens.legacyToolbar.extraActions.generateCode}>
+            <IconButton sx={iconMotionSx}>
               <CodeIcon />
             </IconButton>
           </Tooltip>
@@ -565,8 +645,8 @@ const VisualEditorToolbarOptimized: React.FC<VisualEditorToolbarProps> = ({
 
         {/* Advanced Canvas Controls */}
         <ButtonGroup size="small" sx={{ mr:  2 }}>
-          <Tooltip title="Fullscreen">
-            <IconButton>
+          <Tooltip title={tokens.legacyToolbar.extraActions.fullscreen}>
+            <IconButton sx={iconMotionSx}>
               <FullscreenIcon />
             </IconButton>
           </Tooltip>
@@ -583,12 +663,14 @@ const VisualEditorToolbarOptimized: React.FC<VisualEditorToolbarProps> = ({
           onDistributeVertically={onDistributeVertically}
           onBringToFront={onBringToFront}
           onSendToBack={onSendToBack}
+          labels={tokens.legacyToolbar.editActions}
+          iconMotionSx={iconMotionSx}
         />
 
         {/* Advanced Features */}
         <ButtonGroup size="small" sx={{ mr:  2 }}>
-          <Tooltip title="Settings">
-            <IconButton>
+          <Tooltip title={tokens.legacyToolbar.extraActions.settings}>
+            <IconButton sx={iconMotionSx}>
               <SettingsIcon />
             </IconButton>
           </Tooltip>
@@ -599,6 +681,8 @@ const VisualEditorToolbarOptimized: React.FC<VisualEditorToolbarProps> = ({
           selectedElementsCount={selectedElementsCount}
           totalElementsCount={totalElementsCount}
           isSaving={isSaving}
+          selectedSuffix={tokens.legacyToolbar.status.selectedSuffix}
+          savingLabel={tokens.legacyToolbar.status.saving}
         />
 
         {/* Save Button */}

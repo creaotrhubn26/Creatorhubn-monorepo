@@ -25,6 +25,7 @@ import {
 } from '@mui/material';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { useTheming } from '@/utils/theming-helper';
+import { getVisualEditorTokens } from './visualEditorTokens';
 import {
   Search as SearchIcon,
   Add as AddIcon,
@@ -50,7 +51,7 @@ import {
 } from '@mui/icons-material';
 
 interface VisualEditorSidebarProps {
-  selectedClient?: any;
+  selectedClient?: Record<string, unknown>;
   onClientSelect: (clientId: string) => void;
   onComponentDrag: (componentType: string) => void;
   onComponentAdd: (componentType: string, position: { x: number; y: number }) => void;
@@ -61,7 +62,8 @@ interface VisualEditorSidebarProps {
   onOpenAssetLibrary: () => void;
   onOpenScrollStories: () => void;
   onOpenGoogleServices: () => void;
-  onOpenNoteEditor: () => void
+  onOpenNoteEditor: () => void;
+  onOpenSettings?: () => void;
 }
 
 const VisualEditorSidebar: React.FC<VisualEditorSidebarProps> = ({
@@ -76,13 +78,15 @@ const VisualEditorSidebar: React.FC<VisualEditorSidebarProps> = ({
   onOpenAssetLibrary,
   onOpenScrollStories,
   onOpenGoogleServices,
-  onOpenNoteEditor
+  onOpenNoteEditor,
+  onOpenSettings
 }) => {
   // Enhanced Master Integration
   const { features } = useEnhancedMasterIntegration();
   
   // Theming system
   const theming = useTheming('prototype_tester');
+  const tokens = getVisualEditorTokens();
 
   // Comprehensive Feature System for Visual Editor Sidebar
   const visualEditorAccess = features.checkFeatureAccess('visual-editor');
@@ -97,21 +101,21 @@ const VisualEditorSidebar: React.FC<VisualEditorSidebarProps> = ({
   const [tabValue, setTabValue] = useState(0);
 
   const componentCategories = [
-    { id: 'All', label: 'All Components', icon: <AddIcon />,},
-    { id: 'Basic', label: 'Basic', icon: <EditIcon />,},
-    { id: 'Layout', label: 'Layout', icon: <GridIcon />,},
-    { id: 'Media', label: 'Media', icon: <ImageIcon />,},
-    { id: 'Text', label: 'Text', icon: <TextIcon />,},
-    { id: 'Interactive', label: 'Interactive', icon: <SettingsIcon />,}
+    { id: 'All', label: tokens.sidebar.categoryAll, icon: <AddIcon />},
+    { id: 'Basic', label: tokens.sidebar.categoryBasic, icon: <EditIcon />},
+    { id: 'Layout', label: tokens.sidebar.categoryLayout, icon: <GridIcon />},
+    { id: 'Media', label: tokens.sidebar.categoryMedia, icon: <ImageIcon />},
+    { id: 'Text', label: tokens.sidebar.categoryText, icon: <TextIcon />},
+    { id: 'Interactive', label: tokens.sidebar.categoryInteractive, icon: <SettingsIcon />}
   ];
 
   const components = [
-    { id: 'text', name: 'Text', category: 'Text', icon: <TextIcon />, description: 'Add text content',},
-    { id: 'button', name: 'Button', category: 'Interactive', icon: <AddIcon />, description: 'Interactive button',},
-    { id: 'image', name: 'Image', category: 'Media', icon: <ImageIcon />, description: 'Image placeholder',},
-    { id: 'card', name: 'Card', category: 'Layout', icon: <GridIcon />, description: 'Content card',},
-    { id: 'container', name: 'Container', category: 'Layout', icon: <GridIcon />, description: 'Layout container',},
-    { id: 'grid', name: 'Grid', category: 'Layout', icon: <GridIcon />, description: 'Grid layout',}
+    { id: 'text', name: tokens.sidebar.components.text.label, category: 'Text', icon: <TextIcon />, description: tokens.sidebar.components.text.description},
+    { id: 'button', name: tokens.sidebar.components.button.label, category: 'Interactive', icon: <AddIcon />, description: tokens.sidebar.components.button.description},
+    { id: 'image', name: tokens.sidebar.components.image.label, category: 'Media', icon: <ImageIcon />, description: tokens.sidebar.components.image.description},
+    { id: 'card', name: tokens.sidebar.components.card.label, category: 'Layout', icon: <GridIcon />, description: tokens.sidebar.components.card.description},
+    { id: 'container', name: tokens.sidebar.components.container.label, category: 'Layout', icon: <GridIcon />, description: tokens.sidebar.components.container.description},
+    { id: 'grid', name: tokens.sidebar.components.grid.label, category: 'Layout', icon: <GridIcon />, description: tokens.sidebar.components.grid.description}
   ];
 
   const filteredComponents = components.filter(component => {
@@ -136,7 +140,7 @@ const VisualEditorSidebar: React.FC<VisualEditorSidebarProps> = ({
       <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider'}}>
         <Box>
           <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-            Components
+            {tokens.sidebar.title}
           </Typography>
           
           {/* Feature Analytics Display */}
@@ -145,7 +149,7 @@ const VisualEditorSidebar: React.FC<VisualEditorSidebarProps> = ({
             alignItems: 'center', 
             gap: 1, mb: 1 }}>
             <Typography variant="caption" color="text.secondary">
-              Features: {features.getFeatureAnalytics().enabledFeatures}/{features.getFeatureAnalytics().totalFeatures}
+              {tokens.sidebar.featuresLabel}: {features.getFeatureAnalytics().enabledFeatures}/{features.getFeatureAnalytics().totalFeatures}
             </Typography>
             <Chip 
               label={`${Math.round(features.getFeatureAnalytics().featureAdoptionRate * 100)}%`}
@@ -158,7 +162,7 @@ const VisualEditorSidebar: React.FC<VisualEditorSidebarProps> = ({
         <TextField
           fullWidth
           size="small"
-          placeholder="Search components..."
+          placeholder={tokens.sidebar.searchPlaceholder}
           value={searchQuery}
           onChange={(e) => onSearchChange(e.target.value)}
           InputProps={{
@@ -178,9 +182,9 @@ const VisualEditorSidebar: React.FC<VisualEditorSidebarProps> = ({
           onChange={(_, newValue) => setTabValue(newValue)}
           variant="fullWidth"
         >
-          <Tab label="Components" />
-          <Tab label="Assets" />
-          <Tab label="Tools" />
+          <Tab label={tokens.sidebar.tabs.components} />
+          <Tab label={tokens.sidebar.tabs.assets} />
+          <Tab label={tokens.sidebar.tabs.tools} />
         </Tabs>
       </Box>
 
@@ -191,7 +195,7 @@ const VisualEditorSidebar: React.FC<VisualEditorSidebarProps> = ({
             {/* Categories */}
             <Box sx={{ p:  1 }}>
               <Typography variant="subtitle2" gutterBottom>
-                Categories
+                {tokens.sidebar.categoriesLabel}
               </Typography>
               <List dense>
                 {componentCategories.map((category) => (
@@ -215,7 +219,7 @@ const VisualEditorSidebar: React.FC<VisualEditorSidebarProps> = ({
             {/* Components */}
             <Box sx={{ p:  1 }}>
               <Typography variant="subtitle2" gutterBottom>
-                Components ({filteredComponents.length})
+                {tokens.sidebar.componentsLabel} ({filteredComponents.length})
               </Typography>
               <List dense>
                 {filteredComponents.map((component) => (
@@ -251,7 +255,7 @@ const VisualEditorSidebar: React.FC<VisualEditorSidebarProps> = ({
         {tabValue === 1 && (
           <Box sx={{ p: 2 }}>
             <Typography variant="subtitle2" gutterBottom>
-              Asset Library
+              {tokens.sidebar.assetsPanel.title}
             </Typography>
             <Button
               fullWidth
@@ -260,7 +264,7 @@ const VisualEditorSidebar: React.FC<VisualEditorSidebarProps> = ({
               onClick={onOpenAssetLibrary}
               sx={{ mb: 2 }}
             >
-              Open Asset Library
+              {tokens.sidebar.assetsPanel.openLibrary}
             </Button>
             <Button
               fullWidth
@@ -269,7 +273,7 @@ const VisualEditorSidebar: React.FC<VisualEditorSidebarProps> = ({
               onClick={onOpenScrollStories}
               sx={{ mb: 2 }}
             >
-              Scroll Stories
+              {tokens.sidebar.assetsPanel.scrollStories}
             </Button>
             <Button
               fullWidth
@@ -278,7 +282,7 @@ const VisualEditorSidebar: React.FC<VisualEditorSidebarProps> = ({
               onClick={onOpenGoogleServices}
               sx={{ mb: 2 }}
             >
-              Google Services
+              {tokens.sidebar.assetsPanel.googleServices}
             </Button>
           </Box>
         )}
@@ -286,7 +290,7 @@ const VisualEditorSidebar: React.FC<VisualEditorSidebarProps> = ({
         {tabValue === 2 && (
           <Box sx={{ p: 2 }}>
             <Typography variant="subtitle2" gutterBottom>
-              Tools
+              {tokens.sidebar.toolsPanel.title}
             </Typography>
             <Button
               fullWidth
@@ -295,16 +299,16 @@ const VisualEditorSidebar: React.FC<VisualEditorSidebarProps> = ({
               onClick={onOpenNoteEditor}
               sx={{ mb:  2 }}
             >
-              Note Editor
+              {tokens.sidebar.toolsPanel.noteEditor}
             </Button>
             <Button
               fullWidth
               variant="outlined"
               startIcon={<SettingsIcon />}
-              onClick={() => {}}
+              onClick={() => onOpenSettings?.()}
               sx={{ mb:  2 }}
             >
-              Settings
+              {tokens.sidebar.toolsPanel.settings}
             </Button>
           </Box>
         )}

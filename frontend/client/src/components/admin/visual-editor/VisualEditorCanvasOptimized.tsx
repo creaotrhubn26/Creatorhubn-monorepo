@@ -53,7 +53,7 @@ interface EditorElement {
     background?: string;
     textStroke?: string;
 };
-  props: Record<string, any>;
+  props: Record<string, unknown>;
   children?: string[];
   parent?: string;
   icon?: string;
@@ -426,8 +426,8 @@ const VisualEditorCanvasOptimized: React.FC<VisualEditorCanvasProps> = ({
 
   const handleElementDoubleClick = useCallback((elementId: string) => {
     // Open element editor or properties panel
-    console.log('Edit element, :', elementId);
-}, []);
+    onElementSelect(elementId);
+}, [onElementSelect]);
 
   const handleCanvasClick = useCallback((e: React.MouseEvent) => {
     if (e.target === e.currentTarget) {

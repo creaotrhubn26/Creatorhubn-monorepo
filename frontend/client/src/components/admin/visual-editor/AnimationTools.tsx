@@ -56,9 +56,9 @@ import {
 } from '@mui/icons-material';
 
 interface AnimationToolsProps {
-  selectedProject?: any;
-  onProjectUpdate?: (project: any) => void;
-  onNotificationCreate?: (notification: any) => void; 
+  selectedProject?: { id: string; name?: string };
+  onProjectUpdate?: (project: Record<string, unknown>) => void;
+  onNotificationCreate?: (notification: Record<string, unknown>) => void; 
 }
 
 export const AnimationTools: React.FC<AnimationToolsProps> = ({
@@ -124,12 +124,12 @@ export const AnimationTools: React.FC<AnimationToolsProps> = ({
     { id: 'bounce', name: 'Bounce', duration: 800, easing: 'ease-out' },
     { id: 'spin', name: 'Spin', duration: 600, easing: 'linear' }
   ]);
-  const [selectedPreset, setSelectedPreset] = useState<any>(null);
+  const [selectedPreset, setSelectedPreset] = useState<Record<string, unknown> | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [currentStory, setCurrentStory] = useState<any>(null);
+  const [currentStory, setCurrentStory] = useState<Record<string, unknown> | null>(null);
   const [timelineZoom, setTimelineZoom] = useState(1);
   const [selectedKeyframe, setSelectedKeyframe] = useState<string | null>(null);
-  const [animationLayers, setAnimationLayers] = useState<any[]>([]);
+  const [animationLayers, setAnimationLayers] = useState<Record<string, unknown>[]>([]);
   const [reducedMotion, setReducedMotion] = useState(false);
   
   // ScrollStory functionality - using the real hook
@@ -147,7 +147,7 @@ export const AnimationTools: React.FC<AnimationToolsProps> = ({
   } = useScrollStory();
 
   // Animation Functions from original file
-  const handleApplyAnimation = useCallback((element: string, preset: any) => {
+  const handleApplyAnimation = useCallback((element: string, preset: Record<string, unknown>) => {
     setSelectedPreset(preset);
 
     onNotificationCreate?.({

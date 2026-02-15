@@ -61,7 +61,7 @@ interface DataPacket {
   targetNodeId: string;
   targetPort: string;
   type: PacketType;
-  data: any;
+  data: unknown;
   size: number; // bytes
   latency: number; // ms
 }

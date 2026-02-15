@@ -210,7 +210,7 @@ const ExportPresetsDashboard: React.FC<ExportPresetsDashboardProps> = memo(({
   const [showPreviewDialog, setShowPreviewDialog] = useState(false);
   const [activeTab, setActiveTab] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterPlatform, setFilterPlatform] = useState('all,');
+  const [filterPlatform, setFilterPlatform] = useState('all');
   const [filterFormat, setFilterFormat] = useState('all');
   const [sortBy, setSortBy] = useState('name');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
@@ -220,20 +220,20 @@ const ExportPresetsDashboard: React.FC<ExportPresetsDashboardProps> = memo(({
 
   // Export presets options
   const exportPresetsOptions: UseExportPresetsOptions = useMemo(() => ({
-    onPresetAdded: (data: { preset: ExportPreset }) => {
-      // Handle preset added
+    onPresetAdded: (_data: { preset: ExportPreset }) => {
+      setPage(0);
   },
-    onPlatformAdded: (data: { platform: ExportPlatform }) => {
-      // Handle platform added
+    onPlatformAdded: (_data: { platform: ExportPlatform }) => {
+      setPage(0);
   },
-    onFormatAdded: (data: { format: ExportFormat }) => {
-      // Handle format added
+    onFormatAdded: (_data: { format: ExportFormat }) => {
+      setPage(0);
   },
     onError: (error: string) => {
-      console.error('Export presets error, :', error);
+      console.error('Export presets error:', error);
   },
     onInitialized: () => {
-      // Handle initialized
+      setPage(0);
 }
 }), []);
 
@@ -361,9 +361,9 @@ const ExportPresetsDashboard: React.FC<ExportPresetsDashboardProps> = memo(({
           batch: true,
           parallel: true,
           cache: true,
-          metadata: {},
+          metadata: { created: Date.now(), modified: Date.now(), version: '1.0.0', author: 'User', tags: [], usageCount: 0, lastUsed: 0, successCount: 0, errorCount: 0 },
           config: {}
-        } as any,
+        },
         compression: {
           enableCompression: true,
           algorithm: 'gzip',
@@ -375,18 +375,18 @@ const ExportPresetsDashboard: React.FC<ExportPresetsDashboardProps> = memo(({
           chunkSize: 1634,
           parallel: true,
           streaming: true,
-          metadata: {},
+          metadata: { created: Date.now(), modified: Date.now(), version: '1.0.0', author: 'User', tags: [], usageCount: 0, lastUsed: 0, successCount: 0, errorCount: 0 },
           config: {}
-        } as any,
+        },
         validation: {
           enableValidation: true,
           rules: [],
           strict: true,
           warnings: true,
           errors: true,
-          metadata: {},
+          metadata: { created: Date.now(), modified: Date.now(), version: '1.0.0', author: 'User', tags: [], usageCount: 0, lastUsed: 0, successCount: 0, errorCount: 0 },
           config: {}
-        } as any,
+        },
         metadata: {
           title: 'Custom Export Preset',
           description: 'A custom export preset created by the user',

@@ -2,7 +2,7 @@
  * Enhanced Visual Editor Page - Integrates all advanced features
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Box, IconButton, Tooltip, Fab } from '@mui/material';
 import {
   Code,
@@ -15,7 +15,7 @@ import {
 } from '@mui/icons-material';
 
 // Existing components
-import { VisualEditorProvider, useVisualEditor } from './VisualEditorContext';
+import { VisualEditorProvider, useVisualEditor, EditorElement } from './VisualEditorContext';
 import { EnhancedTopToolbar } from './EnhancedTopToolbar';
 import { FabricCanvas } from './FabricCanvas';
 import VisualEditorSidebar from './VisualEditorSidebar';
@@ -29,13 +29,32 @@ import { PlatformExporter } from './PlatformExporter';
 import { KeyboardShortcuts } from './KeyboardShortcuts';
 import { ComponentLibrary } from './ComponentLibrary';
 import { UnifiedCodeStudio } from './UnifiedCodeStudio';
+import { getVisualEditorTokens } from './visualEditorTokens';
+
+/** Shape passed by ComponentLibrary's onUseComponent callback */
+interface LibraryComponent {
+  id: string;
+  name: string;
+  category?: string;
+  props?: Record<string, unknown>;
+}
 
 interface EnhancedVisualEditorPageProps {
   projectId?: string;
 }
 
-const EnhancedVisualEditorContent: React.FC = () => {
-  const { state, dispatch } = useVisualEditor();
+const VALID_ELEMENT_TYPES: EditorElement['type'][] = [
+  'button', 'text', 'image', 'card', 'container', 'grid', 'audio', 'video',
+];
+
+const toElementType = (raw: string): EditorElement['type'] => {
+  const lower = raw.toLowerCase() as EditorElement['type'];
+  return VALID_ELEMENT_TYPES.includes(lower) ? lower : 'container';
+};
+
+export const EnhancedVisualEditorContent: React.FC = () => {
+  const { state, dispatch, saveProject, loadProject } = useVisualEditor();
+  const tokens = getVisualEditorTokens();
 
   // Panel visibility states
   const [showUnifiedStudio, setShowUnifiedStudio] = useState(false);
@@ -48,6 +67,8 @@ const EnhancedVisualEditorContent: React.FC = () => {
   const [showCodeEditor, setShowCodeEditor] = useState(false);
   const [showLivePreviewPanel, setShowLivePreviewPanel] = useState(false);
   const [exportFormat, setExportFormat] = useState<'html' | 'react' | 'vue'>('react');
+  const [sidebarSearch, setSidebarSearch] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('all');
 
   // Generated code state
   const [generatedCode, setGeneratedCode] = useState({
@@ -66,52 +87,80 @@ const EnhancedVisualEditorContent: React.FC = () => {
     }
   }, [state.elements]);
 
-  const generateCodeFromElements = (elements: any[]) => {
+  const generateCodeFromElements = useCallback((elements: EditorElement[]) => {
+    // Generate HTML
+    let html = `<!DOCTYPE html>\n<html>\n<head><style>\n.container { position: relative; width: 100%; min-height: 100vh; }\n`;
+    elements.forEach((element) => {
+      html += `.el-${element.id} {\n  position: absolute;\n  left: ${element.x}px;\n  top: ${element.y}px;\n  width: ${element.width}px;\n  height: ${element.height}px;\n`;
+      if (element.styles) {
+        Object.entries(element.styles).forEach(([key, value]) => {
+          if (value !== undefined) {
+            const cssKey = key.replace(/([A-Z])/g, '-$1').toLowerCase();
+            html += `  ${cssKey}: ${String(value)};\n`;
+          }
+        });
+      }
+      html += `}\n`;
+    });
+    html += `</style></head>\n<body>\n<div class="container">\n`;
+    elements.forEach((element) => {
+      const text = typeof element.props?.text === 'string' ? element.props.text : '';
+      html += `  <div class="el-${element.id}">${text}</div>\n`;
+    });
+    html += `</div>\n</body>\n</html>`;
+
     // Generate React code
     let react = `import React from 'react';\n\nexport default function GeneratedComponent() {\n  return (\n    <div className="container">\n`;
-
-    elements.forEach((element: any) => {
-      react += `      <div className="${element.type}" style={{ position: 'absolute', left: ${element.x}px, top: ${element.y}px, width: ${element.width}px, height: ${element.height}px }}>\n`;
-      if (element.props?.text) {
+    elements.forEach((element) => {
+      react += `      <div className="${element.type}" style={{ position: 'absolute', left: ${element.x}, top: ${element.y}, width: ${element.width}, height: ${element.height} }}>\n`;
+      if (typeof element.props?.text === 'string') {
         react += `        ${element.props.text}\n`;
       }
       react += `      </div>\n`;
     });
-
     react += `    </div>\n  );\n}`;
 
     // Generate CSS
     let css = `.container {\n  position: relative;\n  width: 100%;\n  min-height: 100vh;\n}\n\n`;
-
-    elements.forEach((element: any) => {
+    elements.forEach((element) => {
       css += `.${element.type} {\n`;
       if (element.styles) {
         Object.entries(element.styles).forEach(([key, value]) => {
-          const cssKey = key.replace(/([A-Z])/g, '-$1').toLowerCase();
-          css += `  ${cssKey}: ${value};\n`;
+          if (value !== undefined) {
+            const cssKey = key.replace(/([A-Z])/g, '-$1').toLowerCase();
+            css += `  ${cssKey}: ${String(value)};\n`;
+          }
         });
       }
       css += `}\n\n`;
     });
 
-    return {
-      html: '', // HTML generation
-      react,
-      css,
-      javascript: '',
-    };
-  };
+    // Generate JavaScript
+    let javascript = `// Auto-generated event handlers\n`;
+    elements.forEach((element) => {
+      if (element.type === 'button') {
+        javascript += `document.querySelector('.el-${element.id}')?.addEventListener('click', () => {\n  console.log('${String(element.props?.text ?? element.id)} clicked');\n});\n\n`;
+      }
+    });
 
-  const handleCommandExecute = (commandId: string) => {
+    return { html, react, css, javascript };
+  }, []);
+
+  const handleCommandExecute = useCallback((commandId: string) => {
     switch (commandId) {
-      case 'save': // Save project logic
+      case 'save':
+        saveProject();
         break;
       case 'export': setShowExporter(true);
         break;
       case 'accessibility-check': setShowAccessibility(true);
         break;
-      case 'format-code': // Format code logic
+      case 'format-code': {
+        // Re-generate code from current elements to get a clean formatted version
+        const freshCode = generateCodeFromElements(state.elements);
+        setGeneratedCode(freshCode);
         break;
+      }
       case 'refresh-preview': setShowLivePreview(false);
         setTimeout(() => setShowLivePreview(true), 100);
         break;
@@ -125,34 +174,38 @@ const EnhancedVisualEditorContent: React.FC = () => {
         setShowExporter(true);
         break;
       case 'toggle-format': 
-        // Cycle through export formats
         setExportFormat(prev => {
           if (prev === 'html') return 'react';
           if (prev === 'react') return 'vue';
           return 'html';
         });
         break;
-      default: console.log('Command: ', commandId);
+      case 'toggle-code-editor': setShowCodeEditor(prev => !prev);
+        break;
+      case 'toggle-preview': setShowLivePreviewPanel(prev => !prev);
+        break;
+      case 'toggle-settings': setShowSettings(prev => !prev);
+        break;
+      default: break;
     }
-  };
+  }, [saveProject, generateCodeFromElements, state.elements]);
 
-  const handleUseComponent = (component: any) => {
-    // Add component to canvas
+  const handleUseComponent = useCallback((component: LibraryComponent) => {
     dispatch({
       type: 'ADD_ELEMENT',
       payload: {
         id: `component-${Date.now()}`,
-        type: component.category?.toLowerCase() || 'container',
+        type: toElementType(component.category ?? 'container'),
         x: 100,
         y: 100,
         width: 200,
         height: 100,
         styles: {},
-        props: { ...component.props },
+        props: { ...(component.props ?? {}) },
       },
     });
     setShowComponentLibrary(false);
-  };
+  }, [dispatch]);
 
   // Global keyboard shortcuts
   useEffect(() => {
@@ -195,14 +248,18 @@ const EnhancedVisualEditorContent: React.FC = () => {
       <Box sx={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
         {/* Left Sidebar - Component Library */}
         <VisualEditorSidebar
-          onClientSelect={(clientId) => console.log('Client selected:', clientId)}
-          onComponentDrag={(componentType) => console.log('Drag:', componentType)}
+          onClientSelect={(clientId) => {
+            dispatch({ type: 'ADD_NOTIFICATION', payload: { id: `notif-${Date.now()}`, type: 'info', title: 'Client Selected', message: `Client selected: ${clientId}`, timestamp: new Date(), read: false } });
+          }}
+          onComponentDrag={(componentType) => {
+            dispatch({ type: 'ADD_NOTIFICATION', payload: { id: `notif-${Date.now()}`, type: 'info', title: 'Component Drag', message: `Dragging: ${componentType}`, timestamp: new Date(), read: false } });
+          }}
           onComponentAdd={(componentType, position) => {
             dispatch({
               type: 'ADD_ELEMENT',
               payload: {
                 id: `component-${Date.now()}`,
-                type: componentType as any,
+                type: toElementType(componentType),
                 x: position.x,
                 y: position.y,
                 width: 200,
@@ -212,14 +269,15 @@ const EnhancedVisualEditorContent: React.FC = () => {
               },
             });
           }}
-          searchQuery=""
-          onSearchChange={() => {}}
-          selectedCategory="all"
-          onCategoryChange={() => {}}
+          searchQuery={sidebarSearch}
+          onSearchChange={setSidebarSearch}
+          selectedCategory={selectedCategory}
+          onCategoryChange={setSelectedCategory}
           onOpenAssetLibrary={() => setShowComponentLibrary(true)}
-          onOpenScrollStories={() => {}}
-          onOpenGoogleServices={() => {}}
-          onOpenNoteEditor={() => {}}
+          onOpenScrollStories={() => setShowLivePreviewPanel(true)}
+          onOpenGoogleServices={() => setShowSettings(true)}
+          onOpenNoteEditor={() => setShowCodeEditor(true)}
+          onOpenSettings={() => setShowSettings(true)}
         />
 
         {/* Canvas Area */}
@@ -242,7 +300,7 @@ const EnhancedVisualEditorContent: React.FC = () => {
               flexDirection: 'column',
               gap: 1,
               zIndex: 100}}>
-            <Tooltip title="Unified Code Studio (Cmd+Shift+C)" placement="left">
+            <Tooltip title={tokens.enhancedPage.fabs.unifiedStudio} placement="left">
               <Fab
                 size="small"
                 color={showUnifiedStudio ? 'primary' : 'default'}
@@ -252,7 +310,7 @@ const EnhancedVisualEditorContent: React.FC = () => {
               </Fab>
             </Tooltip>
 
-            <Tooltip title="Accessibility (Cmd+Shift+A)" placement="left">
+            <Tooltip title={tokens.enhancedPage.fabs.accessibility} placement="left">
               <Fab
                 size="small"
                 color={showAccessibility ? 'primary' : 'default'}
@@ -262,13 +320,13 @@ const EnhancedVisualEditorContent: React.FC = () => {
               </Fab>
             </Tooltip>
 
-            <Tooltip title="Export (Cmd+E)" placement="left">
+            <Tooltip title={tokens.enhancedPage.fabs.exportPanel} placement="left">
               <Fab size="small" onClick={() => setShowExporter(true)}>
                 <CloudUpload />
               </Fab>
             </Tooltip>
 
-            <Tooltip title="Component Library" placement="left">
+            <Tooltip title={tokens.enhancedPage.fabs.componentLibrary} placement="left">
               <Fab
                 size="small"
                 color={showComponentLibrary ? 'primary' : 'default'}
@@ -278,13 +336,13 @@ const EnhancedVisualEditorContent: React.FC = () => {
               </Fab>
             </Tooltip>
 
-            <Tooltip title="Shortcuts (Cmd+K)" placement="left">
+            <Tooltip title={tokens.enhancedPage.fabs.shortcuts} placement="left">
               <Fab size="small" onClick={() => setShowShortcuts(true)}>
                 <Keyboard />
               </Fab>
             </Tooltip>
 
-            <Tooltip title="Code Editor" placement="left">
+            <Tooltip title={tokens.enhancedPage.fabs.codeEditor} placement="left">
               <Fab
                 size="small"
                 color={showCodeEditor ? 'primary' : 'default'}
@@ -294,7 +352,7 @@ const EnhancedVisualEditorContent: React.FC = () => {
               </Fab>
             </Tooltip>
 
-            <Tooltip title="Live Preview Panel" placement="left">
+            <Tooltip title={tokens.enhancedPage.fabs.livePreviewPanel} placement="left">
               <Fab
                 size="small"
                 color={showLivePreviewPanel ? 'primary' : 'default'}
@@ -304,7 +362,7 @@ const EnhancedVisualEditorContent: React.FC = () => {
               </Fab>
             </Tooltip>
 
-            <Tooltip title="Preview Mode" placement="left">
+            <Tooltip title={tokens.enhancedPage.fabs.previewMode} placement="left">
               <Fab
                 size="small"
                 color={showLivePreview ? 'primary' : 'default'}
@@ -314,7 +372,7 @@ const EnhancedVisualEditorContent: React.FC = () => {
               </Fab>
             </Tooltip>
 
-            <Tooltip title="Settings" placement="left">
+            <Tooltip title={tokens.enhancedPage.fabs.settings} placement="left">
               <IconButton
                 size="small"
                 color={showSettings ? 'primary' : 'default'}
@@ -402,12 +460,40 @@ const EnhancedVisualEditorContent: React.FC = () => {
 export const EnhancedVisualEditorPage: React.FC<EnhancedVisualEditorPageProps> = ({
   projectId,
 }) => {
-  // Use projectId for project-specific loading
-  console.log('Loading project:', projectId);
-  
   return (
     <VisualEditorProvider>
-      <EnhancedVisualEditorContent />
+      <EnhancedVisualEditorPageLoader projectId={projectId} />
     </VisualEditorProvider>
   );
+};
+
+/** Inner component that can access the visual editor context to load a project */
+const EnhancedVisualEditorPageLoader: React.FC<{ projectId?: string }> = ({ projectId }) => {
+  const { loadProject } = useVisualEditor();
+
+  useEffect(() => {
+    if (projectId) {
+      loadProject({
+        id: projectId,
+        name: `Project ${projectId}`,
+        elements: [],
+        settings: {
+          width: 1200,
+          height: 800,
+          backgroundColor: '#ffffff',
+          gridSize: 10,
+          snapToGrid: true,
+        },
+        metadata: {
+          createdBy: 'current-user',
+          createdAt: new Date(),
+          lastModified: new Date(),
+          version: 1,
+        },
+        status: 'draft',
+      });
+    }
+  }, [projectId, loadProject]);
+
+  return <EnhancedVisualEditorContent />;
 };

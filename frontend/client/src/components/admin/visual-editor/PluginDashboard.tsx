@@ -115,22 +115,22 @@ const PluginDashboard: React.FC<PluginDashboardProps> = memo(({
   // Plugin options
   const pluginOptions: UsePluginsOptions = useMemo(() => ({
     onPluginInstalled: (data: { plugin: Plugin }) => {
-      // Handle plugin installed
+      setSelectedPlugin(data.plugin);
   },
-    onPluginRemoved: (data: { plugin: Plugin }) => {
-      // Handle plugin removed
+    onPluginRemoved: (_data: { plugin: Plugin }) => {
+      setSelectedPlugin(null);
   },
     onPluginLoaded: (data: { plugin: Plugin }) => {
-      // Handle plugin loaded
+      setSelectedPlugin(data.plugin);
   },
     onPluginUnloaded: (data: { plugin: Plugin }) => {
-      // Handle plugin unloaded
+      setSelectedPlugin(data.plugin);
   },
     onPluginEnabled: (data: { plugin: Plugin }) => {
-      // Handle plugin enabled
+      setSelectedPlugin(data.plugin);
   },
     onPluginDisabled: (data: { plugin: Plugin }) => {
-      // Handle plugin disabled
+      setSelectedPlugin(data.plugin);
   },
     onPluginInstallFailed: (data: { plugin: Plugin; error: string }) => {
       console.error('Plugin install failed:', data.error);
@@ -148,7 +148,7 @@ const PluginDashboard: React.FC<PluginDashboardProps> = memo(({
       console.error('Plugin error:', error);
   },
     onInitialized: () => {
-      // Handle initialized
+      setPage(0);
 }
 }), []);
 

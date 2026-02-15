@@ -244,8 +244,8 @@ export class CodeToCanvasParser {
    * Extract attributes from JSX element
    */
   private extractJSXAttributes(attributes: Array<t.JSXAttribute | t.JSXSpreadAttribute>) {
-    const props: Record<string, any> = {};
-    const styles: Record<string, any> = {};
+    const props: Record<string, unknown> = {};
+    const styles: Record<string, unknown> = {};
 
     attributes.forEach((attr) => {
       if (!t.isJSXAttribute(attr) return;
@@ -269,7 +269,7 @@ export class CodeToCanvasParser {
   /**
    * Extract JSX attribute value
    */
-  private extractJSXAttributeValue(value: t.JSXAttribute['value']): any {
+  private extractJSXAttributeValue(value: t.JSXAttribute['value']): string | number | boolean | Record<string, unknown> | null {
     if (!value) return true;
 
     if (t.isStringLiteral(value) {
@@ -290,7 +290,7 @@ export class CodeToCanvasParser {
       }
       if (t.isObjectExpression(expr) {
         // Parse style objects
-        const obj: Record<string, any> = {};
+        const obj: Record<string, unknown> = {};
         expr.properties.forEach((prop) => {
           if (t.isObjectProperty(prop) && t.isIdentifier(prop.key) {
             const key = prop.key.name;
@@ -334,8 +334,8 @@ export class CodeToCanvasParser {
   /**
    * Extract inline styles from HTML element
    */
-  private extractInlineStyles(element: HTMLElement): Record<string, any> {
-    const styles: Record<string, any> = {};
+  private extractInlineStyles(element: HTMLElement): Record<string, unknown> {
+    const styles: Record<string, unknown> = {};
 
     if (element.style) {
       // Convert CSSStyleDeclaration to object
@@ -353,8 +353,8 @@ export class CodeToCanvasParser {
   /**
    * Extract attributes from HTML element
    */
-  private extractHTMLAttributes(element: HTMLElement): Record<string, any> {
-    const props: Record<string, any> = {};
+  private extractHTMLAttributes(element: HTMLElement): Record<string, unknown> {
+    const props: Record<string, unknown> = {};
 
     Array.from(element.attributes).forEach((attr) => {
       if (attr.name === 'style') return; // Skip style, handled separately

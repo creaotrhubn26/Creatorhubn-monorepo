@@ -261,7 +261,7 @@ const DesignSystemDashboard: React.FC<DesignSystemDashboardProps> = memo(({
   const [showDocumentationDialog, setShowDocumentationDialog] = useState(false);
   const [activeTab, setActiveTab] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterType, setFilterType] = useState('all,');
+  const [filterType, setFilterType] = useState('all');
   const [filterCategory, setFilterCategory] = useState('all');
   const [sortBy, setSortBy] = useState('name');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
@@ -273,23 +273,24 @@ const DesignSystemDashboard: React.FC<DesignSystemDashboardProps> = memo(({
 
   // Design system options
   const designSystemOptions: UseDesignSystemOptions = useMemo(() => ({
-    onTokenAdded: (data: { token: DesignToken }) => {
-      // Handle token added
+    onTokenAdded: (_data: { token: DesignToken }) => {
+      setPage(0);
   },
-    onGuidelineAdded: (data: { guideline: DesignGuideline }) => {
-      // Handle guideline added
+    onGuidelineAdded: (_data: { guideline: DesignGuideline }) => {
+      setPage(0);
   },
-    onThemeAdded: (data: { theme: DesignTheme }) => {
-      // Handle theme added
+    onThemeAdded: (_data: { theme: DesignTheme }) => {
+      setPage(0);
   },
-    onThemeActivated: (data: { theme: DesignTheme }) => {
-      // Handle theme activated
+    onThemeActivated: (_data: { theme: DesignTheme }) => {
+      setFilterType('all');
+      setPage(0);
   },
     onError: (error: string) => {
-      console.error('Design system error, :', error);
+      console.error('Design system error:', error);
   },
     onInitialized: () => {
-      // Handle initialized
+      setPage(0);
 }
 }), []);
 

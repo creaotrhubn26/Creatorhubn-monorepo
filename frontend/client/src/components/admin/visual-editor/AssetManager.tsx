@@ -37,10 +37,27 @@ import {
 import { Folder, FileUpload as UploadIcon, CloudUpload, VideoLibrary } from '@mui/icons-material';
 import { FileUpload } from '@/lib/upload';
 
+interface Asset {
+  id: string;
+  name: string;
+  type: string;
+  url: string;
+  size: number;
+  uploadedAt: string;
+  index?: number;
+}
+
+interface MediaAssets {
+  images: Asset[];
+  videos: Asset[];
+  audio: Asset[];
+  documents: Asset[];
+}
+
 interface AssetManagerProps {
-  selectedProject?: any;
-  onFileUpload?: (file: any) => void;
-  onNotificationCreate?: (notification: any) => void; 
+  selectedProject?: { id: string; name?: string };
+  onFileUpload?: (file: File | Record<string, unknown>) => void;
+  onNotificationCreate?: (notification: Record<string, unknown>) => void; 
 }
 
 export const AssetManager: React.FC<AssetManagerProps> = ({
@@ -54,16 +71,11 @@ export const AssetManager: React.FC<AssetManagerProps> = ({
   const theming = useTheming('prototype_tester');
   
   // Asset state management
-  const [uploadedAssets, setUploadedAssets] = useState<any[]>([]);
+  const [uploadedAssets, setUploadedAssets] = useState<Asset[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [assetPanelOpen, setAssetPanelOpen] = useState(false);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
-  const [mediaAssets, setMediaAssets] = useState<{
-    images: any[];
-    videos: any[];
-    audio: any[];
-    documents: any[];
-  }>({
+  const [mediaAssets, setMediaAssets] = useState<MediaAssets>({
     images: [],
     videos: [],
     audio: [],
@@ -121,7 +133,7 @@ export const AssetManager: React.FC<AssetManagerProps> = ({
   const [uploadProgress, setUploadProgress] = useState(0);
   const [dragOver, setDragOver] = useState(false);
   const [selectedMediaType, setSelectedMediaType] = useState<'all' | 'images' | 'videos' | 'audio' | 'documents'>('all');
-  const [previewAsset, setPreviewAsset] = useState<any>(null);
+  const [previewAsset, setPreviewAsset] = useState<Asset | null>(null);
 
   // File upload handler
   const handleFileUpload = useCallback(async (files: FileList) => {
@@ -204,17 +216,17 @@ export const AssetManager: React.FC<AssetManagerProps> = ({
   }, [handleFileUpload]);
 
   // Asset preview
-  const handlePreviewAsset = useCallback((asset: any) => {
+  const handlePreviewAsset = useCallback((asset: Asset) => {
     setPreviewAsset(asset);
   }, []);
 
   // Organize media by type
-  const organizeMediaByType = useCallback((assets: any[]) => {
-    const organized = {
-      images: [] as any[],
-      videos: [] as any[],
-      audio: [] as any[],
-      documents: [] as any[],
+  const organizeMediaByType = useCallback((assets: Asset[]) => {
+    const organized: MediaAssets = {
+      images: [],
+      videos: [],
+      audio: [],
+      documents: [],
     };
 
     assets.forEach((asset, index) => {

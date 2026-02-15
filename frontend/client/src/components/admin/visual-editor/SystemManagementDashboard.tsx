@@ -184,7 +184,7 @@ const SystemManagementDashboard: React.FC<SystemManagementDashboardProps> = memo
   const [isMonitoring, setIsMonitoring] = useState(true);
   const [refreshInterval, setRefreshInterval] = useState(1000);
   const [showAlertsPanel, setShowAlertsPanel] = useState(false);
-  const [selectedItem, setSelectedItem] = useState<any>(null);
+  const [selectedItem, setSelectedItem] = useState<Record<string, unknown> | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [systemHealth, setSystemHealth] = useState<'healthy' | 'warning' | 'critical'>('healthy');
 
@@ -230,7 +230,7 @@ const SystemManagementDashboard: React.FC<SystemManagementDashboardProps> = memo
 };
 
   // Handle item click
-  const handleItemClick = useCallback((item: any) => {
+  const handleItemClick = useCallback((item: unknown) => {
     setSelectedItem(item);
     setDetailsOpen(true);
 }, []);
@@ -273,7 +273,7 @@ const SystemManagementDashboard: React.FC<SystemManagementDashboardProps> = memo
             <Typography variant="h6" sx={{ color: theming.colors.primary }}>System Health</Typography>
             <Chip
               label={systemHealth}
-              color={getHealthColor(systemHealth) as any}
+              color={getHealthColor(systemHealth) as 'default' | 'primary' | 'secondary' | 'error' | 'info' | 'success' | 'warning'}
               icon={getHealthIcon(systemHealth)}
             />
           </Box>

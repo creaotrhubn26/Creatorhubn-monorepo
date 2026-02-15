@@ -103,7 +103,7 @@ const OfflineIndicator: React.FC<OfflineIndicatorProps> = memo(({
       setSnackbarMessage(`Sync complete: ${result.syncedItems} items synced`);
       setShowSnackbar(true);
   },
-    onSyncError: (error: any) => {
+    onSyncError: (error: unknown) => {
       setSnackbarMessage(`Sync error: ${error.message || 'Unknown error'}`);
       setShowSnackbar(true);
   },

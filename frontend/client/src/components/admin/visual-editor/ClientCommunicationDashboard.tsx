@@ -193,7 +193,7 @@ const ClientCommunicationDashboard: React.FC<ClientCommunicationDashboardProps> 
               </Button>
             </Box>
             <List>
-              {communications.slice(0, 5).map((comm: any) => (
+              {communications.slice(0, 5).map((comm: Record<string, unknown>) => (
                 <ListItem key={comm.d}>
                   <ListItemText
                     primary={comm.subject || 'No Subject'}
@@ -226,7 +226,7 @@ const ClientCommunicationDashboard: React.FC<ClientCommunicationDashboardProps> 
               </Button>
             </Box>
             <List>
-              {segments.map((segment: any) => (
+              {segments.map((segment: Record<string, unknown>) => (
                 <ListItem key={segment.d}>
                   <ListItemText
                     primary={segment.name}
@@ -261,7 +261,7 @@ const ClientCommunicationDashboard: React.FC<ClientCommunicationDashboardProps> 
       </Box>
 
       <Grid container spacing={3}>
-        {templates.map((template: any) => (
+        {templates.map((template: Record<string, unknown>) => (
           <Grid item xs={2} md={6} lg={4} key={template.id}>
             <Card sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
@@ -313,7 +313,7 @@ const ClientCommunicationDashboard: React.FC<ClientCommunicationDashboardProps> 
       </Box>
 
       <Grid container spacing={3}>
-        {segments.map((segment: any) => (
+        {segments.map((segment: Record<string, unknown>) => (
           <Grid item xs={2} md={6} lg={4} key={segment.id}>
             <Card sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>

@@ -184,7 +184,7 @@ const ExportDashboard: React.FC<ExportDashboardProps> = memo(({
     versioning: true,
     backup: true
 });
-  const [searchQuery, setSearchQuery] = useState(', ');
+  const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState('all');
   const [sortBy, setSortBy] = useState('timestamp');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
@@ -192,32 +192,35 @@ const ExportDashboard: React.FC<ExportDashboardProps> = memo(({
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
+  const [exportPipelineStep, setExportPipelineStep] = useState(0);
 
   // Export options
   const exportHookOptions: UseExportOptions = useMemo(() => ({
-    onExportCompleted: (result: ExportResult) => {
+    onExportCompleted: (_result: ExportResult) => {
       setIsExporting(false);
       setExportProgress(100);
-      // Handle export completed
+      setFilterType('all');
+      setPage(0);
 },
-    onExportFailed: (result: ExportResult) => {
+    onExportFailed: (_result: ExportResult) => {
       setIsExporting(false);
       setExportProgress(0);
-      // Handle export failed
+      setPage(0);
 },
-    onExportStarted: (options: ExportOptions) => {
+    onExportStarted: (_options: ExportOptions) => {
       setIsExporting(true);
       setExportProgress(0);
-      // Handle export started
+      setExportPipelineStep(0);
 },
     onExportProgress: (progress: number) => {
       setExportProgress(progress);
 },
     onError: (error: string) => {
-      console.error('Export error, :', error);
+      console.error('Export error:', error);
   },
     onInitialized: () => {
-      // Handle initialized
+      setFilterType('all');
+      setPage(0);
 }
 }), []);
 
@@ -898,9 +901,9 @@ const ExportDashboard: React.FC<ExportDashboardProps> = memo(({
                   <Typography variant="subtitle1">Advanced Export Pipeline</Typography>
                 </AccordionSummary>
                 <AccordionDetails>
-                  <Stepper activeStep={isExporting ? 1 : 0} orientation="vertical">
+                  <Stepper activeStep={isExporting ? exportPipelineStep : 0} orientation="vertical">
                     <Step>
-                      <StepButton onClick={() => {}}>
+                      <StepButton onClick={() => setExportPipelineStep(0)}>
                         <StepLabel>Prepare Data</StepLabel>
                       </StepButton>
                       <StepContent>
@@ -911,7 +914,7 @@ const ExportDashboard: React.FC<ExportDashboardProps> = memo(({
                       </StepContent>
                     </Step>
                     <Step>
-                      <StepButton onClick={() => {}}>
+                      <StepButton onClick={() => setExportPipelineStep(1)}>
                         <StepLabel>Optimize</StepLabel>
                       </StepButton>
                       <StepContent>
@@ -922,7 +925,7 @@ const ExportDashboard: React.FC<ExportDashboardProps> = memo(({
                       </StepContent>
                     </Step>
                     <Step>
-                      <StepButton onClick={() => {}}>
+                      <StepButton onClick={() => setExportPipelineStep(2)}>
                         <StepLabel>Compress</StepLabel>
                       </StepButton>
                       <StepContent>
@@ -1020,7 +1023,7 @@ const ExportDashboard: React.FC<ExportDashboardProps> = memo(({
                 </CardContent>
                 <CardActions>
                   <ButtonGroup variant="outlined" size="small">
-                    <Button startIcon={<Refresh />} onClick={() => {}}>Refresh</Button>
+                    <Button startIcon={<Refresh />} onClick={() => { setPage(0); setFilterType('all'); setSearchQuery(''); }}>Refresh</Button>
                     <Button startIcon={<FilterList />}>Filter</Button>
                     <Button startIcon={<Sort />}>Sort</Button>
                   </ButtonGroup>

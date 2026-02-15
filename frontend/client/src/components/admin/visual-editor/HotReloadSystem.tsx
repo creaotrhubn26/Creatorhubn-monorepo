@@ -158,11 +158,11 @@ export class HotReloadManager {
   /**
    * Capture form input values
    */
-  private captureFormState(doc: Document): Record<string, any> {
-    const formState: Record<string, any> = {};
+  private captureFormState(doc: Document): Record<string, unknown> {
+    const formState: Record<string, unknown> = {};
 
     const inputs = doc.querySelectorAll('input, textarea, select');
-    inputs.forEach((input: any, index) => {
+    inputs.forEach((input: Element, index: number) => {
       const id = input.id || input.name || `input-${index}`;
       if (input.type === 'checkbox' || input.type === 'radio') {
         formState[id] = { checked: input.checked, value: input.value };
@@ -177,9 +177,9 @@ export class HotReloadManager {
   /**
    * Restore form input values
    */
-  private restoreFormState(doc: Document, formState: Record<string, any>) {
+  private restoreFormState(doc: Document, formState: Record<string, unknown>) {
     const inputs = doc.querySelectorAll('input, textarea, select');
-    inputs.forEach((input: any, index) => {
+    inputs.forEach((input: Element, index: number) => {
       const id = input.id || input.name || `input-${index}`;
       const savedValue = formState[id];
 
@@ -209,7 +209,7 @@ export class HotReloadManager {
 
     // Scrollable elements
     const scrollables = doc.querySelectorAll('[style*="overflow"]');
-    scrollables.forEach((el: any, index) => {
+    scrollables.forEach((el: Element, index: number) => {
       if (el.scrollTop > 0 || el.scrollLeft > 0) {
         const id = el.id || `scroll-${index}`;
         scrollState[id] = {
@@ -233,7 +233,7 @@ export class HotReloadManager {
 
     // Restore scrollable elements
     const scrollables = doc.querySelectorAll('[style*="overflow"]');
-    scrollables.forEach((el: any, index) => {
+    scrollables.forEach((el: Element, index: number) => {
       const id = el.id || `scroll-${index}`;
       if (scrollState[id]) {
         el.scrollLeft = scrollState[id].x;

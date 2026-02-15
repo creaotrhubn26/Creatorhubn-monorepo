@@ -61,115 +61,115 @@ const SkeletonFallback: React.FC<{ height?: number }> = ({ height = 200 }) => (
 );
 
 // Lazy component wrappers with error boundaries
-export const LazyScrollStoriesDialog: React.FC<any> = (props) => (
+export const LazyScrollStoriesDialog: React.FC<Record<string, unknown>> = (props) => (
   <Suspense fallback={<LoadingFallback message="Loading Scroll Stories..." />}>
     <ScrollStoriesDialog {...props} />
   </Suspense>
 );
 
-export const LazyAssetLibraryDialog: React.FC<any> = (props) => (
+export const LazyAssetLibraryDialog: React.FC<Record<string, unknown>> = (props) => (
   <Suspense fallback={<LoadingFallback message="Loading Asset Library..." />}>
     <AssetLibraryDialog {...props} />
   </Suspense>
 );
 
-export const LazyQualityAnalysisDialog: React.FC<any> = (props) => (
+export const LazyQualityAnalysisDialog: React.FC<Record<string, unknown>> = (props) => (
   <Suspense fallback={<LoadingFallback message="Loading Quality Analysis..." />}>
     <QualityAnalysisDialog {...props} />
   </Suspense>
 );
 
-export const LazyGoogleServicesDialog: React.FC<any> = (props) => (
+export const LazyGoogleServicesDialog: React.FC<Record<string, unknown>> = (props) => (
   <Suspense fallback={<LoadingFallback message="Loading Google Services..." />}>
     <GoogleServicesDialog {...props} />
   </Suspense>
 );
 
-export const LazyNoteEditorDialog: React.FC<any> = (props) => (
+export const LazyNoteEditorDialog: React.FC<Record<string, unknown>> = (props) => (
   <Suspense fallback={<LoadingFallback message="Loading Note Editor..." />}>
     <NoteEditorDialog {...props} />
   </Suspense>
 );
 
-export const LazyPlanModeView: React.FC<any> = (props) => (
+export const LazyPlanModeView: React.FC<Record<string, unknown>> = (props) => (
   <Suspense fallback={<SkeletonFallback height={400} />}>
     <PlanModeView {...props} />
   </Suspense>
 );
 
-export const LazyDesignerView: React.FC<any> = (props) => (
+export const LazyDesignerView: React.FC<Record<string, unknown>> = (props) => (
   <Suspense fallback={<SkeletonFallback height={600} />}>
     <DesignerView {...props} />
   </Suspense>
 );
 
-export const LazyComponentsView: React.FC<any> = (props) => (
+export const LazyComponentsView: React.FC<Record<string, unknown>> = (props) => (
   <Suspense fallback={<SkeletonFallback height={500} />}>
     <ComponentsView {...props} />
   </Suspense>
 );
 
-export const LazyCodeView: React.FC<any> = (props) => (
+export const LazyCodeView: React.FC<Record<string, unknown>> = (props) => (
   <Suspense fallback={<SkeletonFallback height={400} />}>
     <CodeView {...props} />
   </Suspense>
 );
 
-export const LazyPreviewView: React.FC<any> = (props) => (
+export const LazyPreviewView: React.FC<Record<string, unknown>> = (props) => (
   <Suspense fallback={<SkeletonFallback height={600} />}>
     <PreviewView {...props} />
   </Suspense>
 );
 
-export const LazySEOView: React.FC<any> = (props) => (
+export const LazySEOView: React.FC<Record<string, unknown>> = (props) => (
   <Suspense fallback={<SkeletonFallback height={400} />}>
     <SEOView {...props} />
   </Suspense>
 );
 
-export const LazyAdvancedCanvasFeatures: React.FC<any> = (props) => (
+export const LazyAdvancedCanvasFeatures: React.FC<Record<string, unknown>> = (props) => (
   <Suspense fallback={<LoadingFallback message="Loading Advanced Canvas Features..." />}>
     <AdvancedCanvasFeatures {...props} />
   </Suspense>
 );
 
-export const LazyAnimationTimeline: React.FC<any> = (props) => (
+export const LazyAnimationTimeline: React.FC<Record<string, unknown>> = (props) => (
   <Suspense fallback={<LoadingFallback message="Loading Animation Timeline..." />}>
     <AnimationTimeline {...props} />
   </Suspense>
 );
 
-export const LazyCodeGenerationStudio: React.FC<any> = (props) => (
+export const LazyCodeGenerationStudio: React.FC<Record<string, unknown>> = (props) => (
   <Suspense fallback={<LoadingFallback message="Loading Code Generation Studio..." />}>
     <CodeGenerationStudio {...props} />
   </Suspense>
 );
 
-export const LazyAssetManagementPanel: React.FC<any> = (props) => (
+export const LazyAssetManagementPanel: React.FC<Record<string, unknown>> = (props) => (
   <Suspense fallback={<LoadingFallback message="Loading Asset Management..." />}>
     <AssetManagementPanel {...props} />
   </Suspense>
 );
 
-export const LazyCollaborationPanel: React.FC<any> = (props) => (
+export const LazyCollaborationPanel: React.FC<Record<string, unknown>> = (props) => (
   <Suspense fallback={<LoadingFallback message="Loading Collaboration Features..." />}>
     <CollaborationPanel {...props} />
   </Suspense>
 );
 
-export const LazyErrorBoundary: React.FC<any> = (props) => (
+export const LazyErrorBoundary: React.FC<Record<string, unknown>> = (props) => (
   <Suspense fallback={<LoadingFallback message="Loading Error Boundary..." />}>
     <ErrorBoundary {...props} />
   </Suspense>
 );
 
-export const LazyLoadingSpinner: React.FC<any> = (props) => (
+export const LazyLoadingSpinner: React.FC<Record<string, unknown>> = (props) => (
   <Suspense fallback={<CircularProgress />}>
     <LoadingSpinner {...props} />
   </Suspense>
 );
 
-export const LazyPerformanceMonitor: React.FC<any> = (props) => (
+export const LazyPerformanceMonitor: React.FC<Record<string, unknown>> = (props) => (
   <Suspense fallback={<LoadingFallback message="Loading Performance Monitor..." />}>
     <PerformanceMonitor {...props} />
   </Suspense>

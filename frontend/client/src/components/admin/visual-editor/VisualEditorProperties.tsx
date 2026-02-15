@@ -50,6 +50,7 @@ import {
   GridOn as GridIcon,
   Science as ScienceIcon
 } from '@mui/icons-material';
+import { getVisualEditorTokens } from './visualEditorTokens';
 
 interface EditorElement {
   id: string;
@@ -79,7 +80,7 @@ interface EditorElement {
     background?: string;
     textStroke?: string;
 };
-  props: Record<string, any>;
+  props: Record<string, unknown>;
   children?: string[];
   parent?: string;
   icon?: string;
@@ -124,8 +125,9 @@ const VisualEditorProperties: React.FC<VisualEditorPropertiesProps> = ({
 }) => {
   // Theming system
   const theming = useTheming('prototype_tester');
+  const tokens = getVisualEditorTokens();
 
-  const handleStyleChange = (property: string, value: any) => {
+  const handleStyleChange = (property: string, value: unknown) => {
     if (selectedElement) {
       onElementUpdate(selectedElement.id, {
         styles: {
@@ -136,7 +138,7 @@ const VisualEditorProperties: React.FC<VisualEditorPropertiesProps> = ({
     }
   };
 
-  const handlePropChange = (property: string, value: any) => {
+  const handlePropChange = (property: string, value: unknown) => {
     if (selectedElement) {
       onElementUpdate(selectedElement.id, {
         props: {
@@ -151,10 +153,10 @@ const VisualEditorProperties: React.FC<VisualEditorPropertiesProps> = ({
     return (
       <Box sx={{ width: 200, height: '100%', p: 2 }}>
         <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-          Properties
+          {tokens.propertiesPanel.panelTitle}
         </Typography>
         <Typography color="text.secondary">
-          Select an element to edit its properties
+          {tokens.propertiesPanel.emptyState.body}
         </Typography>
       </Box>
     );
@@ -165,10 +167,10 @@ const VisualEditorProperties: React.FC<VisualEditorPropertiesProps> = ({
       {/* Header */}
       <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}>
         <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-          Properties
+          {tokens.propertiesPanel.panelTitle}
         </Typography>
         <Typography variant="body2" color="text.secondary">
-          {selectedElement.type.charAt(0).toUpperCase() + selectedElement.type.slice(1)} Element
+          {selectedElement.type.charAt(0).toUpperCase() + selectedElement.type.slice(1)} {tokens.propertiesPanel.panelSubtitleSuffix}
         </Typography>
       </Box>
 
@@ -176,22 +178,22 @@ const VisualEditorProperties: React.FC<VisualEditorPropertiesProps> = ({
       <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}>
         <ButtonGroup fullWidth size="small" sx={{ mb: 2 }}>
           <Button startIcon={<CopyIcon />} onClick={onElementCopy}>
-            Copy
+            {tokens.propertiesPanel.actions.copy}
           </Button>
           <Button startIcon={<AddIcon />} onClick={onElementDuplicate}>
-            Duplicate
+            {tokens.propertiesPanel.actions.duplicate}
           </Button>
           <Button startIcon={<DeleteIcon />} onClick={() => onElementDelete(selectedElement.id)} color="error">
-            Delete
+            {tokens.propertiesPanel.actions.delete}
           </Button>
         </ButtonGroup>
 
         <ButtonGroup fullWidth size="small">
           <Button startIcon={<LockIcon />} onClick={onElementLock}>
-            Lock
+            {tokens.propertiesPanel.actions.lock}
           </Button>
           <Button startIcon={<VisibilityIcon />} onClick={onElementVisibility}>
-            Hide
+            {tokens.propertiesPanel.actions.hide}
           </Button>
         </ButtonGroup>
       </Box>
@@ -201,12 +203,12 @@ const VisualEditorProperties: React.FC<VisualEditorPropertiesProps> = ({
         {/* Position & Size */}
         <Accordion defaultExpanded>
           <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-            <Typography variant="subtitle2">Position & Size</Typography>
+            <Typography variant="subtitle2">{tokens.propertiesPanel.singleSelect.positionSize}</Typography>
           </AccordionSummary>
           <AccordionDetails>
             <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
               <TextField
-                label="X"
+                label={tokens.propertiesPanel.labels.x}
                 type="number"
                 size="small"
                 value={selectedElement.x}
@@ -214,7 +216,7 @@ const VisualEditorProperties: React.FC<VisualEditorPropertiesProps> = ({
                 sx={{ flex: 1 }}
               />
               <TextField
-                label="Y"
+                label={tokens.propertiesPanel.labels.y}
                 type="number"
                 size="small"
                 value={selectedElement.y}
@@ -224,7 +226,7 @@ const VisualEditorProperties: React.FC<VisualEditorPropertiesProps> = ({
             </Box>
             <Box sx={{ display: 'flex', gap: 1 }}>
               <TextField
-                label="Width"
+                label={tokens.propertiesPanel.labels.width}
                 type="number"
                 size="small"
                 value={selectedElement.width}
@@ -232,7 +234,7 @@ const VisualEditorProperties: React.FC<VisualEditorPropertiesProps> = ({
                 sx={{ flex: 1 }}
               />
               <TextField
-                label="Height"
+                label={tokens.propertiesPanel.labels.height}
                 type="number"
                 size="small"
                 value={selectedElement.height}
@@ -246,26 +248,26 @@ const VisualEditorProperties: React.FC<VisualEditorPropertiesProps> = ({
         {/* Appearance */}
         <Accordion defaultExpanded>
           <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-            <Typography variant="subtitle2">Appearance</Typography>
+            <Typography variant="subtitle2">{tokens.propertiesPanel.singleSelect.appearance}</Typography>
           </AccordionSummary>
           <AccordionDetails>
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               <TextField
-                label="Background Color"
+                label={tokens.propertiesPanel.labels.backgroundColor}
                 type="color"
                 size="small"
                 value={selectedElement.styles.backgroundColor || '#ffffff'}
                 onChange={(e) => handleStyleChange('backgroundColor', e.target.value)}
               />
               <TextField
-                label="Text Color"
+                label={tokens.propertiesPanel.labels.textColor}
                 type="color"
                 size="small"
                 value={selectedElement.styles.color || '#000000'}
                 onChange={(e) => handleStyleChange('color', e.target.value)}
               />
               <TextField
-                label="Border Radius"
+                label={tokens.propertiesPanel.labels.borderRadius}
                 type="number"
                 size="small"
                 value={parseInt(selectedElement.styles.borderRadius || '0')}
@@ -278,7 +280,7 @@ const VisualEditorProperties: React.FC<VisualEditorPropertiesProps> = ({
                     onChange={(e) => handleStyleChange('opacity', e.target.checked ? 0.5 : 1)}
                   />
                 }
-                label="Transparency"
+                label={tokens.propertiesPanel.labels.transparency}
               />
             </Box>
           </AccordionDetails>
@@ -288,31 +290,31 @@ const VisualEditorProperties: React.FC<VisualEditorPropertiesProps> = ({
         {selectedElement.type === 'text' && (
           <Accordion defaultExpanded>
             <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-              <Typography variant="subtitle2">Typography</Typography>
+              <Typography variant="subtitle2">{tokens.propertiesPanel.singleSelect.typography}</Typography>
             </AccordionSummary>
             <AccordionDetails>
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                 <TextField
-                  label="Font Size"
+                  label={tokens.propertiesPanel.labels.fontSize}
                   type="number"
                   size="small"
                   value={parseInt(selectedElement.styles.fontSize || '16')}
                   onChange={(e) => handleStyleChange('fontSize', `${e.target.value}px`)}
                 />
                 <FormControl size="small">
-                  <InputLabel>Font Weight</InputLabel>
+                  <InputLabel>{tokens.propertiesPanel.labels.fontWeight}</InputLabel>
                   <Select
                     value={selectedElement.styles.fontWeight || 'normal'}
                     onChange={(e) => handleStyleChange('fontWeight', e.target.value)}
                   >
-                    <MenuItem value="normal">Normal</MenuItem>
-                    <MenuItem value="bold">Bold</MenuItem>
-                    <MenuItem value="lighter">Lighter</MenuItem>
-                    <MenuItem value="bolder">Bolder</MenuItem>
+                    <MenuItem value="normal">{tokens.propertiesPanel.options.normal}</MenuItem>
+                    <MenuItem value="bold">{tokens.propertiesPanel.options.bold}</MenuItem>
+                    <MenuItem value="lighter">{tokens.propertiesPanel.options.lighter}</MenuItem>
+                    <MenuItem value="bolder">{tokens.propertiesPanel.options.bolder}</MenuItem>
                   </Select>
                 </FormControl>
                 <TextField
-                  label="Line Height"
+                  label={tokens.propertiesPanel.labels.lineHeight}
                   type="number"
                   size="small"
                   value={parseFloat(selectedElement.styles.lineHeight || '1.5')}
@@ -326,13 +328,13 @@ const VisualEditorProperties: React.FC<VisualEditorPropertiesProps> = ({
         {/* Content */}
         <Accordion defaultExpanded>
           <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-            <Typography variant="subtitle2">Content</Typography>
+            <Typography variant="subtitle2">{tokens.propertiesPanel.singleSelect.content}</Typography>
           </AccordionSummary>
           <AccordionDetails>
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               {selectedElement.type === 'text' && (
                 <TextField
-                  label="Text Content"
+                  label={tokens.propertiesPanel.labels.textContent}
                   multiline
                   rows={3}
                   value={selectedElement.props.text || ''}
@@ -341,7 +343,7 @@ const VisualEditorProperties: React.FC<VisualEditorPropertiesProps> = ({
               )}
               {selectedElement.type === 'button' && (
                 <TextField
-                  label="Button Text"
+                  label={tokens.propertiesPanel.labels.buttonText}
                   value={selectedElement.props.text || ''}
                   onChange={(e) => handlePropChange('text', e.target.value)}
                 />
@@ -349,12 +351,12 @@ const VisualEditorProperties: React.FC<VisualEditorPropertiesProps> = ({
               {selectedElement.type === 'card' && (
                 <>
                   <TextField
-                    label="Card Title"
+                    label={tokens.propertiesPanel.labels.cardTitle}
                     value={selectedElement.props.title || ''}
                     onChange={(e) => handlePropChange('title', e.target.value)}
                   />
                   <TextField
-                    label="Card Content"
+                    label={tokens.propertiesPanel.labels.cardContent}
                     multiline
                     rows={3}
                     value={selectedElement.props.content || ''}
@@ -369,32 +371,32 @@ const VisualEditorProperties: React.FC<VisualEditorPropertiesProps> = ({
         {/* Layout */}
         <Accordion>
           <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-            <Typography variant="subtitle2">Layout</Typography>
+            <Typography variant="subtitle2">{tokens.propertiesPanel.singleSelect.layout}</Typography>
           </AccordionSummary>
           <AccordionDetails>
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               <TextField
-                label="Padding"
+                label={tokens.propertiesPanel.labels.padding}
                 size="small"
                 value={selectedElement.styles.padding || '0px'}
                 onChange={(e) => handleStyleChange('padding', e.target.value)}
               />
               <TextField
-                label="Margin"
+                label={tokens.propertiesPanel.labels.margin}
                 size="small"
                 value={selectedElement.styles.margin || '0px'}
                 onChange={(e) => handleStyleChange('margin', e.target.value)}
               />
               <FormControl size="small">
-                <InputLabel>Display</InputLabel>
+                <InputLabel>{tokens.propertiesPanel.labels.display}</InputLabel>
                 <Select
                   value={selectedElement.styles.display ||'block'}
                   onChange={(e) => handleStyleChange('display', e.target.value)}
                 >
-                  <MenuItem value="block">Block</MenuItem>
-                  <MenuItem value="inline">Inline</MenuItem>
-                  <MenuItem value="flex">Flex</MenuItem>
-                  <MenuItem value="grid">Grid</MenuItem>
+                  <MenuItem value="block">{tokens.propertiesPanel.options.displayBlock}</MenuItem>
+                  <MenuItem value="inline">{tokens.propertiesPanel.options.displayInline}</MenuItem>
+                  <MenuItem value="flex">{tokens.propertiesPanel.options.displayFlex}</MenuItem>
+                  <MenuItem value="grid">{tokens.propertiesPanel.options.displayGrid}</MenuItem>
                 </Select>
               </FormControl>
             </Box>

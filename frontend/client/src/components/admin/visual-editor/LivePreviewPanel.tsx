@@ -77,7 +77,7 @@ interface InteractionEvent {
   type: 'click' | 'hover' | 'input' | 'submit';
   target: string;
   timestamp: number;
-  data?: any;
+  data?: unknown;
 }
 
 const DEVICE_DIMENSIONS = {
@@ -200,7 +200,7 @@ export const LivePreviewPanel: React.FC<LivePreviewPanelProps> = ({ code, mode =
     setConsoleLogs((prev) => [...prev, log].slice(-100)); // Keep last 100 logs
   };
 
-  const addInteraction = (type: InteractionEvent['type'], target: string, data?: any) => {
+  const addInteraction = (type: InteractionEvent['type'], target: string, data?: unknown) => {
     const interaction: InteractionEvent = {
       id: Date.now().toString(),
       type,

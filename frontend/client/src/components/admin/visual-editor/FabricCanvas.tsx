@@ -139,18 +139,61 @@ export const FabricCanvas: React.FC = () => {
         });
         break;
 
-      case 'image': // For images, we'd need to load the image first
-        // Placeholder for now
-        obj = new fabric.Rect({
-          left: element.x,
-          top: element.y,
-          width: element.width,
-          height: element.height,
-          fill: '#e0e0e0',
-          stroke: '#9e9e9e',
-          strokeWidth: 1,
-        });
+      case 'image': {
+        // Load actual image if src is available, otherwise placeholder
+        const imgSrc = element.props.src as string | undefined;
+        if (imgSrc) {
+          // Create a temporary placeholder while the image loads
+          const placeholder = new fabric.Rect({
+            left: element.x,
+            top: element.y,
+            width: element.width,
+            height: element.height,
+            fill: '#e0e0e0',
+            stroke: '#9e9e9e',
+            strokeWidth: 1,
+          });
+          const placeholderWithId = placeholder as FabricObjectWithId;
+          placeholderWithId.set({ id: element.id });
+
+          // Load real image asynchronously and replace the placeholder
+          const imgElement = new Image();
+          imgElement.crossOrigin = 'anonymous';
+          imgElement.onload = () => {
+            if (!fabricCanvasRef.current) return;
+            const canvas = fabricCanvasRef.current;
+            const fabricImg = new fabric.FabricImage(imgElement, {
+              left: element.x,
+              top: element.y,
+              scaleX: element.width / (imgElement.naturalWidth || element.width),
+              scaleY: element.height / (imgElement.naturalHeight || element.height),
+              opacity: element.styles.opacity || 1,
+            });
+            const imgWithId = fabricImg as FabricObjectWithId;
+            imgWithId.set({ id: element.id });
+            canvas.remove(placeholder);
+            canvas.add(fabricImg);
+            canvas.renderAll();
+          };
+          imgElement.onerror = () => {
+            // Keep placeholder on error — already on canvas
+          };
+          imgElement.src = imgSrc;
+          obj = placeholder;
+        } else {
+          // No src: render a labeled placeholder
+          obj = new fabric.Rect({
+            left: element.x,
+            top: element.y,
+            width: element.width,
+            height: element.height,
+            fill: '#e0e0e0',
+            stroke: '#9e9e9e',
+            strokeWidth: 1,
+          });
+        }
         break;
+      }
 
       default: obj = new fabric.Rect({
           left: element.x,
@@ -240,7 +283,7 @@ export const FabricCanvas: React.FC = () => {
     };
 
     // Mouse move for collaborative cursors
-    const handleMouseMove = (e: any) => {
+    const handleMouseMove = (e: fabric.TPointerEventInfo) => {
       if (e.pointer) {
         updateCollaborativeCursor({
           userId: 'current-user',
@@ -340,8 +383,8 @@ export const FabricCanvas: React.FC = () => {
     );
 
     // Remove old cursor objects
-    const oldCursors = canvas.getObjects().filter((obj: any) => obj.isCursor);
-    oldCursors.forEach((obj: any) => canvas.remove(obj));
+    const oldCursors = canvas.getObjects().filter((obj) => (obj as FabricObjectWithCursor).isCursor);
+    oldCursors.forEach((obj) => canvas.remove(obj));
 
     // Add new cursor objects
     cursors.forEach((cursor: CollaborativeCursor) => {

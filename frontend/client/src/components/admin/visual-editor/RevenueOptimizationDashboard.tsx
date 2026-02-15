@@ -83,8 +83,7 @@ const RevenueOptimizationDashboard: React.FC<RevenueOptimizationDashboardProps> 
   const analytics = getAnalytics();
 
   const handleCalculatePricing = () => {
-    const result = calculatePricing(pricingData);
-    console.log('Pricing calculation: ', result);
+    calculatePricing(pricingData);
     setPricingDialogOpen(false);
 };
 
@@ -209,7 +208,7 @@ const RevenueOptimizationDashboard: React.FC<RevenueOptimizationDashboardProps> 
               </Button>
             </Box>
             <List>
-              {upsellingSuggestions.slice(0, 3).map((suggestion: any) => (
+              {upsellingSuggestions.slice(0, 3).map((suggestion: Record<string, unknown>) => (
                 <ListItem key={suggestion.id}>
                   <ListItemText
                     primary={suggestion.title}
@@ -248,7 +247,7 @@ const RevenueOptimizationDashboard: React.FC<RevenueOptimizationDashboardProps> 
             <CardContent sx={theming.getThemedCardSx()}>
               <Typography variant="h6" mb={2} sx={{ color: theming.colors.primary }}>Pricing Tiers</Typography>
               <List>
-                {pricingTiers.map((tier: any) => (
+                {pricingTiers.map((tier: Record<string, unknown>) => (
                   <ListItem key={tier.d}>
                     <ListItemText
                       primary={tier.name}
@@ -271,7 +270,7 @@ const RevenueOptimizationDashboard: React.FC<RevenueOptimizationDashboardProps> 
             <CardContent sx={theming.getThemedCardSx()}>
               <Typography variant="h6" mb={2} sx={{ color: theming.colors.primary }}>Market Rates</Typography>
               <List>
-                {marketRates.map((rate: any) => (
+                {marketRates.map((rate: Record<string, unknown>) => (
                   <ListItem key={rate.service}>
                     <ListItemText
                       primary={rate.service}
@@ -305,7 +304,7 @@ const RevenueOptimizationDashboard: React.FC<RevenueOptimizationDashboardProps> 
       </Box>
 
       <Grid container spacing={3}>
-        {upsellingSuggestions.map((suggestion: any) => (
+        {upsellingSuggestions.map((suggestion: Record<string, unknown>) => (
           <Grid item xs={12} md={6} lg={4} key={suggestion.id}>
             <Card sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>

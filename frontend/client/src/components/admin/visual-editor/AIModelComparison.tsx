@@ -164,7 +164,7 @@ export default function AIModelComparison({
     fetch('/api/user/kv', {
       method: 'POST', headers: { , 'Content-Type': 'application/json' }, credentials: 'include',
       body: JSON.stringify({ key: 'favorite_ai_model', value: model })
-    }).catch(() => {});
+    }).catch((err: unknown) => console.error('Operation failed:', err));
     localStorage.setItem('favorite_ai_model', model);
   }, []);
 

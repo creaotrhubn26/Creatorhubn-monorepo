@@ -316,23 +316,27 @@ const TemplateDashboard: React.FC<TemplateDashboardProps> = memo(({
 
   // Template options
   const templateOptions: UseTemplateOptions = useMemo(() => ({
-    onTemplateAdded: (data: { template: TemplateType }) => {
-      // Handle template added
+    onTemplateAdded: (_data: { template: TemplateType }) => {
+      setPage(0);
   },
-    onCategoryAdded: (data: { category: any }) => {
-      // Handle category added
+    onCategoryAdded: (_data: { category: string }) => {
+      setFilterCategory('all');
+      setPage(0);
   },
-    onSearchCompleted: (data: { query: any; results: TemplateType[] }) => {
-      // Handle search completed
+    onSearchCompleted: (_data: { query: string; results: TemplateType[] }) => {
+      setFilterType('all');
+      setPage(0);
   },
-    onSearchFailed: (data: { query: any; error: string }) => {
+    onSearchFailed: (data: { query: string; error: string }) => {
       console.error('Template search failed: ', data.error);
   },
     onError: (error: string) => {
       console.error('Template error:', error);
   },
     onInitialized: () => {
-      // Handle initialized
+      setFilterType('all');
+      setFilterCategory('all');
+      setPage(0);
 }
 }), []);
 
@@ -792,7 +796,7 @@ const TemplateDashboard: React.FC<TemplateDashboardProps> = memo(({
                     <ListItemSecondaryAction>
                       <ButtonGroup size="small">
                         <Button
-                          onClick={() => setSelectedTemplate(template as any)}
+                          onClick={() => setSelectedTemplate(template as TemplateType)}
                           startIcon={theming.getThemedIcon('edit')}
                         >
                           Edit

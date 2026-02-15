@@ -36,9 +36,9 @@ import {
 } from '@mui/icons-material';
 
 interface SEOToolsPanelProps {
-  selectedProject?: any;
-  onProjectUpdate?: (project: any) => void;
-  onNotificationCreate?: (notification: any) => void; 
+  selectedProject?: { id: string; name?: string };
+  onProjectUpdate?: (project: Record<string, unknown>) => void;
+  onNotificationCreate?: (notification: Record<string, unknown>) => void; 
 }
 
 export const SEOToolsPanel: React.FC<SEOToolsPanelProps> = ({
@@ -102,10 +102,10 @@ export const SEOToolsPanel: React.FC<SEOToolsPanelProps> = ({
   const [crawlProgress, setCrawlProgress] = useState(0);
   const [competitorUrl, setCompetitorUrl] = useState('');
   const [isAnalyzingCompetitor, setIsAnalyzingCompetitor] = useState(false);
-  const [seedKeyword, setSeedKeyword] = useState(', ');
+  const [seedKeyword, setSeedKeyword] = useState('');
   const [isResearchingKeywords, setIsResearchingKeywords] = useState(false);
-  const [keywordResearch, setKeywordResearch] = useState<any>(null);
-  const [jsonLDData, setJsonLDData] = useState<any>(null);
+  const [keywordResearch, setKeywordResearch] = useState<Record<string, unknown> | null>(null);
+  const [jsonLDData, setJsonLDData] = useState<Record<string, unknown> | null>(null);
   const [isGeneratingJSONLD, setIsGeneratingJSONLD] = useState(false);
 
   // SEO Crawl Functions  
@@ -514,7 +514,7 @@ export const SEOToolsPanel: React.FC<SEOToolsPanelProps> = ({
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {Object.entries(jsonLDData).map(([key, value]: [string, any], index: number) => (
+                  {Object.entries(jsonLDData).map(([key, value]: [string, unknown], index: number) => (
                     <TableRow key={index} hover>
                       <TableCell sx={{ fontWeight: 500 }}>{key}</TableCell>
                       <TableCell>

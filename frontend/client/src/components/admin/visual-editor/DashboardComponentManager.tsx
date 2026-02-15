@@ -92,19 +92,19 @@ import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegr
 import { useTheming } from '../../../utils/theming-helper';
 
 interface DashboardComponentManagerProps {
-  selectedProject?: any;
-  onProjectUpdate?: (project: any) => void;
-  onNotificationCreate?: (notification: any) => void;
+  selectedProject?: { id: string; name?: string };
+  onProjectUpdate?: (project: Record<string, unknown>) => void;
+  onNotificationCreate?: (notification: Record<string, unknown>) => void;
   profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'admin' | 'enterprise';
 }
 
 interface ComponentCustomization {
   id: string;
   componentId: string;
-  props: Record<string, any>;
-  styles: Record<string, any>;
-  layout: Record<string, any>;
-  behavior: Record<string, any>;
+  props: Record<string, unknown>;
+  styles: Record<string, unknown>;
+  layout: Record<string, unknown>;
+  behavior: Record<string, unknown>;
   enabled: boolean;
   visible: boolean;
 }

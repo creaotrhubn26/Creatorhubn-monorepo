@@ -78,7 +78,7 @@ export default function AIMultiFileContext({
   currentFile,
 }: AIMultiFileContextProps) {
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set();
-  const [fileTree, setFileTree] = useState<any[]>([]);
+  const [fileTree, setFileTree] = useState<Record<string, unknown>[]>([]);
   const [isScanning, setIsScanning] = useState(false);
   const [projectContext, setProjectContext] = useState<ProjectContext | null>(null);
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set([projectRoot]);
@@ -371,7 +371,7 @@ export default function AIMultiFileContext({
 }
 
 // Helper functions
-async function discoverProjectFiles(root: string): Promise<any[]> {
+async function discoverProjectFiles(root: string): Promise<Record<string, unknown>[]> {
   // In production, this would use File System API or backend endpoint
   // Mock implementation
   return [

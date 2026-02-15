@@ -121,14 +121,14 @@ const LanguageSelector: React.FC<LanguageSelectorProps> = memo(({
         onLanguageChange(language);
   }
   },
-    onLanguageLoaded: (language: string, namespace: string) => {
-      // Handle language loaded
+    onLanguageLoaded: (_language: string, _namespace: string) => {
+      setIsChanging(false);
 },
     onError: (error: string) => {
       console.error('i18n error:', error);
   },
     onReady: () => {
-      // Handle i18n ready
+      setIsChanging(false);
 }
 }), [onLanguageChange]);
 

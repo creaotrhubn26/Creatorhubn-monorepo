@@ -64,7 +64,7 @@ interface ToolsPanelProps {
   isOpen: boolean;
   onClose: () => void;
   mode?: 'drawer' | 'dialog';
-  selectedProject?: any;
+  selectedProject?: { id: string; name?: string };
   onProjectUpdate?: (project: unknown) => void;
   onNotificationCreate?: (notification: unknown) => void;
 }
@@ -203,7 +203,7 @@ export const ToolsPanel: React.FC<ToolsPanelProps> = ({
           read: false,
         });
         break;
-      default: console.log('Tool action:', action, data);
+      default: addNotification({ type: 'info', title: 'Tool Action', message: `Executed: ${action}`, read: false });
     }
   };
 

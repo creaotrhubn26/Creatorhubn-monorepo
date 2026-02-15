@@ -227,35 +227,37 @@ const DragDropDashboard: React.FC<DragDropDashboardProps> = memo(({
 
   // Drag drop options
   const dragDropOptions: UseDragDropOptions = useMemo(() => ({
-    onDragItemRegistered: (data: { item: DragItem }) => {
-      // Handle drag item registered
+    onDragItemRegistered: (_data: { item: DragItem }) => {
+      setPage(0);
   },
-    onDropZoneRegistered: (data: { zone: DropZone }) => {
-      // Handle drop zone registered
+    onDropZoneRegistered: (_data: { zone: DropZone }) => {
+      setPage(0);
   },
-    onDragStarted: (data: { item: DragItem; event: DragEvent | TouchEvent }) => {
-      // Handle drag started
+    onDragStarted: (_data: { item: DragItem; event: DragEvent | TouchEvent }) => {
+      setSelectedDragItem(_data.item);
   },
-    onDragEnded: (data: { item: DragItem; event: DragEvent | TouchEvent }) => {
-      // Handle drag ended
+    onDragEnded: (_data: { item: DragItem; event: DragEvent | TouchEvent }) => {
+      setSelectedDragItem(null);
   },
-    onDragOver: (data: { item: DragItem; zone: DropZone; event: DragEvent }) => {
-      // Handle drag over
+    onDragOver: (_data: { item: DragItem; zone: DropZone; event: DragEvent }) => {
+      setSelectedDropZone(_data.zone);
   },
-    onDropSuccessful: (data: { item: DragItem; zone: DropZone; event: DragEvent }) => {
-      // Handle drop successful
+    onDropSuccessful: (_data: { item: DragItem; zone: DropZone; event: DragEvent }) => {
+      setFilterType('all');
+      setPage(0);
   },
-    onDropRejected: (data: { item: DragItem; zone: DropZone; event: DragEvent }) => {
-      // Handle drop rejected
+    onDropRejected: (_data: { item: DragItem; zone: DropZone; event: DragEvent }) => {
+      setPage(0);
   },
     onDropFailed: (data: { item: DragItem; zone: DropZone; event: DragEvent; error: string }) => {
       console.error('Drop failed: ', data.error);
   },
     onError: (error: string) => {
-      console.error('Drag drop error, :', error);
+      console.error('Drag drop error:', error);
   },
     onInitialized: () => {
-      // Handle initialized
+      setFilterType('all');
+      setPage(0);
 }
 }), []);
 

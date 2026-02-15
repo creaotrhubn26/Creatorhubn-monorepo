@@ -85,8 +85,8 @@ interface ConflictItem {
   id: string;
   type: 'element' | 'style' | 'prop' | 'import';
   elementId?: string;
-  visualValue: any;
-  codeValue: any;
+  visualValue: unknown;
+  codeValue: unknown;
   resolution: 'keep_visual' | 'keep_code' | 'manual';
   description: string; 
 }
@@ -136,7 +136,9 @@ export const CodeSyncSystem: React.FC<CodeSyncSystemProps> = ({
   const [activeTab, setActiveTab] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
   const [showConflicts, setShowConflicts] = useState(false);
+  const [importText, setImportText] = useState('');
   const [generatedCode, setGeneratedCode] = useState({
+
     tsx: ',',
     mdx: '',
     imports: [] as string[],
@@ -297,7 +299,7 @@ ${elements}`;
   width: number;
   height: number;
   styles: React.CSSProperties;
-  props: Record<string, any>;
+  props: Record<string, unknown>;
   children?: string[];
   parent?: string;
 }
@@ -625,14 +627,14 @@ export interface ${project.name.replace(/\s+/g, ', ')}Project {
               placeholder="Paste your TSX/MDX code here..."
               variant="outlined"
               fullWidth
+              value={importText}
+              onChange={(e) => setImportText(e.target.value)}
               sx={{ fontFamily: 'monospace', fontSize: '0.8rem', mb: 2 }}
             />
             <Button
               variant="contained"
               startIcon={<Upload />}
-              onClick={() => {
-                // Handle import logic
-              }}
+              onClick={() => handleImportCode(importText, 'tsx')}
               fullWidth
               sx={theming.getThemedButtonSx()}
             >
@@ -661,9 +663,7 @@ export interface ${project.name.replace(/\s+/g, ', ')}Project {
                 <Button
                   variant="outlined"
                   startIcon={<VisibilityOff />}
-                  onClick={() => {
-                    // Handle sync from code
-                  }}
+                  onClick={() => handleSyncFromCode(generatedCode.tsx || '')}
                   fullWidth
                   disabled={syncState.syncStatus === 'syncing'}
                 >

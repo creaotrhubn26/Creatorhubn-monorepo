@@ -129,7 +129,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = memo(({
   // Theming system
   const theming = useTheming('prototype_tester');
   const [showSettingsDialog, setShowSettingsDialog] = useState(false);
-  const [searchQuery, setSearchQuery] = useState(', ');
+  const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState('all');
   const [sortBy, setSortBy] = useState('timestamp');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
@@ -138,23 +138,25 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = memo(({
 
   // Analytics options
   const analyticsOptions: UseAnalyticsOptions = useMemo(() => ({
-    onEventTracked: (event: AnalyticsEvent) => {
-      // Handle event tracked
+    onEventTracked: (_event: AnalyticsEvent) => {
+      setPage(0);
 },
-    onSessionStarted: (session: any) => {
-      // Handle session started
+    onSessionStarted: (_session: Record<string, unknown>) => {
+      setFilterType('all');
+      setPage(0);
 },
-    onSessionEnded: (session: any) => {
-      // Handle session ended
+    onSessionEnded: (_session: Record<string, unknown>) => {
+      setPage(0);
 },
-    onEventsFlushed: (data: { count: number }) => {
-      // Handle events flushed
+    onEventsFlushed: (_data: { count: number }) => {
+      setPage(0);
   },
     onError: (error: string) => {
-      console.error('Analytics error, :', error);
+      console.error('Analytics error:', error);
   },
     onInitialized: () => {
-      // Handle analytics initialized
+      setFilterType('all');
+      setPage(0);
 }
 }), []);
 

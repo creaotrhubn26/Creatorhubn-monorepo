@@ -32,6 +32,7 @@ import {
   Label,
   Description,
 } from '@mui/icons-material';
+import { getVisualEditorTokens } from './visualEditorTokens';
 
 interface ComponentItem {
   id: string;
@@ -46,82 +47,133 @@ interface ComponentSection {
   items: ComponentItem[];
 }
 
-const COMPONENT_SECTIONS: ComponentSection[] = [
-  {
-    id: 'layouts',
-    label: 'Layouts',
-    items: [
-      { id: 'sections', label: 'Sections', icon: <ViewModule />, description: 'Add Column' },
-      {
-        id: 'container',
-        label: 'Container',
-        icon: <Crop169 />,
-        description: 'Add Button for action',
-      },
-      { id: 'grid', label: 'Grid', icon: <ViewModule />, description: 'Divide blocks visually' },
-      {
-        id: 'columns',
-        label: 'Columns',
-        icon: <ViewColumn />,
-        description: 'Add Menu to navigate',
-      },
-    ],
-  },
-  {
-    id: 'basic',
-    label: 'Basic',
-    items: [
-      { id: 'div', label: 'Div Block', icon: <CheckBoxOutlineBlank />, description: 'Add Column' },
-      {
-        id: 'list',
-        label: 'List',
-        icon: <FormatListBulleted />,
-        description: 'Add Button for action',
-      },
-      {
-        id: 'list-item',
-        label: 'List Item',
-        icon: <FormatListBulleted />,
-        description: 'Divide blocks visually',
-      },
-      { id: 'link', label: 'Link Block', icon: <LinkIcon />, description: 'Add Menu to navigate' },
-      {
-        id: 'button',
-        label: 'Button',
-        icon: <SmartButton />,
-        description: 'Set time to this mail',
-      },
-    ],
-  },
-  {
-    id: 'media',
-    label: 'Media',
-    items: [
-      { id: 'image', label: 'Image', icon: <Image />, description: 'Add image' },
-      { id: 'video', label: 'Video', icon: <VideoLibrary />, description: 'Add Button for action' },
-      { id: 'youtube', label: 'Youtube', icon: <YouTube />, description: 'Divide blocks visually' },
-      {
-        id: 'lottie',
-        label: 'Lottie Animation',
-        icon: <Animation />,
-        description: 'Add Menu to navigate',
-      },
-    ],
-  },
-  {
-    id: 'forms',
-    label: 'Forms',
-    items: [
-      { id: 'form', label: 'Form Block', icon: <Description />, description: 'Add Column' },
-      { id: 'label', label: 'Label', icon: <Label />, description: 'Add Button for action' },
-      { id: 'input', label: 'Input', icon: <InputIcon />, description: 'Divide blocks visually' },
-    ],
-  },
-];
-
 export const ComponentLibrarySidebar: React.FC = () => {
+  const tokens = getVisualEditorTokens();
   const [expandedSections, setExpandedSections] = useState<string[]>(['layouts','basic']);
   const [selectedPage, setSelectedPage] = useState('home');
+
+  const COMPONENT_SECTIONS: ComponentSection[] = [
+    {
+      id: 'layouts',
+      label: tokens.componentLibrary.sections.layouts,
+      items: [
+        {
+          id: 'sections',
+          label: tokens.componentLibrary.items.layouts.sections.label,
+          icon: <ViewModule />,
+          description: tokens.componentLibrary.items.layouts.sections.description,
+        },
+        {
+          id: 'container',
+          label: tokens.componentLibrary.items.layouts.container.label,
+          icon: <Crop169 />,
+          description: tokens.componentLibrary.items.layouts.container.description,
+        },
+        {
+          id: 'grid',
+          label: tokens.componentLibrary.items.layouts.grid.label,
+          icon: <ViewModule />,
+          description: tokens.componentLibrary.items.layouts.grid.description,
+        },
+        {
+          id: 'columns',
+          label: tokens.componentLibrary.items.layouts.columns.label,
+          icon: <ViewColumn />,
+          description: tokens.componentLibrary.items.layouts.columns.description,
+        },
+      ],
+    },
+    {
+      id: 'basic',
+      label: tokens.componentLibrary.sections.basic,
+      items: [
+        {
+          id: 'div',
+          label: tokens.componentLibrary.items.basic.div.label,
+          icon: <CheckBoxOutlineBlank />,
+          description: tokens.componentLibrary.items.basic.div.description,
+        },
+        {
+          id: 'list',
+          label: tokens.componentLibrary.items.basic.list.label,
+          icon: <FormatListBulleted />,
+          description: tokens.componentLibrary.items.basic.list.description,
+        },
+        {
+          id: 'list-item',
+          label: tokens.componentLibrary.items.basic.listItem.label,
+          icon: <FormatListBulleted />,
+          description: tokens.componentLibrary.items.basic.listItem.description,
+        },
+        {
+          id: 'link',
+          label: tokens.componentLibrary.items.basic.link.label,
+          icon: <LinkIcon />,
+          description: tokens.componentLibrary.items.basic.link.description,
+        },
+        {
+          id: 'button',
+          label: tokens.componentLibrary.items.basic.button.label,
+          icon: <SmartButton />,
+          description: tokens.componentLibrary.items.basic.button.description,
+        },
+      ],
+    },
+    {
+      id: 'media',
+      label: tokens.componentLibrary.sections.media,
+      items: [
+        {
+          id: 'image',
+          label: tokens.componentLibrary.items.media.image.label,
+          icon: <Image />,
+          description: tokens.componentLibrary.items.media.image.description,
+        },
+        {
+          id: 'video',
+          label: tokens.componentLibrary.items.media.video.label,
+          icon: <VideoLibrary />,
+          description: tokens.componentLibrary.items.media.video.description,
+        },
+        {
+          id: 'youtube',
+          label: tokens.componentLibrary.items.media.youtube.label,
+          icon: <YouTube />,
+          description: tokens.componentLibrary.items.media.youtube.description,
+        },
+        {
+          id: 'lottie',
+          label: tokens.componentLibrary.items.media.lottie.label,
+          icon: <Animation />,
+          description: tokens.componentLibrary.items.media.lottie.description,
+        },
+      ],
+    },
+    {
+      id: 'forms',
+      label: tokens.componentLibrary.sections.forms,
+      items: [
+        {
+          id: 'form',
+          label: tokens.componentLibrary.items.forms.form.label,
+          icon: <Description />,
+          description: tokens.componentLibrary.items.forms.form.description,
+        },
+        {
+          id: 'label',
+          label: tokens.componentLibrary.items.forms.label.label,
+          icon: <Label />,
+          description: tokens.componentLibrary.items.forms.label.description,
+        },
+        {
+          id: 'input',
+          label: tokens.componentLibrary.items.forms.input.label,
+          icon: <InputIcon />,
+          description: tokens.componentLibrary.items.forms.input.description,
+        },
+      ],
+    },
+  ];
 
   const toggleSection = (sectionId: string) => {
     setExpandedSections((prev) =>
@@ -143,7 +195,7 @@ export const ComponentLibrarySidebar: React.FC = () => {
       {/* Header */}
       <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider', bgcolor: 'white' }}>
         <Typography variant="subtitle2" fontWeight={700} color="text.secondary">
-          Pages
+          {tokens.componentLibrary.pagesLabel}
         </Typography>
       </Box>
 
@@ -161,7 +213,7 @@ export const ComponentLibrarySidebar: React.FC = () => {
           <ListItemIcon sx={{ minWidth: 36 }}>
             <Home fontSize="small" />
           </ListItemIcon>
-          <ListItemText primary="Home" primaryTypographyProps={{ fontSize: '0.875rem' }} />
+          <ListItemText primary={tokens.componentLibrary.homeLabel} primaryTypographyProps={{ fontSize: '0.875rem' }} />
         </ListItemButton>
       </Box>
 
@@ -174,7 +226,7 @@ export const ComponentLibrarySidebar: React.FC = () => {
             fontWeight={700}
             color="text.secondary"
             sx={{ textTransform: 'uppercase', letterSpacing: 0.5 }}>
-            Layouts
+            {tokens.componentLibrary.sections.layouts}
           </Typography>
         </Box>
 

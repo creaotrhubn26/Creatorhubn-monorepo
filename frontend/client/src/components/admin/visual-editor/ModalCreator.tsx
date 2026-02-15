@@ -95,7 +95,7 @@ interface CustomModal {
   name: string;
   type: 'dialog' | 'confirm' | 'form' | 'display';
   title: string;
-  content: any;
+  content: React.ReactNode | string;
   actions: Array<{
     id: string;
     label: string;
@@ -131,9 +131,9 @@ interface CustomModal {
 }
 
 interface ModalCreatorProps {
-  selectedProject?: any;
-  onProjectUpdate?: (project: any) => void;
-  onNotificationCreate?: (notification: any) => void;
+  selectedProject?: { id: string; name?: string };
+  onProjectUpdate?: (project: Record<string, unknown>) => void;
+  onNotificationCreate?: (notification: Record<string, unknown>) => void;
 }
 
 
@@ -234,6 +234,8 @@ const ModalCreator: React.FC<ModalCreatorProps> = ({
   
   // Customization visibility
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [modalTheme, setModalTheme] = useState<'light' | 'dark' | 'custom'>('light');
+  const [modalBorderRadius, setModalBorderRadius] = useState(4);
 
   // Track tab navigation for analytics
   const handleTabChange = useCallback((newTab: 'templates' | 'customize' | 'preview' | 'export') => {
@@ -808,8 +810,8 @@ const ModalCreator: React.FC<ModalCreatorProps> = ({
                           <FormControl fullWidth>
                             <InputLabel>Theme</InputLabel>
                             <Select
-                              value="light"
-                              onChange={() => {}}
+                              value={modalTheme}
+                              onChange={(e) => setModalTheme(e.target.value as 'light' | 'dark' | 'custom')}
                               label="Theme"
                             >
                               <MenuItem value="light">Light</MenuItem>
@@ -821,8 +823,8 @@ const ModalCreator: React.FC<ModalCreatorProps> = ({
                         <Grid item xs={12} sm={4}>
                           <Typography gutterBottom>Border Radius</Typography>
                           <Slider
-                            value={4}
-                            onChange={() => {}}
+                            value={modalBorderRadius}
+                            onChange={(_, val) => setModalBorderRadius(val as number)}
                             step={1}
                             min={0}
                             max={20}
@@ -905,7 +907,7 @@ const ModalCreator: React.FC<ModalCreatorProps> = ({
                   startIcon={<PreviewIcon />}
                   onClick={() => {
                     // This would open the modal for preview
-                    console.log('Preview modal');
+                    setActiveTab('preview');
                 }}
                 >
                   Open Preview

@@ -96,7 +96,7 @@ export const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
   const [versionHistory, setVersionHistory] = useState<VersionHistory[]>([]);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const editorRef = useRef<any>(null);
+  const editorRef = useRef<HTMLDivElement | null>(null);
   const [autoSave, setAutoSave] = useState(true);
   const [liveSync, setLiveSync] = useState(true);
 

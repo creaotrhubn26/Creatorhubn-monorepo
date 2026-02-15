@@ -83,11 +83,12 @@ const TemplatePresetDashboard: React.FC<TemplatePresetDashboardProps> = ({
   
   // Theming system
   const theming = useTheming('prototype_tester');
-  const [selectedCategory, setSelectedCategory] = useState('all,');
-  const [selectedProfession, setSelectedProfession] = useState('all,');
+  const [selectedCategory, setSelectedCategory] = useState('all');
+  const [selectedProfession, setSelectedProfession] = useState('all');
   const [showTemplateDialog, setShowTemplateDialog] = useState(false);
   const [showPresetDialog, setShowPresetDialog] = useState(false);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' | 'warning' | 'info' });
+  const [errorDismissed, setErrorDismissed] = useState(false);
 
   const {
     templates,
@@ -199,8 +200,8 @@ const TemplatePresetDashboard: React.FC<TemplatePresetDashboardProps> = ({
       </Box>
 
       {/* Error Alert */}
-      {error && (
-        <Alert severity="error" sx={{ mb:  2 }} onClose={() => {}}>
+      {error && !errorDismissed && (
+        <Alert severity="error" sx={{ mb:  2 }} onClose={() => setErrorDismissed(true)}>
           {error}
         </Alert>
       )}

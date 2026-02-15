@@ -106,35 +106,37 @@ const ResponsiveDesignDashboard: React.FC<ResponsiveDesignDashboardProps> = memo
 
   // Responsive design options
   const responsiveOptions: UseResponsiveDesignOptions = useMemo(() => ({
-    onBreakpointChanged: (data: { breakpoint: string }) => {
-      // Handle breakpoint changed
+    onBreakpointChanged: (_data: { breakpoint: string }) => {
+      setFilterType('all');
+      setPage(0);
   },
-    onOrientationChanged: (data: { orientation: 'portrait' | 'landscape' }) => {
-      // Handle orientation changed
+    onOrientationChanged: (_data: { orientation: 'portrait' | 'landscape' }) => {
+      setPage(0);
   },
-    onViewportChanged: (data: { viewport: { width: number; height: number; scale: number } }) => {
-      // Handle viewport changed
+    onViewportChanged: (_data: { viewport: { width: number; height: number; scale: number } }) => {
+      setPage(0);
   },
-    onDeviceTypeChanged: (data: { deviceType: 'mobile' | 'tablet' | 'desktop' | 'unknown' }) => {
-      // Handle device type changed
+    onDeviceTypeChanged: (_data: { deviceType: 'mobile' | 'tablet' | 'desktop' | 'unknown' }) => {
+      setPage(0);
   },
-    onTouchSupportChanged: (data: { touchSupport: boolean }) => {
-      // Handle touch support changed
+    onTouchSupportChanged: (_data: { touchSupport: boolean }) => {
+      setPage(0);
   },
-    onAccessibilityMetricsChanged: (data: { metrics: any }) => {
-      // Handle accessibility metrics changed
+    onAccessibilityMetricsChanged: (_data: { metrics: Record<string, unknown> }) => {
+      setPage(0);
   },
-    onElementResized: (data: { element: Element; size: DOMRectReadOnly }) => {
-      // Handle element resized
+    onElementResized: (_data: { element: Element; size: DOMRectReadOnly }) => {
+      setPage(0);
   },
-    onElementVisible: (data: { element: Element }) => {
-      // Handle element visible
+    onElementVisible: (_data: { element: Element }) => {
+      setPage(0);
   },
     onError: (error: string) => {
       console.error('Responsive design error:', error);
     },
     onInitialized: () => {
-      // Handle initialized
+      setFilterType('all');
+      setPage(0);
 }
 }), []);
 

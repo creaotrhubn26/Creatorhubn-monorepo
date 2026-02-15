@@ -29,6 +29,7 @@ import { BrandingValidator } from './BrandingValidator';
 import { FeatureEditor } from './FeatureEditor';
 import { useToast } from '@/hooks/use-toast';
 import { useWireMock } from '@/hooks/useWireMock';
+import { getVisualEditorTokens } from '../admin/visual-editor/visualEditorTokens';
 
 interface VisualEditorProps {
   enabled?: boolean;
@@ -44,6 +45,7 @@ interface EditableElement {
 }
 
 export function VisualEditor({ enabled = false, onToggle }: VisualEditorProps) {
+  const tokens = getVisualEditorTokens();
   const [isActive, setIsActive] = useState(enabled);
   const [selectedElement, setSelectedElement] = useState<EditableElement | null>(null);
   const [showColorPicker, setShowColorPicker] = useState(false);
@@ -92,6 +94,28 @@ export function VisualEditor({ enabled = false, onToggle }: VisualEditorProps) {
   },
 };
 
+  const iconMotionSx = {
+    transition: `transform ${tokens.iconAnimation.durationMs}ms ${tokens.iconAnimation.easing}`,
+    '&:hover': { transform: `scale(${tokens.iconAnimation.scaleHover})` },
+    '&:active': { transform: `scale(${tokens.iconAnimation.scaleActive})` },
+  };
+
+  const getFabIcon = () => {
+    switch (tokens.fab.icon) {
+      case 'palette':
+        return <PaletteIcon />;
+      case 'paint':
+        return <FormatPaintIcon />;
+      case 'visibility':
+        return <VisibilityIcon />;
+      case 'tune':
+        return <TuneIcon />;
+      case 'edit':
+      default:
+        return <EditIcon />;
+    }
+  };
+
   // Toggle Visual Editor
   const toggleVisualEditor = () => {
     const newState = !isActive;
@@ -101,15 +125,15 @@ export function VisualEditor({ enabled = false, onToggle }: VisualEditorProps) {
     if (newState) {
       enableEditMode();
       toast({
-        title: '🎨 Visual Editor aktivert',
-        description: 'Klikk på elementer for å redigere dem',
+        title: tokens.visualEditorPanel.toast.enabledTitle,
+        description: tokens.visualEditorPanel.toast.enabledDescription,
         variant: 'default',
     });
   } else {
       disableEditMode();
       toast({
-        title: '✅ Visual Editor deaktivert',
-        description: 'Endringer er lagret',
+        title: tokens.visualEditorPanel.toast.disabledTitle,
+        description: tokens.visualEditorPanel.toast.disabledDescription,
         variant: 'default',
     });
   }
@@ -269,8 +293,8 @@ export function VisualEditor({ enabled = false, onToggle }: VisualEditorProps) {
     setShowColorPicker(true);
 
     toast({
-      title: `🎯 ${getElementDisplayName(elementType)} valgt`,
-      description: 'Velg en farge for å endre utseendet',
+      title: `${getElementDisplayName(elementType)} ${tokens.visualEditorPanel.selectedLabel}`,
+      description: tokens.visualEditorPanel.instructions,
       variant: 'default',
   });
 };
@@ -296,10 +320,10 @@ export function VisualEditor({ enabled = false, onToggle }: VisualEditorProps) {
   // Get element display name
   const getElementDisplayName = (type: string): string => {
     const names = {
-      button: 'Knapp',
-      text: 'Tekst',
-      background: 'Bakgrunn',
-      icon: 'Ikon',
+      button: tokens.visualEditorPanel.elementTypes.button,
+      text: tokens.visualEditorPanel.elementTypes.text,
+      background: tokens.visualEditorPanel.elementTypes.background,
+      icon: tokens.visualEditorPanel.elementTypes.icon,
   };
     return names[type] || type;
 };
@@ -336,8 +360,8 @@ export function VisualEditor({ enabled = false, onToggle }: VisualEditorProps) {
     setBrandingWarning(null);
 
     toast({
-      title: '🎨 Farge endret',
-      description: `${getElementDisplayName(selectedElement.type)} oppdatert med ny farge`,
+      title: tokens.visualEditorPanel.toast.colorChangedTitle,
+      description: tokens.visualEditorPanel.toast.colorChangedDescription,
       variant: 'default',
   });
 };
@@ -365,14 +389,14 @@ export function VisualEditor({ enabled = false, onToggle }: VisualEditorProps) {
       localStorage.setItem('visual-editor-changes', JSON.stringify(changes));
 
       toast({
-        title: '💾 Endringer lagret',
-        description: `${Object.keys(changes).length} endringer lagret`,
+        title: tokens.visualEditorPanel.toast.saveSuccessTitle,
+        description: `${Object.keys(changes).length} ${tokens.visualEditorPanel.toast.saveSuccessDescription}`,
         variant: 'default',
     });
   } catch (error) {
       toast({
-        title: '❌ Lagring feilet',
-        description: 'Kunne ikke lagre endringer',
+        title: tokens.visualEditorPanel.toast.saveErrorTitle,
+        description: tokens.visualEditorPanel.toast.saveErrorDescription,
         variant: 'destructive',
     });
   }
@@ -391,8 +415,8 @@ export function VisualEditor({ enabled = false, onToggle }: VisualEditorProps) {
 
     setChanges({});
     toast({
-      title: '↩️ Endringer angret',
-      description: 'Alle endringer er tilbakestilt',
+      title: tokens.visualEditorPanel.toast.undoTitle,
+      description: tokens.visualEditorPanel.toast.undoDescription,
       variant: 'default',
   });
 };
@@ -402,7 +426,7 @@ export function VisualEditor({ enabled = false, onToggle }: VisualEditorProps) {
       {/* Floating Action Button */}
       <Fab
         color="primary"
-        aria-label="toggle visual editor"
+        aria-label={tokens.fab.label}
         onClick={toggleVisualEditor}
         sx={{
           position: 'fixed',
@@ -411,9 +435,11 @@ export function VisualEditor({ enabled = false, onToggle }: VisualEditorProps) {
           zIndex: 99,
           backgroundColor: isActive ? 'secondary.main' : 'primary.main', '&:hover': {
             backgroundColor: isActive ? 'secondary.dark' : 'primary.dark',
-        }}}
+        },
+          ...iconMotionSx,
+        }}
       >
-        {isActive ? <CloseIcon /> : <EditIcon />}
+        {isActive ? <CloseIcon /> : getFabIcon()}
       </Fab>
 
       {/* Visual Editor Panel */}
@@ -443,24 +469,24 @@ export function VisualEditor({ enabled = false, onToggle }: VisualEditorProps) {
               {/* Header */}
               <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
                 <Typography variant="h6" color="primary.main" sx={{  fontWeight: 700 }}>
-                  🎨 Visual Editor
+                  {tokens.visualEditorPanel.title}
                 </Typography>
-                <IconButton size="small" onClick={toggleVisualEditor}>
+                <IconButton size="small" onClick={toggleVisualEditor} sx={iconMotionSx}>
                   <CloseIcon />
                 </IconButton>
               </Stack>
 
               {/* Instructions */}
               <Alert severity="info" sx={{ mb:  2 }}>
-                Klikk på elementer for å redigere dem. Endringer valideres mot
-                merkevare-retningslinjer.
+                {tokens.visualEditorPanel.instructions}
               </Alert>
 
               {/* Selected Element Info */}
               {selectedElement && (
                 <Box sx={{ mb:  2 }}>
                   <Typography variant="subtitle2" gutterBottom>
-                    Valgt element: </Typography>
+                    {tokens.visualEditorPanel.selectedLabel}:
+                  </Typography>
                   <Chip
                     icon={<PaletteIcon />}
                     label={getElementDisplayName(selectedElement.type)}
@@ -487,8 +513,8 @@ export function VisualEditor({ enabled = false, onToggle }: VisualEditorProps) {
                   onFeatureUpdate={(feature) => {
                     console.log('🔧 Feature oppdatert: ', feature);
                     toast({
-                      title: '🔧 Feature oppdatert',
-                      description: `${feature.name} er nå ${feature.enabled ? 'aktivert' : 'deaktivert'}`,
+                      title: tokens.visualEditorPanel.toast.featureUpdatedTitle,
+                      description: `${feature.name} ${tokens.visualEditorPanel.toast.featureUpdatedDescription} ${feature.enabled ? tokens.propertiesPanel.options.enabled : tokens.propertiesPanel.options.disabled}`,
                       variant: 'default',
                   });
                 }}
@@ -498,36 +524,39 @@ export function VisualEditor({ enabled = false, onToggle }: VisualEditorProps) {
 
               {/* Actions */}
               <Stack direction="row" spacing={1} mt={2}>
-                <Tooltip title="Lagre endringer">
+                <Tooltip title={tokens.visualEditorPanel.saveTooltip}>
                   <IconButton
                     color="primary"
                     onClick={saveChanges}
                     disabled={Object.keys(changes).length === 0}
+                    sx={iconMotionSx}
                   >
                     <SaveIcon />
                   </IconButton>
                 </Tooltip>
 
-                <Tooltip title="Angre alle endringer">
+                <Tooltip title={tokens.visualEditorPanel.undoTooltip}>
                   <IconButton
                     color="error"
                     onClick={undoChanges}
                     disabled={Object.keys(changes).length === 0}
+                    sx={iconMotionSx}
                   >
                     <UndoIcon />
                   </IconButton>
                 </Tooltip>
 
-                <Tooltip title="Forhandsvis endringer">
-                  <IconButton color="info">
+                <Tooltip title={tokens.visualEditorPanel.previewTooltip}>
+                  <IconButton color="info" sx={iconMotionSx}>
                     <VisibilityIcon />
                   </IconButton>
                 </Tooltip>
 
-                <Tooltip title="Feature Editor">
+                <Tooltip title={tokens.visualEditorPanel.featureEditorTooltip}>
                   <IconButton
                     color="secondary"
                     onClick={() => setShowFeatureEditor(!showFeatureEditor)}
+                    sx={iconMotionSx}
                   >
                     <TuneIcon />
                   </IconButton>
@@ -538,14 +567,14 @@ export function VisualEditor({ enabled = false, onToggle }: VisualEditorProps) {
               <Stack direction="row" spacing={1} mt={2} flexWrap="wrap">
                 {Object.keys(changes).length > 0 && (
                   <Chip
-                    label={`${Object.keys(changes).length} endringer`}
+                    label={`${Object.keys(changes).length} ${tokens.visualEditorPanel.changesLabel}`}
                     color="secondary"
                     size="small"
                   />
                 )}
 
                 <Chip
-                  label="Plattform Features"
+                  label={tokens.visualEditorPanel.featuresLabel}
                   color={showFeatureEditor ? 'primary' : 'default'}
                   size="small"
                   icon={<TuneIcon />}

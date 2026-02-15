@@ -40,8 +40,8 @@ export const RESTNode = memo(function RESTNode({
   ...props
 }: {
   config: NodeConfig;
-  onDataChange?: (key: string, value: any) => void;
-  [key: string]: any;
+  onDataChange?: (key: string, value: unknown) => void;
+  [key: string]: unknown;
 }) {
   const headers = config.data.headers || [];
 
@@ -50,7 +50,7 @@ export const RESTNode = memo(function RESTNode({
   };
 
   const removeHeader = (index: number) => {
-    const newHeaders = headers.filter((_: any, i: number) => i !== index);
+    const newHeaders = headers.filter((_: unknown, i: number) => i !== index);
     onDataChange?.('headers', newHeaders);
   };
 
@@ -102,7 +102,7 @@ export const RESTNode = memo(function RESTNode({
             </AccordionSummary>
             <AccordionDetails>
               <Stack spacing={1}>
-                {headers.map((header: any, index: number) => (
+                {headers.map((header: { key: string; value: string }, index: number) => (
                   <Box key={index} sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
                     <TextField
                       size="small"
@@ -172,8 +172,8 @@ export const GraphQLNode = memo(function GraphQLNode({
   ...props
 }: {
   config: NodeConfig;
-  onDataChange?: (key: string, value: any) => void;
-  [key: string]: any;
+  onDataChange?: (key: string, value: unknown) => void;
+  [key: string]: unknown;
 }) {
   return (
     <BaseNode
@@ -238,8 +238,8 @@ export const WebSocketNode = memo(function WebSocketNode({
   ...props
 }: {
   config: NodeConfig;
-  onDataChange?: (key: string, value: any) => void;
-  [key: string]: any;
+  onDataChange?: (key: string, value: unknown) => void;
+  [key: string]: unknown;
 }) {
   return (
     <BaseNode
@@ -312,8 +312,8 @@ export const MockDataNode = memo(function MockDataNode({
   ...props
 }: {
   config: NodeConfig;
-  onDataChange?: (key: string, value: any) => void;
-  [key: string]: any;
+  onDataChange?: (key: string, value: unknown) => void;
+  [key: string]: unknown;
 }) {
   return (
     <BaseNode
@@ -390,8 +390,8 @@ export const FetchNode = memo(function FetchNode({
   ...props
 }: {
   config: NodeConfig;
-  onDataChange?: (key: string, value: any) => void;
-  [key: string]: any;
+  onDataChange?: (key: string, value: unknown) => void;
+  [key: string]: unknown;
 }) {
   return (
     <BaseNode

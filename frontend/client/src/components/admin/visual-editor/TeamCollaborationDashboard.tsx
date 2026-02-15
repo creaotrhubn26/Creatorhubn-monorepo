@@ -128,8 +128,7 @@ const TeamCollaborationDashboard: React.FC<TeamCollaborationDashboardProps> = ({
   };
 
   const handleMobileUpload = async (file: File) => {
-    const result = await processMobileUpload(file, 'project-1', 'member-1');
-    console.log('Mobile upload result:', result);
+    await processMobileUpload(file, 'project-1', 'member-1');
   };
 
   const renderOverview = () => (
@@ -225,7 +224,7 @@ const TeamCollaborationDashboard: React.FC<TeamCollaborationDashboardProps> = ({
               </Button>
             </Box>
             <List>
-              {teamMembers.map((member: any) => (
+              {teamMembers.map((member: Record<string, unknown>) => (
                 <ListItem key={member.id}>
                   <Avatar sx={{ mr:  2 }}>
                     {member.name.charAt(0)}
@@ -261,7 +260,7 @@ const TeamCollaborationDashboard: React.FC<TeamCollaborationDashboardProps> = ({
               </Button>
             </Box>
             <List>
-              {workloadAssignments.slice(0, 5).map((assignment: any) => (
+              {workloadAssignments.slice(0, 5).map((assignment: Record<string, unknown>) => (
                 <ListItem key={assignment.id}>
                   <ListItemText
                     primary={assignment.taskType}
@@ -295,7 +294,7 @@ const TeamCollaborationDashboard: React.FC<TeamCollaborationDashboardProps> = ({
       </Box>
 
       <Grid container spacing={3}>
-        {teamMembers.map((member: any) => (
+        {teamMembers.map((member: Record<string, unknown>) => (
           <Grid item xs={2} md={6} lg={4} key={member.id}>
             <Card sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
@@ -356,7 +355,7 @@ const TeamCollaborationDashboard: React.FC<TeamCollaborationDashboardProps> = ({
       </Box>
 
       <Grid container spacing={3}>
-        {workloadAssignments.map((assignment: any) => (
+        {workloadAssignments.map((assignment: Record<string, unknown>) => (
           <Grid item xs={2} md={6} lg={4} key={assignment.id}>
             <Card sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
@@ -405,7 +404,7 @@ const TeamCollaborationDashboard: React.FC<TeamCollaborationDashboardProps> = ({
       </Box>
 
       <Grid container spacing={3}>
-        {collaborativeSessions.map((session: any) => (
+        {collaborativeSessions.map((session: Record<string, unknown>) => (
           <Grid item xs={2} md={6} lg={4} key={session.id}>
             <Card sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
@@ -578,7 +577,7 @@ const TeamCollaborationDashboard: React.FC<TeamCollaborationDashboardProps> = ({
                   value={newWorkload.memberId}
                   onChange={(e) => setNewWorkload(prev => ({ ...prev, memberId: e.target.value }))}
                 >
-                  {teamMembers.map((member: any) => (
+                  {teamMembers.map((member: Record<string, unknown>) => (
                     <MenuItem key={member.id} value={member.id}>
                       {member.name}
                     </MenuItem>
@@ -679,7 +678,7 @@ const TeamCollaborationDashboard: React.FC<TeamCollaborationDashboardProps> = ({
                   value={newSession.participants}
                   onChange={(e) => setNewSession(prev => ({ ...prev, participants: e.target.value as string[] }))}
                 >
-                  {teamMembers.map((member: any) => (
+                  {teamMembers.map((member: Record<string, unknown>) => (
                     <MenuItem key={member.id} value={member.id}>
                       {member.name}
                     </MenuItem>

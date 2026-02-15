@@ -13200,6 +13200,47 @@ app.get('/api/split-sheets', async (req, res) => {
   }
 });
 
+// GET /api/split-sheets/stats — Dashboard stats
+app.get('/api/split-sheets/stats', async (req, res) => {
+  try {
+    const userId = req.headers['x-user-id'] as string || 'anonymous';
+
+    const totalResult = await pool.query(
+      'SELECT COUNT(*) as count FROM split_sheets WHERE user_id = $1',
+      [userId]
+    );
+    const pendingResult = await pool.query(
+      `SELECT COUNT(*) as count FROM split_sheets ss
+       JOIN split_sheet_contributors ssc ON ssc.split_sheet_id = ss.id
+       WHERE ss.user_id = $1 AND ssc.signed_at IS NULL`,
+      [userId]
+    );
+    const completedResult = await pool.query(
+      `SELECT COUNT(*) as count FROM split_sheets ss
+       WHERE ss.user_id = $1 AND ss.status = 'completed'`,
+      [userId]
+    );
+    const revenueResult = await pool.query(
+      `SELECT COALESCE(SUM(ssc.percentage), 0) as total FROM split_sheet_contributors ssc
+       JOIN split_sheets ss ON ss.id = ssc.split_sheet_id
+       WHERE ss.user_id = $1`,
+      [userId]
+    );
+
+    return res.json({
+      data: {
+        total: parseInt(totalResult.rows[0]?.count || '0'),
+        pendingSignatures: parseInt(pendingResult.rows[0]?.count || '0'),
+        totalRevenue: parseFloat(revenueResult.rows[0]?.total || '0'),
+        completed: parseInt(completedResult.rows[0]?.count || '0'),
+      }
+    });
+  } catch (error) {
+    console.error('Split sheets stats error:', error);
+    return res.json({ data: { total: 0, pendingSignatures: 0, totalRevenue: 0, completed: 0 } });
+  }
+});
+
 // GET /api/split-sheets/:id — Get split sheet details with contributors
 app.get('/api/split-sheets/:id', async (req, res) => {
   try {
@@ -16135,6 +16176,326 @@ app.get('/api/universal-crm/email-templates', async (req, res) => {
 });
 
 console.log('[CRM] Universal CRM API routes registered at /api/universal-crm/*');
+
+// ============================================================
+// Contracts List with clientId filter
+// ============================================================
+
+app.get('/api/contracts', async (req, res) => {
+  try {
+    const clientId = req.query.clientId as string;
+    const xUserId = req.headers['x-user-id'] as string || '';
+
+    // Resolve user_id from users table
+    const userLookup = await pool.query('SELECT id FROM users WHERE username = $1 LIMIT 1', [xUserId]);
+    const userId = userLookup.rows[0]?.id || xUserId;
+
+    let query = `SELECT c.id, c.title, c.status, c.created_at, c.client_id,
+                        cm.name as client_name, cm.email as client_email
+                 FROM contracts c
+                 LEFT JOIN crm_customers cm ON cm.id::text = c.client_id
+                 WHERE c.user_id = $1`;
+    const params: any[] = [userId];
+
+    if (clientId) {
+      query += ' AND c.client_id = $2';
+      params.push(clientId);
+    }
+
+    query += ' ORDER BY c.created_at DESC';
+
+    const result = await pool.query(query, params);
+    return res.json({
+      contracts: result.rows.map((r: any) => ({
+        id: r.id,
+        projectDescription: r.title,
+        status: r.status,
+        totalAmount: 0,
+        createdAt: r.created_at,
+        clientName: r.client_name || '',
+        clientEmail: r.client_email || '',
+      }))
+    });
+  } catch (error) {
+    console.error('Contracts list error:', error);
+    return res.json({ contracts: [] });
+  }
+});
+
+// ============================================================
+// Google People API (Stub endpoints for CRM integration)
+// ============================================================
+
+app.get('/api/google/people/search-contacts', async (req, res) => {
+  try {
+    const q = (req.query.q as string || '').toLowerCase();
+    // Search CRM customers as contacts since Google OAuth not integrated
+    const result = await pool.query(
+      `SELECT id, name, email, phone, company FROM crm_customers
+       WHERE LOWER(name) LIKE $1 OR LOWER(email) LIKE $1 OR LOWER(company) LIKE $1
+       ORDER BY name ASC LIMIT 20`,
+      [`%${q}%`]
+    );
+    return res.json(result.rows.map((r: any) => ({
+      id: r.id,
+      name: r.name,
+      email: r.email,
+      phone: r.phone,
+      company: r.company,
+      source: 'crm',
+    })));
+  } catch (error) {
+    console.error('Contact search error:', error);
+    return res.json([]);
+  }
+});
+
+app.post('/api/google/people/create-contact', async (req, res) => {
+  try {
+    const { name, email, phone, company } = req.body;
+    const result = await pool.query(
+      `INSERT INTO crm_customers (id, name, email, phone, company, status, source, created_at, updated_at)
+       VALUES (gen_random_uuid(), $1, $2, $3, $4, 'lead', 'google-contacts', NOW(), NOW()) RETURNING id`,
+      [name || '', email || '', phone || '', company || '']
+    );
+    return res.json({ contactId: result.rows[0].id });
+  } catch (error) {
+    console.error('Create contact error:', error);
+    return res.status(500).json({ error: 'Failed to create contact' });
+  }
+});
+
+app.put('/api/google/people/update-contact/:contactId', async (req, res) => {
+  try {
+    const { contactId } = req.params;
+    const { name, email, phone, company } = req.body;
+    await pool.query(
+      `UPDATE crm_customers SET name = COALESCE($1, name), email = COALESCE($2, email),
+       phone = COALESCE($3, phone), company = COALESCE($4, company), updated_at = NOW()
+       WHERE id = $5`,
+      [name, email, phone, company, contactId]
+    );
+    return res.json({ success: true, contactId });
+  } catch (error) {
+    console.error('Update contact error:', error);
+    return res.status(500).json({ error: 'Failed to update contact' });
+  }
+});
+
+app.post('/api/google/people/set-contact-photo/:contactId', async (req, res) => {
+  try {
+    const { contactId } = req.params;
+    // Photo storage not implemented — acknowledge and return success
+    return res.json({ success: true, contactId, message: 'Photo update acknowledged' });
+  } catch (error) {
+    console.error('Set contact photo error:', error);
+    return res.status(500).json({ error: 'Failed to set contact photo' });
+  }
+});
+
+// ============================================================
+// Calendar Availability API (Stub)
+// ============================================================
+
+app.get('/api/calendar/availability', async (req, res) => {
+  try {
+    const date = req.query.date as string || new Date().toISOString().split('T')[0];
+    // Return available time slots for the given date
+    const availability = [];
+    for (let hour = 9; hour <= 17; hour++) {
+      availability.push({
+        startTime: `${date}T${hour.toString().padStart(2, '0')}:00:00Z`,
+        endTime: `${date}T${(hour + 1).toString().padStart(2, '0')}:00:00Z`,
+        available: true,
+      });
+    }
+    return res.json({ availability });
+  } catch (error) {
+    console.error('Calendar availability error:', error);
+    return res.json({ availability: [] });
+  }
+});
+
+// ============================================================
+// Project Timeline API
+// ============================================================
+
+app.get('/api/projects/timeline/:clientId', async (req, res) => {
+  try {
+    const { clientId } = req.params;
+
+    // Get the project linked to this customer
+    const projectResult = await pool.query(
+      `SELECT p.id, p.name, p.status, p.created_at, p.updated_at
+       FROM legacy.projects p
+       JOIN crm_customers c ON c.project_id = p.id
+       WHERE c.id = $1
+       LIMIT 1`,
+      [clientId]
+    );
+
+    if (projectResult.rows.length === 0) {
+      return res.json({
+        currentPhase: 'initial-contact',
+        milestones: [
+          { name: 'Initial Contact', status: 'completed', date: new Date().toISOString() },
+          { name: 'Quote Sent', status: 'pending', date: null },
+          { name: 'Contract Signed', status: 'pending', date: null },
+          { name: 'Project Started', status: 'pending', date: null },
+          { name: 'Delivery', status: 'pending', date: null },
+        ]
+      });
+    }
+
+    const project = projectResult.rows[0];
+    const status = project.status || 'active';
+    const phases = ['initial-contact', 'quote-sent', 'contract-signed', 'in-progress', 'delivered'];
+    const currentPhaseIndex = status === 'completed' ? 4 : status === 'active' ? 3 : 1;
+
+    const milestones = [
+      { name: 'Initial Contact', status: 'completed', date: project.created_at },
+      { name: 'Quote Sent', status: currentPhaseIndex >= 1 ? 'completed' : 'pending', date: project.created_at },
+      { name: 'Contract Signed', status: currentPhaseIndex >= 2 ? 'completed' : 'pending', date: currentPhaseIndex >= 2 ? project.updated_at : null },
+      { name: 'Project Started', status: currentPhaseIndex >= 3 ? 'completed' : 'pending', date: currentPhaseIndex >= 3 ? project.updated_at : null },
+      { name: 'Delivery', status: currentPhaseIndex >= 4 ? 'completed' : 'pending', date: currentPhaseIndex >= 4 ? project.updated_at : null },
+    ];
+
+    return res.json({
+      currentPhase: phases[currentPhaseIndex],
+      milestones,
+      project: { id: project.id, name: project.name, status: project.status },
+    });
+  } catch (error) {
+    console.error('Project timeline error:', error);
+    return res.json({
+      currentPhase: 'initial-contact',
+      milestones: [
+        { name: 'Initial Contact', status: 'completed', date: new Date().toISOString() },
+      ]
+    });
+  }
+});
+
+// ============================================================
+// Quotes API
+// ============================================================
+
+app.post('/api/quotes/create', async (req, res) => {
+  try {
+    const { clientId, items, description, validDays } = req.body;
+    const xUserId = req.headers['x-user-id'] as string || '';
+
+    // Resolve user_id: try users table by username, fallback to first user
+    let userId: string;
+    const userLookup = await pool.query('SELECT id FROM users WHERE username = $1 LIMIT 1', [xUserId]);
+    if (userLookup.rows.length > 0) {
+      userId = userLookup.rows[0].id;
+    } else {
+      const fallback = await pool.query('SELECT id FROM users LIMIT 1');
+      userId = fallback.rows[0]?.id || 'default-user';
+    }
+
+    // Generate quote number
+    const quoteNumber = `QT-${Date.now().toString(36).toUpperCase()}`;
+    const totalAmount = (items || []).reduce((sum: number, item: any) => sum + (item.amount || 0), 0);
+
+    const result = await pool.query(
+      `INSERT INTO contracts (id, user_id, title, client_id, status, content, created_at, updated_at)
+       VALUES (gen_random_uuid(), $1, $2, $3, 'draft', $4, NOW(), NOW()) RETURNING id`,
+      [userId, description || `Quote ${quoteNumber}`, clientId || null, JSON.stringify({ quoteNumber, items, totalAmount })]
+    );
+
+    return res.json({
+      quoteNumber,
+      id: result.rows[0].id,
+      totalAmount,
+      status: 'draft',
+      validUntil: new Date(Date.now() + (validDays || 30) * 86400000).toISOString(),
+    });
+  } catch (error) {
+    console.error('Quote creation error:', error);
+    return res.status(500).json({ error: 'Failed to create quote' });
+  }
+});
+
+app.get('/api/quotes/status/:clientId', async (req, res) => {
+  try {
+    const { clientId } = req.params;
+
+    // Look up the latest contract/quote for this customer
+    const result = await pool.query(
+      `SELECT c.id, c.status, c.title, c.content, c.created_at,
+              cust.name as client_name, cust.email as client_email, cust.project_id
+       FROM contracts c
+       JOIN crm_customers cust ON cust.id::text = c.client_id
+       WHERE cust.id = $1
+       ORDER BY c.created_at DESC LIMIT 1`,
+      [clientId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.json({ accepted: false, projectId: null, clientInfo: null });
+    }
+
+    const row = result.rows[0];
+    const content = typeof row.content === 'string' ? JSON.parse(row.content) : (row.content || {});
+    return res.json({
+      accepted: row.status === 'signed' || row.status === 'completed',
+      projectId: row.project_id,
+      quoteId: row.id,
+      status: row.status,
+      totalAmount: content.totalAmount || 0,
+      clientInfo: {
+        name: row.client_name,
+        email: row.client_email,
+      }
+    });
+  } catch (error) {
+    console.error('Quote status error:', error);
+    return res.json({ accepted: false, projectId: null, clientInfo: null });
+  }
+});
+
+// ============================================================
+// CRM AI Response Generation
+// ============================================================
+
+app.post('/api/crm/generate-response', async (req, res) => {
+  try {
+    const { prompt, clientContext, profession } = req.body;
+
+    // Generate contextual response templates based on profession and context
+    const clientName = clientContext?.name || 'valued customer';
+    const professionLabel = profession || 'creative professional';
+
+    const templates: Record<string, string> = {
+      greeting: `Hei ${clientName}! Takk for din henvendelse. Som ${professionLabel} ser jeg frem til å diskutere prosjektet ditt. Kan du fortelle mer om hva du ser for deg?`,
+      pricing: `Takk for interessen, ${clientName}! Mine priser varierer basert på prosjektets omfang og kompleksitet. La oss sette opp et uforpliktende møte for å diskutere dine behov og jeg kan gi deg et skreddersydd tilbud.`,
+      availability: `Hei ${clientName}! Jeg har god kapasitet fremover. Kan du dele ønsket dato og lokasjon, så sjekker jeg tilgjengeligheten min?`,
+      followup: `Hei igjen ${clientName}! Jeg ville bare følge opp samtalen vår. Har du hatt tid til å tenke over tilbudet? Jeg er tilgjengelig for spørsmål.`,
+      technical: `Godt spørsmål, ${clientName}! La meg forklare prosessen min og hvordan vi kan tilpasse den til dine behov.`,
+    };
+
+    // Try to match the prompt to a template category
+    const promptLower = (prompt || '').toLowerCase();
+    let response = templates.greeting;
+
+    if (promptLower.includes('pris') || promptLower.includes('kost') || promptLower.includes('price')) {
+      response = templates.pricing;
+    } else if (promptLower.includes('ledig') || promptLower.includes('dato') || promptLower.includes('available')) {
+      response = templates.availability;
+    } else if (promptLower.includes('følge') || promptLower.includes('follow')) {
+      response = templates.followup;
+    } else if (promptLower.includes('teknisk') || promptLower.includes('technical') || promptLower.includes('prosess')) {
+      response = templates.technical;
+    }
+
+    return res.json({ response });
+  } catch (error) {
+    console.error('CRM generate response error:', error);
+    return res.json({ response: 'Beklager, kunne ikke generere svar. Prøv igjen senere.' });
+  }
+});
 
 // Catch-all for unhandled API routes
 app.all('/api/*', (req, res) => {

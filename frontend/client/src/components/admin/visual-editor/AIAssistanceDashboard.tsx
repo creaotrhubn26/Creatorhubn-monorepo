@@ -95,6 +95,7 @@ const AIAssistanceDashboard: React.FC<AIAssistanceDashboardProps> = ({
   const [codePrompt, setCodePrompt] = useState('');
   const [showCodeGenerationDialog, setShowCodeGenerationDialog] = useState(false);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' | 'warning' | 'info',});
+  const [errorDismissed, setErrorDismissed] = useState(false);
 
   const {
     suggestions,
@@ -170,7 +171,7 @@ const AIAssistanceDashboard: React.FC<AIAssistanceDashboardProps> = ({
 
   const handleUpdateSuggestionStatus = (id: string, status: string) => {
     try {
-      updateSuggestionStatus(id, status as any);
+      updateSuggestionStatus(id, status as string);
       setSnackbar({ open: true, message: 'Suggestion status updated', severity: 'success' });
     } catch (err) {
       setSnackbar({ open: true, message: 'Failed to update suggestion status', severity: 'error' });
@@ -271,8 +272,8 @@ const AIAssistanceDashboard: React.FC<AIAssistanceDashboardProps> = ({
       </Box>
 
       {/* Error Alert */}
-      {error && (
-        <Alert severity="error" sx={{ mb:  2 }} onClose={() => {}}>
+      {error && !errorDismissed && (
+        <Alert severity="error" sx={{ mb:  2 }} onClose={() => setErrorDismissed(true)}>
           {error}
         </Alert>
       )}

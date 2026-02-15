@@ -65,7 +65,7 @@ export const AccessibilityAnimationDashboard: React.FC<AccessibilityDashboardPro
   const [speedMultiplier, setSpeedMultiplier] = useState<number>(1);
   const [showPreview, setShowPreview] = useState<boolean>(false);
   const [comparisonMode, setComparisonMode] = useState<boolean>(false);
-  const [auditResults, setAuditResults] = useState<any[]>([]);
+  const [auditResults, setAuditResults] = useState<Record<string, unknown>[]>([]);
 
   // Run accessibility audit on animations
   useEffect(() => {
@@ -368,7 +368,7 @@ export const AccessibilityAnimationDashboard: React.FC<AccessibilityDashboardPro
                       </Typography>
                       <Chip
                         label={result.complianceLevel}
-                        color={getComplianceColor(result.complianceLevel) as any}
+                        color={getComplianceColor(result.complianceLevel) as 'default' | 'primary' | 'secondary' | 'error' | 'info' | 'success' | 'warning'}
                         size="small"
                       />
                       {result.animation.research && (

@@ -24,6 +24,7 @@ import {
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { useTheming } from '../../../utils/theming-helper';
 import { useIntegrationFeatures } from '../../../hooks/useIntegrationFeatures';
+import { getVisualEditorTokens } from './visualEditorTokens';
 import {
   Layers as LayersIcon,
   Palette as PaletteIcon,
@@ -141,6 +142,12 @@ const VisualEditorToolbar: React.FC<VisualEditorToolbarProps> = ({
 
   // Feature access system
   const { hasFeature, getFeatureList, totalActiveIntegrations } = useIntegrationFeatures();
+  const tokens = getVisualEditorTokens();
+  const iconMotionSx = {
+    transition: `transform ${tokens.iconAnimation.durationMs}ms ${tokens.iconAnimation.easing}`,
+    '&:hover': { transform: `scale(${tokens.iconAnimation.scaleHover})` },
+    '&:active': { transform: `scale(${tokens.iconAnimation.scaleActive})` },
+  };
 
   // Feature access flags
   const visualEditorAccess = { hasAccess: hasFeature('visual-editor') };
@@ -157,7 +164,7 @@ const VisualEditorToolbar: React.FC<VisualEditorToolbarProps> = ({
       <Toolbar>
         <Box sx={{ flexGrow: 1 }}>
           <Typography variant="h6" sx={{ color: theming.colors.primary }}>
-            {projectName || 'CreatorHub Visual Editor'}
+            {projectName || tokens.legacyToolbar.titleFallback}
           </Typography>
           
           {/* Feature Analytics Display */}
@@ -168,7 +175,7 @@ const VisualEditorToolbar: React.FC<VisualEditorToolbarProps> = ({
             mt: 0.5
         }}>
             <Typography variant="caption" color="text.secondary">
-              Features: {totalActiveIntegrations}/12
+              {tokens.legacyToolbar.featuresLabel}: {totalActiveIntegrations}/12
             </Typography>
             <Chip 
               label={`${Math.round((totalActiveIntegrations / 12) * 100)}%`}
@@ -193,7 +200,7 @@ const VisualEditorToolbar: React.FC<VisualEditorToolbarProps> = ({
             label={
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                 <ExtendedThinkingIcon fontSize="small" />
-                <Typography variant="caption">Extended</Typography>
+                <Typography variant="caption">{tokens.legacyToolbar.dynamicControls.extended}</Typography>
               </Box>
           }
             labelPlacement="start"
@@ -212,7 +219,7 @@ const VisualEditorToolbar: React.FC<VisualEditorToolbarProps> = ({
             label={
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                 <HighPowerIcon fontSize="small" />
-                <Typography variant="caption">High Power</Typography>
+                <Typography variant="caption">{tokens.legacyToolbar.dynamicControls.highPower}</Typography>
               </Box>
           }
             labelPlacement="start"
@@ -222,18 +229,18 @@ const VisualEditorToolbar: React.FC<VisualEditorToolbarProps> = ({
 
         {/* Action Buttons */}
         <ButtonGroup variant="outlined" size="small" sx={{ mr: 2 }}>
-          <Tooltip title="Undo (Ctrl+Z)">
-            <IconButton onClick={onUndo} disabled={!canUndo}>
+          <Tooltip title={tokens.legacyToolbar.actionTooltips.undoWithShortcut}>
+            <IconButton onClick={onUndo} disabled={!canUndo} sx={iconMotionSx}>
               <UndoIcon />
             </IconButton>
           </Tooltip>
-          <Tooltip title="Redo (Ctrl+Y)">
-            <IconButton onClick={onRedo} disabled={!canRedo}>
+          <Tooltip title={tokens.legacyToolbar.actionTooltips.redoWithShortcut}>
+            <IconButton onClick={onRedo} disabled={!canRedo} sx={iconMotionSx}>
               <RedoIcon />
             </IconButton>
           </Tooltip>
-          <Tooltip title="Save (Ctrl+S)">
-            <IconButton onClick={onSave} disabled={isSaving}>
+          <Tooltip title={tokens.legacyToolbar.actionTooltips.saveWithShortcut}>
+            <IconButton onClick={onSave} disabled={isSaving} sx={iconMotionSx}>
               <SaveIcon />
             </IconButton>
           </Tooltip>
@@ -251,32 +258,38 @@ const VisualEditorToolbar: React.FC<VisualEditorToolbarProps> = ({
         >
           <ToggleButton value="plan">
             <LayersIcon fontSize="small" sx={{ mr: 1 }} />
-            Plan
+            {tokens.legacyToolbar.viewTabs.plan}
           </ToggleButton>
           <ToggleButton value="designer">
             <PaletteIcon fontSize="small" sx={{ mr: 1 }} />
-            Designer
+            {tokens.legacyToolbar.viewTabs.designer}
           </ToggleButton>
           <ToggleButton value="components">
             <AddIcon fontSize="small" sx={{ mr: 1 }} />
-            Components
+            {tokens.legacyToolbar.viewTabs.components}
           </ToggleButton>
           <ToggleButton value="code">
             <CodeIcon fontSize="small" sx={{ mr: 1 }} />
-            Code
+            {tokens.legacyToolbar.viewTabs.code}
           </ToggleButton>
           <ToggleButton value="preview">
             <PreviewIcon fontSize="small" sx={{ mr: 1 }} />
-            Preview
+            {tokens.legacyToolbar.viewTabs.preview}
           </ToggleButton>
           <ToggleButton value="seo">
             <ScienceIcon fontSize="small" sx={{ mr: 1 }} />
-            SEO
+            {tokens.legacyToolbar.viewTabs.seo}
           </ToggleButton>
         </ToggleButtonGroup>
 
         {/* Unified Dashboard Toggle */}
-        <Tooltip title={showUnifiedDashboard ? "Hide Unified Dashboard" : "Show Unified Dashboard"}>
+        <Tooltip
+          title={
+            showUnifiedDashboard
+              ? tokens.legacyToolbar.dashboard.hideTooltip
+              : tokens.legacyToolbar.dashboard.showTooltip
+          }
+        >
           <Button
             variant={showUnifiedDashboard ? "contained" : "outlined"}
             onClick={onToggleUnifiedDashboard}
@@ -284,7 +297,7 @@ const VisualEditorToolbar: React.FC<VisualEditorToolbarProps> = ({
             size="small"
             sx={{ mr: 2 }}
           >
-            Dashboard
+            {tokens.legacyToolbar.dashboard.label}
           </Button>
         </Tooltip>
 
@@ -311,7 +324,7 @@ const VisualEditorToolbar: React.FC<VisualEditorToolbarProps> = ({
                 size="small"
               />
           }
-            label="Snap"
+            label={tokens.legacyToolbar.gridControls.snap}
           />
           <FormControlLabel
             control={
@@ -321,21 +334,21 @@ const VisualEditorToolbar: React.FC<VisualEditorToolbarProps> = ({
                 size="small"
               />
           }
-            label="Multi"
+            label={tokens.legacyToolbar.gridControls.multi}
           />
         </Box>
 
         {/* Status Indicators */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <Chip
-            label={`${selectedElementsCount}/${totalElementsCount} selected`}
+            label={`${selectedElementsCount}/${totalElementsCount} ${tokens.legacyToolbar.status.selectedSuffix}`}
             size="small"
             color="primary"
             variant="outlined"
           />
           {isSaving && (
             <Chip
-              label="Saving..."
+              label={tokens.legacyToolbar.status.saving}
               size="small"
               color="secondary"
               variant="filled"

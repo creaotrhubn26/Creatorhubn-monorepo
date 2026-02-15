@@ -208,23 +208,25 @@ const KeyboardShortcutsDashboard: React.FC<KeyboardShortcutsDashboardProps> = me
 
   // Keyboard shortcuts options
   const keyboardOptions: UseKeyboardShortcutsOptions = useMemo(() => ({
-    onShortcutCreated: (data: { shortcut: KeyboardShortcut }) => {
-      // Handle shortcut created
+    onShortcutCreated: (_data: { shortcut: KeyboardShortcut }) => {
+      setPage(0);
   },
-    onShortcutExecuted: (data: { shortcut: KeyboardShortcut; event?: KeyboardEvent }) => {
-      // Handle shortcut executed
+    onShortcutExecuted: (_data: { shortcut: KeyboardShortcut; event?: KeyboardEvent }) => {
+      setPage(0);
   },
     onShortcutExecutionFailed: (data: { shortcut: KeyboardShortcut; event?: KeyboardEvent; error: string }) => {
       console.error('Shortcut execution failed:', data.error);
   },
-    onContextChanged: (data: { contexts: string[] }) => {
-      // Handle context changed
+    onContextChanged: (_data: { contexts: string[] }) => {
+      setFilterType('all');
+      setPage(0);
   },
     onError: (error: string) => {
       console.error('Keyboard shortcuts error:', error);
   },
     onInitialized: () => {
-      // Handle initialized
+      setFilterType('all');
+      setPage(0);
 }
 }), []);
 
@@ -332,7 +334,7 @@ const KeyboardShortcutsDashboard: React.FC<KeyboardShortcutsDashboardProps> = me
         modifiers:  [],
         context: ['*'],
         action: 'custom',
-        handler: () => console.log('Custom shortcut executed'),
+        handler: () => { document.dispatchEvent(new CustomEvent('visual-editor:shortcut', { detail: { action: 'custom', timestamp: Date.now() } })); },
         enabled: true,
         global: true,
         preventDefault: true,

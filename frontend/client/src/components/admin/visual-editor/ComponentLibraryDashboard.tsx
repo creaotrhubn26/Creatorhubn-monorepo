@@ -240,7 +240,7 @@ const ComponentLibraryDashboard: React.FC<ComponentLibraryDashboardProps> = memo
   const [showDocumentationDialog, setShowDocumentationDialog] = useState(false);
   const [activeTab, setActiveTab] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterCategory, setFilterCategory] = useState('all,');
+  const [filterCategory, setFilterCategory] = useState('all');
   const [filterTag, setFilterTag] = useState('all');
   const [sortBy, setSortBy] = useState('name');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
@@ -250,26 +250,26 @@ const ComponentLibraryDashboard: React.FC<ComponentLibraryDashboardProps> = memo
 
   // Component library options
   const componentLibraryOptions: UseComponentLibraryOptions = useMemo(() => ({
-    onComponentAdded: (data: { component: ComponentLibraryItem }) => {
-      // Handle component added
+    onComponentAdded: (_data: { component: ComponentLibraryItem }) => {
+      setPage(0);
   },
-    onComponentUpdated: (data: { component: ComponentLibraryItem }) => {
-      // Handle component updated
+    onComponentUpdated: (_data: { component: ComponentLibraryItem }) => {
+      setPage(0);
   },
-    onComponentDeleted: (data: { component: ComponentLibraryItem }) => {
-      // Handle component deleted
+    onComponentDeleted: (_data: { component: ComponentLibraryItem }) => {
+      setPage(0);
   },
-    onSearchCompleted: (data: { query: string; results: ComponentLibraryItem[] }) => {
-      // Handle search completed
+    onSearchCompleted: (_data: { query: string; results: ComponentLibraryItem[] }) => {
+      setPage(0);
   },
     onSearchFailed: (data: { query: string; error: string }) => {
       console.error('Search failed: ', data.error);
   },
     onError: (error: string) => {
-      console.error('Component library error, :', error);
+      console.error('Component library error:', error);
   },
     onInitialized: () => {
-      // Handle initialized
+      setPage(0);
 }
 }), []);
 

@@ -156,7 +156,7 @@ export const FloatingLayersPanel: React.FC<FloatingLayersPanelProps> = ({ isOpen
                             variant="body2"
                             sx={{
                               fontWeight: element.props?.selected ? 600 : 400}}>
-                            {(element as any).name || element.type}
+                            {(element.props?.name as string) || element.type}
                           </Typography>
                           <Typography variant="caption" color="text.disabled">
                             {element.type}

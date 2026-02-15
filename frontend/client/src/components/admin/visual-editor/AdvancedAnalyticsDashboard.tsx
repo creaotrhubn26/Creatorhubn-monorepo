@@ -90,6 +90,7 @@ const AdvancedAnalyticsDashboard: React.FC<AdvancedAnalyticsDashboardProps> = ({
   const [newFunnelName, setNewFunnelName] = useState('');
   const [newTestName, setNewTestName] = useState('');
   const [snackbar, setSnackbar] = useState({ open: false, message: ', ', severity: 'success' as 'success' | 'error' | 'warning' | 'info',});
+  const [errorDismissed, setErrorDismissed] = useState(false);
 
   const {
     heatmapData,
@@ -193,7 +194,7 @@ const AdvancedAnalyticsDashboard: React.FC<AdvancedAnalyticsDashboardProps> = ({
 
   const handleUpdateInsightStatus = (id: string, status: string) => {
     try {
-      updateInsightStatus(id, status as any);
+      updateInsightStatus(id, status as string);
       setSnackbar({ open: true, message: 'Insight status updated', severity: 'success' });
     } catch (err) {
       setSnackbar({ open: true, message: 'Failed to update insight status', severity: 'error' });
@@ -301,8 +302,8 @@ const AdvancedAnalyticsDashboard: React.FC<AdvancedAnalyticsDashboardProps> = ({
       </Box>
 
       {/* Error Alert */}
-      {error && (
-        <Alert severity="error" sx={{ mb:  2 }} onClose={() => {}}>
+      {error && !errorDismissed && (
+        <Alert severity="error" sx={{ mb:  2 }} onClose={() => setErrorDismissed(true)}>
           {error}
         </Alert>
       )}
